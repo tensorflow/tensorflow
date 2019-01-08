@@ -45,6 +45,7 @@ from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
+import ctypes
 
 
 def _to_bytes(s):
@@ -481,6 +482,18 @@ class TrtGraphConverter(GraphConverter):
     if not version_mismatch:
       tf_logging.info("Running against TensorRT version %s" % ".".join(
           [str(x) for x in loaded_version]))
+
+    # Load TensorRT plugins.
+    try:
+      plugin_lib = ctypes.CDLL("libnvinfer_plugin.so")
+    except Exception as e:
+      tf_logging.warn("Failed to load libnvinfer_plugin.so" +  str(e))
+    else:
+      # Initialize and register TensorRT plugins.
+      plugin_lib_registered = plugin_lib.initLibNvInferPlugins(None, "")
+      if plugin_lib_registered != 1:
+        tf_logging.warn("Failed to initialize and register TensorRT plugins "
+          "with initLibNvInferPlugins")
 
     # Check input arguments.
     if precision_mode.upper() not in TrtPrecisionMode.supported_precision_modes(
