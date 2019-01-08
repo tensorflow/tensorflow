@@ -32,15 +32,25 @@ cc_library(
 
 tf_cuda_library(
     name = "stream_executor",
-    deps = [
-        "//tensorflow/stream_executor",
+    cuda_deps = [
+        "//tensorflow/stream_executor/cuda:cuda_activation",
     ] + select({
-        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor:cuda_platform"],
-        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor:cuda_platform"],
+        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor/cuda:all_runtime"],
+        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
         "//tensorflow:using_cuda_clang_with_dynamic_build": [],
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
         "//conditions:default": [],
-    }) + select({
+    }),
+    deps = [
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ] + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }),
@@ -49,9 +59,10 @@ tf_cuda_library(
 cc_library(
     name = "stream_executor_cuda",
     deps = [
-        "//tensorflow/stream_executor",
+        ":stream_executor_no_cuda",
+        ":cuda",
     ] + if_static(
-        ["//tensorflow/stream_executor:cuda_platform"],
+        ["//tensorflow/stream_executor/cuda:all_runtime"],
     ) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
@@ -62,23 +73,31 @@ cc_library(
     name = "stream_executor_no_cuda",
     deps = [
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor/host:host_platform",
+        "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/platform:dso_loader",
     ],
 )
 
 # Dummy stream executor cuda plugins.
 cc_library(
     name = "cublas_plugin",
-    srcs = [],
+    deps = if_static(["//tensorflow/stream_executor/cuda:cublas_plugin"]),
 )
 
 cc_library(
     name = "cufft_plugin",
-    srcs = [],
+    deps = if_static(["//tensorflow/stream_executor/cuda:cufft_plugin"]),
 )
 
 cc_library(
     name = "cudnn_plugin",
-    srcs = [],
+    deps = if_static(["//tensorflow/stream_executor/cuda:cudnn_plugin"]),
 )
 
 # OSX framework for device driver access
