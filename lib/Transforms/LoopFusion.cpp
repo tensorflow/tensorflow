@@ -47,12 +47,12 @@ using namespace mlir;
 // depth per-loop nest, or depth per load/store op) for this pass utilizing a
 // cost model.
 static llvm::cl::opt<unsigned> clSrcLoopDepth(
-    "src-loop-depth", llvm::cl::Hidden,
+    "fusion-src-loop-depth", llvm::cl::Hidden,
     llvm::cl::desc("Controls the depth of the source loop nest at which "
                    "to apply loop iteration slicing before fusion."));
 
 static llvm::cl::opt<unsigned> clDstLoopDepth(
-    "dst-loop-depth", llvm::cl::Hidden,
+    "fusion-dst-loop-depth", llvm::cl::Hidden,
     llvm::cl::desc("Controls the depth of the destination loop nest at which "
                    "to fuse the source loop nest slice."));
 

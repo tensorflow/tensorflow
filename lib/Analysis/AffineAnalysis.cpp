@@ -690,9 +690,9 @@ private:
 
 // Builds a map from Value to identifier position in a new merged identifier
 // list, which is the result of merging dim/symbol lists from src/dst
-// iteration domains. The format of the new merged list is as follows:
+// iteration domains, the format of which is as follows:
 //
-//   [src-dim-identifiers, dst-dim-identifiers, symbol-identifiers]
+//   [src-dim-identifiers, dst-dim-identifiers, symbol-identifiers, const_term]
 //
 // This method populates 'valuePosMap' with mappings from operand Values in
 // 'srcAccessMap'/'dstAccessMap' (as well as those in 'srcDomain'/'dstDomain')
@@ -700,22 +700,26 @@ private:
 static void buildDimAndSymbolPositionMaps(
     const FlatAffineConstraints &srcDomain,
     const FlatAffineConstraints &dstDomain, const AffineValueMap &srcAccessMap,
-    const AffineValueMap &dstAccessMap, ValuePositionMap *valuePosMap) {
+    const AffineValueMap &dstAccessMap, ValuePositionMap *valuePosMap,
+    FlatAffineConstraints *dependenceConstraints) {
   auto updateValuePosMap = [&](ArrayRef<Value *> values, bool isSrc) {
     for (unsigned i = 0, e = values.size(); i < e; ++i) {
       auto *value = values[i];
-      if (!isa<ForInst>(values[i]))
+      if (!isa<ForInst>(values[i])) {
+        assert(values[i]->isValidSymbol() &&
+               "access operand has to be either a loop IV or a symbol");
         valuePosMap->addSymbolValue(value);
-      else if (isSrc)
+      } else if (isSrc) {
         valuePosMap->addSrcValue(value);
-      else
+      } else {
         valuePosMap->addDstValue(value);
+      }
     }
   };
 
   SmallVector<Value *, 4> srcValues, destValues;
-  srcDomain.getIdValues(&srcValues);
-  dstDomain.getIdValues(&destValues);
+  srcDomain.getAllIdValues(&srcValues);
+  dstDomain.getAllIdValues(&destValues);
 
   // Update value position map with identifiers from src iteration domain.
   updateValuePosMap(srcValues, /*isSrc=*/true);
@@ -725,6 +729,65 @@ static void buildDimAndSymbolPositionMaps(
   updateValuePosMap(srcAccessMap.getOperands(), /*isSrc=*/true);
   // Update value position map with identifiers from dst access function.
   updateValuePosMap(dstAccessMap.getOperands(), /*isSrc=*/false);
+}
+
+// Sets up dependence constraints columns appropriately, in the format:
+// [src-dim-identifiers, dst-dim-identifiers, symbol-identifiers, const_term]
+void initDependenceConstraints(const FlatAffineConstraints &srcDomain,
+                               const FlatAffineConstraints &dstDomain,
+                               const AffineValueMap &srcAccessMap,
+                               const AffineValueMap &dstAccessMap,
+                               const ValuePositionMap &valuePosMap,
+                               FlatAffineConstraints *dependenceConstraints) {
+  // Calculate number of equalities/inequalities and columns required to
+  // initialize FlatAffineConstraints for 'dependenceDomain'.
+  unsigned numIneq =
+      srcDomain.getNumInequalities() + dstDomain.getNumInequalities();
+  AffineMap srcMap = srcAccessMap.getAffineMap();
+  assert(srcMap.getNumResults() == dstAccessMap.getAffineMap().getNumResults());
+  unsigned numEq = srcMap.getNumResults();
+  unsigned numDims = srcDomain.getNumDimIds() + dstDomain.getNumDimIds();
+  unsigned numSymbols = valuePosMap.getNumSymbols();
+  unsigned numIds = numDims + numSymbols;
+  unsigned numCols = numIds + 1;
+
+  // Set flat affine constraints sizes and reserving space for constraints.
+  dependenceConstraints->reset(numIneq, numEq, numCols, numDims, numSymbols,
+                               /*numLocals=*/0);
+
+  // Set values corresponding to dependence constraint identifiers.
+  SmallVector<Value *, 4> srcLoopIVs, dstLoopIVs;
+  srcDomain.getIdValues(0, srcDomain.getNumDimIds(), &srcLoopIVs);
+  dstDomain.getIdValues(0, dstDomain.getNumDimIds(), &dstLoopIVs);
+
+  dependenceConstraints->setIdValues(0, srcLoopIVs.size(), srcLoopIVs);
+  dependenceConstraints->setIdValues(
+      srcLoopIVs.size(), srcLoopIVs.size() + dstLoopIVs.size(), dstLoopIVs);
+
+  // Set values for the symbolic identifier dimensions.
+  auto setSymbolIds = [&](ArrayRef<Value *> values) {
+    for (auto *value : values) {
+      if (!isa<ForInst>(value)) {
+        assert(value->isValidSymbol() && "expected symbol");
+        dependenceConstraints->setIdValue(valuePosMap.getSymPos(value), value);
+      }
+    }
+  };
+
+  setSymbolIds(srcAccessMap.getOperands());
+  setSymbolIds(dstAccessMap.getOperands());
+
+  SmallVector<Value *, 8> srcSymbolValues, dstSymbolValues;
+  srcDomain.getIdValues(srcDomain.getNumDimIds(),
+                        srcDomain.getNumDimAndSymbolIds(), &srcSymbolValues);
+  dstDomain.getIdValues(dstDomain.getNumDimIds(),
+                        dstDomain.getNumDimAndSymbolIds(), &dstSymbolValues);
+  setSymbolIds(srcSymbolValues);
+  setSymbolIds(dstSymbolValues);
+
+  for (unsigned i = 0, e = dependenceConstraints->getNumDimAndSymbolIds();
+       i < e; i++)
+    assert(dependenceConstraints->getIds()[i].hasValue());
 }
 
 // Adds iteration domain constraints from 'srcDomain' and 'dstDomain' into
@@ -1278,25 +1341,15 @@ bool mlir::checkMemrefAccessDependence(
   // Value to position in merged contstraint system.
   ValuePositionMap valuePosMap;
   buildDimAndSymbolPositionMaps(srcDomain, dstDomain, srcAccessMap,
-                                dstAccessMap, &valuePosMap);
+                                dstAccessMap, &valuePosMap,
+                                dependenceConstraints);
+
+  initDependenceConstraints(srcDomain, dstDomain, srcAccessMap, dstAccessMap,
+                            valuePosMap, dependenceConstraints);
+
   assert(valuePosMap.getNumDims() ==
          srcDomain.getNumDimIds() + dstDomain.getNumDimIds());
 
-  // Calculate number of equalities/inequalities and columns required to
-  // initialize FlatAffineConstraints for 'dependenceDomain'.
-  unsigned numIneq =
-      srcDomain.getNumInequalities() + dstDomain.getNumInequalities();
-  AffineMap srcMap = srcAccessMap.getAffineMap();
-  assert(srcMap.getNumResults() == dstAccessMap.getAffineMap().getNumResults());
-  unsigned numEq = srcMap.getNumResults();
-  unsigned numDims = srcDomain.getNumDimIds() + dstDomain.getNumDimIds();
-  unsigned numSymbols = valuePosMap.getNumSymbols();
-  unsigned numIds = numDims + numSymbols;
-  unsigned numCols = numIds + 1;
-
-  // Create flat affine constraints reserving space for 'numEq' and 'numIneq'.
-  dependenceConstraints->reset(numIneq, numEq, numCols, numDims, numSymbols,
-                               /*numLocals=*/0);
   // Create memref access constraint by equating src/dst access functions.
   // Note that this check is conservative, and will failure in the future
   // when local variables for mod/div exprs are supported.

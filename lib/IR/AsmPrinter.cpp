@@ -1409,6 +1409,10 @@ void IntegerSet::dump() const {
 }
 
 void AffineExpr::print(raw_ostream &os) const {
+  if (expr == nullptr) {
+    os << "null affine expr";
+    return;
+  }
   ModuleState state(getContext());
   ModulePrinter(os, state).printAffineExpr(*this);
 }
@@ -1419,6 +1423,10 @@ void AffineExpr::dump() const {
 }
 
 void AffineMap::print(raw_ostream &os) const {
+  if (map == nullptr) {
+    os << "null affine map";
+    return;
+  }
   ModuleState state(getContext());
   ModulePrinter(os, state).printAffineMap(*this);
 }

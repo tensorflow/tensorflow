@@ -83,6 +83,8 @@ public:
     return *this;
   }
 
+  static AffineExpr Null() { return AffineExpr(nullptr); }
+
   bool operator==(AffineExpr other) const { return expr == other.expr; }
   bool operator!=(AffineExpr other) const { return !(*this == other); }
   explicit operator bool() const { return expr; }

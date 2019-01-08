@@ -167,7 +167,7 @@ func @multi_store_load_nested_fwd(%N : index) {
   return
 }
 
-// No one-to-one dependence here between the store and load.
+// There is no unique load location for the store to forward to.
 // CHECK-LABEL: func @store_load_no_fwd
 func @store_load_no_fwd() {
   %cf7 = constant 7.0 : f32

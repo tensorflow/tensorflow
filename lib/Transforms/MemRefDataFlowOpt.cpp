@@ -117,6 +117,8 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
     storeOps.push_back(storeOpInst);
   }
 
+  unsigned loadOpDepth = getNestingDepth(*loadOpInst);
+
   // 1. Check if there is a dependence satisfied at depth equal to the depth
   // of the loop body of the innermost common surrounding loop of the storeOp
   // and loadOp.
@@ -165,11 +167,16 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
       //   a [i] = ...
       //   for (j ...)
       //      ... = a[j]
-      MemRefRegion region;
-      getMemRefRegion(loadOpInst, nsLoops, &region);
-      if (!region.getConstraints()->isRangeOneToOne(
-              /*start=*/0, /*limit=*/loadOp->getMemRefType().getRank()))
-        break;
+      // If storeOpInst and loadOpDepth at the same nesting depth, the load Op
+      // is trivially loading from a single location at that depth; so there
+      // isn't a need to call isRangeOneToOne.
+      if (getNestingDepth(*storeOpInst) < loadOpDepth) {
+        MemRefRegion region;
+        getMemRefRegion(loadOpInst, nsLoops, &region);
+        if (!region.getConstraints()->isRangeOneToOne(
+                /*start=*/0, /*limit=*/loadOp->getMemRefType().getRank()))
+          break;
+      }
 
       // After all these conditions, we have a candidate for forwarding!
       fwdingCandidates.push_back(storeOpInst);

@@ -1137,50 +1137,268 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
   return posLimit - posStart;
 }
 
-AffineMap FlatAffineConstraints::toAffineMapFromEq(
-    unsigned pos, MLIRContext *context,
-    SmallVectorImpl<unsigned> *nonZeroDimIds,
-    SmallVectorImpl<unsigned> *nonZeroSymbolIds) {
+// Detect the identifier at 'pos' (say id_r) as modulo of another identifier
+// (say id_n) w.r.t a constant. When this happens, another identifier (say id_q)
+// could be detected as the floordiv of n. For eg:
+// id_n - 4*id_q - id_r = 0, 0 <= id_r <= 3    <=>
+//                          id_r = id_n mod 4, id_q = id_n floordiv 4.
+// lbConst and ubConst are the constant lower and upper bounds for 'pos' -
+// pre-detected at the caller.
+static bool detectAsMod(const FlatAffineConstraints &cst, unsigned pos,
+                        int64_t lbConst, int64_t ubConst,
+                        SmallVectorImpl<AffineExpr> *memo) {
+  assert(pos < cst.getNumIds() && "invalid position");
 
-  // For now just project out local IDs, and return null if we can't
-  // find an equality. TODO(bondhugula): infer as a function of other
-  // dims/symbols involving mod/div.
-  projectOut(getNumIds() - getNumLocalIds(), getNumLocalIds());
+  // Check if 0 <= id_r <= divisor - 1 and if id_r is equal to
+  // id_n - divisor * id_q. If these are true, then id_n becomes the dividend
+  // and id_q the quotient when dividing id_n by the divisor.
 
-  unsigned idx;
-  if (!findConstraintWithNonZeroAt(*this, pos, /*isEq=*/true, &idx))
-    return AffineMap::Null();
+  if (lbConst != 0 || ubConst < 1)
+    return false;
 
-  // Build AffineExpr solving for identifier 'pos' in terms of all others.
-  auto expr = getAffineConstantExpr(0, context);
-  unsigned mapNumDims = 0;
-  unsigned mapNumSymbols = 0;
-  for (unsigned j = 0, e = getNumIds(); j < e; ++j) {
-    if (j == pos)
+  int64_t divisor = ubConst + 1;
+
+  // Now check for: id_r =  id_n - divisor * id_q. As an example, we
+  // are looking r = d - 4q, i.e., either r - d + 4q = 0 or -r + d - 4q = 0.
+  unsigned seenQuotient = 0, seenDividend = 0;
+  int quotientPos = -1, dividendPos = -1;
+  for (unsigned r = 0, e = cst.getNumEqualities(); r < e; r++) {
+    // id_n should have coeff 1 or -1.
+    if (std::abs(cst.atEq(r, pos)) != 1)
       continue;
-    int64_t c = atEq(idx, j);
-    if (c == 0)
-      continue;
-    if (j < numDims) {
-      expr = expr - getAffineDimExpr(mapNumDims++, context) * c;
-      nonZeroDimIds->push_back(j);
-    } else {
-      expr =
-          expr - getAffineSymbolExpr(mapNumDims + mapNumSymbols++, context) * c;
-      nonZeroSymbolIds->push_back(j);
+    for (unsigned c = 0, f = cst.getNumDimAndSymbolIds(); c < f; c++) {
+      // The coeff of the quotient should be -divisor if the coefficient of
+      // the pos^th identifier is -1, and divisor if the latter is -1.
+      if (cst.atEq(r, c) * cst.atEq(r, pos) == divisor) {
+        seenQuotient++;
+        quotientPos = c;
+      } else if (cst.atEq(r, c) * cst.atEq(r, pos) == -1) {
+        seenDividend++;
+        dividendPos = c;
+      }
+    }
+    // We are looking for exactly one identifier as part of the dividend.
+    // TODO(bondhugula): could be extended to cover multiple ones in the
+    // dividend to detect mod of an affine function of identifiers.
+    if (seenDividend == 1 && seenQuotient >= 1) {
+      if (!(*memo)[dividendPos])
+        return false;
+      // Successfully detected a mod.
+      (*memo)[pos] = (*memo)[dividendPos] % divisor;
+      if (seenQuotient == 1 && !(*memo)[quotientPos])
+        // Successfully detected a floordiv as well.
+        (*memo)[quotientPos] = (*memo)[dividendPos].floorDiv(divisor);
+      return true;
     }
   }
-  // Add constant term to AffineExpr.
-  expr = expr - atEq(idx, getNumIds());
-  int64_t v = atEq(idx, pos);
-  assert(v != 0 && "expected non-zero here");
-  if (v > 0)
-    expr = expr.floorDiv(v);
-  else
-    // v < 0.
-    expr = (-expr).floorDiv(-v);
+  return false;
+}
 
-  return AffineMap::get(mapNumDims, mapNumSymbols, {expr}, {});
+// Check if the pos^th identifier can be expressed as a floordiv of an affine
+// function of other identifiers (where the divisor is a positive constant).
+// For eg: 4q <= i + j <= 4q + 3   <=>   q = (i + j) floordiv 4.
+bool detectAsFloorDiv(const FlatAffineConstraints &cst, unsigned pos,
+                      SmallVectorImpl<AffineExpr> *memo, MLIRContext *context) {
+  assert(pos < cst.getNumIds() && "invalid position");
+  SmallVector<unsigned, 4> lbIndices, ubIndices;
+
+  // Gather all lower bounds and upper bound constraints of this identifier.
+  // Since the canonical form c_1*x_1 + c_2*x_2 + ... + c_0 >= 0, a constraint
+  // is a lower bound for x_i if c_i >= 1, and an upper bound if c_i <= -1.
+  for (unsigned r = 0, e = cst.getNumInequalities(); r < e; r++) {
+    if (cst.atIneq(r, pos) >= 1)
+      // Lower bound.
+      lbIndices.push_back(r);
+    else if (cst.atIneq(r, pos) <= -1)
+      // Upper bound.
+      ubIndices.push_back(r);
+  }
+
+  // Check if any lower bound, upper bound pair is of the form:
+  // divisor * id >=  expr - (divisor - 1)    <-- Lower bound for 'id'
+  // divisor * id <=  expr                    <-- Upper bound for 'id'
+  // Then, 'id' is equivalent to 'expr floordiv divisor'.  (where divisor > 1).
+  //
+  // For example, if -32*k + 16*i + j >= 0
+  //                  32*k - 16*i - j + 31 >= 0   <=>
+  //             k = ( 16*i + j ) floordiv 32
+  unsigned seenDividends = 0;
+  for (auto ubPos : ubIndices) {
+    for (auto lbPos : lbIndices) {
+      // Check if lower bound's constant term is 'divisor - 1'. The 'divisor'
+      // here is cst.atIneq(lbPos, pos) and we already know that it's positive
+      // (since cst.Ineq(lbPos, ...) is a lower bound expression for 'pos'.
+      if (cst.atIneq(lbPos, cst.getNumCols() - 1) != cst.atIneq(lbPos, pos) - 1)
+        continue;
+      // Check if upper bound's constant term is 0.
+      if (cst.atIneq(ubPos, cst.getNumCols() - 1) != 0)
+        continue;
+      // For the remaining part, check if the lower bound expr's coeff's are
+      // negations of corresponding upper bound ones'.
+      unsigned c, f;
+      for (c = 0, f = cst.getNumCols() - 1; c < f; c++) {
+        if (cst.atIneq(lbPos, c) != -cst.atIneq(ubPos, c))
+          break;
+        if (c != pos && cst.atIneq(lbPos, c) != 0)
+          seenDividends++;
+      }
+      // Lb coeff's aren't negative of ub coeff's (for the non constant term
+      // part).
+      if (c < f)
+        continue;
+      if (seenDividends >= 1) {
+        // The divisor is the constant term of the lower bound expression.
+        // We already know that cst.atIneq(lbPos, pos) > 0.
+        int64_t divisor = cst.atIneq(lbPos, pos);
+        // Construct the dividend expression.
+        auto dividendExpr = getAffineConstantExpr(0, context);
+        unsigned c, f;
+        for (c = 0, f = cst.getNumCols() - 1; c < f; c++) {
+          if (c == pos)
+            continue;
+          int64_t ubVal = cst.atIneq(ubPos, c);
+          if (ubVal == 0)
+            continue;
+          if (!(*memo)[c])
+            break;
+          dividendExpr = dividendExpr + ubVal * (*memo)[c];
+        }
+        // Expression can't be constructed as it depends on a yet unknown
+        // identifier.
+        // TODO(mlir-team): Visit/compute the identifiers in an order so that
+        // this doesn't happen. More complex but much more efficient.
+        if (c < f)
+          continue;
+        // Successfully detected the floordiv.
+        (*memo)[pos] = dividendExpr.floorDiv(divisor);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Computes the lower and upper bounds of the first 'num' dimensional
+/// identifiers as affine maps of the remaining identifiers (dimensional and
+/// symbolic identifiers). Local identifiers are themselves explicitly computed
+/// as affine functions of other identifiers in this process if needed.
+void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
+                                           SmallVectorImpl<AffineMap> *lbMaps,
+                                           SmallVectorImpl<AffineMap> *ubMaps) {
+  assert(num < getNumDimIds() && "invalid range");
+
+  // Basic simplification.
+  normalizeConstraintsByGCD();
+
+  LLVM_DEBUG(llvm::dbgs() << "getSliceBounds on:\n");
+  LLVM_DEBUG(dump());
+
+  // Record computed/detected identifiers.
+  SmallVector<AffineExpr, 8> memo(getNumIds(), AffineExpr::Null());
+  // Initialize dimensional and symbolic identifiers.
+  for (unsigned i = num, e = getNumDimIds(); i < e; i++)
+    memo[i] = getAffineDimExpr(i - num, context);
+  for (unsigned i = getNumDimIds(), e = getNumDimAndSymbolIds(); i < e; i++)
+    memo[i] = getAffineSymbolExpr(i - getNumDimIds(), context);
+
+  bool changed;
+  do {
+    changed = false;
+    // Identify yet unknown identifiers as constants or mod's / floordiv's of
+    // other identifiers if possible.
+    for (unsigned pos = 0; pos < getNumIds(); pos++) {
+      if (memo[pos])
+        continue;
+
+      auto lbConst = getConstantLowerBound(pos);
+      auto ubConst = getConstantUpperBound(pos);
+      if (lbConst.hasValue() && ubConst.hasValue()) {
+        // Detect equality to a constant.
+        if (lbConst.getValue() == ubConst.getValue()) {
+          memo[pos] = getAffineConstantExpr(lbConst.getValue(), context);
+          changed = true;
+          continue;
+        }
+
+        // Detect an identifier as modulo of another identifier w.r.t a
+        // constant.
+        if (detectAsMod(*this, pos, lbConst.getValue(), ubConst.getValue(),
+                        &memo)) {
+          changed = true;
+          continue;
+        }
+      }
+
+      // Detect an identifier as floordiv of another identifier w.r.t a
+      // constant.
+      if (detectAsFloorDiv(*this, pos, &memo, context)) {
+        changed = true;
+        continue;
+      }
+
+      // Detect an identifier as an expression of other identifiers.
+      unsigned idx;
+      if (!findConstraintWithNonZeroAt(*this, pos, /*isEq=*/true, &idx)) {
+        continue;
+      }
+
+      // Build AffineExpr solving for identifier 'pos' in terms of all others.
+      auto expr = getAffineConstantExpr(0, context);
+      unsigned j, e;
+      for (j = 0, e = getNumIds(); j < e; ++j) {
+        if (j == pos)
+          continue;
+        int64_t c = atEq(idx, j);
+        if (c == 0)
+          continue;
+        // If any of the involved IDs hasn't been found yet, we can't proceed.
+        if (!memo[j])
+          break;
+        expr = expr + memo[j] * c;
+      }
+      if (j < e)
+        // Can't construct expression as it depends on a yet uncomputed
+        // identifier.
+        continue;
+
+      // Add constant term to AffineExpr.
+      expr = expr + atEq(idx, getNumIds());
+      int64_t vPos = atEq(idx, pos);
+      assert(vPos != 0 && "expected non-zero here");
+      if (vPos > 0)
+        expr = (-expr).floorDiv(vPos);
+      else
+        // vPos < 0.
+        expr = expr.floorDiv(-vPos);
+      // Successfully constructed expression.
+      memo[pos] = expr;
+      changed = true;
+    }
+    // This loop is guaranteed to reach a fixed point - since once an
+    // identifier's explicit form is computed (in memo[pos]), it's not updated
+    // again.
+  } while (changed);
+
+  // Set the lower and upper bound maps for all the identifiers that were
+  // computed as affine expressions of the rest as the "detected expr" and
+  // "detected expr + 1" respectively; set the undetected ones to Null().
+  for (unsigned pos = 0; pos < num; pos++) {
+    unsigned numMapDims = getNumDimIds() - num;
+    unsigned numMapSymbols = getNumSymbolIds();
+    AffineExpr expr = memo[pos];
+    if (expr)
+      expr = simplifyAffineExpr(expr, numMapDims, numMapSymbols);
+
+    if (expr) {
+      (*lbMaps)[pos] = AffineMap::get(numMapDims, numMapSymbols, expr, {});
+      (*ubMaps)[pos] = AffineMap::get(numMapDims, numMapSymbols, expr + 1, {});
+    } else {
+      (*lbMaps)[pos] = AffineMap::Null();
+      (*ubMaps)[pos] = AffineMap::Null();
+    }
+    LLVM_DEBUG(llvm::dbgs() << "lb map for pos = " << Twine(pos) << ", expr: ");
+    LLVM_DEBUG(expr.dump(););
+  }
 }
 
 void FlatAffineConstraints::addEquality(ArrayRef<int64_t> eq) {
@@ -1456,7 +1674,7 @@ bool FlatAffineConstraints::constantFoldId(unsigned pos) {
 
   // atEq(rowIdx, pos) is either -1 or 1.
   assert(atEq(rowIdx, pos) * atEq(rowIdx, pos) == 1);
-  int64_t constVal = atEq(rowIdx, getNumCols() - 1) / -atEq(rowIdx, pos);
+  int64_t constVal = -atEq(rowIdx, getNumCols() - 1) / atEq(rowIdx, pos);
   setAndEliminate(pos, constVal);
   return true;
 }
@@ -1513,19 +1731,24 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
     if (atIneq(r, pos) != 0)
       break;
   }
-  if (r == e) {
-    // If it doesn't appear, just remove the column and return.
-    // TODO(andydavis,bondhugula): refactor removeColumns to use it from here.
+  if (r == e)
+    // If it doesn't, there isn't a bound on it.
     return None;
-  }
 
   // Positions of constraints that are lower/upper bounds on the variable.
   SmallVector<unsigned, 4> lbIndices, ubIndices;
 
-  // Gather all lower bounds and upper bounds of the variable. Since the
-  // canonical form c_1*x_1 + c_2*x_2 + ... + c_0 >= 0, a constraint is a lower
-  // bound for x_i if c_i >= 1, and an upper bound if c_i <= -1.
+  // Gather all symbolic lower bounds and upper bounds of the variable. Since
+  // the canonical form c_1*x_1 + c_2*x_2 + ... + c_0 >= 0, a constraint is a
+  // lower bound for x_i if c_i >= 1, and an upper bound if c_i <= -1.
   for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
+    unsigned c, f;
+    for (c = 0, f = getNumDimIds(); c < f; c++) {
+      if (c != pos && atIneq(r, c) != 0)
+        break;
+    }
+    if (c < getNumDimIds())
+      continue;
     if (atIneq(r, pos) >= 1)
       // Lower bound.
       lbIndices.push_back(r);
@@ -1554,10 +1777,10 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
         }
       if (j < getNumCols() - 1)
         continue;
-      int64_t mayDiff =
+      int64_t diff =
           atIneq(ubPos, getNumCols() - 1) + atIneq(lbPos, getNumCols() - 1) + 1;
-      if (minDiff == None || mayDiff < minDiff) {
-        minDiff = mayDiff;
+      if (minDiff == None || diff < minDiff) {
+        minDiff = diff;
         minLbPosition = lbPos;
       }
     }
@@ -1570,6 +1793,71 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
     }
   }
   return minDiff;
+}
+
+template <bool isLower>
+Optional<int64_t>
+FlatAffineConstraints::getConstantLowerOrUpperBound(unsigned pos) const {
+  // Check if there's an equality equating the 'pos'^th identifier to a
+  // constant.
+  int eqRowIdx = findEqualityToConstant(*this, pos, /*symbolic=*/false);
+  if (eqRowIdx != -1)
+    // atEq(rowIdx, pos) is either -1 or 1.
+    return -atEq(eqRowIdx, getNumCols() - 1) / atEq(eqRowIdx, pos);
+
+  // Check if the identifier appears at all in any of the inequalities.
+  unsigned r, e;
+  for (r = 0, e = getNumInequalities(); r < e; r++) {
+    if (atIneq(r, pos) != 0)
+      break;
+  }
+  if (r == e)
+    // If it doesn't, there isn't a bound on it.
+    return None;
+
+  Optional<int64_t> minOrMaxConst = None;
+
+  // Take the max across all const lower bounds (or min across all constant
+  // upper bounds).
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
+    if (isLower) {
+      if (atIneq(r, pos) <= 0)
+        // Not a lower bound.
+        continue;
+    } else if (atIneq(r, pos) >= 0) {
+      // Not an upper bound.
+      continue;
+    }
+    unsigned c, f;
+    for (c = 0, f = getNumCols() - 1; c < f; c++)
+      if (c != pos && atIneq(r, c) != 0)
+        break;
+    if (c < getNumCols() - 1)
+      // Not a constant bound.
+      continue;
+
+    int64_t boundConst =
+        isLower ? mlir::ceilDiv(-atIneq(r, getNumCols() - 1), atIneq(r, pos))
+                : mlir::floorDiv(atIneq(r, getNumCols() - 1), -atIneq(r, pos));
+    if (isLower) {
+      if (minOrMaxConst == None || boundConst > minOrMaxConst)
+        minOrMaxConst = boundConst;
+    } else {
+      if (minOrMaxConst == None || boundConst < minOrMaxConst)
+        minOrMaxConst = boundConst;
+    }
+  }
+  return minOrMaxConst;
+}
+
+Optional<int64_t>
+FlatAffineConstraints::getConstantLowerBound(unsigned pos) const {
+  return getConstantLowerOrUpperBound</*isLower=*/true>(pos);
+}
+
+Optional<int64_t>
+FlatAffineConstraints::getConstantUpperBound(unsigned pos) const {
+  return getConstantLowerOrUpperBound</*isLower=*/false>(pos);
 }
 
 // A simple (naive and conservative) check for hyper-rectangularlity.
@@ -1912,7 +2200,7 @@ void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
     return;
 
   // 'pos' can be at most getNumCols() - 2 if num > 0.
-  assert(pos <= getNumCols() - 2 && "invalid position");
+  assert(getNumCols() < 2 || pos <= getNumCols() - 2 && "invalid position");
   assert(pos + num < getNumCols() && "invalid range");
 
   // Eliminate as many identifiers as possible using Gaussian elimination.
@@ -1930,8 +2218,9 @@ void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
 
   // Eliminate the remaining using Fourier-Motzkin.
   for (unsigned i = 0; i < num - numGaussianEliminated; i++) {
-    unsigned elimId = getBestIdToEliminate(*this, pos, getNumIds());
-    FourierMotzkinEliminate(elimId);
+    unsigned numToEliminate = num - numGaussianEliminated - i;
+    FourierMotzkinEliminate(
+        getBestIdToEliminate(*this, pos, pos + numToEliminate));
   }
 
   // Fast/trivial simplifications.

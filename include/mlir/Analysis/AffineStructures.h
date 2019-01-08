@@ -387,18 +387,15 @@ public:
 
   AffineExpr toAffineExpr(unsigned idx, MLIRContext *context);
 
-  // Returns an AffineMap that expresses the identifier at pos as a function of
-  // other dimensional and symbolic identifiers.
-  // If 'nonZeroDimIds' and 'nonZeroSymbolIds' are non-null, they are populated
-  // with the positions of the non-zero equality constraint coefficients which
-  // were used to build the returned AffineMap.
-  // Returns AffineMap::Null if such an expression can't be constructed.
-  // TODO(andydavis) Remove 'nonZeroDimIds' and 'nonZeroSymbolIds' from this
-  // API when we can manage the mapping of Values and ids in the constraint
-  // system.
-  AffineMap toAffineMapFromEq(unsigned pos, MLIRContext *context,
-                              SmallVectorImpl<unsigned> *nonZeroDimIds,
-                              SmallVectorImpl<unsigned> *nonZeroSymbolIds);
+  /// Computes the lower and upper bounds of the first 'num' dimensional
+  /// identifiers as an affine map of the remaining identifiers (dimensional and
+  /// symbolic). This method is able to detect identifiers as floordiv's
+  /// and mod's of affine expressions of other identifiers with respect to
+  /// (positive) constants. Sets bound map to AffineMap::Null if such a bound
+  /// can't be found (or yet unimplemented).
+  void getSliceBounds(unsigned num, MLIRContext *context,
+                      SmallVectorImpl<AffineMap> *lbMaps,
+                      SmallVectorImpl<AffineMap> *ubMaps);
 
   // Adds an inequality (>= 0) from the coefficients specified in inEq.
   void addInequality(ArrayRef<int64_t> inEq);
@@ -513,6 +510,7 @@ public:
   inline unsigned getNumIds() const { return numIds; }
   inline unsigned getNumDimIds() const { return numDims; }
   inline unsigned getNumSymbolIds() const { return numSymbols; }
+  inline unsigned getNumDimAndSymbolIds() const { return numDims + numSymbols; }
   inline unsigned getNumLocalIds() const {
     return numIds - numDims - numSymbols;
   }
@@ -521,22 +519,41 @@ public:
     return {ids.data(), ids.size()};
   }
 
-  /// Returns the Value's associated with the identifiers. Asserts if
-  /// no Value was associated with an identifier.
-  inline void getIdValues(SmallVectorImpl<Value *> *values) const {
-    values->clear();
-    values->reserve(numIds);
-    for (unsigned i = 0; i < numIds; i++) {
-      assert(ids[i].hasValue() && "identifier's Value not set");
-      values->push_back(ids[i].getValue());
-    }
-  }
-
   /// Returns the Value associated with the pos^th identifier. Asserts if
   /// no Value identifier was associated.
   inline Value *getIdValue(unsigned pos) const {
-    assert(ids[pos].hasValue() && "identifier's ML Value not set");
+    assert(ids[pos].hasValue() && "identifier's Value not set");
     return ids[pos].getValue();
+  }
+
+  /// Returns the Values associated with identifiers in range [start, end).
+  /// Asserts if no Value was associated with one of these identifiers.
+  void getIdValues(unsigned start, unsigned end,
+                   SmallVectorImpl<Value *> *values) const {
+    assert((start < numIds || start == end) && "invalid start position");
+    assert(end <= numIds && "invalid end position");
+    values->clear();
+    values->reserve(end - start);
+    for (unsigned i = start; i < end; i++) {
+      values->push_back(getIdValue(i));
+    }
+  }
+  inline void getAllIdValues(SmallVectorImpl<Value *> *values) const {
+    getIdValues(0, numIds, values);
+  }
+
+  /// Sets Value associated with the pos^th identifier.
+  inline void setIdValue(unsigned pos, Value *val) {
+    assert(pos < numIds && "invalid id position");
+    ids[pos] = val;
+  }
+  /// Sets Values associated with identifiers in the range [start, end).
+  void setIdValues(unsigned start, unsigned end, ArrayRef<Value *> values) {
+    assert((start < numIds || end == start) && "invalid start position");
+    assert(end <= numIds && "invalid end position");
+    assert(values.size() == end - start);
+    for (unsigned i = start; i < end; ++i)
+      ids[i] = values[i - start];
   }
 
   /// Clears this list of constraints and copies other into it.
@@ -554,6 +571,14 @@ public:
   Optional<int64_t>
   getConstantBoundOnDimSize(unsigned pos,
                             SmallVectorImpl<int64_t> *lb = nullptr) const;
+
+  /// Returns the constant lower bound for the pos^th identifier if there is
+  /// one; None otherwise.
+  Optional<int64_t> getConstantLowerBound(unsigned pos) const;
+
+  /// Returns the constant upper bound for the pos^th identifier if there is
+  /// one; None otherwise.
+  Optional<int64_t> getConstantUpperBound(unsigned pos) const;
 
   /// Returns true if the set can be trivially detected as being
   /// hyper-rectangular on the specified contiguous set of identifiers.
@@ -578,6 +603,11 @@ private:
   /// after elimination. Returns 'true' if an invalid constraint is found;
   /// 'false'otherwise.
   bool hasInvalidConstraint() const;
+
+  /// Returns the constant lower bound bound if isLower is true, and the upper
+  /// bound if isLower is false.
+  template <bool isLower>
+  Optional<int64_t> getConstantLowerOrUpperBound(unsigned pos) const;
 
   // Eliminates a single identifier at 'position' from equality and inequality
   // constraints. Returns 'true' if the identifier was eliminated, and false

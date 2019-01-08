@@ -340,6 +340,14 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
 // dependence constraint system to create AffineMaps with which to adjust the
 // loop bounds of the inserted compution slice so that they are functions of the
 // loop IVs and symbols of the loops surrounding 'dstAccess'.
+// TODO(andydavis,bondhugula): extend the slicing utility to compute slices that
+// aren't necessarily a one-to-one relation b/w the source and destination. The
+// relation between the source and destination could be many-to-many in general.
+// TODO(andydavis,bondhugula): the slice computation is incorrect in the cases
+// where the dependence from the source to the destination does not cover the
+// entire destination index set. Subtract out the dependent destination
+// iterations from destination index set and check for emptiness --- this is one
+// solution.
 ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
                                               MemRefAccess *dstAccess,
                                               unsigned srcLoopDepth,
@@ -351,89 +359,74 @@ ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
     return nullptr;
   }
   // Get loop nest surrounding src operation.
-  SmallVector<ForInst *, 4> srcLoopNest;
-  getLoopIVs(*srcAccess->opInst, &srcLoopNest);
-  unsigned srcLoopNestSize = srcLoopNest.size();
-  assert(srcLoopDepth <= srcLoopNestSize);
-
-  // Get loop nest surrounding dst operation.
-  SmallVector<ForInst *, 4> dstLoopNest;
-  getLoopIVs(*dstAccess->opInst, &dstLoopNest);
-  unsigned dstLoopNestSize = dstLoopNest.size();
-  (void)dstLoopNestSize;
-  assert(dstLoopDepth > 0);
-  assert(dstLoopDepth <= dstLoopNestSize);
-
-  // Solve for src IVs in terms of dst IVs, symbols and constants.
-  SmallVector<AffineMap, 4> srcIvMaps(srcLoopNestSize, AffineMap::Null());
-  std::vector<SmallVector<Value *, 2>> srcIvOperands(srcLoopNestSize);
-  for (unsigned i = 0; i < srcLoopNestSize; ++i) {
-    // Skip IVs which are greater than requested loop depth.
-    if (i >= srcLoopDepth) {
-      srcIvMaps[i] = AffineMap::Null();
-      continue;
-    }
-    auto cst = dependenceConstraints.clone();
-    for (int j = srcLoopNestSize - 1; j >= 0; --j) {
-      if (i != j)
-        cst->projectOut(j);
-    }
-    SmallVector<unsigned, 2> nonZeroDimIds;
-    SmallVector<unsigned, 2> nonZeroSymbolIds;
-    srcIvMaps[i] = cst->toAffineMapFromEq(0, srcAccess->opInst->getContext(),
-                                          &nonZeroDimIds, &nonZeroSymbolIds);
-    // Add operands for all non-zero dst dims and symbols.
-    // TODO(andydavis) Add local variable support.
-    for (auto dimId : nonZeroDimIds) {
-      if (dimId - 1 >= dstLoopDepth) {
-        // This src IV has a dependence on dst IV dstLoopDepth where it will
-        // be inserted. So we cannot slice the iteration space at srcLoopDepth,
-        // and also insert it into the dst loop nest at 'dstLoopDepth'.
-        return nullptr;
-      }
-      srcIvOperands[i].push_back(dstLoopNest[dimId - 1]);
-    }
-    // TODO(andydavis) Add symbols from the access function. Ideally, we
-    // should be able to query the constaint system for the Value associated
-    // with a symbol identifiers in 'nonZeroSymbolIds'.
+  SmallVector<ForInst *, 4> srcLoopIVs;
+  getLoopIVs(*srcAccess->opInst, &srcLoopIVs);
+  unsigned numSrcLoopIVs = srcLoopIVs.size();
+  if (srcLoopDepth > numSrcLoopIVs) {
+    srcAccess->opInst->emitError("invalid source loop depth");
+    return nullptr;
   }
 
-  // Find the inst block positions of 'srcAccess->opInst' within 'srcLoopNest'.
+  // Get loop nest surrounding dst operation.
+  SmallVector<ForInst *, 4> dstLoopIVs;
+  getLoopIVs(*dstAccess->opInst, &dstLoopIVs);
+  unsigned dstLoopIVsSize = dstLoopIVs.size();
+  if (dstLoopDepth > dstLoopIVsSize) {
+    dstAccess->opInst->emitError("invalid destination loop depth");
+    return nullptr;
+  }
+
+  // Project out dimensions other than those up to src/dstLoopDepth's.
+  dependenceConstraints.projectOut(srcLoopDepth, numSrcLoopIVs - srcLoopDepth);
+  dependenceConstraints.projectOut(srcLoopDepth + dstLoopDepth,
+                                   dstLoopIVsSize - dstLoopDepth);
+
+  // Set up lower/upper bound affine maps for the slice.
+  SmallVector<AffineMap, 4> sliceLbs(srcLoopDepth, AffineMap::Null());
+  SmallVector<AffineMap, 4> sliceUbs(srcLoopDepth, AffineMap::Null());
+
+  // Get bounds for src IVs in terms of dst IVs, symbols, and constants.
+  dependenceConstraints.getSliceBounds(std::min(srcLoopDepth, numSrcLoopIVs),
+                                       srcAccess->opInst->getContext(),
+                                       &sliceLbs, &sliceUbs);
+
+  // Set up bound operands for the slice's lower and upper bounds.
+  SmallVector<Value *, 4> sliceBoundOperands;
+  dependenceConstraints.getIdValues(
+      srcLoopDepth, dependenceConstraints.getNumDimAndSymbolIds(),
+      &sliceBoundOperands);
+
+  // Find the inst block positions of 'srcAccess->opInst' within 'srcLoopIVs'.
   SmallVector<unsigned, 4> positions;
-  findInstPosition(srcAccess->opInst, srcLoopNest[0]->getBlock(), &positions);
+  // TODO(andydavis): This code is incorrect since srcLoopIVs can be 0-d.
+  findInstPosition(srcAccess->opInst, srcLoopIVs[0]->getBlock(), &positions);
 
   // Clone src loop nest and insert it a the beginning of the instruction block
-  // of the loop at 'dstLoopDepth' in 'dstLoopNest'.
-  auto *dstForInst = dstLoopNest[dstLoopDepth - 1];
+  // of the loop at 'dstLoopDepth' in 'dstLoopIVs'.
+  auto *dstForInst = dstLoopIVs[dstLoopDepth - 1];
   FuncBuilder b(dstForInst->getBody(), dstForInst->getBody()->begin());
   DenseMap<const Value *, Value *> operandMap;
-  auto *sliceLoopNest = cast<ForInst>(b.clone(*srcLoopNest[0], operandMap));
+  auto *sliceLoopNest = cast<ForInst>(b.clone(*srcLoopIVs[0], operandMap));
 
-  // Lookup inst in cloned 'sliceLoopNest' at 'positions'.
   Instruction *sliceInst =
       getInstAtPosition(positions, /*level=*/0, sliceLoopNest->getBody());
   // Get loop nest surrounding 'sliceInst'.
   SmallVector<ForInst *, 4> sliceSurroundingLoops;
   getLoopIVs(*sliceInst, &sliceSurroundingLoops);
+
+  // Sanity check.
   unsigned sliceSurroundingLoopsSize = sliceSurroundingLoops.size();
   (void)sliceSurroundingLoopsSize;
+  unsigned sliceLoopLimit = dstLoopDepth + numSrcLoopIVs;
+  assert(sliceLoopLimit >= sliceSurroundingLoopsSize);
 
   // Update loop bounds for loops in 'sliceLoopNest'.
-  unsigned sliceLoopLimit = dstLoopDepth + srcLoopNestSize;
-  assert(sliceLoopLimit <= sliceSurroundingLoopsSize);
-  for (unsigned i = dstLoopDepth; i < sliceLoopLimit; ++i) {
-    auto *forInst = sliceSurroundingLoops[i];
-    unsigned index = i - dstLoopDepth;
-    AffineMap lbMap = srcIvMaps[index];
-    if (lbMap == AffineMap::Null())
-      continue;
-    forInst->setLowerBound(srcIvOperands[index], lbMap);
-    // Create upper bound map with is lower bound map + 1;
-    assert(lbMap.getNumResults() == 1);
-    AffineExpr ubResultExpr = lbMap.getResult(0) + 1;
-    AffineMap ubMap = AffineMap::get(lbMap.getNumDims(), lbMap.getNumSymbols(),
-                                     {ubResultExpr}, {});
-    forInst->setUpperBound(srcIvOperands[index], ubMap);
+  for (unsigned i = 0; i < srcLoopDepth; ++i) {
+    auto *forInst = sliceSurroundingLoops[dstLoopDepth + i];
+    if (AffineMap lbMap = sliceLbs[i])
+      forInst->setLowerBound(sliceBoundOperands, lbMap);
+    if (AffineMap ubMap = sliceUbs[i])
+      forInst->setUpperBound(sliceBoundOperands, ubMap);
   }
   return sliceLoopNest;
 }
