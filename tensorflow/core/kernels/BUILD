@@ -3279,7 +3279,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "scan_ops",
-    prefix = "scan_ops",
+    srcs = ["scan_ops.cc"],
+    hdrs = ["scan_ops.h"],
+    gpu_srcs = [
+        "scan_ops.h",
+        "scan_ops_gpu.h",
+        "scan_ops_gpu_double.cu.cc",
+        "scan_ops_gpu_float.cu.cc",
+        "scan_ops_gpu_half.cu.cc",
+    ],
     deps = MATH_DEPS + if_cuda(["@cub_archive//:cub"]),
 )
 
