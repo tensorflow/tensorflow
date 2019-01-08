@@ -58,6 +58,10 @@ Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
       node->ClearAttr(attr_name);
       node->AddAttr(attr_name, branch_func);
     }
+  } else if (HasNodeAttr(node->def(), "device_ordinal")) {
+    // Function call node containing outside compilation.
+    node->ClearAttr("device_ordinal");
+    node->AddAttr("device_ordinal", device_ordinal);
   } else {
     return errors::Internal("Unknown node type to set 'device_ordinal': ",
                             node->DebugString());
