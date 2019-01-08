@@ -104,17 +104,15 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(Cluster* cluster,
                                                  bool use_static_shapes)
     : AnalyticalCostEstimator(
           cluster, absl::make_unique<OpLevelCostEstimator>(),
-          ReadyNodeManagerFactory("FirstReady"), use_static_shapes, nullptr) {}
+          ReadyNodeManagerFactory("FirstReady"), use_static_shapes) {}
 
 AnalyticalCostEstimator::AnalyticalCostEstimator(
     Cluster* cluster, std::unique_ptr<OpLevelCostEstimator> node_estimator,
-    std::unique_ptr<ReadyNodeManager> node_manager, bool use_static_shapes,
-    RunMetadata* run_metadata)
+    std::unique_ptr<ReadyNodeManager> node_manager, bool use_static_shapes)
     : cluster_(cluster),
       node_estimator_(std::move(node_estimator)),
       node_manager_(std::move(node_manager)),
-      use_static_shapes_(use_static_shapes),
-      run_metadata_(run_metadata) {
+      use_static_shapes_(use_static_shapes) {
   scheduler_ = absl::make_unique<VirtualScheduler>(use_static_shapes_, cluster_,
                                                    node_manager_.get());
 }
@@ -128,6 +126,18 @@ Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
 Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
                                              CostGraphDef* cost_graph,
                                              Costs* costs) const {
+  RunMetadata run_metadata;
+  auto s =
+      PredictCostsAndReturnRunMetadata(optimized_graph, &run_metadata, costs);
+  if (s.ok() && cost_graph) {
+    cost_graph->Swap(run_metadata.mutable_cost_graph());
+  }
+  return s;
+}
+
+Status AnalyticalCostEstimator::PredictCostsAndReturnRunMetadata(
+    const GraphDef& optimized_graph, RunMetadata* run_metadata,
+    Costs* costs) const {
   GrapplerItem item = item_;
   item.graph = optimized_graph;
 
@@ -138,7 +148,9 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
   }
 
   gtl::FlatMap<string, CostGraphDef::Node*> name_to_cost_node;
-  if (cost_graph) {
+  CostGraphDef* cost_graph = nullptr;
+  if (run_metadata) {
+    cost_graph = run_metadata->mutable_cost_graph();
     // TODO(pcma): Clear nodes in cost_graph after we make sure we always pass
     // in an empty cost_graph (a non-empty but incomplete cost_graph will cause
     // problems, e.g., no node_id in cost_graph)
@@ -179,18 +191,13 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
   }
 
-  *costs = scheduler_->Summary(run_metadata_);
-  // run_metadata_ gets step_stats and parition_graphs from Summary.
-  // Note that cost_graph could already point to the cost_graph field of
-  // run_metadata_, since both are set by the caller.
-  if (run_metadata_ && cost_graph &&
-      run_metadata_->mutable_cost_graph() != cost_graph)
-    *run_metadata_->mutable_cost_graph() = *cost_graph;
+  // run_metadata gets step_stats and partition_graphs from Summary.
+  *costs = scheduler_->Summary(run_metadata);
 
   if (VLOG_IS_ON(1)) {
     bool verbose = VLOG_IS_ON(2);
-    if (run_metadata_) {
-      VLOG(1) << GetStatsStringFromRunMetadata(*run_metadata_, verbose);
+    if (run_metadata) {
+      VLOG(1) << GetStatsStringFromRunMetadata(*run_metadata, verbose);
     } else {
       RunMetadata run_metadata;
       scheduler_->GenerateRunMetadata(&run_metadata);
