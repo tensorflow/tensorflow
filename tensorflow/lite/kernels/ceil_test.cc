@@ -55,18 +55,11 @@ TEST(CeilOpTest, SingleDim) {
 
 TEST(CeilOpTest, MultiDims) {
   CeilOpModel model({2, 1, 1, 5}, TensorType_FLOAT32);
-  model.PopulateTensor<float>(model.input(), {
-                                                 0.0001,
-                                                 8.0001,
-                                                 0.9999,
-                                                 9.9999,
-                                                 0.5,
-                                                 -0.0001,
-                                                 -8.0001,
-                                                 -0.9999,
-                                                 -9.9999,
-                                                 -0.5,
-                                             });
+  model.PopulateTensor<float>(
+      model.input(), {
+                         0.0001, 8.0001, 0.9999, 9.9999, 0.5, -0.0001, -8.0001,
+                         -0.9999, -9.9999, -0.5,
+                     });
   model.Invoke();
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1, 9, 1, 10, 1, 0, -8, 0, -9, 0}));
