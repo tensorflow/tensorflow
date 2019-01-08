@@ -218,15 +218,6 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> CreateSliceUpdateOp(
-    CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map);
-
-StatusOr<poplar::program::Program> CreateSliceOp(CompilerResources& res,
-                                                 const HloInstruction* inst,
-                                                 const xla::Shape& output_shape,
-                                                 TensorMap& tensor_map);
-
 StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);

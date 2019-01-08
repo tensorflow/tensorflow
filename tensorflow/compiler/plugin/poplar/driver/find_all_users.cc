@@ -157,7 +157,9 @@ const InstructionList& FindAllUsers::PathFor(HloInstruction* target) const {
       return p;
     }
   }
-  return {};
+
+  static InstructionList empty = {};
+  return empty;
 }
 
 }  // namespace poplarplugin

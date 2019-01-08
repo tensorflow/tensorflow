@@ -33,62 +33,6 @@ namespace poplarplugin {
 
 // clang-format off
 static const std::vector<HloMatcherPattern> patterns = {
-  // dynamic update slice with constant coordinate
-  HloMatcherPattern(
-    PatternType("const_slice_update"),
-    PatternMetaTarget(0),
-    PatternInputs({2, 3}),
-    PatternOutputs({0}),
-    Pattern({
-      {HloOpcode::kDynamicUpdateSlice, NodeOperands({2, 3, 1})},
-      {HloOpcode::kConstant, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
-    })
-  ),
-
-  // dynamic update slice with wide constant coordinate
-  HloMatcherPattern(
-    PatternType("const_slice_update"),
-    PatternMetaTarget(0),
-    PatternInputs({3, 4}),
-    PatternOutputs({0}),
-    Pattern({
-      {HloOpcode::kDynamicUpdateSlice, NodeOperands({3, 4, 1})},
-      {HloOpcode::kBroadcast, NodeOperands({2})},
-      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
-    })
-  ),
-
-  // dynamic slice with constant coordinate
-  HloMatcherPattern(
-    PatternType("const_slice"),
-    PatternMetaTarget(0),
-    PatternInputs({2}),
-    PatternOutputs({0}),
-    Pattern({
-      {HloOpcode::kDynamicSlice, NodeOperands({2, 1})},
-      {HloOpcode::kConstant, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
-    })
-  ),
-
-  // dynamic slice with wide constant coordinate
-  HloMatcherPattern(
-    PatternType("const_slice"),
-    PatternMetaTarget(0),
-    PatternInputs({3}),
-    PatternOutputs({0}),
-    Pattern({
-      {HloOpcode::kDynamicSlice, NodeOperands({3, 1})},
-      {HloOpcode::kBroadcast, NodeOperands({2})},
-      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
-      {HloOpcode::kParameter, NodeOperands({})}
-    })
-  ),
-
   // Relu
   HloMatcherPattern(
     PatternType("relu"),
