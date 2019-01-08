@@ -61,6 +61,7 @@ limitations under the License.
 #if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
 #include "tensorrt/include/NvInfer.h"
+#include "tensorrt/include/NvInferPlugin.h"
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -956,6 +957,26 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       segment_options, &initial_segments));
   LOG(INFO) << "Number of TensorRT candidate segments: "
             << initial_segments.size();
+
+  // Check if plugins can be aaccessed.
+  int num_trt_plugins = 0;
+  nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
+    getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
+  if (!trt_plugin_creator_list) {
+    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
+  }
+  else {
+    VLOG(1) << "Found the following " << num_trt_plugins << " TensorRT plugins in registry:";
+    for (int i = 0; i < num_trt_plugins; ++i) {
+      if (!trt_plugin_creator_list[i]) {
+        LOG(WARNING) << "TensorRT plugin at index " << i <<
+          " is not accessible (null pointer returned by getPluginCreatorList for this plugin)";
+      }
+      else {
+        VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
+      }
+    }
+  }
 
   // Get the EngineInfo for each segment.
   std::unordered_map<string, tensorflow::Node*> node_map;
