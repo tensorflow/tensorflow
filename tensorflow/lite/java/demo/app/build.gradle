@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 26
-    buildToolsVersion "26.0.1"
+    buildToolsVersion '28.0.3'
     defaultConfig {
         applicationId "android.example.com.tflitecamerademo"
         // Required by Camera2 API.
@@ -10,11 +10,6 @@ android {
         targetSdkVersion 26
         versionCode 1
         versionName "1.0"
-
-        // Remove this block.
-        jackOptions {
-            enabled true
-        }
     }
     lintOptions {
         abortOnError false
