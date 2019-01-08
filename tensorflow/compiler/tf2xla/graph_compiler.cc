@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -191,6 +192,9 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   // into the functions.
   XlaOpKernelContext xla_op_context(op_context);
 
+  XlaContext& context = XlaContext::Get(op_context);
+  auto* b = context.builder();
+
   XlaCompiler* compiler = xla_op_context.compiler();
 
   NameAttrList func;
@@ -219,8 +223,12 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RETURN_IF_ERROR(
       PrepareArguments(&xla_op_context, graph.get(), expressions, &arguments));
 
+  bool add_token_input_output =
+      HasNodeAttr(n->def(), kXlaTokenInputNodesAttrName);
+
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = false;
+  compile_options.add_token_input_output = add_token_input_output;
   XlaCompiler::CompilationResult result;
   TF_RETURN_IF_ERROR(
       compiler->CompileFunction(compile_options, func, arguments, &result));
@@ -234,9 +242,19 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
     handles.push_back(expressions[i]->handle());
   }
-
-  XlaContext& context = XlaContext::Get(op_context);
-  auto* b = context.builder();
+  if (add_token_input_output) {
+    std::vector<string> token_input_nodes;
+    TF_RETURN_IF_ERROR(
+        GetNodeAttr(n->def(), kXlaTokenInputNodesAttrName, &token_input_nodes));
+    std::vector<xla::XlaOp> token_inputs;
+    for (const string& node_name : token_input_nodes) {
+      auto token_or = compiler->GetNodeToken(node_name);
+      TF_RETURN_IF_ERROR(token_or.status());
+      token_inputs.push_back(token_or.ConsumeValueOrDie());
+    }
+    xla::XlaOp token_input = xla::AfterAll(b, token_inputs);
+    handles.push_back(token_input);
+  }
 
   auto output_handle = xla::Call(b, *result.computation, handles);
   // The output handle of `Call` computation is a tuple type. Unzip it so
@@ -250,6 +268,10 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
           i, xla::GetTupleElement(output_handle, computation_output));
       ++computation_output;
     }
+  }
+  if (add_token_input_output) {
+    TF_RETURN_IF_ERROR(compiler->SetNodeToken(
+        n->name(), xla::GetTupleElement(output_handle, computation_output)));
   }
   return b->first_error();
 }
