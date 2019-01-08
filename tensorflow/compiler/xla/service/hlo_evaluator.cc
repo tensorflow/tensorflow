@@ -1140,16 +1140,11 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   }
 
   HloEvaluator embedded_evaluator;
-<<<<<<< HEAD
-  TF_ASSIGN_OR_RETURN(Literal result,
-      embedded_evaluator.Evaluate(*readded_computation, arg_literals));
-=======
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
   Literal result =
       embedded_evaluator.Evaluate(*readded_computation, arg_literals)
           .ConsumeValueOrDie();
->>>>>>> master
 
   evaluated_[fusion] = std::move(result);
   return Status::OK();

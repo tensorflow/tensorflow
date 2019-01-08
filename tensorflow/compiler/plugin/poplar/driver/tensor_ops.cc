@@ -164,7 +164,7 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
       t = indices.index({d}).reshape({1});
     }
 
-    auto type = indices.elementType();
+    auto type = t.elementType();
     if (type == poplar::INT) {
       t = t.reinterpret(poplar::UNSIGNED_INT);
     }
