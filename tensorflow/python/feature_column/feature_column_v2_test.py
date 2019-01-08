@@ -51,8 +51,12 @@ from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import rmsprop
 from tensorflow_estimator.python.estimator.inputs import numpy_io
 
-
 def _initialized_session(config=None):
+  #config = tensorflow.ConfigProto()
+  config.gpu_options.allow_growth = True
+  config.gpu_options.per_process_gpu_memory_fraction = 0.3
+  #config = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
+  #print('Amit Amit----------------------------------------------------------')
   sess = session.Session(config=config)
   sess.run(variables_lib.global_variables_initializer())
   sess.run(lookup_ops.tables_initializer())
@@ -1836,6 +1840,23 @@ class LinearModelTest(test.TestCase):
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
         self.assertAllClose([[1005.], [5010.]], self.evaluate(predictions))
+
+  def test_sparse_combiner_sqrtn(self):
+    wire_cast = fc.categorical_column_with_hash_bucket('wire_cast', 4)
+    with ops.Graph().as_default():
+      wire_tensor = sparse_tensor.SparseTensor(
+          values=['omar', 'stringer', 'marlo'],  # hashed to = [2, 0, 3]
+          indices=[[0, 0], [1, 0], [1, 1]],
+          dense_shape=[2, 2])
+      features = {'wire_cast': wire_tensor}
+      model = fc.LinearModel([wire_cast], sparse_combiner='sqrtn')
+      predictions = model(features)
+      wire_cast_var, bias = model.variables
+      with _initialized_session() as sess:
+        sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
+        sess.run(bias.assign([5.]))
+        print(self.evaluate(predictions))
+        self.assertAllClose([[1005.], [7083.139]], self.evaluate(predictions))
 
   def test_sparse_combiner_with_negative_weights(self):
     wire_cast = fc.categorical_column_with_hash_bucket('wire_cast', 4)
