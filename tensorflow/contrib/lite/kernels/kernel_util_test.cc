@@ -151,25 +151,26 @@ TEST_F(KernelUtilTest, BroadcastShapeDifferentSizes) {
 }
 
 TEST_F(KernelUtilTest, QuantizedConvolutionMultipler) {
-  TfLiteTensor* input  = &tensor1_;
+  TfLiteTensor* input = &tensor1_;
   TfLiteTensor* filter = &tensor2_;
-  TfLiteTensor* bias   = &tensor3_;
+  TfLiteTensor* bias = &tensor3_;
   TfLiteTensor* output = &tensor4_;
 
   // from quantized MobileNetV1's third conv.
   constexpr float input_output_scale = 0.023528477177023888;
-  constexpr float filter_scale       = 0.015148180536925793;
-  constexpr float bias_scale         = 0.00035641359863802791;
-  constexpr double multiplier_expected  = static_cast<double>(filter_scale);
+  constexpr float filter_scale = 0.015148180536925793;
+  constexpr float bias_scale = 0.00035641359863802791;
+  constexpr double multiplier_expected = static_cast<double>(filter_scale);
 
-  input->params.scale  = input_output_scale;
+  input->params.scale = input_output_scale;
   output->params.scale = input_output_scale;
   filter->params.scale = filter_scale;
-  bias->params.scale   = bias_scale;
+  bias->params.scale = bias_scale;
 
   double multiplier = 0.0f;
-  EXPECT_EQ(kTfLiteOk, GetQuantizedConvolutionMultipler(&context_,
-                          input, filter, bias, output, &multiplier));
+  EXPECT_EQ(kTfLiteOk,
+            GetQuantizedConvolutionMultipler(&context_, input, filter, bias,
+                                             output, &multiplier));
   EXPECT_EQ(multiplier, multiplier_expected);
 }
 
