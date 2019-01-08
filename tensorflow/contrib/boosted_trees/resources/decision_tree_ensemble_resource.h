@@ -34,7 +34,7 @@ class DecisionTreeEnsembleResource : public StampedResource {
             protobuf::Arena::CreateMessage<
                 boosted_trees::trees::DecisionTreeEnsembleConfig>(&arena_)) {}
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat("GTFlowDecisionTreeEnsemble[size=",
                            decision_tree_ensemble_->trees_size(), "]");
   }

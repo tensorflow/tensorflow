@@ -63,7 +63,7 @@ struct Im2ColBufferResource : public ResourceBase {
   // the buffer memory held by this resource.
   mutex mu;
   T* data;
-  string DebugString() { return "Im2ColBufferResource"; }
+  string DebugString() const { return "Im2ColBufferResource"; }
 };
 
 // Convolution parameters specified by Op attributes.

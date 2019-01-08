@@ -172,7 +172,7 @@ class XRTTupleAllocation : public ResourceBase {
   // ownership of the device memory is transferred to the result.
   xla::ShapeTree<xla::MaybeOwningDeviceMemory> ToDeviceMemoryTree(bool release);
 
-  string DebugString() override { return "XLA allocation handle"; }
+  string DebugString() const override { return "XLA allocation handle"; }
 
  private:
   // Creates a new handle with (tuple) shape.

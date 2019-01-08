@@ -412,7 +412,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
             parent_generator_(seed, seed2),
             generator_(&parent_generator_) {}
 
-      string DebugString() override {
+      string DebugString() const override {
         return "ReshufflingDataset::RandomSeedGenerator";
       }
 
