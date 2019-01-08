@@ -641,6 +641,7 @@ cc_test(
     srcs = [
         "softmax_quantized_test.cc",
     ],
+    shard_count = 3,
     deps = [
         ":optimized_base",
         ":quantization_util",
@@ -657,6 +658,7 @@ cc_test(
     srcs = [
         "logsoftmax_quantized_test.cc",
     ],
+    shard_count = 3,
     tags = [
         # TODO(b/122242739): Reenable after fixing the flakiness?
         "nomac",
