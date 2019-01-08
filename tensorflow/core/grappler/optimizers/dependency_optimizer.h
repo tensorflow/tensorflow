@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
 
 #include <unordered_set>
+
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -46,24 +48,22 @@ class DependencyOptimizer : public GraphOptimizer {
   // Returns true if bypassing node does not increase the number of edges or
   // number of edges crossing a device boundary.
   bool BypassingNodeIsBeneficial(
-      const NodeDef& node, const std::vector<NodeDef*>& input_nodes,
-      const std::vector<NodeDef*>& output_nodes) const;
-  int NumEdgesIfBypassed(const NodeDef& node,
-                         const std::vector<NodeDef*>& output_nodes) const;
+      const NodeDef& node,
+      const absl::flat_hash_set<MutableGraphView::OutputPort>& fanins,
+      const absl::flat_hash_set<MutableGraphView::Edge>& fanout_edges) const;
+  int NumEdgesIfBypassed(
+      const NodeDef& node, int num_fanins,
+      const absl::flat_hash_set<MutableGraphView::Edge>& fanout_edges) const;
   // Returns true if node is not an Identity node or if it is an Identity
   // that is safe to remove.
   bool SafeToRemoveIdentity(const NodeDef& node) const;
   // Returns true if it is safe to convert node to NoOp.
   bool SafeToConvertToNoOp(const NodeDef& node) const;
-  // Removes all duplicate control dependencies.
-  void CleanControlInputs();
-  // Builds a map from the &optimized_graph_->node(i) to i.
-  void BuildNodeToIdx();
   // Tries to optimize the node with the given index, possibly additional
   // optimizations by inserting nodes in nodes_to_simplify, and pruning nodes by
   // inserting them in nodes_to_delete.
-  void OptimizeNode(int node_idx, SetVector<int>* nodes_to_simplify,
-                    std::set<int>* nodes_to_delete);
+  void OptimizeNode(NodeDef* node, SetVector<NodeDef*>* nodes_to_simplify,
+                    std::set<string>* nodes_to_delete);
   // Eliminates redundant control dependencies by computing the transitive
   // reduction of the graph.
   Status TransitiveReduction();
@@ -76,9 +76,7 @@ class DependencyOptimizer : public GraphOptimizer {
   RewriterConfig::Toggle opt_level_;
   bool fetch_nodes_known_;
   std::unordered_set<string> nodes_to_preserve_;
-  std::unique_ptr<NodeMap> node_map_;
-  std::unordered_map<const NodeDef*, int> node_to_idx_;
-  GraphDef* optimized_graph_;  // Not owned.
+  std::unique_ptr<MutableGraphView> graph_view_;
 };
 
 }  // end namespace grappler
