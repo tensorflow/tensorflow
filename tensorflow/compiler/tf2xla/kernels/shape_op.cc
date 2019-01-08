@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -92,20 +91,14 @@ class SizeOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_shape = ctx->InputShape(0);
-    OP_REQUIRES(ctx,
-                FastBoundsCheck(input_shape.num_elements(),
-                                std::numeric_limits<int32>::max()),
+    const int64 size = input_shape.num_elements();
+    OP_REQUIRES(ctx, FastBoundsCheck(size, std::numeric_limits<int32>::max()),
                 errors::InvalidArgument("Size does not work for tensors > "
                                         "int32 max."));
     Tensor size_constant(DT_INT32, TensorShape({}));
-    const int rank = input_shape.dims();
-    xla::XlaBuilder* builder = ctx->builder();
-    auto size = xla::One(builder, xla::U32);
-    for (int64 i = 0; i < rank; ++i) {
-      size = xla::Mul(size, xla::GetDimensionSize(ctx->Input(0), i));
-    }
-    size = xla::ConvertElementType(size, xla::S32);
-    ctx->SetOutput(0, size);
+    size_constant.scalar<int32>()() = static_cast<int32>(size);
+
+    ctx->SetConstantOutput(0, size_constant);
   }
 };
 
