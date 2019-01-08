@@ -603,9 +603,11 @@ class ParameterServerStrategyTestBase(
         self.assertEqual(expected_value, computed_value)
 
 
-class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
-                                  strategy_test_lib.DistributionTestBase,
-                                  parameterized.TestCase):
+class ParameterServerStrategyTest(
+    ParameterServerStrategyTestBase,
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase,
+    parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -781,6 +783,36 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
 
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
+
+  def testAllReduceSum(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum(distribution)
+
+  def testAllReduceSumGradients(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum_gradients(distribution)
+
+  def testAllReduceSumGradientTape(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum_gradient_tape(distribution)
+
+  def testAllReduceMean(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean(distribution)
+
+  def testAllReduceMeanGradients(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean_gradients(distribution)
+
+  def testAllReduceMeanGradientTape(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean_gradient_tape(distribution)
 
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,

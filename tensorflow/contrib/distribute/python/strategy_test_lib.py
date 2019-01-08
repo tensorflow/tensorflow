@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
@@ -31,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -292,3 +294,163 @@ class DistributionTestBase(test.TestCase):
       global_step_tensors = strategy.unwrap(value)
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
+
+
+class OneDeviceDistributionTestBase(test.TestCase):
+  """Some tests that should work with any one-device DistributionStrategy."""
+
+  def _test_all_reduce_sum(self, strategy):
+    self._test_collective_comms(
+        strategy, _all_sum, inputs=(4., [42., 43.]), expected=(4., [42., 43.]))
+
+  def _test_all_reduce_sum_gradients(self, strategy):
+    self._test_collective_comms_gradients(
+        strategy, _all_sum, inputs=[4.], expected_grads=[4.])
+
+  def _test_all_reduce_sum_gradient_tape(self, strategy):
+    self._test_collective_comms_gradient_tape(
+        strategy, _all_sum, inputs=[4.], expected_grads=[4.])
+
+  def _test_all_reduce_mean(self, strategy):
+    self._test_collective_comms(
+        strategy, _all_mean, inputs=(2., [21., 22.]), expected=(2., [21., 22.]))
+
+  def _test_all_reduce_mean_gradients(self, strategy):
+    self._test_collective_comms_gradients(
+        strategy, _all_mean, inputs=[5.], expected_grads=[5.])
+
+  def _test_all_reduce_mean_gradient_tape(self, strategy):
+    self._test_collective_comms_gradient_tape(
+        strategy, _all_mean, inputs=[5.], expected_grads=[5.])
+
+  def _test_collective_comms(self, strategy, comm_fn, inputs, expected):
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors(inputs))
+
+    self.evaluate(inputs.initialize())
+    outputs = self.evaluate(
+        list(map(strategy.unwrap, strategy.experimental_run(comm_fn, inputs))))
+    self.assertAllEqual([expected[0]], outputs[0])
+    self.assertAllEqual([expected[1]], outputs[1])
+
+  def _test_collective_comms_gradients(
+      self, strategy, comm_fn, inputs, expected_grads):
+    if context.executing_eagerly():
+      self.skipTest("`tf.gradients` is not supported with eager execution.")
+
+    def step(c):
+      x = constant_op.constant(42.)
+      y = comm_fn(x) * c
+      return gradients_impl.gradients(y, [x])[0]
+
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors(inputs))
+
+    self.evaluate(inputs.initialize())
+    self.assertAllEqual(
+        expected_grads,
+        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+
+  def _test_collective_comms_gradient_tape(
+      self, strategy, comm_fn, inputs, expected_grads):
+    def step(c):
+      x = constant_op.constant(42.)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = comm_fn(x) * c
+      return tape.gradient(y, x)
+
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors(inputs))
+
+    self.evaluate(inputs.initialize())
+    self.assertAllEqual(
+        expected_grads,
+        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+
+
+class TwoDeviceDistributionTestBase(test.TestCase):
+  """Some tests that should work with any two-device DistributionStrategy."""
+
+  def _test_all_reduce_sum(self, strategy):
+    self._test_collective_comms(
+        strategy, _all_sum,
+        inputs=([1., 3.], [[39., 2.], [3., 41.]]),
+        expected=(4., [42., 43.]))
+
+  def _test_all_reduce_sum_gradients(self, strategy):
+    self._test_collective_comms_gradients(
+        strategy, _all_sum, inputs=[1., 3.], expected_grads=[4., 4.])
+
+  def _test_all_reduce_sum_gradient_tape(self, strategy):
+    self._test_collective_comms_gradient_tape(
+        strategy, _all_sum, inputs=[1., 3.], expected_grads=[4., 4.])
+
+  def _test_all_reduce_mean(self, strategy):
+    self._test_collective_comms(
+        strategy, _all_mean,
+        inputs=([1., 3.], [[39., 2.], [3., 41.]]),
+        expected=(2., [21., 21.5]))
+
+  def _test_all_reduce_mean_gradients(self, strategy):
+    self._test_collective_comms_gradients(
+        strategy, _all_mean, inputs=[1., 3.], expected_grads=[2., 2.])
+
+  def _test_all_reduce_mean_gradient_tape(self, strategy):
+    self._test_collective_comms_gradient_tape(
+        strategy, _all_mean, inputs=[1., 3.], expected_grads=[2., 2.])
+
+  def _test_collective_comms(self, strategy, comm_fn, inputs, expected):
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensor_slices(inputs))
+
+    self.evaluate(inputs.initialize())
+    outputs = self.evaluate(
+        list(map(strategy.unwrap, strategy.experimental_run(comm_fn, inputs))))
+    self.assertAllEqual([expected[0], expected[0]], outputs[0])
+    self.assertAllEqual([expected[1], expected[1]], outputs[1])
+
+  def _test_collective_comms_gradients(
+      self, strategy, comm_fn, inputs, expected_grads):
+    if context.executing_eagerly():
+      self.skipTest("`tf.gradients` is not supported with eager execution.")
+
+    def step(c):
+      x = constant_op.constant(42.)
+      y = comm_fn(x) * c
+      return gradients_impl.gradients(y, [x])[0]
+
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensor_slices(inputs))
+
+    self.evaluate(inputs.initialize())
+    self.assertAllEqual(
+        expected_grads,
+        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+
+  def _test_collective_comms_gradient_tape(
+      self, strategy, comm_fn, inputs, expected_grads):
+    def step(c):
+      x = constant_op.constant(42.)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = comm_fn(x) * c
+      return tape.gradient(y, x)
+
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensor_slices(inputs))
+
+    self.evaluate(inputs.initialize())
+    self.assertAllEqual(
+        expected_grads,
+        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+
+
+def _all_sum(value):
+  ctx = ds_context.get_replica_context()
+  return ctx.all_reduce(reduce_util.ReduceOp.SUM, value)
+
+
+def _all_mean(value):
+  ctx = ds_context.get_replica_context()
+  return ctx.all_reduce(reduce_util.ReduceOp.MEAN, value)
