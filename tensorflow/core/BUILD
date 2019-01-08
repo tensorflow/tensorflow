@@ -87,6 +87,7 @@ load(
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
+    "tf_gpu_kernel_library",
     "tf_opts_nortti_if_android",
     "transitive_hdrs",
 )
@@ -3162,6 +3163,15 @@ cc_library(
     ],
 )
 
+tf_gpu_kernel_library(
+    name = "gpu_device_kernel_check",
+    srcs = ["common_runtime/gpu/gpu_device_kernel_check.cu.cc"],
+    hdrs = ["common_runtime/gpu/gpu_device_kernel_check.h"],
+    deps = [
+        "//tensorflow/core:stream_executor",
+    ],
+)
+
 GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/cuda_host_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
@@ -3200,6 +3210,7 @@ tf_cuda_library(
         ":core_cpu_lib",
         ":framework",
         ":framework_internal",
+        ":gpu_device_kernel_check",
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
