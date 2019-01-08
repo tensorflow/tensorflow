@@ -42,7 +42,7 @@ limitations under the License.
 
 #include <poplar/Engine.hpp>
 #include <poplar/OptionFlags.hpp>
-#include <popnn/BatchNorm.hpp>
+#include <poplin/Norms.hpp>
 #include <poputil/TileMapping.hpp>
 
 #include <functional>
@@ -480,7 +480,7 @@ static StatusOr<poplar::Tensor> AddBatchNormScale(poplar::Graph& graph,
   poplar::Tensor acts = outputs[layout_output_idx];
   auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
 
-  return popnn::bn::createBatchNormGamma(graph, pair.first);
+  return poplin::createNormGamma(graph, pair.first);
 }
 
 static StatusOr<poplar::Tensor> AddBatchNormOffset(
@@ -500,7 +500,7 @@ static StatusOr<poplar::Tensor> AddBatchNormOffset(
   poplar::Tensor acts = outputs[layout_output_idx];
   auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
 
-  return popnn::bn::createBatchNormBeta(graph, pair.first);
+  return poplin::createNormBeta(graph, pair.first);
 }
 
 static StatusOr<poplar::Tensor> AddElementwiseBinary(

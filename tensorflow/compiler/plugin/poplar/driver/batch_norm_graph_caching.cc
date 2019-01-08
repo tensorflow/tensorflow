@@ -140,10 +140,9 @@ poplar::Tensor DoCachedBatchNormInference(
 
   using namespace poputil::graphfn;
   auto f = TensorFunction(
-      graph,
-      {input(operand, "operand"), input(scale, "scale"),
-       input(offset, "offset"), input(mean, "mean"),
-       input(variance, "variance")},
+      graph, {input(operand, "operand"), input(scale, "scale"),
+              input(offset, "offset"), input(mean, "mean"),
+              input(variance, "variance")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd = convertVarianceToInvStdDev(
             graph, args[4], epsilon, seq, debug_prefix);
@@ -177,13 +176,12 @@ DoCachedBatchNormTraining(poplar::Graph& graph, CompilerResources& res,
 
   using namespace poputil::graphfn;
   auto f = VoidFunction(
-      graph,
-      {input(operand, "operand"), input(scale, "scale"),
-       input(offset, "offset"), created("output"), created("mean"),
-       created("variance")},
+      graph, {input(operand, "operand"), input(scale, "scale"),
+              input(offset, "offset"), created("output"), created("mean"),
+              created("variance")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd;
-        std::tie(args[4], inv_sd) = popnn::bn::batchNormEstimates(
+        std::tie(args[4], inv_sd) = popnn::bn::batchNormStatistics(
             graph, args[0], epsilon, seq, false, poplar::FLOAT, debug_prefix);
 
         args[3] = batchNormalise(graph, args[0], args[1], args[2], args[4],
@@ -232,14 +230,14 @@ DoCachedBatchNormGrad(poplar::Graph& graph, CompilerResources& res,
             popnn::bn::batchNormWhiten(graph, args[0], args[2], inv_sd, seq,
                                        debug_prefix + "/WhitenedActs");
 
-        // Compute the deltas for scaled and offset
-        std::tie(args[6], args[7]) =
-            popnn::bn::batchNormDeltas(graph, operand_whitened, args[4], seq,
-                                       poplar::FLOAT, debug_prefix + "/Deltas");
-        // Compute the delta for the operand grad
+        // Compute the grad for the operand.
         args[5] = popnn::bn::batchNormGradients(
-            graph, operand_whitened, args[4], args[6], args[7], inv_sd, args[1],
-            seq, poplar::FLOAT, debug_prefix + "/Grad");
+            graph, operand_whitened, args[4], inv_sd, args[1], seq,
+            poplar::FLOAT, debug_prefix + "/OperandGrad");
+        // Compute the grads for the scale and offset.
+        std::tie(args[6], args[7]) = popnn::bn::batchNormParamGradients(
+            graph, operand_whitened, args[4], seq, poplar::FLOAT,
+            debug_prefix + "/ScaleOffsetGrads");
       });
   res.bn_grad_graph_cache.emplace(key, f);
   f(args, prog);
