@@ -42,7 +42,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   optimized_ops::Ceil(GetTensorShape(input), GetTensorData<float>(input),
-                       GetTensorShape(output), GetTensorData<float>(output));
+                      GetTensorShape(output), GetTensorData<float>(output));
 
   return kTfLiteOk;
 }
