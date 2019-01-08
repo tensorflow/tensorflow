@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
@@ -208,5 +209,6 @@ TEST(FusedActivationTest, DefaultsToUnfused) {
 int main(int argc, char** argv) {
   ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
+  ::toco::port::InitGoogleWasDoneElsewhere();
   return RUN_ALL_TESTS();
 }

@@ -342,6 +342,7 @@ tf_cc_test(
     name = "import_tensorflow_test",
     srcs = ["import_tensorflow_test.cc"],
     deps = [
+        ":toco_port",
         ":toco_tooling",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -386,6 +387,7 @@ tf_cc_test(
     srcs = ["tooling_util_test.cc"],
     deps = [
         ":model",
+        ":toco_port",
         ":tooling_util",
         "//tensorflow/core:lib",
         "//tensorflow/lite/testing:util",
