@@ -32,15 +32,7 @@ cc_library(
 
 tf_cuda_library(
     name = "stream_executor",
-    cuda_deps = [
-        "//tensorflow/stream_executor/cuda:cuda_activation",
-    ] + select({
-        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor/cuda:all_runtime"],
-        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
-        "//tensorflow:using_cuda_clang_with_dynamic_build": [],
-        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
-        "//conditions:default": [],
-    }),
+    cuda_deps = ["//tensorflow/stream_executor/cuda:cuda_activation"],
     deps = [
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:dnn",
@@ -52,6 +44,12 @@ tf_cuda_library(
         "//tensorflow/stream_executor/platform:dso_loader",
     ] + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor/cuda:all_runtime"],
+        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
+        "//tensorflow:using_cuda_clang_with_dynamic_build": [],
+        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
         "//conditions:default": [],
     }),
 )
