@@ -53,7 +53,7 @@ class ScalarTest(test.TestCase):
     for version in strict + lenient:
       with ops.Graph().as_default() as g:
         test_util.set_producer_version(g, version)
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           feed = {}
           xs = placeholders(args, feed)
           x = op(*xs)

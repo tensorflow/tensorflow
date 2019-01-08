@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace grappler {
 
 // This class eliminates tf.data transformations such as `take(n)` (for n < 0),
-// `skip(0)`, or `repeat(1)`
+// `skip(0)`, `repeat(1)`, or `prefetch(0)`.
 class NoOpElimination : public CustomGraphOptimizer {
  public:
   NoOpElimination() = default;

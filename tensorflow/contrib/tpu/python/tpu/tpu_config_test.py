@@ -86,7 +86,7 @@ class TPURunConfigTest(test.TestCase):
 
   def test_fail_with_invalid_num_cores_per_replica(self):
     with self.assertRaisesRegexp(
-        ValueError, 'num_cores_per_replica must be 1, 2, 4, or 8;'
+        ValueError, 'num_cores_per_replica must be 1, 2, 4, 8, or 16;'
         ' got 7'):
       tpu_config_lib.TPUConfig(num_cores_per_replica=7)
 

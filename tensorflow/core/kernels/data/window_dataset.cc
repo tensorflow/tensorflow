@@ -41,6 +41,16 @@ class WindowDataset : public DatasetBase {
     return output_shapes_;
   }
 
+  int64 AllocatedBytes() const override {
+    int64 allocated_bytes = 0;
+    for (auto& element : elements_) {
+      allocated_bytes += GetAllocatedBytes(element);
+    }
+    return allocated_bytes;
+  }
+
+  int64 Cardinality() const override { return elements_.size(); }
+
   string DebugString() const override { return "WindowDataset"; }
 
  protected:

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
@@ -110,7 +111,7 @@ class HloAliasAnalysis {
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 
   // A map indicating which buffer a value is contained in.
-  tensorflow::gtl::FlatMap<const HloValue*, HloBuffer*> value_to_buffer_;
+  absl::flat_hash_map<const HloValue*, HloBuffer*> value_to_buffer_;
 
   // A lazily constructed vector containing all HloBuffers sorted by
   // HloBuffer::Id.

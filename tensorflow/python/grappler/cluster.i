@@ -132,7 +132,7 @@ struct GCluster {
 
 static GCluster TF_NewCluster(bool allow_soft_placement,
                    bool disable_detailed_stats, TF_Status* out_status) {
-    int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
   int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
   int timeout_s = 60 * 10;
   tensorflow::grappler::Cluster* cluster_ =
@@ -308,7 +308,7 @@ static PyObject* TF_GetSupportedDevices(GCluster cluster, GItem item) {
 
 static double TF_EstimatePerformance(const tensorflow::NamedDevice& device) {
   tensorflow::grappler::OpLevelCostEstimator estimator;
-  tensorflow::grappler::OpLevelCostEstimator::DeviceInfo info =
+  tensorflow::grappler::DeviceInfo info =
       estimator.GetDeviceInfo(device.properties());
   return info.gigaops;
 }

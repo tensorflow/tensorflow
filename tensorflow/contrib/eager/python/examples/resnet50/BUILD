@@ -35,6 +35,12 @@ cuda_py_test(
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow:tensorflow_py",
     ],
+    tags = [
+        "noasan",  # Fix b/118130911
+        "nomsan",  # Fix b/118130911
+        "notsan",  # Fix b/118130911
+        "optonly",
+    ],
 )
 
 cuda_py_test(

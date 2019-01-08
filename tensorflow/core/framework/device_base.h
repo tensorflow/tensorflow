@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -79,6 +80,13 @@ class DeviceContext : public core::RefCounted {
                                      Tensor* device_tensor,
                                      StatusCallback done) const {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
+  }
+
+  // Copies a tensor in this device.
+  virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
+                                      Device* device, Tensor* output_tensor,
+                                      StatusCallback done) const {
+    done(errors::Unimplemented("Copy in same device not implemented."));
   }
 
   // "device_tensor" is a tensor on a non-CPU device.  Copies
@@ -176,9 +184,9 @@ class DeviceBase {
     return nullptr;
   }
 
-  // DEPRECATED: Use `this->GetAllocator()` or `this->GetScopedAllocator()`.
   // This method is provided for backwards compatibility, and will be removed
   // in a future release.
+  ABSL_DEPRECATED("Use `this->GetAllocator()` or `this->GetScopedAllocator()`.")
   Allocator* GetStepAllocator(AllocatorAttributes attr, ResourceMgr*) {
     return GetAllocator(attr);
   }
@@ -214,10 +222,12 @@ class DeviceBase {
 
   // This is overridden by GPU devices to reinitialize the derived
   // type returned by MakeGpuDevice.
-  virtual void ReinitializeGpuDevice(OpKernelContext* /*context*/,
-                                     PerOpGpuDevice* /*device*/,
-                                     DeviceContext* /*dc*/,
-                                     Allocator* /*allocator*/) {}
+  virtual Status ReinitializeGpuDevice(OpKernelContext* /*context*/,
+                                       PerOpGpuDevice* /*device*/,
+                                       DeviceContext* /*dc*/,
+                                       Allocator* /*allocator*/) {
+    return Status::OK();
+  }
 
   // Unimplemented by default
   virtual const DeviceAttributes& attributes() const;

@@ -57,10 +57,10 @@ TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
   const string& hlo_string = R"(
     HloModule InfeedOutfeed
     ENTRY RoundTrip16MiBR1.v2 {
-      token = token[] after-all()
-      infeed = (bf16[4]{0}, token[]) infeed(token)
+      token0 = token[] after-all()
+      infeed = (bf16[4]{0}, token[]) infeed(token0)
       ROOT infeed.data = bf16[4]{0} get-tuple-element(infeed), index=0
-      outfeed = token[] outfeed(infeed.data, token)
+      outfeed = token[] outfeed(infeed.data, token0)
     }
   )";
   auto module = CreateModuleFromHloString(hlo_string);
@@ -96,13 +96,13 @@ TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
   const string& hlo_string = R"(
     HloModule BatchNormGrad
     ENTRY BatchNormGrad.v6 {
-      constant.4 = bf16[2,2,2,1]{3,2,1,0} constant(bf16[2,2,2,1] { { /*i0=0*/ 
+      constant.4 = bf16[2,2,2,1]{3,2,1,0} constant({ { /*i0=0*/
       { /*i1=0*/ {0}, {0} }, { /*i1=1*/ {0}, {0} } }, { /*i0=1*/ { /*i1=0*/ {0},
       {0} }, { /*i1=1*/ {0}, {0} } } })
       constant.5 = bf16[2]{0} constant({1, 1})
       constant.6 = bf16[2]{0} constant({0, 0})
       constant.7 = bf16[2]{0} constant({1, 1})
-      constant.8 = bf16[2,2,2,1]{3,2,1,0} constant(bf16[2,2,2,1] { { /*i0=0*/
+      constant.8 = bf16[2,2,2,1]{3,2,1,0} constant({ { /*i0=0*/
       { /*i1=0*/ {1}, {2} }, { /*i1=1*/ {3}, {4} } }, { /*i0=1*/ { /*i1=0*/
       {5}, {6} }, { /*i1=1*/ {7}, {8} } } })
       ROOT batch-norm-grad = (bf16[2,2,2,1]{3,2,1,0}, bf16[2]{0}, bf16[2]{0})

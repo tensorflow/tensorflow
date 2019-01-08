@@ -293,6 +293,9 @@ inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
 // Shape function for random operations.
 Status RandomShape(shape_inference::InferenceContext* c);
 
+// Shape function for Slice opertaions.
+Status SliceShape(shape_inference::InferenceContext* c);
+
 // Validates the 3 component tensors of a sparse tensor have the proper
 // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
@@ -306,6 +309,9 @@ Status ExplicitShape(InferenceContext* c);
 
 // Shape function for multiple-output ops with an explicit "shapes" attribute.
 Status ExplicitShapes(InferenceContext* c);
+
+// Shape function for SparseReduceMax and SparseReduceSum.
+Status SparseReduceShapeFn(InferenceContext* c);
 
 }  // namespace shape_inference
 

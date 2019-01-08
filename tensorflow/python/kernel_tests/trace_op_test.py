@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -30,10 +31,11 @@ class TraceTest(test.TestCase):
 
   def compare(self, x):
     np_ans = np.trace(x, axis1=-2, axis2=-1)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_ans = math_ops.trace(x).eval()
     self.assertAllClose(tf_ans, np_ans)
 
+  @test_util.run_deprecated_v1
   def testTrace(self):
     for dtype in [np.int32, np.float32, np.float64]:
       for shape in [[2, 2], [2, 3], [3, 2], [2, 3, 2], [2, 2, 2, 3]]:

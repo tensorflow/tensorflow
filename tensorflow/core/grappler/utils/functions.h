@@ -18,17 +18,19 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace tensorflow {
 namespace grappler {
-
-using AttrValueMap = std::unordered_map<string, AttrValue>;
 
 // Depending on the function instantiation attributes, input argument to the
 // function might be a single tensor, list of tensors of the same type, or a
@@ -70,16 +72,16 @@ struct OutputArgExpansion {
 // and fold it back when doing backward conversion.
 class GrapplerFunctionConnectivity {
  public:
-  void RegisterInputArgExpansion(const InputArgExpansion& input_arg_expansion);
+  void RegisterInputArgExpansion(InputArgExpansion input_arg_expansion);
   void RegisterFunctionBodyOutputs(const string& node_name,
-                                   const tensorflow::NameRangeMap& outputs);
+                                   tensorflow::NameRangeMap&& outputs);
 
-  // Expand input encoded in FunctionDef format (name[:output][:position]) into
+  // Expands input encoded in FunctionDef format (name[:output][:position]) into
   // multiple inputs in GraphDef format (name[:position]).
   Status ExpandFunctionDefInput(const string& func_def_input,
                                 std::vector<string>* graph_def_inputs) const;
 
-  // Update Node inputs from FunctionDef to GraphDef format.
+  // Updates Node inputs from FunctionDef to GraphDef format.
   Status ExpandNodeInputs(NodeDef* function_body_node) const;
 
   // When expanding inputs in function def format, single input might be
@@ -89,35 +91,38 @@ class GrapplerFunctionConnectivity {
   // instantiation attributes and length of input args (and node def outputs) is
   // known.
 
-  // Map from GraphDef input format to FunctionDef input format using registered
-  // input arg expansion and function body outputs.
+  // Converts input name from GraphDef format (name[:position]) to the
+  // FunctionDef input format (name[:output][:position]) using registered input
+  // arg expansion and function body outputs.
   Status AsFunctionDefInput(const string& graph_def_input,
                             string* func_def_input) const;
 
-  // Update Node inputs from GraphDef to FunctionDef format.
+  // Updates Node inputs from GraphDef to FunctionDef format.
   Status AsFunctionDefNode(NodeDef* function_body_node) const;
 
  private:
   // Mapping from input name to input arg expansion.
-  std::unordered_map<string, InputArgExpansion> input_arg_expansions_;
+  absl::flat_hash_map<string, InputArgExpansion> input_arg_expansions_;
   // Mapping from function body node name to output names range map.
-  std::unordered_map<string, tensorflow::NameRangeMap> function_body_outputs_;
+  absl::flat_hash_map<string, tensorflow::NameRangeMap> function_body_outputs_;
 
+  // For each placeholder added to the function instantiation graph, we keep a
+  // mapping back to the function input argument name and index.
   struct InputArgPlaceholder {
-    string input_name;
-    int position;
+    string input_name;  // Name of the function input argument.
+    int input_index;    // Index of a tensor in the function input argument
+                        // expansion, it can be greater than `0` if input
+                        // argument is a list of tensors (aka list(type)).
   };
-
   // Mapping from input arg placeholder to the function input tensor.
-  std::unordered_map<string, InputArgPlaceholder> input_arg_placeholders_;
+  absl::flat_hash_map<string, InputArgPlaceholder> input_arg_placeholders_;
 };
 
 // Get Function type attributes using attributes of a node that instantiated
 // a function.
 class GrapplerFunctionItemInstantiation {
  public:
-  explicit GrapplerFunctionItemInstantiation(
-      const AttrValueMap* func_instantiation_attr)
+  explicit GrapplerFunctionItemInstantiation(AttrSlice func_instantiation_attr)
       : func_instantiation_attr_(func_instantiation_attr) {}
 
   // Get DataType from attributes by name. Return error if attribute is missing,
@@ -129,19 +134,13 @@ class GrapplerFunctionItemInstantiation {
   Status GetArgType(const OpDef::ArgDef& arg, DataType* data_type) const;
 
  private:
-  const AttrValueMap* func_instantiation_attr_;  // do not own
+  const AttrSlice func_instantiation_attr_;  // do not own
 };
 
 // A special case of GrapplerItem, constructed from a TensorFlow Function.
 class GrapplerFunctionItem : public GrapplerItem {
  public:
   GrapplerFunctionItem() = default;
-  GrapplerFunctionItem(string func_name, string description,
-                       AttrValueMap func_attr,
-                       std::vector<InputArgExpansion> input_arg_expansions,
-                       std::vector<OutputArgExpansion> output_arg_expansions,
-                       std::vector<string> keep_nodes, int graph_def_version,
-                       bool is_stateful, GraphDef&& function_body);
 
   const string& description() const;
 
@@ -155,7 +154,7 @@ class GrapplerFunctionItem : public GrapplerItem {
   const OutputArgExpansion& output(int i) const;
   const std::size_t output_size() const;
 
-  const AttrValueMap& func_attr() const;
+  const AttrSlice& func_attr() const;
   const GraphDef& function_body() const;
   GraphDef& mutable_function_body();
 
@@ -164,19 +163,33 @@ class GrapplerFunctionItem : public GrapplerItem {
   GrapplerFunctionItem& SwapFunctionBody(GraphDef&& other);
 
  private:
+  friend Status MakeGrapplerFunctionItem(const FunctionDef&, const AttrSlice&,
+                                         const FunctionLibraryDefinition&, int,
+                                         GrapplerFunctionItem*);
   friend Status ReplaceInputWithConst(const NodeDef&, int,
                                       GrapplerFunctionItem*);
+  friend Status RemoveUnusedOutputs(
+      const absl::flat_hash_set<int>& active_outputs,
+      GrapplerFunctionItem* item,
+      std::vector<std::pair<int, int>>* output_mapping);
+
+  GrapplerFunctionItem(string func_name, string description,
+                       AttrSlice func_attr,
+                       std::vector<InputArgExpansion> input_arg_expansions,
+                       std::vector<OutputArgExpansion> output_arg_expansions,
+                       std::vector<string> keep_nodes, int graph_def_version,
+                       bool is_stateful, GraphDef&& function_body);
 
   string description_;
-  AttrValueMap func_attr_;  // Attributes specific to function definition that
-                            // produced this item (FuncDef.attr field).
+  AttrSlice func_attr_;  // Attributes specific to function definition that
+                         // produced this item (FuncDef.attr field).
 
   std::vector<InputArgExpansion> input_arg_expansions_;
   std::vector<OutputArgExpansion> output_arg_expansions_;
 
   std::set<string> input_arg_placeholders_;
 
-  bool is_stateful_;
+  bool is_stateful_ = false;
 };
 
 // Check if function input/output types are fully defined only at instantiation
@@ -194,15 +207,15 @@ bool IsParametrized(const FunctionDef& func);
 // Resolve function instantiation type parameters from the attributes of the
 // caller node. Return error if type can't be resolved.
 Status InstantiationTypeParameters(
-    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
-    std::unordered_map<string, DataType>* type_parameters);
+    const FunctionDef& func, const AttrSlice& func_instantiation_attr,
+    absl::flat_hash_map<string, DataType>* type_parameters);
 
 // Resolve function instantiation body parameters (values for the function body
 // attr placeholders) from the attributes of the caller node. Return error if
 // type can't be resolved.
 Status InstantiationBodyParameters(
-    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
-    std::unordered_map<string, AttrValue>* body_parameters);
+    const FunctionDef& func, const AttrSlice& func_instantiation_attr,
+    absl::flat_hash_map<string, AttrValue>* body_parameters);
 
 // Register GrapplerFunctionItem input arg expansion and function body outputs
 // in the GrapplerFunctionConnectivity. Use function library definition to
@@ -212,16 +225,26 @@ Status RegisterGrapplerFunctionConnectivity(
     GrapplerFunctionConnectivity* connectivity);
 
 // Replace one of the function inputs with a constant.
-Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
+Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
                              GrapplerFunctionItem* item);
+
+// Remove function output arguments that do not have any active outputs (output
+// tensor connected to other node inputs or in a fetch set). Active outputs uses
+// GraphDef output position encoding, and multiple active outputs could
+// potentially be connected to the same output argument (in case of tensor list
+// outputs). Add output mapping for all active outputs that changed it's output
+// position (std::pair<old position, new position>).
+Status RemoveUnusedOutputs(const absl::flat_hash_set<int>& active_outputs,
+                           GrapplerFunctionItem* item,
+                           std::vector<std::pair<int, int>>* output_mapping);
 
 // Make a GrapplerFunctionItem from the function definition and function
 // instantiation attributes (caller node attributes). Returns error if the given
 // function def cannot be converted (e.g. not all attributes are defined).
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
-                                const AttrValueMap& func_instantiation_attr,
+                                const AttrSlice& func_instantiation_attr,
                                 const FunctionLibraryDefinition& flib,
-                                const int graph_def_version,
+                                int graph_def_version,
                                 GrapplerFunctionItem* item);
 
 // Make a GrapplerFunction item from the function definition. Function must be
@@ -231,7 +254,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 // without specializing it to it's instantiation attributes (at least types)?
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const FunctionLibraryDefinition& flib,
-                                const int graph_def_version,
+                                int graph_def_version,
                                 GrapplerFunctionItem* item);
 
 // Make a FunctionDef from the GrapplerFunctionItem. Use function library

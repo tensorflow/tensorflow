@@ -35,6 +35,7 @@ from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
@@ -510,7 +511,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     estimated_state, estimated_state_covariance, previous_times = state
     state_transition = ops.convert_to_tensor(
         self.get_state_transition(), dtype=self.dtype)
-    state_dimension = state_transition.get_shape()[0].value
+    state_dimension = tensor_shape.dimension_value(state_transition.shape[0])
     # Learning the observation model would be redundant since we transform
     # `exogenous_values` to the state space via a linear transformation anyway.
     observation_model = linalg_ops.eye(
@@ -572,8 +573,9 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     start_mean, start_covariance, previous_times = state
     with variable_scope.variable_scope("exogenous_noise_increasing_mean"):
       mean_addition = layers.fully_connected(
-          exogenous_values, start_mean.get_shape()[1].value, activation_fn=None)
-    state_dimension = start_covariance.get_shape()[1].value
+          exogenous_values,
+          tensor_shape.dimension_value(start_mean.shape[1]), activation_fn=None)
+    state_dimension = tensor_shape.dimension_value(start_covariance.shape[1])
     with variable_scope.variable_scope("exogenous_noise_increasing_covariance"):
       covariance_addition = (
           math_utils.transform_to_covariance_matrices(
@@ -712,7 +714,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     """
     with variable_scope.variable_scope(self._variable_scope):
       state_dimension = ops.convert_to_tensor(
-          self.get_state_transition()).get_shape()[0].value
+          self.get_state_transition()).get_shape().dims[0].value
       if self._configuration.trainable_start_state:
         base_covariance = math_utils.variable_covariance_matrix(
             state_dimension, "prior_state_var",
@@ -742,7 +744,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     with variable_scope.variable_scope(self._variable_scope):
       state_transition = ops.convert_to_tensor(
           self.get_state_transition(), dtype=self.dtype)
-      state_dimension = state_transition.get_shape()[0].value
+      state_dimension = state_transition.get_shape().dims[0].value
       return variable_scope.get_variable(
           name="prior_state_mean",
           shape=[state_dimension],
@@ -909,7 +911,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     elif unbroadcasted_shape.ndims == 2:
       # Unbroadcasted shape [num features x state dimension]
       broadcasted_model = array_ops.tile(
-          array_ops.expand_dims(unbroadcasted_model, dim=0),
+          array_ops.expand_dims(unbroadcasted_model, axis=0),
           [array_ops.shape(times)[0], 1, 1])
     elif unbroadcasted_shape.ndims == 3:
       broadcasted_model = unbroadcasted_model
@@ -920,7 +922,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
       self, minimum_initial_variance=1e-5):
     state_noise_transform = ops.convert_to_tensor(
         self.get_noise_transform(), dtype=self.dtype)
-    state_noise_dimension = state_noise_transform.get_shape()[1].value
+    state_noise_dimension = state_noise_transform.get_shape().dims[1].value
     if self._input_statistics is not None:
       feature_variance = self._scale_variance(
           self._input_statistics.series_start_moments.variance)

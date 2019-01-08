@@ -8,6 +8,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
 
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
@@ -21,6 +22,15 @@ py_library(
         ":saved_model_cli",
         ":saved_model_utils",
         ":strip_unused",
+        # The following py_library are needed because
+        # py_binary may not depend on them when --define=no_tensorflow_py_deps=true
+        # is specified. See https://github.com/tensorflow/tensorflow/issues/22390
+        ":freeze_graph_lib",
+        ":optimize_for_inference_lib",
+        ":selective_registration_header_lib",
+        ":strip_unused_lib",
+        # Include the TF upgrade script to users can run it directly after install TF
+        "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
 )
 
@@ -28,7 +38,20 @@ py_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/contrib/saved_model:reader"],
+)
+
+py_test(
+    name = "saved_model_utils_test",
+    size = "small",
+    srcs = ["saved_model_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    visibility = ["//visibility:private"],
+    deps = [
+        ":saved_model_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/saved_model",
+    ],
 )
 
 py_library(
@@ -44,6 +67,7 @@ py_library(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/saved_model:loader",
         "@six_archive//:six",
     ],
@@ -239,7 +263,6 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":saved_model_utils",
-        "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
     ],

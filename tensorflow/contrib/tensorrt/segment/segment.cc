@@ -33,6 +33,7 @@ namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
 // A simple graph representation to mirror tensorflow::Graph. This structure
 // helps saving memory since segmenter modifies the graph in place, preventing
@@ -224,6 +225,24 @@ SimpleGraph::~SimpleGraph() {
   for (auto x : edges_) delete x;
 }
 
+// Define comparison functions for std::set with pointer keys so that behavior
+// is deterministic. When using std::set with pointer key types, the items are
+// sorted by pointer address which is non-deterministic. This can cause issues
+// for INT8 mode because the graph is converted twice and non-determinism may
+// cause a mismatch between the calibration tables of the conversions.
+struct SimpleEdgePtrCompare {
+  bool operator()(const SimpleEdge* lhs, const SimpleEdge* rhs) const {
+    return lhs->id() < rhs->id();
+  }
+};
+
+struct NodePtrCompare {
+  bool operator()(const tensorflow::Node* lhs,
+                  const tensorflow::Node* rhs) const {
+    return lhs->name() < rhs->name();
+  }
+};
+
 namespace {
 
 // Copied from TF ReverseDFS, which only works for tensorflow::Graph.
@@ -389,7 +408,7 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
 
 tensorflow::Status SegmentGraph(
     const tensorflow::Graph* tf_graph,
-    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
+    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
@@ -406,15 +425,42 @@ tensorflow::Status SegmentGraph(
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
   // for TRT.
+  std::unordered_set<string> unsupported_ops;
+  int num_unsupported_ops = 0;
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
-    if (options.exclude_node_list.count(node->name()) != 0 ||
-        !candidate_fn(node->tf_node())) {
+    if (options.exclude_node_list.count(node->name()) != 0) {
+      VLOG(1) << "Not a TF-TRT candidate, "
+              << "(Op type: " << node->tf_node()->type_string() << "), "
+              << "(Op name: " << node->name() << "), "
+              << "(Reason: excluded by segmenter option)";
+      unsupported_ops.emplace(node->tf_node()->type_string());
+      num_unsupported_ops++;
       node = nullptr;
+    } else {
+      const Status status = candidate_fn(node->tf_node());
+      if (!status.ok()) {
+        VLOG(1) << "Not a TF-TRT candidate, "
+                << "(Op type: " << node->tf_node()->type_string() << "), "
+                << "(Op name: " << node->name() << "), "
+                << "(Reason: " << status << ")";
+        unsupported_ops.emplace(node->tf_node()->type_string());
+        num_unsupported_ops++;
+        node = nullptr;
+      }
     }
     node_segments.emplace_back(node);
   }
+  string msg = StrCat(
+      "There are ", num_unsupported_ops, " ops of ", unsupported_ops.size(),
+      " different types in the graph that", " are not converted to TensorRT: ");
+  for (const auto& elem : unsupported_ops) {
+    StrAppend(&msg, elem, ", ");
+  }
+  LOG(INFO) << msg << "(For more information see "
+            << "https://docs.nvidia.com/deeplearning"
+            << "/dgx/integrate-tf-trt/index.html#support-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
@@ -448,7 +494,7 @@ tensorflow::Status SegmentGraph(
     // nodes. Iterate since combining two nodes may unblock other
     // combining.
     while (true) {
-      std::set<const SimpleEdge*> contract_edges;
+      std::set<const SimpleEdge*, SimpleEdgePtrCompare> contract_edges;
       for (const SimpleEdge* out_edge : node->out_edges()) {
         VLOG(3) << "... out node " << out_edge->dst()->name() << " ( "
                 << out_edge->dst()->id() << " <- " << node->id() << " )";
@@ -502,7 +548,7 @@ tensorflow::Status SegmentGraph(
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the segment nodes set.
-  std::map<string, std::set<const tensorflow::Node*>> sg_map;
+  std::map<string, std::set<const tensorflow::Node*, NodePtrCompare>> sg_map;
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the device names that the nodes in the segment are
@@ -538,7 +584,8 @@ tensorflow::Status SegmentGraph(
   // --------------------------------- Step 2 ---------------------------------
   // Remove ineligible input/output nodes.
   for (auto& itr : sg_map) {
-    std::set<const tensorflow::Node*>& segment_nodes = itr.second;
+    std::set<const tensorflow::Node*, NodePtrCompare>& segment_nodes =
+        itr.second;
     VLOG(1) << "Segment original size: " << segment_nodes.size();
     while (true) {
       std::deque<const tensorflow::Node*> in_nodes_que, out_nodes_que;
@@ -590,8 +637,9 @@ tensorflow::Status SegmentGraph(
                               bool is_input_nodes,
                               std::deque<const tensorflow::Node*>* que) {
         // Run a BFS on the queue to find all the input/output nodes.
-        std::set<const tensorflow::Node*> visited;
-        std::set<const tensorflow::Node*> logged(que->begin(), que->end());
+        std::set<const tensorflow::Node*, NodePtrCompare> visited;
+        std::set<const tensorflow::Node*, NodePtrCompare> logged(que->begin(),
+                                                                 que->end());
         while (!que->empty()) {
           auto node = que->front();
           que->pop_front();
@@ -625,7 +673,8 @@ tensorflow::Status SegmentGraph(
   // --------------------------------- Step 3 ---------------------------------
   // Convert the segments into the expected return format
   for (const auto& itr : sg_map) {
-    const std::set<const tensorflow::Node*>& segment_nodes = itr.second;
+    const std::set<const tensorflow::Node*, NodePtrCompare>& segment_nodes =
+        itr.second;
     if (VLOG_IS_ON(1)) {
       string s = "parent=" + itr.first + ":";
       for (auto node : segment_nodes) s += " " + node->name();

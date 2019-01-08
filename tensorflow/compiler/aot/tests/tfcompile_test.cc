@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -448,6 +449,30 @@ TEST(TFCompileTest, Splits) {
   EXPECT_NEAR(expected[3], fn.result0(1, 1), 1e4);
 }
 
+TEST(TFCompileTest, TopK) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  TopKComp fn;
+
+  fn.set_thread_pool(&device);
+  // x = [4, 1, 4, 4, 3]
+  fn.arg0(0) = 4;
+  fn.arg0(1) = 1;
+  fn.arg0(2) = 4;
+  fn.arg0(3) = 4;
+  fn.arg0(4) = 3;
+
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
+  const int32 expected_values[] = {4, 4};
+  const int32 expected_indices[] = {0, 2};
+  EXPECT_EQ(expected_values[0], fn.result0(0));
+  EXPECT_EQ(expected_values[1], fn.result0(1));
+  EXPECT_EQ(expected_indices[0], fn.result1(0));
+  EXPECT_EQ(expected_indices[1], fn.result1(1));
+}
+
 TEST(TFCompileTest, AssertEqAndReturnDiff) {
   // Assert is converted into a no-op in XLA, so there is no failure even if the
   // two args are different.
@@ -501,13 +526,15 @@ TEST(TFCompileTest, ProgramShape) {
 
   // muladd has the program shape defined.
   MatMulAndAddComp muladd;
-  const xla::ProgramShape* muladd_shape = muladd.ProgramShape();
+  const xla::ProgramShapeProto* muladd_shape = muladd.ProgramShape();
   ASSERT_TRUE(muladd_shape != nullptr);
   ASSERT_EQ(muladd_shape->parameters_size(), 2);
-  EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(0), f32_2x2));
-  EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(1), f32_2x2));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(xla::Shape(muladd_shape->parameters(0)), f32_2x2));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(xla::Shape(muladd_shape->parameters(1)), f32_2x2));
 
-  const xla::Shape& muladd_result = muladd_shape->result();
+  const xla::Shape muladd_result(muladd_shape->result());
   ASSERT_EQ(muladd_result.element_type(), xla::TUPLE);
   ASSERT_EQ(ShapeUtil::TupleElementCount(muladd_result), 2);
   const xla::Shape& muladd_result0 =

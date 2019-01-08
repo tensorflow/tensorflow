@@ -92,12 +92,16 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
 }
 
 bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
-  // If 'b' is an entry param then 'a' cannot be defined before 'b' because 'b'
-  // is live into the module.
+  // Entry parameter should always be defined before other instructions.
   const HloModule* module = b.defining_instruction()->parent()->parent();
   if (b.defining_instruction()->parent() == module->entry_computation() &&
       b.defining_instruction()->opcode() == HloOpcode::kParameter) {
     return false;
+  }
+
+  if (a.defining_instruction()->parent() == module->entry_computation() &&
+      a.defining_instruction()->opcode() == HloOpcode::kParameter) {
+    return true;
   }
 
   // Phi values require special handling. Because XLA does not have a phi
@@ -316,7 +320,7 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
       for (auto predecessor : all) {
         if (predecessors_.at(computation)
                 ->IsReachable(predecessor, instruction)) {
-          pieces.push_back(absl::StrFormat("  %s", predecessor->name()));
+          pieces.push_back(absl::StrFormat("    %s", predecessor->name()));
         }
       }
     }
@@ -330,7 +334,7 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
   for (auto* computation : module->MakeNonfusionComputations()) {
-    predecessors_.emplace(computation, computation->ComputeReachability());
+    predecessors_.emplace(computation, HloReachabilityMap::Build(computation));
   }
 }
 
@@ -352,8 +356,7 @@ void SequentialHloOrdering::Initialize() {
   // Create a map from instruction to its order position.
   TF_DCHECK_OK(schedule_.Verify());
   for (const auto& computation_sequence : schedule_.sequences()) {
-    const std::vector<const HloInstruction*>& order =
-        computation_sequence.second.instructions();
+    const auto& order = computation_sequence.second.instructions();
     for (int i = 0; i < order.size(); ++i) {
       InsertOrDie(&order_position_, order[i], i);
     }
@@ -364,17 +367,16 @@ bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
     const HloInstruction* a, const HloInstruction* b) const {
   CHECK_EQ(a->parent(), b->parent());
   // If either instruction is not in the order, then 'a' and 'b' are unordered.
-  if (order_position_.count(a) == 0 || order_position_.count(b) == 0) {
+  if (!order_position_.contains(a) || !order_position_.contains(b)) {
     return false;
   }
   return order_position_.at(a) < order_position_.at(b);
 }
 
-const std::vector<const HloInstruction*>*
-SequentialHloOrdering::SequentialOrder(
+const HloInstructionSequence* SequentialHloOrdering::SequentialOrder(
     const HloComputation& computation) const {
   return schedule_.is_computation_scheduled(&computation)
-             ? &schedule_.sequence(&computation).instructions()
+             ? &schedule_.sequence(&computation)
              : nullptr;
 }
 

@@ -288,6 +288,11 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
         "output_port '", output_port, "' is out of range, ", "node '",
         node->name(), "' has ", node->num_outputs(), " outputs");
   }
+  // Note: it's possible, if the node's been updated, that the shape inference
+  // context doesn't have the right number of outputs.
+  if (node->num_outputs() > c->num_outputs()) {
+    TF_RETURN_IF_ERROR(c->ExpandOutputs(node->num_outputs()));
+  }
 
   // Check compatibility, and merge the shapes.
   ShapeHandle existing_shape = c->output(output_port);

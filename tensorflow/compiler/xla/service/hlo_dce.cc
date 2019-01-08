@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -65,7 +66,7 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
 
   // Now DCE HloComputations.  First, collect the computations that are
   // referenced by some remaining instruction.
-  std::unordered_set<HloComputation*> live_computations;
+  absl::flat_hash_set<HloComputation*> live_computations;
   if (HloComputation* entry_computation = module->entry_computation()) {
     live_computations.insert(entry_computation);
   }
@@ -79,7 +80,7 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
 
   // Remove dead computations.
   for (auto* computation : module->MakeComputationPostOrder()) {
-    if (live_computations.count(computation) == 0) {
+    if (!live_computations.contains(computation)) {
       TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
       changed = true;
     }

@@ -18,9 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -38,8 +35,8 @@ class XlaCompilationAllocator;
 // This is a 'dummy' TensorFlow device that is only used to execute a
 // subgraph of XLA compilation Ops to construct a compiled version
 // of the subgraph's computation. It has a 'dummy' allocator that
-// backs each Tensor with metadata indicating the computation the
-// Tensor represents.
+// backs each Tensor with an XlaExpression. The shape of the Tensor
+// matches the shape of XlaExpression.
 //
 // We deliberately don't register a device factory because we *never*
 // want placement to put Ops on a compilation device. The device is created
@@ -65,40 +62,6 @@ class XlaCompilationDevice : public LocalDevice {
 
  private:
   std::unique_ptr<XlaCompilationAllocator> allocator_;
-};
-
-// A XlaExpression wraps an XLA computation. Each Tensor on an
-// XlaCompilationDevice contains an XlaExpression, and the shape of the Tensor
-// matches the shape of the subcomputation in the XlaOp. Each
-// expression is either a constant, or a function of previously-compiled
-// expressions.
-class XlaExpression {
- public:
-  XlaExpression();
-
-  // handle() stores the XLA handle of the computation that the
-  // expression represents.
-  void set_handle(const xla::XlaOp& h);
-  const xla::XlaOp& handle() const { return handle_; }
-
-  void set_constant_value(Tensor value);
-  bool has_constant_value() const { return has_constant_value_; }
-  const Tensor& constant_value() const { return constant_value_; }
-
-  void set_resource(XlaResource* resource) { resource_ = resource; }
-  XlaResource* resource() const { return resource_; }
-
- private:
-  // The XLA handle of the expression's computation.
-  xla::XlaOp handle_;
-
-  // If this expression is a constant with a known value, 'constant_value' is a
-  // host-memory Tensor containing the value. Used to avoid invoking XLA for
-  // expressions that are trivially constant.
-  bool has_constant_value_ = false;
-  Tensor constant_value_;
-
-  XlaResource* resource_ = nullptr;  // Not owned.
 };
 
 }  // namespace tensorflow

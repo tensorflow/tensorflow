@@ -85,6 +85,9 @@ struct CollInstanceParams {
   std::vector<string> task_names;
   // True if every task has the same number of devices.
   bool same_num_devices_per_task = false;
+  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
+  // GPUs.  Assumes same GPU configuration at each worker.
+  string gpu_ring_order = "";
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -259,7 +262,9 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    StatusCallback done) {
-    cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr, done);
+    done(errors::Internal(
+        "A collective Op has been called in a context in which "
+        "a CollectiveExecutor has not been provided."));
   }
 
   virtual PerStepCollectiveRemoteAccess* remote_access() { return nullptr; }

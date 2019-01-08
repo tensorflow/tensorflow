@@ -95,6 +95,20 @@ Copies an allocated tuple from device memory and returns it as a literal.
 'literal' is a serialized xla::LiteralProto proto.
 )");
 
+REGISTER_OP("XRTWriteLiteral")
+    .Input("handle: int64")
+    .Input("literal: string")
+    .Output("output_handle: int64")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Copies the input literal into the device memory pointed to by handle.
+Returns the handle itself.
+
+'handle' is the id returned from the Op that produced the on-device allocation.
+'literal' is a serialized xla::LiteralProto proto to be written to device memory.
+)");
+
 REGISTER_OP("XRTReadLiteralAndRelease")
     .Input("handle: int64")
     .Output("literal: string")
@@ -113,10 +127,18 @@ REGISTER_OP("XRTReleaseAllocationHandle")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .Doc(
         R"(
-Discards an allocation from device memory. The handle cannot be subsequently
+Discards one or more device memory handles. The handle(s) cannot be subsequently
 used.
 
-'handle' is the id returned from the Op that produced the on-device allocation.
+'handle' is the ID (or a vector of IDs) returned from the Op that produced the
+on-device allocation.
+)");
+
+REGISTER_OP("XRTReleaseAllAllocations")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .Doc(
+        R"(
+Discards all the XRT allocations. All the client held handles will be invalid.
 )");
 
 }  // namespace tensorflow

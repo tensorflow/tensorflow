@@ -43,7 +43,7 @@ namespace xla {
 //   (3) The buffer set of the root instruction of the entry computation must be
 //       unambiguous and distinct. That is, InstructionAliasSet::IsAmbiguous and
 //       InstructionAliasSet::IsDistinct return true.
-class CopyInsertion : public HloPassInterface {
+class CopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
 
@@ -94,10 +94,12 @@ class CopyInsertion : public HloPassInterface {
   Status VerifyNoLiveRangeInterference(const HloOrdering& ordering,
                                        HloModule* module);
 
- private:
+ protected:
   // Override which requires the caller to pass in a call graph.
-  Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module);
+  virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
+                                      HloModule* module);
 
+ private:
   Status AddCopiesToResolveInterference(HloModule* module);
 
   // Backend specific function that decides whether a fusion can share buffer

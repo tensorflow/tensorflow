@@ -57,4 +57,10 @@ message HloProfilePrinterData {
 
   // The size of the profile counters array we will pretty-print.
   int64 profile_counters_size = 2;
+
+  // Maps extra metric name to the index into the profile counters array.
+  map<string, int64> extra_metrics = 3;
+
+  // Name of the entry computation.
+  string entry_computation = 4;
 }

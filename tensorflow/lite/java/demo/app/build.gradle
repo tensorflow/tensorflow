@@ -1,0 +1,134 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 26
+    buildToolsVersion "26.0.1"
+    defaultConfig {
+        applicationId "android.example.com.tflitecamerademo"
+        // Required by Camera2 API.
+        minSdkVersion 21
+        targetSdkVersion 26
+        versionCode 1
+        versionName "1.0"
+
+        // Remove this block.
+        jackOptions {
+            enabled true
+        }
+    }
+    lintOptions {
+        abortOnError false
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    aaptOptions {
+        noCompress "tflite"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+repositories {
+    maven {
+        url 'https://google.bintray.com/tensorflow'
+    }
+}
+allprojects {
+    repositories {
+        // Uncomment if you want to use a local repo.
+        // mavenLocal()
+        jcenter()
+    }
+}
+
+
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile 'com.android.support:appcompat-v7:25.2.0'
+    compile 'com.android.support.constraint:constraint-layout:1.0.2'
+    compile 'com.android.support:design:25.2.0'
+    compile 'com.android.support:support-annotations:25.3.1'
+    compile 'com.android.support:support-v13:25.2.0'
+
+    // Build off of nightly TensorFlow Lite
+    compile 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    // Use local TensorFlow library
+    // compile 'org.tensorflow:tensorflow-lite-local:0.0.0'
+}
+
+def targetFolder = "src/main/assets"
+def modelFloatDownloadUrl = "http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224.tgz"
+def modelQuantDownloadUrl = "http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz"
+def localCacheFloat = "build/intermediates/mobilenet_v1_1.0_224.tgz"
+def localCacheQuant = "build/intermediates/mmobilenet_v1_1.0_224_quant.tgz"
+
+
+task downloadModelFloat(type: DownloadUrlTask) {
+    doFirst {
+        println "Downloading ${modelFloatDownloadUrl}"
+    }
+    sourceUrl = "${modelFloatDownloadUrl}"
+    target = file("${localCacheFloat}")
+}
+
+task downloadModelQuant(type: DownloadUrlTask) {
+    doFirst {
+        println "Downloading ${modelQuantDownloadUrl}"
+    }
+    sourceUrl = "${modelQuantDownloadUrl}"
+    target = file("${localCacheQuant}")
+}
+
+task unzipModelFloat(type: Copy, dependsOn: 'downloadModelFloat') {
+    doFirst {
+        println "Unzipping ${localCacheFloat}"
+    }
+    from tarTree("${localCacheFloat}")
+    into "${targetFolder}"
+}
+
+task unzipModelQuant(type: Copy, dependsOn: 'downloadModelQuant') {
+    doFirst {
+        println "Unzipping ${localCacheQuant}"
+    }
+    from tarTree("${localCacheQuant}")
+    into "${targetFolder}"
+}
+
+task cleanUnusedFiles(type: Delete, dependsOn: ['unzipModelFloat', 'unzipModelQuant']) {
+    delete fileTree("${targetFolder}").matching {
+        include "*.pb"
+        include "*.ckpt.*"
+        include "*.pbtxt.*"
+        include "*.quant_info.*"
+        include "*.meta"
+    }
+}
+
+
+// Ensure the model file is downloaded and extracted before every build
+preBuild.dependsOn unzipModelFloat
+preBuild.dependsOn unzipModelQuant
+preBuild.dependsOn cleanUnusedFiles
+
+class DownloadUrlTask extends DefaultTask {
+    @Input
+    String sourceUrl
+
+    @OutputFile
+    File target
+
+    @TaskAction
+    void download() {
+        ant.get(src: sourceUrl, dest: target)
+    }
+}
+

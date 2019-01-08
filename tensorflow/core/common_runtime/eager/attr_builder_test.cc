@@ -35,9 +35,18 @@ namespace {
 
 TEST(AttrTypeMap, Lookup) {
   const AttrTypeMap* m = nullptr;
-  Status s = AttrTypeMapForOp("ThisOpCannotPossiblyExist", &m);
-  EXPECT_FALSE(s.ok());
-  s = AttrTypeMapForOp("MatMul", &m);
+  // Unknown ops are assumed to be functions.
+  // Their maps are filled with default attributes.
+  bool is_function = false;
+  Status s = AttrTypeMapForOp("SomeFunctionName", &m, &is_function);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(is_function);
+  EXPECT_EQ(TF_ATTR_STRING, m->find("executor_type")->second);
+  EXPECT_EQ(TF_ATTR_STRING, m->find("config")->second);
+
+  is_function = true;
+  s = AttrTypeMapForOp("MatMul", &m, &is_function);
+  EXPECT_FALSE(is_function);
   ASSERT_TRUE(s.ok()) << s;
 
   TF_AttrType t;
@@ -50,7 +59,7 @@ TEST(AttrTypeMap, Lookup) {
   EXPECT_EQ(TF_ATTR_BOOL, t);
   EXPECT_EQ(is_list, 0);
 
-  s = AttrTypeMapForOp("Squeeze", &m);
+  s = AttrTypeMapForOp("Squeeze", &m, &is_function);
   ASSERT_TRUE(s.ok()) << s;
   s = AttrTypeByName(*m, "squeeze_dims", &t, &is_list);
   ASSERT_TRUE(s.ok()) << s;

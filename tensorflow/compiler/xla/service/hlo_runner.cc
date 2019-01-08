@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -204,6 +205,40 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
       /*profile=*/profile);
 }
 
+StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
+    std::unique_ptr<Executable> executable,
+    const absl::Span<const ShapedBuffer* const> arguments,
+    ExecutionProfile* profile) {
+  // Get service run options.
+  se::Stream stream(backend().default_stream_executor());
+  stream.Init();
+  ServiceExecutableRunOptions service_run_options =
+      GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
+                                    nullptr);
+
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer retval,
+      executable->ExecuteOnStreamWrapper(&service_run_options,
+                                         /*profile=*/profile, arguments));
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  return std::move(retval);
+}
+
+StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
+    std::unique_ptr<Executable> executable,
+    const absl::Span<const ScopedShapedBuffer> arguments,
+    ExecutionProfile* profile) {
+  std::vector<const ShapedBuffer*> argument_pointers;
+  argument_pointers.reserve(arguments.size());
+  for (const auto& argument : arguments) {
+    argument_pointers.push_back(&argument);
+  }
+  return ExecuteWithDeviceBuffers(
+      /*executable=*/std::move(executable),
+      /*arguments=*/argument_pointers,
+      /*profile=*/profile);
+}
+
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const ReplicatedExecuteOptions& options) {
@@ -324,10 +359,13 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
     std::unique_ptr<HloModule> module, bool run_hlo_passes) {
   if (run_hlo_passes) {
+    auto module_group = absl::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(
-        module, backend().compiler()->RunHloPasses(
-                    std::move(module), backend().default_stream_executor(),
-                    backend().memory_allocator()));
+        auto executables,
+        backend().compiler()->Compile(std::move(module_group),
+                                      {{backend().default_stream_executor()}},
+                                      backend().memory_allocator()));
+    return std::move(executables[0]);
   }
   return backend().compiler()->RunBackend(std::move(module),
                                           backend().default_stream_executor(),

@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 LABEL maintainer="Craig Citro <craigcitro@google.com>"
 
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         libfreetype6-dev \
         libhdf5-serial-dev \
-        libpng12-dev \
+        libpng-dev \
         libzmq3-dev \
         pkg-config \
         python \
@@ -29,8 +29,8 @@ RUN pip --no-cache-dir install \
         h5py \
         ipykernel \
         jupyter \
-        keras_applications==1.0.5 \
-        keras_preprocessing==1.0.3 \
+        keras_applications \
+        keras_preprocessing \
         matplotlib \
         numpy \
         pandas \

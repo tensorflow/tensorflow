@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace xla {
 namespace {
@@ -394,6 +393,10 @@ class ParametricDotTestWithoutLayoutAssignment : public ParametricDotTest {
   ParametricDotTestWithoutLayoutAssignment() {
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
         "layout-assignment");
+    // Disable algebraic simplification because the pass may replace a dot
+    // instruction with a layout-changing multiplication instruction.
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "algsimp");
   }
 };
 
@@ -404,31 +407,18 @@ std::vector<DotTestParam> CreateNoLayoutAssignmentDotTestParameters() {
     for (bool lhs_row_major : {true, false}) {
       for (bool rhs_row_major : {true, false}) {
         for (bool has_addend : {true, false}) {
+          // The addend needs to be row major to match the result of the dot.
           params.push_back({/*m=*/1, /*k=*/k, /*n=*/n,
                             /*dot_lhs_row_major=*/lhs_row_major,
                             /*dot_rhs_row_major=*/rhs_row_major,
                             /*has_addend=*/has_addend,
                             /*addend_row_major=*/true});
-          if (has_addend) {
-            params.push_back({/*m=*/1, /*k=*/k, /*n=*/n,
-                              /*dot_lhs_row_major=*/lhs_row_major,
-                              /*dot_rhs_row_major=*/rhs_row_major,
-                              /*has_addend=*/has_addend,
-                              /*addend_row_major=*/false});
-          }
           if (n != 1) {
             params.push_back({/*m=*/n, /*k=*/k, /*n=*/1,
                               /*dot_lhs_row_major=*/lhs_row_major,
                               /*dot_rhs_row_major=*/rhs_row_major,
                               /*has_addend=*/has_addend,
                               /*addend_row_major=*/true});
-            if (has_addend) {
-              params.push_back({/*m=*/n, /*k=*/k, /*n=*/1,
-                                /*dot_lhs_row_major=*/lhs_row_major,
-                                /*dot_rhs_row_major=*/rhs_row_major,
-                                /*has_addend=*/has_addend,
-                                /*addend_row_major=*/false});
-            }
           }
         }
       }
@@ -645,6 +635,76 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
+
+#ifndef XLA_TEST_BACKEND_CPU
+// TODO(b/74459949): failed on CPU on 2018-10-29.
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
+  using T = TypeParam;
+
+  XlaBuilder builder(this->TestName());
+  auto x =
+      Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 2}), "y");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(1);
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(0);
+
+  DotGeneral(x, y, dnums);
+
+  auto x_data =
+      this->client_
+          ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
+              {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}}))
+          .ConsumeValueOrDie();
+
+  auto y_data = this->client_
+                    ->TransferToServer(LiteralUtil::CreateR2FromArray2D<T>(
+                        {{1.0f, 0.0f}, {0.0f, 1.0f}}))
+                    .ConsumeValueOrDie();
+
+  this->template ComputeAndCompareR2<T>(
+      &builder,
+      /*expected=*/{{1.0f, 2.0f}, {7.0f, 8.0f}}, {x_data.get(), y_data.get()},
+      this->error_spec_);
+}
+
+// TODO(b/74459949): failed on CPU on 2018-10-29.
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
+  using T = TypeParam;
+
+  XlaBuilder builder(this->TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2}), "x");
+  auto y =
+      Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "y");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(1);
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(0);
+
+  DotGeneral(x, y, dnums);
+
+  auto x_data = this->client_
+                    ->TransferToServer(LiteralUtil::CreateR2FromArray2D<T>(
+                        {{1.0f, 0.0f}, {0.0f, 1.0f}}))
+                    .ConsumeValueOrDie();
+
+  auto y_data =
+      this->client_
+          ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
+              {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}}))
+          .ConsumeValueOrDie();
+
+  this->template ComputeAndCompareR2<T>(
+      &builder,
+      /*expected=*/{{1.0f, 2.0f}, {7.0f, 8.0f}}, {x_data.get(), y_data.get()},
+      this->error_spec_);
+}
+#endif  // XLA_TEST_BACKEND_CPU
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
   using T = TypeParam;

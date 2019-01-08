@@ -1,4 +1,9 @@
 op {
   graph_op_name: "FloorMod"
-  visibility: HIDDEN
+  endpoint {
+    name: "floormod"
+  }
+  endpoint {
+    name: "mod"
+  }
 }

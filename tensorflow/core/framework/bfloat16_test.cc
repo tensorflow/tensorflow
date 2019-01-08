@@ -15,13 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
+#include "absl/base/casts.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
+
+TEST(Bfloat16Test, DefaultValueIsZero) {
+  EXPECT_EQ(0.0f, static_cast<float>(bfloat16()));
+}
+
+TEST(Bfloat16Test, RepresentableFloatsRoundTripViaBfloat16) {
+  const std::vector<float> values = {
+      -std::numeric_limits<float>::infinity(), -1.0, -0.5, -0.0, 0.0, 0.5, 1.0,
+      std::numeric_limits<float>::infinity(),
+  };
+  for (float v : values) {
+    EXPECT_EQ(v, static_cast<float>(static_cast<bfloat16>(v)));
+  }
+}
 
 TEST(Bfloat16Test, Simple) {
   bfloat16 a(12);
@@ -31,8 +45,8 @@ TEST(Bfloat16Test, Simple) {
 
 float BinaryToFloat(uint32_t sign, uint32_t exponent, uint32_t high_mantissa,
                     uint32_t low_mantissa) {
-  return bit_cast<float>((sign << 31) + (exponent << 23) +
-                         (high_mantissa << 16) + low_mantissa);
+  return absl::bit_cast<float>((sign << 31) + (exponent << 23) +
+                               (high_mantissa << 16) + low_mantissa);
 }
 
 struct Bfloat16TestParam {

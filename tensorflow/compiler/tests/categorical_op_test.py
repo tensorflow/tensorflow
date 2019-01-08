@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import googletest
 
 
@@ -56,11 +57,11 @@ class CategoricalTest(xla_test.XLATestCase):
     Returns:
       Frequencies from sampled classes; shape [batch_size, num_classes].
     """
-    with self.cached_session() as sess, self.test_scope():
+    with self.cached_session(), self.test_scope():
       random_seed.set_random_seed(1618)
       op = random_ops.multinomial(logits, num_samples,
                                   output_dtype=dtypes.int32)
-      d = sess.run(op)
+      d = self.evaluate(op)
 
     batch_size, num_classes = logits.shape
     freqs_mat = []
@@ -79,15 +80,15 @@ class CategoricalTest(xla_test.XLATestCase):
 
   def _testRngIsNotConstant(self, rng, dtype, output_dtype):
     # Tests that 'rng' does not always return the same value.
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         x = rng(dtype, output_dtype)
 
       # The random-number generator, if working correctly, should produce the
       # same output multiple times with low probability.
-      y = sess.run(x)
-      z = sess.run(x)
-      w = sess.run(x)
+      y = self.evaluate(x)
+      z = self.evaluate(x)
+      w = self.evaluate(x)
 
       # We use exact equality here. If the random-number generator is producing
       # deterministic output, all three outputs will be bitwise identical.
@@ -107,12 +108,12 @@ class CategoricalTest(xla_test.XLATestCase):
   def testCategoricalIsInRange(self):
     for dtype in self.float_types:
       for output_dtype in self.output_dtypes():
-        with self.cached_session() as sess:
+        with self.cached_session():
           with self.test_scope():
             x = random_ops.multinomial(
                 array_ops.ones(shape=[1, 20], dtype=dtype), 1000,
                 output_dtype=output_dtype)
-          y = sess.run(x)
+          y = self.evaluate(x)
           self.assertTrue((y >= 0).sum() == 1000)
           self.assertTrue((y < 20).sum() == 1000)
 
@@ -137,6 +138,57 @@ class CategoricalTest(xla_test.XLATestCase):
       # df.
       chi2 = self._chi2(probs, freqs)
       self.assertLess(chi2, 1e-3)
+
+  def testStatelessMultinomialIsInRange(self):
+    for dtype in self.float_types:
+      for output_dtype in self.output_dtypes():
+        with self.cached_session() as sess:
+          with self.test_scope():
+            seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+            x = stateless_random_ops.stateless_multinomial(
+                array_ops.ones(shape=[1, 20], dtype=dtype),
+                1000,
+                seed_t,
+                output_dtype=output_dtype)
+          y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+          self.assertTrue((y >= 0).sum() == 1000)
+          self.assertTrue((y < 20).sum() == 1000)
+
+  def testDeterminismMultinomial(self):
+    # Stateless values should be equal iff the seeds are equal (roughly)
+    num_samples = 10
+    with self.cached_session(), self.test_scope():
+      seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+      seeds = [(x, y) for x in range(5) for y in range(5)] * 3
+      for logits in ([[0.1, 0.25, 0.5, 0.15]], [[0.5, 0.5], [0.8, 0.2],
+                                                [0.25, 0.75]]):
+        pure = stateless_random_ops.stateless_multinomial(
+            logits, num_samples, seed=seed_t)
+        values = [(seed, pure.eval(feed_dict={seed_t: seed})) for seed in seeds]
+        for s0, v0 in values:
+          for s1, v1 in values:
+            self.assertEqual(s0 == s1, np.all(v0 == v1))
+
+  def testEmpty(self):
+    with self.cached_session():
+      with self.test_scope():
+        x = random_ops.multinomial(
+            array_ops.zeros([42, 40]), 0, output_dtype=dtypes.int32)
+        y = self.evaluate(x)
+        self.assertEqual(y.shape, (42, 0))
+
+  def testEmptyStateless(self):
+    with self.cached_session() as sess:
+      with self.test_scope():
+        seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+        x = stateless_random_ops.stateless_multinomial(
+            array_ops.zeros([42, 40]),
+            0,
+            seed=seed_t,
+            output_dtype=dtypes.int32)
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        self.assertEqual(y.shape, (42, 0))
+
 
 
 if __name__ == '__main__':

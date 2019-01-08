@@ -20,15 +20,16 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -64,7 +65,7 @@ class HloOrdering {
 
   // Returns the sequential instruction order for the given computation, or
   // nullptr if the computation does not have a sequential ordering.
-  virtual const std::vector<const HloInstruction*>* SequentialOrder(
+  virtual const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const = 0;
 
   // Return the call graph of the module used to compute ordering.
@@ -96,7 +97,7 @@ class PredecessorHloOrdering : public HloOrdering {
 
   // Returns nullptr indicating the computation does not have a sequential
   // ordering.
-  const std::vector<const HloInstruction*>* SequentialOrder(
+  const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const override {
     return nullptr;
   }
@@ -120,8 +121,8 @@ class PredecessorHloOrdering : public HloOrdering {
   // predecessors. An instruction is an element of its own predecessor set.
   //
   // Subclasses should fill this in to define the desired ordering.
-  tensorflow::gtl::FlatMap<const HloComputation*,
-                           std::unique_ptr<HloReachabilityMap>>
+  absl::flat_hash_map<const HloComputation*,
+                      std::unique_ptr<HloReachabilityMap>>
       predecessors_;
 };
 
@@ -185,7 +186,7 @@ class SequentialHloOrdering : public HloOrdering {
   ~SequentialHloOrdering() override = default;
 
   // Returns the sequential instruction order for the given computation.
-  const std::vector<const HloInstruction*>* SequentialOrder(
+  const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const override;
 
   string ToString() const override;
@@ -204,7 +205,7 @@ class SequentialHloOrdering : public HloOrdering {
   // this map so more than one instruction may have the same position
   // value. This is not a problem because ExecutesBefore also verifies
   // instructions are in the same computation.
-  tensorflow::gtl::FlatMap<const HloInstruction*, int> order_position_;
+  absl::flat_hash_map<const HloInstruction*, int> order_position_;
 };
 
 }  // namespace xla

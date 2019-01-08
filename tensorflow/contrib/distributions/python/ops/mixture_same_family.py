@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution_util as distribution_utils
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -44,7 +45,8 @@ class MixtureSameFamily(distribution.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   ### Create a mixture of two scalar Gaussians:
 
@@ -113,12 +115,12 @@ class MixtureSameFamily(distribution.Distribution):
     """Construct a `MixtureSameFamily` distribution.
 
     Args:
-      mixture_distribution: `tf.distributions.Categorical`-like instance.
+      mixture_distribution: `tfp.distributions.Categorical`-like instance.
         Manages the probability of selecting components. The number of
         categories must match the rightmost batch dimension of the
         `components_distribution`. Must have either scalar `batch_shape` or
         `batch_shape` matching `components_distribution.batch_shape[:-1]`.
-      components_distribution: `tf.distributions.Distribution`-like instance.
+      components_distribution: `tfp.distributions.Distribution`-like instance.
         Right-most batch dimension indexes components.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
@@ -146,8 +148,9 @@ class MixtureSameFamily(distribution.Distribution):
       self._runtime_assertions = []
 
       s = components_distribution.event_shape_tensor()
-      self._event_ndims = (s.shape[0].value
-                           if s.shape.with_rank_at_least(1)[0].value is not None
+      s_dim0 = tensor_shape.dimension_value(s.shape[0])
+      self._event_ndims = (s_dim0
+                           if s_dim0 is not None
                            else array_ops.shape(s)[0])
 
       if not mixture_distribution.dtype.is_integer:
@@ -185,8 +188,10 @@ class MixtureSameFamily(distribution.Distribution):
                     "`mixture_distribution.batch_shape` is not "
                     "compatible with `components_distribution.batch_shape`"))]
 
-      km = mixture_distribution.logits.shape.with_rank_at_least(1)[-1].value
-      kc = components_distribution.batch_shape.with_rank_at_least(1)[-1].value
+      km = tensor_shape.dimension_value(
+          mixture_distribution.logits.shape.with_rank_at_least(1)[-1])
+      kc = tensor_shape.dimension_value(
+          components_distribution.batch_shape.with_rank_at_least(1)[-1])
       if km is not None and kc is not None and km != kc:
         raise ValueError("`mixture_distribution components` ({}) does not "
                          "equal `components_distribution.batch_shape[-1]` "

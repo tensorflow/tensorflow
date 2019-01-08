@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 
-#include <unordered_set>
+#include <map>
 
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -81,9 +81,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
     if (hlo.opcode() == HloOpcode::kParameter) {
       const std::vector<HloInstruction*>& parameter_instructions =
           module_.entry_computation()->parameter_instructions();
-      if (std::find(parameter_instructions.begin(),
-                    parameter_instructions.end(),
-                    &hlo) != parameter_instructions.end()) {
+      if (absl::c_linear_search(parameter_instructions, &hlo)) {
         array->MarkInvariantOverWholeProgram(context_);
       }
     }
@@ -164,9 +162,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
     add_buffers_to_worklist(operand);
   }
 
-  tensorflow::gtl::FlatSet<BufferAllocation::Slice,
-                           BufferAllocation::Slice::Hasher>
-      buffers;
+  std::set<BufferAllocation::Slice> buffers;
   for (const LogicalBuffer* buffer : worklist) {
     // Skip buffers which cannot be added to the noalias set.
     if (!assignment.HasAllocation(*buffer) ||

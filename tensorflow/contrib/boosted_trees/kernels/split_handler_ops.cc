@@ -579,13 +579,6 @@ class BuildSparseInequalitySplitsOp : public OpKernel {
         const int end_index =
             partition_boundaries[non_empty_partitions[root_idx]][j + 1]
                 .start_index;
-        CHECK(bucket_ids_and_dimensions(start_index, 1) ==
-              bucket_ids_and_dimensions(end_index - 1, 1))
-            << "For bucket " << bucket_ids_and_dimensions(start_index, 0)
-            << " the dimension was "
-            << bucket_ids_and_dimensions(start_index, 1) << " and for "
-            << bucket_ids_and_dimensions(end_index - 1, 0) << " "
-            << bucket_ids_and_dimensions(end_index - 1, 1);
         if (bucket_ids_and_dimensions(start_index, 0) == bias_feature_id) {
           // 0-dimension case which has a first bucket for catch all feature.
           CHECK(bucket_ids_and_dimensions(start_index, 1) == 0)
@@ -746,21 +739,22 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
 
     // Find the number of unique partitions before we allocate the output.
     std::vector<int32> partition_boundaries;
-    std::vector<int32> non_empty_partitions;
-    for (int i = 0; i < partition_ids.size() - 1; ++i) {
+    partition_boundaries.push_back(0);
+    for (int i = 1; i < partition_ids.size(); ++i) {
       // Make sure the input is sorted by partition_ids;
-      CHECK_LE(partition_ids(i), partition_ids(i + 1));
-      if (i == 0 || partition_ids(i) != partition_ids(i - 1)) {
+      OP_REQUIRES(context, partition_ids(i - 1) <= partition_ids(i),
+                  errors::InvalidArgument("Partition IDs must be sorted."));
+      if (partition_ids(i) != partition_ids(i - 1)) {
         partition_boundaries.push_back(i);
-        // Some partitions might only have bias feature. We don't want to split
-        // those so check that the partition has at least 2 features.
-        if (partition_ids(i) == partition_ids(i + 1)) {
-          non_empty_partitions.push_back(partition_boundaries.size() - 1);
-        }
       }
     }
-    if (partition_ids.size() > 0) {
-      partition_boundaries.push_back(partition_ids.size());
+    std::vector<int32> non_empty_partitions;
+    partition_boundaries.push_back(partition_ids.size());
+    for (int i = 0; i < partition_boundaries.size() - 1; ++i) {
+      // We want to ignore partitions with only the bias term.
+      if (partition_boundaries[i + 1] - partition_boundaries[i] >= 2) {
+        non_empty_partitions.push_back(i);
+      }
     }
     int num_elements = non_empty_partitions.size();
     Tensor* output_partition_ids_t = nullptr;
@@ -840,8 +834,13 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
       root_gradient_stats *= normalizer_ratio;
       NodeStats root_stats = state->ComputeNodeStats(root_gradient_stats);
       int32 best_feature_idx = 0;
+      bool best_feature_updated = false;
       NodeStats best_right_node_stats(0);
       NodeStats best_left_node_stats(0);
+      CHECK(end_index - start_index >= 2)
+          << "Partition should have a non bias feature. Start index "
+          << start_index << " and end index " << end_index;
+
       for (int64 feature_idx = start_index + 1; feature_idx < end_index;
            ++feature_idx) {
         GradientStats left_gradient_stats(*gradients_t, *hessians_t,
@@ -851,11 +850,13 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
             root_gradient_stats - left_gradient_stats;
         NodeStats left_stats = state->ComputeNodeStats(left_gradient_stats);
         NodeStats right_stats = state->ComputeNodeStats(right_gradient_stats);
-        if (left_stats.gain + right_stats.gain > best_gain) {
+        if (!best_feature_updated ||
+            left_stats.gain + right_stats.gain > best_gain) {
           best_gain = left_stats.gain + right_stats.gain;
           best_left_node_stats = left_stats;
           best_right_node_stats = right_stats;
           best_feature_idx = feature_idx;
+          best_feature_updated = true;
         }
       }
       SplitInfo split_info;
@@ -870,7 +871,7 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
           << feature_ids(best_feature_idx, 0) << ", "
           << feature_ids(best_feature_idx, 1)
           << "\nPartition IDS: " << partition_ids(start_index) << "  "
-          << partition_ids(best_feature_idx);
+          << partition_ids(best_feature_idx) << " and best gain " << best_gain;
       equality_split->set_feature_id(feature_ids(best_feature_idx, 0));
       auto* left_child = split_info.mutable_left_child();
       auto* right_child = split_info.mutable_right_child();

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -46,7 +46,7 @@ const Shape& HloPosition::shape() const {
 
 string HloPosition::ToString() const {
   string index_str =
-      ShapeUtil::IsTuple(instruction->shape()) ? (" " + index.ToString()) : "";
+      instruction->shape().IsTuple() ? (" " + index.ToString()) : "";
   return StrCat(instruction->name(), index_str);
 }
 
@@ -56,10 +56,9 @@ std::ostream& operator<<(std::ostream& out, const HloPosition& position) {
 }
 
 string HloUse::ToString() const {
-  string index_str =
-      ShapeUtil::IsTuple(instruction->operand(operand_number)->shape())
-          ? (" " + operand_index.ToString())
-          : "";
+  string index_str = instruction->operand(operand_number)->shape().IsTuple()
+                         ? (" " + operand_index.ToString())
+                         : "";
   return StrCat(instruction->name(), ", operand ", operand_number, index_str);
 }
 
@@ -88,7 +87,7 @@ bool HloValue::operator!=(const HloValue& other) const {
 }
 
 string HloValue::ToShortString() const {
-  string index_str = ShapeUtil::IsTuple(defining_instruction()->shape())
+  string index_str = defining_instruction()->shape().IsTuple()
                          ? defining_index().ToString()
                          : "";
   return StrCat(id(), " ", is_phi_ ? "PHI " : "",
@@ -131,6 +130,7 @@ bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
       CHECK_LE(operand_number, 2);
       return operand_number == 0 || index.empty();
 
+    case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
       return false;
@@ -166,7 +166,7 @@ void HloValue::SetPositionsAndComputeUses(
   positions_.insert(positions_.end(), positions.begin(), positions.end());
 
   // Gather the computation roots at which this value appears.
-  tensorflow::gtl::FlatSet<HloInstruction*> root_positions;
+  absl::flat_hash_set<HloInstruction*> root_positions;
   for (const HloPosition& position : positions_) {
     if (position.instruction ==
         position.instruction->parent()->root_instruction()) {
@@ -209,7 +209,7 @@ std::ostream& operator<<(std::ostream& out, const HloValue& value) {
 }
 
 void HloValueSet::SortAndUniquifyValues() {
-  std::sort(values_.begin(), values_.end(), HloValue::IdLessThan);
+  absl::c_sort(values_, HloValue::IdLessThan);
   values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
                 values_.end());
 }

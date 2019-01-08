@@ -25,6 +25,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
+#include "absl/base/macros.h"
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -63,7 +64,7 @@ constexpr int kGetChildrenDefaultPageSize = 1000;
 // The HTTP response code "308 Resume Incomplete".
 constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
 // The environment variable that overrides the size of the readahead buffer.
-// DEPRECATED. Use GCS_BLOCK_SIZE_MB instead.
+ABSL_DEPRECATED("Use GCS_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // The environment variable that disables the GCS block cache for reads.
 // This is the explicit alternative to setting BLOCK_SIZE or MAX_SIZE to 0, and
@@ -309,6 +310,11 @@ class GcsRandomAccessFile : public RandomAccessFile {
   GcsRandomAccessFile(const string& filename, ReadFn read_fn)
       : filename_(filename), read_fn_(std::move(read_fn)) {}
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   /// The implementation of reads with an LRU block cache. Thread safe.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
@@ -332,14 +338,14 @@ class GcsWritableFile : public WritableFile {
                   GcsFileSystem* filesystem,
                   GcsFileSystem::TimeoutConfig* timeouts,
                   std::function<void()> file_cache_erase,
-                  int64 initial_retry_delay_usec)
+                  RetryConfig retry_config)
       : bucket_(bucket),
         object_(object),
         filesystem_(filesystem),
         timeouts_(timeouts),
         file_cache_erase_(std::move(file_cache_erase)),
         sync_needed_(true),
-        initial_retry_delay_usec_(initial_retry_delay_usec) {
+        retry_config_(retry_config) {
     // TODO: to make it safer, outfile_ should be constructed from an FD
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
       outfile_.open(tmp_content_filename_,
@@ -356,14 +362,14 @@ class GcsWritableFile : public WritableFile {
                   GcsFileSystem* filesystem, const string& tmp_content_filename,
                   GcsFileSystem::TimeoutConfig* timeouts,
                   std::function<void()> file_cache_erase,
-                  int64 initial_retry_delay_usec)
+                  RetryConfig retry_config)
       : bucket_(bucket),
         object_(object),
         filesystem_(filesystem),
         timeouts_(timeouts),
         file_cache_erase_(std::move(file_cache_erase)),
         sync_needed_(true),
-        initial_retry_delay_usec_(initial_retry_delay_usec) {
+        retry_config_(retry_config) {
     tmp_content_filename_ = tmp_content_filename;
     outfile_.open(tmp_content_filename_,
                   std::ofstream::binary | std::ofstream::app);
@@ -393,6 +399,10 @@ class GcsWritableFile : public WritableFile {
 
   Status Flush() override { return Sync(); }
 
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("GCSWritableFile does not support Name()");
+  }
+
   Status Sync() override {
     TF_RETURN_IF_ERROR(CheckWritable());
     if (!sync_needed_) {
@@ -403,6 +413,14 @@ class GcsWritableFile : public WritableFile {
       sync_needed_ = false;
     }
     return status;
+  }
+
+  Status Tell(int64* position) override {
+    *position = outfile_.tellp();
+    if (*position == -1) {
+      return errors::Internal("tellp on the internal temporary file failed");
+    }
+    return Status::OK();
   }
 
  private:
@@ -440,7 +458,7 @@ class GcsWritableFile : public WritableFile {
           first_attempt = false;
           return UploadToSession(session_uri, already_uploaded);
         },
-        initial_retry_delay_usec_);
+        retry_config_);
     if (upload_status.code() == errors::Code::NOT_FOUND) {
       // GCS docs recommend retrying the whole upload. We're relying on the
       // RetryingFileSystem to retry the Sync() call.
@@ -585,7 +603,7 @@ class GcsWritableFile : public WritableFile {
   GcsFileSystem::TimeoutConfig* timeouts_;
   std::function<void()> file_cache_erase_;
   bool sync_needed_;  // whether there is buffered data that needs to be synced
-  int64 initial_retry_delay_usec_;
+  RetryConfig retry_config_;
 };
 
 class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
@@ -790,7 +808,7 @@ GcsFileSystem::GcsFileSystem(
     std::unique_ptr<ZoneProvider> zone_provider, size_t block_size,
     size_t max_bytes, uint64 max_staleness, uint64 stat_cache_max_age,
     size_t stat_cache_max_entries, uint64 matching_paths_cache_max_age,
-    size_t matching_paths_cache_max_entries, int64 initial_retry_delay_usec,
+    size_t matching_paths_cache_max_entries, RetryConfig retry_config,
     TimeoutConfig timeouts, const std::unordered_set<string>& allowed_locations,
     std::pair<const string, const string>* additional_header)
     : auth_provider_(std::move(auth_provider)),
@@ -805,7 +823,7 @@ GcsFileSystem::GcsFileSystem(
           kCacheNeverExpire, kBucketLocationCacheMaxEntries)),
       allowed_locations_(allowed_locations),
       timeouts_(timeouts),
-      initial_retry_delay_usec_(initial_retry_delay_usec),
+      retry_config_(retry_config),
       additional_header_(additional_header) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
@@ -940,7 +958,7 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(bucket, object, this, &timeouts_,
                                     [this, fname]() { ClearFileCaches(fname); },
-                                    initial_retry_delay_usec_));
+                                    retry_config_));
   return Status::OK();
 }
 
@@ -980,7 +998,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
       bucket, object, this, old_content_filename, &timeouts_,
-      [this, fname]() { ClearFileCaches(fname); }, initial_retry_delay_usec_));
+      [this, fname]() { ClearFileCaches(fname); }, retry_config_));
   return Status::OK();
 }
 
@@ -1432,9 +1450,16 @@ Status GcsFileSystem::CreateDir(const string& dirname) {
                      : errors::NotFound("The specified bucket ", dirname,
                                         " was not found.");
   }
+
+  const string dirname_with_slash = MaybeAppendSlash(dirname);
+
+  if (FileExists(dirname_with_slash).ok()) {
+    return errors::AlreadyExists(dirname);
+  }
+
   // Create a zero-length directory marker object.
   std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(NewWritableFile(MaybeAppendSlash(dirname), &file));
+  TF_RETURN_IF_ERROR(NewWritableFile(dirname_with_slash, &file));
   TF_RETURN_IF_ERROR(file->Close());
   return Status::OK();
 }
@@ -1533,7 +1558,7 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   // on the server side, we can't just retry the whole RenameFile operation
   // because the source object is already gone.
   return RetryingUtils::DeleteWithRetries(
-      [this, &src]() { return DeleteFile(src); }, initial_retry_delay_usec_);
+      [this, &src]() { return DeleteFile(src); }, retry_config_);
 }
 
 Status GcsFileSystem::IsDirectory(const string& fname) {
@@ -1589,8 +1614,7 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
     // and therefore RetryingFileSystem won't pay attention to the failures,
     // we need to make sure these failures are properly retried.
     const auto& delete_file_status = RetryingUtils::DeleteWithRetries(
-        [this, &full_path]() { return DeleteFile(full_path); },
-        initial_retry_delay_usec_);
+        [this, &full_path]() { return DeleteFile(full_path); }, retry_config_);
     if (!delete_file_status.ok()) {
       if (IsDirectory(full_path).ok()) {
         // The object is a directory marker.

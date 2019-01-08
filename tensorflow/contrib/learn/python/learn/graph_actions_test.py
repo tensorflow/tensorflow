@@ -162,9 +162,9 @@ class GraphActionsTest(test.TestCase):
       Tuple of 3 `Tensor` objects, 2 input and 1 output.
     """
     variables_lib.create_global_step()
-    in0 = variables.Variable(1.0)
+    in0 = variables.VariableV1(1.0)
     in1 = variables_lib.local_variable(2.0)
-    fake_table = variables.Variable(
+    fake_table = variables.VariableV1(
         3.0,
         trainable=False,
         collections=['fake_tables'],
@@ -312,8 +312,8 @@ class GraphActionsTest(test.TestCase):
   def test_evaluate_ready_for_local_init(self):
     with ops.Graph().as_default() as g, self.session(g):
       variables_lib.create_global_step()
-      v = variables.Variable(1.0)
-      variables.Variable(
+      v = variables.VariableV1(1.0)
+      variables.VariableV1(
           v + 1, collections=[ops.GraphKeys.LOCAL_VARIABLES], trainable=False)
       ready_for_local_init_op = variables.report_uninitialized_variables(
           variables.global_variables())
@@ -456,9 +456,9 @@ class GraphActionsTrainTest(test.TestCase):
       Tuple of 3 `Tensor` objects, 2 input and 1 output.
     """
     variables_lib.create_global_step()
-    in0 = variables.Variable(1.0)
+    in0 = variables.VariableV1(1.0)
     in1 = variables_lib.local_variable(2.0)
-    fake_table = variables.Variable(
+    fake_table = variables.VariableV1(
         3.0,
         trainable=False,
         collections=['fake_tables'],

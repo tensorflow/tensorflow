@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python import keras
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -61,6 +62,7 @@ class KerasRegularizersTest(test.TestCase):
         model.fit(x_train, y_train, batch_size=10,
                   epochs=1, verbose=0)
 
+  @test_util.run_deprecated_v1
   def test_activity_regularization(self):
     with self.cached_session():
       (x_train, y_train), _ = get_data()

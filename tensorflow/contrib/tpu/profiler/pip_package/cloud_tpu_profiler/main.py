@@ -90,12 +90,12 @@ def main(unused_argv=None):
   tf_version = tf.__version__
   print('TensorFlow version %s detected' % tf_version)
 
-  if FLAGS.service_addr is None and FLAGS.tpu is None:
+  if not FLAGS.service_addr and not FLAGS.tpu:
     sys.exit('You must specify either --service_addr or --tpu.')
 
   tpu_cluster_resolver = None
-  if FLAGS.service_addr is not None:
-    if FLAGS.tpu is not None:
+  if FLAGS.service_addr:
+    if FLAGS.tpu:
       tf.logging.warn('Both --service_addr and --tpu are set. Ignoring '
                       '--tpu and using --service_addr.')
     service_addr = FLAGS.service_addr
@@ -116,12 +116,13 @@ def main(unused_argv=None):
     elif tpu_cluster_resolver is not None:
       workers_list = get_workers_list(tpu_cluster_resolver)
 
-  if not FLAGS.logdir:
+  if not FLAGS.logdir and not FLAGS.monitoring_level:
     sys.exit('logdir must be provided.')
   executable_path = os.path.join(os.path.dirname(__file__), EXECUTABLE)
-  logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
   cmd = [executable_path]
-  cmd.append('--logdir=' + logdir)
+  if FLAGS.logdir is not None:
+    logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
+    cmd.append('--logdir=' + logdir)
   cmd.append('--service_addr=' + service_addr)
   cmd.append('--workers_list=' + workers_list)
   cmd.append('--duration_ms=' + str(FLAGS.duration_ms))

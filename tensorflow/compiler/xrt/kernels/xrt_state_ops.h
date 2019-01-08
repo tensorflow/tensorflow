@@ -183,9 +183,7 @@ class XRTAllocateOp : public OpKernel {
     // We are guaranteed that the underlying device object won't be deleted out
     // from under us, while the ScopedRef is live.
     class DeviceAccessor::ScopedRef device_ref;
-    OP_REQUIRES_OK(ctx,
-                   DeviceAccessor::InitScopedRef(
-                       ctx, allocation_proto.device_ordinal(), &device_ref));
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
 
     XRTTupleAllocation* allocation;
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::CreateAndTransfer(
@@ -393,6 +391,56 @@ class XRTReadLiteralOp : public OpKernel {
   }
 };
 
+// Op that writes a new literal value into device-resident memory.
+template <class DeviceAccessor>
+class XRTWriteLiteralOp : public OpKernel {
+ public:
+  explicit XRTWriteLiteralOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  ~XRTWriteLiteralOp() override = default;
+  XRTWriteLiteralOp(const XRTWriteLiteralOp&) = delete;
+  XRTWriteLiteralOp& operator=(const XRTWriteLiteralOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTWriteLiteralOp::Compute";
+
+    const Tensor& handle_tensor = ctx->input(0);
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(handle_tensor.shape()),
+        errors::Internal("computation input should be an int64 scalar"));
+    int64 allocation_handle = handle_tensor.scalar<int64>()();
+
+    const Tensor& literal_info = ctx->input(1);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(literal_info.shape()),
+                errors::Internal("literal input should be a string scalar"));
+    xla::LiteralProto literal_proto;
+    OP_REQUIRES(ctx,
+                literal_proto.ParseFromString(literal_info.scalar<string>()()),
+                errors::InvalidArgument(
+                    "Unable to parse allocation input to LiteralProto"));
+    xla::Literal literal;
+    OP_REQUIRES_OK(ctx, XRTStateHelpers::MakeLiteral(literal_proto, &literal));
+
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+
+    XRTTupleAllocation* allocation;
+    OP_REQUIRES_OK(
+        ctx, XRTTupleAllocation::Lookup(rm, allocation_handle, &allocation));
+    core::ScopedUnref allocation_unref(allocation);
+    // We are guaranteed that the underlying device object won't be deleted out
+    // from under us, while the ScopedRef is live.
+    typename DeviceAccessor::ScopedRef device_ref;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(
+                            ctx, allocation->device_ordinal(), &device_ref));
+    OP_REQUIRES_OK(ctx,
+                   allocation->WriteLiteral(device_ref.backend(), literal));
+
+    Tensor output(DT_INT64, TensorShape({}));
+    output.scalar<int64>()() = allocation_handle;
+    ctx->set_output(0, output);
+  }
+};
+
 // Op that discards a handle to device memory.
 template <class DeviceAccessor>
 class XRTReleaseAllocationOp : public OpKernel {
@@ -405,17 +453,37 @@ class XRTReleaseAllocationOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReleaseAllocationOp::Compute";
 
-    const Tensor& allocation_handle = ctx->input(0);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(allocation_handle.shape()),
-                errors::Internal("handle input should be an int64 scalar"));
-    int64 key = allocation_handle.scalar<int64>()();
-
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
-    OP_REQUIRES_OK(ctx, XRTTupleAllocation::DeleteFromResourceManager(rm, key));
+    const Tensor& allocation_handle = ctx->input(0);
+    auto flat_keys = allocation_handle.flat<int64>();
+    for (int64 i = 0; i < flat_keys.size(); ++i) {
+      int64 key = flat_keys(i);
+      OP_REQUIRES_OK(ctx,
+                     XRTTupleAllocation::DeleteFromResourceManager(rm, key));
+      VLOG(2) << "Released allocation handle " << key;
+    }
+  }
+};
 
-    VLOG(2) << "Released allocation handle " << key;
+// Op that discards a handle to device memory.
+template <class DeviceAccessor>
+class XRTReleaseAllAllocationsOp : public OpKernel {
+ public:
+  explicit XRTReleaseAllAllocationsOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  ~XRTReleaseAllAllocationsOp() override = default;
+  XRTReleaseAllAllocationsOp(const XRTReleaseAllAllocationsOp&) = delete;
+  XRTReleaseAllAllocationsOp& operator=(const XRTReleaseAllAllocationsOp&) =
+      delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTReleaseAllAllocationsOp::Compute";
+
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+    OP_REQUIRES_OK(ctx, XRTTupleAllocation::ReleaseAllAllocations(rm));
   }
 };
 

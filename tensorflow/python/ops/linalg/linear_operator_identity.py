@@ -76,8 +76,8 @@ class BaseLinearOperatorIdentity(linear_operator.LinearOperator):
 
   def _min_matrix_dim(self):
     """Minimum of domain/range dimension, if statically available, else None."""
-    domain_dim = self.domain_dimension.value
-    range_dim = self.range_dimension.value
+    domain_dim = tensor_shape.dimension_value(self.domain_dimension)
+    range_dim = tensor_shape.dimension_value(self.range_dimension)
     if domain_dim is None or range_dim is None:
       return None
     return min(domain_dim, range_dim)

@@ -1,0 +1,112 @@
+upper_tabs:
+# Tabs left of dropdown menu
+- include: /_upper_tabs_left.yaml
+- include: /api_docs/_upper_tabs_api.yaml
+# Dropdown menu
+- name: Resources
+  path: /resources
+  is_default: true
+  menu:
+  - include: /resources/_menu_toc.yaml
+  lower_tabs:
+    # Subsite tabs
+    other:
+    - name: Guide
+      contents:
+      - title: Overview
+        path: /lite/overview
+      - title: Developer guide
+        path: /lite/devguide
+      - title: Android demo app
+        path: /lite/demo_android
+      - title: iOS demo app
+        path: /lite/demo_ios
+      - break: true
+      - title: TensorFlow Lite APIs
+        path: /lite/apis
+      - title: Custom operators
+        path: /lite/custom_operators
+      - title: TensorFlow Lite ops versioning
+        path: /lite/ops_versioning
+      - title: TensorFlow Lite compatibility guide
+        path: /lite/tf_ops_compatibility
+      - title: List of hosted models
+        path: /lite/models
+      - title: TensorFlow Lite for iOS
+        path: /lite/ios
+      - title: TensorFlow Lite for Raspberry Pi
+        path: /lite/rpi
+
+      - heading: TF Lite converter
+      - title: Overview
+        path: /lite/convert/
+      - title: Python API guide
+        path: /lite/convert/python_api
+      - title: Command line examples
+        path: /lite/convert/cmdline_examples
+      - title: Command line reference
+        path: /lite/convert/cmdline_reference
+
+      - heading: Performance
+      - title: Best practices
+        path: /lite/performance/best_practices
+      - title: Benchmarks
+        path: /lite/performance/benchmarks
+      - title: Model optimization
+        path: /lite/performance/model_optimization
+      - title: Post-training quantization
+        path: /lite/performance/post_training_quantization
+      - title: Post-training quantization example
+        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
+        status: external
+
+      - title: TF Mobile
+        style: accordion
+        status: deprecated
+        section:
+        - title: Overview
+          path: /lite/tfmobile/
+        - title: Building TensorFlow on Android
+          path: /lite/tfmobile/android_build
+        - title: Building TensorFlow on IOS
+          path: /lite/tfmobile/ios_build
+        - title: Integrating TensorFlow libraries
+          path: /lite/tfmobile/linking_libs
+        - title: Preparing models for mobile deployment
+          path: /lite/tfmobile/prepare_models
+        - title: Optimizing for mobile
+          path: /lite/tfmobile/optimizing
+
+    # - name: Models
+    #   contents:
+    #   - title: Overview
+    #     path: /lite/models/
+    #   - heading: Beginner
+    #     style: divider
+    #   - title: Image labeling
+    #     section:
+    #     - title: Overview
+    #       path: /lite/models/image/label/overview
+    #     - title: Android
+    #       path: /lite/models/image/label/android
+    #     - title: iOS
+    #       path: /lite/models/image/label/ios
+    #   - heading: Advanced
+    #     style: divider
+    #   - heading: Image
+    #   - title: Image classification
+    #     path: /lite/models/image/classification/
+    #   - heading: Audio
+    #   - title: Hot word detection
+    #     path: /lite/models/audio/hot_word/
+    #   - heading: Text
+    #   - title: Text classification
+    #     path: /lite/models/text/classification/
+
+    - name: API
+      skip_translation: true
+      contents:
+      - title: API
+        path: /api_docs/python/tf/lite
+
+- include: /_upper_tabs_right.yaml

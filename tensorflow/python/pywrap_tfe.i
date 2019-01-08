@@ -67,9 +67,13 @@ limitations under the License.
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
 %rename("%s") TFE_Py_RegisterVSpace;
+%rename("%s") TFE_Py_EncodeArg;
+%rename("%s") TFE_EnableCollectiveOps;
+%rename("%s") TF_PickUnusedPortOrDie;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/c/c_api_experimental.h"
 %}
 
 %typemap(in) (const void* proto) {
@@ -208,6 +212,7 @@ limitations under the License.
     SWIG_fail;
   } else {
     int num_outputs = $1->size();
+    Py_CLEAR($result);
     $result = PyList_New(num_outputs);
     for (int i = 0; i < num_outputs; ++i) {
       PyObject *output;
@@ -224,6 +229,7 @@ limitations under the License.
 %native(TFE_Py_FastPathExecute) TFE_Py_FastPathExecute_C;
 
 %include "tensorflow/python/eager/pywrap_tfe.h"
+%include "tensorflow/c/c_api_experimental.h"
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;

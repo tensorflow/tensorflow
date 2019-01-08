@@ -103,6 +103,7 @@ limitations under the License.
 #include <iterator>
 #include <type_traits>
 
+#include "absl/base/macros.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -113,10 +114,10 @@ namespace tensorflow {
 
 namespace internal {
 
-// DEPRECATED: Use GetFeature instead.
 // TODO(gorban): Update all clients in a followup CL.
 // Returns a reference to a feature corresponding to the name.
 // Note: it will create a new Feature if it is missing in the example.
+ABSL_DEPRECATED("Use GetFeature instead.")
 Feature& ExampleFeature(const string& name, Example* example);
 
 // Specializations of RepeatedFieldTrait define a type of RepeatedField
@@ -314,9 +315,9 @@ bool HasFeature(const string& key, const Example& example) {
   return HasFeature<FeatureType...>(key, GetFeatures(example));
 }
 
-// DEPRECATED: use HasFeature instead.
 // TODO(gorban): update all clients in a followup CL.
 template <typename... FeatureType>
+ABSL_DEPRECATED("Use HasFeature instead.")
 bool ExampleHasFeature(const string& key, const Example& example) {
   return HasFeature<FeatureType...>(key, example);
 }

@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -374,26 +376,57 @@ struct AllocatorAttributes {
 };
 
 // Returns a trivial implementation of Allocator, which is a process singleton.
-// Access through this function is only intended for use in tests and auxiliary
-// processing.  Performance sensitive uses should always obtain allocators from
-// ProcessState.
-Allocator* cpu_allocator();
+// Access through this function is only intended for use by restricted parts
+// of the infrastructure.
+Allocator* cpu_allocator_base();
+
+// If available, calls ProcessState::GetCPUAllocator(numa_node).
+// If not, falls back to cpu_allocator_base().
+// Intended for use in contexts where ProcessState is not visible at
+// compile time. Where ProcessState is visible, it's preferable to
+// call it directly.
+Allocator* cpu_allocator(int numa_node = port::kNUMANoAffinity);
 
 // If 'enable' is true, the default CPU allocator implementation will collect
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
+bool CPUAllocatorStatsEnabled();
 
 // If 'enable' is true, the default CPU allocator implementation will collect
 // full statistics. By default, it's disabled.
 void EnableCPUAllocatorFullStats(bool enable);
+bool CPUAllocatorFullStatsEnabled();
 
-// Abstract interface of an object that does the underlying suballoc/free of
-// memory for a higher-level allocator.
+// An object that does the underlying suballoc/free of memory for a higher-level
+// allocator.  The expectation is that the higher-level allocator is doing some
+// kind of cache or pool management so that it will call SubAllocator::Alloc and
+// Free relatively infrequently, compared to the number of times its own
+// AllocateRaw and Free methods are called.
 class SubAllocator {
  public:
+  // Visitor gets called with a pointer to a memory area and its
+  // size in bytes.  The index value will be numa_node for a CPU
+  // allocator and GPU id for a GPU allocator.
+  typedef std::function<void(void*, int index, size_t)> Visitor;
+
+  SubAllocator(const std::vector<Visitor>& alloc_visitors,
+               const std::vector<Visitor>& free_visitors);
+
   virtual ~SubAllocator() {}
   virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;
+
+ protected:
+  // Implementation of Alloc() method must call this on newly allocated
+  // value.
+  void VisitAlloc(void* ptr, int index, size_t num_bytes);
+
+  // Implementation of Free() method must call this on value to be
+  // freed immediately before deallocation.
+  void VisitFree(void* ptr, int index, size_t num_bytes);
+
+  const std::vector<Visitor> alloc_visitors_;
+  const std::vector<Visitor> free_visitors_;
 };
 
 }  // namespace tensorflow

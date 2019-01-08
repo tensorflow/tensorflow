@@ -346,7 +346,8 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
           [&](HloInstruction* indvar,
               const std::vector<HloInstruction*>& loop_state) {
             return GatherLoopBody(*gather_instr, indvar, loop_state);
-          });
+          },
+          gather_instr->metadata());
 
   TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> gather_loop_result,
                       gather_loop_result_or_error);

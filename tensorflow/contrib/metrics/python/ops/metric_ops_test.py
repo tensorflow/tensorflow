@@ -2069,11 +2069,11 @@ class StreamingDynamicAUCTest(test.TestCase):
     num_batches = 100
     labels = np.array([])
     predictions = np.array([])
-    tf_labels = variables.Variable(
+    tf_labels = variables.VariableV1(
         array_ops.ones(batch_size, dtypes_lib.int32),
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=dtypes_lib.int32)
-    tf_predictions = variables.Variable(
+    tf_predictions = variables.VariableV1(
         array_ops.ones(batch_size),
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=dtypes_lib.float32)
@@ -2133,15 +2133,15 @@ class StreamingDynamicAUCTest(test.TestCase):
     labels = np.array([])
     predictions = np.array([])
     weights = np.array([])
-    tf_labels = variables.Variable(
+    tf_labels = variables.VariableV1(
         array_ops.ones(batch_size, dtypes_lib.int32),
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=dtypes_lib.int32)
-    tf_predictions = variables.Variable(
+    tf_predictions = variables.VariableV1(
         array_ops.ones(batch_size),
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=dtypes_lib.float32)
-    tf_weights = variables.Variable(
+    tf_weights = variables.VariableV1(
         array_ops.ones(batch_size),
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=dtypes_lib.float32)
@@ -2311,10 +2311,11 @@ class AucWithConfidenceIntervalsTest(test.TestCase):
     num_batches = 100
     labels = np.array([])
     predictions = np.array([])
-    tf_labels = variables.Variable(array_ops.ones(batch_size, dtypes_lib.int32),
-                                   collections=[ops.GraphKeys.LOCAL_VARIABLES],
-                                   dtype=dtypes_lib.int32)
-    tf_predictions = variables.Variable(
+    tf_labels = variables.VariableV1(
+        array_ops.ones(batch_size, dtypes_lib.int32),
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=dtypes_lib.int32)
+    tf_predictions = variables.VariableV1(
         array_ops.ones(batch_size),
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=dtypes_lib.float32)

@@ -878,7 +878,7 @@ class Conv2DTest(test.TestCase):
     x2 = [f * 1.0 for f in range(1, total_filter_size + 1)]
     default_dilations = (dilations[0] == 1 and dilations[1] == 1)
     if default_dilations or use_gpu:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         if data_format == "NCHW":
           input_sizes = test_util.NHWCToNCHW(input_sizes)
         t1 = constant_op.constant(x1, shape=input_sizes)
@@ -908,8 +908,8 @@ class Conv2DTest(test.TestCase):
         conv = gradients_impl.gradients(conv_forward, t1)[0]
         conv_2 = gradients_impl.gradients(conv_forward_2, t1)[0]
         # "values" consists of two tensors for two backprops
-        value = sess.run(conv)
-        value_2 = sess.run(conv_2)
+        value = self.evaluate(conv)
+        value_2 = self.evaluate(conv_2)
         self.assertShapeEqual(value, conv)
         self.assertShapeEqual(value_2, conv_2)
       tf_logging.info("expected = ", value_2)
@@ -932,7 +932,7 @@ class Conv2DTest(test.TestCase):
     x2 = [f * 1.0 for f in range(1, total_filter_size + 1)]
     default_dilations = (dilations[0] == 1 and dilations[1] == 1)
     if default_dilations or use_gpu:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         if data_format == "NCHW":
           input_sizes = test_util.NHWCToNCHW(input_sizes)
         t1 = constant_op.constant(x1, shape=input_sizes)
@@ -961,8 +961,8 @@ class Conv2DTest(test.TestCase):
           conv_forward_2 = test_util.NCHWToNHWC(conv_forward_2)
         conv = gradients_impl.gradients(conv_forward, t2)[0]
         conv_2 = gradients_impl.gradients(conv_forward, t2)[0]
-        value = sess.run(conv)
-        value_2 = sess.run(conv_2)
+        value = self.evaluate(conv)
+        value_2 = self.evaluate(conv_2)
         self.assertShapeEqual(value, conv)
         self.assertShapeEqual(value_2, conv_2)
       tf_logging.info("expected = ", value_2)
@@ -1139,7 +1139,7 @@ class Conv2DTest(test.TestCase):
     # So we disable the DOUBLE path.  We should re-enable this
     # when double support returns for CPU and/or GPU.
     for dtype in self._DtypesToTest(use_gpu=use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         input_tensor = constant_op.constant(
             input_data, shape=input_shape, dtype=dtype, name="input")
         filter_tensor = constant_op.constant(
@@ -1545,7 +1545,7 @@ class DepthwiseConv2DTest(test.TestCase):
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       conv = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     tf_logging.info("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
@@ -1644,7 +1644,7 @@ class SeparableConv2DTest(test.TestCase):
       expected: An array containing the expected operation outputs.
       data_format: string data format for input tensor.
     """
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       t1 = self._InitValues(tensor_in_sizes)
       f1 = self._InitValues(depthwise_filter_in_sizes)
       f1.set_shape(depthwise_filter_in_sizes)
@@ -1667,9 +1667,9 @@ class SeparableConv2DTest(test.TestCase):
       if data_format == "NCHW":
         conv = array_ops.transpose(conv, [0, 2, 3, 1])
 
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     tf_logging.info("value = ", value)
-    self.assertArrayNear(expected, np.ravel(value), 1e-5)
+    self.assertArrayNear(expected, np.ravel(value), 1e-3)
     self.assertShapeEqual(value, conv)
 
   def _testSeparableConv2D(self, data_format):
@@ -1766,7 +1766,7 @@ class DeepConv2DTest(test.TestCase):
     x1 = np.random.rand(*tensor_in_sizes).astype(np.float32)
     x2 = np.random.rand(*filter_in_sizes).astype(np.float32)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       strides = [1] + conv_strides + [1]
@@ -1774,10 +1774,10 @@ class DeepConv2DTest(test.TestCase):
       conv = nn_ops.conv2d(t1, t2, strides=strides, padding=padding)
 
       os.environ["TF_USE_DEEP_CONV2D"] = "0"
-      values_expect = sess.run([conv])
+      values_expect = self.evaluate([conv])
 
       os.environ["TF_USE_DEEP_CONV2D"] = "1"
-      values_test = sess.run([conv])
+      values_test = self.evaluate([conv])
 
       self.assertAllClose(values_expect, values_test, rtol=1e-5, atol=1e-5)
 

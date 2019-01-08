@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class WindowDatasetOp : public UnaryDatasetOpKernel {
@@ -98,6 +98,15 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
                              window_stride_, drop_remainder_, ")::Dataset");
     }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / window_shift_ +
+             (n % window_shift_ == 0 || drop_remainder_ ? 0 : 1);
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -155,6 +164,7 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
               Status status =
                   input_impl_->GetNext(ctx, &element, end_of_sequence);
               if (!*end_of_sequence) {
+                RecordBufferEnqueue(ctx, element);
                 buffer_.emplace_back(std::move(element), status);
               } else {
                 input_impl_.reset();
@@ -192,8 +202,14 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
                 input_impl_.reset();
               }
             }
+            for (size_t i = 0; i < buffer_.size(); ++i) {
+              RecordBufferDequeue(ctx, buffer_.at(i).result);
+            }
             buffer_.clear();
           } else {
+            for (size_t i = 0; i < window_shift; ++i) {
+              RecordBufferDequeue(ctx, buffer_.at(i).result);
+            }
             buffer_.erase(buffer_.begin(), buffer_.begin() + window_shift);
           }
         }
@@ -232,6 +248,12 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         dataset()->window_shift_);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (!input_impl_) {

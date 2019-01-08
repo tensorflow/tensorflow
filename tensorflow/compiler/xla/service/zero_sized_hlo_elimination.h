@@ -21,7 +21,7 @@ limitations under the License.
 
 // HLO pass that replaces zero sized Hlos with a zero sized constant literal.
 namespace xla {
-class ZeroSizedHloElimination : public HloPassInterface {
+class ZeroSizedHloElimination : public HloModulePass {
  public:
   StatusOr<bool> Run(HloModule* module) override;
   absl::string_view name() const override {

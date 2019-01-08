@@ -20,12 +20,14 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class SparseMaskTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     values = np.random.rand(4, 4).astype(np.single)
     indices = np.array([0, 2, 3, 4], dtype=np.int32)

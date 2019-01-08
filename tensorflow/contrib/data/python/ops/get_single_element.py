@@ -19,13 +19,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import grouping
+from tensorflow.python.data.experimental.ops import get_single_element as experimental_get_single_element
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util import deprecation
 
 
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.get_single_element(...)`.")
 def get_single_element(dataset):
   """Returns the single element in `dataset` as a nested structure of tensors.
 
@@ -61,18 +61,10 @@ def get_single_element(dataset):
     InvalidArgumentError (at runtime): if `dataset` does not contain exactly
       one element.
   """
-  if not isinstance(dataset, dataset_ops.Dataset):
-    raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
-
-  nested_ret = nest.pack_sequence_as(
-      dataset.output_types, gen_dataset_ops.dataset_to_single_element(
-          dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          **dataset_ops.flat_structure(dataset)))
-  return sparse.deserialize_sparse_tensors(
-      nested_ret, dataset.output_types, dataset.output_shapes,
-      dataset.output_classes)
+  return experimental_get_single_element.get_single_element(dataset)
 
 
+@deprecation.deprecated(None, "Use `tf.data.Dataset.reduce(...)`.")
 def reduce_dataset(dataset, reducer):
   """Returns the result of reducing the `dataset` using `reducer`.
 
@@ -90,11 +82,4 @@ def reduce_dataset(dataset, reducer):
   if not isinstance(dataset, dataset_ops.Dataset):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
-  # The sentinel dataset is used in case the reduced dataset is empty.
-  sentinel_dataset = dataset_ops.Dataset.from_tensors(
-      reducer.finalize_func(reducer.init_func(np.int64(0))))
-  reduced_dataset = dataset.apply(
-      grouping.group_by_reducer(lambda x: np.int64(0), reducer))
-
-  return get_single_element(
-      reduced_dataset.concatenate(sentinel_dataset).take(1))
+  return dataset.reduce(reducer.init_func(np.int64(0)), reducer.reduce_func)

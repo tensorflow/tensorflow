@@ -32,7 +32,7 @@ namespace test {
 namespace graph {
 
 // Converts "g" into its corresponding GraphDef "def".
-// DEPRECATED: call g->ToGraphDef(def) instead.
+ABSL_DEPRECATED("Call g->ToGraphDef(def) instead.")
 void ToGraphDef(Graph* g, GraphDef* def);
 
 // A few helpers to construct a graph.
@@ -67,6 +67,10 @@ Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
 Node* Recv(Graph* g, const string& tensor, const string& type,
            const string& sender, const uint64 sender_incarnation,
            const string& receiver);
+
+// Adds a cumsum "node" in "g" doing cumsum(data, axes).
+Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive = false,
+             bool reverse = false);
 
 // Adds a reduction "node" in "g" doing sum(data, axes).  "reduce" is
 // a reduction, e.g., Sum, Max, Min, Mean, etc.

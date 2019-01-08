@@ -23,11 +23,15 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -253,6 +257,76 @@ TEST(SetNodeShardingFromNeighbors, Basic) {
   TF_ASSERT_OK(parse_status.status());
   ASSERT_TRUE(parse_status.ValueOrDie().has_value());
   EXPECT_EQ(1, parse_status.ValueOrDie().value().tile_assignment_devices(0));
+}
+
+REGISTER_OP("One")
+    .Output("y: T")
+    .Attr("T: {float, double, int32, int64}")
+    .Doc(R"doc(
+Returns a tensor with a single element (1) of type T.
+
+y: A scalar in type T.
+
+)doc");
+
+// Tests that CachedFunctionHandles class works.
+TEST(CachedFunctionHandles, Basic) {
+  FunctionDef func = FunctionDefHelper::Define(
+      // Name
+      "TestFunc",
+      // Args
+      {},
+      // Return values
+      {"y:T"},
+      // Attr def
+      {"T:{float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"y"}, "One", {}, {{"T", "$T"}}},
+      });
+  FunctionDefLibrary proto;
+  *proto.add_function() = func;
+  FunctionLibraryDefinition fld(OpRegistry::Global(), proto);
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(
+          /*device_mgr=*/nullptr, Env::Default(), TF_GRAPH_DEF_VERSION, &fld,
+          OptimizerOptions()));
+  FunctionLibraryRuntime* flr =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+
+  CachedFunctionHandles cached_function_handles(flr);
+
+  // Tests that GetOrInstantiate() works.
+  FunctionLibraryRuntime::Handle first_handle;
+  AttrValue attr;
+  attr.set_type(DT_FLOAT);
+  AttrValueMap attrs;
+  attrs["T"] = attr;
+  TF_ASSERT_OK(cached_function_handles.GetOrInstantiate(
+      "TestFunc", AttrSlice(&attrs), &first_handle));
+
+  // Tests that we can get FunctionBody.
+  const FunctionBody* body = flr->GetFunctionBody(first_handle);
+  EXPECT_NE(body, nullptr);
+
+  // Tests that GetOrInstantiate() returns cached handle when called with same
+  // function name and attributes.
+  FunctionLibraryRuntime::Handle second_handle;
+  TF_ASSERT_OK(cached_function_handles.GetOrInstantiate(
+      "TestFunc", AttrSlice(&attrs), &second_handle));
+  EXPECT_EQ(first_handle, second_handle);
+
+  // Tests that GetOrInstantiate() returns new handle when called with same
+  // function name but different attributes.
+  attr.set_type(DT_INT32);
+  attrs["T"] = attr;
+  FunctionLibraryRuntime::Handle third_handle;
+  TF_ASSERT_OK(cached_function_handles.GetOrInstantiate(
+      "TestFunc", AttrSlice(&attrs), &third_handle));
+  EXPECT_NE(first_handle, third_handle);
+
+  // Tests that ReleaseAllHandles() works.
+  TF_EXPECT_OK(cached_function_handles.ReleaseAllHandles());
 }
 
 }  // namespace

@@ -61,6 +61,32 @@ class BigtableTestClient : public ::google::cloud::bigtable::DataClient {
   MutateRows(grpc::ClientContext* context,
              google::bigtable::v2::MutateRowsRequest const& request) override;
 
+  std::unique_ptr<grpc::ClientAsyncResponseReaderInterface<
+      google::bigtable::v2::MutateRowResponse>>
+  AsyncMutateRow(grpc::ClientContext* context,
+                 google::bigtable::v2::MutateRowRequest const& request,
+                 grpc::CompletionQueue* cq) override;
+
+  std::unique_ptr<::grpc::ClientAsyncReaderInterface<
+      ::google::bigtable::v2::SampleRowKeysResponse>>
+  AsyncSampleRowKeys(
+      ::grpc::ClientContext* context,
+      const ::google::bigtable::v2::SampleRowKeysRequest& request,
+      ::grpc::CompletionQueue* cq, void* tag) override;
+
+  std::unique_ptr<::grpc::ClientAsyncReaderInterface<
+      ::google::bigtable::v2::MutateRowsResponse>>
+  AsyncMutateRows(::grpc::ClientContext* context,
+                  const ::google::bigtable::v2::MutateRowsRequest& request,
+                  ::grpc::CompletionQueue* cq, void* tag) override;
+
+  std::unique_ptr<grpc::ClientAsyncResponseReaderInterface<
+      google::bigtable::v2::CheckAndMutateRowResponse>>
+  AsyncCheckAndMutateRow(
+      grpc::ClientContext* context,
+      const google::bigtable::v2::CheckAndMutateRowRequest& request,
+      grpc::CompletionQueue* cq) override;
+
   std::shared_ptr<grpc::Channel> Channel() override;
 
  private:

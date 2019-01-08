@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Named tuples for TFGAN.
+"""Named tuples for TF-GAN.
 
-TFGAN training occurs in four steps, and each step communicates with the next
-step via one of these named tuples. At each step, you can either use a TFGAN
+TF-GAN training occurs in four steps, and each step communicates with the next
+step via one of these named tuples. At each step, you can either use a TF-GAN
 helper function in `train.py`, or you can manually construct a tuple.
 """
 
@@ -91,9 +91,9 @@ class InfoGANModel(
     structured_generator_inputs: A list of Tensors representing the random noise
       that must  have high mutual information with the generator output. List
       length should match `predicted_distributions`.
-    predicted_distributions: A list of tf.Distributions. Predicted by the
-      recognizer, and used to evaluate the likelihood of the structured noise.
-      List length should match `structured_generator_inputs`.
+    predicted_distributions: A list of `tfp.distributions.Distribution`s.
+      Predicted by the recognizer, and used to evaluate the likelihood of the
+      structured noise. List length should match `structured_generator_inputs`.
     discriminator_and_aux_fn: The original discriminator function that returns
       a tuple of (logits, `predicted_distributions`).
   """
@@ -213,7 +213,8 @@ class GANTrainOps(
     collections.namedtuple('GANTrainOps', (
         'generator_train_op',
         'discriminator_train_op',
-        'global_step_inc_op'
+        'global_step_inc_op',
+        'train_hooks'
     ))):
   """GANTrainOps contains the training ops.
 
@@ -221,7 +222,16 @@ class GANTrainOps(
     generator_train_op: Op that performs a generator update step.
     discriminator_train_op: Op that performs a discriminator update step.
     global_step_inc_op: Op that increments the shared global step.
+    train_hooks: a list or tuple containing hooks related to training that need
+      to be populated when training ops are instantiated. Used primarily for
+      sync hooks.
   """
+
+  def __new__(cls, generator_train_op, discriminator_train_op,
+              global_step_inc_op, train_hooks=()):
+    return super(GANTrainOps, cls).__new__(cls, generator_train_op,
+                                           discriminator_train_op,
+                                           global_step_inc_op, train_hooks)
 
 
 class GANTrainSteps(

@@ -159,7 +159,7 @@ GrpcRPCFactory::ChannelPtr GrpcRPCFactory::CreateChannelForAddress(
 
   // Set a standard backoff timeout of 1s instead of the
   // (sometimes default) 20s.
-  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
   return ::grpc::CreateCustomChannel(
       /*target=*/address, ::grpc::InsecureChannelCredentials(), args);
 }
@@ -206,11 +206,11 @@ void GrpcRPCFactory::StartCall(const Tensor& address_t, const Tensor& method_t,
 
   int index = call->index();
   // This object will delete itself when done.
-  new RPCState<string>(get_stub(index), &completion_queue_,
-                       *get_method_ptr(index), call->request(),
-                       call->response(),
-                       /*done=*/[call](const Status& s) { call->Done(s); },
-                       call->call_opts(), fail_fast_, timeout_in_ms_);
+  new RPCState<string>(
+      get_stub(index), &completion_queue_, *get_method_ptr(index),
+      call->request(), call->response(),
+      /*done=*/[call](const Status& s) { call->Done(s); }, call->call_opts(),
+      nullptr /*threadpool*/, fail_fast_, timeout_in_ms_);
 }
 
 }  // namespace tensorflow

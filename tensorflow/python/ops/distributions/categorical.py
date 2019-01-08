@@ -29,6 +29,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -58,7 +59,7 @@ def _broadcast_cat_event_and_params(event, params, base_dtype):
   return event, params
 
 
-@tf_export("distributions.Categorical")
+@tf_export(v1=["distributions.Categorical"])
 class Categorical(distribution.Distribution):
   """Categorical distribution.
 
@@ -149,6 +150,14 @@ class Categorical(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(
       self,
       logits=None,
@@ -205,9 +214,9 @@ class Categorical(distribution.Distribution):
           self._batch_rank = array_ops.rank(self._logits) - 1
 
       logits_shape = array_ops.shape(self._logits, name="logits_shape")
-      if logits_shape_static[-1].value is not None:
+      if tensor_shape.dimension_value(logits_shape_static[-1]) is not None:
         self._event_size = ops.convert_to_tensor(
-            logits_shape_static[-1].value,
+            logits_shape_static.dims[-1].value,
             dtype=dtypes.int32,
             name="event_size")
       else:

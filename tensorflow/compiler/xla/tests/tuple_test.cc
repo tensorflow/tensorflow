@@ -515,7 +515,7 @@ class TupleHloTest : public HloTestBase {};
 // Disabled on the interpreter because bitcast doesn't exist on the interpreter.
 XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   const char* testcase = R"(
-    HloModule m
+    HloModule m, is_scheduled=true
 
     ENTRY test {
       name.1 = (f32[3]{0}) parameter(0)
@@ -555,8 +555,8 @@ XLA_TEST_F(TupleHloTest,
       s = (f32[2],f32[2]) tuple-select(cond, tup0, tup1)
       gte = f32[2] get-tuple-element(s), index=0
       tuple = (f32[2]) tuple(gte)
-      token = token[] after-all()
-      ROOT outfeed = token[] outfeed(tuple, token)
+      token0 = token[] after-all()
+      ROOT outfeed = token[] outfeed(tuple, token0)
     }
   )";
   auto module =

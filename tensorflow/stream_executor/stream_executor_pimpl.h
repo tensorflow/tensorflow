@@ -22,9 +22,9 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -81,8 +81,8 @@ class StreamExecutor {
   port::Status Init();
   port::Status Init(int device_ordinal, DeviceOptions device_options);
 
-  // DEPRECATED: Do not use; use platform() instead.
   // Returns the platform that this StreamExecutor is acting upon.
+  ABSL_DEPRECATED("Use platform() instead.")
   PlatformKind platform_kind() const { return platform_kind_; }
 
   // Returns a reference to the platform that created this executor.
@@ -255,15 +255,15 @@ class StreamExecutor {
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the host source to the device destination.
-  //
-  // Deprecation: prefer explicit H2D below, to avoid error-prone API usage.
+  ABSL_DEPRECATED(
+      "Prefer SynchronousMemcpyH2D, to avoid error-prone API usage.")
   bool SynchronousMemcpy(DeviceMemoryBase *device_dst, const void *host_src,
                          uint64 size) SE_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the device source to the host destination.
-  //
-  // Deprecation: prefer explicit D2H below, to avoid error-prone API usage.
+  ABSL_DEPRECATED(
+      "Prefer SynchronousMemcpyD2H, to avoid error-prone API usage.")
   bool SynchronousMemcpy(void *host_dst, const DeviceMemoryBase &device_src,
                          uint64 size) SE_MUST_USE_RESULT;
 
@@ -413,8 +413,14 @@ class StreamExecutor {
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type);
+
+  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+                                    int data_size,
+                                    const absl::Span<const int> &seq_lengths,
+                                    dnn::DataType data_type);
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.

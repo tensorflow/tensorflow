@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -56,7 +55,7 @@ xla::XlaOp ArgMinMax(xla::XlaOp input, xla::PrimitiveType output_type, int axis,
 
     xla::XlaOp input_max = xla::Reduce(input, init_value, reducer,
                                        /*dimensions_to_reduce=*/{axis});
-    std::vector<int64> broadcast_dims(xla::ShapeUtil::Rank(input_shape) - 1);
+    std::vector<int64> broadcast_dims(input_shape.rank() - 1);
     std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
     std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
     // Compute a mask that has 1s for elements equal to the maximum.
@@ -121,7 +120,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
 /* static */ Status XlaHelpers::ReshapeLiteral(
     const xla::Literal& input, absl::Span<const int64> dimensions,
     xla::Literal* output) {
-  if (xla::ShapeUtil::IsTuple(input.shape())) {
+  if (input.shape().IsTuple()) {
     return errors::InvalidArgument("ReshapeLiteral does not support tuples.");
   }
   xla::Shape shape =
@@ -216,8 +215,7 @@ DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
   return dtype;
 }
 
-xla::XlaOp XlaHelpers::ConvertElementType(xla::XlaBuilder* const builder,
-                                          const xla::XlaOp& operand,
+xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
                                           const DataType new_element_type) {
   xla::PrimitiveType convert_to;
   TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));

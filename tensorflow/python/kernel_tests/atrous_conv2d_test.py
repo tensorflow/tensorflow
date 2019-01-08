@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_impl
@@ -58,8 +59,9 @@ def _upsample_filters(filters, rate):
 
 class AtrousConv2DTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAtrousConv2DForward(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       height = 9
       for width in [9, 10]:  # Test both odd and even width.
@@ -79,8 +81,10 @@ class AtrousConv2DTest(test.TestCase):
                 y1 = nn_ops.atrous_conv2d(x, f, rate, padding=padding)
                 y2 = nn_ops.conv2d(
                     x, f_up, strides=[1, 1, 1, 1], padding=padding)
-                self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
+                self.assertAllClose(
+                    y1.eval(), self.evaluate(y2), rtol=1e-3, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testAtrousSequence(self):
     """Tests optimization of sequence of atrous convolutions.
 
@@ -105,7 +109,7 @@ class AtrousConv2DTest(test.TestCase):
     padding = "SAME"  # The padding needs to be "SAME"
     np.random.seed(1)  # Make it reproducible.
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       for height in range(15, 17):
         for width in range(15, 17):
@@ -131,10 +135,12 @@ class AtrousConv2DTest(test.TestCase):
               y2 = nn_ops.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
               y2 = nn_ops.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
               y2 = array_ops.batch_to_space(y2, crops=pad, block_size=rate)
-              self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-2, atol=1e-2)
+              self.assertAllClose(
+                  y1.eval(), self.evaluate(y2), rtol=1e-2, atol=1e-2)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       x_shape = [2, 5, 6, 2]
       # Filter: [kernel_height, kernel_width, input_depth, output_depth]
@@ -160,8 +166,9 @@ class AtrousConv2DTest(test.TestCase):
 
 class AtrousConv2DTransposeTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAtrousConv2DTransposeForward(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       height = 9
       for width in [9, 10]:  # Test both odd and even width.
@@ -193,14 +200,16 @@ class AtrousConv2DTransposeTest(test.TestCase):
                                                     padding)
                 y2 = nn_ops.conv2d_transpose(
                     x, f_up, y_shape, strides=[1, 1, 1, 1], padding=padding)
-                self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
+                self.assertAllClose(
+                    y1.eval(), self.evaluate(y2), rtol=1e-3, atol=1e-3)
 
 
 class AtrousDepthwiseConv2DTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAtrousDepthwiseConv2DForward(self):
     strides = [1, 1, 1, 1]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       height = 9
       for width in [9, 10]:  # Test both odd and even width.
@@ -220,7 +229,8 @@ class AtrousDepthwiseConv2DTest(test.TestCase):
                 y1 = nn_impl.depthwise_conv2d(
                     x, f, strides, padding, rate=[rate, rate])
                 y2 = nn_impl.depthwise_conv2d(x, f_up, strides, padding)
-                self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
+                self.assertAllClose(
+                    y1.eval(), self.evaluate(y2), rtol=1e-3, atol=1e-3)
 
 
 if __name__ == "__main__":

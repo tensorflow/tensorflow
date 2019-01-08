@@ -64,6 +64,7 @@ CollInstanceParams& CollInstanceParams::operator=(
     device_names.assign(other.device_names.begin(), other.device_names.end());
     task_names.assign(other.task_names.begin(), other.task_names.end());
     same_num_devices_per_task = other.same_num_devices_per_task;
+    gpu_ring_order = other.gpu_ring_order;
     impl_details.subdiv_offsets.assign(
         other.impl_details.subdiv_offsets.begin(),
         other.impl_details.subdiv_offsets.end());

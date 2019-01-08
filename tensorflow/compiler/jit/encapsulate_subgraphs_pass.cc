@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/public/session_options.h"
@@ -78,7 +78,8 @@ void SortControlInputs(GraphDef* gdef) {
 namespace {
 
 bool AreAllParentsGuaranteedConst(
-    const Node& n, const gtl::FlatSet<const Node*>& runtime_const_nodes) {
+    const Node& n,
+    const absl::flat_hash_set<const Node*>& runtime_const_nodes) {
   if (n.type_string() == "GuaranteeConst") {
     // If the current node is itself a cast-to-const, no need
     // to look at the incoming edges.
@@ -101,7 +102,7 @@ bool AreAllParentsGuaranteedConst(
 void MarkGuaranteedConstants(
     const Graph& graph,
     const std::vector<std::pair<const Node*, Node*>>& src_arg_pairs) {
-  gtl::FlatSet<const Node*> guaranteed_const_nodes;
+  absl::flat_hash_set<const Node*> guaranteed_const_nodes;
   std::vector<const Node*> srcs;
   srcs.reserve(src_arg_pairs.size());
   for (const auto& src_arg : src_arg_pairs) {
@@ -748,6 +749,12 @@ Node* Encapsulator::Subgraph::MakeNodeImage(const Graph* graph_in, Node* node) {
     graph_->set_versions(graph_in->versions());
   }
 
+  // TODO(b/116981129): Enhance how the device for the encapsulated subgraph is
+  // determined. In case of hard placement, ensure all the encapsulated nodes
+  // have the same requested device, which in turn will be the requested device
+  // for the entire encapsulated subgraph. In case of soft placement, use a
+  // deterministic approach to fill in the requested device. Handle co-location
+  // constraints similarly if they exist.
   if (device_.empty()) {
     device_ = node->assigned_device_name().empty()
                   ? node->requested_device()
@@ -772,7 +779,8 @@ Status Encapsulator::Subgraph::RecordArg(
   if (inserted) {
     NodeDef arg_def;
     NodeDefBuilder builder(
-        absl::StrCat(src_node->name(), "_", src_slot, "_arg"), kArgOp);
+        absl::StrCat(src_node->name(), "_", src_slot, "_arg"), kArgOp,
+        NodeDebugInfo(src_node->def()));
     DataType dtype = edge->dst()->input_type(edge->dst_input());
     builder.Attr("T", dtype);
     builder.Attr("index", arg_index);
@@ -807,7 +815,8 @@ Status Encapsulator::Subgraph::RecordResult(
   if (inserted) {
     NodeDef ret_def;
     NodeDefBuilder builder(
-        absl::StrCat(src_node->name(), "_", src_slot, "_retval"), kRetValOp);
+        absl::StrCat(src_node->name(), "_", src_slot, "_retval"), kRetValOp,
+        NodeDebugInfo(src_node->def()));
     DataType dtype = src_node->output_type(src_slot);
     builder.Attr("T", dtype);
     builder.Attr("index", ret_index);
@@ -967,6 +976,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
       }
 
       NodeDef host_compute_def;
+      // TODO(shikharagarwal): What source node should we use for errors?
       NodeDefBuilder builder(absl::StrCat("outside_compilation_",
                                           oc_subgraph_name, "_host_compute"),
                              kHostComputeOp);
@@ -1033,6 +1043,7 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
                                                   Graph* graph_out) {
   if (sequencer_ == nullptr) {
     NodeDef seq_def;
+    // TODO(shikharagarwal): What source node should we use for errors?
     NodeDefBuilder builder(absl::StrCat(subgraph_name, "_sequencer"), "NoOp");
     builder.Attr(kXlaHostTransferSequencerAttr, subgraph_name);
     builder.Device(device_);
@@ -1102,6 +1113,9 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   function_def_name_ = name;
 
   FunctionDef fdef;
+  // Verify that the graph has well-formed control flow structure.
+  std::vector<ControlFlowInfo> dummy;
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_.get(), &dummy));
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, &fdef));
 
   if (VLOG_IS_ON(1)) {
@@ -1112,8 +1126,11 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
                                       fdef);
   }
 
-  if (!reuse_existing_functions || library->Find(name) == nullptr) {
+  const FunctionDef* original_fdef = library->Find(name);
+  if (!reuse_existing_functions || original_fdef == nullptr) {
     TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+  } else if (!FunctionDefsEqual(*original_fdef, fdef)) {
+    TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
   }
   return Status::OK();
 }
@@ -1201,7 +1218,8 @@ Status Encapsulator::Subgraph::AddHostComputeKeyPlaceholder(
   GraphDefBuilder::Options options(graph_out, /*status=*/nullptr);
   NodeDef key_def;
   NodeDefBuilder builder(
-      absl::StrCat(call_node_def_.name(), "_key_placeholder"), "Placeholder");
+      absl::StrCat(call_node_def_.name(), "_key_placeholder"), "Placeholder",
+      NodeDebugInfo(call_node_def_));
   builder.Attr("dtype", DT_STRING);
   builder.Attr("shape", shape_proto);
   builder.Attr("_host_compute_call_node", call_node_def_.name());
@@ -1235,6 +1253,7 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
   }
 
   NodeDef recv_def;
+  // TODO(shikharagarwal): What source node should we use for errors?
   NodeDefBuilder builder(absl::StrCat("outside_compilation_", subgraph_name,
                                       "_", oc_subgraph_name, "_recv"),
                          kRecvAtHostOp);
@@ -1290,6 +1309,7 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   }
 
   NodeDef send_def;
+  // TODO(shikharagarwal): What source node should we use for errors?
   NodeDefBuilder builder(absl::StrCat("outside_compilation_", subgraph_name,
                                       "_", oc_subgraph_name, "_send"),
                          kSendFromHostOp);
@@ -1357,28 +1377,31 @@ void Encapsulator::Subgraph::GetOutsideCompilationSubgraphNames(
 
 Status Encapsulator::GetFunctionNameAttr(
     Node const* node, string* attr, string* outside_compilation_attr) const {
-  Status s = GetNodeAttr(node->attrs(), group_attribute_, attr);
-  if (s.code() == error::Code::NOT_FOUND) {
-    // Return empty attr if there's no group_attribute.
-    attr->clear();
-  } else {
-    TF_RETURN_IF_ERROR(s);
-  }
-  bool has_group_attr = s.ok();
-  s = GetNodeAttr(node->attrs(), outside_compilation_attribute_,
-                  outside_compilation_attr);
-  if (s.code() == error::Code::NOT_FOUND) {
-    // Return empty attr if there's no outside_compilation attribute.
-    outside_compilation_attr->clear();
-  } else {
-    TF_RETURN_IF_ERROR(s);
-    if (!has_group_attr) {
-      return errors::InvalidArgument(
-          "Node ", node->name(), " has ", outside_compilation_attribute_,
-          " attribute but no ", group_attribute_, " attribute.");
+  AttrSlice attrs = node->attrs();
+  attr->clear();
+  outside_compilation_attr->clear();
+  bool found_group_attribute = false;
+  bool found_outside_compilation_attribute = false;
+  for (const auto& node_attr : attrs) {
+    if (node_attr.first == group_attribute_) {
+      TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
+      *attr = node_attr.second.s();
+      found_group_attribute = true;
+    } else if (node_attr.first == outside_compilation_attribute_) {
+      TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
+      *outside_compilation_attr = node_attr.second.s();
+      found_outside_compilation_attribute = true;
     }
+    if (found_group_attribute && found_outside_compilation_attribute) break;
   }
-  return Status::OK();
+
+  if (found_outside_compilation_attribute && !found_group_attribute) {
+    return errors::InvalidArgument(
+        "Node ", node->name(), " has ", outside_compilation_attribute_,
+        " attribute but no ", group_attribute_, " attribute.");
+  } else {
+    return Status::OK();
+  }
 }
 
 bool IsInSubgraph(const string& func_id, const string& outside_compilation_id) {
@@ -1521,9 +1544,6 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
   for (auto& entry : subgraphs_) {
     Subgraph& subgraph = entry.second;
     FixupSourceAndSinkEdges(subgraph.GetGraph());
-    // Verify that the graph has well-formed control flow structure.
-    std::vector<ControlFlowInfo> dummy;
-    TF_RETURN_IF_ERROR(BuildControlFlowInfo(subgraph.GetGraph(), &dummy));
   }
 
   if (VLOG_IS_ON(1)) {
@@ -1820,8 +1840,9 @@ Node* AddDummyShapedNode(const Node* src_node, int src_port,
   // Add any Enter nodes required to bring the constant to the correct control
   // flow frame.
   while (!control_flow_info[src_node->id()].frame_name.empty()) {
+    NodeDebugInfo debug_info(*src_node);
     NodeBuilder enter_builder(options.GetNameForOp("Enter"), "Enter",
-                              options.op_registry());
+                              options.op_registry(), &debug_info);
     enter_builder.Attr("frame_name",
                        control_flow_info[src_node->id()].frame_name);
     enter_builder.Attr("is_constant", true);
@@ -2005,7 +2026,8 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
             return errors::InvalidArgument(
                 "Shape inference is not possible for outside_compilation "
                 "SendFromHost node ",
-                send_node->name(), " because shape of node ", n->name(),
+                send_node->name(), " because shape of node ",
+                FormatNodeForError(*n),
                 " will not be known at compilation time.");
           }
         }
@@ -2034,8 +2056,7 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
         return errors::Internal(
             "Internal assumption failed while rewriting an outside_compilation "
             "cluster that contains a while loop. Logic assumes back-edge is to "
-            "port 1 of a 2-input "
-            "Merge node.");
+            "port 1 of a 2-input Merge node.");
       }
       // Connect the existing edge to both inputs of the Merge node so that the
       // graph will be well-formed.

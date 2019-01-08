@@ -50,17 +50,22 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
       w2 = array_ops.placeholder(dtype=dtype, shape=w2_dims, name=w2_name)
       with g.device("/GPU:0"):
         b = constant_op.constant(np.random.randn(12, 5, 12, 7), dtype=dtype)
-        c = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
-        d = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
         x1 = math_ops.matmul(inp, b)
+        c = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
         x1 = x1 + c
+
         x2 = math_ops.matmul(inp, w1)
+        d = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
         x2 = x2 * d
-        e = gen_array_ops.reshape(inp, [12, 40, 12])
+
+        e = self.trt_incompatible_op(inp)
+        e = gen_array_ops.reshape(e, [12, 40, 12])
         x3 = math_ops.matmul(e, w2)
         f = constant_op.constant(np.random.randn(40, 1), dtype=dtype)
         x3 = x3 + f
         x3 = gen_array_ops.reshape(x3, [12, 5, 8, 7])
+        x3 = self.trt_incompatible_op(x3)
+
         out = x1 + x2 + x3
       array_ops.squeeze(out, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
@@ -74,12 +79,12 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     if (run_params.dynamic_engine and
         not trt_test.IsQuantizationMode(run_params.precision_mode)):
-      return ["my_trt_op_0", "my_trt_op_1"]
-    return ["my_trt_op_1"]
+      return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    return ["TRTEngineOp_1"]
 
   def ExpectedEnginesToRun(self, run_params):
     """Return the expected engines to run."""
-    return ["my_trt_op_1"]
+    return ["TRTEngineOp_1"]
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""

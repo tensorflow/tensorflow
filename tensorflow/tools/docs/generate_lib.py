@@ -230,6 +230,7 @@ def _get_default_private_map():
       'tf.contrib.autograph': ['utils', 'operators'],
       'tf.test': ['mock'],
       'tf.compat': ['v1', 'v2'],
+      'tf.contrib.estimator': ['python'],
   }
 
 

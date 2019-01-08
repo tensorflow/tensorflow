@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -63,7 +62,7 @@ Literal ConvertType(LiteralSlice literal) {
   ShapeUtil::ForEachSubshape(
       literal.shape(),
       [&](const Shape& subshape, const ShapeIndex& shape_index) {
-        if (ShapeUtil::IsArray(subshape)) {
+        if (subshape.IsArray()) {
           if (subshape.element_type() ==
               primitive_util::NativeToPrimitiveType<FromNativeT>()) {
             auto src = literal.data<FromNativeT>(shape_index);
@@ -356,7 +355,7 @@ Literal ConvertType(LiteralSlice literal) {
 
 /* static */ Literal LiteralUtil::GetFirstScalarLiteral(
     const LiteralSlice& literal) {
-  CHECK(ShapeUtil::IsArray(literal.shape()));
+  CHECK(literal.shape().IsArray());
   CHECK_GT(ShapeUtil::ElementsIn(literal.shape()), 0);
   switch (literal.shape().element_type()) {
     case PRED:

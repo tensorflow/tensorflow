@@ -15,7 +15,7 @@ filegroup(
     ]),
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
@@ -189,7 +189,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "worker",
     srcs = ["worker.cc"],
     hdrs = [
@@ -204,6 +204,7 @@ cc_library(
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:device_tracer",
         "//tensorflow/core:lib_internal",
     ],
 )
@@ -424,6 +425,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:metrics",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/debug",
@@ -463,6 +465,17 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "server_lib_test",
+    srcs = ["server_lib_test.cc"],
+    deps = [
+        ":server_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -612,6 +625,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/memory",
     ],
 )
 

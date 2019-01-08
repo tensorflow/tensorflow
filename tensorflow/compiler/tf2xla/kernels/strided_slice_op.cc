@@ -109,9 +109,9 @@ class StridedSliceOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("StridedSlice")
-                    .CompileTimeConstInput("begin")
-                    .CompileTimeConstInput("end")
-                    .CompileTimeConstInput("strides"),
+                    .CompileTimeConstantInput("begin")
+                    .CompileTimeConstantInput("end")
+                    .CompileTimeConstantInput("strides"),
                 StridedSliceOp);
 
 class StridedSliceGradOp : public XlaOpKernel {
@@ -218,10 +218,10 @@ class StridedSliceGradOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("StridedSliceGrad")
-                    .CompileTimeConstInput("shape")
-                    .CompileTimeConstInput("begin")
-                    .CompileTimeConstInput("end")
-                    .CompileTimeConstInput("strides"),
+                    .CompileTimeConstantInput("shape")
+                    .CompileTimeConstantInput("begin")
+                    .CompileTimeConstantInput("end")
+                    .CompileTimeConstantInput("strides"),
                 StridedSliceGradOp);
 
 class StridedSliceAssignOp : public XlaOpKernel {
@@ -331,9 +331,9 @@ class StridedSliceAssignOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("ResourceStridedSliceAssign")
-                    .CompileTimeConstInput("begin")
-                    .CompileTimeConstInput("end")
-                    .CompileTimeConstInput("strides"),
+                    .CompileTimeConstantInput("begin")
+                    .CompileTimeConstantInput("end")
+                    .CompileTimeConstantInput("strides"),
                 StridedSliceAssignOp);
 
 }  // namespace

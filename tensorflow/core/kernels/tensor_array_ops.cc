@@ -259,6 +259,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayV3").Device(DEVICE_CPU),
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -351,9 +352,9 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     }
 
     const auto key = strings::StrCat(output_handle(0), output_handle(1));
-    auto creator = [this, key, tensor_array, array_size, marked_size,
-                    element_shape, shape_to_prepend, tensor_array_output_handle,
-                    output_handle](TensorArray** ret) -> Status {
+    auto creator = [key, tensor_array, array_size, marked_size, element_shape,
+                    shape_to_prepend,
+                    tensor_array_output_handle](TensorArray** ret) -> Status {
       *ret = new TensorArray(
           key, tensor_array->ElemType(), *tensor_array_output_handle,
           array_size, element_shape, tensor_array->HasIdenticalElementShapes(),
@@ -576,6 +577,7 @@ TF_CALL_ALL_TYPES(REGISTER_READ)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -1218,6 +1220,7 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA

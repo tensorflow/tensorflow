@@ -1,0 +1,18 @@
+path: "tensorflow.data.experimental.SparseTensorStructure"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.util.structure.SparseTensorStructure\'>"
+  is_instance: "<class \'tensorflow.python.data.util.structure.Structure\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'dtype\', \'dense_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_value"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+}

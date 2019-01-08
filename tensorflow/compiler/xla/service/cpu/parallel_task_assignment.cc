@@ -142,14 +142,13 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
       opcode == HloOpcode::kGetTupleElement || opcode == HloOpcode::kBitcast ||
       opcode == HloOpcode::kFft || opcode == HloOpcode::kInfeed ||
       opcode == HloOpcode::kOutfeed || opcode == HloOpcode::kRng ||
+      opcode == HloOpcode::kSort ||
       (opcode == HloOpcode::kConvolution &&
        PotentiallyImplementedAsEigenConvolution(*instruction,
                                                 target_machine_features_)) ||
-      PotentiallyImplementedAsEigenDot(*instruction,
-                                       target_machine_features_) ||
       (opcode == HloOpcode::kFusion &&
        instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) ||
-      ShapeUtil::IsTuple(instruction->shape())) {
+      instruction->shape().IsTuple()) {
     return 1;
   }
 

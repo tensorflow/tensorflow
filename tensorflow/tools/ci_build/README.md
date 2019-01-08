@@ -24,7 +24,7 @@ natively on your system.
 
 ### Run TensorFlow CI Scripts Natively on your Machine
 
-1.  Follow the instructions at https://www.tensorflow.org/install/install_sources,
+1.  Follow the instructions at https://www.tensorflow.org/install/source,
     but stop when you get to the section "Configure the installation". You do not
     need to configure the installation to run the CI scripts.
 

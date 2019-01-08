@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
@@ -108,6 +109,14 @@ class IrArray {
     Index(absl::Span<llvm::Value* const> multidim, llvm::Value* linear,
           const Shape& shape);
 
+    // Returns an index that adds `addend` to the given `dim` of the object.
+    Index AddOffsetToDim(llvm::Value* addend, int64 dim,
+                         llvm::IRBuilder<>* b) const {
+      IrArray::Index index = *this;
+      index[dim] = b->CreateAdd(index[dim], addend);
+      return index;
+    }
+
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
     llvm::Value* linear() const { return linear_; }
 
@@ -179,6 +188,8 @@ class IrArray {
       // APInt &V).
       return llvm::ConstantInt::get(index_type_, c);
     }
+
+    void ClearLinearIndex() { linear_ = nullptr; }
 
    private:
     // Changing the multi-dimensional index invalidates the linear index.

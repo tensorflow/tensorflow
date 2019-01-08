@@ -28,6 +28,9 @@ class gebp_traits<QInt16, QInt16, _ConjLhs, _ConjRhs> {
   typedef QInt16 RhsScalar;
   typedef QInt32 ResScalar;
 
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
+
   enum {
     // Define register blocking scheme.
     nr = 16,
@@ -43,7 +46,7 @@ class gebp_traits<QInt16, QInt16, _ConjLhs, _ConjRhs> {
 // Used by TensorContractionThreadPool, inputs must have dimensions that are
 // multiples of 32.
 template <typename Index, int ShardingType>
-class TensorContractionBlocking<QInt16, QInt16, Index, ShardingType> {
+class TensorContractionBlocking<QInt16, QInt16, QInt16, Index, ShardingType> {
  public:
   TensorContractionBlocking(Index k, Index m, Index n, Index num_threads = 1)
       : kc_(((k + 15) / 16) * 16),
@@ -144,7 +147,7 @@ class gemm_blocking_space<ColMajor, QInt16, QInt16, MaxRows, MaxCols, MaxDepth,
 
 template <typename Index, typename DataMapper, int Pack1, int Pack2,
           bool Conjugate, bool PanelMode>
-struct gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2, ColMajor,
+struct gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2, QInt16, ColMajor,
                      Conjugate, PanelMode> {
   EIGEN_DONT_INLINE void operator()(QInt16* blockA, const DataMapper& lhs,
                                     Index depth, Index rows, Index stride = 0,
@@ -154,11 +157,13 @@ struct gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2, ColMajor,
 template <typename Index, typename DataMapper, int Pack1, int Pack2,
           bool Conjugate, bool PanelMode>
 EIGEN_DONT_INLINE void gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2,
-                                     ColMajor, Conjugate, PanelMode>::
+                                     QInt16, ColMajor, Conjugate, PanelMode>::
 operator()(QInt16* blockA, const DataMapper& lhs, Index depth, Index rows,
            Index stride, Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
+
+  typedef typename packet_traits<QInt16>::type Packet;
 
   // Use alternate function for weird sizes
   if (rows % 16 != 0 || depth % 16 != 0) {
@@ -178,10 +183,10 @@ operator()(QInt16* blockA, const DataMapper& lhs, Index depth, Index rows,
     // Pack depth in sets of 4
     for (Index k = 0; k < depth; k += 4) {
       // Load vectors
-      __m256i L_A = lhs.loadPacket(m, k);
-      __m256i L_B = lhs.loadPacket(m, k + 1);
-      __m256i L_C = lhs.loadPacket(m, k + 2);
-      __m256i L_D = lhs.loadPacket(m, k + 3);
+      __m256i L_A = lhs.template loadPacket<Packet>(m, k);
+      __m256i L_B = lhs.template loadPacket<Packet>(m, k + 1);
+      __m256i L_C = lhs.template loadPacket<Packet>(m, k + 2);
+      __m256i L_D = lhs.template loadPacket<Packet>(m, k + 3);
 
       // Rearrange the inputs as required by the kernel
       __m256i L_AB0_AB7 = _mm256_unpacklo_epi16(L_A, L_B);
@@ -236,12 +241,14 @@ struct gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor, Conjugate,
 
 template <typename Index, typename DataMapper, int nr, bool Conjugate,
           bool PanelMode>
-EIGEN_DONT_INLINE void
-gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor, Conjugate, PanelMode>::
+EIGEN_DONT_INLINE void gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor,
+                                     Conjugate, PanelMode>::
 operator()(QInt16* blockB, const DataMapper& rhs, Index depth, Index cols,
            Index stride, Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
+
+  typedef typename packet_traits<QInt16>::type Packet;
 
   // Use alternate function for weird sizes
   if (cols % 16 != 0 || depth % 16 != 0) {
@@ -277,28 +284,28 @@ operator()(QInt16* blockB, const DataMapper& rhs, Index depth, Index cols,
   for (Index n = 0; n < cols; n += 16) {
     // Pack depth in sets of 16
     for (Index k = 0; k < depth; k += 16) {
-      __m256i R_A = rhs.loadPacket(k, n);
-      __m256i R_B = rhs.loadPacket(k, n + 1);
-      __m256i R_C = rhs.loadPacket(k, n + 2);
-      __m256i R_D = rhs.loadPacket(k, n + 3);
+      __m256i R_A = rhs.template loadPacket<Packet>(k, n);
+      __m256i R_B = rhs.template loadPacket<Packet>(k, n + 1);
+      __m256i R_C = rhs.template loadPacket<Packet>(k, n + 2);
+      __m256i R_D = rhs.template loadPacket<Packet>(k, n + 3);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 4);
-      R_B = rhs.loadPacket(k, n + 5);
-      R_C = rhs.loadPacket(k, n + 6);
-      R_D = rhs.loadPacket(k, n + 7);
+      R_A = rhs.template loadPacket<Packet>(k, n + 4);
+      R_B = rhs.template loadPacket<Packet>(k, n + 5);
+      R_C = rhs.template loadPacket<Packet>(k, n + 6);
+      R_D = rhs.template loadPacket<Packet>(k, n + 7);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 8);
-      R_B = rhs.loadPacket(k, n + 9);
-      R_C = rhs.loadPacket(k, n + 10);
-      R_D = rhs.loadPacket(k, n + 11);
+      R_A = rhs.template loadPacket<Packet>(k, n + 8);
+      R_B = rhs.template loadPacket<Packet>(k, n + 9);
+      R_C = rhs.template loadPacket<Packet>(k, n + 10);
+      R_D = rhs.template loadPacket<Packet>(k, n + 11);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 12);
-      R_B = rhs.loadPacket(k, n + 13);
-      R_C = rhs.loadPacket(k, n + 14);
-      R_D = rhs.loadPacket(k, n + 15);
+      R_A = rhs.template loadPacket<Packet>(k, n + 12);
+      R_B = rhs.template loadPacket<Packet>(k, n + 13);
+      R_C = rhs.template loadPacket<Packet>(k, n + 14);
+      R_D = rhs.template loadPacket<Packet>(k, n + 15);
       PACK_STEP;
 
       blockB_256 += 12;
@@ -476,9 +483,13 @@ operator()(const DataMapper& res, const QInt16* blockA, const QInt16* blockB,
       for (Index j = n; j < n + 16; j++) {
         LinearMapper r0 = res.getLinearMapper(m, j);
         LinearMapper r1 = res.getLinearMapper(m + 8, j);
-
-        r0.storePacket(0, _mm256_add_epi32(blockO_256[i++], r0.loadPacket(0)));
-        r1.storePacket(0, _mm256_add_epi32(blockO_256[i++], r1.loadPacket(0)));
+        typedef typename packet_traits<QInt32>::type Packet;
+        r0.template storePacket<Packet>(
+            0, _mm256_add_epi32(blockO_256[i++],
+                                r0.template loadPacket<Packet>(0)));
+        r1.template storePacket<Packet>(
+            0, _mm256_add_epi32(blockO_256[i++],
+                                r1.template loadPacket<Packet>(0)));
       }
 
       // Zero the result block so it can be reused
@@ -496,13 +507,15 @@ operator()(const DataMapper& res, const QInt16* blockA, const QInt16* blockB,
 #ifdef EIGEN_USE_OPTIMIZED_INT8_UINT8_MAT_MAT_PRODUCT
 
 // Define quantized traits
-template<bool _ConjLhs, bool _ConjRhs>
-class gebp_traits<QInt8, QUInt8, _ConjLhs, _ConjRhs>
-{
-public:
+template <bool _ConjLhs, bool _ConjRhs>
+class gebp_traits<QInt8, QUInt8, _ConjLhs, _ConjRhs> {
+ public:
   typedef QInt8 LhsScalar;
   typedef QUInt8 RhsScalar;
   typedef QInt32 ResScalar;
+
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
 
   enum {
     // Define register blocking scheme.
@@ -518,22 +531,28 @@ public:
 // Specialized blocking for quantized implementations.
 // Used by TensorContractionThreadPool, inputs must have dimensions that are
 // multiples of 32.
-template<typename Index,
-         typename LeftTensor,
-         typename left_nocontract_t, typename left_contract_t,
-         bool left_inner_dim_contiguous, bool left_inner_dim_reordered, int LeftAlignment,
-         typename RightTensor,
-         typename right_nocontract_t, typename right_contract_t,
-         bool right_inner_dim_contiguous, bool right_inner_dim_reordered, int RightAlignment, int ShardingType>
-class TensorContractionBlocking<TensorContractionInputMapper<QInt8, Index, Lhs, LeftTensor, left_nocontract_t, left_contract_t, 32, left_inner_dim_contiguous, left_inner_dim_reordered, LeftAlignment>, TensorContractionInputMapper<QUInt8, Index, Rhs, RightTensor, right_nocontract_t, right_contract_t, 32, right_inner_dim_contiguous, right_inner_dim_reordered, RightAlignment>, Index, ShardingType> {
+template <typename ResScalar, typename Index, typename LeftTensor,
+          typename left_nocontract_t, typename left_contract_t,
+          bool left_inner_dim_contiguous, bool left_inner_dim_reordered,
+          int LeftAlignment, typename RightTensor, typename right_nocontract_t,
+          typename right_contract_t, bool right_inner_dim_contiguous,
+          bool right_inner_dim_reordered, int RightAlignment, int ShardingType>
+class TensorContractionBlocking<
+    ResScalar,
+    TensorContractionInputMapper<
+        QInt8, Index, Lhs, LeftTensor, left_nocontract_t, left_contract_t, 32,
+        left_inner_dim_contiguous, left_inner_dim_reordered, LeftAlignment>,
+    TensorContractionInputMapper<QUInt8, Index, Rhs, RightTensor,
+                                 right_nocontract_t, right_contract_t, 32,
+                                 right_inner_dim_contiguous,
+                                 right_inner_dim_reordered, RightAlignment>,
+    Index, ShardingType> {
  public:
-
-  typedef QInt8  LhsScalar;
+  typedef QInt8 LhsScalar;
   typedef QUInt8 RhsScalar;
 
-  TensorContractionBlocking(Index k, Index m, Index n, Index num_threads = 1) :
-      kc_(k), mc_(m), nc_(n)
-  {
+  TensorContractionBlocking(Index k, Index m, Index n, Index num_threads = 1)
+      : kc_(k), mc_(m), nc_(n) {
     eigen_assert(m % 32 == 0);
     eigen_assert(k % 32 == 0);
     if (!k || !m || !n) {
@@ -543,8 +562,7 @@ class TensorContractionBlocking<TensorContractionInputMapper<QInt8, Index, Lhs, 
     if (ShardingType == ShardByCol) {
       eigen_assert(n % 32 == 0);
       nc_ = (((n / num_threads) + 31) / 32) * 32;
-    }
-    else {
+    } else {
       eigen_assert(n % 32 == 0 || n == 1);
       // Special case to avoid breaking the unimplemented matrix-vector case
       if (n == 1) {
@@ -599,7 +617,6 @@ class gemm_blocking_space<ColMajor, QInt8, QInt8, MaxRows, MaxCols, MaxDepth,
   }
 };
 
-
 template <int MaxRows, int MaxCols, int MaxDepth, int KcFactor>
 class gemm_blocking_space<ColMajor, QInt8, QUInt8, MaxRows, MaxCols, MaxDepth,
                           KcFactor, false>
@@ -633,41 +650,59 @@ class gemm_blocking_space<ColMajor, QInt8, QUInt8, MaxRows, MaxCols, MaxDepth,
 };
 
 // Alternate templates for any input sizes
-template<typename Scalar, typename Index, typename DataMapper, int Pack1, int Pack2, int StorageOrder, bool Conjugate = false, bool PanelMode = false>
+template <typename Scalar, typename Index, typename DataMapper, int Pack1,
+          int Pack2, int StorageOrder, bool Conjugate = false,
+          bool PanelMode = false>
 struct gemm_pack_lhs_any;
-template <typename Index, typename DataMapper, int Pack1, int Pack2, bool Conjugate, bool PanelMode>
-struct gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor, Conjugate, PanelMode> {
-  EIGEN_DONT_INLINE void operator()
-      (QInt8* blockA, const DataMapper& lhs, Index depth, Index rows, Index stride = 0, Index offset = 0);
+template <typename Index, typename DataMapper, int Pack1, int Pack2,
+          bool Conjugate, bool PanelMode>
+struct gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor,
+                         Conjugate, PanelMode> {
+  EIGEN_DONT_INLINE void operator()(QInt8* blockA, const DataMapper& lhs,
+                                    Index depth, Index rows, Index stride = 0,
+                                    Index offset = 0);
 };
 
-template<typename Scalar, typename Index, typename DataMapper, int nr, int StorageOrder, bool Conjugate = false, bool PanelMode=false>
+template <typename Scalar, typename Index, typename DataMapper, int nr,
+          int StorageOrder, bool Conjugate = false, bool PanelMode = false>
 struct gemm_pack_rhs_any;
-template <typename Index, typename DataMapper, int nr, bool Conjugate, bool PanelMode>
-struct gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate, PanelMode> {
-  EIGEN_DONT_INLINE void operator()
-      (QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index stride = 0, Index offset = 0);
+template <typename Index, typename DataMapper, int nr, bool Conjugate,
+          bool PanelMode>
+struct gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate,
+                         PanelMode> {
+  EIGEN_DONT_INLINE void operator()(QUInt8* blockB, const DataMapper& rhs,
+                                    Index depth, Index cols, Index stride = 0,
+                                    Index offset = 0);
 };
 
-template<typename LhsScalar, typename RhsScalar, typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs=false, bool ConjugateRhs=false>
+template <typename LhsScalar, typename RhsScalar, typename Index,
+          typename DataMapper, int mr, int nr, bool ConjugateLhs = false,
+          bool ConjugateRhs = false>
 struct gebp_kernel_any;
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-struct gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+struct gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+                       ConjugateRhs> {
   typedef typename DataMapper::LinearMapper LinearMapper;
 
   EIGEN_DONT_INLINE
-  void operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-                  Index rows, Index depth, Index cols, QInt32 alpha,
-                  Index strideA=-1, Index strideB=-1, Index offsetA=0, Index offsetB=0);
+  void operator()(const DataMapper& res, const QInt8* blockA,
+                  const QUInt8* blockB, Index rows, Index depth, Index cols,
+                  QInt32 alpha, Index strideA = -1, Index strideB = -1,
+                  Index offsetA = 0, Index offsetB = 0);
 };
 
 // Alternate implementations for any input sizes
-template <typename Index, typename DataMapper, int Pack1, int Pack2, bool Conjugate, bool PanelMode>
-EIGEN_DONT_INLINE void gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor, Conjugate, PanelMode>::
-operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows, Index stride, Index offset) {
+template <typename Index, typename DataMapper, int Pack1, int Pack2,
+          bool Conjugate, bool PanelMode>
+EIGEN_DONT_INLINE void gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2,
+                                         ColMajor, Conjugate, PanelMode>::
+operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows,
+           Index stride, Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
+
+  typedef typename packet_traits<QInt8>::type Packet;
 
   // Get vector pointer
   __m256i* blockA_256 = reinterpret_cast<__m256i*>(blockA);
@@ -690,15 +725,15 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows, Index 
     // Pack depth in sets of 8
     for (Index k = 0; k < depth_8; k += 8) {
       // Load vectors
-      __m256i L_A = lhs.loadPacket(m, k);
-      __m256i L_B = lhs.loadPacket(m, k + 1);
+      __m256i L_A = lhs.template loadPacket<Packet>(m, k);
+      __m256i L_B = lhs.template loadPacket<Packet>(m, k + 1);
 
       // Interleave 8-bit elements
       __m256i L_AB0_AB16 = _mm256_unpacklo_epi8(L_A, L_B);
       __m256i L_AB8_AB24 = _mm256_unpackhi_epi8(L_A, L_B);
 
-      __m256i L_C = lhs.loadPacket(m, k + 2);
-      __m256i L_D = lhs.loadPacket(m, k + 3);
+      __m256i L_C = lhs.template loadPacket<Packet>(m, k + 2);
+      __m256i L_D = lhs.template loadPacket<Packet>(m, k + 3);
       __m256i L_CD0_CD16 = _mm256_unpacklo_epi8(L_C, L_D);
       __m256i L_CD8_CD24 = _mm256_unpackhi_epi8(L_C, L_D);
 
@@ -719,12 +754,12 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows, Index 
       _mm256_store_si256(blockA_256++, L_AD16);
       __m256i L_AD24 = _mm256_permute2x128_si256(L_AD8_AD24, L_AD12_AD28, 0x31);
       _mm256_store_si256(blockA_256++, L_AD24);
-      __m256i L_E = lhs.loadPacket(m, k + 4);
-      __m256i L_F = lhs.loadPacket(m, k + 5);
+      __m256i L_E = lhs.template loadPacket<Packet>(m, k + 4);
+      __m256i L_F = lhs.template loadPacket<Packet>(m, k + 5);
       __m256i L_EF0_EF16 = _mm256_unpacklo_epi8(L_E, L_F);
       __m256i L_EF8_EF24 = _mm256_unpackhi_epi8(L_E, L_F);
-      __m256i L_G = lhs.loadPacket(m, k + 6);
-      __m256i L_H = lhs.loadPacket(m, k + 7);
+      __m256i L_G = lhs.template loadPacket<Packet>(m, k + 6);
+      __m256i L_H = lhs.template loadPacket<Packet>(m, k + 7);
       __m256i L_GH0_GH16 = _mm256_unpacklo_epi8(L_G, L_H);
       __m256i L_GH8_GH24 = _mm256_unpackhi_epi8(L_G, L_H);
       __m256i L_EH0_EH16 = _mm256_unpacklo_epi16(L_EF0_EF16, L_GH0_GH16);
@@ -745,76 +780,76 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows, Index 
     if (depth_8 < depth) {
       __m256i L_A, L_B, L_C, L_D, L_E, L_F, L_G, L_H;
       switch (depth - depth_8) {
-      case 1:
-        L_A = lhs.loadPacket(m, depth_8);
-        L_B = _mm256_setzero_si256();
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        break;
-      case 2:
-        L_A = lhs.loadPacket(m, depth_8);
-        L_B = lhs.loadPacket(m, depth_8 + 1);
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        break;
-      case 3:
-        L_A = lhs.loadPacket(m, depth_8);
-        L_B = lhs.loadPacket(m, depth_8 + 1);
-        L_C = lhs.loadPacket(m, depth_8 + 2);
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        break;
-      case 4:
-        L_A = lhs.loadPacket(m, depth_8);
-        L_B = lhs.loadPacket(m, depth_8 + 1);
-        L_C = lhs.loadPacket(m, depth_8 + 2);
-        L_D = lhs.loadPacket(m, depth_8 + 3);
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        break;
-      case 5:
-        L_A = lhs.loadPacket(m, depth_8);
-        L_B = lhs.loadPacket(m, depth_8 + 1);
-        L_C = lhs.loadPacket(m, depth_8 + 2);
-        L_D = lhs.loadPacket(m, depth_8 + 3);
-        L_E = lhs.loadPacket(m, depth_8 + 4);
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        break;
-      case 6:
-        L_A = lhs.loadPacket(m, depth_8);
-        L_B = lhs.loadPacket(m, depth_8 + 1);
-        L_C = lhs.loadPacket(m, depth_8 + 2);
-        L_D = lhs.loadPacket(m, depth_8 + 3);
-        L_E = lhs.loadPacket(m, depth_8 + 4);
-        L_F = lhs.loadPacket(m, depth_8 + 5);
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        break;
-      case 7:
-        L_A = lhs.loadPacket(m, depth_8);
-        L_B = lhs.loadPacket(m, depth_8 + 1);
-        L_C = lhs.loadPacket(m, depth_8 + 2);
-        L_D = lhs.loadPacket(m, depth_8 + 3);
-        L_E = lhs.loadPacket(m, depth_8 + 4);
-        L_F = lhs.loadPacket(m, depth_8 + 5);
-        L_G = lhs.loadPacket(m, depth_8 + 6);
-        L_H = _mm256_setzero_si256();
-        break;
+        case 1:
+          L_A = lhs.template loadPacket<Packet>(m, depth_8);
+          L_B = _mm256_setzero_si256();
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          break;
+        case 2:
+          L_A = lhs.template loadPacket<Packet>(m, depth_8);
+          L_B = lhs.template loadPacket<Packet>(m, depth_8 + 1);
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          break;
+        case 3:
+          L_A = lhs.template loadPacket<Packet>(m, depth_8);
+          L_B = lhs.template loadPacket<Packet>(m, depth_8 + 1);
+          L_C = lhs.template loadPacket<Packet>(m, depth_8 + 2);
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          break;
+        case 4:
+          L_A = lhs.template loadPacket<Packet>(m, depth_8);
+          L_B = lhs.template loadPacket<Packet>(m, depth_8 + 1);
+          L_C = lhs.template loadPacket<Packet>(m, depth_8 + 2);
+          L_D = lhs.template loadPacket<Packet>(m, depth_8 + 3);
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          break;
+        case 5:
+          L_A = lhs.template loadPacket<Packet>(m, depth_8);
+          L_B = lhs.template loadPacket<Packet>(m, depth_8 + 1);
+          L_C = lhs.template loadPacket<Packet>(m, depth_8 + 2);
+          L_D = lhs.template loadPacket<Packet>(m, depth_8 + 3);
+          L_E = lhs.template loadPacket<Packet>(m, depth_8 + 4);
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          break;
+        case 6:
+          L_A = lhs.template loadPacket<Packet>(m, depth_8);
+          L_B = lhs.template loadPacket<Packet>(m, depth_8 + 1);
+          L_C = lhs.template loadPacket<Packet>(m, depth_8 + 2);
+          L_D = lhs.template loadPacket<Packet>(m, depth_8 + 3);
+          L_E = lhs.template loadPacket<Packet>(m, depth_8 + 4);
+          L_F = lhs.template loadPacket<Packet>(m, depth_8 + 5);
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          break;
+        case 7:
+          L_A = lhs.template loadPacket<Packet>(m, depth_8);
+          L_B = lhs.template loadPacket<Packet>(m, depth_8 + 1);
+          L_C = lhs.template loadPacket<Packet>(m, depth_8 + 2);
+          L_D = lhs.template loadPacket<Packet>(m, depth_8 + 3);
+          L_E = lhs.template loadPacket<Packet>(m, depth_8 + 4);
+          L_F = lhs.template loadPacket<Packet>(m, depth_8 + 5);
+          L_G = lhs.template loadPacket<Packet>(m, depth_8 + 6);
+          L_H = _mm256_setzero_si256();
+          break;
       }
 
       // Interleave 8-bit elements
@@ -875,21 +910,21 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows, Index 
       __m256i L_G = _mm256_setzero_si256();
       __m256i L_H = _mm256_setzero_si256();
       for (Index m = 0; m < rows - rows_32; m++) {
-        QInt8* ptr = (QInt8*) &L_A;
+        QInt8* ptr = (QInt8*)&L_A;
         ptr[m] = lhs(rows_32 + m, k);
-        ptr = (QInt8*) &L_B;
+        ptr = (QInt8*)&L_B;
         ptr[m] = lhs(rows_32 + m, k + 1);
-        ptr = (QInt8*) &L_C;
+        ptr = (QInt8*)&L_C;
         ptr[m] = lhs(rows_32 + m, k + 2);
-        ptr = (QInt8*) &L_D;
+        ptr = (QInt8*)&L_D;
         ptr[m] = lhs(rows_32 + m, k + 3);
-        ptr = (QInt8*) &L_E;
+        ptr = (QInt8*)&L_E;
         ptr[m] = lhs(rows_32 + m, k + 4);
-        ptr = (QInt8*) &L_F;
+        ptr = (QInt8*)&L_F;
         ptr[m] = lhs(rows_32 + m, k + 5);
-        ptr = (QInt8*) &L_G;
+        ptr = (QInt8*)&L_G;
         ptr[m] = lhs(rows_32 + m, k + 6);
-        ptr = (QInt8*) &L_H;
+        ptr = (QInt8*)&L_H;
         ptr[m] = lhs(rows_32 + m, k + 7);
       }
 
@@ -939,146 +974,146 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows, Index 
       __m256i L_A, L_B, L_C, L_D, L_E, L_F, L_G, L_H;
       QInt8* ptr;
       switch (depth - depth_8) {
-      case 1:
-        L_A = _mm256_setzero_si256();
-        L_B = _mm256_setzero_si256();
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        for (Index m = 0; m < rows - rows_32; m++) {
-          QInt8* ptr = (QInt8*) &L_A;
-          ptr[m] = lhs(rows_32 + m, depth_8);
-        }
-        break;
-      case 2:
-        L_A = _mm256_setzero_si256();
-        L_B = _mm256_setzero_si256();
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        for (Index m = 0; m < rows - rows_32; m++) {
-          ptr = (QInt8*) &L_A;
-          ptr[m] = lhs(rows_32 + m, depth_8);
-          ptr = (QInt8*) &L_B;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 1);
-        }
-        break;
-      case 3:
-        L_A = _mm256_setzero_si256();
-        L_B = _mm256_setzero_si256();
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        for (Index m = 0; m < rows - rows_32; m++) {
-          ptr = (QInt8*) &L_A;
-          ptr[m] = lhs(rows_32 + m, depth_8);
-          ptr = (QInt8*) &L_B;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 1);
-          ptr = (QInt8*) &L_C;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 2);
-        }
-        break;
-      case 4:
-        L_A = _mm256_setzero_si256();
-        L_B = _mm256_setzero_si256();
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        for (Index m = 0; m < rows - rows_32; m++) {
-          ptr = (QInt8*) &L_A;
-          ptr[m] = lhs(rows_32 + m, depth_8);
-          ptr = (QInt8*) &L_B;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 1);
-          ptr = (QInt8*) &L_C;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 2);
-          ptr = (QInt8*) &L_D;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 3);
-        }
-        break;
-      case 5:
-        L_A = _mm256_setzero_si256();
-        L_B = _mm256_setzero_si256();
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        for (Index m = 0; m < rows - rows_32; m++) {
-          ptr = (QInt8*) &L_A;
-          ptr[m] = lhs(rows_32 + m, depth_8);
-          ptr = (QInt8*) &L_B;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 1);
-          ptr = (QInt8*) &L_C;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 2);
-          ptr = (QInt8*) &L_D;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 3);
-          ptr = (QInt8*) &L_E;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 4);
-        }
-        break;
-      case 6:
-        L_A = _mm256_setzero_si256();
-        L_B = _mm256_setzero_si256();
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        for (Index m = 0; m < rows - rows_32; m++) {
-          ptr = (QInt8*) &L_A;
-          ptr[m] = lhs(rows_32 + m, depth_8);
-          ptr = (QInt8*) &L_B;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 1);
-          ptr = (QInt8*) &L_C;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 2);
-          ptr = (QInt8*) &L_D;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 3);
-          ptr = (QInt8*) &L_E;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 4);
-          ptr = (QInt8*) &L_F;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 5);
-        }
-        break;
-      case 7:
-        L_A = _mm256_setzero_si256();
-        L_B = _mm256_setzero_si256();
-        L_C = _mm256_setzero_si256();
-        L_D = _mm256_setzero_si256();
-        L_E = _mm256_setzero_si256();
-        L_F = _mm256_setzero_si256();
-        L_G = _mm256_setzero_si256();
-        L_H = _mm256_setzero_si256();
-        for (Index m = 0; m < rows - rows_32; m++) {
-          ptr = (QInt8*) &L_A;
-          ptr[m] = lhs(rows_32 + m, depth_8);
-          ptr = (QInt8*) &L_B;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 1);
-          ptr = (QInt8*) &L_C;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 2);
-          ptr = (QInt8*) &L_D;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 3);
-          ptr = (QInt8*) &L_E;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 4);
-          ptr = (QInt8*) &L_F;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 5);
-          ptr = (QInt8*) &L_G;
-          ptr[m] = lhs(rows_32 + m, depth_8 + 6);
-        }
-        break;
+        case 1:
+          L_A = _mm256_setzero_si256();
+          L_B = _mm256_setzero_si256();
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          for (Index m = 0; m < rows - rows_32; m++) {
+            QInt8* ptr = (QInt8*)&L_A;
+            ptr[m] = lhs(rows_32 + m, depth_8);
+          }
+          break;
+        case 2:
+          L_A = _mm256_setzero_si256();
+          L_B = _mm256_setzero_si256();
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          for (Index m = 0; m < rows - rows_32; m++) {
+            ptr = (QInt8*)&L_A;
+            ptr[m] = lhs(rows_32 + m, depth_8);
+            ptr = (QInt8*)&L_B;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 1);
+          }
+          break;
+        case 3:
+          L_A = _mm256_setzero_si256();
+          L_B = _mm256_setzero_si256();
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          for (Index m = 0; m < rows - rows_32; m++) {
+            ptr = (QInt8*)&L_A;
+            ptr[m] = lhs(rows_32 + m, depth_8);
+            ptr = (QInt8*)&L_B;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 1);
+            ptr = (QInt8*)&L_C;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 2);
+          }
+          break;
+        case 4:
+          L_A = _mm256_setzero_si256();
+          L_B = _mm256_setzero_si256();
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          for (Index m = 0; m < rows - rows_32; m++) {
+            ptr = (QInt8*)&L_A;
+            ptr[m] = lhs(rows_32 + m, depth_8);
+            ptr = (QInt8*)&L_B;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 1);
+            ptr = (QInt8*)&L_C;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 2);
+            ptr = (QInt8*)&L_D;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 3);
+          }
+          break;
+        case 5:
+          L_A = _mm256_setzero_si256();
+          L_B = _mm256_setzero_si256();
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          for (Index m = 0; m < rows - rows_32; m++) {
+            ptr = (QInt8*)&L_A;
+            ptr[m] = lhs(rows_32 + m, depth_8);
+            ptr = (QInt8*)&L_B;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 1);
+            ptr = (QInt8*)&L_C;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 2);
+            ptr = (QInt8*)&L_D;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 3);
+            ptr = (QInt8*)&L_E;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 4);
+          }
+          break;
+        case 6:
+          L_A = _mm256_setzero_si256();
+          L_B = _mm256_setzero_si256();
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          for (Index m = 0; m < rows - rows_32; m++) {
+            ptr = (QInt8*)&L_A;
+            ptr[m] = lhs(rows_32 + m, depth_8);
+            ptr = (QInt8*)&L_B;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 1);
+            ptr = (QInt8*)&L_C;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 2);
+            ptr = (QInt8*)&L_D;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 3);
+            ptr = (QInt8*)&L_E;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 4);
+            ptr = (QInt8*)&L_F;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 5);
+          }
+          break;
+        case 7:
+          L_A = _mm256_setzero_si256();
+          L_B = _mm256_setzero_si256();
+          L_C = _mm256_setzero_si256();
+          L_D = _mm256_setzero_si256();
+          L_E = _mm256_setzero_si256();
+          L_F = _mm256_setzero_si256();
+          L_G = _mm256_setzero_si256();
+          L_H = _mm256_setzero_si256();
+          for (Index m = 0; m < rows - rows_32; m++) {
+            ptr = (QInt8*)&L_A;
+            ptr[m] = lhs(rows_32 + m, depth_8);
+            ptr = (QInt8*)&L_B;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 1);
+            ptr = (QInt8*)&L_C;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 2);
+            ptr = (QInt8*)&L_D;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 3);
+            ptr = (QInt8*)&L_E;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 4);
+            ptr = (QInt8*)&L_F;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 5);
+            ptr = (QInt8*)&L_G;
+            ptr[m] = lhs(rows_32 + m, depth_8 + 6);
+          }
+          break;
       }
 
       // Interleave 8-bit elements
@@ -1124,11 +1159,16 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows, Index 
   }
 }
 
-template <typename Index, typename DataMapper, int nr, bool Conjugate, bool PanelMode>
-EIGEN_DONT_INLINE void gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate, PanelMode>::
-operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index stride, Index offset) {
+template <typename Index, typename DataMapper, int nr, bool Conjugate,
+          bool PanelMode>
+EIGEN_DONT_INLINE void gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr,
+                                         ColMajor, Conjugate, PanelMode>::
+operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols,
+           Index stride, Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
+
+  typedef typename packet_traits<QUInt8>::type Packet;
 
   // Get vector pointer
   __m256i* blockB_256 = reinterpret_cast<__m256i*>(blockB);
@@ -1158,52 +1198,52 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
   for (Index n = 0; n < cols_32; n += 32) {
     // Pack depth in sets of 32
     for (Index k = 0; k < depth_32; k += 32) {
-      __m256i R_A = rhs.loadPacket(k, n);
-      __m256i R_B = rhs.loadPacket(k, n + 1);
-      __m256i R_C = rhs.loadPacket(k, n + 2);
-      __m256i R_D = rhs.loadPacket(k, n + 3);
+      __m256i R_A = rhs.template loadPacket<Packet>(k, n);
+      __m256i R_B = rhs.template loadPacket<Packet>(k, n + 1);
+      __m256i R_C = rhs.template loadPacket<Packet>(k, n + 2);
+      __m256i R_D = rhs.template loadPacket<Packet>(k, n + 3);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 4);
-      R_B = rhs.loadPacket(k, n + 5);
-      R_C = rhs.loadPacket(k, n + 6);
-      R_D = rhs.loadPacket(k, n + 7);
+      R_A = rhs.template loadPacket<Packet>(k, n + 4);
+      R_B = rhs.template loadPacket<Packet>(k, n + 5);
+      R_C = rhs.template loadPacket<Packet>(k, n + 6);
+      R_D = rhs.template loadPacket<Packet>(k, n + 7);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 8);
-      R_B = rhs.loadPacket(k, n + 9);
-      R_C = rhs.loadPacket(k, n + 10);
-      R_D = rhs.loadPacket(k, n + 11);
+      R_A = rhs.template loadPacket<Packet>(k, n + 8);
+      R_B = rhs.template loadPacket<Packet>(k, n + 9);
+      R_C = rhs.template loadPacket<Packet>(k, n + 10);
+      R_D = rhs.template loadPacket<Packet>(k, n + 11);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 12);
-      R_B = rhs.loadPacket(k, n + 13);
-      R_C = rhs.loadPacket(k, n + 14);
-      R_D = rhs.loadPacket(k, n + 15);
+      R_A = rhs.template loadPacket<Packet>(k, n + 12);
+      R_B = rhs.template loadPacket<Packet>(k, n + 13);
+      R_C = rhs.template loadPacket<Packet>(k, n + 14);
+      R_D = rhs.template loadPacket<Packet>(k, n + 15);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 16);
-      R_B = rhs.loadPacket(k, n + 17);
-      R_C = rhs.loadPacket(k, n + 18);
-      R_D = rhs.loadPacket(k, n + 19);
+      R_A = rhs.template loadPacket<Packet>(k, n + 16);
+      R_B = rhs.template loadPacket<Packet>(k, n + 17);
+      R_C = rhs.template loadPacket<Packet>(k, n + 18);
+      R_D = rhs.template loadPacket<Packet>(k, n + 19);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 20);
-      R_B = rhs.loadPacket(k, n + 21);
-      R_C = rhs.loadPacket(k, n + 22);
-      R_D = rhs.loadPacket(k, n + 23);
+      R_A = rhs.template loadPacket<Packet>(k, n + 20);
+      R_B = rhs.template loadPacket<Packet>(k, n + 21);
+      R_C = rhs.template loadPacket<Packet>(k, n + 22);
+      R_D = rhs.template loadPacket<Packet>(k, n + 23);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 24);
-      R_B = rhs.loadPacket(k, n + 25);
-      R_C = rhs.loadPacket(k, n + 26);
-      R_D = rhs.loadPacket(k, n + 27);
+      R_A = rhs.template loadPacket<Packet>(k, n + 24);
+      R_B = rhs.template loadPacket<Packet>(k, n + 25);
+      R_C = rhs.template loadPacket<Packet>(k, n + 26);
+      R_D = rhs.template loadPacket<Packet>(k, n + 27);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 28);
-      R_B = rhs.loadPacket(k, n + 29);
-      R_C = rhs.loadPacket(k, n + 30);
-      R_D = rhs.loadPacket(k, n + 31);
+      R_A = rhs.template loadPacket<Packet>(k, n + 28);
+      R_B = rhs.template loadPacket<Packet>(k, n + 29);
+      R_C = rhs.template loadPacket<Packet>(k, n + 30);
+      R_D = rhs.template loadPacket<Packet>(k, n + 31);
       PACK_STEP;
 
       blockB_256 += 24;
@@ -1216,13 +1256,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       __m256i R_C = _mm256_setzero_si256();
       __m256i R_D = _mm256_setzero_si256();
       for (Index k = depth_32; k < depth; k++) {
-        ptr = (QUInt8*) &R_A;
+        ptr = (QUInt8*)&R_A;
         ptr[k - depth_32] = rhs(k, n);
-        ptr = (QUInt8*) &R_B;
+        ptr = (QUInt8*)&R_B;
         ptr[k - depth_32] = rhs(k, n + 1);
-        ptr = (QUInt8*) &R_C;
+        ptr = (QUInt8*)&R_C;
         ptr[k - depth_32] = rhs(k, n + 2);
-        ptr = (QUInt8*) &R_D;
+        ptr = (QUInt8*)&R_D;
         ptr[k - depth_32] = rhs(k, n + 3);
       }
       PACK_STEP;
@@ -1232,13 +1272,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       R_C = _mm256_setzero_si256();
       R_D = _mm256_setzero_si256();
       for (Index k = depth_32; k < depth; k++) {
-        ptr = (QUInt8*) &R_A;
+        ptr = (QUInt8*)&R_A;
         ptr[k - depth_32] = rhs(k, n + 4);
-        ptr = (QUInt8*) &R_B;
+        ptr = (QUInt8*)&R_B;
         ptr[k - depth_32] = rhs(k, n + 5);
-        ptr = (QUInt8*) &R_C;
+        ptr = (QUInt8*)&R_C;
         ptr[k - depth_32] = rhs(k, n + 6);
-        ptr = (QUInt8*) &R_D;
+        ptr = (QUInt8*)&R_D;
         ptr[k - depth_32] = rhs(k, n + 7);
       }
       PACK_STEP;
@@ -1248,13 +1288,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       R_C = _mm256_setzero_si256();
       R_D = _mm256_setzero_si256();
       for (Index k = depth_32; k < depth; k++) {
-        ptr = (QUInt8*) &R_A;
+        ptr = (QUInt8*)&R_A;
         ptr[k - depth_32] = rhs(k, n + 8);
-        ptr = (QUInt8*) &R_B;
+        ptr = (QUInt8*)&R_B;
         ptr[k - depth_32] = rhs(k, n + 9);
-        ptr = (QUInt8*) &R_C;
+        ptr = (QUInt8*)&R_C;
         ptr[k - depth_32] = rhs(k, n + 10);
-        ptr = (QUInt8*) &R_D;
+        ptr = (QUInt8*)&R_D;
         ptr[k - depth_32] = rhs(k, n + 11);
       }
       PACK_STEP;
@@ -1264,13 +1304,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       R_C = _mm256_setzero_si256();
       R_D = _mm256_setzero_si256();
       for (Index k = depth_32; k < depth; k++) {
-        ptr = (QUInt8*) &R_A;
+        ptr = (QUInt8*)&R_A;
         ptr[k - depth_32] = rhs(k, n + 12);
-        ptr = (QUInt8*) &R_B;
+        ptr = (QUInt8*)&R_B;
         ptr[k - depth_32] = rhs(k, n + 13);
-        ptr = (QUInt8*) &R_C;
+        ptr = (QUInt8*)&R_C;
         ptr[k - depth_32] = rhs(k, n + 14);
-        ptr = (QUInt8*) &R_D;
+        ptr = (QUInt8*)&R_D;
         ptr[k - depth_32] = rhs(k, n + 15);
       }
       PACK_STEP;
@@ -1280,13 +1320,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       R_C = _mm256_setzero_si256();
       R_D = _mm256_setzero_si256();
       for (Index k = depth_32; k < depth; k++) {
-        ptr = (QUInt8*) &R_A;
+        ptr = (QUInt8*)&R_A;
         ptr[k - depth_32] = rhs(k, n + 16);
-        ptr = (QUInt8*) &R_B;
+        ptr = (QUInt8*)&R_B;
         ptr[k - depth_32] = rhs(k, n + 17);
-        ptr = (QUInt8*) &R_C;
+        ptr = (QUInt8*)&R_C;
         ptr[k - depth_32] = rhs(k, n + 18);
-        ptr = (QUInt8*) &R_D;
+        ptr = (QUInt8*)&R_D;
         ptr[k - depth_32] = rhs(k, n + 19);
       }
       PACK_STEP;
@@ -1296,13 +1336,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       R_C = _mm256_setzero_si256();
       R_D = _mm256_setzero_si256();
       for (Index k = depth_32; k < depth; k++) {
-        ptr = (QUInt8*) &R_A;
+        ptr = (QUInt8*)&R_A;
         ptr[k - depth_32] = rhs(k, n + 20);
-        ptr = (QUInt8*) &R_B;
+        ptr = (QUInt8*)&R_B;
         ptr[k - depth_32] = rhs(k, n + 21);
-        ptr = (QUInt8*) &R_C;
+        ptr = (QUInt8*)&R_C;
         ptr[k - depth_32] = rhs(k, n + 22);
-        ptr = (QUInt8*) &R_D;
+        ptr = (QUInt8*)&R_D;
         ptr[k - depth_32] = rhs(k, n + 23);
       }
       PACK_STEP;
@@ -1312,13 +1352,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       R_C = _mm256_setzero_si256();
       R_D = _mm256_setzero_si256();
       for (Index k = depth_32; k < depth; k++) {
-        ptr = (QUInt8*) &R_A;
+        ptr = (QUInt8*)&R_A;
         ptr[k - depth_32] = rhs(k, n + 24);
-        ptr = (QUInt8*) &R_B;
+        ptr = (QUInt8*)&R_B;
         ptr[k - depth_32] = rhs(k, n + 25);
-        ptr = (QUInt8*) &R_C;
+        ptr = (QUInt8*)&R_C;
         ptr[k - depth_32] = rhs(k, n + 26);
-        ptr = (QUInt8*) &R_D;
+        ptr = (QUInt8*)&R_D;
         ptr[k - depth_32] = rhs(k, n + 27);
       }
       PACK_STEP;
@@ -1328,13 +1368,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       R_C = _mm256_setzero_si256();
       R_D = _mm256_setzero_si256();
       for (Index k = depth_32; k < depth; k++) {
-        ptr = (QUInt8*) &R_A;
+        ptr = (QUInt8*)&R_A;
         ptr[k - depth_32] = rhs(k, n + 28);
-        ptr = (QUInt8*) &R_B;
+        ptr = (QUInt8*)&R_B;
         ptr[k - depth_32] = rhs(k, n + 29);
-        ptr = (QUInt8*) &R_C;
+        ptr = (QUInt8*)&R_C;
         ptr[k - depth_32] = rhs(k, n + 30);
-        ptr = (QUInt8*) &R_D;
+        ptr = (QUInt8*)&R_D;
         ptr[k - depth_32] = rhs(k, n + 31);
       }
       PACK_STEP;
@@ -1350,34 +1390,34 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
       Index n;
       for (n = cols_32; n < cols; n += 4) {
         switch (cols - n) {
-        case 1:
-          R_A = rhs.loadPacket(k, n);
-          R_B = _mm256_setzero_si256();
-          R_C = _mm256_setzero_si256();
-          R_D = _mm256_setzero_si256();
-          PACK_STEP;
-          break;
-        case 2:
-          R_A = rhs.loadPacket(k, n);
-          R_B = rhs.loadPacket(k, n + 1);
-          R_C = _mm256_setzero_si256();
-          R_D = _mm256_setzero_si256();
-          PACK_STEP;
-          break;
-        case 3:
-          R_A = rhs.loadPacket(k, n);
-          R_B = rhs.loadPacket(k, n + 1);
-          R_C = rhs.loadPacket(k, n + 2);
-          R_D = _mm256_setzero_si256();
-          PACK_STEP;
-          break;
-        default:
-          R_A = rhs.loadPacket(k, n);
-          R_B = rhs.loadPacket(k, n + 1);
-          R_C = rhs.loadPacket(k, n + 2);
-          R_D = rhs.loadPacket(k, n + 3);
-          PACK_STEP;
-          break;
+          case 1:
+            R_A = rhs.template loadPacket<Packet>(k, n);
+            R_B = _mm256_setzero_si256();
+            R_C = _mm256_setzero_si256();
+            R_D = _mm256_setzero_si256();
+            PACK_STEP;
+            break;
+          case 2:
+            R_A = rhs.template loadPacket<Packet>(k, n);
+            R_B = rhs.template loadPacket<Packet>(k, n + 1);
+            R_C = _mm256_setzero_si256();
+            R_D = _mm256_setzero_si256();
+            PACK_STEP;
+            break;
+          case 3:
+            R_A = rhs.template loadPacket<Packet>(k, n);
+            R_B = rhs.template loadPacket<Packet>(k, n + 1);
+            R_C = rhs.template loadPacket<Packet>(k, n + 2);
+            R_D = _mm256_setzero_si256();
+            PACK_STEP;
+            break;
+          default:
+            R_A = rhs.template loadPacket<Packet>(k, n);
+            R_B = rhs.template loadPacket<Packet>(k, n + 1);
+            R_C = rhs.template loadPacket<Packet>(k, n + 2);
+            R_D = rhs.template loadPacket<Packet>(k, n + 3);
+            PACK_STEP;
+            break;
         }
       }
 
@@ -1394,46 +1434,46 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
         __m256i R_C = _mm256_setzero_si256();
         __m256i R_D = _mm256_setzero_si256();
         switch (cols - n) {
-        case 1:
-          for (Index k = depth_32; k < depth; k++) {
-            ptr = (QUInt8*) &R_A;
-            ptr[k - depth_32] = rhs(k, n);
-          }
-          PACK_STEP;
-          break;
-        case 2:
-          for (Index k = depth_32; k < depth; k++) {
-            ptr = (QUInt8*) &R_A;
-            ptr[k - depth_32] = rhs(k, n);
-            ptr = (QUInt8*) &R_B;
-            ptr[k - depth_32] = rhs(k, n + 1);
-          }
-          PACK_STEP;
-          break;
-        case 3:
-          for (Index k = depth_32; k < depth; k++) {
-            ptr = (QUInt8*) &R_A;
-            ptr[k - depth_32] = rhs(k, n);
-            ptr = (QUInt8*) &R_B;
-            ptr[k - depth_32] = rhs(k, n + 1);
-            ptr = (QUInt8*) &R_C;
-            ptr[k - depth_32] = rhs(k, n + 2);
-          }
-          PACK_STEP;
-          break;
-        default:
-          for (Index k = depth_32; k < depth; k++) {
-            ptr = (QUInt8*) &R_A;
-            ptr[k - depth_32] = rhs(k, n);
-            ptr = (QUInt8*) &R_B;
-            ptr[k - depth_32] = rhs(k, n + 1);
-            ptr = (QUInt8*) &R_C;
-            ptr[k - depth_32] = rhs(k, n + 2);
-            ptr = (QUInt8*) &R_D;
-            ptr[k - depth_32] = rhs(k, n + 3);
-          }
-          PACK_STEP;
-          break;
+          case 1:
+            for (Index k = depth_32; k < depth; k++) {
+              ptr = (QUInt8*)&R_A;
+              ptr[k - depth_32] = rhs(k, n);
+            }
+            PACK_STEP;
+            break;
+          case 2:
+            for (Index k = depth_32; k < depth; k++) {
+              ptr = (QUInt8*)&R_A;
+              ptr[k - depth_32] = rhs(k, n);
+              ptr = (QUInt8*)&R_B;
+              ptr[k - depth_32] = rhs(k, n + 1);
+            }
+            PACK_STEP;
+            break;
+          case 3:
+            for (Index k = depth_32; k < depth; k++) {
+              ptr = (QUInt8*)&R_A;
+              ptr[k - depth_32] = rhs(k, n);
+              ptr = (QUInt8*)&R_B;
+              ptr[k - depth_32] = rhs(k, n + 1);
+              ptr = (QUInt8*)&R_C;
+              ptr[k - depth_32] = rhs(k, n + 2);
+            }
+            PACK_STEP;
+            break;
+          default:
+            for (Index k = depth_32; k < depth; k++) {
+              ptr = (QUInt8*)&R_A;
+              ptr[k - depth_32] = rhs(k, n);
+              ptr = (QUInt8*)&R_B;
+              ptr[k - depth_32] = rhs(k, n + 1);
+              ptr = (QUInt8*)&R_C;
+              ptr[k - depth_32] = rhs(k, n + 2);
+              ptr = (QUInt8*)&R_D;
+              ptr[k - depth_32] = rhs(k, n + 3);
+            }
+            PACK_STEP;
+            break;
         }
       }
     }
@@ -1441,13 +1481,13 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols, Index
 #undef PACK_STEP
 }
 
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE
-void gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-::operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-             Index rows, Index depth, Index cols, QInt32 alpha,
-             Index strideA, Index strideB, Index offsetA, Index offsetB)
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+EIGEN_DONT_INLINE void gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr,
+                                       ConjugateLhs, ConjugateRhs>::
+operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
+           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
+           Index strideB, Index offsetA, Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   eigen_assert(alpha.value == 1);
@@ -1678,17 +1718,21 @@ void gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, Con
           LinearMapper r1 = res.getLinearMapper(m + 8, j);
           LinearMapper r2 = res.getLinearMapper(m + 16, j);
           LinearMapper r3 = res.getLinearMapper(m + 24, j);
-          r0.storePacket(
-              0, _mm256_add_epi32(blockO_256[i++], r0.loadPacket(0)));
-          r1.storePacket(
-              0, _mm256_add_epi32(blockO_256[i++], r1.loadPacket(0)));
-          r2.storePacket(
-              0, _mm256_add_epi32(blockO_256[i++], r2.loadPacket(0)));
-          r3.storePacket(
-              0, _mm256_add_epi32(blockO_256[i++], r3.loadPacket(0)));
+          typedef typename packet_traits<QInt32>::type Packet;
+          r0.template storePacket<Packet>(
+              0, _mm256_add_epi32(blockO_256[i++],
+                                  r0.template loadPacket<Packet>(0)));
+          r1.template storePacket<Packet>(
+              0, _mm256_add_epi32(blockO_256[i++],
+                                  r1.template loadPacket<Packet>(0)));
+          r2.template storePacket<Packet>(
+              0, _mm256_add_epi32(blockO_256[i++],
+                                  r2.template loadPacket<Packet>(0)));
+          r3.template storePacket<Packet>(
+              0, _mm256_add_epi32(blockO_256[i++],
+                                  r3.template loadPacket<Packet>(0)));
         }
-      }
-      else {
+      } else {
         for (Index j = n; j < cols; j++) {
           for (Index i = m; i < rows; i++) {
             res(i, j) = blockO[(j - n) * 32 + (i - m)];
@@ -1745,7 +1789,7 @@ void gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, Con
 // madd both perform an adjacent addition in the kernel.
 template <typename Index, typename DataMapper, int Pack1, int Pack2,
           bool Conjugate, bool PanelMode>
-struct gemm_pack_lhs<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor,
+struct gemm_pack_lhs<QInt8, Index, DataMapper, Pack1, Pack2, QInt8, ColMajor,
                      Conjugate, PanelMode> {
   EIGEN_DONT_INLINE void operator()(QInt8* blockA, const DataMapper& lhs,
                                     Index depth, Index rows, Index stride = 0,
@@ -1755,15 +1799,18 @@ struct gemm_pack_lhs<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor,
 template <typename Index, typename DataMapper, int Pack1, int Pack2,
           bool Conjugate, bool PanelMode>
 EIGEN_DONT_INLINE void gemm_pack_lhs<QInt8, Index, DataMapper, Pack1, Pack2,
-                                     ColMajor, Conjugate, PanelMode>::
+                                     QInt8, ColMajor, Conjugate, PanelMode>::
 operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows,
            Index stride, Index offset) {
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
 
+  typedef typename packet_traits<QInt8>::type Packet;
+
   // Use alternate function for weird sizes
   if (rows % 32 != 0 || depth % 32 != 0) {
-    gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor, Conjugate, PanelMode> lhs_pack;
+    gemm_pack_lhs_any<QInt8, Index, DataMapper, Pack1, Pack2, ColMajor,
+                      Conjugate, PanelMode> lhs_pack;
     return lhs_pack(blockA, lhs, depth, rows, stride, offset);
   }
 
@@ -1775,15 +1822,15 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows,
     // Pack depth in sets of 8
     for (Index k = 0; k < depth; k += 8) {
       // Load vectors
-      __m256i L_A = lhs.loadPacket(m, k);
-      __m256i L_B = lhs.loadPacket(m, k + 1);
+      __m256i L_A = lhs.template loadPacket<Packet>(m, k);
+      __m256i L_B = lhs.template loadPacket<Packet>(m, k + 1);
 
       // Interleave 8-bit elements
       __m256i L_AB0_AB16 = _mm256_unpacklo_epi8(L_A, L_B);
       __m256i L_AB8_AB24 = _mm256_unpackhi_epi8(L_A, L_B);
 
-      __m256i L_C = lhs.loadPacket(m, k + 2);
-      __m256i L_D = lhs.loadPacket(m, k + 3);
+      __m256i L_C = lhs.template loadPacket<Packet>(m, k + 2);
+      __m256i L_D = lhs.template loadPacket<Packet>(m, k + 3);
       __m256i L_CD0_CD16 = _mm256_unpacklo_epi8(L_C, L_D);
       __m256i L_CD8_CD24 = _mm256_unpackhi_epi8(L_C, L_D);
 
@@ -1804,12 +1851,12 @@ operator()(QInt8* blockA, const DataMapper& lhs, Index depth, Index rows,
       _mm256_store_si256(blockA_256++, L_AD16);
       __m256i L_AD24 = _mm256_permute2x128_si256(L_AD8_AD24, L_AD12_AD28, 0x31);
       _mm256_store_si256(blockA_256++, L_AD24);
-      __m256i L_E = lhs.loadPacket(m, k + 4);
-      __m256i L_F = lhs.loadPacket(m, k + 5);
+      __m256i L_E = lhs.template loadPacket<Packet>(m, k + 4);
+      __m256i L_F = lhs.template loadPacket<Packet>(m, k + 5);
       __m256i L_EF0_EF16 = _mm256_unpacklo_epi8(L_E, L_F);
       __m256i L_EF8_EF24 = _mm256_unpackhi_epi8(L_E, L_F);
-      __m256i L_G = lhs.loadPacket(m, k + 6);
-      __m256i L_H = lhs.loadPacket(m, k + 7);
+      __m256i L_G = lhs.template loadPacket<Packet>(m, k + 6);
+      __m256i L_H = lhs.template loadPacket<Packet>(m, k + 7);
       __m256i L_GH0_GH16 = _mm256_unpacklo_epi8(L_G, L_H);
       __m256i L_GH8_GH24 = _mm256_unpackhi_epi8(L_G, L_H);
       __m256i L_EH0_EH16 = _mm256_unpacklo_epi16(L_EF0_EF16, L_GH0_GH16);
@@ -1868,9 +1915,12 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols,
   eigen_assert(stride == 0);
   eigen_assert(offset == 0);
 
+  typedef typename packet_traits<QUInt8>::type Packet;
+
   // Use alternate function for weird sizes
   if (cols % 32 != 0 || depth % 32 != 0) {
-    gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate, PanelMode> rhs_pack;
+    gemm_pack_rhs_any<QUInt8, Index, DataMapper, nr, ColMajor, Conjugate,
+                      PanelMode> rhs_pack;
     return rhs_pack(blockB, rhs, depth, cols, stride, offset);
   }
 
@@ -1898,52 +1948,52 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols,
   for (Index n = 0; n < cols; n += 32) {
     // Pack depth in sets of 32
     for (Index k = 0; k < depth; k += 32) {
-      __m256i R_A = rhs.loadPacket(k, n);
-      __m256i R_B = rhs.loadPacket(k, n + 1);
-      __m256i R_C = rhs.loadPacket(k, n + 2);
-      __m256i R_D = rhs.loadPacket(k, n + 3);
+      __m256i R_A = rhs.template loadPacket<Packet>(k, n);
+      __m256i R_B = rhs.template loadPacket<Packet>(k, n + 1);
+      __m256i R_C = rhs.template loadPacket<Packet>(k, n + 2);
+      __m256i R_D = rhs.template loadPacket<Packet>(k, n + 3);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 4);
-      R_B = rhs.loadPacket(k, n + 5);
-      R_C = rhs.loadPacket(k, n + 6);
-      R_D = rhs.loadPacket(k, n + 7);
+      R_A = rhs.template loadPacket<Packet>(k, n + 4);
+      R_B = rhs.template loadPacket<Packet>(k, n + 5);
+      R_C = rhs.template loadPacket<Packet>(k, n + 6);
+      R_D = rhs.template loadPacket<Packet>(k, n + 7);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 8);
-      R_B = rhs.loadPacket(k, n + 9);
-      R_C = rhs.loadPacket(k, n + 10);
-      R_D = rhs.loadPacket(k, n + 11);
+      R_A = rhs.template loadPacket<Packet>(k, n + 8);
+      R_B = rhs.template loadPacket<Packet>(k, n + 9);
+      R_C = rhs.template loadPacket<Packet>(k, n + 10);
+      R_D = rhs.template loadPacket<Packet>(k, n + 11);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 12);
-      R_B = rhs.loadPacket(k, n + 13);
-      R_C = rhs.loadPacket(k, n + 14);
-      R_D = rhs.loadPacket(k, n + 15);
+      R_A = rhs.template loadPacket<Packet>(k, n + 12);
+      R_B = rhs.template loadPacket<Packet>(k, n + 13);
+      R_C = rhs.template loadPacket<Packet>(k, n + 14);
+      R_D = rhs.template loadPacket<Packet>(k, n + 15);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 16);
-      R_B = rhs.loadPacket(k, n + 17);
-      R_C = rhs.loadPacket(k, n + 18);
-      R_D = rhs.loadPacket(k, n + 19);
+      R_A = rhs.template loadPacket<Packet>(k, n + 16);
+      R_B = rhs.template loadPacket<Packet>(k, n + 17);
+      R_C = rhs.template loadPacket<Packet>(k, n + 18);
+      R_D = rhs.template loadPacket<Packet>(k, n + 19);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 20);
-      R_B = rhs.loadPacket(k, n + 21);
-      R_C = rhs.loadPacket(k, n + 22);
-      R_D = rhs.loadPacket(k, n + 23);
+      R_A = rhs.template loadPacket<Packet>(k, n + 20);
+      R_B = rhs.template loadPacket<Packet>(k, n + 21);
+      R_C = rhs.template loadPacket<Packet>(k, n + 22);
+      R_D = rhs.template loadPacket<Packet>(k, n + 23);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 24);
-      R_B = rhs.loadPacket(k, n + 25);
-      R_C = rhs.loadPacket(k, n + 26);
-      R_D = rhs.loadPacket(k, n + 27);
+      R_A = rhs.template loadPacket<Packet>(k, n + 24);
+      R_B = rhs.template loadPacket<Packet>(k, n + 25);
+      R_C = rhs.template loadPacket<Packet>(k, n + 26);
+      R_D = rhs.template loadPacket<Packet>(k, n + 27);
       PACK_STEP;
 
-      R_A = rhs.loadPacket(k, n + 28);
-      R_B = rhs.loadPacket(k, n + 29);
-      R_C = rhs.loadPacket(k, n + 30);
-      R_D = rhs.loadPacket(k, n + 31);
+      R_A = rhs.template loadPacket<Packet>(k, n + 28);
+      R_B = rhs.template loadPacket<Packet>(k, n + 29);
+      R_C = rhs.template loadPacket<Packet>(k, n + 30);
+      R_D = rhs.template loadPacket<Packet>(k, n + 31);
       PACK_STEP;
 
       blockB_256 += 24;
@@ -1953,24 +2003,26 @@ operator()(QUInt8* blockB, const DataMapper& rhs, Index depth, Index cols,
 }
 
 // Perform the actual multiplication on packed inputs
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-struct gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+struct gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+                   ConjugateRhs> {
   typedef typename DataMapper::LinearMapper LinearMapper;
 
   EIGEN_DONT_INLINE
-  void operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-                  Index rows, Index depth, Index cols, QInt32 alpha,
-                  Index strideA=-1, Index strideB=-1, Index offsetA=0, Index offsetB=0);
+  void operator()(const DataMapper& res, const QInt8* blockA,
+                  const QUInt8* blockB, Index rows, Index depth, Index cols,
+                  QInt32 alpha, Index strideA = -1, Index strideB = -1,
+                  Index offsetA = 0, Index offsetB = 0);
 };
 
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE
-void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-::operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-             Index rows, Index depth, Index cols, QInt32 alpha,
-             Index strideA, Index strideB, Index offsetA, Index offsetB)
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+EIGEN_DONT_INLINE void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr,
+                                   ConjugateLhs, ConjugateRhs>::
+operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
+           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
+           Index strideB, Index offsetA, Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   eigen_assert(alpha.value == 1);
@@ -1986,8 +2038,10 @@ void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, Conjuga
 
   // Use alternate function for weird sizes
   if (rows % 32 != 0 || cols % 32 != 0 || depth % 32 != 0) {
-    gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs> gebp;
-    return gebp(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
+    gebp_kernel_any<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+                    ConjugateRhs> gebp;
+    return gebp(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB,
+                offsetA, offsetB);
   }
 
   // Create result block
@@ -2205,14 +2259,19 @@ void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, Conjuga
         LinearMapper r1 = res.getLinearMapper(m + 8, j);
         LinearMapper r2 = res.getLinearMapper(m + 16, j);
         LinearMapper r3 = res.getLinearMapper(m + 24, j);
-        r0.storePacket(
-            0, _mm256_add_epi32(blockO_256[i++], r0.loadPacket(0)));
-        r1.storePacket(
-            0, _mm256_add_epi32(blockO_256[i++], r1.loadPacket(0)));
-        r2.storePacket(
-            0, _mm256_add_epi32(blockO_256[i++], r2.loadPacket(0)));
-        r3.storePacket(
-            0, _mm256_add_epi32(blockO_256[i++], r3.loadPacket(0)));
+        typedef typename packet_traits<QInt32>::type Packet;
+        r0.template storePacket<Packet>(
+            0, _mm256_add_epi32(blockO_256[i++],
+                                r0.template loadPacket<Packet>(0)));
+        r1.template storePacket<Packet>(
+            0, _mm256_add_epi32(blockO_256[i++],
+                                r1.template loadPacket<Packet>(0)));
+        r2.template storePacket<Packet>(
+            0, _mm256_add_epi32(blockO_256[i++],
+                                r2.template loadPacket<Packet>(0)));
+        r3.template storePacket<Packet>(
+            0, _mm256_add_epi32(blockO_256[i++],
+                                r3.template loadPacket<Packet>(0)));
       }
 
       // Zero the result block so it can be reused

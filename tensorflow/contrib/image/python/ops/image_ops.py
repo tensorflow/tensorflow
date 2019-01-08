@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.contrib.image.ops import gen_image_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
@@ -271,8 +272,11 @@ def transform(images,
       raise TypeError("Images should have rank between 2 and 4.")
 
     if output_shape is None:
-      output_shape = tensor_util.constant_value(
-          array_ops.shape(images)[1:3]) or array_ops.shape(images)[1:3]
+      output_shape = array_ops.shape(images)[1:3]
+      if not context.executing_eagerly():
+        output_shape_value = tensor_util.constant_value(output_shape)
+        if output_shape_value is not None:
+          output_shape = output_shape_value
 
     output_shape = ops.convert_to_tensor(
         output_shape, dtypes.int32, name="output_shape")

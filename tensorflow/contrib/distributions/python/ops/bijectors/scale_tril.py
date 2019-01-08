@@ -42,7 +42,10 @@ class ScaleTriL(chain.Chain):
   #### Examples
 
   ```python
-  tfb = tf.contrib.distributions.bijectors
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+  tfb = tfp.bijectors
+
   b = tfb.ScaleTriL(
        diag_bijector=tfb.Exp(),
        diag_shift=None)

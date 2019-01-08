@@ -142,7 +142,7 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
         OP_REQUIRES(
             c, FastBoundsCheck(p, num_partitions_),
             errors::InvalidArgument("indices[", i,
-                                    "] has been asynchronously overwitten and "
+                                    "] has been asynchronously overwritten and "
                                     "is no longer in range!"));
         auto oi = output_index[p];
         OP_REQUIRES(c, FastBoundsCheck(oi, out_flat[p].dimension(0)),

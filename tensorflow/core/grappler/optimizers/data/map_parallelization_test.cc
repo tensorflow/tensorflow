@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -28,16 +28,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
-                    StringPiece function_name) {
-  return test::function::NDef(
-      name, "MapDataset", {string(input_node_name)},
-      {{"f", FunctionDefHelper::FunctionRef(string(function_name))},
-       {"Targuments", {}},
-       {"output_shapes", {}},
-       {"output_types", {}}});
-}
-
+using graph_tests_utils::MakeMapNode;
 const char stateless_fun_name[] = "XTimesTwo";
 const char stateful_fun_name[] = "RandomUniform";
 

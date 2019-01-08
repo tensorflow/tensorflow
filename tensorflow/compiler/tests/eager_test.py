@@ -101,12 +101,12 @@ class EagerTest(xla_test.XLATestCase):
       self.assertAllEqual(15, product)
 
     # Run some ops graphly
-    with context.graph_mode(), self.cached_session() as sess:
+    with context.graph_mode(), self.cached_session():
       with self.test_scope():
         three = constant_op.constant(3)
         five = constant_op.constant(5)
         product = three * five
-        self.assertAllEqual(15, sess.run(product))
+        self.assertAllEqual(15, self.evaluate(product))
 
   def testDegenerateSlices(self):
     with self.test_scope():

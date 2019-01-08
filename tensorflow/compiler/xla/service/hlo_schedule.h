@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -34,14 +35,14 @@ class HloInstructionSequence {
  public:
   HloInstructionSequence() = default;
   explicit HloInstructionSequence(
-      absl::Span<const HloInstruction* const> instructions) {
-    for (const HloInstruction* instruction : instructions) {
+      absl::Span<HloInstruction* const> instructions) {
+    for (HloInstruction* instruction : instructions) {
       push_back(instruction);
     }
   }
 
   // Adds the instruction to the end of the sequence.
-  void push_back(const HloInstruction* instruction) {
+  void push_back(HloInstruction* instruction) {
     instruction_sequence_.push_back(instruction);
     id_sequence_.push_back(instruction->unique_id());
   }
@@ -55,7 +56,7 @@ class HloInstructionSequence {
   int64 size() const { return instruction_sequence_.size(); }
 
   // Returns the sequence of HLO instructions.
-  const std::vector<const HloInstruction*>& instructions() const {
+  const std::vector<HloInstruction*>& instructions() const {
     return instruction_sequence_;
   }
 
@@ -64,7 +65,7 @@ class HloInstructionSequence {
 
  private:
   // The sequence as HloInstructions.
-  std::vector<const HloInstruction*> instruction_sequence_;
+  std::vector<HloInstruction*> instruction_sequence_;
 
   // The sequence of HLO instructions, represented by their unique IDs. The
   // sequence is stored as both HloInstructions and unique IDs because the
@@ -97,20 +98,19 @@ class HloSchedule {
 
   // Sets the sequence for the given computation to the given sequence.
   void set_sequence(const HloComputation* computation,
-                    absl::Span<const HloInstruction* const> sequence);
+                    absl::Span<HloInstruction* const> sequence);
   void set_sequence(const HloComputation* computation,
                     HloInstructionSequence sequence);
 
   // Returns a map from HloComputation unique ID to instruction sequence. The
   // map contains all sequences in the schedule.
-  const tensorflow::gtl::FlatMap<int64, HloInstructionSequence>& sequences()
-      const {
+  const absl::flat_hash_map<int64, HloInstructionSequence>& sequences() const {
     return sequences_;
   }
 
   // Returns true if the schedule has a sequence for the given computation.
   bool is_computation_scheduled(const HloComputation* computation) const {
-    return sequences_.count(computation->unique_id()) == 1;
+    return sequences_.contains(computation->unique_id());
   }
 
   // Updates the schedule such that it is (again) a valid schedule for the
@@ -148,7 +148,7 @@ class HloSchedule {
   // A map from computation unique ID to instruction sequence. Unique IDs are
   // used rather than HloComputation pointers because HLO pointers are not
   // unique across HLO transformations because pointers may be recycled.
-  tensorflow::gtl::FlatMap<int64, HloInstructionSequence> sequences_;
+  absl::flat_hash_map<int64, HloInstructionSequence> sequences_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSchedule& schedule);

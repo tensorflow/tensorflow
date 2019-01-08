@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 
 #include <string.h>
+#include "absl/strings/match.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -589,9 +590,22 @@ void TensorHandleCopyBetweenTwoGPUDevices(bool async) {
   TF_DeviceList* devices = TFE_ContextListDevices(ctx, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   const int num_devices = TF_DeviceListCount(devices);
+  bool has_gpu0 = false;
+  bool has_gpu1 = false;
+  for (int i = 0; i < num_devices; ++i) {
+    const char* dev = TF_DeviceListName(devices, i, status.get());
+    ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+    string device_name(dev);
+    if (device_name.find("GPU:0") != string::npos) {
+      has_gpu0 = true;
+    }
+    if (device_name.find("GPU:1") != string::npos) {
+      has_gpu1 = true;
+    }
+  }
 
   const char* kCPUDevice = "CPU:0";
-  if (num_devices < 3) {
+  if (!has_gpu0 || !has_gpu1) {
     TF_DeleteDeviceList(devices);
     TF_DeleteTensor(t);
     TFE_DeleteTensorHandle(hcpu);
@@ -781,6 +795,14 @@ TEST(CAPI, TensorHandleNullptr) {
 
   TF_SetStatus(status.get(), TF_OK, "");
 
+  device_name = TFE_TensorHandleBackingDeviceName(h, status.get());
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
+  ASSERT_EQ(device_name, nullptr);
+  ASSERT_EQ("The passed in handle is a nullptr",
+            string(TF_Message(status.get())));
+
+  TF_SetStatus(status.get(), TF_OK, "");
+
   int num_dims = TFE_TensorHandleNumDims(h, status.get());
   ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
   ASSERT_EQ(num_dims, -1);
@@ -794,6 +816,62 @@ TEST(CAPI, TensorHandleNullptr) {
   ASSERT_EQ(dim, -1);
   ASSERT_EQ("The passed in handle is a nullptr",
             string(TF_Message(status.get())));
+}
+
+TEST(CAPI, TensorHandleDevices) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status.get());
+  TFE_DeleteContextOptions(opts);
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
+  const char* device_name = TFE_TensorHandleDeviceName(hcpu, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_TRUE(absl::StrContains(device_name, "CPU:0")) << device_name;
+  const char* backing_device_name =
+      TFE_TensorHandleBackingDeviceName(hcpu, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_TRUE(absl::StrContains(backing_device_name, "CPU:0"))
+      << backing_device_name;
+
+  // Disable the test if no GPU is present.
+  string gpu_device_name;
+  if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
+    TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
+        hcpu, ctx, gpu_device_name.c_str(), status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+    TFE_Op* shape_op = ShapeOp(ctx, hgpu);
+    TFE_OpSetDevice(shape_op, gpu_device_name.c_str(), status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    TFE_TensorHandle* retvals[1];
+    int num_retvals = 1;
+    TFE_Execute(shape_op, &retvals[0], &num_retvals, status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+    // .device of shape is GPU since the op is executed on GPU
+    device_name = TFE_TensorHandleDeviceName(retvals[0], status.get());
+    ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+    ASSERT_TRUE(absl::StrContains(device_name, "GPU:0")) << device_name;
+
+    // .backing_device of shape is CPU since the tensor is backed by CPU
+    backing_device_name =
+        TFE_TensorHandleBackingDeviceName(retvals[0], status.get());
+    ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+    ASSERT_TRUE(absl::StrContains(backing_device_name, "CPU:0"))
+        << backing_device_name;
+
+    TFE_DeleteOp(shape_op);
+    TFE_DeleteTensorHandle(retvals[0]);
+    TFE_DeleteTensorHandle(hgpu);
+  }
+
+  TFE_DeleteTensorHandle(hcpu);
+  TFE_ContextAsyncWait(ctx, status.get());
+  EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_DeleteContext(ctx);
 }
 
 void Execute_MatMul_CPU(bool async) {

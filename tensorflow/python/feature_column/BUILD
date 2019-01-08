@@ -4,7 +4,7 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "feature_column_py",
@@ -54,6 +54,7 @@ py_library(
     srcs = ["feature_column_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":feature_column",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -93,18 +94,13 @@ filegroup(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "feature_column_test",
     srcs = ["feature_column_test.py"],
-    data = [":vocabulary_testdata"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_pip",
-    ],
-    deps = [
+    additional_deps = [
         ":feature_column",
         ":feature_column_py",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -123,21 +119,22 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+    ],
+    data = [":vocabulary_testdata"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+        "no_windows",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "feature_column_v2_test",
     srcs = ["feature_column_v2_test.py"],
-    data = [":vocabulary_testdata"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_pip",
-    ],
-    deps = [
+    additional_deps = [
         ":feature_column_py",
         ":feature_column_v2",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -156,7 +153,13 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:numpy_io",
-        "//third_party/py/numpy",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+    data = [":vocabulary_testdata"],
+    shard_count = 5,
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+        "no_windows",
     ],
 )

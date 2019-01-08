@@ -51,6 +51,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .HostMemory("reduction_indices"),                                    \
       ReductionOp<GPUDevice, type, int64, Eigen::internal::SumReducer<type>>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_complex64(REGISTER_GPU_KERNELS);
 TF_CALL_complex128(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
@@ -76,15 +77,7 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("output")
         .HostMemory("reduction_indices"),
     ReductionOp<CPUDevice, int32, int64, Eigen::internal::SumReducer<int32>>);
-REGISTER_KERNEL_BUILDER(
-    Name("Sum")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<int64>("T")
-        .TypeConstraint<int32>("Tidx")
-        .HostMemory("input")
-        .HostMemory("output")
-        .HostMemory("reduction_indices"),
-    ReductionOp<CPUDevice, int64, int32, Eigen::internal::SumReducer<int64>>);
+
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL

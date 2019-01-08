@@ -549,6 +549,40 @@ Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Pow", PowGrad);
 
+Status XlogyGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"zeros"}, "ZerosLike", {"x"}},
+      {{"is_x_zero"}, "NotEqual", {"x", "zeros"}},
+      {{"is_zero_cast"}, "Cast", {"is_x_zero"},
+        {{"SrcT", DT_BOOL}, {"DstT", "$T"}}},
+      {{"safe_logy"}, "Xlogy", {"is_zero_cast", "y"}},
+      {{"xlogygrad"}, "Xdivy", {"x", "y"}},
+      {{"gx"}, "Mul", {"safe_logy", "dz"}},
+      {{"gy"}, "Mul", {"xlogygrad", "dz"}},
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Xlogy", XlogyGrad);
+
+Status XdivyGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"zeros"}, "ZerosLike", {"x"}},
+      {{"is_x_zero"}, "NotEqual", {"x", "zeros"}},
+      {{"is_zero_cast"}, "Cast", {"is_x_zero"},
+        {{"SrcT", DT_BOOL}, {"DstT", "$T"}}},
+      {{"safe_divy"}, "Xdivy", {"is_zero_cast", "y"}},
+      {{"y2"}, "Square", {"y"}},
+      {{"negy2"}, "Neg", {"y2"}},
+      {{"xdivygrad"}, "Xdivy", {"x", "negy2"}},
+      {{"gx"}, "Mul", {"safe_divy", "dz"}},
+      {{"gy"}, "Mul", {"xdivygrad", "dz"}},
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Xdivy", XdivyGrad);
+
 Status MaximumMinimumGradHelper(const string& comparator,
                                 const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off

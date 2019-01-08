@@ -34,11 +34,12 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
   def __init__(self, method_name="runTest"):
     super(BitwiseOpTest, self).__init__(method_name)
 
+  @test_util.run_deprecated_v1
   def testBinaryOps(self):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
                   dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = constant_op.constant([0, 5, 3, 14], dtype=dtype)
         rhs = constant_op.constant([5, 0, 7, 11], dtype=dtype)
@@ -59,21 +60,23 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
                   2**31 - 1, 2**31, 2**32 - 1, 2**32, -2**32 + 1, -2**32,
                   -2**63 + 1, 2**63 - 1]
     def count_bits(x):
-      return sum([bin(z).count("1") for z in six.iterbytes(x.tobytes())])
+      return sum(bin(z).count("1") for z in six.iterbytes(x.tobytes()))
     for dtype in dtype_list:
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         print("PopulationCount test: ", dtype)
         inputs = np.array(raw_inputs, dtype=dtype.as_numpy_dtype)
         truth = [count_bits(x) for x in inputs]
         input_tensor = constant_op.constant(inputs, dtype=dtype)
-        popcnt_result = sess.run(gen_bitwise_ops.population_count(input_tensor))
+        popcnt_result = self.evaluate(
+            gen_bitwise_ops.population_count(input_tensor))
         self.assertAllEqual(truth, popcnt_result)
 
+  @test_util.run_deprecated_v1
   def testInvertOp(self):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
                   dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
     inputs = [0, 5, 3, 14]
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         # Because of issues with negative numbers, let's test this indirectly.
         # 1. invert(a) and a = 0
@@ -89,15 +92,16 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(not_a_or_a, [not_0] * 4)
         # For unsigned dtypes let's also check the result directly.
         if dtype.is_unsigned:
-          inverted = sess.run(bitwise_ops.invert(input_tensor))
+          inverted = self.evaluate(bitwise_ops.invert(input_tensor))
           expected = [dtype.max - x for x in inputs]
           self.assertAllEqual(inverted, expected)
 
+  @test_util.run_deprecated_v1
   def testShiftsWithPositiveLHS(self):
     dtype_list = [np.int8, np.int16, np.int32, np.int64,
                   np.uint8, np.uint16, np.uint32, np.uint64]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = np.array([0, 5, 3, 14], dtype=dtype)
         rhs = np.array([5, 0, 7, 3], dtype=dtype)
@@ -107,10 +111,11 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(left_shift_result, np.left_shift(lhs, rhs))
         self.assertAllEqual(right_shift_result, np.right_shift(lhs, rhs))
 
+  @test_util.run_deprecated_v1
   def testShiftsWithNegativeLHS(self):
     dtype_list = [np.int8, np.int16, np.int32, np.int64]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = np.array([-1, -5, -3, -14], dtype=dtype)
         rhs = np.array([5, 0, 7, 11], dtype=dtype)
@@ -120,10 +125,11 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(left_shift_result, np.left_shift(lhs, rhs))
         self.assertAllEqual(right_shift_result, np.right_shift(lhs, rhs))
 
+  @test_util.run_deprecated_v1
   def testImplementationDefinedShiftsDoNotCrash(self):
     dtype_list = [np.int8, np.int16, np.int32, np.int64]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = np.array([-1, -5, -3, -14], dtype=dtype)
         rhs = np.array([-2, 64, 101, 32], dtype=dtype)
@@ -135,11 +141,12 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
                   bitwise_ops.right_shift(lhs, rhs)])
 
 
+  @test_util.run_deprecated_v1
   def testShapeInference(self):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
                   dtypes.uint8, dtypes.uint16]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = constant_op.constant([[0], [3], [5]], dtype=dtype)
         rhs = constant_op.constant([[1, 2, 4]], dtype=dtype)

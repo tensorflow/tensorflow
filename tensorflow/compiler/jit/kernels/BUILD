@@ -7,11 +7,12 @@ package(
 )
 
 cc_library(
-    name = "xla_launch_op",
-    srcs = ["xla_launch_op.cc"],
-    hdrs = ["xla_launch_op.h"],
+    name = "xla_ops",
+    srcs = ["xla_ops.cc"],
+    hdrs = ["xla_ops.h"],
     deps = [
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:xla_compilation_cache",
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/jit:xla_launch_util",
@@ -26,6 +27,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
 )

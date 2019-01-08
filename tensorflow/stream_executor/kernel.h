@@ -75,11 +75,10 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -178,7 +177,7 @@ class KernelBase {
   // Gets the preferred cache configuration for a kernel.
   KernelCacheConfig GetPreferredCacheConfig() const;
 
-  void set_name(port::StringPiece name);
+  void set_name(absl::string_view name);
   const string &name() const { return name_; }
   const string &demangled_name() const { return demangled_name_; }
 

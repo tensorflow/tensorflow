@@ -86,7 +86,7 @@ bool IsPermutation(absl::Span<const int64> permutation, int64 rank) {
     CHECK_LT(index, rank);
     output[index] = 0;
   }
-  return std::find(output.begin(), output.end(), -1) == output.end();
+  return !absl::c_linear_search(output, -1);
 }
 
 std::vector<int64> InversePermutation(

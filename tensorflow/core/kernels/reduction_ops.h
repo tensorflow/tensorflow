@@ -26,13 +26,35 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
+// Dummy class used for template specialization for mean reduction, which is
+// accomplished by SumReducer and on-the-fly division by the reduction factor.
+template <typename Scalar>
+struct MeanReducer {
+  Scalar initialize() const { return Scalar(0); }
+};
+
 template <typename Device, typename OUT_T, typename IN_T,
           typename ReductionAxes, typename Reducer>
-void ReduceEigenImpl(const Device& d, OUT_T out, IN_T in,
-                     const ReductionAxes& reduction_axes,
-                     const Reducer& reducer) {
-  out.device(d) = in.reduce(reduction_axes, reducer);
-}
+struct ReduceEigenImpl {
+  void operator()(const Device& d, OUT_T out, IN_T in,
+                  const ReductionAxes& reduction_axes, const Reducer& reducer) {
+    out.device(d) = in.reduce(reduction_axes, reducer);
+  }
+};
+
+template <typename Device, typename OUT_T, typename IN_T,
+          typename ReductionAxes, typename Scalar>
+struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
+                       functor::MeanReducer<Scalar>> {
+  void operator()(const Device& d, OUT_T out, IN_T in,
+                  const ReductionAxes& reduction_axes,
+                  const functor::MeanReducer<Scalar>& reducer) {
+    static_assert(std::is_same<Scalar, typename OUT_T::Scalar>::value, "");
+    Eigen::internal::SumReducer<Scalar> sum_reducer;
+    out.device(d) = in.reduce(reduction_axes, sum_reducer) /
+                    static_cast<Scalar>(in.size() / out.size());
+  }
+};
 
 // For most reducers, the identity is Reducer::initialize()
 template <typename Reducer>
@@ -46,12 +68,12 @@ struct Identity {
 // MeanReducer is a special case, since it doesn't technically have an identity.
 // Thus, ideally we'd return nan.  However, mean is instantiated for integer
 // types as well, so we do the nan override only for floating point types.
-#define FIX_MEAN_IDENTITY(T)                                    \
-  template <>                                                   \
-  struct Identity<Eigen::internal::MeanReducer<T>> {            \
-    static T identity(const Eigen::internal::MeanReducer<T>&) { \
-      return Eigen::NumTraits<T>::quiet_NaN();                  \
-    }                                                           \
+#define FIX_MEAN_IDENTITY(T)                            \
+  template <>                                           \
+  struct Identity<functor::MeanReducer<T>> {            \
+    static T identity(const functor::MeanReducer<T>&) { \
+      return Eigen::NumTraits<T>::quiet_NaN();          \
+    }                                                   \
   };
 FIX_MEAN_IDENTITY(Eigen::half)
 FIX_MEAN_IDENTITY(float)

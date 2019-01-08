@@ -38,7 +38,7 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
       // be optimized away by dependency optimizer.
       for (string& inp : *node.mutable_input()) {
         if (!IsControlInput(inp)) {
-          inp = AsControlDependency(inp);
+          inp = AsControlDependency(NodeName(inp));
         }
       }
     } else if (IsCheckNumerics(node) || IsPrint(node)) {
@@ -54,7 +54,7 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
       // input.
       for (size_t i = 1; i < node.input_size(); ++i) {
         if (!IsControlInput(node.input(i))) {
-          *node.mutable_input(i) = AsControlDependency(node.input(i));
+          *node.mutable_input(i) = AsControlDependency(NodeName(node.input(i)));
         }
       }
     }

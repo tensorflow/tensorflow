@@ -44,6 +44,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@group_by_reducer
 @@group_by_window
 @@ignore_errors
+@@latency_stats
 @@make_batched_features_dataset
 @@make_csv_dataset
 @@make_saveable_from_iterator
@@ -57,9 +58,11 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@reduce_dataset
 @@sample_from_datasets
 @@scan
+@@set_stats_aggregator
 @@shuffle_and_repeat
 @@sliding_window_batch
 @@sloppy_interleave
+@@StatsAggregator
 @@unbatch
 @@unique
 
@@ -93,10 +96,6 @@ from tensorflow.contrib.data.python.ops.interleave_ops import sample_from_datase
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
-
-# Optimization constant that can be used to enable auto-tuning.
-from tensorflow.contrib.data.python.ops.optimization import AUTOTUNE
-
 from tensorflow.contrib.data.python.ops.parsing_ops import parse_example_dataset
 from tensorflow.contrib.data.python.ops.prefetching_ops import copy_to_device
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
@@ -113,6 +112,10 @@ from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
 from tensorflow.contrib.data.python.ops.unique import unique
 from tensorflow.contrib.data.python.ops.writers import TFRecordWriter
+
+# Optimization constant that can be used to enable auto-tuning.
+from tensorflow.python.data.experimental.ops.optimization import AUTOTUNE
+
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 # pylint: enable=unused-import

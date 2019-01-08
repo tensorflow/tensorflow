@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -45,7 +46,7 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(text));
-  HloModuleGroup group(TestName(), std::move(module));
+  HloModuleGroup group(std::move(module));
 
   EXPECT_EQ(group.modules().size(), 1);
   EXPECT_THAT(
@@ -135,6 +136,69 @@ ENTRY %entry (a: f32[]) -> f32[] {
       ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Add()));
   EXPECT_THAT(group.module(1).entry_computation()->instructions(),
               ::testing::ElementsAre(op::Parameter()));
+}
+
+// Tests that the order of companion instructions in the companion set doesn't
+// change across runs.
+TEST_F(HloModuleGroupTest, ModuleGroupCompanionOrder) {
+  // A simple while loop template for core i sending to core i+1.
+  constexpr char text[] = R"(
+HloModule module_%d
+
+while_cond {
+  ROOT p = pred[] constant(true)
+}
+
+while_body {
+  param = s32[] parameter(0)
+  token.s = token[] after-all()
+  token.r = token[] after-all()
+  send = (s32[], u32[], token[]) send(param, token.s), channel_id=%d
+  send-done = token[] send-done(send), channel_id=%d
+  recv = (s32[], u32[], token[]) recv(token.r), channel_id=%d
+  ROOT recv-done = (s32[], token[]) recv-done(recv), channel_id=%d
+}
+
+ENTRY entry {
+  while_init = s32[] constant(1)
+  ROOT while = s32[] while(while_init), condition=while_cond, body=while_body
+}
+)";
+
+  // Try creating the module and the metadata kTrialCount times and check the
+  // companion instructions remain in the same order.
+  const int64 kTrialCount = 5;
+  const int64 kDeviceCount = 10;
+  std::vector<int64> companion_order;
+
+  for (int64 t = 0; t < kTrialCount; ++t) {
+    HloModuleGroup group(TestName());
+    for (int64 i = 0; i < kDeviceCount; ++i) {
+      const int64 send_channel = i;
+      const int64 recv_channel = i == 0 ? kDeviceCount - 1 : i - 1;
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<HloModule> module,
+          ParseHloString(absl::StrFormat(text, i, send_channel, send_channel,
+                                         recv_channel, recv_channel)));
+      group.push_back(std::move(module));
+    }
+    ASSERT_EQ(group.modules().size(), kDeviceCount);
+
+    TF_ASSERT_OK_AND_ASSIGN(auto metadata,
+                            HloModuleGroupMetadata::Build(group.modules()));
+    ASSERT_EQ(metadata->companion_sets().size(), 1);
+
+    std::vector<int64> module_ids;
+    for (HloInstruction* companion : *metadata->companion_sets()[0]) {
+      module_ids.push_back(metadata->GetModuleId(companion->GetModule()));
+    }
+
+    if (t == 0) {
+      companion_order = module_ids;
+    } else {
+      EXPECT_TRUE(absl::c_equal(companion_order, module_ids));
+    }
+  }
 }
 
 }  // namespace

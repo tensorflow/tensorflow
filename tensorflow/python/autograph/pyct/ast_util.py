@@ -24,6 +24,7 @@ import gast
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.util import tf_inspect
 
 
 class CleanCopier(object):
@@ -199,7 +200,8 @@ def matches(node, pattern):
     bool
   """
   if isinstance(pattern, str):
-    pattern = parser.parse_expression(pattern)
+    pattern, = parser.parse_str(pattern).body
+
   matcher = PatternMatcher(pattern)
   matcher.visit(node)
   return matcher.matches
@@ -311,3 +313,93 @@ def parallel_walk(node, other):
         raise ValueError(
             'inconsistent values for field {}: {} and {}'.format(
                 f, n_child, o_child))
+
+
+class FunctionDefMatcher(gast.NodeVisitor):
+  """Finds nodes that match a given function's signature."""
+
+  def __init__(self, fn):
+    self.fn = fn
+    self.matching_nodes = []
+
+  def _arg_name(self, node):
+    if node is None:
+      return None
+    if isinstance(node, gast.Name):
+      return node.id
+    assert isinstance(node, str)
+    return node
+
+  def _argspec_matches(self, node):
+    arg_spec = tf_inspect.getfullargspec(self.fn)
+
+    node_args = tuple(self._arg_name(arg) for arg in node.args.args)
+    if node_args != tuple(arg_spec.args):
+      return False
+
+    if arg_spec.varargs != self._arg_name(node.args.vararg):
+      return False
+
+    if arg_spec.varkw != self._arg_name(node.args.kwarg):
+      return False
+
+    node_kwonlyargs = tuple(self._arg_name(arg) for arg in node.args.kwonlyargs)
+    if node_kwonlyargs != tuple(arg_spec.kwonlyargs):
+      return False
+
+    return True
+
+  def _argspec_compatible(self, node):
+    arg_spec = tf_inspect.getfullargspec(self.fn)
+
+    node_args = tuple(self._arg_name(arg) for arg in node.args.args)
+    if len(node_args) != len(arg_spec.args) and node.args.vararg is None:
+      return False
+
+    if arg_spec.varargs is not None and node.args.vararg is None:
+      return False
+
+    if arg_spec.varkw is not None and node.args.kwarg is None:
+      return False
+
+    node_kwonlyargs = tuple(self._arg_name(arg) for arg in node.args.kwonlyargs)
+    if (len(node_kwonlyargs) != len(arg_spec.kwonlyargs) and
+        node.args.kwarg is None):
+      return False
+
+    return True
+
+  def visit_Lambda(self, node):
+    self.generic_visit(node)
+
+    if self.fn.__name__ != '<lambda>':
+      return
+    if not self._argspec_matches(node):
+      return
+
+    self.matching_nodes.append(node)
+
+  def visit_FunctionDef(self, node):
+    self.generic_visit(node)
+
+    if self.fn.__name__ != node.name:
+      return
+
+    # Decorators have the ability to modify a function's signature. They usually
+    # claim that the result is indistinguishable from the original function,
+    # but it's very difficult to fool this test. As a consequence, we relax the
+    # verification and just check that the arguments are compatible.
+    if node.decorator_list:
+      if not self._argspec_compatible(node):
+        return
+    else:
+      if not self._argspec_matches(node):
+        return
+
+    self.matching_nodes.append(node)
+
+
+def find_matching_definitions(node, f):
+  matcher = FunctionDefMatcher(f)
+  matcher.visit(node)
+  return tuple(matcher.matching_nodes)

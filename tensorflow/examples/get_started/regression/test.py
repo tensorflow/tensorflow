@@ -29,7 +29,7 @@ import tensorflow.examples.get_started.regression.imports85 as imports85
 sys.modules["imports85"] = imports85
 
 # pylint: disable=g-bad-import-order,g-import-not-at-top
-import tensorflow.contrib.data as data
+import tensorflow.data as data
 
 import tensorflow.examples.get_started.regression.dnn_regression as dnn_regression
 import tensorflow.examples.get_started.regression.linear_regression as linear_regression

@@ -117,7 +117,7 @@ def LSTMLayer(cell_name, weights, m, c, x_seq, pad_seq):
 
 def RandomVar(shape, name=None):
   """Returns a variable of the given shape initialized to random values."""
-  return variables.Variable(
+  return variables.VariableV1(
       random_ops.random_uniform(shape), dtype=dtypes.float32, name=name)
 
 

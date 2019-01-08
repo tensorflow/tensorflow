@@ -136,13 +136,13 @@ class _WishartLinearOperator(distribution.Distribution):
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._scale_operator))
         if (self._scale_operator.shape.ndims is None or
-            self._scale_operator.shape[-1].value is None):
+            self._scale_operator.shape.dims[-1].value is None):
           self._dimension = math_ops.cast(
               self._scale_operator.domain_dimension_tensor(),
               dtype=self._scale_operator.dtype, name="dimension")
         else:
           self._dimension = ops.convert_to_tensor(
-              self._scale_operator.shape[-1].value,
+              self._scale_operator.shape.dims[-1].value,
               dtype=self._scale_operator.dtype, name="dimension")
         df_val = tensor_util.constant_value(self._df)
         dim_val = tensor_util.constant_value(self._dimension)
@@ -480,11 +480,14 @@ class WishartCholesky(_WishartLinearOperator):
   #### Examples
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Initialize a single 3x3 Wishart with Cholesky factored scale matrix and 5
   # degrees-of-freedom.(*)
   df = 5
   chol_scale = tf.cholesky(...)  # Shape is [3, 3].
-  dist = tf.contrib.distributions.WishartCholesky(df=df, scale=chol_scale)
+  dist = tfd.WishartCholesky(df=df, scale=chol_scale)
 
   # Evaluate this on an observation in R^3, returning a scalar.
   x = ...  # A 3x3 positive definite matrix.
@@ -498,14 +501,14 @@ class WishartCholesky(_WishartLinearOperator):
   # Initialize two 3x3 Wisharts with Cholesky factored scale matrices.
   df = [5, 4]
   chol_scale = tf.cholesky(...)  # Shape is [2, 3, 3].
-  dist = tf.contrib.distributions.WishartCholesky(df=df, scale=chol_scale)
+  dist = tfd.WishartCholesky(df=df, scale=chol_scale)
 
   # Evaluate this on four observations.
   x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3].
   dist.prob(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
-  #   in tf.contrib.distributions.matrix_diag_transform.
+  #   in tfp.distributions.matrix_diag_transform.
   ```
 
   """
@@ -604,11 +607,14 @@ class WishartFull(_WishartLinearOperator):
   #### Examples
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Initialize a single 3x3 Wishart with Full factored scale matrix and 5
   # degrees-of-freedom.(*)
   df = 5
   scale = ...  # Shape is [3, 3]; positive definite.
-  dist = tf.contrib.distributions.WishartFull(df=df, scale=scale)
+  dist = tfd.WishartFull(df=df, scale=scale)
 
   # Evaluate this on an observation in R^3, returning a scalar.
   x = ...  # A 3x3 positive definite matrix.
@@ -622,14 +628,14 @@ class WishartFull(_WishartLinearOperator):
   # Initialize two 3x3 Wisharts with Full factored scale matrices.
   df = [5, 4]
   scale = ...  # Shape is [2, 3, 3].
-  dist = tf.contrib.distributions.WishartFull(df=df, scale=scale)
+  dist = tfd.WishartFull(df=df, scale=scale)
 
   # Evaluate this on four observations.
   x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3]; xi is positive definite.
   dist.prob(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
-  #   in tf.contrib.distributions.matrix_diag_transform.
+  #   in tfd.matrix_diag_transform.
   ```
 
   """

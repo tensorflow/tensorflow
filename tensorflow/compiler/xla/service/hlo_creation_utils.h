@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CREATION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CREATION_UTILS_H_
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -106,6 +107,35 @@ StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
 // operands. All operands must be in the same computation.
 StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
                                      HloComputation* map_computation);
+
+// Creates a Reduce HLO instruction and adds it to the computation containing
+// the operand. This will create the sub-computation needed for the reduction in
+// the given module. binary_opcode should represent a binary operation.
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
+                                        HloOpcode binary_opcode,
+                                        HloModule* module);
+
+// Creates a Select HLO instruction and adds it to the computation containing
+// the predicate. The on_true and on_false instructions must also be contained
+// in the same computation.
+StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
+                                        HloInstruction* on_true,
+                                        HloInstruction* on_false);
+
+// Creates an R1 Constant HLO instruction of the given PrimitiveType with the
+// given values and adds it to the given computation.
+template <typename NativeT>
+StatusOr<HloInstruction*> MakeR1ConstantHlo(HloComputation* computation,
+                                            PrimitiveType type,
+                                            absl::Span<const NativeT> values) {
+  Literal literal = LiteralUtil::CreateR1<NativeT>(values);
+  if (literal.shape().element_type() != type) {
+    TF_ASSIGN_OR_RETURN(literal, literal.Convert(type));
+  }
+  return computation->AddInstruction(
+      HloInstruction::CreateConstant(std::move(literal)));
+}
 
 // -----------------------------------------------------------------------------
 // Some other miscellaneous helpers to generate common HLO patterns.  All of

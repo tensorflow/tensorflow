@@ -54,9 +54,11 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
@@ -76,54 +78,45 @@ bool IsInitializationOp(const Node* node) {
 namespace nodestats {
 inline int64 NowInNsec() { return Env::Default()->NowNanos(); }
 
-void SetScheduled(NodeExecStatsWrapper* stats, int64 micros) {
+void SetScheduled(NodeExecStatsInterface* stats, int64 micros) {
   if (!stats) return;
   stats->SetScheduled(micros * EnvTime::kMicrosToNanos);
 }
 
-void SetAllStart(NodeExecStatsWrapper* stats) {
+void SetAllStart(NodeExecStatsInterface* stats) {
   if (!stats) return;
   stats->RecordExecutorStarted();
 }
 
-void SetOpStart(NodeExecStatsWrapper* stats) {
+void SetOpStart(NodeExecStatsInterface* stats) {
   if (!stats) return;
   stats->RecordComputeStarted();
 }
 
-void SetOpEnd(NodeExecStatsWrapper* stats) {
+void SetOpEnd(NodeExecStatsInterface* stats) {
   if (!stats) return;
   stats->RecordComputeEnded();
 }
 
-void SetAllEnd(NodeExecStatsWrapper* stats) {
+void SetAllEnd(NodeExecStatsInterface* stats) {
   if (!stats) return;
   stats->RecordExecutorEnded();
 }
 
-void SetOutput(NodeExecStatsWrapper* stats, int slot, const Tensor* v) {
+void SetOutput(NodeExecStatsInterface* stats, int slot, const Tensor* v) {
   if (!stats) return;
   stats->SetOutput(slot, v);
 }
 
-void SetMemory(NodeExecStatsWrapper* stats, OpKernelContext* ctx) {
+void SetMemory(NodeExecStatsInterface* stats, OpKernelContext* ctx) {
   if (!stats) return;
   stats->SetMemory(ctx);
 }
 
-void SetReferencedTensors(NodeExecStatsWrapper* stats,
+void SetReferencedTensors(NodeExecStatsInterface* stats,
                           const TensorReferenceVector& tensors) {
   if (!stats) return;
   stats->SetReferencedTensors(tensors);
-}
-
-// Sets the timeline_label field of *stats, using data from *node.
-// Returns true iff the node is a transfer node.
-bool SetTimelineLabel(const Node* node, NodeExecStatsWrapper* stats) {
-  if (!stats) {
-    return false;
-  }
-  return stats->SetTimelineLabel(node);
 }
 
 }  // namespace nodestats
@@ -139,6 +132,16 @@ struct EdgeInfo {
   int input_slot;
 };
 
+// Time the execution of kernels (in CPU cycles).  Used to dynamically identify
+// inexpensive kernels which can be dispatched inline.
+struct KernelTimer {
+  uint64 start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
+
+  uint64 ElapsedCycles() {
+    return profile_utils::CpuUtils::GetCurrentClockCycle() - start_cycles;
+  }
+};
+
 struct NodeItem {
   NodeItem() {}
 
@@ -148,10 +151,11 @@ struct NodeItem {
   // The kernel for this node.
   OpKernel* kernel = nullptr;
 
-  bool kernel_is_expensive : 1;  // True iff kernel->IsExpensive()
   bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
   bool is_merge : 1;             // True iff IsMerge(node)
   bool is_enter : 1;             // True iff IsEnter(node)
+  bool is_constant_enter : 1;    // True iff IsEnter(node) and
+                                 // node->GetAttr("is_constant") == true.
   bool is_exit : 1;              // True iff IsExit(node)
   bool is_control_trigger : 1;   // True iff IsControlTrigger(node)
   bool is_sink : 1;              // True iff IsSink(node)
@@ -631,10 +635,17 @@ Status ExecutorImpl::Initialize() {
       return s;
     }
     CHECK(item->kernel);
-    item->kernel_is_expensive = item->kernel->IsExpensive();
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
     item->is_enter = IsEnter(n);
+    if (item->is_enter) {
+      bool is_constant_enter;
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(n->attrs(), "is_constant", &is_constant_enter));
+      item->is_constant_enter = is_constant_enter;
+    } else {
+      item->is_constant_enter = false;
+    }
     item->is_exit = IsExit(n);
     item->is_control_trigger = IsControlTrigger(n);
     item->is_sink = IsSink(n);
@@ -1233,10 +1244,14 @@ class ExecutorState {
   Rendezvous* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
+  string session_handle_;
   TensorStore* tensor_store_;
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
+  const tracing::EventCollector* const event_collector_;
+  Context context_;
+
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
   checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache_;
@@ -1245,6 +1260,7 @@ class ExecutorState {
   CancellationManager* cancellation_manager_;
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
+  const bool trace_using_annotations_;
 
   // Owned.
 
@@ -1301,7 +1317,7 @@ class ExecutorState {
 
   // After item->kernel computation is done, processes its outputs.
   Status ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
-                        EntryVector* outputs, NodeExecStatsWrapper* stats);
+                        EntryVector* outputs, NodeExecStatsInterface* stats);
 
   // After processing the outputs, propagates the outputs to their dsts.
   // Contents of *outputs are left in an indeterminate state after
@@ -1312,7 +1328,7 @@ class ExecutorState {
   // "node" just finishes. Takes ownership of "stats". Returns true if
   // execution has completed.
   bool NodeDone(const Status& s, const Node* node, const TaggedNodeSeq& ready,
-                NodeExecStatsWrapper* stats,
+                NodeExecStatsInterface* stats,
                 TaggedNodeReadyQueue* inline_ready);
 
   // Schedule all the expensive nodes in 'ready', and put all the inexpensive
@@ -1356,15 +1372,20 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
+      session_handle_(args.session_handle),
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
+      event_collector_(
+          tracing::GetEventCollector(tracing::EventCategory::kCompute)),
+      context_(ContextKind::kThread),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
       impl_(impl),
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
+      trace_using_annotations_(impl->params_.device->TraceUsingAnnotations()),
       num_outstanding_ops_(0) {
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
@@ -1513,7 +1534,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
 struct ExecutorState::AsyncState {
   AsyncState(const OpKernelContext::Params& p, const TaggedNode& _tagged_node,
              const NodeItem* _item, Entry* _first_input,
-             NodeExecStatsWrapper* _stats)
+             NodeExecStatsInterface* _stats)
       : saved_inputs(*p.inputs),
         saved_input_device_contexts(*p.input_device_contexts),
         saved_input_alloc_attrs(*p.input_alloc_attrs),
@@ -1538,7 +1559,7 @@ struct ExecutorState::AsyncState {
   const NodeItem* item;
   Entry* first_input;
   OpKernelContext ctx;
-  NodeExecStatsWrapper* stats;
+  NodeExecStatsInterface* stats;
 
  private:
   OpKernelContext::Params* ParamsButClearingEigenGPUDevice(
@@ -1550,7 +1571,35 @@ struct ExecutorState::AsyncState {
   }
 };
 
+// Returns true if `item` might be traced by the given trace and event
+// collectors. Returns false only if `item` definitely will not be traced.
+bool MightTrace(const NodeItem& item,
+                const tracing::EventCollector* event_collector,
+                bool using_annotations) {
+  // Tracing will only be enabled if either `event_collector` is non null,
+  // or `trace_collector` is non-null and enabled for this particular kernel.
+  // Although `tracing::ScopedActivity`,
+  // `tracing::ScopedAnnotation`, and `tracing::ScopedRegion` check subsets of
+  // these properties internally in their constructors, the cost of passing the
+  // necessary arguments to them can be significant, so we avoid constructing
+  // them in the common case (when we know they will not be used).
+  if (event_collector != nullptr) {
+    return true;
+  }
+  auto* trace_collector = tracing::GetTraceCollector();
+  if (trace_collector) {
+    if (using_annotations) {
+      return trace_collector->IsEnabledForAnnotations();
+    } else {
+      return trace_collector->IsEnabledForActivities(
+          item.kernel->IsExpensive());
+    }
+  }
+  return false;
+}
+
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
+  WithContext wc(context_);
   const GraphView& gview = impl_->gview_;
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
@@ -1569,6 +1618,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
+  params.session_handle = session_handle_;
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
   params.call_frame = call_frame_;
@@ -1583,7 +1633,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.stats_collector = stats_collector_;
 
   Status s;
-  NodeExecStatsWrapper* stats = nullptr;
+  NodeExecStatsInterface* stats = nullptr;
+
   EntryVector outputs;
   bool completed = false;
   inline_ready.push_back(tagged_node);
@@ -1611,9 +1662,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     params.track_allocations = false;
     stats = nullptr;
     if (stats_collector_ && !tagged_node.is_dead) {
-      // track allocations if and only if we are collecting statistics
-      params.track_allocations = true;
-      stats = new NodeExecStatsWrapper(node->name());
+      stats = stats_collector_->CreateNodeExecStats(node);
+      // Track allocations if and only if we are collecting statistics, and
+      // `stats` object is expecting allocations to be tracked.
+      params.track_allocations = stats ? stats->TrackAllocations() : false;
       nodestats::SetScheduled(stats, scheduled_nsec);
       nodestats::SetAllStart(stats);
     }
@@ -1671,8 +1723,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
-          NodeExecStatsWrapper* stats = state->stats;  // Shorthand
-          Entry* first_input = state->first_input;     // Shorthand
+          NodeExecStatsInterface* stats = state->stats;  // Shorthand
+          Entry* first_input = state->first_input;       // Shorthand
 
           nodestats::SetOpEnd(stats);
           EntryVector outputs;
@@ -1720,7 +1772,41 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
-        device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
+
+        if (TF_PREDICT_FALSE(
+                MightTrace(item, event_collector_, trace_using_annotations_))) {
+          const string& op_name = op_kernel->name();
+          tracing::ScopedRegion region(tracing::EventCategory::kCompute,
+                                       op_name);
+          if (trace_using_annotations_) {
+            // The OpKernel may create child activities (such as GPU kernel
+            // launches), so use a `ScopedAnnotation` to relate these activities
+            // in the trace.
+            tracing::ScopedAnnotation activity(
+                op_name, strings::StrCat(op_kernel->type_string(),
+                                         "#id=", step_id_, "#"));
+            device->Compute(op_kernel, &ctx);
+          } else {
+            // Use the cheaper `ScopedActivity` to trace just the OpKernel
+            // execution.
+            tracing::ScopedActivity activity(
+                op_name,
+                strings::StrCat(op_kernel->type_string(), "#id=", step_id_,
+                                "#"),
+                item.kernel->IsExpensive());
+            device->Compute(op_kernel, &ctx);
+          }
+        } else {
+          // In the common case, avoid creating any tracing objects.
+          if (op_kernel->IsExpensive()) {
+            KernelTimer timer;
+            device->Compute(op_kernel, &ctx);
+            op_kernel->UpdateCostEstimate(timer.ElapsedCycles());
+          } else {
+            device->Compute(op_kernel, &ctx);
+          }
+        }
+
         nodestats::SetOpEnd(stats);
         s = ProcessOutputs(item, &ctx, &outputs, stats);
         if (s.ok() && impl_->device_record_tensor_accesses_) {
@@ -1816,7 +1902,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
       inp->tensor = entry->val.get();
     } else {
       {
-        mutex_lock ml(*entry->ref_mu);
+        tf_shared_lock ml(*entry->ref_mu);
         if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
           return AttachDef(errors::FailedPrecondition(
                                "Attempting to use uninitialized value ",
@@ -1832,7 +1918,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         // tensor but is given a ref to a tensor.  Need to deref it
         // under the mutex.
         {
-          mutex_lock l(*(entry->ref_mu));
+          tf_shared_lock l(*(entry->ref_mu));
           DCHECK(!entry->val_field_is_set);
           entry->val.Init(*entry->ref);
           entry->val_field_is_set = true;
@@ -1862,7 +1948,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
 
 Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                      EntryVector* outputs,
-                                     NodeExecStatsWrapper* stats) {
+                                     NodeExecStatsInterface* stats) {
   const Node* node = item.node;
   DCHECK_EQ(0, outputs->size());
   outputs->resize(item.num_outputs);
@@ -1907,7 +1993,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // tensor value at i-th output.
       if (!IsSwitch(node) && !IsRecv(node)) {
         s.Update(errors::Internal("Missing ", i, "-th output from ",
-                                  SummarizeNode(*node)));
+                                  FormatNodeForError(*node)));
       }
     } else {
       Entry* out = &((*outputs)[i]);
@@ -1921,7 +2007,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // Sanity check of output tensor types.
       DataType dtype;
       if (val.is_ref()) {
-        mutex_lock ml(*val.mutex_if_ref);
+        tf_shared_lock ml(*val.mutex_if_ref);
         dtype = MakeRefType(val->dtype());
       } else {
         dtype = val->dtype();
@@ -1938,7 +2024,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
             Tensor to_log;
             {
               // Dereference the tensor under the lock.
-              mutex_lock l(*out->ref_mu);
+              tf_shared_lock l(*out->ref_mu);
               to_log = *out->ref;
             }
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
@@ -1961,7 +2047,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                   DataTypeString(dtype),
                                   " does not match declared output type ",
                                   DataTypeString(item.output_type(i)),
-                                  " for node ", SummarizeNode(*node)));
+                                  " for node ", FormatNodeForError(*node)));
       }
     }
     if (!val.is_ref()) {
@@ -1976,6 +2062,24 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
+  auto activity_handle =
+      [&]() -> std::unique_ptr<tracing::TraceCollector::Handle> {
+    auto* trace_collector = tracing::GetTraceCollector();
+    if (TF_PREDICT_FALSE(trace_collector != nullptr &&
+                         trace_collector->IsEnabledForActivities(
+                             false /* is_expensive */))) {
+      const string& op_name = item->kernel->name();
+      // Intentionally using ExecutorPropagateOutputs as the first key so that
+      // users are aware that it's not the op invocation.
+      return trace_collector->CreateActivityHandle(
+          "ExecutorPropagateOutputs",
+          strings::StrCat(op_name, "#id=", step_id_, "#"),
+          false /* is_expensive */);
+    } else {
+      return nullptr;
+    }
+  }();
+
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
   const int64 input_iter = tagged_node.input_iter;
@@ -1997,15 +2101,12 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     is_frame_done = input_frame->DecrementOutstandingOpsLocked(
         &impl_->gview_, input_iter, ready);
   } else if (item->is_enter) {
-    bool is_constant;
-    const Status s = GetNodeAttr(node->attrs(), "is_constant", &is_constant);
-    DCHECK(s.ok()) << s;
     FindOrCreateChildFrame(input_frame, input_iter, node, &output_frame);
     output_iter = 0;
     {
       const NodeItem* item = impl_->gview_.node(node->id());
       mutex_lock l(output_frame->mu);
-      if (is_constant) {
+      if (item->is_constant_enter) {
         // Propagate to all active iterations if this is a loop invariant.
         output_frame->AddLoopInv(item, (*outputs)[0], ready);
       } else {
@@ -2080,16 +2181,15 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
 
 bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              const TaggedNodeSeq& ready,
-                             NodeExecStatsWrapper* stats,
+                             NodeExecStatsInterface* stats,
                              TaggedNodeReadyQueue* inline_ready) {
   nodestats::SetAllEnd(stats);
-  if (stats_collector_ != nullptr &&
-      !nodestats::SetTimelineLabel(node, stats)) {
-    // Only record non-transfer nodes.
-    // Transfers 'stats' ownership to 'stats_collector_'.
-    stats_collector_->Save(impl_->params_.device->name(), stats);
-  } else if (stats) {
-    delete stats;
+  if (stats) {
+    if (stats_collector_) {
+      stats->Done(impl_->params_.device->name());
+    } else {
+      delete stats;
+    }
   }
 
   bool abort_run = false;
@@ -2137,6 +2237,7 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
   if (stats_collector_) {
     scheduled_nsec = nodestats::NowInNsec();
   }
+
   if (inline_ready == nullptr) {
     // Schedule to run all the ready ops in thread pool.
     for (auto& tagged_node : ready) {
@@ -2144,11 +2245,12 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
     }
     return;
   }
+
   const GraphView& gview = impl_->gview_;
   const TaggedNode* curr_expensive_node = nullptr;
   for (auto& tagged_node : ready) {
     const NodeItem& item = *gview.node(tagged_node.node->id());
-    if (tagged_node.is_dead || !item.kernel_is_expensive) {
+    if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
       // Inline this inexpensive node.
       inline_ready->push_back(tagged_node);
     } else {
@@ -2311,16 +2413,23 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
-  if (sync_on_finish_ && status.ok()) {
+  CHECK(done_cb != nullptr);
+  Device* device = impl_->params_.device;
+
+  if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    status = impl_->params_.device->Sync();
+    device->Sync([=](Status new_status) mutable {
+      status.Update(new_status);
+      delete this;
+      runner([=]() { done_cb(status); });
+    });
+  } else {
+    delete this;
+    runner([=]() { done_cb(status); });
   }
-  delete this;
-  CHECK(done_cb != nullptr);
-  runner([=]() { done_cb(status); });
 }
 
 void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,

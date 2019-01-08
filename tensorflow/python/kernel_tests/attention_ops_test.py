@@ -85,7 +85,7 @@ class ExtractGlimpseTest(test.TestCase):
 
     # Evaluate the TensorFlow Graph.
     with self.cached_session() as sess:
-      value_rows, value_cols = sess.run([glimpse_rows, glimpse_cols])
+      value_rows, value_cols = self.evaluate([glimpse_rows, glimpse_cols])
 
     # Check dimensions of returned glimpse.
     self.assertEqual(value_rows.shape[1], glimpse_sizes[0])
@@ -121,8 +121,7 @@ class ExtractGlimpseTest(test.TestCase):
     with self.cached_session():
       result = image_ops.extract_glimpse(empty_image, [1, 1], offsets)
       self.assertAllEqual(
-          np.zeros(
-              (0, 1, 1, 0), dtype=np.float32), result.eval())
+          np.zeros((0, 1, 1, 0), dtype=np.float32), self.evaluate(result))
 
   def testLargeCenterGlimpse(self):
     self._VerifyValues(

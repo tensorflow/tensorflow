@@ -210,7 +210,7 @@ class ResamplerTest(test.TestCase):
 
     # Input data shape is not defined over a 2D grid, i.e. its shape is not like
     # (batch_size, data_height, data_width, data_channels).
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       data_shape = (batch_size, data_height, data_width, data_depth,
                     data_channels)
       data = np.zeros(data_shape)
@@ -225,7 +225,7 @@ class ResamplerTest(test.TestCase):
         sess.run(outputs)
 
     # Warp tensor must be at least a matrix, with shape [batch_size, 2].
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       data_shape = (batch_size, data_height, data_width, data_channels)
       data = np.zeros(data_shape)
       warp_shape = (batch_size,)
@@ -238,7 +238,7 @@ class ResamplerTest(test.TestCase):
         sess.run(outputs)
 
     # The batch size of the data and warp tensors must be the same.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       data_shape = (batch_size, data_height, data_width, data_channels)
       data = np.zeros(data_shape)
       warp_shape = (batch_size+1, warp_height, warp_width, 2)
@@ -252,7 +252,7 @@ class ResamplerTest(test.TestCase):
 
     # The warp tensor must contain 2D coordinates, i.e. its shape last dimension
     # must be 2.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       data_shape = (batch_size, data_height, data_width, data_channels)
       data = np.zeros(data_shape)
       warp_shape = (batch_size, warp_height, warp_width, 3)

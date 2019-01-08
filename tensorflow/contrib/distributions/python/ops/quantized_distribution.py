@@ -196,8 +196,9 @@ class QuantizedDistribution(distributions.Distribution):
   parameter determining the unnormalized probability of that component.
 
   ```python
-  tfd = tf.contrib.distributions
-  tfb = tfd.bijectors
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+  tfb = tfp.bijectors
 
   net = wavenet(inputs)
   loc, unconstrained_scale, logits = tf.split(net,

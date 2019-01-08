@@ -20,11 +20,14 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import,unused-import
-from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import ClusterResolver
-from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import SimpleClusterResolver
-from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import UnionClusterResolver
-from tensorflow.contrib.cluster_resolver.python.training.gce_cluster_resolver import GceClusterResolver
-from tensorflow.contrib.cluster_resolver.python.training.tpu_cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
+from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GceClusterResolver
+from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import KubernetesClusterResolver
+from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import SlurmClusterResolver
+from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
 # pylint: enable=wildcard-import,unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -34,7 +37,10 @@ _allowed_symbols = [
     'SimpleClusterResolver',
     'UnionClusterResolver',
     'GceClusterResolver',
+    'KubernetesClusterResolver',
+    'TFConfigClusterResolver',
     'TPUClusterResolver',
+    'SlurmClusterResolver',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

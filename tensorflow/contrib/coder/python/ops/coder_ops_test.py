@@ -45,7 +45,7 @@ class CoderOpsTest(test.TestCase):
     decoded = coder_ops.range_decode(
         encoded, array_ops.shape(data), cdf, precision=14)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(*sess.run((data, decoded)))
 
 

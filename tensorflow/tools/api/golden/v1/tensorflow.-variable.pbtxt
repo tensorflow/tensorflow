@@ -1,5 +1,6 @@
 path: "tensorflow.Variable"
 tf_class {
+  is_instance: "<class \'tensorflow.python.ops.variables.VariableV1\'>"
   is_instance: "<class \'tensorflow.python.ops.variables.Variable\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
@@ -13,6 +14,10 @@ tf_class {
   }
   member {
     name: "device"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "distribute_strategy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -62,6 +67,10 @@ tf_class {
   member_method {
     name: "assign_sub"
     argspec: "args=[\'self\', \'delta\', \'use_locking\', \'name\', \'read_value\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "batch_scatter_update"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "count_up_to"

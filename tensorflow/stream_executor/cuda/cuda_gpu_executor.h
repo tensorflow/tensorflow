@@ -25,6 +25,7 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_kernel.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -69,6 +70,17 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &k,
               const KernelArgsArrayBase &args) override;
+
+  int CalculateOccupancy(const DeviceDescription &device_description,
+                         uint64 registers_per_thread,
+                         uint64 shared_memory_per_block,
+                         const ThreadDim &thread_dims, CUfunction func);
+
+  int CompareOccupancy(int *initial_blocks,
+                       const DeviceDescription &device_description,
+                       uint64 registers_per_thread,
+                       uint64 shared_memory_per_block,
+                       const ThreadDim &thread_dims, CUfunction func);
 
   void *Allocate(uint64 size) override;
 
@@ -136,7 +148,8 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
                             const DeviceMemoryBase &gpu_src,
                             uint64 size) override;
 
-  bool HostCallback(Stream *stream, std::function<void()> callback) override;
+  bool HostCallback(Stream *stream,
+                    std::function<port::Status()> callback) override;
 
   bool AllocateStream(Stream *stream) override;
 
@@ -223,8 +236,8 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // filename by looking for compute-capability-specific suffixed versions; i.e.
   // looking for "foo.ptx" will check to see if "foo.ptx.cc30.ptx" is present if
   // we're on a compute capability 3.0 machine.
-  bool FindOnDiskForComputeCapability(port::StringPiece filename,
-                                      port::StringPiece canonical_suffix,
+  bool FindOnDiskForComputeCapability(absl::string_view filename,
+                                      absl::string_view canonical_suffix,
                                       string *found_filename) const;
 
   // Host callback landing routine invoked by CUDA.

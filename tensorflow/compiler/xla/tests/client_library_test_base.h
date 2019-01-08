@@ -76,7 +76,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   void SetFastMathDisabled(bool disabled) {
     auto* opts = execution_options_.mutable_debug_options();
     opts->set_xla_cpu_enable_fast_math(!disabled);
-    opts->set_xla_gpu_enable_fast_math(!disabled);
+    opts->set_xla_gpu_enable_fast_min_max(!disabled);
   }
 
   void SetSeed(uint64 seed) { execution_options_.set_seed(seed); }
@@ -187,6 +187,13 @@ class ClientLibraryTestBase : public ::testing::Test {
                                 absl::Span<GlobalData* const> arguments,
                                 ErrorSpec error,
                                 const Shape* shape_with_layout = nullptr);
+
+  // Build and run the computation and return the result as a literal.
+  // shape_with_layout indicates the result layout to request when calling
+  // Execute.
+  StatusOr<Literal> ComputeAndTransfer(
+      XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
+      const Shape* shape_with_layout = nullptr);
 
   // ComputeAndCompare variant which returns an error status.
   Status ComputeAndCompareLiteralWithStatus(

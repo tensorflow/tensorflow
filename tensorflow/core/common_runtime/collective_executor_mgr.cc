@@ -29,7 +29,9 @@ CollectiveExecutorMgr::CollectiveExecutorMgr(
     std::unique_ptr<ParamResolverInterface> param_resolver)
     : dev_mgr_(dev_mgr),
       dev_resolver_(std::move(dev_resolver)),
-      param_resolver_(std::move(param_resolver)) {}
+      param_resolver_(std::move(param_resolver)),
+      gpu_ring_order_(
+          config.gpu_options().experimental().collective_ring_order()) {}
 
 CollectiveExecutorMgr::~CollectiveExecutorMgr() {
   for (auto iter : executor_table_) {
@@ -56,7 +58,8 @@ CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64 step_id) {
 CollectiveExecutor* CollectiveExecutorMgr::Create(int64 step_id) {
   CollectiveRemoteAccessLocal* rma =
       new CollectiveRemoteAccessLocal(dev_mgr_, dev_resolver_.get(), step_id);
-  return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_);
+  return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_,
+                                    &gpu_ring_order_);
 }
 
 void CollectiveExecutorMgr::Cleanup(int64 step_id) {

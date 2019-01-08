@@ -10,7 +10,7 @@ Construct and execute TensorFlow graphs in Go.
 
 ## Quickstart
 
-Refer to [Installing TensorFlow for Go](https://www.tensorflow.org/install/install_go)
+Refer to [Installing TensorFlow for Go](https://www.tensorflow.org/install/lang_go)
 
 ## Building the TensorFlow C library from source
 
@@ -23,10 +23,8 @@ from source.
 
 -   [bazel](https://www.bazel.build/versions/master/docs/install.html)
 -   Environment to build TensorFlow from source code
-    ([Linux](https://www.tensorflow.org/install/install_sources#PrepareLinux)
-    or [OS
-    X](https://www.tensorflow.org/install/install_sources#PrepareMac)).
-    If you don't need GPU support, then try the following:
+    ([Linux or macOS](https://www.tensorflow.org/install/source)). If you don't
+    need GPU support, then try the following:
 
     ```sh
     sudo apt-get install python swig python-numpy # Linux

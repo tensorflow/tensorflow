@@ -78,6 +78,14 @@ class NormalTest(test.TestCase):
     self.assertEqual(expected, sigma_shape)
 
   @test_util.run_in_graph_and_eager_modes
+  def testSampleLikeArgsGetDistDType(self):
+    dist = normal_lib.Normal(0., 1.)
+    self.assertEqual(dtypes.float32, dist.dtype)
+    for method in ("log_prob", "prob", "log_cdf", "cdf",
+                   "log_survival_function", "survival_function", "quantile"):
+      self.assertEqual(dtypes.float32, getattr(dist, method)(1).dtype)
+
+  @test_util.run_in_graph_and_eager_modes
   def testParamShapes(self):
     sample_shape = [10, 3, 4]
     self._testParamShapes(sample_shape, sample_shape)
@@ -503,6 +511,7 @@ class NormalTest(test.TestCase):
     self.assertAllEqual(self.evaluate(normal.event_shape_tensor()), [])
     self.assertEqual(normal.event_shape, tensor_shape.TensorShape([]))
 
+  @test_util.run_deprecated_v1
   def testNormalShapeWithPlaceholders(self):
     mu = array_ops.placeholder(dtype=dtypes.float32)
     sigma = array_ops.placeholder(dtype=dtypes.float32)

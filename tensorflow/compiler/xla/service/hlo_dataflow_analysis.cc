@@ -19,6 +19,7 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -91,7 +92,7 @@ HloDataflowAnalysis::HloDataflowAnalysis(
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
-  tensorflow::gtl::FlatSet<const HloInstruction*> visited;
+  absl::flat_hash_set<const HloInstruction*> visited;
   absl::InlinedVector<const HloInstruction*, 4> stack;
   stack.push_back(inst);
   while (!stack.empty()) {
@@ -106,7 +107,7 @@ bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
           return false;
         }
       }
-      if (!visited.count(user)) {
+      if (!visited.contains(user)) {
         stack.push_back(user);
       }
     }
@@ -125,7 +126,7 @@ bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
 
 const HloValue& HloDataflowAnalysis::GetValueDefinedAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  CHECK(ValueIsDefinedAt(instruction, index));
+  CHECK(ValueIsDefinedAt(instruction, index)) << instruction->ToString();
   return GetUniqueValueAt(instruction, index);
 }
 
@@ -159,8 +160,8 @@ void HloDataflowAnalysis::MarkValueForDeletion(HloValue::Id value_id) {
 void HloDataflowAnalysis::DeleteMarkedValues() {
 #ifndef NDEBUG
   // Verify that no marked-for-deletion values are in any of the value sets.
-  tensorflow::gtl::FlatSet<HloValue::Id> id_set(value_ids_to_delete_.begin(),
-                                                value_ids_to_delete_.end());
+  absl::flat_hash_set<HloValue::Id> id_set(value_ids_to_delete_.begin(),
+                                           value_ids_to_delete_.end());
   for (const auto& pair : value_sets_) {
     const HloInstruction* instruction = pair.first;
     const InstructionValueSet& instruction_value_set = pair.second;
@@ -189,7 +190,7 @@ string HloDataflowAnalysis::ToString() const {
   for (const HloComputation* computation : module_.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
-      if (ShapeUtil::IsTuple(instruction->shape())) {
+      if (instruction->shape().IsTuple()) {
         GetInstructionValueSet(instruction)
             .ForEachElement([this, &instruction, &out](
                                 const ShapeIndex& index,
@@ -255,7 +256,7 @@ bool HloDataflowAnalysis::Phi(
         input_value_ids.push_back(value->id());
       }
     }
-    std::sort(input_value_ids.begin(), input_value_ids.end());
+    absl::c_sort(input_value_ids);
     input_value_ids.erase(
         std::unique(input_value_ids.begin(), input_value_ids.end()),
         input_value_ids.end());
@@ -270,8 +271,7 @@ bool HloDataflowAnalysis::Phi(
     if (current_value_defined_here) {
       VLOG(5) << "current_value_defined_here: " << current_value->ToString();
       CHECK(current_value->is_phi());
-      auto it = std::find(input_value_ids.begin(), input_value_ids.end(),
-                          current_value->id());
+      auto it = absl::c_find(input_value_ids, current_value->id());
       if (it != input_value_ids.end()) {
         input_value_ids.erase(it);
       }
@@ -350,23 +350,6 @@ bool HloDataflowAnalysis::UpdateBitcastValueSet(HloInstruction* bitcast) {
   InstructionValueSet& bitcast_set = GetInstructionValueSet(bitcast);
   if (!bitcast_defines_value_ && operand_set != bitcast_set) {
     bitcast_set = operand_set;
-    return true;
-  }
-  return false;
-}
-
-bool HloDataflowAnalysis::UpdateSliceValueSet(HloInstruction* slice) {
-  CHECK_EQ(slice->opcode(), HloOpcode::kSlice);
-  if (!slice->IsInPlaceSlice()) {
-    return false;
-  }
-  // If this slice is lowered to an in-place version, then it forwards the
-  // operand value to the output.
-  const InstructionValueSet& operand_set =
-      GetInstructionValueSet(slice->operand(0));
-  InstructionValueSet& slice_set = GetInstructionValueSet(slice);
-  if (operand_set != slice_set) {
-    slice_set = operand_set;
     return true;
   }
   return false;
@@ -480,6 +463,21 @@ bool HloDataflowAnalysis::UpdateDomainValueSet(HloInstruction* domain) {
     }
   }
   return changed;
+}
+
+bool HloDataflowAnalysis::UpdateAddDependencyValueSet(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand.
+  CHECK_EQ(add_dependency->opcode(), HloOpcode::kAddDependency);
+  const InstructionValueSet& operand_set =
+      GetInstructionValueSet(add_dependency->operand(0));
+  InstructionValueSet& add_dependency_set =
+      GetInstructionValueSet(add_dependency);
+  if (operand_set != add_dependency_set) {
+    add_dependency_set = operand_set;
+    return true;
+  }
+  return false;
 }
 
 bool HloDataflowAnalysis::UpdateGetTupleElementValueSet(HloInstruction* gte) {
@@ -638,10 +636,10 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
     HloInstruction* instruction) {
   // Recompute from operands.
   switch (instruction->opcode()) {
+    case HloOpcode::kAddDependency:
+      return UpdateAddDependencyValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
-    case HloOpcode::kSlice:
-      return UpdateSliceValueSet(instruction);
     case HloOpcode::kDomain:
       return UpdateDomainValueSet(instruction);
     case HloOpcode::kCopy:
@@ -673,7 +671,7 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
 
 void HloDataflowAnalysis::Propagate() {
   std::queue<HloInstruction*> worklist;
-  tensorflow::gtl::FlatSet<HloInstruction*> workset;
+  absl::flat_hash_set<HloInstruction*> workset;
   auto add_to_worklist = [&worklist, &workset](HloInstruction* instruction) {
     if (workset.insert(instruction).second) {
       worklist.push(instruction);
@@ -813,11 +811,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_all_values();
           }
           break;
-        case HloOpcode::kSlice:
-          if (!instruction->IsInPlaceSlice()) {
-            define_all_values();
-          }
-          break;
+        case HloOpcode::kAddDependency:
         case HloOpcode::kWhile:
         case HloOpcode::kCall:
         case HloOpcode::kConditional:
@@ -926,8 +920,7 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   for (auto& pair : dataflow_analysis->values_) {
     dataflow_analysis->values_vector_.push_back(&pair.second);
   }
-  std::sort(dataflow_analysis->values_vector_.begin(),
-            dataflow_analysis->values_vector_.end(), HloValue::IdLessThan);
+  absl::c_sort(dataflow_analysis->values_vector_, HloValue::IdLessThan);
 
   TF_DCHECK_OK(dataflow_analysis->Verify());
 
@@ -942,9 +935,7 @@ Status HloDataflowAnalysis::Verify() const {
   for (const HloValue* value : values()) {
     for (const HloPosition& position : value->positions()) {
       const HloValueSet& value_set = GetValueSet(position);
-      TF_RET_CHECK(std::find(value_set.values().begin(),
-                             value_set.values().end(),
-                             value) != value_set.values().end())
+      TF_RET_CHECK(absl::c_linear_search(value_set.values(), value))
           << "Value set at position " << position << " does not contain value "
           << value->ToShortString();
     }
@@ -959,9 +950,7 @@ Status HloDataflowAnalysis::Verify() const {
         const HloValueSet& value_set = pair.second;
         const HloPosition position{instruction, index};
         for (const HloValue* value : value_set.values()) {
-          TF_RET_CHECK(std::find(value->positions().begin(),
-                                 value->positions().end(),
-                                 position) != value->positions().end())
+          TF_RET_CHECK(absl::c_linear_search(value->positions(), position))
               << "Value set at position " << position
               << " unexpectedly contains value " << value->ToShortString();
         }
@@ -1046,11 +1035,10 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       // Check if one operand of kAdd fused root is kDot or kConvolution.
       auto* add = user->fused_expression_root();
       auto add_operand_it =
-          std::find_if(add->operands().begin(), add->operands().end(),
-                       [&](HloInstruction* operand) {
-                         return operand->opcode() == HloOpcode::kConvolution ||
-                                operand->opcode() == HloOpcode::kDot;
-                       });
+          absl::c_find_if(add->operands(), [&](HloInstruction* operand) {
+            return operand->opcode() == HloOpcode::kConvolution ||
+                   operand->opcode() == HloOpcode::kDot;
+          });
       if (add_operand_it == add->operands().end()) {
         return false;
       }
@@ -1071,6 +1059,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
 
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kScatter ||
       user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
     // so here we just need to check that the use is at operand index 0.
@@ -1104,16 +1093,15 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // *) The root instruction of the called computation is element-wise on
     //    'operand'.
     const bool found_caller_use =
-        std::find_if(uses.begin(), uses.end(), [user](const HloUse& use) {
+        absl::c_find_if(uses, [user](const HloUse& use) {
           return use.instruction == user;
         }) != uses.end();
     auto* callee_root = user->to_apply()->root_instruction();
     const bool found_elementwise_callee_use =
-        std::find_if(
-            uses.begin(), uses.end(), [callee_root](const HloUse& use) {
-              return use.instruction == callee_root &&
-                     callee_root->IsElementwiseOnOperand(use.operand_number);
-            }) != uses.end();
+        absl::c_find_if(uses, [callee_root](const HloUse& use) {
+          return use.instruction == callee_root &&
+                 callee_root->IsElementwiseOnOperand(use.operand_number);
+        }) != uses.end();
     return uses.size() == 2 && found_caller_use && found_elementwise_callee_use;
   }
 

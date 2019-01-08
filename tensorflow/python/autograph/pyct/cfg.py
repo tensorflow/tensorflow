@@ -22,11 +22,16 @@ Once built, the CFG itself is immutable, but the values it holds need not be;
 they are usually annotated with information extracted by walking the graph.
 """
 
+# TODO(mdan): The notion of 'statements' below is inaccurate.
+# They should rather be called 'block statements', because they include
+# statements that may have a body, e.g. if and while.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import collections
+import weakref
 from enum import Enum
 
 # pylint:disable=g-bad-import-order
@@ -61,7 +66,10 @@ class Node(object):
 
   def freeze(self):
     self.next = frozenset(self.next)
-    self.prev = frozenset(self.prev)
+    # Assumption: All CFG nodes have identical life spans, because the graph
+    # owns them. Nodes should never be used outside the context of an existing
+    # graph.
+    self.prev = weakref.WeakSet(self.prev)
 
   def __repr__(self):
     if isinstance(self.ast_node, gast.FunctionDef):
@@ -256,7 +264,7 @@ class GraphBuilder(object):
     """Resets the state of this factory."""
     self.head = None
     self.errors = set()
-    self.node_index = collections.OrderedDict()
+    self.node_index = {}
 
     # TODO(mdan): Too many primitives. Use classes.
     self.leaves = set()
@@ -309,7 +317,10 @@ class GraphBuilder(object):
     """Grows the graph by adding a CFG node following the current leaves."""
     if ast_node is self.node_index:
       raise ValueError('%s added twice' % ast_node)
-    node = Node(next_=set(), prev=set(), ast_node=ast_node)
+    # Assumption: All CFG nodes have identical life spans, because the graph
+    # owns them. Nodes should never be used outside the context of an existing
+    # graph.
+    node = Node(next_=set(), prev=weakref.WeakSet(), ast_node=ast_node)
     self.node_index[ast_node] = node
     self.owners[node] = frozenset(self.active_stmts)
 
@@ -668,10 +679,6 @@ class AstToCfg(gast.NodeVisitor):
     self.cfgs[node] = self.builder.build()
     self.builder = self.builder_stack.pop()
 
-  def visit_Lambda(self, node):
-    # TODO(mdan): Treat like FunctionDef? That would be a separate CFG.
-    raise NotImplementedError()
-
   def visit_Return(self, node):
     self._process_exit_statement(node, gast.FunctionDef)
 
@@ -756,9 +763,9 @@ class AstToCfg(gast.NodeVisitor):
 
     self.builder.enter_section(node)
 
-    # TODO(mdan): Strictly speaking, this should be node.target + node.iter.
-    # A blind dataflow analysis would have to process both node.target and
-    # node.iter to properly process read and write access.
+    # Note: Strictly speaking, this should be node.target + node.iter.
+    # However, the activity analysis accounts for this inconsistency,
+    # so dataflow analysis produces the correct values.
     self.builder.enter_loop_section(node, node.iter)
     for stmt in node.body:
       self.visit(stmt)

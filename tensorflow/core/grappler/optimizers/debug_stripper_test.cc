@@ -43,6 +43,35 @@ TEST_F(DebugStripperTest, OutputEqualToInput) {
   CompareGraphs(item.graph, output);
 }
 
+TEST_F(DebugStripperTest, StripAssertOnTwoOutputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT,
+                                  ops::Placeholder::Shape({6}));
+  auto split =
+      ops::Split(s.WithOpName("split"), /*axis=*/0, input, /*num_split=*/2);
+  Output x = split[0];
+  Output y = split[1];
+  Output ge = ops::GreaterEqual(s.WithOpName("GreaterEqual"), x, y);
+  auto assert = ops::Assert(s.WithOpName("Assert"), ge, {x, y});
+  Output add = ops::Add(
+      s.WithOpName("add").WithControlDependencies({assert.operation}), x, y);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  DebugStripper optimizer;
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  for (const NodeDef& node : output.node()) {
+    for (const string& input : node.input()) {
+      if (IsControlInput(input)) {
+        EXPECT_EQ(input.find(':'), -1);
+      }
+    }
+  }
+}
+
 TEST_F(DebugStripperTest, StripAssertFromGraph) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,

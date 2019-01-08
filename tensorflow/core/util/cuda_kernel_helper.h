@@ -93,11 +93,11 @@ __device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleXorSync(
 }
 
 namespace cuda_helper {
-template <typename IntType>
-__device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
-  IntType* orig = first;
-  IntType* it = nullptr;
-  IntType step = 0;
+template <typename T, typename OutType = int32>
+__device__ OutType upper_bound(const T* first, OutType count, T val) {
+  const T* orig = first;
+  const T* it = nullptr;
+  OutType step = 0;
   while (count > 0) {
     it = first;
     step = count / 2;
@@ -112,6 +112,27 @@ __device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
 
   return first - orig;
 }
+
+template <typename T, typename OutType = int32>
+__device__ OutType lower_bound(const T* first, OutType count, T val) {
+  const T* orig = first;
+  const T* it = nullptr;
+  OutType step = 0;
+  while (count > 0) {
+    it = first;
+    step = count / 2;
+    it += step;
+    if (*it < val) {
+      first = ++it;
+      count -= step + 1;
+    } else {
+      count = step;
+    }
+  }
+
+  return first - orig;
+}
+
 }  // namespace cuda_helper
 }  // namespace tensorflow
 

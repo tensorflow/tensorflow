@@ -80,6 +80,10 @@ tf_class {
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'batch_shape_tensor\'], "
   }
   member_method {
+    name: "cholesky"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cholesky\'], "
+  }
+  member_method {
     name: "determinant"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'det\'], "
   }

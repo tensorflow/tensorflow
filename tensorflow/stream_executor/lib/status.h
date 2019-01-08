@@ -18,9 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STATUS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STATUS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/error.h"  // IWYU pragma: export
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 
 namespace stream_executor {
@@ -33,13 +33,13 @@ using Status = tensorflow::Status;
   ASSERT_EQ(::stream_executor::port::Status::OK(), (val))
 
 // Define some canonical error helpers.
-inline Status UnimplementedError(StringPiece message) {
+inline Status UnimplementedError(absl::string_view message) {
   return Status(error::UNIMPLEMENTED, message);
 }
-inline Status InternalError(StringPiece message) {
+inline Status InternalError(absl::string_view message) {
   return Status(error::INTERNAL, message);
 }
-inline Status FailedPreconditionError(StringPiece message) {
+inline Status FailedPreconditionError(absl::string_view message) {
   return Status(error::FAILED_PRECONDITION, message);
 }
 

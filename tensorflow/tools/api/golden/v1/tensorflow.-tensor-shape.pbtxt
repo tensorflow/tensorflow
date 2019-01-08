@@ -1,6 +1,6 @@
 path: "tensorflow.TensorShape"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShape\'>"
+  is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShapeV1\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dims"
@@ -8,6 +8,10 @@ tf_class {
   }
   member {
     name: "ndims"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "rank"
     mtype: "<type \'property\'>"
   }
   member_method {

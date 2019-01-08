@@ -19,9 +19,11 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -44,7 +46,7 @@ namespace xla {
 //  Note that the reachability map is updated based on the original computation.
 //  This works because the reachability is monotonically increasing with
 //  instruction fusion.
-class MultiOutputFusion : public HloPassInterface {
+class MultiOutputFusion : public HloModulePass {
  public:
   MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
 
@@ -126,7 +128,7 @@ class MultiOutputFusion : public HloPassInterface {
   std::vector<FusionCandidate> candidates_;
 
   // A map that maps an instruction to the index_.
-  tensorflow::gtl::FlatMap<HloInstruction*, int> candidates_index_;
+  absl::flat_hash_map<HloInstruction*, int> candidates_index_;
 
   // The reachability map of current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;

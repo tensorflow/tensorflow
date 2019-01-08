@@ -119,6 +119,29 @@ class PosixEnv : public Env {
     return tensorflow::internal::FormatLibraryFileName(name, version);
   }
 
+  string GetRunfilesDir() override {
+    string bin_path = this->GetExecutablePath();
+    string runfiles_suffix = ".runfiles/org_tensorflow";
+    std::size_t pos = bin_path.find(runfiles_suffix);
+
+    // Sometimes (when executing under python) bin_path returns the full path to
+    // the python scripts under runfiles. Get the substring.
+    if (pos != std::string::npos) {
+      return bin_path.substr(0, pos + runfiles_suffix.length());
+    }
+
+    // See if we have the executable path. if executable.runfiles exists, return
+    // that folder.
+    string runfiles_path = bin_path + runfiles_suffix;
+    Status s = this->IsDirectory(runfiles_path);
+    if (s.ok()) {
+      return runfiles_path;
+    }
+
+    // If nothing can be found, return something close.
+    return bin_path.substr(0, bin_path.find_last_of("/\\"));
+  }
+
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override;
 };

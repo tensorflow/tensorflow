@@ -23,7 +23,7 @@ namespace xla {
 // This pass should run early in the HLO pipeline and checks for HLO constructs
 // which are not supported by the CPU backend and cannot be removed via HLO
 // transformations (eg, sparse layouts).
-class CpuHloSupportChecker : public HloPassInterface {
+class CpuHloSupportChecker : public HloModulePass {
  public:
   CpuHloSupportChecker() = default;
   ~CpuHloSupportChecker() override = default;

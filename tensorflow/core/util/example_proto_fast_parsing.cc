@@ -16,13 +16,13 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -164,7 +164,7 @@ class Feature {
         while (!stream.ExpectAtEnd()) {
           uint32 buffer32;
           if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->push_back(bit_cast<float>(buffer32));
+          float_list->push_back(absl::bit_cast<float>(buffer32));
         }
 
         stream.PopLimit(packed_limit);
@@ -173,7 +173,7 @@ class Feature {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32 buffer32;
           if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->push_back(bit_cast<float>(buffer32));
+          float_list->push_back(absl::bit_cast<float>(buffer32));
         }
       }
     }
@@ -1600,7 +1600,7 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
-          *out++ = bit_cast<float>(buffer32);
+          *out++ = absl::bit_cast<float>(buffer32);
         }
         num_elements++;
       }
@@ -1613,7 +1613,7 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
-          *out++ = bit_cast<float>(buffer32);
+          *out++ = absl::bit_cast<float>(buffer32);
         }
         num_elements++;
       }

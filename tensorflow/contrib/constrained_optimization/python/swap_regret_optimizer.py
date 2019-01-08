@@ -156,7 +156,7 @@ def _project_stochastic_matrix_wrt_euclidean_norm(matrix):
   if matrix_shape[0] != matrix_shape[1]:
     raise ValueError("matrix must be square (instead has shape (%d,%d))" %
                      (matrix_shape[0], matrix_shape[1]))
-  dimension = matrix_shape[0].value
+  dimension = matrix_shape.dims[0].value
   if dimension is None:
     raise ValueError("matrix must have fully-known shape")
 
@@ -175,9 +175,9 @@ def _project_stochastic_matrix_wrt_euclidean_norm(matrix):
     scale = (1.0 - standard_ops.reduce_sum(
         matrix, axis=0, keepdims=True)) / standard_ops.maximum(
             1.0, standard_ops.reduce_sum(inactive, axis=0, keepdims=True))
-    matrix += scale * inactive
+    matrix = matrix + (scale * inactive)
     new_inactive = standard_ops.cast(matrix > 0, matrix.dtype)
-    matrix *= new_inactive
+    matrix = matrix * new_inactive
     return (iteration, matrix, new_inactive, inactive)
 
   iteration = standard_ops.constant(0)
@@ -210,8 +210,9 @@ def _project_log_stochastic_matrix_wrt_kl_divergence(log_matrix):
 
   # For numerical reasons, make sure that the largest matrix element is zero
   # before exponentiating.
-  log_matrix -= standard_ops.reduce_max(log_matrix, axis=0, keepdims=True)
-  log_matrix -= standard_ops.log(
+  log_matrix = log_matrix - standard_ops.reduce_max(
+      log_matrix, axis=0, keepdims=True)
+  log_matrix = log_matrix - standard_ops.log(
       standard_ops.reduce_sum(
           standard_ops.exp(log_matrix), axis=0, keepdims=True))
   return log_matrix
@@ -600,7 +601,7 @@ class MultiplicativeSwapRegretOptimizer(_SwapRegretOptimizer):
       assert state_shape is not None
       assert state_shape.ndims == 2
       assert state_shape[0] == state_shape[1]
-      dimension = state_shape[0].value
+      dimension = state_shape.dims[0].value
       assert dimension is not None
 
       minimum_log_multiplier = standard_ops.log(

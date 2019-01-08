@@ -63,7 +63,7 @@ class BigReductionTest(BaseReductionTest):
         row_sum = np.ones([size_x], dtype=np.float32) * size_y
         full_sum = np.ones([], dtype=np.float32) * size_x * size_y
 
-        with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+        with self.session(graph=ops.Graph(), use_gpu=True) as sess:
           tf_row_sum = self._tf_reduce_sum(arr, 1, False)
           tf_col_sum = self._tf_reduce_sum(arr, 0, False)
           tf_full_sum = self._tf_reduce_sum(arr, [0, 1], False)
@@ -81,7 +81,7 @@ class BigReductionTest(BaseReductionTest):
           sum_y = np.ones([size_x, size_z], dtype=np.float32)
           sum_xz = np.ones([size_y], dtype=np.float32)
 
-          with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+          with self.session(graph=ops.Graph(), use_gpu=True) as sess:
             tf_sum_xz = self._tf_reduce_mean(arr, [0, 2], False)
             tf_sum_y = self._tf_reduce_mean(arr, 1, False)
             tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])
@@ -106,7 +106,7 @@ class BigReductionTest(BaseReductionTest):
         row_max = np.max(arr, axis=1)
         full_max = np.max(col_max)
 
-        with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+        with self.session(graph=ops.Graph(), use_gpu=True) as sess:
           tf_row_max = self._tf_reduce_max(arr, 1, False)
           tf_col_max = self._tf_reduce_max(arr, 0, False)
           tf_full_max = self._tf_reduce_max(arr, [0, 1], False)
@@ -125,7 +125,7 @@ class BigReductionTest(BaseReductionTest):
           sum_y = np.max(arr, axis=1)
           sum_xz = np.max(arr, axis=(0, 2))
 
-          with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+          with self.session(graph=ops.Graph(), use_gpu=True) as sess:
             tf_sum_xz = self._tf_reduce_max(arr, [0, 2], False)
             tf_sum_y = self._tf_reduce_max(arr, 1, False)
             tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])
@@ -149,7 +149,7 @@ class BigReductionTest(BaseReductionTest):
         row_sum = np.ones([size_x], dtype=np.bool)
         full_sum = np.ones([1], dtype=np.bool).reshape([])
 
-        with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+        with self.session(graph=ops.Graph(), use_gpu=True) as sess:
           tf_row_sum = self._tf_reduce_all(arr, 1, False)
           tf_col_sum = self._tf_reduce_all(arr, 0, False)
           tf_full_sum = self._tf_reduce_all(arr, [0, 1], False)
@@ -167,7 +167,7 @@ class BigReductionTest(BaseReductionTest):
           sum_y = np.ones([size_x, size_z], dtype=np.bool)
           sum_xz = np.ones([size_y], dtype=np.bool)
 
-          with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+          with self.session(graph=ops.Graph(), use_gpu=True) as sess:
             tf_sum_xz = self._tf_reduce_all(arr, [0, 2], False)
             tf_sum_y = self._tf_reduce_all(arr, 1, False)
             tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
@@ -40,9 +41,11 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -56,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -63,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -153,12 +158,12 @@ class DirectSessionFactory : public SessionFactory {
     if (options.config.graph_options().build_cost_model() > 0) {
       EnableCPUAllocatorFullStats(true);
     }
-    std::vector<Device*> devices;
+    std::vector<std::unique_ptr<Device>> devices;
     TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices));
 
     DirectSession* session =
-        new DirectSession(options, new DeviceMgr(devices), this);
+        new DirectSession(options, new DeviceMgr(std::move(devices)), this);
     {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);
@@ -244,6 +249,29 @@ void DirectSession::SchedClosure(thread::ThreadPool* pool,
 #endif  // __ANDROID__
 }
 
+static RunHandlerPool* GetOrCreateRunHandlerPool(
+    const SessionOptions& options) {
+  static RunHandlerPool* pool =
+      new RunHandlerPool(NumInterOpThreadsFromSessionOptions(options));
+  return pool;
+}
+
+bool DirectSession::ShouldUseRunHandlerPool(
+    const RunOptions& run_options) const {
+  if (options_.config.use_per_session_threads()) return false;
+  if (options_.config.session_inter_op_thread_pool_size() > 0 &&
+      run_options.inter_op_thread_pool() > 0)
+    return false;
+  // Only use RunHandlerPool when:
+  // a. Single global thread pool is used for inter-op parallelism.
+  // b. When multiple inter_op_thread_pool(s) are created, use it only while
+  // running sessions on the default inter_op_thread_pool=0. Typically,
+  // servo-team uses inter_op_thread_pool > 0 for model loading.
+  // TODO(crk): Revisit whether we'd want to create one (static) RunHandlerPool
+  // per entry in session_inter_op_thread_pool() in the future.
+  return true;
+}
+
 DirectSession::DirectSession(const SessionOptions& options,
                              const DeviceMgr* device_mgr,
                              DirectSessionFactory* const factory)
@@ -276,10 +304,8 @@ DirectSession::DirectSession(const SessionOptions& options,
   if (!status.ok()) {
     LOG(ERROR) << status.error_message();
   }
-  // NOTE(mrry): We do not need to use a unique string for the session
-  // handle, because DirectSession owns its devices. This may change
-  // in future versions.
-  session_handle_ = "direct";
+  session_handle_ =
+      strings::StrCat("direct", strings::FpToString(random::New64()));
   int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
@@ -344,6 +370,7 @@ Status DirectSession::MaybeInitializeExecutionState(
   GraphExecutionStateOptions options;
   options.device_set = &device_set_;
   options.session_options = &options_;
+  options.session_handle = session_handle_;
   // TODO(mrry,suharshs): We explicitly copy `graph` so that
   // `MakeForBaseGraph()` can take ownership of its
   // contents. Previously this happened implicitly in calls to the
@@ -363,7 +390,7 @@ Status DirectSession::MaybeInitializeExecutionState(
 Status DirectSession::Create(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(init_error_);
   if (graph.node_size() > 0) {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     if (graph_created_) {
       return errors::AlreadyExists(
           "A Graph has already been created for this session.");
@@ -375,7 +402,7 @@ Status DirectSession::Create(const GraphDef& graph) {
 
 Status DirectSession::Extend(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
-  mutex_lock l(graph_def_lock_);
+  mutex_lock l(graph_state_lock_);
   return ExtendLocked(graph);
 }
 
@@ -437,6 +464,10 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   CallFrameInterface* call_frame,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
+  const uint64 start_time_usecs = Env::Default()->NowMicros();
+  string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
+  tracing::ScopedActivity activity(session_id_meta);
+
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
@@ -502,6 +533,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   CancellationManager step_cancellation_manager;
   args.cancellation_manager = &step_cancellation_manager;
   args.session_state = &session_state_;
+  args.session_handle = session_handle_;
   args.tensor_store = &run_state.tensor_store;
   args.step_container = &run_state.step_container;
   args.sync_on_finish = sync_on_finish_;
@@ -582,16 +614,36 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     }
   }
 
-  Executor::Args::Runner default_runner = [this,
-                                           pool](Executor::Args::Closure c) {
-    SchedClosure(pool, std::move(c));
-  };
+  std::unique_ptr<RunHandler> handler;
+  if (ShouldUseRunHandlerPool(run_options) &&
+      run_options.experimental().use_run_handler_pool()) {
+    VLOG(1) << "Using RunHandler to scheduler inter-op closures.";
+    handler = GetOrCreateRunHandlerPool(options_)->Get();
+  }
+  auto* handler_ptr = handler.get();
+
+  Executor::Args::Runner default_runner = nullptr;
+
+  if (pool == nullptr) {
+    default_runner = [](Executor::Args::Closure c) { c(); };
+  } else if (handler_ptr != nullptr) {
+    default_runner = [handler_ptr](Executor::Args::Closure c) {
+      handler_ptr->ScheduleInterOpClosure(std::move(c));
+    };
+  } else {
+    default_runner = [this, pool](Executor::Args::Closure c) {
+      SchedClosure(pool, std::move(c));
+    };
+  }
+
   for (const auto& item : executors_and_keys->items) {
-    // TODO(zhengxq): support partial run.
-    // TODO(zhengxq): if the device picks its own threadpool, we need to assign
+    // TODO(azaks): support partial run.
+    // TODO(azaks): if the device picks its own threadpool, we need to assign
     //     less threads to the main compute pool by default.
     thread::ThreadPool* device_thread_pool =
         item.device->tensorflow_device_thread_pool();
+    // TODO(crk): Investigate usage of RunHandlerPool when using device specific
+    // thread pool(s).
     if (!device_thread_pool) {
       args.runner = default_runner;
     } else {
@@ -668,6 +720,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
+  UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
 
   return Status::OK();
 }
@@ -836,6 +889,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
     SchedClosure(pool, std::move(c));
   };
   args.session_state = &session_state_;
+  args.session_handle = session_handle_;
   args.tensor_store = &run_state->tensor_store;
   args.step_container = &run_state->step_container;
   if (LogMemory::IsEnabled()) {
@@ -1172,7 +1226,7 @@ Status DirectSession::CreateExecutors(
 
   int graph_def_version;
   {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     graph_def_version =
         execution_state_->original_graph_def().versions().producer();
   }
@@ -1400,7 +1454,7 @@ Status DirectSession::CreateGraphs(
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args, DataTypeVector* input_types,
     DataTypeVector* output_types, int64* collective_graph_key) {
-  mutex_lock l(graph_def_lock_);
+  mutex_lock l(graph_state_lock_);
   std::unique_ptr<ClientGraph> client_graph;
 
   std::unique_ptr<GraphExecutionState> temp_exec_state_holder;
@@ -1413,6 +1467,7 @@ Status DirectSession::CreateGraphs(
     prune_options.device_set = &device_set_;
     prune_options.session_options = &options_;
     prune_options.stateful_placements = stateful_placements_;
+    prune_options.session_handle = session_handle_;
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForPrunedGraph(
         execution_state_->original_graph_def().library(), prune_options,
         execution_state_->original_graph_def(), subgraph_options,
@@ -1466,6 +1521,12 @@ Status DirectSession::CreateGraphs(
   if (run_state_args->is_partial_run) {
     run_state_args->graph.reset(new Graph(flib_def_.get()));
     CopyGraph(*execution_state->full_graph(), run_state_args->graph.get());
+  }
+
+  // Make collective execution order deterministic if needed.
+  if (options_.config.experimental()
+          .collective_deterministic_sequential_execution()) {
+    TF_RETURN_IF_ERROR(OrderCollectives(&client_graph->graph));
   }
 
   // Partition the graph across devices.

@@ -28,29 +28,3 @@ py_binary(
         "//tensorflow/examples/tutorials/mnist",
     ],
 )
-
-py_binary(
-    name = "fully_connected_preloaded",
-    srcs = [
-        "fully_connected_preloaded.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/examples/tutorials/mnist",
-        "//tensorflow/examples/tutorials/mnist:input_data",
-    ],
-)
-
-py_binary(
-    name = "fully_connected_preloaded_var",
-    srcs = [
-        "fully_connected_preloaded_var.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/examples/tutorials/mnist",
-        "//tensorflow/examples/tutorials/mnist:input_data",
-    ],
-)

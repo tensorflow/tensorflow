@@ -38,8 +38,8 @@ class MovingReduceMeanVarianceTest(test.TestCase):
     true_stddev = np.array([[1.1, 0.5]])
     with self.cached_session() as sess:
       # Start "x" out with this mean.
-      mean_var = variables.Variable(array_ops.zeros_like(true_mean))
-      variance_var = variables.Variable(array_ops.ones_like(true_stddev))
+      mean_var = variables.VariableV1(array_ops.zeros_like(true_mean))
+      variance_var = variables.VariableV1(array_ops.ones_like(true_stddev))
       x = random_ops.random_normal(shape, dtype=np.float64, seed=0)
       x = true_stddev * x + true_mean
       ema, emv = moving_stats.assign_moving_mean_variance(
@@ -115,7 +115,7 @@ class MovingLogExponentialMovingMeanExpTest(test.TestCase):
       # Start "x" out with this mean.
       x = random_ops.random_normal(shape, dtype=np.float64, seed=0)
       x = true_stddev * x + true_mean
-      log_mean_exp_var = variables.Variable(array_ops.zeros_like(true_mean))
+      log_mean_exp_var = variables.VariableV1(array_ops.zeros_like(true_mean))
       variables.global_variables_initializer().run()
       log_mean_exp = moving_stats.assign_log_moving_mean_exp(
           log_mean_exp_var, x, decay=decay)

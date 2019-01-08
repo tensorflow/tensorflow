@@ -27,7 +27,7 @@ py_library(
         ":contrib_estimator_predictor",
         ":core_estimator_predictor",
         ":saved_model_predictor",
-        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -42,6 +42,7 @@ py_library(
     name = "saved_model_predictor",
     srcs = ["saved_model_predictor.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//learning/brain/contrib/learn/tpu:__subpackages__"],
     deps = [
         ":base_predictor",
         "//tensorflow/contrib/saved_model:saved_model_py",
@@ -89,7 +90,6 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/saved_model:signature_constants",
     ],

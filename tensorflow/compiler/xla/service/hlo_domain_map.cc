@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -40,18 +42,19 @@ namespace xla {
   return std::move(domain_map);
 }
 
-bool HloDomainMap::InSameDomain(HloInstruction* instruction1,
-                                HloInstruction* instruction2) const {
+bool HloDomainMap::InSameDomain(const HloInstruction* instruction1,
+                                const HloInstruction* instruction2) const {
   int64 domain_id1 = GetDomainId(instruction1);
   int64 domain_id2 = GetDomainId(instruction2);
   return domain_id1 >= 0 && domain_id1 == domain_id2;
 }
 
-int64 HloDomainMap::GetDomainId(HloInstruction* instruction) const {
+int64 HloDomainMap::GetDomainId(const HloInstruction* instruction) const {
   return FindOrDefault(instruction_to_domain_, instruction, -1);
 }
 
-int64 HloDomainMap::GetDomainMetadataId(HloInstruction* instruction) const {
+int64 HloDomainMap::GetDomainMetadataId(
+    const HloInstruction* instruction) const {
   return FindOrDie(domain_metadata_id_, instruction);
 }
 
@@ -106,8 +109,8 @@ Status HloDomainMap::PopulateDomainMetadataMap() {
   auto equal = [](const DomainMetadata* a, const DomainMetadata* b) {
     return a->Matches(*b);
   };
-  tensorflow::gtl::FlatMap<const DomainMetadata*, int64, decltype(hash),
-                           decltype(equal)>
+  absl::flat_hash_map<const DomainMetadata*, int64, decltype(hash),
+                      decltype(equal)>
       domain_metadata(1024, hash, equal);
 
   for (auto& domain : instruction_domains_) {
@@ -198,7 +201,8 @@ StatusOr<std::unique_ptr<DomainMetadata::Domain>> HloDomainMap::CreateDomain(
   return std::move(domain);
 }
 
-bool HloDomainMap::IsDomainInstruction(HloInstruction* instruction) const {
+bool HloDomainMap::IsDomainInstruction(
+    const HloInstruction* instruction) const {
   if (instruction->opcode() != HloOpcode::kDomain) {
     return false;
   }
@@ -216,7 +220,7 @@ bool HloDomainMap::IsDomainInstruction(HloInstruction* instruction) const {
 
 /* static */ std::vector<HloInstruction*>
 HloDomainMap::MakeNonDomainInstructions(
-    const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set,
+    const absl::flat_hash_set<HloInstruction*>& instruction_set,
     const InstructionOrderMap& instructions_order) {
   std::vector<HloInstruction*> instructions;
   instructions.reserve(instruction_set.size());
@@ -226,10 +230,10 @@ HloDomainMap::MakeNonDomainInstructions(
     }
   }
   // sort instructions according to instructions_order
-  std::sort(instructions.begin(), instructions.end(),
-            [&instructions_order](HloInstruction* a, HloInstruction* b) {
-              return instructions_order.at(a) < instructions_order.at(b);
-            });
+  absl::c_sort(instructions,
+               [&instructions_order](HloInstruction* a, HloInstruction* b) {
+                 return instructions_order.at(a) < instructions_order.at(b);
+               });
   return instructions;
 }
 

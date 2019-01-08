@@ -61,6 +61,10 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
+            "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
+            "//tensorflow/core/distributed_runtime:device_resolver_distributed",
+            "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
+            "//tensorflow/core/distributed_runtime:worker_cache",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/distributed_runtime:worker_session",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
@@ -147,10 +151,12 @@ tf_cuda_library(
         "kernel_and_device.h",
     ],
     visibility = ["//tensorflow:internal"],
-    deps = select({
+    deps = [
+        ":attr_builder",
+        "@farmhash_archive//:farmhash",
+    ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
-            "//util/hash:farmhash_fingerprint",
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu_lib",
@@ -179,6 +185,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -218,14 +225,13 @@ tf_cuda_library(
     hdrs = ["attr_builder.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":kernel_and_device",
+        "@farmhash_archive//:farmhash",
         # Only the TF_AttrType enum is required, so pull in just the C headers.
         # TODO(b/113535673): Break this dependency and avoid the C header completely.
         "//tensorflow/c:c_api_headers",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
-            "//util/hash:farmhash_fingerprint",
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu",

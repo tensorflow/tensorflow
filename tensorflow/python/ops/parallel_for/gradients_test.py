@@ -32,6 +32,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.layers import layers as tf_layers
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops as tf_control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -256,6 +258,22 @@ class Mnist(keras_training.Model):
     return self.fc2(y)
 
 
+def create_mnist_autobatch(batch_size, data_format, training):
+  images = random_ops.random_uniform([batch_size, 28, 28])
+  model = Mnist(data_format)
+  manual = model(images, training=training)
+
+  def loop_fn(i):
+    image = array_ops.gather(images, i)
+    return model(image, training=training)
+
+  pfor_outputs = control_flow_ops.pfor(loop_fn, batch_size)
+  while_outputs = control_flow_ops.for_loop(
+      loop_fn, dtypes.float32, batch_size)
+
+  return pfor_outputs, while_outputs, manual
+
+
 def create_mnist_per_eg_grad(batch_size, data_format, training):
   images = random_ops.random_uniform([batch_size, 28, 28])
   sparse_labels = np.random.randint(
@@ -355,6 +373,30 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(answer, jacobian_pfor)
     self.run_and_assert_equal(answer, jacobian_while)
 
+  def test_jacobian_scan_shape(self):
+    # Shape x: [3, 4]
+    x = random_ops.random_uniform([3, 4])
+    elems = random_ops.random_uniform([6])
+    # Shape y: [6, 3, 4]
+    y = functional_ops.scan(lambda a, e: a + e, elems, initializer=x)
+    jacobian = gradients.jacobian(y, x)
+
+    expected_shape = [6, 3, 4, 3, 4]
+    self.assertAllEqual(expected_shape, jacobian.shape.as_list())
+
+  def test_jacobian_while_loop_shape(self):
+    # Shape x: [3, 4]
+    x = random_ops.random_uniform([3, 4])
+    _, y = tf_control_flow_ops.while_loop(lambda i, a: i > 5.,
+                                          lambda i, a: (i + 1, a + i),
+                                          (constant_op.constant(0.), x))
+    # Shape y: [2, 3]
+    y = y[:2, :3]
+    jacobian = gradients.jacobian(y, x)
+
+    expected_shape = [2, 3, 3, 4]
+    self.assertAllEqual(expected_shape, jacobian.shape.as_list())
+
   def test_jacobian_unknown_shape(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32, shape=[None, None])
@@ -373,6 +415,12 @@ class GradientsTest(test.TestCase):
           feed_dict={x: [[1, 2], [3, 4]]})
       self.assertAllClose(ans, pfor_value)
       self.assertAllClose(ans, while_value)
+
+  def test_jacobian_parallel_iterations(self):
+    x = constant_op.constant([[1., 2], [3, 4]])
+    y = math_ops.matmul(x, x)
+    self.assertAllClose(gradients.jacobian(y, x, parallel_iterations=2),
+                        gradients.jacobian(y, x, parallel_iterations=3))
 
   def test_batch_jacobian_bad_shapes(self):
     x = random_ops.random_uniform([2, 2])
@@ -417,6 +465,13 @@ class GradientsTest(test.TestCase):
       self.assertAllClose(ans, pfor_value)
       self.assertAllClose(ans, while_value)
 
+  def test_batch_jacobian_parallel_iterations(self):
+    x = constant_op.constant([[1., 2], [3, 4]])
+    w = constant_op.constant([[1., 2, 3, 4], [5, 6, 7, 8]])
+    y = math_ops.matmul(x, w)
+    self.assertAllClose(gradients.batch_jacobian(y, x, parallel_iterations=2),
+                        gradients.batch_jacobian(y, x, parallel_iterations=3))
+
   def test_fc_batch_jacobian(self):
     pfor_jacobian, while_jacobian = create_fc_batch_jacobian(8, 4, 2)
     self.run_and_assert_equal(pfor_jacobian, while_jacobian)
@@ -429,8 +484,8 @@ class GradientsTest(test.TestCase):
     pfor_jacobian, while_gradients = create_dynamic_lstm_batch_jacobian(8, 4, 3)
     with session.Session() as sess:
       init = variables.global_variables_initializer()
-      sess.run(init)
-      pfor = sess.run(pfor_jacobian)
+      self.evaluate(init)
+      pfor = self.evaluate(pfor_jacobian)
       for i in range(4):
         while_i = sess.run(while_gradients[i])
         self.assertAllClose(while_i, pfor[:, i, ...])
@@ -505,11 +560,11 @@ class GradientsBenchmarks(test.Benchmark):
     sess = session.Session()
     with sess:
       init = variables.global_variables_initializer()
-      sess.run(init)
-      sess.run(targets)
+      self.evaluate(init)
+      self.evaluate(targets)
       begin = time.time()
       for _ in range(iters):
-        sess.run(targets)
+        self.evaluate(targets)
       end = time.time()
     avg_time_ms = 1000 * (end - begin) / iters
     self.report_benchmark(iters=iters, wall_time=avg_time_ms, name=name)
@@ -550,6 +605,16 @@ class GradientsBenchmarks(test.Benchmark):
       pfor_outputs, while_outputs = create_lstm_per_eg_grad(100, 32, 8)
       self._run(pfor_outputs, 100, name="lstm_per_eg_grad_pfor")
       self._run(while_outputs, 20, name="lstm_per_eg_grad_while")
+
+  def benchmark_mnist_autobatch(self):
+    with ops.Graph().as_default():
+      data_format = ("channels_first"
+                     if test.is_gpu_available() else "channels_last")
+      pfor_outputs, while_outputs, manual = create_mnist_autobatch(
+          100, data_format, training=False)
+      self._run(pfor_outputs, 100, name="mnist_pfor")
+      self._run(while_outputs, 20, name="mnist_while")
+      self._run(manual, 100, name="mnist_manual")
 
   def benchmark_mnist_per_eg_grad(self):
     with ops.Graph().as_default():

@@ -220,6 +220,7 @@ const char ErrorFoundFloat[] =
       /* Iterate over outer dim, and recursively convert each element. */ \
       const int64 s = shape.dim_size(0);                                  \
       Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));         \
+      if (TF_PREDICT_FALSE(seq == nullptr)) return ErrorRectangular;      \
       if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {   \
         return ErrorRectangular;                                          \
       }                                                                   \

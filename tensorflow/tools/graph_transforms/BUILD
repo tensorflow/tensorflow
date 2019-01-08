@@ -12,6 +12,7 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
     "tf_py_test",
+    "if_not_v2",
 )
 
 exports_files(["LICENSE"])
@@ -97,6 +98,7 @@ cc_library(
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
+        "fuse_quantized_convolution.cc",
         "insert_logging.cc",
         "obfuscate_names.cc",
         "quantize_nodes.cc",
@@ -130,12 +132,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
-        "//tensorflow/contrib/rnn:gru_ops_op_lib",
-        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
         "//tensorflow/core/kernels:quantization_utils",
     ] + if_not_windows([
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
         "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
+    ]) + if_not_v2([
+        "//tensorflow/contrib/rnn:gru_ops_op_lib",
+        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
     ]),
     alwayslink = 1,
 )

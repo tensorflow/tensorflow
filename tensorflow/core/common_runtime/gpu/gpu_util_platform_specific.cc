@@ -37,6 +37,14 @@ void GPUDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   GPUUtil::CopyGPUTensorToCPU(device, this, device_tensor, cpu_tensor, done);
 }
 
+void GPUDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
+                                              Device* device,
+                                              Tensor* output_tensor,
+                                              StatusCallback done) const {
+  GPUUtil::CopyGPUTensorToSameGPU(device, this, input_tensor, output_tensor,
+                                  done);
+}
+
 Status GPUDeviceContext::ThenExecute(Device* device, se::Stream* stream,
                                      std::function<void()> func) {
   const DeviceBase::GpuDeviceInfo* gpu_info =

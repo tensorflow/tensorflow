@@ -758,6 +758,7 @@ class TensorUtilTest(test.TestCase):
     self.assertFalse(tensor_util.ShapeEquals(t, [1, 4]))
     self.assertFalse(tensor_util.ShapeEquals(t, [4]))
 
+  @test_util.run_deprecated_v1
   def testMockArray(self):
 
     class MockArray(object):
@@ -771,7 +772,7 @@ class TensorUtilTest(test.TestCase):
     with self.cached_session() as sess:
       ma = MockArray(np.array([10, 20, 30]))
       t = ops.convert_to_tensor(ma)
-      a = sess.run(t)
+      a = self.evaluate(t)
       self.assertEquals(np.int64, a.dtype)
       self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
 
@@ -787,6 +788,7 @@ class ConstantValueTest(test.TestCase):
     tf_val = constant_op.constant(np_val)
     self.assertAllClose(np_val, tensor_util.constant_value(tf_val))
 
+  @test_util.run_deprecated_v1
   def testUnknown(self):
     tf_val = gen_state_ops.variable(
         shape=[3, 4, 7],
@@ -815,12 +817,14 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertEqual(6, c_val)
 
+  @test_util.run_deprecated_v1
   def testSizeOfScalar(self):
     tf_val = array_ops.size(constant_op.constant(0.0))
     c_val = tensor_util.constant_value(tf_val)
     self.assertEqual(1, c_val)
     self.assertEqual(np.ndarray, type(c_val))
 
+  @test_util.run_deprecated_v1
   def testRank(self):
     tf_val = array_ops.rank(constant_op.constant(0.0, shape=[1, 2, 3]))
     c_val = tensor_util.constant_value(tf_val)
@@ -852,6 +856,7 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllClose(np_val.astype(np.float64), c_val)
 
+  @test_util.run_deprecated_v1
   def testConcat(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
     tf_val = array_ops.concat(
@@ -871,6 +876,7 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
+  @test_util.run_deprecated_v1
   def testPack_Axis0(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     np_val = np.array(inputs)
@@ -883,6 +889,7 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
+  @test_util.run_deprecated_v1
   def testPack_Axis1(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     tf_val = array_ops.stack(inputs, axis=1)
@@ -894,6 +901,7 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
+  @test_util.run_deprecated_v1
   def testPack_Partial_Axis0(self):
     input_ = np.random.rand(4, 7)
     tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
@@ -901,6 +909,7 @@ class ConstantValueTest(test.TestCase):
     self.assertAllClose(input_, c_val[0])
     self.assertIsNone(c_val[1])
 
+  @test_util.run_deprecated_v1
   def testPack_Partial_Axis1(self):
     input_ = np.random.rand(4, 7)
     tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)],
@@ -966,12 +975,14 @@ class ConstantValueAsShapeTest(test.TestCase):
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([None, 1, None], c_val.as_list())
 
+  @test_util.run_deprecated_v1
   def testPack(self):
     tf_val = array_ops.stack(
         [constant_op.constant(16), 37, array_ops.placeholder(dtypes.int32)])
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None], c_val.as_list())
 
+  @test_util.run_deprecated_v1
   def testConcat(self):
     tf_val = array_ops.concat(
         [[16, 37], array_ops.placeholder(
@@ -985,6 +996,7 @@ class ConstantValueAsShapeTest(test.TestCase):
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None, 48], c_val.as_list())
 
+  @test_util.run_deprecated_v1
   def testSlice(self):
     tf_val = array_ops.placeholder(dtypes.int32, shape=(4,))[0:2]
     c_val = tensor_util.constant_value_as_shape(tf_val)

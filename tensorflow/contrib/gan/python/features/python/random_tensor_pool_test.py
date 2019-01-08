@@ -37,7 +37,7 @@ class TensorPoolTest(test.TestCase):
     output_value = tensor_pool(input_value, pool_size=10)
     self.assertEqual(output_value.shape.as_list(), [None, None, 3])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       for i in range(10):
         session.run(output_value, {input_value: [[[i] * 3]]})
         session.run(output_value, {input_value: [[[i] * 3] * 2]})
@@ -49,7 +49,7 @@ class TensorPoolTest(test.TestCase):
     output_value = tensor_pool(input_value, pool_size=10)
     self.assertEqual(output_value.shape.as_list(), [])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       outs = []
       for i in range(50):
         out = session.run(output_value, {input_value: i})
@@ -67,7 +67,7 @@ class TensorPoolTest(test.TestCase):
         input_value, pool_size=10, pooling_probability=0.0)
     self.assertEqual(output_value.shape.as_list(), [])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       for i in range(50):
         out = session.run(output_value, {input_value: i})
         self.assertEqual(out, i)
@@ -83,7 +83,7 @@ class TensorPoolTest(test.TestCase):
         pooling_probability=pooling_probability)
     self.assertEqual(output_value.shape.as_list(), [])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       not_pooled = 0
       total = 1000
       for i in range(total):
@@ -104,7 +104,7 @@ class TensorPoolTest(test.TestCase):
     for output_value in output_values:
       self.assertEqual(output_value.shape.as_list(), [])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       for i in range(10):
         outs = session.run(output_values, {
             input_values[0]: i,

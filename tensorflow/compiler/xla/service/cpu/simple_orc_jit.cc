@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
@@ -107,15 +108,15 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
           })),
-      object_layer_(execution_session_,
-                    [this](llvm::orc::VModuleKey) {
-                      llvm::orc::RTDyldObjectLinkingLayer::Resources result;
-                      result.MemMgr =
-                          std::make_shared<llvm::SectionMemoryManager>(
-                              orc_jit_memory_mapper::GetInstance());
-                      result.Resolver = symbol_resolver_;
-                      return result;
-                    }),
+      object_layer_(
+          execution_session_,
+          [this](llvm::orc::VModuleKey) {
+            llvm::orc::LegacyRTDyldObjectLinkingLayer::Resources result;
+            result.MemMgr = std::make_shared<llvm::SectionMemoryManager>(
+                orc_jit_memory_mapper::GetInstance());
+            result.Resolver = symbol_resolver_;
+            return result;
+          }),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
                                      opt_level, optimize_for_size,
@@ -127,8 +128,18 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 }
 
 llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
-  void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  void* func_addr = nullptr;
+  if (name.size() > 1 && name.front() == data_layout_.getGlobalPrefix()) {
+    // On Mac OS X, 'name' may have a leading underscore prefix, even though the
+    // registered name may not.
+    std::string stripped_name(name.begin() + 1, name.end());
+    func_addr = CustomCallTargetRegistry::Global()->Lookup(stripped_name);
+  } else {
+    func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  }
+
   if (func_addr == nullptr) {
+    LOG(ERROR) << "Unable to resolve runtime symbol: " << name;
     return nullptr;
   }
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
@@ -202,6 +213,18 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortPRED);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS8);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU8);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF64);
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
@@ -273,6 +296,9 @@ bool RegisterKnownJITSymbols() {
   REGISTER_LIBM_SYMBOL(sin, double (*)(double));
 #ifdef __APPLE__
   REGISTER_LIBM_SYMBOL(__sincos, void (*)(double, double*, double*));
+  registry->Register("__sincosf_stret",
+                     reinterpret_cast<void*>(__sincosf_stret));
+  registry->Register("__sincos_stret", reinterpret_cast<void*>(__sincos_stret));
 #else
   REGISTER_LIBM_SYMBOL(sincos, void (*)(double, double*, double*));
 #endif
@@ -288,6 +314,13 @@ bool RegisterKnownJITSymbols() {
   registry->Register("memcpy", reinterpret_cast<void*>(memcpy));
   registry->Register("memmove", reinterpret_cast<void*>(memmove));
   registry->Register("memset", reinterpret_cast<void*>(memset));
+
+#ifdef __APPLE__
+  registry->Register("__bzero", reinterpret_cast<void*>(bzero));
+  registry->Register("memset_pattern16",
+                     reinterpret_cast<void*>(memset_pattern16));
+#endif
+
   return true;
 }
 
