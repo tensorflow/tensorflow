@@ -30,15 +30,19 @@
 
 namespace mlir {
 
+class AffineApplyOp;
 class AffineExpr;
 class AffineMap;
 class AffineValueMap;
-class ForInst;
-class MLIRContext;
 class FlatAffineConstraints;
-class IntegerSet;
-class OperationInst;
+class ForInst;
+class FuncBuilder;
 class Instruction;
+class IntegerSet;
+class Location;
+class MLIRContext;
+class OperationInst;
+template <typename OpType> class OpPointer;
 class Value;
 
 /// Simplify an affine expression by flattening and some amount of
@@ -51,6 +55,23 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// Simplify an affine map through simplifying its underlying AffineExpr results
 /// and sizes.
 AffineMap simplifyAffineMap(AffineMap map);
+
+/// Creates an AffineApplyOp that is normalized for super-vectorization. That is
+/// an AffineApplyOp with a single result and an unbounded AffineMap. The
+/// operands of the AffineApplyOp are either dims, symbols or constants but can
+/// never be obtained from other AffineApplyOp.
+/// This is achieved by performing a composition at the single-result AffineMap
+/// level.
+///
+/// Prerequisite:
+/// 1. `map` is a single result, unbounded, AffineMap;
+/// 2. `operands` can involve at most a length-1 chain of AffineApplyOp. The
+///   affine map for each of these AffineApplyOp is itself single result and
+///   unbounded. Essentially, all ancestor AffineApplyOp must have been
+///   constructed as single-result, unbounded, AffineMaps.
+OpPointer<AffineApplyOp>
+makeNormalizedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
+                          llvm::ArrayRef<Value *> operands);
 
 /// Returns the sequence of AffineApplyOp OperationInsts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',

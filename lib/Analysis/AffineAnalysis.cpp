@@ -24,6 +24,7 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/AffineExprVisitor.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instructions.h"
 #include "mlir/StandardOps/StandardOps.h"
@@ -35,6 +36,8 @@
 #define DEBUG_TYPE "affine-analysis"
 
 using namespace mlir;
+
+using llvm::dbgs;
 
 /// Constructs an affine expression from a flat ArrayRef. If there are local
 /// identifiers (neither dimensional nor symbolic) that appear in the sum of
@@ -1351,4 +1354,205 @@ bool mlir::checkMemrefAccessDependence(
   LLVM_DEBUG(llvm::dbgs() << "Dependence polyhedron:\n");
   LLVM_DEBUG(dependenceConstraints->dump());
   return true;
+}
+
+namespace {
+
+/// A `SingleResultAffineNormalizer` is a helper class that is not visible to
+/// the user and supports renumbering operands of single-result AffineApplyOp.
+/// This operates on the assumption that only single-result unbounded AffineMap
+/// are used for all operands.
+/// This acts as a reindexing map of Value* to positional dims or symbols and
+/// allows simplifications such as:
+///
+/// ```mlir
+///    %1 = affine_apply (d0, d1) -> (d0 - d1) (%0, %0)
+/// ```
+///
+/// into:
+///
+/// ```mlir
+///    %1 = affine_apply () -> (0)
+/// ```
+struct SingleResultAffineNormalizer {
+  SingleResultAffineNormalizer(AffineMap map, ArrayRef<Value *> operands);
+
+  /// Returns the single result, unbounded, AffineMap resulting from
+  /// normalization.
+  AffineMap getAffineMap() {
+    return AffineMap::get(reorderedDims.size(), reorderedSymbols.size(), {expr},
+                          {});
+  }
+
+  SmallVector<Value *, 8> getOperands() {
+    SmallVector<Value *, 8> res(reorderedDims);
+    res.append(reorderedSymbols.begin(), reorderedSymbols.end());
+    return res;
+  }
+
+private:
+  /// Helper function to insert `v` into the coordinate system of the current
+  /// SingleResultAffineNormalizer (i.e. in the proper `xxxValueToPosition` and
+  /// the proper `reorderedXXX`).
+  /// Returns the AffineDimExpr or AffineSymbolExpr with the correponding
+  /// renumbered position.
+  template <typename DimOrSymbol> DimOrSymbol renumberOneIndex(Value *v);
+
+  /// Given an `other` normalizer, this rewrites `other.expr` in the coordinate
+  /// system of the current SingleResultAffineNormalizer.
+  /// Returns the rewritten AffineExpr.
+  AffineExpr renumber(const SingleResultAffineNormalizer &other);
+
+  /// Given an `app` with single result and unbounded AffineMap, this rewrites
+  /// the app's map single result AffineExpr in the coordinate system of the
+  /// current SingleResultAffineNormalizer.
+  /// Returns the rewritten AffineExpr.
+  AffineExpr renumber(AffineApplyOp *app);
+
+  /// Maps of Value* to position in the `expr`.
+  DenseMap<Value *, unsigned> dimValueToPosition;
+  DenseMap<Value *, unsigned> symValueToPosition;
+
+  /// Ordered dims and symbols matching positional dims and symbols in `expr`.
+  SmallVector<Value *, 8> reorderedDims;
+  SmallVector<Value *, 8> reorderedSymbols;
+
+  AffineExpr expr;
+};
+
+} // namespace
+
+template <typename DimOrSymbol>
+static DimOrSymbol make(unsigned position, MLIRContext *context);
+
+template <> AffineDimExpr make(unsigned position, MLIRContext *context) {
+  return getAffineDimExpr(position, context).cast<AffineDimExpr>();
+}
+
+template <> AffineSymbolExpr make(unsigned position, MLIRContext *context) {
+  return getAffineSymbolExpr(position, context).cast<AffineSymbolExpr>();
+}
+
+template <typename DimOrSymbol>
+DimOrSymbol SingleResultAffineNormalizer::renumberOneIndex(Value *v) {
+  static_assert(std::is_same<DimOrSymbol, AffineDimExpr>::value ||
+                    std::is_same<DimOrSymbol, AffineSymbolExpr>::value,
+                "renumber<AffineDimExpr>(...) or renumber<AffineDimExpr>(...) "
+                "required");
+  DenseMap<Value *, unsigned> &pos =
+      std::is_same<DimOrSymbol, AffineSymbolExpr>::value ? symValueToPosition
+                                                         : dimValueToPosition;
+  DenseMap<Value *, unsigned>::iterator iterPos;
+  bool inserted = false;
+  std::tie(iterPos, inserted) = pos.insert(std::make_pair(v, pos.size()));
+  if (inserted) {
+    std::is_same<DimOrSymbol, AffineDimExpr>::value
+        ? reorderedDims.push_back(v)
+        : reorderedSymbols.push_back(v);
+  }
+  return make<DimOrSymbol>(iterPos->second, v->getFunction()->getContext());
+}
+
+AffineExpr SingleResultAffineNormalizer::renumber(
+    const SingleResultAffineNormalizer &other) {
+  SmallVector<AffineExpr, 8> dimRemapping, symRemapping;
+  for (auto *v : other.reorderedDims) {
+    auto kvp = other.dimValueToPosition.find(v);
+    if (dimRemapping.size() <= kvp->second)
+      dimRemapping.resize(kvp->second + 1);
+    dimRemapping[kvp->second] = renumberOneIndex<AffineDimExpr>(kvp->first);
+  }
+  for (auto *v : other.reorderedSymbols) {
+    auto kvp = other.symValueToPosition.find(v);
+    if (symRemapping.size() <= kvp->second)
+      symRemapping.resize(kvp->second + 1);
+    symRemapping[kvp->second] = renumberOneIndex<AffineSymbolExpr>(kvp->first);
+  }
+  return other.expr.replaceDimsAndSymbols(dimRemapping, symRemapping);
+}
+
+AffineExpr SingleResultAffineNormalizer::renumber(AffineApplyOp *app) {
+  // Sanity check, single result AffineApplyOp if one wants to use this.
+  assert(app->getNumResults() == 1 && "Not a single result AffineApplyOp");
+  assert(app->getAffineMap().getRangeSizes().empty() &&
+         "Non-empty range sizes");
+
+  // Create the SingleResultAffineNormalizer for the operands of this
+  // AffineApplyOp and combine it with the current SingleResultAffineNormalizer.
+  using ValueTy = decltype(*(app->getOperands().begin()));
+  SingleResultAffineNormalizer normalizer(
+      app->getAffineMap(),
+      functional::map([](ValueTy v) { return static_cast<Value *>(v); },
+                      app->getOperands()));
+
+  // We know this is a single result AffineMap, we need to append a
+  // renumbered AffineExpr.
+  return renumber(normalizer);
+}
+
+SingleResultAffineNormalizer::SingleResultAffineNormalizer(
+    AffineMap map, ArrayRef<Value *> operands) {
+  assert(map.getNumResults() == 1 && "Single-result map expected");
+  assert(map.getRangeSizes().empty() && "Unbounded map expected");
+  assert(map.getNumInputs() == operands.size() &&
+         "number of operands does not match the number of map inputs");
+
+  if (operands.empty()) {
+    return;
+  }
+
+  auto *context = operands[0]->getFunction()->getContext();
+  SmallVector<AffineExpr, 8> exprs;
+  for (auto en : llvm::enumerate(operands)) {
+    auto *t = en.value();
+    assert(t->getType().isIndex());
+    if (auto inst = t->getDefiningInst()) {
+      if (auto app = inst->dyn_cast<AffineApplyOp>()) {
+        // Sanity check, AffineApplyOp must always be composed by construction
+        // and there can only ever be a dependence chain of 1 AffineApply. So we
+        // can never get a second AffineApplyOp.
+        // This also guarantees we can build another
+        // SingleResultAffineNormalizer here that does not recurse a second
+        // time.
+        for (auto *pred : app->getOperands()) {
+          assert(!pred->getDefiningInst() ||
+                 !pred->getDefiningInst()->isa<AffineApplyOp>() &&
+                     "AffineApplyOp chain of length > 1");
+          (void)pred;
+        }
+        exprs.push_back(renumber(app));
+      } else if (auto constant = inst->dyn_cast<ConstantOp>()) {
+        // Constants remain constants.
+        auto affineConstant = inst->cast<ConstantIndexOp>();
+        exprs.push_back(
+            getAffineConstantExpr(affineConstant->getValue(), context));
+      } else {
+        // DimOp, top of the function symbols are all symbols.
+        exprs.push_back(renumberOneIndex<AffineSymbolExpr>(t));
+      }
+    } else if (en.index() < map.getNumDims()) {
+      assert(isa<ForInst>(t) && "ForInst expected for AffineDimExpr");
+      exprs.push_back(renumberOneIndex<AffineDimExpr>(t));
+    } else {
+      assert(!isa<ForInst>(t) && "unexpectd ForInst for a AffineSymbolExpr");
+      exprs.push_back(renumberOneIndex<AffineSymbolExpr>(t));
+    }
+  }
+  auto exprsMap = AffineMap::get(dimValueToPosition.size(),
+                                 symValueToPosition.size(), exprs, {});
+
+  expr = simplifyAffineExpr(map.getResult(0).compose(exprsMap),
+                            exprsMap.getNumDims(), exprsMap.getNumSymbols());
+
+  LLVM_DEBUG(map.getResult(0).print(dbgs() << "\nCompose expr: "));
+  LLVM_DEBUG(exprsMap.print(dbgs() << "\nWith map: "));
+  LLVM_DEBUG(expr.print(dbgs() << "\nResult: "));
+}
+
+OpPointer<AffineApplyOp>
+mlir::makeNormalizedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
+                                ArrayRef<Value *> operands) {
+  SingleResultAffineNormalizer normalizer(map, operands);
+  return b->create<AffineApplyOp>(loc, normalizer.getAffineMap(),
+                                  normalizer.getOperands());
 }
