@@ -48,30 +48,18 @@ from tensorflow.python.training import saver
 def _to_bytes(s):
     """Returns encoded of s if s is a sequence of chars otherwise returns s.
     """
-    if _six.PY2:
-        if isinstance(s, unicode):
-            return s.encode("utf-8", errors="surrogateescape")
-        else:
-            return s
+    if isinstance(s, _six.text_type):
+        return s.encode("utf-8", errors="surrogateescape")
     else:
-        if isinstance(s, str):
-            return s.encode("utf-8", errors="surrogateescape")
-        else:
-            return s
+        return s
 
 def _to_string(s):
     """Returns decoded of s if s is a sequence of bytes otherwise returns s.
     """
-    if _six.PY2:
-        if isinstance(s, str):
-            return s.decode("utf-8")
-        else:
-            return s
+    if isinstance(s, _six.binary_type):
+        return s.decode("utf-8")
     else:
-        if isinstance(s, bytes):
-            return s.decode("utf-8")
-        else:
-            return s
+        return s
 
 class TrtPrecisionMode(object):
   FP32 = "FP32"
