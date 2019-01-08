@@ -538,10 +538,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     minfo_.push_back({csinfo_.conv2d_grad_filter, csinfo_.bias_add_grad,
                       csinfo_.conv2d_grad_filter_with_bias,
                       GetConv2DBackpropFilterOrBiasAddGrad});
-    minfo_.push_back(
-        {csinfo_.pad, csinfo_.conv2d, csinfo_.pad_with_conv2d, GetPadOrConv2D});
     // Merge Pad and Conv2d, only if the pad op is "Pad"
     // Doesn't merge if pad op is "PadV2" or "MirrorPad"
+    minfo_.push_back(
+        {csinfo_.pad, csinfo_.conv2d, csinfo_.pad_with_conv2d, GetPadOrConv2D});
 
     minfo_.push_back({csinfo_.pad, csinfo_.fused_conv2d,
                       csinfo_.pad_with_fused_conv2d, GetPadOrFusedConv2D});
@@ -930,8 +930,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   // Find Pad or _FusedConv2D node that can be merged with input node 'm'.
   // If input 'm' is Pad, then check if there exists _FusedConv2D node that can
-  // be  merged with 'm'. If input 'm' is _FusedConv2D, then check if there
-  // exists Pad  node that can be merged with 'm'.
+  // be merged with 'm'. If input 'm' is _FusedConv2D, then check if there
+  // exists Pad node that can be merged with 'm'.
   static Node* GetPadOrFusedConv2D(const Node* m) {
     DCHECK(m);
     Node* n = nullptr;
@@ -950,7 +950,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     } else {
       DCHECK_EQ(m->type_string(), csinfo_.fused_conv2d);
       // If m is _FusedConv2D, Go over all input edges
-      // and search for Pad  Node.
+      // and search for Pad node.
       for (const Edge* e : m->in_edges()) {
         if (!e->IsControlEdge() && e->src()->type_string() == csinfo_.pad) {
           n = e->src();
@@ -959,8 +959,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         }
       }
     }
-    // Check if only VALID type of padding is used
-    // or not.
+    // Check if only VALID type of padding is used or not.
     if (n != nullptr) {
       string padding;
       TF_CHECK_OK(GetNodeAttr(conv_node->def(), "padding", &padding));
@@ -968,8 +967,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         // Then do not merge.
         n = nullptr;
         VLOG(1) << "MklLayoutRewritePass: Could match Pad and _FusedConv2D "
-                << "node for merging. Only VALID type of padding in conv op "
-                << "can be merged with Pad op Input node: " << m->DebugString();
+                << "nodes but cannot merge them. Only conv ops with padding "
+                << "type VALID can be merged with Pad op Input node: "
+                << m->DebugString();
       }
     } else {
       VLOG(1) << "MklLayoutRewritePass: Could not find matching "
@@ -2090,7 +2090,6 @@ void MklLayoutRewritePass::CopyAttrsPadWithFusedConv2D(const Node* orig_node,
                                                        NodeBuilder* nb,
                                                        bool change_format) {
   DataType Tpaddings;
-  bool is_filter_const;
 
   CopyAttrsFusedConv2D(orig_node, nb, change_format);
 
@@ -2099,11 +2098,10 @@ void MklLayoutRewritePass::CopyAttrsPadWithFusedConv2D(const Node* orig_node,
   // Check if filter is a constant.
   Node* filter_node = nullptr;
   orig_node->input_node(1, &filter_node);
-  is_filter_const = filter_node->IsConstant();
 
   // Add attributes to new node.
   nb->Attr("Tpaddings", Tpaddings);
-  nb->Attr("is_filter_const", is_filter_const);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
 }
 
 // Used with MergePadWithConv2D
@@ -2141,7 +2139,7 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndConv2D(const Node* orig_node1,
 }
 
 void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(
-    const Node* orig_node1, const Node* orig_node2, NodeBuilder* nb,
+    const Node* fused_conv2d, const Node* pad, NodeBuilder* nb,
     bool change_format) {
   DataType T;
   int num_args;
@@ -2154,15 +2152,15 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(
   DataType Tpaddings;
 
   // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node1->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node1->def(), "num_args", &num_args));
-  TF_CHECK_OK(GetNodeAttr(orig_node1->def(), "strides", &strides));
-  TF_CHECK_OK(GetNodeAttr(orig_node1->def(), "padding", &padding));
-  TF_CHECK_OK(GetNodeAttr(orig_node1->def(), "data_format", &data_format));
-  TF_CHECK_OK(GetNodeAttr(orig_node1->def(), "dilations", &dilations));
-  TF_CHECK_OK(GetNodeAttr(orig_node1->def(), "fused_ops", &fused_ops));
-  TF_CHECK_OK(GetNodeAttr(orig_node1->def(), "epsilon", &epsilon));
-  TF_CHECK_OK(GetNodeAttr(orig_node2->def(), "Tpaddings", &Tpaddings));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "num_args", &num_args));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "data_format", &data_format));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "fused_ops", &fused_ops));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "epsilon", &epsilon));
+  TF_CHECK_OK(GetNodeAttr(pad->def(), "Tpaddings", &Tpaddings));
 
   // Add attributes to new node.
   nb->Attr("T", T);
@@ -2701,12 +2699,12 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
 Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
                                                 Node* m, Node* n) {
-  DCHECK(((m->type_string() == csinfo_.pad &&
-           (n->type_string() == csinfo_.conv2d ||
-            n->type_string() == csinfo_.fused_conv2d))) ||
-         ((n->type_string() == csinfo_.pad &&
-           (m->type_string() == csinfo_.conv2d ||
-            m->type_string() == csinfo_.fused_conv2d))));
+  DCHECK((m->type_string() == csinfo_.pad &&
+          (n->type_string() == csinfo_.conv2d ||
+           n->type_string() == csinfo_.fused_conv2d)) ||
+         (n->type_string() == csinfo_.pad &&
+          (m->type_string() == csinfo_.conv2d ||
+           m->type_string() == csinfo_.fused_conv2d)));
 
   bool is_fused_conv2d = n->type_string() == csinfo_.fused_conv2d ||
                          m->type_string() == csinfo_.fused_conv2d;
@@ -2726,10 +2724,8 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   TF_CHECK_OK(GetNodeAttr(succ->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "strides", &strides));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "dilations", &dilations));
-  // Data format for pad is not available and not necessary, thus
-  // dont need to match data format for Pad
-  // Check if the data types and devices of both succ and pred are the same.
-  // Assert is not used,  because it can be too strict.
+  // Check if the devices of both succ and pred are the same.
+  // Assert is not used because it can be too strict.
   // Don't need to check for data formats because it is not available in Pad.
   if (T_pred != T_succ ||
       pred->assigned_device_name() != succ->assigned_device_name() ||
@@ -2782,41 +2778,32 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
     }
   }
 
-  if (is_fused_conv2d) {
-    DCHECK_EQ(ConvDataInputEdges, 3);
-  } else {
-    DCHECK_EQ(ConvDataInputEdges, 2);
-  }
+  DCHECK_EQ(ConvDataInputEdges, is_fused_conv2d ? 3 : 2);
 
   // We will use the node name of Conv2D as the name of new node
   // Build new node. We use same name as original node, but change the op
   // name.
 
-  auto fused_op_name = csinfo_.pad_with_conv2d;
-  if (is_fused_conv2d) {
-    fused_op_name = csinfo_.pad_with_fused_conv2d;
-  }
-  NodeBuilder nb(succ->name(), fused_op_name);
+  NodeBuilder nb(succ->name(), is_fused_conv2d ? csinfo_.pad_with_fused_conv2d
+                                               : csinfo_.pad_with_conv2d);
   nb.Input(pred_in[0].first, pred_in[0].second);  // In1 (input data)  of Pad
   // pred_in[1] will be 2nd Tensorflow tensor for Conv2D.
   nb.Input(succ_in[1].first, succ_in[1].second);  // In2 (filter) of conv2d
   // In1 of Conv2D is same as output of Pad.
   // Thus, only need to add In2 of Conv2D
 
-  // FusedConv2D has one additional input, args
   if (is_fused_conv2d) {
+    // FusedConv2D has one additional input, args
     std::vector<NodeBuilder::NodeOut> args;
     args.emplace_back(succ_in[2].first, succ_in[2].second);
     nb.Input(gtl::ArraySlice<NodeBuilder::NodeOut>{
-        args});  // In3 (args) of FusedConv2D
-  }
-  nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad
-
-  if (is_fused_conv2d) {
+        args});                                     // In3 (args) of FusedConv2D
+    nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad
     // Copy attributes from Pad and FusedConv2D to PadWithFusedConv2D.
     CopyAttrsFromPadAndFusedConv2D(const_cast<const Node*>(succ),
                                    const_cast<const Node*>(pred), &nb);
   } else {
+    nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad
     // Copy attributes from Pad and conv2D to PadWithConv2D.
     CopyAttrsFromPadAndConv2D(const_cast<const Node*>(succ),
                               const_cast<const Node*>(pred), &nb);
@@ -3018,17 +3005,12 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
         m->type_string() == csinfo_.conv2d))) {
     return this->MergeConv2DWithBiasAdd(g, m, n);
   }
-  if (((m->type_string() == csinfo_.pad &&
-        n->type_string() == csinfo_.conv2d)) ||
-      ((n->type_string() == csinfo_.pad &&
-        m->type_string() == csinfo_.conv2d))) {
-    return this->MergePadWithConv2D(g, m, n);
-  }
-
-  if (((m->type_string() == csinfo_.pad &&
-        n->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(n))) ||
-      ((n->type_string() == csinfo_.pad &&
-        m->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(m)))) {
+  if ((m->type_string() == csinfo_.pad &&
+       (n->type_string() == csinfo_.conv2d ||
+        (n->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(n)))) ||
+      (n->type_string() == csinfo_.pad &&
+       (m->type_string() == csinfo_.conv2d ||
+        (m->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(m))))) {
     return this->MergePadWithConv2D(g, m, n);
   }
 

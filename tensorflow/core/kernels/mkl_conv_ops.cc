@@ -1126,7 +1126,7 @@ class MklConvOp : public OpKernel {
 
   void PadWithConvFusion(OpKernelContext* context, memory::dims& padding_left,
                          memory::dims& padding_right) {
-    const Tensor& paddings_tf = MklGetInput(context, input_index_pad);
+    const Tensor& paddings_tf = MklGetInput(context, input_index_pad_);
     OP_REQUIRES(context, paddings_tf.dims() == 2,
                 errors::InvalidArgument("paddings must be 2-dimensional: ",
                                         paddings_tf.shape().DebugString()));
@@ -1168,7 +1168,7 @@ class MklConvOp : public OpKernel {
   void set_fuse_pad(bool fuse_pad) {
     fuse_pad_ = fuse_pad;
     // In PadwithFusedConv OP, pad is the fourth index.
-    input_index_pad = 3;
+    input_index_pad_ = 3;
   }
 
   // This method is for the base class MklConvOp, which handles the
@@ -1245,7 +1245,7 @@ class MklConvOp : public OpKernel {
   bool fuse_relu_ = false;
   bool fuse_pad_ = pad_enabled;
 
-  int input_index_pad = 2;
+  int input_index_pad_ = 2;
 
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
@@ -1972,6 +1972,8 @@ TF_CALL_float(REGISTER_MKL_CPU_2D);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
 
+// Note we are registering _MklFusedConv2D.
+// We check the fused_ops attributes to decide if bias is enabled or not.
 #define REGISTER_MKL_CPU_2D_FUSED(T)                                \
   REGISTER_KERNEL_BUILDER(                                          \
       Name("_MklFusedConv2D")                                       \
@@ -1999,8 +2001,6 @@ TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
                               .TypeConstraint<int32>("Tpaddings")   \
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklDummyOp<CPUDevice, T>);
-// Note we are registering _MklFusedConv2D.
-// We check the fused_ops attributes to decide if bias is enabled or not.
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
 
