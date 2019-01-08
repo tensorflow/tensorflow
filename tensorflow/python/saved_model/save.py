@@ -610,6 +610,7 @@ def _write_object_proto(obj, proto, asset_file_def_index, node_ids):
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
     proto.variable.SetInParent()
+    proto.variable.trainable = obj.trainable
     proto.variable.dtype = obj.dtype.as_datatype_enum
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
   elif isinstance(obj, def_function.PolymorphicFunction):

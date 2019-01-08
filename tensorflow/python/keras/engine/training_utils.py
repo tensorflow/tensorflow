@@ -1402,3 +1402,22 @@ def set_run_eagerly_for_dict_structure(model, x):
       if isinstance(item, dict):
         model.run_eagerly = True
         return
+
+
+def convert_eager_tensors_to_numpy(structure):
+  """Convert every EagerTensor in `structure` to NumPy.
+
+  Arguments:
+    structure: An arbitrary structure of elements to be converted to NumPy
+      arrays.
+
+  Returns:
+    An identical structure with EagerTensors converted to NumPy arrays.
+  """
+
+  def _convert(element):
+    if isinstance(element, ops.EagerTensor):
+      return element.numpy()
+    return element
+
+  return nest.map_structure(_convert, structure)

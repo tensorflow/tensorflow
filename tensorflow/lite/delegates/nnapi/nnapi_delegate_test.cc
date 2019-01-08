@@ -2003,7 +2003,9 @@ class BaseSVDFOpModel : public SingleOpModelWithNNAPI {
     input_ = AddInput(TensorType_FLOAT32);
     weights_feature_ = AddInput(weights_feature_type);
     weights_time_ = AddInput(weights_time_type);
-    bias_ = AddNullInput();
+    // TODO(b/121383394) : figure out why optional bias causes TFLite segfault
+    // when using NNAPI delegate.
+    bias_ = AddInput(TensorType_FLOAT32);
     const int num_filters = units * rank;
     activation_state_ = AddInput(
         TensorData{TensorType_FLOAT32, {batches, memory_size * num_filters}},
@@ -2019,6 +2021,8 @@ class BaseSVDFOpModel : public SingleOpModelWithNNAPI {
         {units_},                             // bias tensor
         {batches, memory_size * num_filters}  // activation_state tensor
     });
+    // TODO(b/121383394) : remove once the optional bias bug is fixed.
+    PopulateTensor(bias_, std::vector<float>(units_));
   }
 
   // Populates the weights_feature tensor.

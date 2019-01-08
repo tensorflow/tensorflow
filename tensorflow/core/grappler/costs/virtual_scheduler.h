@@ -70,11 +70,15 @@ struct NodeState {
   // Each output port uses up memory space from time_scheduled to its
   // time_no_references.
 
+  // How many times this node has been executed, e.g. in a while loop.
+  int num_executed_times;
+
   NodeState() {
     num_inputs_ready = 0;
     time_ready = Costs::Duration::max();
     time_scheduled = Costs::Duration::max();
     time_finished = Costs::Duration::max();
+    num_executed_times = 0;
     // Note that num_outputs_executed and time_no_references are not initialized
     // here, since we don't know the size (i.e., # outputs for this node).
   }
@@ -305,6 +309,8 @@ class VirtualScheduler {
     return &node_map_;
   }
 
+  void enable_mem_usage_tracking() { track_mem_usage_snapshot_ = true; }
+
  private:
   // Constants.
   const string kAttrInputSrc = "input_source_";
@@ -328,6 +334,10 @@ class VirtualScheduler {
                           std::map<string, Costs>* op_cost);
   float Round2(const float x) const;
   bool IsPersistentNode(const NodeDef* node) const;
+  bool AddSwitchOutputsToReadyQueue(const NodeDef* node, int curr_iter,
+                                    const Costs::Duration& curr_time);
+  void AddOutputNodesToReadyQueue(const NodeDef* node,
+                                  const Costs::Duration& curr_time);
 
   // Scheduler states:
   ReadyNodeManager* ready_nodes_;  // Not owned.
@@ -356,6 +366,11 @@ class VirtualScheduler {
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;
   bool initialized_;
+  bool track_mem_usage_snapshot_;
+
+  // Whether the input graph includes Switch nodes annotated with output slots
+  // information.
+  bool switch_outputs_annotated_ = false;
 
   VirtualPlacer placer_;  // owned.
 };

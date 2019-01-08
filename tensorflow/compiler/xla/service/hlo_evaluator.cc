@@ -138,6 +138,11 @@ StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
 
 }  // namespace
 
+// Note that unsupported types by the typed visitor does not necessarily imply
+// the non-typed HloEvaluator (parent evaluator) would not support them either
+// in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
+// type-agnostic evaluator will be able to accept Tuple primitive type, whereas
+// HloEvaluatorTypedVisitor cannot.
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] =
@@ -228,6 +233,14 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   for (const auto& literal_ptr : arg_literals) {
     arg_literals_.push_back(&*literal_ptr);
   }
+  if (computation.parent()->config().seed()) {
+    seed_ = computation.parent()->config().seed();
+  } else {
+    std::random_device rd;
+    seed_ = rd();
+  }
+
+  engine_ = std::minstd_rand0(seed_);
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
   return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
@@ -345,6 +358,31 @@ Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
          operand_literal.size_bytes());
   evaluated_[bitcast] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleGetDimensionSize(
+    HloInstruction* get_dimension_size) {
+  HloInstruction* operand = get_dimension_size->mutable_operand(0);
+  int64 dim = get_dimension_size->dimension();
+  if (dynamic_dimension_inference_ == nullptr) {
+    return InvalidArgument(
+        "Evaluator cannot evaluate get_dimension_size without "
+        "set_dynamic_dimension_inference.");
+  }
+  HloInstruction* dynamic_size =
+      dynamic_dimension_inference_->GetDynamicSize(operand, {}, dim);
+  if (dynamic_size != nullptr) {
+    evaluated_[get_dimension_size] =
+        GetEvaluatedLiteralFor(dynamic_size).Clone();
+    return Status::OK();
+  }
+
+  const Shape& shape = get_dimension_size->operand(0)->shape();
+  Literal output(ShapeUtil::MakeShape(U32, {}));
+  output.PopulateWithValue(
+      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+  evaluated_[get_dimension_size] = std::move(output);
   return Status::OK();
 }
 
@@ -1067,6 +1105,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
                        .ConsumeValueOrDie();
 
@@ -1084,7 +1124,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
       fusion->fused_instructions_computation()->Clone(
           /*suffix=*/"clone_with_layout", &context);
   for (auto* instruction : cloned_fused_computation->instructions()) {
-    LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+    if (!LayoutUtil::HasLayout(instruction->shape())) {
+      LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+    }
   }
   auto readded_computation =
       empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
@@ -1098,6 +1140,8 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   }
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result =
       embedded_evaluator.Evaluate(*readded_computation, arg_literals)
           .ConsumeValueOrDie();
@@ -1117,6 +1161,8 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   auto* false_computation = conditional->false_computation();
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result;
   if (pred.Get<bool>({})) {
     result =
@@ -1171,7 +1217,10 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   bool keep_going = true;
   int64 iteration_count = 0;
   HloEvaluator cond_evaluator(max_loop_iterations_);
+  cond_evaluator.set_dynamic_dimension_inference(dynamic_dimension_inference_);
   HloEvaluator loop_body_evaluator(max_loop_iterations_);
+  loop_body_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
       return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
@@ -1233,8 +1282,7 @@ StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
         // Extract a slice from the keys and values literals that correspond to
         // exactly the row in dimension 'sort_dim'.
         std::vector<int64> limit_indices(indices.begin(), indices.end());
-        std::for_each(limit_indices.begin(), limit_indices.end(),
-                      [](int64& index) { ++index; });
+        absl::c_for_each(limit_indices, [](int64& index) { ++index; });
         limit_indices[sort_dim] = sort_dim_elements;
         TF_ASSIGN_OR_RETURN(auto keys_to_sort,
                             keys_literal.Slice(indices, limit_indices)

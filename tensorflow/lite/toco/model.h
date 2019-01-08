@@ -157,7 +157,8 @@ enum class OperatorType : uint8 {
   kResizeNearestNeighbor,
   kLeakyRelu,
   kAbs,
-  kMirrorPad
+  kMirrorPad,
+  kUnique
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1951,6 +1952,17 @@ struct MirrorPadOperator : Operator {
   MirrorPadOperator() : Operator(OperatorType::kMirrorPad) {}
   // mode is either SYMMETRIC or REFLECT.
   MirrorPadMode mode;
+};
+
+// Unique Operator:
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Unique
+struct UniqueOperator : Operator {
+  UniqueOperator() : Operator(OperatorType::kUnique) {}
+  ArrayDataType idx_out_type = ArrayDataType::kInt32;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

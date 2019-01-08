@@ -500,6 +500,161 @@ class CategoricalHinge(Loss):
     return categorical_hinge(y_true, y_pred)
 
 
+class LogLoss(Loss):
+  """Computes the log loss between `y_true` and `y_pred`.
+
+  logloss = - y_true * log(y_pred) - (1 - y_true) * log(1 - y_pred)
+
+  Usage:
+
+  ```python
+  l = tf.losses.LogLoss()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 10.745
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.LogLoss())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return logloss(y_true, y_pred)
+
+
+class Poisson(Loss):
+  """Computes the poisson loss between `y_true` and `y_pred`.
+
+  loss = y_pred - y_true * log(y_pred)
+
+  Usage:
+
+  ```python
+  p = tf.losses.Poisson()
+  loss = p([1, 9, 2], [4, 8, 12])
+  print('Loss: ', loss.numpy())  # Loss: -4.63
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.Poisson())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return poisson(y_true, y_pred)
+
+
+class Logcosh(Loss):
+  """Computes the logarithm of the hyperbolic cosine of the prediction error.
+
+  logcosh = log((exp(x) + exp(-x))/2) where x is the error `y_pred` - `y_true`.
+
+  Usage:
+
+  ```python
+  l = tf.losses.Logcosh()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.289
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.Logcosh())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return logcosh(y_true, y_pred)
+
+
+class KullbackLeiblerDivergence(Loss):
+  """Computes kullback leibler divergence loss between `y_true` and `y_pred`.
+
+  loss = y_true * log(y_true / y_pred)
+
+  Usage:
+
+  ```python
+  k = tf.losses.KullbackLeiblerDivergence()
+  loss = k([.4, .9, .2], [.5, .8, .12])
+  print('Loss: ', loss.numpy())  # Loss: -0.043
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.KullbackLeiblerDivergence())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return kullback_leibler_divergence(y_true, y_pred)
+
+
+class HuberLoss(Loss):
+  """Computes the huber loss between `y_true` and `y_pred`.
+
+  For each value x in `error=y_true-y_pred`, the following is calculated:
+
+    ```
+    0.5 * x^2                  if |x| <= d
+    0.5 * d^2 + d * (|x| - d)  if |x| > d
+    ```
+  where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
+
+  Usage:
+
+  ```python
+  l = tf.losses.HuberLoss()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.333
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.HuberLoss())
+  ```
+
+  Args:
+    delta: A float, the point where the huber loss function changes from a
+      quadratic to linear.
+    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
+      `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
+  """
+
+  def __init__(self,
+               delta=1.0,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    super(HuberLoss, self).__init__(reduction=reduction, name=name)
+    self.delta = delta
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return huber_loss(y_true, y_pred, delta=self.delta)
+
+
 @keras_export('keras.metrics.mean_squared_error',
               'keras.metrics.mse',
               'keras.metrics.MSE',
@@ -560,6 +715,46 @@ def categorical_hinge(y_true, y_pred):
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
   return math_ops.maximum(0., neg - pos + 1.)
+
+
+def logloss(y_true, y_pred):
+  losses = math_ops.multiply(y_true, math_ops.log(y_pred + K.epsilon()))
+  losses += math_ops.multiply((1 - y_true),
+                              math_ops.log(1 - y_pred + K.epsilon()))
+  return K.mean(-losses, axis=-1)
+
+
+def huber_loss(y_true, y_pred, delta=1.0):
+  """Computes huber loss value.
+
+  For each value x in `error=y_true-y_pred`, the following is calculated:
+
+    ```
+    0.5 * x^2                  if |x| <= d
+    0.5 * d^2 + d * (|x| - d)  if |x| > d
+    ```
+  where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
+
+  Args:
+    y_true: tensor of true targets.
+    y_pred: tensor of predicted targets.
+    delta: A float, the point where the huber loss function changes from a
+      quadratic to linear.
+
+  Returns:
+    Tensor with one scalar loss entry per sample.
+  """
+  y_pred = math_ops.cast(y_pred, dtype=K.floatx())
+  y_true = math_ops.cast(y_true, dtype=K.floatx())
+  error = math_ops.subtract(y_pred, y_true)
+  abs_error = math_ops.abs(error)
+  quadratic = math_ops.minimum(abs_error, delta)
+  linear = math_ops.subtract(abs_error, quadratic)
+  return math_ops.add(
+      math_ops.multiply(
+          ops.convert_to_tensor(0.5, dtype=quadratic.dtype),
+          math_ops.multiply(quadratic, quadratic)),
+      math_ops.multiply(delta, linear))
 
 
 @keras_export('keras.losses.logcosh')

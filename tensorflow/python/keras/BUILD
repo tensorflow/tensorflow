@@ -1,14 +1,13 @@
 # Description:
 #   Contains the Keras API (internal TensorFlow version).
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 config_setting(
     name = "empty_condition",
@@ -304,180 +303,167 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "integration_test",
     size = "medium",
     srcs = ["integration_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:layers",
         "//tensorflow/python:nn",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "constraints_test",
     size = "small",
     srcs = ["constraints_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "initializers_test",
     size = "small",
     srcs = ["initializers_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:init_ops",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "regularizers_test",
     size = "small",
     srcs = ["regularizers_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "optimizers_test",
     size = "medium",
     srcs = ["optimizers_test.py"],
-    shard_count = 2,
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
+    shard_count = 2,
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "losses_test",
     size = "small",
     srcs = ["losses_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "metrics_functional_test",
     size = "medium",
     srcs = ["metrics_functional_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "metrics_test",
     size = "medium",
     srcs = ["metrics_test.py"],
-    shard_count = 4,
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
 )
 
-py_test(
+tf_py_test(
     name = "applications_test",
     size = "enormous",
     srcs = ["applications/applications_test.py"],
-    shard_count = 2,
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 2,
 )
 
-py_test(
+tf_py_test(
     name = "advanced_activations_test",
     size = "medium",
     srcs = ["layers/advanced_activations_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "convolutional_recurrent_test",
     size = "large",
     srcs = ["layers/convolutional_recurrent_test.py"],
-    shard_count = 2,
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 2,
 )
 
-py_test(
+tf_py_test(
     name = "convolutional_test",
     size = "large",
     srcs = ["layers/convolutional_test.py"],
-    shard_count = 11,
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 11,
 )
 
 cuda_py_test(
@@ -494,30 +480,28 @@ cuda_py_test(
     tags = ["no_windows_gpu"],
 )
 
-py_test(
+tf_py_test(
     name = "pooling_test",
     size = "large",
     srcs = ["layers/pooling_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "core_test",
     size = "medium",
     srcs = ["layers/core_test.py"],
-    shard_count = 3,
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 3,
 )
 
 cuda_py_test(
@@ -531,121 +515,113 @@ cuda_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "local_test",
     size = "medium",
     srcs = ["layers/local_test.py"],
-    shard_count = 2,
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 2,
+    tags = ["no_windows"],
 )
 
-py_test(
+tf_py_test(
     name = "merge_test",
     size = "small",
     srcs = ["layers/merge_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "noise_test",
     size = "small",
     srcs = ["layers/noise_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "normalization_test",
     size = "medium",
     srcs = ["layers/normalization_test.py"],
-    shard_count = 3,
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 3,
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "simplernn_test",
     size = "medium",
     srcs = ["layers/simplernn_test.py"],
-    shard_count = 4,
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "gru_test",
     size = "large",
     srcs = ["layers/gru_test.py"],
-    shard_count = 2,
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],  # http://b/62136390
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 2,
+    tags = ["notsan"],  # http://b/62136390
 )
 
-py_test(
+tf_py_test(
     name = "lstm_test",
     size = "medium",
     srcs = ["layers/lstm_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
     shard_count = 4,
-    srcs_version = "PY2AND3",
     tags = [
         "noasan",  # times out b/63678675
         "notsan",  # http://b/62189182
     ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
 )
 
-py_test(
+tf_py_test(
     name = "recurrent_test",
     size = "medium",
     srcs = ["layers/recurrent_test.py"],
-    shard_count = 4,
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -674,55 +650,57 @@ cuda_py_test(
     shard_count = 6,
 )
 
-py_test(
+tf_py_test(
     name = "serialization_test",
     size = "small",
     srcs = ["layers/serialization_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "wrappers_test",
     size = "medium",
     srcs = ["layers/wrappers_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
     shard_count = 4,
-    srcs_version = "PY2AND3",
     tags = [
         "noasan",  # http://b/78599823
         "notsan",
     ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
 )
 
-py_test(
+tf_py_test(
     name = "scikit_learn_test",
     size = "small",
     srcs = ["wrappers/scikit_learn_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "data_utils_test",
     size = "large",
     srcs = ["utils/data_utils_test.py"],
-    srcs_version = "PY2AND3",
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
     tags = [
         "no_oss",
         "no_windows",
@@ -730,64 +708,54 @@ py_test(
         "notsan",
         "optonly",  # times out
     ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
 )
 
-py_test(
+tf_py_test(
     name = "generic_utils_test",
     size = "small",
     srcs = ["utils/generic_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "tf_utils_test",
     size = "small",
     srcs = ["utils/tf_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "io_utils_test",
     size = "small",
     srcs = ["utils/io_utils_test.py"],
-    srcs_version = "PY2AND3",
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
     tags = [
         "no_windows",  # TODO: needs investigation on Windows
         "notsan",
     ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
 )
 
-py_test(
+tf_py_test(
     name = "np_utils_test",
     size = "small",
     srcs = ["utils/np_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -818,287 +786,267 @@ cuda_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "conv_utils_test",
     size = "small",
     srcs = ["utils/conv_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "image_test",
     size = "medium",
     srcs = ["preprocessing/image_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "sequence_test",
     size = "small",
     srcs = ["preprocessing/sequence_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "text_test",
     size = "small",
     srcs = ["preprocessing/text_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "callbacks_test",
     size = "medium",
     srcs = ["callbacks_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "correctness_test",
     size = "medium",
     srcs = ["engine/correctness_test.py"],
-    shard_count = 2,
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 2,
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "training_test",
     size = "medium",
     srcs = ["engine/training_test.py"],
-    shard_count = 16,
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 16,
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "training_dataset_test",
     size = "medium",
     srcs = ["engine/training_dataset_test.py"],
-    shard_count = 4,
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
 )
 
-py_test(
+tf_py_test(
     name = "training_generator_test",
     size = "large",
     srcs = ["engine/training_generator_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
     shard_count = 3,
-    srcs_version = "PY2AND3",
     tags = [
         "no_oss",
         "notsan",
     ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
 )
 
-py_test(
+tf_py_test(
     name = "feature_columns_integration_test",
     size = "small",
     srcs = ["engine/feature_columns_integration_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_py",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "training_eager_test",
     size = "medium",
     srcs = ["engine/training_eager_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "training_utils_test",
     size = "medium",
     srcs = ["engine/training_utils_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "model_subclassing_test",
     size = "medium",
     srcs = ["model_subclassing_test.py"],
-    shard_count = 4,
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
+    tags = ["notsan"],
 )
 
-py_test(
+tf_py_test(
     name = "topology_test",
     size = "medium",
     srcs = ["engine/topology_test.py"],
-    srcs_version = "PY2AND3",
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
     tags = [
         "no-internal-py3",
     ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
 )
 
-py_test(
+tf_py_test(
     name = "base_layer_test",
     size = "small",
     srcs = ["engine/base_layer_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "saving_test",
     size = "medium",
     srcs = ["engine/saving_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "sequential_test",
     size = "medium",
     srcs = ["engine/sequential_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "models_test",
     size = "medium",
     srcs = ["models_test.py"],
-    shard_count = 2,
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],  # b/67509773
-    deps = [
+    additional_deps = [
         ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
+    shard_count = 8,
+    tags = ["notsan"],  # b/67509773
 )
 
-py_test(
+tf_py_test(
     name = "backend_test",
     size = "medium",
     srcs = ["backend_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "keras_parameterized_test",
     size = "small",
     srcs = ["keras_parameterized_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
+    tags = ["notsan"],
 )

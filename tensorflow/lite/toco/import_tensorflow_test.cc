@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/import_tensorflow.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace toco {
 
@@ -564,3 +566,10 @@ TEST(ImportTest, UnsupportedOpWithMultipleOutputs) {
 
 }  // namespace
 }  // namespace toco
+
+int main(int argc, char** argv) {
+  ::tflite::LogToStderr();
+  ::testing::InitGoogleTest(&argc, argv);
+  ::toco::port::InitGoogleWasDoneElsewhere();
+  return RUN_ALL_TESTS();
+}

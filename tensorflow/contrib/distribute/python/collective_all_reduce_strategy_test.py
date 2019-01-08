@@ -397,9 +397,11 @@ class DistributedCollectiveAllReduceStrategyTestWithChief(
         self._test_complex_model, self._cluster_spec, num_gpus=num_gpus)
 
 
-class LocalCollectiveAllReduceStrategy(CollectiveAllReduceStrategyTestBase,
-                                       strategy_test_lib.DistributionTestBase,
-                                       parameterized.TestCase):
+class LocalCollectiveAllReduceStrategy(
+    CollectiveAllReduceStrategyTestBase,
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase,
+    parameterized.TestCase):
 
   def testMinimizeLossGraph(self, num_gpus=2):
     # Collective ops doesn't support strategy with one device.
@@ -427,6 +429,42 @@ class LocalCollectiveAllReduceStrategy(CollectiveAllReduceStrategyTestBase,
         expected_input_pipeline_id=0)
     self._test_input_fn_iterator(None, None, num_gpus,
                                  input_fn, expected_values)
+
+  def testAllReduceSum(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_sum(distribution)
+
+  def testAllReduceSumGradients(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_sum_gradients(distribution)
+
+  def testAllReduceSumGradientTape(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_sum_gradient_tape(distribution)
+
+  def testAllReduceMean(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_mean(distribution)
+
+  def testAllReduceMeanGradients(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_mean_gradients(distribution)
+
+  def testAllReduceMeanGradientTape(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_mean_gradient_tape(distribution)
 
 
 if __name__ == '__main__':

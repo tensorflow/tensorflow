@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
@@ -1097,7 +1098,11 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       CreateModuleFromProto(arg->computation(), config));
 
+  TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
+                      DynamicDimensionInference::Run(module.get()));
+
   HloEvaluator evaluator;
+  evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
   TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
 
   // Since the result layout is non-effective to the Evaluator results, explicit

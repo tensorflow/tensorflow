@@ -676,6 +676,10 @@ class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase,
                   1
           },
           expected=[False, True]),
+      dict(
+          op=array_ops.rank,
+          kwargs={'input': ragged_factory_ops.constant_value([[8, 3], [5]])},
+          expected=2),
   ])
   def testRaggedDispatch(self, op, expected, args=(), kwargs=None):
     if kwargs is None: kwargs = {}

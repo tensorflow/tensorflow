@@ -104,6 +104,7 @@ message SavedMonomorphicFunction {
 message SavedVariable {
   DataType dtype = 1;
   TensorShapeProto shape = 2;
+  bool trainable = 3;
 
-  // TODO(andresp): Add "trainable" and save_slice_info_def.
+  // TODO(andresp): Add save_slice_info_def?
 }

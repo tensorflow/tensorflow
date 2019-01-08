@@ -377,10 +377,7 @@ class TensorTracer(object):
       return True
     # Reasons for not including following op types:
     #    Assign: cause incorrect result with CPU tracing.
-    #    others: compilation problems.
-    # TODO(deveci): Check if 'Pack', 'Shape', 'Reshape', 'ArgMin', 'ArgMax'
-    #               are still unsafe now that we have handled int64 tensors.
-    if op.type in ['Assign', 'Pack', 'Shape', 'Reshape', 'ArgMin', 'ArgMax']:
+    if op.type in ['Assign']:
       return True
     return False
 
@@ -471,7 +468,7 @@ class TensorTracer(object):
                 temporarily_marked_ops, sorted_ops)
       # pylint: disable=protected-access
       for ctrl_output_op in op._control_outputs:
-      # pylint: enable=protected-access
+        # pylint: enable=protected-access
         visit(ctrl_output_op, cycle, permanently_marked_ops,
               temporarily_marked_ops, sorted_ops)
       temporarily_marked_ops.remove(op)
@@ -737,6 +734,59 @@ class TensorTracer(object):
       self._write_report('%d "%s"\n'%(i, l[i].name))
     self._write_report('%s %s\n'%(_MARKER_SECTION_END, _SECTION_NAME_GRAPH))
 
+  def _preprocess_traced_tensor(self, tensor):
+    """Computes NAN/Norm/Max on TPUs before sending to CPU.
+
+    Args:
+      tensor: The tensor to be traced.
+    Returns:
+      A tensor that should be input to the trace_function.
+    Raises:
+      RuntimeError: If the trace mode is invalid.
+    """
+
+    def _detect_nan_inf(tensor):
+      """Trace function for detecting any NaN/Inf in the tensor."""
+
+      if tensor.dtype.is_floating:
+        output_tensor = math_ops.reduce_any(
+            gen_math_ops.logical_or(
+                gen_math_ops.is_nan(tensor), gen_math_ops.is_inf(tensor)))
+      else:
+        output_tensor = constant_op.constant(False)
+      # The shape has to be 1. Set it if it does not have the information.
+      output_tensor = array_ops.reshape(output_tensor, [1])
+      return output_tensor
+
+    def _show_norm(tensor):
+      tensor = math_ops.cast(tensor, dtypes.float32)
+      output_tensor = linalg_ops.norm(tensor)
+      # The shape has to be 1. Set it if it does not have the information.
+      output_tensor = array_ops.reshape(output_tensor, [1])
+      return output_tensor
+
+    def _show_max_abs(tensor):
+      tensor = math_ops.cast(tensor, dtypes.float32)
+      output_tensor = math_ops.reduce_max(math_ops.abs(tensor))
+      zero = constant_op.constant(0, dtypes.float32)
+      output_tensor = gen_math_ops.maximum(zero, output_tensor)
+      # The shape has to be 1. Set it if it does not have the information.
+      output_tensor = array_ops.reshape(output_tensor, [1])
+      return output_tensor
+
+    if self._trace_mode == _TRACE_MODE_NAN_INF:
+      return _detect_nan_inf(tensor)
+    if self._trace_mode == _TRACE_MODE_PART_TENSOR:
+      return tensor
+    if self._trace_mode == _TRACE_MODE_FULL_TENSOR:
+      return tensor
+    if self._trace_mode == _TRACE_MODE_NORM:
+      return _show_norm(tensor)
+    if self._trace_mode == _TRACE_MODE_MAX_ABS:
+      return _show_max_abs(tensor)
+    raise RuntimeError(
+        'Tensor trace fun for %s is not yet implemented' % self._trace_mode)
+
   def _make_tensor_trace_fun(self, tensor_name):
     """Makes the tensor tracing function called by outside compilation.
 
@@ -787,29 +837,6 @@ class TensorTracer(object):
       with ops.control_dependencies([print_op]):
         return array_ops.identity(tensor).op
 
-    def _detect_nan_inf(tensor):
-      """Trace function for detecting any NaN/Inf in the tensor."""
-
-      if tensor.dtype.is_floating:
-        output_tensor = math_ops.reduce_any(
-            gen_math_ops.logical_or(gen_math_ops.is_nan(tensor),
-                                    gen_math_ops.is_inf(tensor)))
-      else:
-        output_tensor = constant_op.constant(False)
-
-      return _print_tensor(tensor_name, -1, tensor, output_tensor)
-
-    def _show_norm(tensor):
-      tensor = math_ops.cast(tensor, dtypes.float64)
-      output_tensor = linalg_ops.norm(tensor)
-      return _print_tensor(tensor_name, -1, tensor, output_tensor)
-
-    def _show_max_abs(tensor):
-      output_tensor = math_ops.cast(math_ops.reduce_max(math_ops.abs(tensor)),
-                                    dtypes.float64)
-      zero = constant_op.constant(0, dtypes.float64)
-      output_tensor = gen_math_ops.maximum(zero, output_tensor)
-      return _print_tensor(tensor_name, -1, tensor, output_tensor)
 
     def _show_part_tensor(tensor):
       """Trace function for printing part of the tensor."""
@@ -822,16 +849,17 @@ class TensorTracer(object):
 
       return _print_tensor(tensor_name, -1, tensor, tensor)
 
-    if self._trace_mode == _TRACE_MODE_NAN_INF:
-      return _detect_nan_inf
     if self._trace_mode == _TRACE_MODE_PART_TENSOR:
       return _show_part_tensor
-    if self._trace_mode == _TRACE_MODE_FULL_TENSOR:
+    # The input tensor has a shape of "[1]" for _TRACE_MODE_NAN_INF,
+    # _TRACE_MODE_NORM, and _TRACE_MODE_MAX_ABS, as related computations are
+    # performed within TPUs and only their results are transferred to CPU.
+    # Simply, print the full tensor for these trace modes.
+    if self._trace_mode in [
+        _TRACE_MODE_NAN_INF, _TRACE_MODE_NORM, _TRACE_MODE_FULL_TENSOR,
+        _TRACE_MODE_MAX_ABS
+    ]:
       return _show_full_tensor
-    if self._trace_mode == _TRACE_MODE_NORM:
-      return _show_norm
-    if self._trace_mode == _TRACE_MODE_MAX_ABS:
-      return _show_max_abs
 
     raise RuntimeError('Tensor trace fun for %s is not yet implemented'
                        %self._trace_mode)
@@ -889,9 +917,18 @@ class TensorTracer(object):
           op_id, _REASON_USER_EXCLUDED)
       return True
     if not out_tensor.get_shape().is_fully_defined():
-      self._instrument_records[out_tensor.name] = TensorTracer.reason(
-          op_id, _REASON_DYNAMIC_SHAPE)
-      return True
+      # If trace mode is nan-inf, norm or max, then the tensor will be reduced
+      # to a scalar before the outside compilation call.
+      if self._trace_mode in [
+          _TRACE_MODE_NAN_INF, _TRACE_MODE_NORM, _TRACE_MODE_MAX_ABS
+      ]:
+        self._instrument_records[out_tensor.name] = TensorTracer.reason(
+            op_id, _REASON_TENSOR_GET_TRACED)
+        return False
+      else:
+        self._instrument_records[out_tensor.name] = TensorTracer.reason(
+            op_id, _REASON_DYNAMIC_SHAPE)
+        return True
     rank = len(out_tensor.shape)
     if rank < 1:
       # scalar
@@ -1000,11 +1037,15 @@ class TensorTracer(object):
         if self._skip_tensor(op_id, out_tensor, user_included,
                              user_excluded):
           continue
+        # Create the list of consumers before calling _preprocess_traced_tensor.
+        # Otherwise, adding control input below, will introduce a cycle in the
+        # graph.
         consumers = out_tensor.consumers()
         tensor_name = out_tensor.name
-        out_tensor = _cast_unsupported_dtypes(out_tensor)
+        processed_out_tensor = self._preprocess_traced_tensor(out_tensor)
+        processed_out_tensor = _cast_unsupported_dtypes(processed_out_tensor)
         trace_op = tpu.outside_compilation(
-            self._make_tensor_trace_fun(tensor_name), out_tensor)
+            self._make_tensor_trace_fun(tensor_name), processed_out_tensor)
         if consumers:
           for consumer_op in consumers:
             # pylint: disable=protected-access
@@ -1050,8 +1091,9 @@ class TensorTracer(object):
         if self._skip_tensor(op_id, out_tensor, user_included,
                              user_excluded):
           continue
+        processed_out_tensor = self._preprocess_traced_tensor(out_tensor)
         trace_fun = self._make_tensor_trace_fun(out_tensor.name)
-        trace_call = (trace_fun, [out_tensor])
+        trace_call = (trace_fun, [processed_out_tensor])
         trace_call_key = 'tensor_tracing_cpu-%s:%d'%(op.name, i)
         tracing_calls[trace_call_key] = trace_call
     self._post_tracing(succeed, sorted_or_cycle)

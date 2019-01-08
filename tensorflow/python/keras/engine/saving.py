@@ -25,6 +25,7 @@ import os
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.utils import conv_utils
@@ -736,9 +737,17 @@ def save_weights_to_hdf5_group(f, layers):
   f.attrs['backend'] = K.backend().encode('utf8')
   f.attrs['keras_version'] = str(keras_version).encode('utf8')
 
+  # On TPUs, modifying the graph between session.runs() triggers some expensive
+  # recompilation overhead. To avoid this, we build up the full set of tensors
+  # to save before fetching weights, thus only modifying the graph once.
+  layer_weights_dict = {}
+  for layer in layers:
+    layer_weights_dict[layer.name] = [ops.convert_to_tensor(w)
+                                      for w in layer.weights]
+
   for layer in layers:
     g = f.create_group(layer.name)
-    symbolic_weights = layer.weights
+    symbolic_weights = layer_weights_dict[layer.name]
     weight_values = K.batch_get_value(symbolic_weights)
     weight_names = []
     for i, (w, val) in enumerate(zip(symbolic_weights, weight_values)):

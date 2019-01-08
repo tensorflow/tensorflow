@@ -545,6 +545,10 @@ cc_library(
     name = "test_util",
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":types",
         "//tensorflow/lite:string",
@@ -654,6 +658,8 @@ cc_test(
         "logsoftmax_quantized_test.cc",
     ],
     tags = [
+        # TODO(b/122242739): Reenable after fixing the flakiness?
+        "nomac",
         "tflite_not_portable",
     ],
     deps = [

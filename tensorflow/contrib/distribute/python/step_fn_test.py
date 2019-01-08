@@ -45,7 +45,6 @@ class SingleLossStepTest(test.TestCase, parameterized.TestCase):
       single_loss_step, layer = single_loss_example(
           optimizer_fn, distribution, use_bias=True, iterations_per_step=2)
 
-      self.evaluate(distribution.initialize())
       if context.executing_eagerly():
         run_step = single_loss_step
       else:
@@ -57,11 +56,8 @@ class SingleLossStepTest(test.TestCase, parameterized.TestCase):
       weights, biases = [], []
       for _ in range(5):
         run_step()
-
         weights.append(self.evaluate(layer.kernel))
         biases.append(self.evaluate(layer.bias))
-
-      self.evaluate(distribution.finalize())
 
       error = abs(numpy.add(numpy.squeeze(weights), numpy.squeeze(biases)) - 1)
       is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))

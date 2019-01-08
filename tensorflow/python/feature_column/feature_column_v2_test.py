@@ -2015,7 +2015,7 @@ class LinearModelTest(test.TestCase):
       }
       model(features)
       for var in model.variables:
-        self.assertTrue(isinstance(var, variables_lib.RefVariable))
+        self.assertIsInstance(var, variables_lib.VariableV1)
       variable_names = [var.name for var in model.variables]
       self.assertItemsEqual([
           'linear_model/dense_feature_bucketized/weights:0',
@@ -2052,7 +2052,7 @@ class LinearModelTest(test.TestCase):
       }
     with self.assertRaisesRegexp(
         ValueError,
-        'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
       model = fc.LinearModel([price1, price2])
       model(features)
 
@@ -2068,7 +2068,7 @@ class LinearModelTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         model = fc.LinearModel([price1, price2, price3])
         model(features)
 
@@ -2818,7 +2818,7 @@ class OldLinearModelTest(test.TestCase):
       }
     with self.assertRaisesRegexp(
         ValueError,
-        'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
       fc_old.linear_model(features, [price1, price2])
 
   def test_subset_of_static_batch_size_mismatch(self):
@@ -2833,7 +2833,7 @@ class OldLinearModelTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc_old.linear_model(features, [price1, price2, price3])
 
   def test_runtime_batch_size_mismatch(self):
@@ -3435,7 +3435,7 @@ class DenseFeaturesTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.DenseFeatures([price1, price2])(features)
 
   def test_subset_of_static_batch_size_mismatch(self):
@@ -3450,7 +3450,7 @@ class DenseFeaturesTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.DenseFeatures([price1, price2, price3])(features)
 
   def test_runtime_batch_size_mismatch(self):
@@ -4010,7 +4010,7 @@ class FunctionalInputLayerTest(test.TestCase):
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
       self.assertIsInstance(cols_to_vars[some_embedding_column][0],
-                            variables_lib.Variable)
+                            variables_lib.VariableV1)
       self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [5, 10])
 
   @test_util.run_deprecated_v1
@@ -4141,7 +4141,7 @@ class FunctionalInputLayerTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc_old.input_layer(features, [price1, price2])
 
   def test_subset_of_static_batch_size_mismatch(self):
@@ -4156,7 +4156,7 @@ class FunctionalInputLayerTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc_old.input_layer(features, [price1, price2, price3])
 
   def test_runtime_batch_size_mismatch(self):
@@ -6839,7 +6839,7 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertItemsEqual(('dense_features/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
     for v in global_vars:
-      self.assertTrue(isinstance(v, variables_lib.RefVariable))
+      self.assertIsInstance(v, variables_lib.Variable)
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     self.assertItemsEqual(('dense_features/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in trainable_vars]))
@@ -7732,7 +7732,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         ['aaa_bbb_shared_embedding:0', 'ccc_ddd_shared_embedding:0'],
         tuple([v.name for v in global_vars]))
     for v in global_vars:
-      self.assertTrue(isinstance(v, variables_lib.RefVariable))
+      self.assertIsInstance(v, variables_lib.Variable)
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     if trainable:
       self.assertItemsEqual(

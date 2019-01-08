@@ -231,7 +231,7 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
-  string DebugString() override { return "Iterator resource"; }
+  string DebugString() const override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
 

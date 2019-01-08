@@ -61,7 +61,7 @@ void XlaContext::set_args(std::vector<XlaExpression> args) {
 XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder)
     : compiler_(compiler), builder_(builder) {}
 
-string XlaContext::DebugString() { return "XLA JIT context"; }
+string XlaContext::DebugString() const { return "XLA JIT context"; }
 
 void XlaContext::SetRetval(int index, const XlaExpression& expression) {
   if (retvals_.size() <= index) {

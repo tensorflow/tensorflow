@@ -34,6 +34,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
     ],
 )
 

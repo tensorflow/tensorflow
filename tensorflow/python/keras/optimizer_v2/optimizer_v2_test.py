@@ -27,7 +27,6 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -261,23 +260,6 @@ class OptimizerTest(test.TestCase):
       sgd = gradient_descent.SGD(3.0)
       self.evaluate(sgd.iterations.initializer)
       self.assertEqual(0, self.evaluate(sgd.iterations))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testSerializationWithinDefun(self):
-    with self.cached_session():
-      sgd = gradient_descent.SGD(3.0)
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                    dtype=dtypes.float32)
-      loss = lambda: 3 * var0
-      sgd.minimize(loss, [var0])
-
-      def serialize():
-        config = sgd.get_config()
-        gradient_descent.SGD.from_config(config)
-
-      compiled_serialize = function.defun(serialize)
-      with self.assertRaisesRegexp(RuntimeError, 'inside Tensorflow graph'):
-        compiled_serialize()
 
   @test_util.run_in_graph_and_eager_modes
   def testConfig(self):

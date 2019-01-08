@@ -1758,9 +1758,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-    TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
-                        operand_to_generator.at(hlo->operand(1))(dim_index));
+    // TODO(b/118437727): Remove the R1 path.
+    llvm::Value* start_index_value;
+    if (hlo->operand(1)->shape().rank() == 1) {
+      llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
+      TF_ASSIGN_OR_RETURN(start_index_value,
+                          operand_to_generator.at(hlo->operand(1))(dim_index));
+    } else {
+      llvm_ir::IrArray::Index zero_index(index_type);
+      TF_ASSIGN_OR_RETURN(
+          start_index_value,
+          operand_to_generator.at(hlo->operand(1 + i))(zero_index));
+    }
 
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
@@ -1905,9 +1914,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-    TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
-                        operand_to_generator.at(start_hlo)(dim_index));
+
+    llvm::Value* start_index_value;
+    // TODO(b/118437727): Remove the R1 path.
+    if (hlo->operand(2)->shape().rank() == 1) {
+      llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
+      TF_ASSIGN_OR_RETURN(start_index_value,
+                          operand_to_generator.at(hlo->operand(2))(dim_index));
+    } else {
+      llvm_ir::IrArray::Index zero_index(index_type);
+      TF_ASSIGN_OR_RETURN(
+          start_index_value,
+          operand_to_generator.at(hlo->operand(2 + i))(zero_index));
+    }
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
