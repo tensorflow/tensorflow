@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_GPU_H_
+
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
@@ -80,28 +83,7 @@ void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
 }
 
 }  // end namespace internal
-
-namespace functor {
-
-typedef Eigen::GpuDevice GPUDevice;
-
-// Register functors used for Tile functor.
-#define DEFINE_TYPE(T)                       \
-  template struct Tile<GPUDevice, T, int32>; \
-  template struct Tile<GPUDevice, T, int64>;
-
-TF_CALL_bool(DEFINE_TYPE);
-TF_CALL_int16(DEFINE_TYPE);
-TF_CALL_int32(DEFINE_TYPE);
-TF_CALL_int64(DEFINE_TYPE);
-TF_CALL_float(DEFINE_TYPE);
-TF_CALL_double(DEFINE_TYPE);
-TF_CALL_half(DEFINE_TYPE);
-TF_CALL_complex64(DEFINE_TYPE);
-TF_CALL_complex128(DEFINE_TYPE);
-
-#undef DEFINE_TYPE
-
-}  // end namespace functor
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_GPU_H_
