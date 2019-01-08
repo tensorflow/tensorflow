@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import re
+import ast
+
+import pasta
+import six
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
@@ -31,7 +34,22 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
   def __init__(self):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
+    # If the new argument is None, it will be removed.
+    # Only keyword args are handled, so make sure to also put any function in
+    # function_reorders to ensure that all args are made into keywords first.
     self.function_keyword_renames = {
+        "tf.gradients": {
+            "colocate_gradients_with_ops": None,
+        },
+        "tf.hessians": {
+            "colocate_gradients_with_ops": None,
+        },
+        "*.minimize": {
+            "colocate_gradients_with_ops": None,
+        },
+        "*.compute_gradients": {
+            "colocate_gradients_with_ops": None,
+        },
         "tf.argmin": {
             "dimension": "axis",
         },
@@ -76,6 +94,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
+        },
+        "tf.nn.softmax_cross_entropy_with_logits": {
+            "dim": "axis",
+            "_sentinel": None,
         },
         "tf.nn.softmax_cross_entropy_with_logits_v2": {
             "dim": "axis"
@@ -665,6 +687,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.norm",
         "tf.reverse_sequence",
         "tf.sparse_split",
+        # tf.nn.softmax_cross_entropy_with_logits *must* be called with
+        # keyword arguments. Add keyword arguments in rare case when they
+        # are not specified.
+        "tf.nn.softmax_cross_entropy_with_logits",
     }
 
     # Functions that were reordered should be changed to the new keyword args
@@ -672,14 +698,33 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # positional arguments yourself, this could do the wrong thing.
     self.function_reorders = reorders_v2.reorders
 
-    # Specially handled functions.
-    self.function_handle = {
-        "tf.batch_gather": self._batch_gather_handler,
-        "tf.nn.dropout": self._dropout_handler,
-        "tf.gradients": self._colocate_handler("tf.gradients"),
-        "*.minimize": self._colocate_handler("Optimizer.minimize"),
-        "*.compute_gradients":
-            self._colocate_handler("Optimizer.compute_gradients"),
+    # Specially handled functions (pasta version)
+    # Each transformer is a callable which will be called with the arguments
+    #   transformer(parent, node, full_name, name, logs, errors)
+    # Where logs and errors are lists to which (line, col, msg) tuples can be
+    # appended, full_name is the FQN of the function called (or None if that is
+    # unknown), name is the name of the function called (or None is that is
+    # unknown). node is an ast.Call node representing this function call, and
+    # parent is its parent in the AST.
+    # The function may modify node (but not parent), and must return
+    # - none, if nothing was modified
+    # - node, if node was modified in place (make sure to use
+    #   pasta.ast_utils.replace_child to swap out children, otherwise formatting
+    #   may get messy)
+    # - a replacement for node, if the whole call node was replaced. The caller
+    #   will take care of changing parent.
+    self.function_transformers = {
+        "tf.nn.dropout": self._dropout_transformer,
+        "tf.batch_gather": self._batch_gather_transformer,
+        "tf.to_bfloat16": self._cast_transformer,
+        "tf.to_complex128": self._cast_transformer,
+        "tf.to_complex64": self._cast_transformer,
+        "tf.to_double": self._cast_transformer,
+        "tf.to_float": self._cast_transformer,
+        "tf.to_int32": self._cast_transformer,
+        "tf.to_int64": self._cast_transformer,
+        "tf.nn.softmax_cross_entropy_with_logits":
+            self._softmax_cross_entropy_with_logits_transformer,
     }
 
     decay_function_comment = (
@@ -748,9 +793,45 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "compat.v1 for backward compatibility. Please update these calls to "
         "the TF 2.0 versions.")
 
+    export_saved_model_renamed = (
+        "(Manual edit required) Please rename the method export_savedmodel() "
+        "to export_saved_model(). Two things to note:\n\t(1) The argument "
+        "strip_default_attributes has been removed. The function will always "
+        "strip the default attributes from ops. If this breaks your code, "
+        "please switch to tf.compat.v1.estimator.Estimator.\n\t(2) This change "
+        "only effects core estimator. If you are using "
+        "tf.contrib.learn.Estimator, please switch to using core estimator.")
+
+    make_initializable_iterator_deprecation = (
+        "(Manual edit required) The "
+        "`tf.data.Dataset.make_initializable_iterator()` method has been "
+        "removed. If you are using the Estimator API, you can return a dataset "
+        "directly from your input functions without creating an iterator. "
+        "As a last resort, please replace calls to that method on `dataset` "
+        "with a call to "
+        "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+
+    make_one_shot_iterator_deprecation = (
+        "(Manual edit required) The "
+        "`tf.data.Dataset.make_one_shot_iterator()` method has been "
+        "removed. If you are using eager execution, you can iterate over "
+        "`dataset` using a Python `for` loop. If you are using the Estimator "
+        "API, you can return a dataset directly from your input functions "
+        "without creating an iterator. As a last resort, please replace calls "
+        "to that method on `dataset` with a call to "
+        "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
+    # You can use *. to add items which do not check the FQN, and apply to e.g.,
+    # methods.
     self.function_warnings = {
+        "*.export_savedmodel":
+            export_saved_model_renamed,
+        "*.make_initializable_iterator":
+            make_initializable_iterator_deprecation,
+        "*.make_one_shot_iterator":
+            make_one_shot_iterator_deprecation,
         "tf.assert_greater":
             assert_return_type_comment,
         "tf.assert_equal":
@@ -834,11 +915,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             default_loss_reduction_changed,
         "tf.estimator.BaselineRegressor":
             default_loss_reduction_changed,
-        "tf.hessians":
-            "tf.hessians no longer takes "
-            "'colocate_gradients_with_ops' argument. Also, "
-            "arguments have been reordered so that 'name' is the "
-            "last argument.",
         "tf.nn.conv1d":
             "WARNING: use_cudnn_on_gpu argument has been removed and \"value\""
             " was renamed to \"input\"",
@@ -885,10 +961,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "'deterministic' arguments. Now it takes a single 'seed' arg. If "
             "'seed' is zero, the execution is random and deterministic "
             "otherwise",
-        "tf.nn.softmax_cross_entropy_with_logits":
-            "tf.nn.softmax_cross_entropy_with_logits behavior has changed. "
-            "'labels' needs to be wrapped with tf.stop_gradient to keep the "
-            "old behavior. Also, 'dim' argument has been renamed to 'axis'.",
         "tf.test.assert_equal_graph_def":
             "tf.assert_equal_graph_def no longer takes 'checkpoint_v2' "
             "argument. 'checkpoint_v2' now defaults to True.",
@@ -1064,111 +1136,148 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             metrics_comment,
     }
 
+    # Warnings that are emitted only if a specific arg is found.
+    self.function_arg_warnings = {
+        "tf.gradients": {
+            "colocate_gradients_with_ops":
+                "tf.gradients no longer takes "
+                "'colocate_gradients_with_ops' argument, it behaves as if it "
+                "was set to True.",
+        },
+        "*.minimize": {
+            "colocate_gradients_with_ops":
+                "Optimizer.minimize no longer takes "
+                "'colocate_gradients_with_ops' argument, it behaves as if it "
+                "was set to True.",
+        },
+        "*.compute_gradients": {
+            "colocate_gradients_with_ops":
+                "Optimizer.compute_gradients no "
+                "longer takes 'colocate_gradients_with_ops' argument, it "
+                "behaves as if it was set to True.",
+        },
+    }
+
     self.symbol_renames = {
         name: new_name
         for name, new_name in self.symbol_renames.items()
     }
 
-    export_saved_model_renamed = (
-        "(Manual edit required) Please rename the method export_savedmodel() "
-        "to export_saved_model(). Two things to note:\n\t(1) The argument "
-        "strip_default_attributes has been removed. The function will always "
-        "strip the default attributes from ops. If this breaks your code, "
-        "please switch to tf.compat.v1.estimator.Estimator.\n\t(2) This change "
-        "only effects core estimator. If you are using "
-        "tf.contrib.learn.Estimator, please switch to using core estimator.")
-
-    make_initializable_iterator_deprecation = (
-        "(Manual edit required) The "
-        "`tf.data.Dataset.make_initializable_iterator()` method has been "
-        "removed. If you are using the Estimator API, you can return a dataset "
-        "directly from your input functions without creating an iterator. "
-        "As a last resort, please replace calls to that method on `dataset` "
-        "with a call to "
-        "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
-
-    make_one_shot_iterator_deprecation = (
-        "(Manual edit required) The "
-        "`tf.data.Dataset.make_one_shot_iterator()` method has been "
-        "removed. If you are using eager execution, you can iterate over "
-        "`dataset` using a Python `for` loop. If you are using the Estimator "
-        "API, you can return a dataset directly from your input functions "
-        "without creating an iterator. As a last resort, please replace calls "
-        "to that method on `dataset` with a call to "
-        "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
-
-    # Specify warnings for functions that aren't restricted to the tf.x.y.z
-    # format. This should only be used for methods with unique names, e.g.
-    # export_savedmodel, which is only defined in Estimator objects.
-    self.unrestricted_function_warnings = {
-        "export_savedmodel": export_saved_model_renamed,
-        "make_initializable_iterator": make_initializable_iterator_deprecation,
-        "make_one_shot_iterator": make_one_shot_iterator_deprecation,
-    }
-
   @staticmethod
-  def _dropout_handler(file_edit_recorder, node, lines):
-    del lines
+  def _dropout_transformer(parent, node, full_name, name, logs, errors):
+    def _replace_keep_prob_node(parent, old_value):
+      """Replaces old_value with 1-(old_value)."""
+      one = ast.Num(n=1)
+      one.lineno = 0
+      one.col_offset = 0
+      new_value = ast.BinOp(left=one, op=ast.Sub(),
+                            right=old_value)
+      # This copies the prefix and suffix on old_value to new_value.
+      pasta.ast_utils.replace_child(parent, old_value, new_value)
+      ast.copy_location(new_value, old_value)
+      # Put parentheses around keep_prob.value (and remove the old prefix/
+      # suffix, they should only be around new_value).
+      pasta.base.formatting.set(old_value, "prefix", "(")
+      pasta.base.formatting.set(old_value, "suffix", ")")
+
+    # Check if we have a keep_prob keyword arg
+    for keep_prob in node.keywords:
+      if keep_prob.arg == "keep_prob":
+        logs.append((node.lineno, node.col_offset,
+                     "Changing keep_prob arg of tf.nn.dropout to rate, and "
+                     "recomputing value. Please check this transformation.\n"))
+        keep_prob.arg = "rate"
+        _replace_keep_prob_node(keep_prob, keep_prob.value)
+        return node
+
+    # Maybe it was a positional arg
     if len(node.args) < 2:
-      comment = ("ERROR: tf.nn.dropout did not take arguments, so automatic "
-                 "transformation was disabled. tf.nn.dropout has changed "
-                 "the semantics of the second argument.")
-      file_edit_recorder.add(
-          comment,
-          node.lineno,
-          node.col_offset,
-          "tf.nn.dropout",
-          "tf.nn.dropout",
-          error="tf.nn.dropout requires manual check.")
+      errors.append((node.lineno, node.col_offset,
+                     "ERROR: tf.nn.dropout called without arguments, so "
+                     "automatic fix was disabled. tf.nn.dropout has changed "
+                     "the semantics of the second argument."))
     else:
-      comment = ("WARNING: tf.nn.dropout has changed the semantics of the "
-                 "second argument. Please check the transformation.\n")
-      file_edit_recorder.add(
-          comment,
-          node.args[1].lineno,
-          node.args[1].col_offset,
-          "",
-          "1 - ")
+      _replace_keep_prob_node(node, node.args[1])
+      logs.append((node.lineno, node.col_offset,
+                   "Changing keep_prob arg of tf.nn.dropout to rate, and "
+                   "recomputing value.\n"))
+      errors.append((node.lineno, node.col_offset,
+                     "WARNING: tf.nn.dropout has changed the semantics of the "
+                     "second argument. Please check the applied transformation."
+                    ))
+      return node
 
   @staticmethod
-  def _colocate_handler(name):
-    def _helper(file_edit_recorder, node, lines):
-      """Handler for updating colocate arguments."""
-      del lines
-      for keyword in node.keywords:
-        if keyword.arg == "colocate_gradients_with_ops":
-          # TODO(jhseu): Since ast_edit.py does string replacement, there's no
-          # straightforward way to remove the argument. Try to fix before 2.0 is
-          # final.
-          comment = ("For tf.gradients and tf.Optimizer.minimize, "
-                     "colocate_gradients_with_op has been removed and now "
-                     "defaults to True.")
-          file_edit_recorder.add(
-              comment,
-              node.lineno,
-              node.col_offset,
-              "",
-              "",
-              error="{} requires manual check.".format(name))
-    return _helper
+  def _cast_transformer(parent, node, full_name, name, logs, errors):
+    """Transforms to_int and to_float to cast(..., dtype=...)."""
+
+    # Find out the dtype to cast to from the function name
+    dtype_str = name[3:]
+    new_arg = ast.keyword(arg="dtype",
+                          value=ast.Attribute(value=ast.Name(id="tf",
+                                                             ctx=ast.Load()),
+                                              attr=dtype_str, ctx=ast.Load()))
+
+    # Python3 ast requires the args for the Attribute, but codegen will mess up
+    # the arg order if we just set them to 0.
+    new_arg.value.lineno = node.lineno
+    new_arg.value.col_offset = node.col_offset+100
+
+    node.keywords.append(new_arg)
+    if isinstance(node.func, ast.Attribute):
+      node.func.attr = "cast"
+    else:
+      assert isinstance(node.func, ast.Name)
+      node.func.id = "cast"
+
+    logs.append((node.lineno, node.col_offset,
+                 "Changed %s call to tf.cast(..., dtype=tf.%s)." % (full_name,
+                                                                    dtype_str)))
+    return node
 
   @staticmethod
-  def _batch_gather_handler(file_edit_recorder, node, lines):
-    lineno = node.lineno
-    column = node.col_offset
+  def _softmax_cross_entropy_with_logits_transformer(
+      parent, node, full_name, name, logs, errors):
+    def _wrap_label(parent, old_value):
+      """Wrap labels with tf.stop_gradient."""
+      if six.PY3:
+        new_value = ast.Call(
+            ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
+            [old_value], [])
+      else:
+        new_value = ast.Call(
+            ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
+            [old_value], [], None, None)
 
-    # Find the position to add the batch_dims argument.  We add it as the
-    # first argument, since that's easiest.  This is safe because we included
-    # batch_gather in self.reordered_function_names, so it will have all
-    # of its arguments changed to keyword arguments.
-    m = re.match(r"tf\s*\.\s*batch_gather\s*\(", lines[lineno - 1][column:])
-    if m is not None:
-      file_edit_recorder.add(
-          "Added keyword argument 'batch_dims=-1' to 'tf.batch_gather'",
-          lineno, column + m.end(), "", "batch_dims=-1, ")
-    else:
-      file_edit_recorder.add(
-          "Unable to add keyword argument 'batch_dims=-1' to 'tf.batch_gather'",
-          lineno, column, "", "",
-          error="Unable to add keyword argument batch_dims=-1 to "
-          "tf.batch_gather; please add it manually.")
+      # This copies the prefix and suffix on old_value to new_value.
+      pasta.ast_utils.replace_child(parent, old_value, new_value)
+      ast.copy_location(new_value, old_value)
+
+    # Check if we have a labels keyword arg
+    for karg in node.keywords:
+      if karg.arg == "labels":
+        logs.append((node.lineno, node.col_offset,
+                     "Changing labels arg of "
+                     "tf.nn.softmax_cross_entropy_with_logits to "
+                     "tf.stop_gradient(labels). Please check this "
+                     "transformation.\n"))
+        _wrap_label(karg, karg.value)
+        return node
+    return node
+
+  @staticmethod
+  def _batch_gather_transformer(parent, node, full_name, name, logs, errors):
+    # Check if the call already has a batch_dims argument
+    if any([kw.arg == "batch_dims" for kw in node.keywords]):
+      logs.append((node.lineno, node.col_offset, "tf.batch_gather already has "
+                   "batch_dims argument. Neat."))
+      return None
+
+    minus_one = ast.Num(n=-1)
+    minus_one.lineno = 0
+    minus_one.col_offset = 0
+    new_arg = ast.keyword("batch_dims", minus_one)
+    node.keywords.append(new_arg)
+    logs.append((node.lineno, node.col_offset,
+                 "Added keyword argument batch_dims=-1 to tf.batch_gather."))
+    return node

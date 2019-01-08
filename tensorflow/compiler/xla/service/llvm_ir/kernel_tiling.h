@@ -117,7 +117,10 @@ class KernelMappingScheme {
   int64 GetNumberOfTilesInOneBlock() const {
     return absl::c_accumulate(block_sizes_, 1, std::multiplies<int64>());
   }
-
+  int64 GetNumberOfTilesInOneBlockForDimension(int d) const {
+    DCHECK(d >= DimZ && d <= DimX);
+    return block_sizes_[d];
+  }
   int64 GetNumberOfBlocks() const {
     return absl::c_accumulate(dims_in_blocks_, 1, std::multiplies<int64>());
   }
@@ -145,6 +148,16 @@ class KernelMappingScheme {
   int64 GetThreadsPerBlock() const {
     return GetNumberOfThreadsForDimensionX() *
            GetNumberOfThreadsForDimensionY();
+  }
+
+  bool DilatedX() const { return dilated_x_; }
+  void SetDilatedX(bool v) {
+    dilated_x_ = v;
+    if (!dilated_x_) {
+      // dilated_x_=false is for the purpose of vectorization, which requires
+      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
+      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
+    }
   }
 
   IrArray::Index EmitBlockIndex(llvm::Type* index_ty);
@@ -186,6 +199,13 @@ class KernelMappingScheme {
   int64 num_threads_x_;
   // Number of threads used to process elements in the Y direction of a tile.
   int64 num_threads_y_;
+
+  // When num_threads_x threads process a total of tile_size_x elements in the
+  // X dimension of a tile, each threads process n=tile_size_x/num_threads_x
+  // elements. When dilated_x=false, the n elements processed by a thread are
+  // contiguous. On the other hand, when dilated_x=true the n elements are
+  // dilated by a factor of num_threads_x.
+  bool dilated_x_;
 };
 
 // A class to represent information for tiled parameters to support IR emission

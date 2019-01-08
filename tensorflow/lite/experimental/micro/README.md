@@ -187,7 +187,7 @@ You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
 02:25:22.4253 [DEBUG] uart0: [+0.16ms host +0s virt 0.28s virt from start]   Progam has exited with code:0x00000000
 ```
 
-## Building for Apollo3
+## Building for Ambiq Micro Apollo3Blue EVB
 
 Follow these steps to get the pushbutton yes/no example working on Apollo 3:
 
@@ -201,7 +201,8 @@ Follow these steps to get the pushbutton yes/no example working on Apollo 3:
     tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb
     pushbutton_cmsis_speech_test_bin
 4.  Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
-5.  Connect the Apollo3 EVB (with mic shield) to the computer and power it on
+5.  Connect the Apollo3 EVB (with mic shield in slot 3 of Microbus Shield board)
+    to the computer and power it on.
 6.  Start the GDB server in a new terminal with the following command:
     JLinkGDBServer -select USB -device AMA3B1KK-KBR -endian little -if SWD
     -speed 1000 -noir -noLocalhostOnly

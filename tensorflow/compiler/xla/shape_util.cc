@@ -112,6 +112,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
 
   if (compare_layouts) {
     if (lhs.layout().format() != rhs.layout().format()) {
+      VLOG(3) << "CompareShapes: lhs layout format != rhs layout format";
       return false;
     }
     if (LayoutUtil::IsDenseArray(lhs)) {
@@ -405,8 +406,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsNestedTuple(const Shape& shape) {
-  return IsTuple(shape) && std::any_of(shape.tuple_shapes().begin(),
-                                       shape.tuple_shapes().end(), IsTuple);
+  return IsTuple(shape) && absl::c_any_of(shape.tuple_shapes(), IsTuple);
 }
 
 /* static */ bool ShapeUtil::IsEmptyTuple(const Shape& shape) {

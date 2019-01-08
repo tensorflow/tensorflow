@@ -1226,3 +1226,33 @@ def _nrows(rt_input, out_type=dtypes.int64, name=None):
   else:
     with ops.name_scope(name, 'RaggedNRows', [rt_input]):
       return array_ops.shape(rt_input, out_type=out_type)[0]
+
+
+#===============================================================================
+# ragged.rank
+#===============================================================================
+def rank(input, name=None):  # pylint: disable=redefined-builtin
+  """Returns the rank of a RaggedTensor.
+
+  Returns a 0-D `int32` `Tensor` representing the rank of `input`.
+
+  For example:
+
+  ```python
+  # shape of tensor 't' is [2, None, None]
+  t = tf.ragged.constant([[[1], [2, 2]], [[3, 3, 3], [4, 4, 4, 4]]])
+  tf.rank(t)  # 3
+  ```
+
+  Args:
+    input: A `RaggedTensor`
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  with ops.name_scope(name, 'RaggedRank', [input]) as name:
+    if not ragged_tensor.is_ragged(input):
+      return array_ops.rank(input, name)
+
+    return input.ragged_rank + array_ops.rank(input.flat_values)

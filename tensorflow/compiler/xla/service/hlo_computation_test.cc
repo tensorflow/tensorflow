@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <set>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -226,7 +227,7 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
         : computation_(computation) {}
 
     Status DefaultAction(HloInstruction* hlo_instruction) override {
-      EXPECT_EQ(0, visited_set_.count(hlo_instruction));
+      EXPECT_FALSE(visited_set_.contains(hlo_instruction));
       visited_set_.insert(hlo_instruction);
       last_visited_ = hlo_instruction;
       return Status::OK();
@@ -239,7 +240,7 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
     }
 
     HloComputation* computation_;
-    std::set<HloInstruction*> visited_set_;
+    absl::flat_hash_set<HloInstruction*> visited_set_;
     int64 finish_visit_calls_ = 0;
     HloInstruction* last_visited_ = nullptr;
   };

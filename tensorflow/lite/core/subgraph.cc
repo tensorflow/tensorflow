@@ -670,7 +670,7 @@ TfLiteStatus Subgraph::Invoke() {
       TfLiteTensor* tensor = &tensors_[tensor_index];
       if (tensor->delegate && tensor->delegate != node.delegate &&
           tensor->data_is_stale) {
-        EnsureTensorDataIsReadable(tensor_index);
+        TF_LITE_ENSURE_STATUS(EnsureTensorDataIsReadable(tensor_index));
       }
     }
 
@@ -683,8 +683,8 @@ TfLiteStatus Subgraph::Invoke() {
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
     if (OpInvoke(registration, &node) == kTfLiteError) {
-      status = ReportOpError(context_, node, registration, node_index,
-                             "failed to invoke");
+      return ReportOpError(context_, node, registration, node_index,
+                           "failed to invoke");
     }
 
     // Force execution prep for downstream ops if the latest op triggered the

@@ -31,7 +31,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
-    "if_not_v2",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_test",
@@ -2512,6 +2511,7 @@ tf_cc_tests(
         ":eigen_helpers",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3695,7 +3695,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "depthwise_conv_op",
-    prefix = "depthwise_conv_op",
+    srcs = ["depthwise_conv_op.cc"],
+    hdrs = ["depthwise_conv_op.h"],
+    gpu_srcs = [
+        "depthwise_conv_op.h",
+        "depthwise_conv_op_gpu.h",
+        "depthwise_conv_op_gpu_double.cu.cc",
+        "depthwise_conv_op_gpu_float.cu.cc",
+        "depthwise_conv_op_gpu_half.cu.cc",
+    ],
     deps = [
         ":bounds_check",
         ":conv_ops",
@@ -6880,11 +6888,10 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core/lib/db:sqlite",
-    ] + if_not_v2([
-        "//tensorflow/contrib/tensorboard/db:schema",
-        "//tensorflow/contrib/tensorboard/db:summary_db_writer",
-        "//tensorflow/contrib/tensorboard/db:summary_file_writer",
-    ]),
+        "//tensorflow/core/summary:schema",
+        "//tensorflow/core/summary:summary_db_writer",
+        "//tensorflow/core/summary:summary_file_writer",
+    ],
 )
 
 tf_kernel_library(

@@ -721,6 +721,19 @@ py_test(
 )
 
 py_test(
+    name = "ragged_rank_op_test",
+    srcs = ["ragged_rank_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_factory_ops",
+        ":ragged_test_util",
+        "//tensorflow/python:framework_test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "ragged_tile_op_test",
     srcs = ["ragged_tile_op_test.py"],
     srcs_version = "PY2AND3",

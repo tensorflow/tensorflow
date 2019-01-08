@@ -107,7 +107,7 @@ bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
           return false;
         }
       }
-      if (!visited.count(user)) {
+      if (!visited.contains(user)) {
         stack.push_back(user);
       }
     }
@@ -256,7 +256,7 @@ bool HloDataflowAnalysis::Phi(
         input_value_ids.push_back(value->id());
       }
     }
-    std::sort(input_value_ids.begin(), input_value_ids.end());
+    absl::c_sort(input_value_ids);
     input_value_ids.erase(
         std::unique(input_value_ids.begin(), input_value_ids.end()),
         input_value_ids.end());
@@ -271,8 +271,7 @@ bool HloDataflowAnalysis::Phi(
     if (current_value_defined_here) {
       VLOG(5) << "current_value_defined_here: " << current_value->ToString();
       CHECK(current_value->is_phi());
-      auto it = std::find(input_value_ids.begin(), input_value_ids.end(),
-                          current_value->id());
+      auto it = absl::c_find(input_value_ids, current_value->id());
       if (it != input_value_ids.end()) {
         input_value_ids.erase(it);
       }
@@ -921,8 +920,7 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   for (auto& pair : dataflow_analysis->values_) {
     dataflow_analysis->values_vector_.push_back(&pair.second);
   }
-  std::sort(dataflow_analysis->values_vector_.begin(),
-            dataflow_analysis->values_vector_.end(), HloValue::IdLessThan);
+  absl::c_sort(dataflow_analysis->values_vector_, HloValue::IdLessThan);
 
   TF_DCHECK_OK(dataflow_analysis->Verify());
 
@@ -937,9 +935,7 @@ Status HloDataflowAnalysis::Verify() const {
   for (const HloValue* value : values()) {
     for (const HloPosition& position : value->positions()) {
       const HloValueSet& value_set = GetValueSet(position);
-      TF_RET_CHECK(std::find(value_set.values().begin(),
-                             value_set.values().end(),
-                             value) != value_set.values().end())
+      TF_RET_CHECK(absl::c_linear_search(value_set.values(), value))
           << "Value set at position " << position << " does not contain value "
           << value->ToShortString();
     }
@@ -954,9 +950,7 @@ Status HloDataflowAnalysis::Verify() const {
         const HloValueSet& value_set = pair.second;
         const HloPosition position{instruction, index};
         for (const HloValue* value : value_set.values()) {
-          TF_RET_CHECK(std::find(value->positions().begin(),
-                                 value->positions().end(),
-                                 position) != value->positions().end())
+          TF_RET_CHECK(absl::c_linear_search(value->positions(), position))
               << "Value set at position " << position
               << " unexpectedly contains value " << value->ToShortString();
         }
@@ -1041,11 +1035,10 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       // Check if one operand of kAdd fused root is kDot or kConvolution.
       auto* add = user->fused_expression_root();
       auto add_operand_it =
-          std::find_if(add->operands().begin(), add->operands().end(),
-                       [&](HloInstruction* operand) {
-                         return operand->opcode() == HloOpcode::kConvolution ||
-                                operand->opcode() == HloOpcode::kDot;
-                       });
+          absl::c_find_if(add->operands(), [&](HloInstruction* operand) {
+            return operand->opcode() == HloOpcode::kConvolution ||
+                   operand->opcode() == HloOpcode::kDot;
+          });
       if (add_operand_it == add->operands().end()) {
         return false;
       }
@@ -1100,16 +1093,15 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // *) The root instruction of the called computation is element-wise on
     //    'operand'.
     const bool found_caller_use =
-        std::find_if(uses.begin(), uses.end(), [user](const HloUse& use) {
+        absl::c_find_if(uses, [user](const HloUse& use) {
           return use.instruction == user;
         }) != uses.end();
     auto* callee_root = user->to_apply()->root_instruction();
     const bool found_elementwise_callee_use =
-        std::find_if(
-            uses.begin(), uses.end(), [callee_root](const HloUse& use) {
-              return use.instruction == callee_root &&
-                     callee_root->IsElementwiseOnOperand(use.operand_number);
-            }) != uses.end();
+        absl::c_find_if(uses, [callee_root](const HloUse& use) {
+          return use.instruction == callee_root &&
+                 callee_root->IsElementwiseOnOperand(use.operand_number);
+        }) != uses.end();
     return uses.size() == 2 && found_caller_use && found_elementwise_callee_use;
   }
 

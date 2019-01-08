@@ -2794,6 +2794,11 @@ def get_value(x):
   """
   if context.executing_eagerly():
     return x.numpy()
+  elif not getattr(x, '_in_graph_mode', True):
+    # This is a variable which was created in an eager context, but is being
+    # evaluated from a Graph.
+    with context.eager_mode():
+      return x.numpy()
   elif ops.inside_function():
     raise RuntimeError('Cannot get value inside Tensorflow graph function.')
   return x.eval(session=get_session())

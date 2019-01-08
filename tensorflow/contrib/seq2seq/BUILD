@@ -33,7 +33,6 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":beam_search_ops",
-        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/util:util_py",
@@ -59,7 +58,6 @@ tf_custom_op_py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

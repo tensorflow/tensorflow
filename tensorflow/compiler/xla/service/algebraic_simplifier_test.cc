@@ -4535,14 +4535,17 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
 
   int32 start_row = (spec.lcd == 0) ? 0 : spec.s;
   int32 start_col = (spec.lcd == 0) ? spec.s : 0;
-  const auto start_indices =
+  std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<int32>({start_row, start_col})));
+          LiteralUtil::CreateR0<int32>(start_row))),
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int32>(start_col)))};
   int64 slice_row_size = (spec.lcd == 0) ? spec.k : 1;
   int64 slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
-  Shape ds_shape = ShapeUtil::MakeShape(F32, {slice_row_size, slice_col_size});
+  std::vector<int64> slice_sizes = {slice_row_size, slice_col_size};
+  Shape ds_shape = ShapeUtil::MakeShape(F32, slice_sizes);
   auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ds_shape, lhs, start_indices, {slice_row_size, slice_col_size}));
+      ds_shape, lhs, start_indices, slice_sizes));
 
   int64 rhs_rows = (spec.rcd == 0) ? spec.k : spec.n;
   int64 rhs_cols = (spec.rcd == 0) ? spec.n : spec.k;
@@ -4575,7 +4578,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   } else {
     EXPECT_THAT(computation->root_instruction(),
                 GmockMatch(m::DynamicSlice(m::Dot(m::Constant(), m::Constant()),
-                                           m::Concatenate())));
+                                           m::Constant(), m::Constant())));
   }
 }
 
@@ -4613,14 +4616,17 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
 
   int32 start_row = (spec.rcd == 0) ? 0 : spec.s;
   int32 start_col = (spec.rcd == 0) ? spec.s : 0;
-  const auto start_indices =
+  std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<int32>({start_row, start_col})));
+          LiteralUtil::CreateR0<int32>(start_row))),
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int32>(start_col)))};
   int64 slice_row_size = (spec.rcd == 0) ? spec.k : 1;
   int64 slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
-  Shape ds_shape = ShapeUtil::MakeShape(F32, {slice_row_size, slice_col_size});
+  std::vector<int64> slice_sizes = {slice_row_size, slice_col_size};
+  Shape ds_shape = ShapeUtil::MakeShape(F32, slice_sizes);
   auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ds_shape, rhs, start_indices, {slice_row_size, slice_col_size}));
+      ds_shape, rhs, start_indices, slice_sizes));
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(spec.lcd);
@@ -4645,7 +4651,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   } else {
     EXPECT_THAT(computation->root_instruction(),
                 GmockMatch(m::DynamicSlice(m::Dot(m::Constant(), m::Constant()),
-                                           m::Concatenate())));
+                                           m::Constant(), m::Constant())));
   }
 }
 

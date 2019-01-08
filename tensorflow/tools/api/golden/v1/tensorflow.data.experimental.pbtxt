@@ -86,7 +86,7 @@ tf_module {
   }
   member_method {
     name: "bucket_by_sequence_length"
-    argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\'], "
+    argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
   member_method {
     name: "cardinality"

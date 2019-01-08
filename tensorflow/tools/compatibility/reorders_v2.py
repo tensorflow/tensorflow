@@ -65,6 +65,7 @@ reorders = {
     'tf.nn.moments': ['x', 'axes', 'shift', 'name', 'keep_dims'],
     'tf.nn.pool': ['input', 'window_shape', 'pooling_type', 'padding', 'dilation_rate', 'strides', 'name', 'data_format'],
     'tf.nn.separable_conv2d': ['input', 'depthwise_filter', 'pointwise_filter', 'strides', 'padding', 'rate', 'name', 'data_format'],
+    'tf.nn.softmax_cross_entropy_with_logits': ['_sentinel', 'labels', 'logits', 'dim', 'name'],
     'tf.nn.space_to_batch': ['input', 'paddings', 'block_size', 'name'],
     'tf.nn.space_to_depth': ['input', 'block_size', 'name', 'data_format'],
     'tf.nn.weighted_moments': ['x', 'axes', 'frequency_weights', 'name', 'keep_dims'],

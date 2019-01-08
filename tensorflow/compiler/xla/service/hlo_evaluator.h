@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -123,6 +124,11 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
                                   const PrecisionConfig& precision_config,
                                   const Literal& lhs, const Literal& rhs);
 
+  void set_dynamic_dimension_inference(
+      DynamicDimensionInference* dynamic_dimension_inference) {
+    dynamic_dimension_inference_ = dynamic_dimension_inference;
+  }
+
   // Enable the fast path for certain operations like dot or convolution.
   void set_use_fast_path(bool value) { use_fast_path_ = value; }
 
@@ -160,6 +166,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // HandleIsFinite where boolean is always returned.
   //
   Status HandleBitcast(HloInstruction* bitcast) override;
+
+  Status HandleGetDimensionSize(HloInstruction* get_dimension_size) override;
 
   Status HandleParameter(HloInstruction* parameter) override;
 
@@ -210,6 +218,29 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleComplex(HloInstruction* complex) override;
 
   Status HandleReduce(HloInstruction* reduce) override;
+
+  // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
+  // expanded in a semantic-preserving way into other HLOs by adding exanpsion
+  // HLO pass to the HLO optimization pass during compilation, which can then be
+  // handled by the evaluator.
+  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
+    return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
+  };
+  Status HandleBatchNormInference(
+      HloInstruction* batch_norm_inference) override {
+    return Unimplemented(
+        "BatchNormInference HLO is unsupported by the evaluator.");
+  };
+  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
+    return Unimplemented(
+        "BatchNormTraining HLO is unsupported by the evaluator.");
+  };
+  Status HandleInfeed(HloInstruction* infeed) override {
+    return Unimplemented("Infeed HLO is unsupported by the evaluator.");
+  };
+  Status HandleOutfeed(HloInstruction* outfeed) override {
+    return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
+  };
 
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be
@@ -266,6 +297,15 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   // Max loop iterations to execute with no maximum if negative.
   int64 max_loop_iterations_;
+
+  // Module-level seed handle.
+  uint64 seed_;
+  // RNG engine.
+  std::minstd_rand0 engine_;
+
+  // DynamicDimensionInference is used to evaluate GetDimensionSize, which
+  // returns the dynamic dimension size of its operand.
+  DynamicDimensionInference* dynamic_dimension_inference_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloEvaluator);
 };

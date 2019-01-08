@@ -89,7 +89,7 @@ static void CreateLoopInvariantCopy(
 
     HloInstruction* next_operand =
         frame->instruction->mutable_operand(frame->operand_index++);
-    if (hoisted_instructions->count(next_operand) ||
+    if (hoisted_instructions->contains(next_operand) ||
         next_operand == while_body_param) {
       continue;
     }
@@ -241,7 +241,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
     auto is_invariant = [&](HloInstruction* op) {
       return hoisted_instructions.find(op) != hoisted_instructions.end() ||
-             unhoisted_invariant_instructions.count(op) ||
+             unhoisted_invariant_instructions.contains(op) ||
              op->opcode() == HloOpcode::kConstant;
     };
 
