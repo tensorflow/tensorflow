@@ -62,7 +62,7 @@ class BaseSparseOutputFullyConnectedOpModel : public SingleOpModel {
     PopulateTensor(input_, data);
   }
 
-  void SetLookup(const std::vector<int32>& f) { PopulateTensor(lookup_, f); }
+  void SetLookup(const std::vector<int32_t>& f) { PopulateTensor(lookup_, f); }
 
   void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
 
