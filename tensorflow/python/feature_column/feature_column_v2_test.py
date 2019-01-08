@@ -51,6 +51,7 @@ from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import rmsprop
 from tensorflow_estimator.python.estimator.inputs import numpy_io
 
+
 def _initialized_session(config=None):
   sess = session.Session(config=config)
   sess.run(variables_lib.global_variables_initializer())
