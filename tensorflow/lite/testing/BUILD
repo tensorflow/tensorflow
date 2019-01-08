@@ -256,7 +256,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tf_driver_test",
     size = "small",
     srcs = ["tf_driver_test.cc"],
@@ -285,7 +285,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "generate_testspec_test",
     size = "small",
     srcs = ["generate_testspec_test.cc"],
