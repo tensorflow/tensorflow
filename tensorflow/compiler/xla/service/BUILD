@@ -1938,6 +1938,46 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "dynamic_padder",
+    srcs = ["dynamic_padder.cc"],
+    hdrs = ["dynamic_padder.h"],
+    deps = [
+        ":dynamic_dimension_inference",
+        ":hlo_dce",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "dynamic_padder_test",
+    srcs = ["dynamic_padder_test.cc"],
+    deps = [
+        ":dynamic_padder",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "dynamic_dimension_inference_test",
     srcs = ["dynamic_dimension_inference_test.cc"],
@@ -2981,6 +3021,7 @@ cc_library(
     srcs = ["hlo_get_dimension_size_rewriter.cc"],
     hdrs = ["hlo_get_dimension_size_rewriter.h"],
     deps = [
+        ":dynamic_dimension_inference",
         ":hlo",
         ":hlo_pass",
         ":shape_inference",
