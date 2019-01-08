@@ -970,8 +970,8 @@ class DatasetV2(object):
         shapes and types defined by `self.output_shapes` and
        `self.output_types`) to another nested structure of tensors.
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
-        representing the number elements to process in parallel. If not
-        specified, elements will be processed sequentially. If the value
+        representing the number elements to process asynchronously in parallel.
+        If not specified, elements will be processed sequentially. If the value
         `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
 
