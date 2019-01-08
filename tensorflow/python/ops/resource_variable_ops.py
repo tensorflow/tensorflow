@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import functools
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
@@ -595,7 +596,8 @@ class ResourceVariable(variables.VariableV1):
         trainable=self._trainable,
         constraint=self._constraint,
         dtype=self._dtype,
-        name=self._shared_name + "_copy")
+        name=self._shared_name + "_copy",
+        distribute_strategy=self.distribute_strategy)
     memo[self._unique_id] = copied_variable
     return copied_variable
 
@@ -938,7 +940,15 @@ class ResourceVariable(variables.VariableV1):
     return assign_op
 
   def __reduce__(self):
-    return (ResourceVariable, (self.numpy(),))
+    # The implementation mirrors that of __deepcopy__.
+    return functools.partial(
+        ResourceVariable,
+        initial_value=self.numpy(),
+        trainable=self.trainable,
+        name=self._shared_name,
+        dtype=self.dtype,
+        constraint=self.constraint,
+        distribute_strategy=self.distribute_strategy), ()
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
