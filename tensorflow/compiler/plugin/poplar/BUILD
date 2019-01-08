@@ -55,6 +55,7 @@ cc_library(
         "driver/classification_predicates.cc",
         "driver/commutative_instruction_reorder_operands.cc",
         "driver/computation_flattener.cc",
+        "driver/constant_slice_folding.cc",
         "driver/convolution_classifier.cc",
         "driver/expression_outliner.cc",
         "driver/find_all_users.cc",
@@ -86,6 +87,7 @@ cc_library(
         "driver/commutative_instruction_reorder_operands.h",
         "driver/compiler_annotations.h",
         "driver/computation_flattener.h",
+        "driver/constant_slice_folding.h",
         "driver/convolution_classifier.h",
         "driver/expression_outliner.h",
         "driver/find_all_users.h",
@@ -595,6 +597,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "constant_slice_folding_test",
+    srcs = ["tests/constant_slice_folding_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
     name = "find_all_users_test",
     srcs = ["tests/find_all_users_test.cc"],
     extra_copts = [
@@ -1062,6 +1075,7 @@ test_suite(
         "conv_graph_caching_test",
         "scheduler_test",
         "sharding_pass_test",
+        "constant_slice_folding_test",
         "dynamic_slice_layout_test",
         "sort_op_test",
         "while_loop_to_repeat_simplify_test",

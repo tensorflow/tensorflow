@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/commutative_instruction_reorder_operands.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/computation_flattener.h"
+#include "tensorflow/compiler/plugin/poplar/driver/constant_slice_folding.h"
 #include "tensorflow/compiler/plugin/poplar/driver/entry_visitor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
@@ -304,6 +305,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<ScatterExpander>();
     pipeline.AddPass<DynamicIndexSplitter>();
     pipeline.AddPass<DotDecomposer>();
+    pipeline.AddPass<HloPassFix<ConstantSliceFolding>>();
     pipeline.AddPass<HloPassFix<FuseOpsEarly>>(resources.annotations);
     pipeline.AddPass<HloCSE>(false);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
