@@ -304,7 +304,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,
           const TransposeFolding::OperandIndices& candidate_operands) {
-        return PotentiallyImplementedAsEigenDot(dot, *target_machine_features)
+        return DotImplementationCanHandleTranspose(dot,
+                                                   *target_machine_features)
                    ? candidate_operands
                    : TransposeFolding::OperandIndices{};
       },

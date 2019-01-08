@@ -382,7 +382,10 @@ cc_library(
 cc_library(
     name = "dot_op_emitter",
     srcs = ["dot_op_emitter.cc"],
-    hdrs = ["dot_op_emitter.h"],
+    hdrs = [
+        "dot_op_emitter.h",
+        "dot_op_emitter_internal.h",
+    ],
     deps = [
         ":cpu_options",
         ":cpu_runtime",
