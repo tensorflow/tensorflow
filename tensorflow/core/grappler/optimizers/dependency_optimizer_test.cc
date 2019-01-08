@@ -91,7 +91,7 @@ TEST_F(DependencyOptimizerTest, DependenciesDrivenByConstants) {
   // The 'z' node should have been optimized away leaving only 5 nodes.
   EXPECT_EQ(5, output.node_size());
 
-  for (const NodeDef& node : item.graph.node()) {
+  for (const NodeDef& node : output.node()) {
     if (node.name() == "id1" || node.name() == "id2") {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("add", node.input(0));
@@ -125,8 +125,8 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop) {
 
   EXPECT_EQ(item.graph.node_size(), output.node_size());
   int found = 0;
-  for (int i = 0; i < item.graph.node_size(); ++i) {
-    const NodeDef& node = item.graph.node(i);
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
     // "add" should get turned into a NoOp and removed.
     EXPECT_NE("add", node.name());
     if (node.name() == "id1") {
@@ -164,7 +164,6 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_RepeatedInput) {
   item.graph.Swap(&output);
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(item.graph.node_size(), output.node_size());
   int found = 0;
@@ -748,7 +747,7 @@ TEST_F(DependencyOptimizerTest, Identity_DeviceCrossing_ConsumerOnSameDevice) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
+
   EXPECT_EQ(3, output.node_size());
   for (const auto& node : output.node()) {
     EXPECT_NE("x_on_2", node.name());

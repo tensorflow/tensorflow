@@ -115,12 +115,15 @@ def while_loop(cond,
             loop_counter < maximum_iterations,
             cond(*_pack_sequence_as(orig_loop_vars, args)))
 
+    # NOTE(skyewm): we set read_only_collections=False for compatibility with
+    # TPUEstimator.
     cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name,
         wrapped_cond,
         loop_vars, {},
         signature=_build_signature(loop_vars, shape_invariants),
-        func_graph=util.WhileCondFuncGraph(cond_name),
+        func_graph=util.WhileCondFuncGraph(cond_name,
+                                           read_only_collections=False),
         add_control_dependencies=add_control_dependencies)
 
     # Add external_captures of cond to the list of loop vars.
@@ -171,7 +174,8 @@ def while_loop(cond,
         wrapped_body,
         loop_vars, {},
         signature=_build_signature(loop_vars, shape_invariants),
-        func_graph=util.WhileBodyFuncGraph(body_name),
+        func_graph=util.WhileBodyFuncGraph(body_name,
+                                           read_only_collections=False),
         add_control_dependencies=add_control_dependencies)
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
@@ -849,19 +853,8 @@ def _pack_sequence_as(structure_with_tas, loop_vars):
   """Like `nest.pack_sequence_as` but also replaces flows with TensorArrays."""
 
   def flow_to_tensor_array(flow, ta):  # pylint: disable=missing-docstring
-    if isinstance(ta, tensor_array_ops.TensorArray):
-      # pylint: disable=protected-access
-      new_ta = tensor_array_ops.TensorArray(
-          dtype=ta.dtype,
-          handle=ta.handle,
-          flow=flow,
-          infer_shape=ta._infer_shape,
-          colocate_with_first_write_call=ta._colocate_with_first_write_call)
-      new_ta._colocate_with = ta._colocate_with
-      new_ta._element_shape = ta._element_shape
-      # pylint: enable=protected-access
-      return new_ta
-    return flow
+    return (tensor_array_ops.build_ta_with_new_flow(ta, flow) if isinstance(  # pylint: disable=g-long-ternary
+        ta, tensor_array_ops.TensorArray) else flow)
 
   flattened_loop_vars = [
       flow_to_tensor_array(*z)

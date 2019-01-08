@@ -431,7 +431,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
     *context = CreatedContexts::Add(new_context);
     CHECK(*context != nullptr)
         << "success in this call must entail non-null result";
-    VLOG(2) << "created or reused context " << context << " for this thread";
+    VLOG(2) << "created or reused context " << new_context
+            << " for this thread";
     return port::Status::OK();
   }
 
@@ -769,13 +770,13 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   ScopedActivateContext activated{context};
   CUresult res = cuStreamCreate(out, 0);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "could not allocate CUDA stream for context " << context
-               << ": " << ToString(res);
+    LOG(ERROR) << "could not allocate CUDA stream for context "
+               << context->context() << ": " << ToString(res);
     return false;
   }
 
   VLOG(2) << "successfully created stream " << *out << " for context "
-          << context << " on thread";
+          << context->context() << " on thread";
   return true;
 }
 
@@ -788,11 +789,11 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   ScopedActivateContext activated{context};
   CUresult res = cuStreamDestroy(*stream);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to destroy CUDA stream for context " << context
-               << ": " << ToString(res);
+    LOG(ERROR) << "failed to destroy CUDA stream for context "
+               << context->context() << ": " << ToString(res);
   } else {
     VLOG(2) << "successfully destroyed stream " << *stream << " for context "
-            << context;
+            << context->context();
     *stream = nullptr;
   }
 }
@@ -809,8 +810,8 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     return nullptr;
   }
   void *ptr = reinterpret_cast<void *>(result);
-  VLOG(2) << "allocated " << ptr << " for context " << context << " of "
-          << bytes << " bytes";
+  VLOG(2) << "allocated " << ptr << " for context " << context->context()
+          << " of " << bytes << " bytes";
   return ptr;
 }
 
@@ -823,7 +824,8 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     LOG(ERROR) << "failed to free device memory at " << location
                << "; result: " << ToString(res);
   } else {
-    VLOG(2) << "deallocated " << location << " for context " << context;
+    VLOG(2) << "deallocated " << location << " for context "
+            << context->context();
   }
 }
 
@@ -839,8 +841,8 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     return nullptr;
   }
   void *ptr = reinterpret_cast<void *>(result);
-  VLOG(2) << "allocated " << ptr << " for context " << context << " of "
-          << bytes << " bytes in unified memory";
+  VLOG(2) << "allocated " << ptr << " for context " << context->context()
+          << " of " << bytes << " bytes in unified memory";
   return ptr;
 }
 
@@ -854,7 +856,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                << "; result: " << ToString(res);
   } else {
     VLOG(2) << "deallocated unified memory at " << location << " for context "
-            << context;
+            << context->context();
   }
 }
 

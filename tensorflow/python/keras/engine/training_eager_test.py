@@ -28,13 +28,20 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
+  @keras_parameterized.run_all_keras_modes
   def test_model_methods_with_eager_tensors_multi_io(self):
+    if not context.executing_eagerly():
+      # Only test V2 Function and V2 Eager modes, as V1 Graph mode with
+      # symbolic tensors has different requirements.
+      return
+
     input_a = keras.layers.Input(shape=(3,), name='input_a')
     input_b = keras.layers.Input(shape=(3,), name='input_b')
 
@@ -53,13 +60,13 @@ class TrainingTest(keras_parameterized.TestCase):
         loss,
         metrics=metrics,
         loss_weights=loss_weights,
-        run_eagerly=True,
+        run_eagerly=testing_utils.should_run_eagerly(),
         sample_weight_mode=None)
 
-    input_a = keras.backend.zeros(shape=(10, 3))
-    input_b = keras.backend.zeros(shape=(10, 3))
-    target_a = keras.backend.zeros(shape=(10, 4))
-    target_b = keras.backend.zeros(shape=(10, 4))
+    input_a = array_ops.zeros(shape=(10, 3))
+    input_b = array_ops.zeros(shape=(10, 3))
+    target_a = array_ops.zeros(shape=(10, 4))
+    target_b = array_ops.zeros(shape=(10, 4))
 
     model.fit(
         [input_a, input_b], [target_a, target_b],
@@ -107,16 +114,26 @@ class TrainingTest(keras_parameterized.TestCase):
     model.test_on_batch([input_a, input_b], [target_a, target_b])
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_model_methods_with_eager_tensors_single_io(self):
+    if not context.executing_eagerly():
+      # Only test V2 Function and V2 Eager modes, as V1 Graph mode with
+      # symbolic tensors has different requirements.
+      return
+
     model = testing_utils.get_small_mlp(10, 4, 3)
 
     optimizer = rmsprop.RMSprop(learning_rate=0.001)
     loss = 'mse'
     metrics = ['mae', metrics_module.CategoricalAccuracy()]
-    model.compile(optimizer, loss, metrics=metrics, run_eagerly=True)
+    model.compile(
+        optimizer,
+        loss,
+        metrics=metrics,
+        run_eagerly=testing_utils.should_run_eagerly())
 
-    inputs = keras.backend.zeros(shape=(10, 3))
-    targets = keras.backend.zeros(shape=(10, 4))
+    inputs = array_ops.zeros(shape=(10, 3))
+    targets = array_ops.zeros(shape=(10, 4))
 
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=0)
     model.fit(inputs, targets, epochs=1, batch_size=3, verbose=0, shuffle=False)
@@ -134,8 +151,8 @@ class TrainingTest(keras_parameterized.TestCase):
                   loss='mse',
                   run_eagerly=True)
 
-    x = keras.backend.zeros(shape=(10, 3))
-    y = keras.backend.zeros(shape=(10, 4))
+    x = array_ops.zeros(shape=(10, 3))
+    y = array_ops.zeros(shape=(10, 4))
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat(10).batch(5)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     validation_dataset = dataset_ops.Dataset.from_tensor_slices(
@@ -146,7 +163,7 @@ class TrainingTest(keras_parameterized.TestCase):
         ValueError, r'specify .* `steps_per_epoch`'):
       model.fit(iterator, epochs=1, verbose=0)
     if not context.executing_eagerly():
-      # In eager execution, `keras.backend.zeros` returns value tensors
+      # In eager execution, `array_ops.zeros` returns value tensors
       # which can be used for validation without a `validation_steps` argument.
       with self.assertRaisesRegexp(
           ValueError, r'provide either `batch_size` or `validation_steps`'):

@@ -117,6 +117,69 @@ class GRULayerTest(keras_parameterized.TestCase):
                   run_eagerly=testing_utils.should_run_eagerly())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
+  def test_statefulness_GRU(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    layer_class = keras.layers.GRU
+
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Embedding(
+            4,
+            embedding_dim,
+            mask_zero=True,
+            input_length=timesteps,
+            batch_input_shape=(num_samples, timesteps)))
+    layer = layer_class(
+        units, return_sequences=False, stateful=True, weights=None)
+    model.add(layer)
+    model.compile(optimizer='sgd', loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    out1 = model.predict(np.ones((num_samples, timesteps)))
+    self.assertEqual(out1.shape, (num_samples, units))
+
+    # train once so that the states change
+    model.train_on_batch(
+        np.ones((num_samples, timesteps)), np.ones((num_samples, units)))
+    out2 = model.predict(np.ones((num_samples, timesteps)))
+
+    # if the state is not reset, output should be different
+    self.assertNotEqual(out1.max(), out2.max())
+
+    # check that output changes after states are reset
+    # (even though the model itself didn't change)
+    layer.reset_states()
+    out3 = model.predict(np.ones((num_samples, timesteps)))
+    self.assertNotEqual(out2.max(), out3.max())
+
+    # check that container-level reset_states() works
+    model.reset_states()
+    out4 = model.predict(np.ones((num_samples, timesteps)))
+    np.testing.assert_allclose(out3, out4, atol=1e-5)
+
+    # check that the call to `predict` updated the states
+    out5 = model.predict(np.ones((num_samples, timesteps)))
+    self.assertNotEqual(out4.max(), out5.max())
+
+    # Check masking
+    layer.reset_states()
+
+    left_padded_input = np.ones((num_samples, timesteps))
+    left_padded_input[0, :1] = 0
+    left_padded_input[1, :2] = 0
+    out6 = model.predict(left_padded_input)
+
+    layer.reset_states()
+
+    right_padded_input = np.ones((num_samples, timesteps))
+    right_padded_input[0, -1:] = 0
+    right_padded_input[1, -2:] = 0
+    out7 = model.predict(right_padded_input)
+
+    np.testing.assert_allclose(out7, out6, atol=1e-5)
+
 
 @tf_test_util.run_all_in_graph_and_eager_modes
 class GRULayerGenericTest(test.TestCase):
@@ -168,73 +231,6 @@ class GRULayerGenericTest(test.TestCase):
       self.assertEqual(len(layer.losses), 4)
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
-
-
-class GRULayerV1OnlyTest(test.TestCase):
-
-  @tf_test_util.run_v1_only('b/120941292')
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_statefulness_GRU(self):
-    num_samples = 2
-    timesteps = 3
-    embedding_dim = 4
-    units = 2
-    layer_class = keras.layers.GRU
-
-    model = keras.models.Sequential()
-    model.add(
-        keras.layers.Embedding(
-            4,
-            embedding_dim,
-            mask_zero=True,
-            input_length=timesteps,
-            batch_input_shape=(num_samples, timesteps)))
-    layer = layer_class(
-        units, return_sequences=False, stateful=True, weights=None)
-    model.add(layer)
-    model.compile(optimizer='sgd', loss='mse')
-    out1 = model.predict(np.ones((num_samples, timesteps)))
-    self.assertEqual(out1.shape, (num_samples, units))
-
-    # train once so that the states change
-    model.train_on_batch(
-        np.ones((num_samples, timesteps)), np.ones((num_samples, units)))
-    out2 = model.predict(np.ones((num_samples, timesteps)))
-
-    # if the state is not reset, output should be different
-    self.assertNotEqual(out1.max(), out2.max())
-
-    # check that output changes after states are reset
-    # (even though the model itself didn't change)
-    layer.reset_states()
-    out3 = model.predict(np.ones((num_samples, timesteps)))
-    self.assertNotEqual(out2.max(), out3.max())
-
-    # check that container-level reset_states() works
-    model.reset_states()
-    out4 = model.predict(np.ones((num_samples, timesteps)))
-    np.testing.assert_allclose(out3, out4, atol=1e-5)
-
-    # check that the call to `predict` updated the states
-    out5 = model.predict(np.ones((num_samples, timesteps)))
-    self.assertNotEqual(out4.max(), out5.max())
-
-    # Check masking
-    layer.reset_states()
-
-    left_padded_input = np.ones((num_samples, timesteps))
-    left_padded_input[0, :1] = 0
-    left_padded_input[1, :2] = 0
-    out6 = model.predict(left_padded_input)
-
-    layer.reset_states()
-
-    right_padded_input = np.ones((num_samples, timesteps))
-    right_padded_input[0, -1:] = 0
-    right_padded_input[1, -2:] = 0
-    out7 = model.predict(right_padded_input)
-
-    np.testing.assert_allclose(out7, out6, atol=1e-5)
 
 
 if __name__ == '__main__':

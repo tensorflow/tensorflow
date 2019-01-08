@@ -66,6 +66,9 @@ class BufferMap {
   // be use by TF's forwarding optimizations.
   void SetForwardable(int tensor_index) { forwardable_.insert(tensor_index); }
 
+  // Removes all information about which tensors are forwardable.
+  void ClearForwardable() { forwardable_.clear(); }
+
   // Returns true if this tensor has been explicitly marks as forwardable by
   // a call to SetForwardable().
   bool IsForwardable(int tensor_index) const {

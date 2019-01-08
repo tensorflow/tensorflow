@@ -130,8 +130,9 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                         if init_from_fn else [initial_value]) as name:
       # pylint: disable=protected-access
       with ops.init_scope():
-        shared_name = ops._name_from_scope_name(name)
-        shared_name = "%s_%d" % (shared_name, ops.uid())
+        handle_name = ops._name_from_scope_name(name)
+        unique_id = "%s_%d" % (handle_name, ops.uid())
+        shared_name = context.shared_name(unique_id)
       with ops.name_scope("Initializer"), ops.device(None):
         initial_value = ops.convert_to_tensor(
             initial_value() if init_from_fn else initial_value,
@@ -144,8 +145,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             name=name,
             graph_mode=self._in_graph_mode)
       self._shape = initial_value.shape
-      self._unique_id = shared_name
-      self._handle_name = shared_name + ":0"
+      self._unique_id = unique_id
+      self._handle_name = handle_name + ":0"
       self._dtype = initial_value.dtype.base_dtype
       self._constraint = constraint
       assert initial_value is not None

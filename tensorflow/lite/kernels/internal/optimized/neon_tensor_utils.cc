@@ -144,7 +144,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
         // registers).
         int16x8_t prod_16x8 =
             vmull_s8(vget_low_s8(s1_8x16), vget_low_s8(s2_8x16));
-        // Multiply the high bits (i.e. the lower 8 8bit numbers in the
+        // Multiply the high bits (i.e. the higher 8 8bit numbers in the
         // registers), and accumulate with the result of the low bits product.
         // The assumption here is that overflow will not happen as we quantize
         // our values to be in the range [-127, 127]. As such the sum of the 2

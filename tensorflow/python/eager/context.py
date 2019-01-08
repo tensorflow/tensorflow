@@ -788,6 +788,27 @@ def in_eager_mode():
   return executing_eagerly()
 
 
+def shared_name(name=None):
+  """Returns the anonymous shared name GUID if no shared name is specified.
+
+  In eager mode we need to use a unique shared name to avoid spurious sharing
+  issues. The runtime generates a unique name on our behalf when the reserved
+  GUID is used as a shared name.
+
+  Args:
+    name: Optional shared name
+
+  Returns:
+    Eager compatible shared name.
+  """
+  if name or not executing_eagerly():
+    return name
+
+  # Ensure a unique name when eager execution is enabled to avoid spurious
+  # sharing issues.
+  return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
+
+
 def graph_mode():
   """Context-manager to disable eager execution for the current thread."""
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access

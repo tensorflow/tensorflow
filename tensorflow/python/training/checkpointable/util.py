@@ -176,25 +176,13 @@ class _CheckpointRestoreCoordinator(object):
         raise AssertionError(
             ("Saveable keys changed when validating. Got back %s, was "
              "expecting %s") % (tensor_saveables.keys(), validated_names))
-      for saveable in validated_saveables:
-        if saveable.device:
-          device = saveable_object_util.set_cpu0(saveable.device)
-        else:
-          device = None
-        with ops.device(device):
-          tensors = []
-          for spec in saveable.specs:
-            tensors.append(
-                io_ops.restore_v2(
-                    self.save_path_tensor,
-                    [spec.name],
-                    [spec.slice_spec],
-                    [spec.dtype])[0])
-          restore_op = saveable.restore(tensors, restored_shapes=None)
-        if not context.executing_eagerly():
+      new_restore_ops = functional_saver.restore_from_saveable_objects(
+          self.save_path_tensor, validated_saveables)
+      if not context.executing_eagerly():
+        restore_ops.extend(new_restore_ops)
+        for saveable, restore_op in zip(validated_saveables, new_restore_ops):
           assert saveable.name not in self.restore_ops_by_name
           self.restore_ops_by_name[saveable.name] = restore_op
-          restore_ops.append(restore_op)
     return restore_ops
 
 

@@ -77,8 +77,9 @@ class InputLayer(base_layer.Layer):
         dtype = backend.floatx()
       else:
         dtype = backend.dtype(input_tensor)
-    elif input_tensor and input_tensor.dtype != dtype:
-      raise ValueError('`input_tensor.dtype` differs from `dtype`.')
+    elif input_tensor is not None and input_tensor.dtype != dtype:
+      raise ValueError('`input_tensor.dtype` differs from `dtype`: %s vs. %s' %
+                       (input_tensor.dtype, dtype))
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse

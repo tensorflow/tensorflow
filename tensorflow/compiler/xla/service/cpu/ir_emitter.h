@@ -448,7 +448,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       computation_to_profile_idx_;
 
   // Maps HLOs to Values emitted for them.
-  std::unordered_map<const HloInstruction*, llvm::Value*> emitted_value_;
+  absl::flat_hash_map<const HloInstruction*, llvm::Value*> emitted_value_;
 
   llvm_ir::AliasAnalysis alias_analysis_;
 

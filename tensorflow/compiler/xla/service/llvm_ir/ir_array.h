@@ -189,6 +189,8 @@ class IrArray {
       return llvm::ConstantInt::get(index_type_, c);
     }
 
+    void ClearLinearIndex() { linear_ = nullptr; }
+
    private:
     // Changing the multi-dimensional index invalidates the linear index.
     std::vector<llvm::Value*>& mutable_multidim() {

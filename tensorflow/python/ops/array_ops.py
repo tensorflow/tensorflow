@@ -430,6 +430,7 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
 
 
 @tf_export("rank")
+@dispatch.add_dispatch_support
 def rank(input, name=None):
   # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
@@ -3190,7 +3191,7 @@ def where(condition, x=None, y=None, name=None):
 
   Returns:
     A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
-    A `Tensor` with shape `(num_true, dim_size(condition))`.
+    Otherwise, a `Tensor` with shape `(num_true, rank(condition))`.
 
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None.

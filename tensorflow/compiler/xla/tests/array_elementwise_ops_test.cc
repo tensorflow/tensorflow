@@ -2047,6 +2047,19 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonNanClampF32) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, ClampF32) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  auto minimum = ConstantR1<float>(&builder, {1.0f, -6.5f, 1.0f, 2.25f, NAN});
+  auto argument =
+      ConstantR1<float>(&builder, {2.0f, 10.0f, -5.0f, 1.0f, 10.0f});
+  auto maximum = ConstantR1<float>(&builder, {3.0f, 0.5f, 25.5f, NAN, 123.0f});
+  Clamp(minimum, argument, maximum);
+
+  ComputeAndCompareR1<float>(&builder, {2.0f, 0.5f, 1.0f, NAN, NAN}, {},
+                             error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, ClampF32Scalar) {
   XlaBuilder builder(TestName());
   auto minimum = ConstantR0<float>(&builder, 0.0f);

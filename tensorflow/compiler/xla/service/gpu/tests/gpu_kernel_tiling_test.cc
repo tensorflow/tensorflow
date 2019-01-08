@@ -65,7 +65,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @copy
-; CHECK: tail call void @llvm.nvvm.barrier0()
+; CHECK: call void @llvm.nvvm.barrier0()
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -91,7 +91,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @copy
-; CHECK-NOT: tail call void @llvm.nvvm.barrier0()
+; CHECK-NOT: call void @llvm.nvvm.barrier0()
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -118,7 +118,7 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: tail call void @llvm.nvvm.barrier0()
+; CHECK: call void @llvm.nvvm.barrier0()
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -152,7 +152,7 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: tail call void @llvm.nvvm.barrier0()
+; CHECK: call void @llvm.nvvm.barrier0()
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -187,13 +187,13 @@ TEST_F(GpuKernelTilingTest,
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK-NOT: tail call void @llvm.nvvm.barrier0()
+; CHECK-NOT: call void @llvm.nvvm.barrier0()
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
 }
 
-TEST_F(GpuKernelTilingTest, FusionTransposeWithReverseNotTiled) {
+TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
   const char *const kHloString = R"(
     HloModule FusionTransposeWithReverseNotTiled
     fused_computation.1 {
@@ -214,10 +214,74 @@ TEST_F(GpuKernelTilingTest, FusionTransposeWithReverseNotTiled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK-NOT: tail call void @llvm.nvvm.barrier0()
+; CHECK-NOT: call void @llvm.nvvm.barrier0()
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
+}
+
+TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
+  const char *const kHloString = R"(
+    HloModule TransposedInputWithUserBitcast
+
+    fused_computation {
+      param_0 = f32[20,20]{1,0} parameter(0)
+      ROOT bitcast = f32[20,20]{0,1} bitcast(param_0)
+    }
+
+    ENTRY kernel_entry {
+      parameter.0 = f32[20,20]{1,0} parameter(0)
+      ROOT fusion = f32[20,20]{0,1} fusion(parameter.0),
+        kind=kLoop, calls=fused_computation
+    })";
+
+  // Check that a call to llvm.nvvm.barrier0 is not generated.
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithoutLayoutAssignment()).ValueOrDie();
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
+; CHECK-LABEL: define void @fusion
+; CHECK-NOT: call void @llvm.nvvm.barrier0()
+; CHECK: }
+)",
+                     /*match_optimized_ir=*/true);
+
+  // Check that the kernel runs correctly.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
+}
+
+TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
+  const char *const kHloString = R"(
+    HloModule TwoTransposedInputs
+
+    fused_computation {
+      param_0 = f32[64,64]{1,0} parameter(0)
+      param_1 = f32[64,64]{1,0} parameter(1)
+      bitcast = f32[64,64]{0,1} bitcast(param_0)
+      copy = f32[64,64]{0,1} copy(param_1)
+      ROOT tuple = (f32[64,64]{0,1}, f32[64,64]{0,1}) tuple(bitcast, copy)
+    }
+
+    ENTRY kernel_entry {
+      parameter.0 = f32[64,64]{1,0} parameter(0)
+      parameter.1 = f32[64,64]{1,0} parameter(1)
+      ROOT fusion = (f32[64,64]{0,1}, f32[64,64]{0,1})
+        fusion(parameter.0, parameter.1),
+        kind=kLoop, calls=fused_computation
+    })";
+
+  // Check that a call to llvm.nvvm.barrier0 is not generated.
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithoutLayoutAssignment()).ValueOrDie();
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
+; CHECK-LABEL: define void @fusion
+; CHECK: call void @llvm.nvvm.barrier0()
+; CHECK: }
+)",
+                     /*match_optimized_ir=*/true);
+  // Check that the kernel runs correctly.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
 }
 
 }  // namespace

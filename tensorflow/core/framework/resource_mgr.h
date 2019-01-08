@@ -619,20 +619,31 @@ ResourceHandleOp<T>::ResourceHandleOp(OpKernelConstruction* context)
 
 template <typename T>
 void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
-  if (!initialized_.load()) {
-    mutex_lock ml(mutex_);
-    // Checking again to see if another thread has initialized the resource.
+  if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    Tensor handle;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
+    handle.scalar<ResourceHandle>()() =
+        MakeResourceHandle<T>(ctx, container_, name_);
+    ctx->set_output(0, handle);
+  } else {
     if (!initialized_.load()) {
-      AllocatorAttributes attr;
-      attr.set_on_host(true);
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                             &resource_, attr));
-      resource_.scalar<ResourceHandle>()() =
-          MakeResourceHandle<T>(ctx, container_, name_);
-      initialized_.store(true);
+      mutex_lock ml(mutex_);
+      // Checking again to see if another thread has initialized the resource.
+      if (!initialized_.load()) {
+        AllocatorAttributes attr;
+        attr.set_on_host(true);
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                               &resource_, attr));
+        resource_.scalar<ResourceHandle>()() =
+            MakeResourceHandle<T>(ctx, container_, name_);
+        initialized_.store(true);
+      }
     }
+    ctx->set_output(0, resource_);
   }
-  ctx->set_output(0, resource_);
 }
 
 template <typename T>

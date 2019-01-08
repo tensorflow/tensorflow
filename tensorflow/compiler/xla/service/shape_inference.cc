@@ -534,9 +534,8 @@ Status ValidateDotDimensionNumbers(
                           absl::Span<const int64> contracting_dims,
                           absl::Span<const int64> batch_dims) -> bool {
     auto in_range = [&rank](int64 i) -> bool { return 0 <= i && i < rank; };
-    return std::all_of(contracting_dims.begin(), contracting_dims.end(),
-                       in_range) &&
-           std::all_of(batch_dims.begin(), batch_dims.end(), in_range);
+    return absl::c_all_of(contracting_dims, in_range) &&
+           absl::c_all_of(batch_dims, in_range);
   };
 
   absl::Span<const int64> lhs_contracting_dimensions =
@@ -563,9 +562,8 @@ Status ValidateDotDimensionNumbers(
     auto is_unique = [&dim_set](int64 i) -> bool {
       return dim_set.insert(i).second;
     };
-    return std::all_of(contracting_dims.begin(), contracting_dims.end(),
-                       is_unique) &&
-           std::all_of(batch_dims.begin(), batch_dims.end(), is_unique);
+    return absl::c_all_of(contracting_dims, is_unique) &&
+           absl::c_all_of(batch_dims, is_unique);
   };
 
   if (!dims_unique(lhs_contracting_dimensions, lhs_batch_dimensions) ||
@@ -1589,29 +1587,29 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   input_dnums[1] = dnums.input_feature_dimension();
   std::copy(dnums.input_spatial_dimensions().begin(),
             dnums.input_spatial_dimensions().end(), input_dnums.begin() + 2);
-  std::sort(input_dnums.begin(), input_dnums.end());
+  absl::c_sort(input_dnums);
 
   std::vector<int64> window_dnums(num_dims);
   window_dnums[0] = dnums.kernel_input_feature_dimension();
   window_dnums[1] = dnums.kernel_output_feature_dimension();
   std::copy(dnums.kernel_spatial_dimensions().begin(),
             dnums.kernel_spatial_dimensions().end(), window_dnums.begin() + 2);
-  std::sort(window_dnums.begin(), window_dnums.end());
+  absl::c_sort(window_dnums);
 
   std::vector<int64> output_dnums(num_dims);
   output_dnums[0] = dnums.output_batch_dimension();
   output_dnums[1] = dnums.output_feature_dimension();
   std::copy(dnums.output_spatial_dimensions().begin(),
             dnums.output_spatial_dimensions().end(), output_dnums.begin() + 2);
-  std::sort(output_dnums.begin(), output_dnums.end());
+  absl::c_sort(output_dnums);
 
   std::vector<int64> expected_dnums(num_dims);
   std::iota(expected_dnums.begin(), expected_dnums.end(), 0);
 
   const auto in_range = [num_dims](int64 i) { return 0 <= i && i < num_dims; };
-  if (!std::all_of(input_dnums.begin(), input_dnums.end(), in_range) ||
-      !std::all_of(window_dnums.begin(), window_dnums.end(), in_range) ||
-      !std::all_of(output_dnums.begin(), output_dnums.end(), in_range)) {
+  if (!absl::c_all_of(input_dnums, in_range) ||
+      !absl::c_all_of(window_dnums, in_range) ||
+      !absl::c_all_of(output_dnums, in_range)) {
     return InvalidArgument(
         "A dimension number is out of range in convolution: %s.",
         dnums.DebugString());
@@ -2101,14 +2099,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
 
     const Shape& start_indices_shape = start_index_shapes[0];
-    TF_RETURN_IF_ERROR(
-        ExpectArray(start_indices_shape, "start indices of dynamic slice"));
-
     VLOG(2) << StrFormat(
         "slicing shape %s at dynamic start_indices %s with slice_sizes={%s}",
         ShapeUtil::HumanString(operand_shape),
         ShapeUtil::HumanString(start_indices_shape),
         StrJoin(slice_sizes, ", "));
+
+    TF_RETURN_IF_ERROR(
+        ExpectArray(start_indices_shape, "start indices of dynamic slice"));
 
     if (start_indices_shape.rank() != 1) {
       return InvalidArgument(
@@ -2153,7 +2151,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
             "Dynamic slice start indices must be of integral type.");
       }
       for (const Shape& index_shape : start_index_shapes) {
-        if (!ShapeUtil::Equal(first_index_shape, index_shape)) {
+        if (!ShapeUtil::Compatible(first_index_shape, index_shape)) {
           return InvalidArgument(
               "Dynamic slice start indices must all have the same shape, got "
               "mismatching indices with shapes %s and %s.",
@@ -2260,7 +2258,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
             "Dynamic update slice start indices must be of integral type.");
       }
       for (const Shape& index_shape : start_index_shapes) {
-        if (!ShapeUtil::Equal(first_index_shape, index_shape)) {
+        if (!ShapeUtil::Compatible(first_index_shape, index_shape)) {
           return InvalidArgument(
               "Dynamic update slice start indices must all have the same "
               "shape, got mismatching indices with shapes %s and %s.",

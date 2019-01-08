@@ -222,11 +222,12 @@ bool FixupSourceAndSinkEdges(Graph* g) {
   bool changed = false;
   for (Node* n : g->nodes()) {
     if (!n->IsSource() && n->in_edges().empty()) {
-      g->AddControlEdge(g->source_node(), n);
+      g->AddControlEdge(g->source_node(), n,
+                        true /* skip test for duplicates */);
       changed = true;
     }
     if (!n->IsSink() && n->out_edges().empty()) {
-      g->AddControlEdge(n, g->sink_node());
+      g->AddControlEdge(n, g->sink_node(), true /* skip test for duplicates */);
       changed = true;
     }
   }

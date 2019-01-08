@@ -46,8 +46,7 @@ static bool ShouldMakeAllUsersColMajor(const HloInstruction* instruction) {
   for (auto* user : instruction->users()) {
     optional<int64> operand_idx = ProfitableToMakeDotOperandColumnMajor(*user);
     if (!operand_idx || user->operand(*operand_idx) != instruction ||
-        std::count(user->operands().begin(), user->operands().end(),
-                   instruction) != 1) {
+        absl::c_count(user->operands(), instruction) != 1) {
       return false;
     }
   }

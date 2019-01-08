@@ -41,6 +41,8 @@ struct RewriteGraphMetadata;
 struct GraphExecutionStateOptions {
   const DeviceSet* device_set = nullptr;
   const SessionOptions* session_options = nullptr;
+  // Unique session identifier. Can be empty.
+  string session_handle;
   // A map from node name to device name, representing the unchangeable
   // placement of stateful nodes.
   std::unordered_map<string, string> stateful_placements;
@@ -192,6 +194,8 @@ class GraphExecutionState {
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
+  // Unique session identifier. Can be empty.
+  string session_handle_;
 
   // Map from name to Node for the full graph in placed_.
   NodeNameToCostIdMap node_name_to_cost_id_map_;
