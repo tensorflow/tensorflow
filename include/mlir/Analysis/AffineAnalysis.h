@@ -66,14 +66,6 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// Returns (d0)[s0] -> (d0 + s0 + 1, d0 - s0 - 1)
 AffineMap composeUnboundedMaps(AffineMap f, AffineMap g);
 
-/// Given an AffineExpr `e` and an unbounded AffineMap `g`, returns the
-/// AffineExpr e o g (i.e. e(g), i.e. e composed with g).
-///
-/// Prerequisites:
-/// `e` and `g` are composable, i.e. that the number of AffineDimExpr of `e` is
-/// smaller than the number of results of `g`.
-AffineExpr composeWithUnboundedMap(AffineExpr e, AffineMap g);
-
 /// Returns the sequence of AffineApplyOp OperationInsts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.

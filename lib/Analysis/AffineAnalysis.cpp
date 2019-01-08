@@ -392,27 +392,6 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
   return simplifiedExpr;
 }
 
-/// Returns the AffineExpr that results from substituting `exprs[i]` into `e`
-/// for each AffineDimExpr of position i in `e`.
-/// Precondition: the maximal AffineDimExpr position in `e` is smaller than
-/// `exprs.size()`.
-static AffineExpr substExprs(AffineExpr e, llvm::ArrayRef<AffineExpr> exprs) {
-  if (auto binExpr = e.dyn_cast<AffineBinaryOpExpr>()) {
-    return getAffineBinaryOpExpr(binExpr.getKind(),
-                                 substExprs(binExpr.getLHS(), exprs),
-                                 substExprs(binExpr.getRHS(), exprs));
-  }
-  if (auto dim = e.dyn_cast<AffineDimExpr>()) {
-    assert(dim.getPosition() < exprs.size() &&
-           "Cannot compose due to dim mismatch");
-    return exprs[dim.getPosition()];
-  }
-  if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
-    return sym;
-  }
-  return e.template cast<AffineConstantExpr>();
-}
-
 AffineMap mlir::composeUnboundedMaps(AffineMap f, AffineMap g) {
   assert(f.getNumDims() == g.getNumResults() &&
          "Num dims of f must be the same as num results of g for maps to be "
@@ -420,17 +399,15 @@ AffineMap mlir::composeUnboundedMaps(AffineMap f, AffineMap g) {
   assert(g.getRangeSizes().empty() && "Expected unbounded AffineMap");
   assert(f.getRangeSizes().empty() && "Expected unbounded AffineMap");
   auto exprs = functional::map(
-      [g](AffineExpr expr) { return mlir::composeWithUnboundedMap(expr, g); },
+      [g](AffineExpr expr) {
+        return simplifyAffineExpr(expr.compose(g), g.getNumDims(),
+                                  g.getNumSymbols());
+      },
       f.getResults());
   auto composed =
       AffineMap::get(g.getNumDims(),
                      std::max(f.getNumSymbols(), g.getNumSymbols()), exprs, {});
   return composed;
-}
-
-AffineExpr mlir::composeWithUnboundedMap(AffineExpr e, AffineMap g) {
-  return simplifyAffineExpr(substExprs(e, g.getResults()), g.getNumDims(),
-                            g.getNumSymbols());
 }
 
 // Flattens the expressions in map. Returns true on success or false

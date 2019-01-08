@@ -115,3 +115,10 @@ func @symbols1() {
   "test_affine_map"() { affine_map: (d0, d1) -> (d0 + 1, d1 - 1) } : () -> ()
   return
 }
+
+func @drop() {
+  // CHECK: Composed map: (d0, d1, d2)[s0, s1] -> (d0 * 2 + d1 + d2 + s1)
+  "test_affine_map"() { affine_map: (d0, d1, d2)[s0, s1] -> (d0 + s1, d1 + s0, d0 + d1 + d2) } : () -> ()
+  "test_affine_map"() { affine_map: (d0, d1, d2) -> (d0 + d2) } : () -> ()
+  return
+}

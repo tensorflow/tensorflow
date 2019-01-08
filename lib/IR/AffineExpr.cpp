@@ -18,6 +18,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "AffineExprDetail.h"
 #include "mlir/IR/AffineExprVisitor.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -283,7 +284,11 @@ AffineExpr AffineExpr::operator%(uint64_t v) const {
 AffineExpr AffineExpr::operator%(AffineExpr other) const {
   return AffineBinaryOpExprStorage::get(AffineExprKind::Mod, expr, other.expr);
 }
-
+AffineExpr AffineExpr::compose(AffineMap map) const {
+  SmallVector<AffineExpr, 8> dimReplacements(map.getResults().begin(),
+                                             map.getResults().end());
+  return replaceDimsAndSymbols(dimReplacements, {});
+}
 raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr) {
   expr.print(os);
   return os;

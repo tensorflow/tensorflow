@@ -429,7 +429,8 @@ SingleResultAffineNormalizer::SingleResultAffineNormalizer(
   auto exprsMap = AffineMap::get(dimValueToPosition.size(),
                                  symValueToPosition.size(), exprs, {});
 
-  expr = composeWithUnboundedMap(map.getResult(0), exprsMap);
+  expr = simplifyAffineExpr(map.getResult(0).compose(exprsMap),
+                            exprsMap.getNumDims(), exprsMap.getNumSymbols());
 
   LLVM_DEBUG(map.getResult(0).print(dbgs() << "\nCompose expr: "));
   LLVM_DEBUG(exprsMap.print(dbgs() << "\nWith map: "));

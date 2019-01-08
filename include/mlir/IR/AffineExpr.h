@@ -31,6 +31,7 @@
 namespace mlir {
 
 class MLIRContext;
+class AffineMap;
 
 namespace detail {
 
@@ -141,6 +142,21 @@ public:
   AffineExpr ceilDiv(AffineExpr other) const;
   AffineExpr operator%(uint64_t v) const;
   AffineExpr operator%(AffineExpr other) const;
+
+  /// Compose with an AffineMap.
+  /// Returns the composition of this AffineExpr with `map`.
+  ///
+  /// Prerequisites:
+  /// `this` and `map` are composable, i.e. that the number of AffineDimExpr of
+  /// `this` is smaller than the number of results of `map`. If a result of a
+  /// map does not have a corresponding AffineDimExpr, that result simply does
+  /// not appear in the produced AffineExpr.
+  ///
+  /// Example:
+  ///   expr: `d0 + d2`
+  ///   map:  `(d0, d1, d2)[s0, s1] -> (d0 + s1, d1 + s0, d0 + d1 + d2)`
+  ///   returned expr: `d0 * 2 + d1 + d2 + s1`
+  AffineExpr compose(AffineMap map) const;
 
   friend ::llvm::hash_code hash_value(AffineExpr arg);
 
