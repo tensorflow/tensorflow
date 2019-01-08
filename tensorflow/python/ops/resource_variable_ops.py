@@ -504,7 +504,6 @@ class ResourceVariable(variables.VariableV1):
       # all in graph mode.
       self._handle_deleter = EagerResourceDeleter(
           handle=self._handle, handle_device=self._handle.device)
-    self._cached_shape_as_list = None
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
@@ -562,7 +561,6 @@ class ResourceVariable(variables.VariableV1):
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._constraint = None
-    self._cached_shape_as_list = None
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -632,12 +630,9 @@ class ResourceVariable(variables.VariableV1):
     return self._distribute_strategy
 
   def _shape_as_list(self):
-    if self._cached_shape_as_list:
-      return self._cached_shape_as_list
     if self.shape.ndims is None:
       return None
-    self._cached_shape_as_list = [dim.value for dim in self.shape.dims]
-    return self._cached_shape_as_list
+    return [dim.value for dim in self.shape.dims]
 
   def _shape_tuple(self):
     shape = self._shape_as_list()
