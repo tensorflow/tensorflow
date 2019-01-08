@@ -52,11 +52,6 @@ from tensorflow.python.training import rmsprop
 from tensorflow_estimator.python.estimator.inputs import numpy_io
 
 def _initialized_session(config=None):
-  #config = tensorflow.ConfigProto()
-  config.gpu_options.allow_growth = True
-  config.gpu_options.per_process_gpu_memory_fraction = 0.3
-  #config = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
-  #print('Amit Amit----------------------------------------------------------')
   sess = session.Session(config=config)
   sess.run(variables_lib.global_variables_initializer())
   sess.run(lookup_ops.tables_initializer())
