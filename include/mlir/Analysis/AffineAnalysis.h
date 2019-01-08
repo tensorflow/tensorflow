@@ -69,6 +69,7 @@ AffineMap simplifyAffineMap(AffineMap map);
 ///   affine map for each of these AffineApplyOp is itself single result and
 ///   unbounded. Essentially, all ancestor AffineApplyOp must have been
 ///   constructed as single-result, unbounded, AffineMaps.
+// TODO(ntv): return a canonical AffineApply.
 OpPointer<AffineApplyOp>
 makeNormalizedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
                           llvm::ArrayRef<Value *> operands);

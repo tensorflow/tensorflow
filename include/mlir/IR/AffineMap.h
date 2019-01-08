@@ -64,6 +64,7 @@ public:
 
   explicit operator bool() { return map; }
   bool operator==(const AffineMap &other) const { return other.map == map; }
+  bool operator!=(const AffineMap &other) const { return !(other.map == map); }
 
   /// Returns true if the co-domain (or more loosely speaking, range) of this
   /// map is bounded. Bounded affine maps have a size (extent) for each of

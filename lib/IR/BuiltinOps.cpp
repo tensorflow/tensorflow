@@ -27,6 +27,7 @@
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
@@ -194,9 +195,10 @@ struct SimplifyAffineApplyState : public PatternState {
 
 } // end anonymous namespace.
 
-PatternMatchResult SimplifyAffineApply::match(OperationInst *op) const {
-  auto apply = op->cast<AffineApplyOp>();
-  auto map = apply->getAffineMap();
+void mlir::canonicalizeMapAndOperands(
+    AffineMap &map, llvm::SmallVectorImpl<Value *> &operands) {
+  assert(map.getNumInputs() == operands.size() &&
+         "map inputs must match number of operands");
 
   // Check to see what dims are used.
   llvm::SmallBitVector usedDims(map.getNumDims());
@@ -209,34 +211,46 @@ PatternMatchResult SimplifyAffineApply::match(OperationInst *op) const {
   });
 
   // If any dims or syms are unused, remove them.
-  if (!usedDims.all() || !usedSyms.all()) {
-    FuncBuilder builder(op);
+  if (usedDims.all() && usedSyms.all())
+    return;
 
-    SmallVector<Value *, 8> resultOperands;
-    resultOperands.reserve(apply->getNumOperands());
+  auto *context = map.getContext();
 
-    SmallVector<AffineExpr, 8> dimRemapping(map.getNumDims());
-    unsigned nextDim = 0;
-    for (unsigned i = 0, e = map.getNumDims(); i != e; ++i) {
-      if (usedDims[i]) {
-        dimRemapping[i] = builder.getAffineDimExpr(nextDim++);
-        resultOperands.push_back(apply->getOperand(i));
-      }
+  SmallVector<Value *, 8> resultOperands;
+  resultOperands.reserve(operands.size());
+
+  SmallVector<AffineExpr, 8> dimRemapping(map.getNumDims());
+  unsigned nextDim = 0;
+  for (unsigned i = 0, e = map.getNumDims(); i != e; ++i) {
+    if (usedDims[i]) {
+      dimRemapping[i] = getAffineDimExpr(nextDim++, context);
+      resultOperands.push_back(operands[i]);
     }
-    SmallVector<AffineExpr, 8> symRemapping(map.getNumSymbols());
-    unsigned nextSym = 0;
-    for (unsigned i = 0, e = map.getNumSymbols(); i != e; ++i) {
-      if (usedSyms[i]) {
-        symRemapping[i] = builder.getAffineSymbolExpr(nextSym++);
-        resultOperands.push_back(apply->getOperand(i + map.getNumDims()));
-      }
-    }
-
-    auto newMap =
-        map.replaceDimsAndSymbols(dimRemapping, symRemapping, nextDim, nextSym);
-    return matchSuccess(
-        std::make_unique<SimplifyAffineApplyState>(newMap, resultOperands));
   }
+  SmallVector<AffineExpr, 8> symRemapping(map.getNumSymbols());
+  unsigned nextSym = 0;
+  for (unsigned i = 0, e = map.getNumSymbols(); i != e; ++i) {
+    if (usedSyms[i]) {
+      symRemapping[i] = getAffineSymbolExpr(nextSym++, context);
+      resultOperands.push_back(operands[i + map.getNumDims()]);
+    }
+  }
+  map = map.replaceDimsAndSymbols(dimRemapping, symRemapping, nextDim, nextSym);
+  operands = resultOperands;
+}
+
+PatternMatchResult SimplifyAffineApply::match(OperationInst *op) const {
+  auto apply = op->cast<AffineApplyOp>();
+  auto map = apply->getAffineMap();
+
+  AffineMap oldMap = map;
+  SmallVector<Value *, 8> resultOperands(apply->getOperands().begin(),
+                                         apply->getOperands().end());
+  canonicalizeMapAndOperands(map, resultOperands);
+  if (map != oldMap)
+    return matchSuccess(
+        std::make_unique<SimplifyAffineApplyState>(map, resultOperands));
+
   return matchFailure();
 }
 
