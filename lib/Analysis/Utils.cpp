@@ -426,8 +426,7 @@ ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   // Sanity check.
   unsigned sliceSurroundingLoopsSize = sliceSurroundingLoops.size();
   (void)sliceSurroundingLoopsSize;
-  unsigned sliceLoopLimit = dstLoopDepth + numSrcLoopIVs;
-  assert(sliceLoopLimit >= sliceSurroundingLoopsSize);
+  assert(dstLoopDepth + numSrcLoopIVs >= sliceSurroundingLoopsSize);
 
   // Update loop bounds for loops in 'sliceLoopNest'.
   for (unsigned i = 0; i < srcLoopDepth; ++i) {

@@ -254,28 +254,6 @@ public:
     return result;
   }
 
-  /// Creates an operation of specific op type at the current insertion point.
-  /// If the result is an invalid op (the verifier hook fails), emit an error
-  /// and return null.
-  template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(Location location, Args... args) {
-    OperationState state(getContext(), location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
-    auto *inst = createOperation(state);
-
-    // If the OperationInst we produce is valid, return it.
-    if (!OpTy::verifyInvariants(inst)) {
-      auto result = inst->dyn_cast<OpTy>();
-      assert(result && "Builder didn't return the right type");
-      return result;
-    }
-
-    // Otherwise, the error message got emitted.  Just remove the instruction
-    // we made.
-    inst->erase();
-    return OpPointer<OpTy>();
-  }
-
   /// Creates a deep copy of the specified instruction, remapping any operands
   /// that use values outside of the instruction using the map that is provided
   /// ( leaving them alone if no entry is present).  Replaces references to
