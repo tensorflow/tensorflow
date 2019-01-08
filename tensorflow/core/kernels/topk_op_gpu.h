@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_
 
 #if GOOGLE_CUDA
 
@@ -561,14 +563,8 @@ struct TopKFunctor<GPUDevice, T> {
 };
 
 }  // end namespace functor
-
-#define INSTANTIATE_TEMPLATE(type) \
-  template struct functor::TopKFunctor<GPUDevice, type>;
-
-TF_CALL_GPU_NUMBER_TYPES(INSTANTIATE_TEMPLATE);
-TF_CALL_INTEGRAL_TYPES(INSTANTIATE_TEMPLATE);
-#undef INSTANTIATE_TEMPLATE
-
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_
