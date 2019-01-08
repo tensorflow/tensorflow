@@ -22,6 +22,7 @@ bool Is2DMaxPoolGrad(const HloInstruction*);
 bool Is2DReductionWindow(const HloInstruction*);
 bool IsScalar(const HloInstruction*);
 bool IsScalarConstant(const HloInstruction*);
+bool IsScalarIntegerConstant(const HloInstruction*);
 bool IsConvFilterTranspose(const HloInstruction*);
 bool IsBiasReduce(const HloInstruction*);
 bool IsOutputFeed(const HloInstruction*);
