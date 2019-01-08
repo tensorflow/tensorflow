@@ -789,7 +789,7 @@ func @f(%m : memref<?x?xf32>) {
 
 // -----
 
-func @dialect_type_empty_namespace(!<"">) -> () { // expected-error {{invalid dialect type namespace}}
+func @dialect_type_empty_namespace(!<"">) -> () { // expected-error {{invalid type identifier}}
   return
 }
 
@@ -801,12 +801,29 @@ func @dialect_type_no_string_type_data(!foo<>) -> () { // expected-error {{expec
 
 // -----
 
-func @dialect_type_missing_less(!foo"">) -> () { // expected-error {{expected '<' in dialect type}}
+func @dialect_type_missing_greater(!foo<"") -> () { // expected-error {{expected '>' in dialect type}}
   return
 }
 
 // -----
 
-func @dialect_type_missing_greater(!foo<"") -> () { // expected-error {{expected '>' in dialect type}}
+func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined type alias id 'unknown_alias'}}
   return
 }
+
+// -----
+
+!missing_eq_alias type i32 // expected-error {{expected '=' in type alias definition}}
+
+// -----
+
+!missing_kw_type_alias = i32 // expected-error {{expected 'type' in type alias definition}}
+
+// -----
+
+!missing_type_alias = type // expected-error@+2 {{expected type}}
+
+// -----
+
+!redef_alias = type i32
+!redef_alias = type i32 // expected-error {{redefinition of type alias id 'redef_alias'}}

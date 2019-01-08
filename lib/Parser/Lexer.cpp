@@ -221,6 +221,7 @@ Token Lexer::lexAtIdentifier(const char *tokStart) {
 ///   affine-map-id ::= `#` suffix-id
 ///   ssa-id        ::= '%' suffix-id
 ///   block-id      ::= '^' suffix-id
+///   type-id       ::= '!' suffix-id
 ///   suffix-id     ::= digit+ | (letter|id-punct) (letter|id-punct|digit)*
 ///
 Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
@@ -241,7 +242,7 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
     break;
   case '!':
     kind = Token::exclamation_identifier;
-    errorKind = "invalid dialect type namespace";
+    errorKind = "invalid type identifier";
     break;
   default:
     llvm_unreachable("invalid caller");

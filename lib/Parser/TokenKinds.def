@@ -112,6 +112,7 @@ TOK_KEYWORD(step)
 TOK_KEYWORD(tensor)
 TOK_KEYWORD(to)
 TOK_KEYWORD(true)
+TOK_KEYWORD(type)
 TOK_KEYWORD(sparse)
 TOK_KEYWORD(vector)
 

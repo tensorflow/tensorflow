@@ -717,3 +717,11 @@ func @unknown_dialect_type() -> !bar<""> {
   return %0 : !bar<"">
 }
 
+// CHECK-LABEL: func @type_alias() -> i32 {
+!i32_type_alias = type i32
+func @type_alias() -> !i32_type_alias {
+
+  // Return a non-aliased i32 type.
+  %0 = "foo"() : () -> i32
+  return %0 : i32
+}

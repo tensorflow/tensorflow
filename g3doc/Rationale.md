@@ -483,7 +483,9 @@ example, function types have no defined keyword and integer types are defined by
 a regular expression to support arbitrary bitwidth. Dialects with existing type
 systems, e.g. LLVM, are likely to provide wrappers around their existing type
 systems. For these wrapper types there is no simple canonical name, it's logical
-to think of these types as existing within the namespace of the dialect.
+to think of these types as existing within the namespace of the dialect. If a
+dialect wishes to assign a canonical name to a type, it can be done via
+[type aliases](LangRef.md#type-aliases).
 
 ## Examples {#examples}
 

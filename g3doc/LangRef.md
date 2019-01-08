@@ -513,6 +513,7 @@ type ::= integer-type
        | memref-type
        | function-type
        | dialect-type
+       | type-alias
 
 // MLIR doesn't have a tuple type but functions can return multiple values.
 type-list ::= type-list-parens | type
@@ -525,6 +526,29 @@ ssa-use-and-type ::= ssa-use `:` type
 
 // Non-empty list of names and types.
 ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
+```
+
+### Type Aliases {#type-aliases}
+
+``` {.ebnf}
+type-alias-def ::= '!' alias-name '=' 'type' type
+type-alias ::= '!' alias-name
+```
+
+MLIR supports defining named aliases for types. A type alias is an identifier
+that can be used in the place of the type that it defines. These aliases *must*
+be defined before their uses.
+
+Example:
+
+```mlir {.mlir}
+!avx.m128 = type vector<4 x f32>
+
+// Using the original type.
+"foo"(%x) : vector<4 x f32> -> ()
+
+// Using the type alias.
+"foo"(%x) : !avx.m128 -> ()
 ```
 
 ### Builtin Types {#builtin-types}

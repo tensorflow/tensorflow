@@ -76,6 +76,9 @@ public:
   // A map from integer set identifier to IntegerSet.
   llvm::StringMap<IntegerSet> integerSetDefinitions;
 
+  // A map from type alias identifier to Type.
+  llvm::StringMap<Type> typeAliasDefinitions;
+
   // This keeps track of all forward references to functions along with the
   // temporary function used to represent them.
   llvm::DenseMap<Identifier, Function *> functionForwardRefs;
@@ -181,7 +184,7 @@ public:
   VectorType parseVectorType();
   ParseResult parseXInDimensionList();
   ParseResult parseDimensionListRanked(SmallVectorImpl<int> &dimensions);
-  Type parseDialectType();
+  Type parseExtendedType();
   Type parseTensorType();
   Type parseMemRefType();
   Type parseFunctionType();
@@ -287,7 +290,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///   type ::= integer-type
 ///          | index-type
 ///          | float-type
-///          | dialect-type
+///          | extended-type
 ///          | vector-type
 ///          | tensor-type
 ///          | memref-type
@@ -337,9 +340,9 @@ Type Parser::parseType() {
     consumeToken(Token::kw_index);
     return builder.getIndexType();
 
-  // dialect-specific type
+  // extended type
   case Token::exclamation_identifier:
-    return parseDialectType();
+    return parseExtendedType();
   }
 }
 
@@ -434,19 +437,31 @@ ParseResult Parser::parseDimensionListRanked(SmallVectorImpl<int> &dimensions) {
   return ParseSuccess;
 }
 
-/// Parse a dialect-specific type.
+/// Parse an extended type.
 ///
-///   dialect-type ::= `!` dialect-namespace `<` '"' type-data '"' `>`
+///   extended-type ::= (dialect-type | type-alias)
+///   dialect-type  ::= `!` dialect-namespace `<` '"' type-data '"' `>`
+///   type-alias    ::= `!` alias-name
 ///
-Type Parser::parseDialectType() {
+Type Parser::parseExtendedType() {
   assert(getToken().is(Token::exclamation_identifier));
 
   // Parse the dialect namespace.
-  StringRef dialectName = getTokenSpelling().drop_front();
+  StringRef identifier = getTokenSpelling().drop_front();
   consumeToken(Token::exclamation_identifier);
 
-  // Check for a registered dialect with this name.
-  auto *dialect = state.context->getRegisteredDialect(dialectName);
+  // If there is not a '<' token, we are parsing a type alias.
+  if (getToken().isNot(Token::less)) {
+    // Check for an alias for this type.
+    auto aliasIt = state.typeAliasDefinitions.find(identifier);
+    if (aliasIt == state.typeAliasDefinitions.end())
+      return (emitError("undefined type alias id '" + identifier + "'"),
+              nullptr);
+    return aliasIt->second;
+  }
+
+  // Otherwise, check for a registered dialect with this name.
+  auto *dialect = state.context->getRegisteredDialect(identifier);
   if (dialect) {
     // Make sure that the dialect provides a parsing hook.
     if (!dialect->typeParseHook)
@@ -477,7 +492,7 @@ Type Parser::parseDialectType() {
       return nullptr;
   } else {
     // Otherwise, form a new unknown type.
-    result = UnknownType::get(Identifier::get(dialectName, state.context),
+    result = UnknownType::get(Identifier::get(identifier, state.context),
                               typeData, state.context);
   }
 
@@ -3191,6 +3206,8 @@ private:
 
   ParseResult parseAffineStructureDef();
 
+  ParseResult parseTypeAliasDef();
+
   // Functions.
   ParseResult parseArgumentList(SmallVectorImpl<Type> &argTypes,
                                 SmallVectorImpl<StringRef> &argNames);
@@ -3240,6 +3257,37 @@ ParseResult ModuleParser::parseAffineStructureDef() {
     getState().affineMapDefinitions[affineStructureId] = map;
   else
     getState().integerSetDefinitions[affineStructureId] = set;
+
+  return ParseSuccess;
+}
+
+/// Parse a type alias declaration.
+///
+///   type-alias-def ::= '!' alias-name `=` 'type' type
+///
+ParseResult ModuleParser::parseTypeAliasDef() {
+  assert(getToken().is(Token::exclamation_identifier));
+
+  StringRef aliasName = getTokenSpelling().drop_front();
+
+  // Check for redefinitions.
+  if (getState().typeAliasDefinitions.count(aliasName) > 0)
+    return emitError("redefinition of type alias id '" + aliasName + "'");
+
+  consumeToken(Token::exclamation_identifier);
+
+  // Parse the '=' and 'type'.
+  if (parseToken(Token::equal, "expected '=' in type alias definition") ||
+      parseToken(Token::kw_type, "expected 'type' in type alias definition"))
+    return ParseFailure;
+
+  // Parse the type.
+  Type aliasedType = parseType();
+  if (!aliasedType)
+    return ParseFailure;
+
+  // Register this alias with the parser state.
+  getState().typeAliasDefinitions.try_emplace(aliasName, aliasedType);
 
   return ParseSuccess;
 }
@@ -3434,6 +3482,11 @@ ParseResult ModuleParser::parseModule() {
 
     case Token::hash_identifier:
       if (parseAffineStructureDef())
+        return ParseFailure;
+      break;
+
+    case Token::exclamation_identifier:
+      if (parseTypeAliasDef())
         return ParseFailure;
       break;
 
