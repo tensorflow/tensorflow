@@ -14,9 +14,7 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ******************************************************
 ```
 
-<left>
 ![Timeline](graph_timeline.png)
-</left>
 
 
 ```python
