@@ -33,6 +33,12 @@ void Logger::log(Severity severity, const char* msg) {
       VLOG(2) << name_ << " " << msg;
       break;
     }
+#if NV_TENSORRT_VERSION >= 5100
+    case Severity::kVERBOSE: {  // Mark TRT verbose messages as debug!
+      VLOG(2) << name_ << " " << msg;
+      break;
+    }
+#endif
     case Severity::kWARNING: {
       LOG(WARNING) << name_ << " " << msg;
       break;
@@ -48,7 +54,8 @@ void Logger::log(Severity severity, const char* msg) {
     // This is useless for now. But would catch it in future if enum changes. It
     // is always good to have default case!
     default: {
-      LOG(FATAL) << name_ << "Got unknown severity level from TRT " << msg;
+      LOG(FATAL) << name_ << "Got unknown severity level " <<
+        int(severity) << " from TensorRT: " << msg;
       break;
     }
   }
