@@ -48,118 +48,24 @@ bool DotImplementationCanHandleTranspose(
 absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
 
-// Helper class for emitting LLVM IR to perform the dot operation.
-class DotOpEmitter {
- public:
-  // Emit LLVM IR to perform the dot operation on lhs_array and rhs_array and
-  // place the result in target_array. IR is emitted at current insert point of
-  // the builder. Upon completion of the method, the insert point is set to the
-  // end of all instructions emitted for this operation.
-  //
-  // If `addend_array` is not nullptr then it must be an array of the same
-  // dimensions as the result, and the result is computed as `addend_array` +
-  // dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
-  // for Matrix-vector products.
-  static Status EmitDotOperation(
-      const HloInstruction& dot, const llvm_ir::IrArray& target_array,
-      const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-      const llvm_ir::IrArray* addend_array,
-      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-      const HloModuleConfig& hlo_module_config,
-      const TargetMachineFeatures& target_machine_features);
-
- private:
-  DotOpEmitter(const HloInstruction& dot, const llvm_ir::IrArray& target_array,
-               const llvm_ir::IrArray& lhs_array,
-               const llvm_ir::IrArray& rhs_array,
-               const llvm_ir::IrArray* addend_array,
-               llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-               const HloModuleConfig& hlo_module_config,
-               const TargetMachineFeatures& target_machine_features);
-
-  // Emits the IR to perform the dot operation.
-  Status Emit();
-
-  // Emits instructions to perform a scalar dot product (a multiply of the
-  // LHS and RHS) and store the results in the target.
-  Status EmitScalarDot();
-
-  // Emits a call to the CPU runtime to perform the matrix multiply.
-  Status EmitCallToRuntime();
-
-  // Represents the dimensions of a matrix-matrix multiply operation.
-  struct MatMultDims {
-    // The number of rows in the LHS.
-    int64 m;
-
-    // The number of columns in the LHS, which is also must be equal to the
-    // number of rows in the RHS.
-    int64 k;
-
-    // The number of columns on the RHS.
-    int64 n;
-
-    // True if the LHS matrix is column major.
-    bool lhs_column_major;
-
-    // True if the LHS contraction dimension is not 1.
-    bool lhs_non_canonical;
-
-    // True if the RHS matrix is column major.
-    bool rhs_column_major;
-
-    // True if the RHS contraction dimension is not 0.
-    bool rhs_non_canonical;
-
-    // True if the result matrix is column major.
-    bool target_column_major;
-  };
-
-  // Get the MatMultDims instance for the dot product this DotOpEmitter
-  // represents.  Precondition: the dot is of rank 2 (and thus its operands are
-  // of rank 2 as well).
-  MatMultDims GetMatMultDims() const;
-
-  // Lowers the dot operation as a tiled Matrix*Vector loop.
-  void EmitTiledLlvmIrGemv();
-
-  // Lowers the dot operation as a tiled Matrix*Matrix loop.
-  void EmitTiledLlvmIrGemm();
-
-  // Lowers the dot operation as a naive nested loop that computes the result
-  // one element at a time.
-  void EmitNaiveLlvmIrGemm();
-
-  // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
-  // registers.
-  int64 GetGemvTilingFactor() const {
-    const int64 kDefaultTilingFactor = 8;
-    return options::LlvmIrGemvTilingFactor(hlo_module_config_)
-        .value_or(kDefaultTilingFactor);
-  }
-
-  std::tuple<int64, int64, int64> GetGemmTileSize() const {
-    // Tuned for broadwell - Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz
-    //
-    // TODO(b/80093688): Tune for other architectures and centralize this
-    // information in one place.
-    const std::tuple<int64, int64, int64> kDefaultTileSize =
-        std::tuple<int64, int64, int64>(11, 9, 1);
-    return options::LlvmIrGemmTileSize(hlo_module_config_)
-        .value_or(kDefaultTileSize);
-  }
-
-  const HloInstruction& dot_;
-  const llvm_ir::IrArray& target_array_;
-  const llvm_ir::IrArray& lhs_array_;
-  const llvm_ir::IrArray& rhs_array_;
-  const llvm_ir::IrArray* addend_array_;
-  llvm::Value* executable_run_options_value_;
-  llvm::IRBuilder<>* b_;
-  const HloModuleConfig& hlo_module_config_;
-  const TargetMachineFeatures& target_machine_features_;
-};
-
+// Emit LLVM IR to perform the dot operation on lhs_array and rhs_array and
+// place the result in target_array. IR is emitted at current insert point of
+// the builder. Upon completion of the method, the insert point is set to the
+// end of all instructions emitted for this operation.
+//
+// If `addend_array` is not nullptr then it must be an array of the same
+// dimensions as the result, and the result is computed as `addend_array` +
+// dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
+// for Matrix-vector products.
+Status EmitDotOperation(const HloInstruction& dot,
+                        const llvm_ir::IrArray& target_array,
+                        const llvm_ir::IrArray& lhs_array,
+                        const llvm_ir::IrArray& rhs_array,
+                        const llvm_ir::IrArray* addend_array,
+                        llvm::Value* executable_run_options_value,
+                        llvm::IRBuilder<>* b,
+                        const HloModuleConfig& hlo_module_config,
+                        const TargetMachineFeatures& target_machine_features);
 }  // namespace cpu
 }  // namespace xla
 
