@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses_impl
@@ -1554,6 +1555,50 @@ class ReplicaContext(object):
     require_replica_context(self)
     return (device_util.current(),)
 
+  def all_reduce(self, reduce_op, value):
+    """All-reduces the given `Tensor` nest across replicas.
+
+    If `all_reduce` is called in any replica, it must be called in all replicas.
+    The nested structure and `Tensor` shapes must be identical in all replicas.
+
+    IMPORTANT: The ordering of communications must be identical in all replicas.
+
+    Example with two replicas:
+      Replica 0 `value`: {'a': 1, 'b': [40,  1]}
+      Replica 1 `value`: {'a': 3, 'b': [ 2, 98]}
+
+      If `reduce_op` == `SUM`:
+        Result (on all replicas): {'a': 4, 'b': [42, 99]}
+
+      If `reduce_op` == `MEAN`:
+        Result (on all replicas): {'a': 2, 'b': [21, 49.5]}
+
+    Args:
+      reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
+      value: The nested structure of `Tensor`s to all-reduced.
+        The structure must be compatible with `tf.nest`.
+
+    Returns:
+       A `Tensor` nest with the reduced `value`s from each replica.
+    """
+    def batch_all_reduce(strategy, *value_flat):
+      return strategy.extended.batch_reduce_to(
+          reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat])
+
+    if reduce_op in [reduce_util.ReduceOp.SUM, reduce_util.ReduceOp.MEAN]:
+      # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
+      @custom_gradient.custom_gradient
+      def grad_wrapper(*xs):
+        ys = self.merge_call(batch_all_reduce, args=xs)
+        # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
+        return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
+      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+    else:
+      # TODO(cjfj): Implement gradients for other reductions.
+      reduced = nest.pack_sequence_as(
+          value, self.merge_call(batch_all_reduce, args=nest.flatten(value)))
+      return nest.map_structure(array_ops.prevent_gradient, reduced)
+
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
   # across all replicas. The caller would wait to call this function until they
@@ -1563,6 +1608,15 @@ class ReplicaContext(object):
   # * When constructing a graph, it could batch up all reduction requests up
   #   to that point that the first result is needed. Most likely this can be
   #   implemented in terms of `merge_call()` and `batch_reduce_to()`.
+
+
+def _batch_reduce_destination(x):
+  """Returns the destinations for batch all-reduce."""
+  if isinstance(x, ops.Tensor):  # One device strategies.
+    return x.device
+  else:
+    return x
+
 
 # ------------------------------------------------------------------------------
 
