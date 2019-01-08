@@ -1,4 +1,4 @@
-//===- SimplifyAffineExpr.cpp - MLIR Affine Structures Class-----*- C++ -*-===//
+//===- SimplifyAffineStructures.cpp - ---------------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass to simplify affine expressions.
+// This file implements a pass to simplify affine structures.
 //
 //===----------------------------------------------------------------------===//
 

@@ -1262,6 +1262,29 @@ static AffineExpr simplifyAdd(AffineExpr lhs, AffineExpr rhs) {
     }
   }
 
+  // Detect and transform "expr - c * (expr floordiv c)" to "expr mod c". This
+  // leads to a much more efficient form when 'c' is a power of two, and in
+  // general a more compact and readable form.
+
+  // Process '(expr floordiv c) * (-c)'.
+  AffineBinaryOpExpr rBinOpExpr = rhs.dyn_cast<AffineBinaryOpExpr>();
+  if (!rBinOpExpr)
+    return nullptr;
+
+  auto lrhs = rBinOpExpr.getLHS();
+  auto rrhs = rBinOpExpr.getRHS();
+
+  // Process lrhs, which is 'expr floordiv c'.
+  AffineBinaryOpExpr lrBinOpExpr = lrhs.dyn_cast<AffineBinaryOpExpr>();
+  if (!lrBinOpExpr)
+    return nullptr;
+
+  auto llrhs = lrBinOpExpr.getLHS();
+  auto rlrhs = lrBinOpExpr.getRHS();
+
+  if (lhs == llrhs && rlrhs == -rrhs) {
+    return lhs % rlrhs;
+  }
   return nullptr;
 }
 
