@@ -2654,7 +2654,7 @@ class TPUEstimator(estimator_lib.Estimator):
         if self._log_every_n_steps is not None:
           examples_hook = ExamplesPerSecondHook(
               ctx.global_batch_size,
-              output_dir=self.model_dir,
+              output_dir=self.model_dir if config.save_summary_steps else None,
               every_n_steps=self._log_every_n_steps)
 
         if ctx.is_running_on_cpu(is_export_mode=is_export_mode):
