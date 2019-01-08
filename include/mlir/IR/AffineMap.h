@@ -117,6 +117,25 @@ public:
   bool constantFold(ArrayRef<Attribute> operandConstants,
                     SmallVectorImpl<Attribute> &results) const;
 
+  /// Returns the AffineMap resulting from composing `this` with `map`.
+  /// The resulting AffineMap has as many AffineDimExpr as `map` and as many
+  /// AffineSymbolExpr as the concatenation of `this` and `map` (in which case
+  /// the symbols of `this` map come first).
+  ///
+  /// Prerequisites:
+  /// The maps are composable, i.e. that the number of AffineDimExpr of `this`
+  /// matches the number of results of `map`.
+  /// At this time, composition of bounded AffineMap is not supported. Both
+  /// `this` and `map` must be unbounded.
+  ///
+  /// Example:
+  ///   map1: `(d0, d1)[s0, s1] -> (d0 + 1 + s1, d1 - 1 - s0)`
+  ///   map2: `(d0)[s0] -> (d0 + s0, d0 - s0))`
+  ///   map1.compose(map2):
+  ///     `(d0)[s0, s1, s2] -> (d0 + s1 + s2 + 1, d0 - s0 - s2 - 1)`
+  // TODO(ntv): support composition of bounded maps when we have a need for it.
+  AffineMap compose(AffineMap map);
+
   friend ::llvm::hash_code hash_value(AffineMap arg);
 
 private:

@@ -77,6 +77,20 @@ static AffineExpr toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
   return expr;
 }
 
+AffineMap mlir::simplifyAffineMap(AffineMap map) {
+  auto exprs = functional::map(
+      [map](AffineExpr e) {
+        return simplifyAffineExpr(e, map.getNumDims(), map.getNumSymbols());
+      },
+      map.getResults());
+  auto sizes = functional::map(
+      [map](AffineExpr e) {
+        return simplifyAffineExpr(e, map.getNumDims(), map.getNumSymbols());
+      },
+      map.getRangeSizes());
+  return AffineMap::get(map.getNumDims(), map.getNumSymbols(), exprs, sizes);
+}
+
 namespace {
 
 // This class is used to flatten a pure affine expression (AffineExpr,
@@ -390,24 +404,6 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
   assert(flattener.operandExprStack.empty());
 
   return simplifiedExpr;
-}
-
-AffineMap mlir::composeUnboundedMaps(AffineMap f, AffineMap g) {
-  assert(f.getNumDims() == g.getNumResults() &&
-         "Num dims of f must be the same as num results of g for maps to be "
-         "composable");
-  assert(g.getRangeSizes().empty() && "Expected unbounded AffineMap");
-  assert(f.getRangeSizes().empty() && "Expected unbounded AffineMap");
-  auto exprs = functional::map(
-      [g](AffineExpr expr) {
-        return simplifyAffineExpr(expr.compose(g), g.getNumDims(),
-                                  g.getNumSymbols());
-      },
-      f.getResults());
-  auto composed =
-      AffineMap::get(g.getNumDims(),
-                     std::max(f.getNumSymbols(), g.getNumSymbols()), exprs, {});
-  return composed;
 }
 
 // Flattens the expressions in map. Returns true on success or false

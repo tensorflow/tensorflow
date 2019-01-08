@@ -20,6 +20,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -200,4 +201,30 @@ AffineMap AffineMap::replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
         expr.replaceDimsAndSymbols(dimReplacements, symReplacements));
 
   return get(numResultDims, numResultSyms, results, resultRanges);
+}
+
+AffineMap AffineMap::compose(AffineMap map) {
+  assert(getNumDims() == map.getNumResults() && "Number of results mismatch");
+  assert(getRangeSizes().empty() && "TODO: support bounded AffineMap");
+  assert(map.getRangeSizes().empty() && "TODO: support bounded AffineMap");
+  // Prepare `map` by concatenating the symbols and rewriting its exprs.
+  unsigned numDims = map.getNumDims();
+  unsigned numSymbolsThisMap = getNumSymbols();
+  unsigned numSymbols = numSymbolsThisMap + map.getNumSymbols();
+  SmallVector<AffineExpr, 8> newDims(numDims);
+  for (unsigned idx = 0; idx < numDims; ++idx) {
+    newDims[idx] = getAffineDimExpr(idx, getContext());
+  }
+  SmallVector<AffineExpr, 8> newSymbols(numSymbols);
+  for (unsigned idx = numSymbolsThisMap; idx < numSymbols; ++idx) {
+    newSymbols[idx - numSymbolsThisMap] =
+        getAffineSymbolExpr(idx, getContext());
+  }
+  auto newMap =
+      map.replaceDimsAndSymbols(newDims, newSymbols, numDims, numSymbols);
+  SmallVector<AffineExpr, 8> exprs;
+  exprs.reserve(getResults().size());
+  for (auto expr : getResults())
+    exprs.push_back(expr.compose(newMap));
+  return AffineMap::get(numDims, numSymbols, exprs, {});
 }

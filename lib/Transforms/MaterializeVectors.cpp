@@ -470,7 +470,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
   }
   auto projectionMap = AffineMap::get(optionalRatio->size(), 0, keep, {});
   LLVM_DEBUG(projectionMap.print(dbgs() << "\nprojectionMap: "));
-  return composeUnboundedMaps(projectionMap, permutationMap);
+  return simplifyAffineMap(projectionMap.compose(permutationMap));
 }
 
 /// Creates an instantiated version of `read` for the instance of

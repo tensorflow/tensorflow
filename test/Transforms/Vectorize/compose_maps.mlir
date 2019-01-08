@@ -17,14 +17,14 @@ func @simple1() {
 }
 
 func @simple2() {
-  // CHECK: Composed map: (d0)[s0] -> (d0)
+  // CHECK: Composed map: (d0)[s0, s1] -> (d0 - s0 + s1)
   "test_affine_map"() { affine_map: (d0)[s0] -> (d0 + s0 - 1) } : () -> ()
   "test_affine_map"() { affine_map: (d0)[s0] -> (d0 - s0 + 1) } : () -> ()
   return
 }
 
 func @simple3a() {
-  // CHECK: Composed map: (d0, d1)[s0, s1] -> ((d0 ceildiv s0) * s0, (d1 ceildiv s1) * s1)
+  // CHECK: Composed map: (d0, d1)[s0, s1, s2, s3] -> ((d0 ceildiv s2) * s0, (d1 ceildiv s3) * s1)
   "test_affine_map"() { affine_map: (d0, d1)[s0, s1] -> (d0 ceildiv s0, d1 ceildiv s1) } : () -> ()
   "test_affine_map"() { affine_map: (d0, d1)[s0, s1] -> (d0 * s0, d1 * s1) } : () -> ()
   return
@@ -37,7 +37,7 @@ func @simple3b() {
 }
 
 func @simple3c() {
-  // CHECK: Composed map: (d0, d1)[s0, s1, s2, s3] -> ((d0 ceildiv s0) * s0 + d0 mod s2, (d1 ceildiv s1) * s1 + d1 mod s3)
+  // CHECK: Composed map: (d0, d1)[s0, s1, s2, s3, s4, s5] -> ((d0 ceildiv s4) * s4 + d0 mod s2, (d1 ceildiv s5) * s5 + d1 mod s3)
   "test_affine_map"() { affine_map: (d0, d1)[s0, s1] -> ((d0 ceildiv s0) * s0, (d1 ceildiv s1) * s1, d0, d1) } : () -> ()
   "test_affine_map"() { affine_map: (d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0 + d2 mod s2, d1 + d3 mod s3) } : () -> ()
   return
@@ -120,5 +120,12 @@ func @drop() {
   // CHECK: Composed map: (d0, d1, d2)[s0, s1] -> (d0 * 2 + d1 + d2 + s1)
   "test_affine_map"() { affine_map: (d0, d1, d2)[s0, s1] -> (d0 + s1, d1 + s0, d0 + d1 + d2) } : () -> ()
   "test_affine_map"() { affine_map: (d0, d1, d2) -> (d0 + d2) } : () -> ()
+  return
+}
+
+func @multi_symbols() {
+  // CHECK: Composed map: (d0)[s0, s1, s2] -> (d0 + s1 + s2 + 1, d0 - s0 - s2 - 1)
+  "test_affine_map"() { affine_map: (d0)[s0] -> (d0 + s0, d0 - s0) } : () -> ()
+  "test_affine_map"() { affine_map: (d0, d1)[s0, s1] -> (d0 + 1 + s1, d1 - 1 - s0) } : () -> ()
   return
 }

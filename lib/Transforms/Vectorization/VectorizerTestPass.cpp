@@ -222,9 +222,9 @@ void VectorizerTestPass::testComposeMaps(Function *f) {
   }
   AffineMap res;
   for (auto m : maps) {
-    res = res ? composeUnboundedMaps(res, m) : m;
+    res = res ? res.compose(m) : m;
   }
-  res.print(outs() << "\nComposed map: ");
+  simplifyAffineMap(res).print(outs() << "\nComposed map: ");
 }
 
 bool affineApplyOp(const Instruction &inst) {
