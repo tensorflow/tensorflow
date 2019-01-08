@@ -83,6 +83,7 @@ ios_application(
 swift_library(
     name = "TensorFlowLiteAppLib",
     srcs = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/*.swift"]),
+    module_name = "TensorFlowLiteAppLib",
     tags = ["manual"],
     deps = [
         ":TensorFlowLite",

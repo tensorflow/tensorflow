@@ -2118,3 +2118,18 @@ tf_cc_test(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+xla_test(
+    name = "ptxas_bug_120501638",
+    srcs = ["ptxas_bug_120501638.cc"],
+    tags = [
+        # Disabled in OSS until nvidia publicly releases a fixed ptxas.
+        "no_oss",
+    ],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:test",
+    ],
+)

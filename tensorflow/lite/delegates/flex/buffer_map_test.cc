@@ -278,6 +278,8 @@ TEST(BufferMapTest, Forwardable) {
   EXPECT_FALSE(buffer_map.IsForwardable(0));
   buffer_map.SetForwardable(0);
   EXPECT_TRUE(buffer_map.IsForwardable(0));
+  buffer_map.ClearForwardable();
+  EXPECT_FALSE(buffer_map.IsForwardable(0));
 }
 
 }  // namespace

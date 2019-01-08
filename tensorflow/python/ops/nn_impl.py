@@ -467,7 +467,7 @@ def depthwise_conv2d(input,
   to `channel_multiplier` channels for each), then concatenates the results
   together.  The output has `in_channels * channel_multiplier` channels.
 
-  In detail,
+  In detail, with the default NHWC format,
 
       output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
            filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
@@ -540,7 +540,7 @@ def depthwise_conv2d_v2(input,
   to `channel_multiplier` channels for each), then concatenates the results
   together.  The output has `in_channels * channel_multiplier` channels.
 
-  In detail,
+  In detail, with the default NHWC format,
 
       output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
            filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
@@ -599,7 +599,7 @@ def separable_conv2d(input,
   between dimensions `[1, 2]` and `3`, not spatial separability between
   dimensions `1` and `2`.
 
-  In detail,
+  In detail, with the default NHWC format,
 
       output[b, i, j, k] = sum_{di, dj, q, r}
           input[b, strides[1] * i + di, strides[2] * j + dj, q] *
@@ -699,7 +699,7 @@ def separable_conv2d_v2(
   between dimensions `[1, 2]` and `3`, not spatial separability between
   dimensions `1` and `2`.
 
-  In detail,
+  In detail, with the default NHWC format,
 
       output[b, i, j, k] = sum_{di, dj, q, r}
           input[b, strides[1] * i + di, strides[2] * j + dj, q] *

@@ -674,7 +674,9 @@ cuda_py_test(
     additional_deps = [
         ":keras_correctness_test_lib",
     ],
-    shard_count = 16,
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 19,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
