@@ -26,13 +26,15 @@ namespace {
 
 // If the sort instruction has a tuple shape then looks for unused output
 // values and removes them from the sort instruction. Returns true if the
-// graph have been modified.
+// graph has been modified.
 StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   if (!sort->shape().IsTuple()) {
     return false;
   }
 
-  if (sort->parent()->root_instruction() == sort) {
+  HloComputation* computation = sort->parent();
+
+  if (computation->root_instruction() == sort) {
     // Can't analyse users of the root instruction.
     return false;
   }
@@ -60,7 +62,6 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
       new_shapes.push_back(sort->operand(i)->shape());
     }
   }
-  HloComputation* computation = sort->parent();
 
   Shape new_sort_shape = new_shapes.size() == 1
                              ? new_shapes[0]
