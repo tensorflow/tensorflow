@@ -455,6 +455,14 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     with _TPUReplicaContext(self._container_strategy()):
       return fn(*args, **kwargs)
 
+  def _experimental_initialize_system(self):
+    """Experimental method added to be used by Estimator.
+
+    This is a private method only to be used by Estimator. Other frameworks
+    should directly be calling `tf.contrib.distribute.initialize_tpu_system`
+    """
+    initialize_tpu_system(self._tpu_cluster_resolver)
+
   def _initialize(self):
     if context.executing_eagerly():
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
