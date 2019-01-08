@@ -105,7 +105,7 @@ def _parse_func_attrs(attributes):
       attrs[key] = attr_value_pb2.AttrValue(i=value)
     elif isinstance(value, float):
       attrs[key] = attr_value_pb2.AttrValue(f=value)
-    elif isinstance(value, (str, bytes)):
+    elif isinstance(value, (str, bytes, six.text_type)):
       attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(value))
     else:
       raise ValueError("Unsupported attribute type for %s with type %s" %

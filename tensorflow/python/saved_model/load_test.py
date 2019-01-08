@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import tempfile
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -52,11 +53,13 @@ class LoadTest(test.TestCase):
 
   def test_variables(self):
     root = tracking.Checkpointable()
-    root.v1 = variables.Variable(1.)
-    root.v2 = variables.Variable(2.)
+    root.v1 = variables.Variable(1., trainable=True)
+    root.v2 = variables.Variable(2., trainable=False)
     imported = self.cycle(root)
     self.assertEquals(imported.v1.numpy(), 1.0)
+    self.assertTrue(imported.v1.trainable)
     self.assertEquals(imported.v2.numpy(), 2.0)
+    self.assertFalse(imported.v2.trainable)
 
   def test_capture_variables(self):
     root = tracking.Checkpointable()
@@ -247,6 +250,24 @@ class LoadTest(test.TestCase):
     m = M()
     self.cycle(m)
     self.assertEquals(4.0, m.f(constant_op.constant(2.0)).numpy())
+
+  def test_basic_backprop(self):
+    weight = variables.Variable(1., trainable=True)
+    bias = variables.Variable(0., trainable=True)
+    g = def_function.function(
+        lambda x: x*weight + bias,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+
+    root = tracking.Checkpointable()
+    root.weight = weight
+    root.bias = bias
+    root.g = g
+    imported = self.cycle(root)
+    with backprop.GradientTape(watch_accessed_variables=True) as t:
+      x = constant_op.constant([3.5])
+      loss = imported.g(x)
+      grad = t.gradient(loss, [imported.weight, imported.bias])
+      self.assertAllClose(grad, [3.5, 1.0])
 
 
 if __name__ == "__main__":
