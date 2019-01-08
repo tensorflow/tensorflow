@@ -417,9 +417,8 @@ TEST_F(AlgebraicSimplifierTest, InlineTrivialMap) {
   HloInstruction* zero = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   builder.AddInstruction(HloInstruction::CreateMap(
-      r2f32,
-      {param0, builder.AddInstruction(
-                   HloInstruction::CreateBroadcast(r2f32, zero, {}))},
+      r2f32, {param0, builder.AddInstruction(
+                          HloInstruction::CreateBroadcast(r2f32, zero, {}))},
       add_computation));
 
   auto computation = m->AddEntryComputation(builder.Build());
@@ -2709,74 +2708,6 @@ TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortWrongDimensions) {
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
-TEST_F(AlgebraicSimplifierTest, RemoveUnusedSortOperandArrayResult) {
-  const char* hlo_string = R"(
-   HloModule permutation_sort
-
-    ENTRY sort_computation {
-      keys = f32[64,8732]{1,0} parameter(0)
-      values = s32[64,8732]{1,0} parameter(1)
-      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values),
-        dimensions={1}
-      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  AlgebraicSimplifierOptions options(bitcasting_callback());
-  AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-  auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(0))));
-}
-
-TEST_F(AlgebraicSimplifierTest, RemoveUnusedSortOperandTuple) {
-  const char* hlo_string = R"(
-   HloModule permutation_sort
-
-    ENTRY sort_computation {
-      keys = f32[64,87] parameter(0)
-      values.0 = s32[64,87] parameter(1)
-      values.1 = u32[64,87] parameter(2)
-      sort = (f32[64,87], s32[64,87], u32[64,87]) sort(
-          keys, values.0, values.1),
-        dimensions={1}
-      gte.0 = f32[64,87] get-tuple-element(sort), index=0
-      gte.1 = u32[64,87] get-tuple-element(sort), index=2
-      ROOT tuple = (f32[64,87], u32[64,87]) tuple(gte.0, gte.1)
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  AlgebraicSimplifierOptions options(bitcasting_callback());
-  AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-  auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      GmockMatch(m::Tuple(
-          m::GetTupleElement(m::Sort(m::Parameter(0), m::Parameter(2)), 0),
-          m::GetTupleElement(m::Sort(m::Parameter(0), m::Parameter(2)), 1))));
-}
-
-TEST_F(AlgebraicSimplifierTest, DontRemoveUnusedSortKey) {
-  const char* hlo_string = R"(
-   HloModule permutation_sort
-
-    ENTRY sort_computation {
-      keys = f32[64,8732]{1,0} parameter(0)
-      values = s32[64,8732]{1,0} parameter(1)
-      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}
-      ROOT gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  AlgebraicSimplifierOptions options(bitcasting_callback());
-  AlgebraicSimplifier simplifier(options);
-  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
-}
-
 TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   auto builder = HloComputation::Builder(TestName());
 
@@ -3072,9 +3003,8 @@ TEST_P(ConvInputPaddingTest, DoTest) {
       input, pad_value, padding_config));
 
   auto* filter = builder.AddInstruction(HloInstruction::CreateParameter(
-      1,
-      ShapeUtil::MakeShape(
-          F32, {lhs_pad->shape().dimensions(1), 256, 3, 3}),  // io01
+      1, ShapeUtil::MakeShape(
+             F32, {lhs_pad->shape().dimensions(1), 256, 3, 3}),  // io01
       "input"));
 
   ConvolutionDimensionNumbers dnums =
@@ -3180,9 +3110,8 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
       filter, pad_value, padding_config));
 
   auto* input = builder.AddInstruction(HloInstruction::CreateParameter(
-      0,
-      ShapeUtil::MakeShape(
-          F32, {1024, rhs_pad->shape().dimensions(0), 100, 100}),  // bf01
+      0, ShapeUtil::MakeShape(
+             F32, {1024, rhs_pad->shape().dimensions(0), 100, 100}),  // bf01
       "input"));
 
   ConvolutionDimensionNumbers dnums =
@@ -3775,9 +3704,8 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
   builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      shape,
-      builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape, "slice_from")),
+      shape, builder.AddInstruction(
+                 HloInstruction::CreateParameter(0, shape, "slice_from")),
       builder.AddInstruction(HloInstruction::CreateParameter(
           1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
       /*slice_sizes=*/{10, 100, 1000}));
@@ -3800,20 +3728,17 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
 
   HloInstruction* slice =
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-          slice_shape,
-          builder.AddInstruction(
-              HloInstruction::CreateParameter(0, full_shape, "slice_from")),
+          slice_shape, builder.AddInstruction(HloInstruction::CreateParameter(
+                           0, full_shape, "slice_from")),
           builder.AddInstruction(HloInstruction::CreateParameter(
               1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
           /*slice_sizes=*/{10, 1, 1000}));
 
   builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      slice_shape,
-      builder.AddInstruction(
-          HloInstruction::CreateParameter(2, slice_shape, "to_update")),
-      slice,
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
+      slice_shape, builder.AddInstruction(HloInstruction::CreateParameter(
+                       2, slice_shape, "to_update")),
+      slice, builder.AddInstruction(HloInstruction::CreateParameter(
+                 3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
 
   auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
@@ -4143,9 +4068,8 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
       ShapeInference::InferPadShape(input->shape(),
                                     ShapeUtil::MakeShape(F32, {}), padding));
   HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
-      pad_shape, input,
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f))),
+      pad_shape, input, builder.AddInstruction(HloInstruction::CreateConstant(
+                            LiteralUtil::CreateR0(0.0f))),
       padding));
 
   HloComputation* add_computation = nullptr;

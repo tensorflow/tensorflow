@@ -371,11 +371,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
-  // If the sort instruction has a tuple shape then looks for unused output
-  // values and removes them from the sort instruction. Returns true if the
-  // graph have been modified.
-  StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort);
-
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -1320,35 +1315,35 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
 
   // Optimize either dot(DS(ctA), ctB)) or dot(ctB, DS(ctA)).
   // Currently a Gather is a DynamicSlice.
-  auto is_dynamic_slice_constant_combination =
-      [](HloInstruction* a, HloInstruction* b, int a_contracting_dimension) {
-        // First operand is a DynamicSlice(Constant).
-        if (a->opcode() != HloOpcode::kDynamicSlice) {
-          return false;
-        }
-        auto* dynamic_slice_op = a->operand(0);
-        if (dynamic_slice_op->opcode() != HloOpcode::kConstant) {
-          return false;
-        }
-        // Second operand is a Constant.
-        if (b->opcode() != HloOpcode::kConstant) {
-          return false;
-        }
-        // The DynamicSlice output is a vector.
-        const Shape& dynamic_slice_shape = a->shape();
-        if (dynamic_slice_shape.dimensions(1 - a_contracting_dimension) != 1) {
-          return false;
-        }
-        // Constant size is the same before and after slice in the contracting
-        // dimension, otherwise we either must precompute for all possible slice
-        // indices or dot is invalid.
-        const Shape& dynamic_slice_op_shape = dynamic_slice_op->shape();
-        if (dynamic_slice_op_shape.dimensions(a_contracting_dimension) !=
-            dynamic_slice_shape.dimensions(a_contracting_dimension)) {
-          return false;
-        }
-        return true;
-      };
+  auto is_dynamic_slice_constant_combination = [](
+      HloInstruction* a, HloInstruction* b, int a_contracting_dimension) {
+    // First operand is a DynamicSlice(Constant).
+    if (a->opcode() != HloOpcode::kDynamicSlice) {
+      return false;
+    }
+    auto* dynamic_slice_op = a->operand(0);
+    if (dynamic_slice_op->opcode() != HloOpcode::kConstant) {
+      return false;
+    }
+    // Second operand is a Constant.
+    if (b->opcode() != HloOpcode::kConstant) {
+      return false;
+    }
+    // The DynamicSlice output is a vector.
+    const Shape& dynamic_slice_shape = a->shape();
+    if (dynamic_slice_shape.dimensions(1 - a_contracting_dimension) != 1) {
+      return false;
+    }
+    // Constant size is the same before and after slice in the contracting
+    // dimension, otherwise we either must precompute for all possible slice
+    // indices or dot is invalid.
+    const Shape& dynamic_slice_op_shape = dynamic_slice_op->shape();
+    if (dynamic_slice_op_shape.dimensions(a_contracting_dimension) !=
+        dynamic_slice_shape.dimensions(a_contracting_dimension)) {
+      return false;
+    }
+    return true;
+  };
 
   HloInstruction* lhs = dot->mutable_operand(0);
   HloInstruction* rhs = dot->mutable_operand(1);
@@ -2819,69 +2814,6 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   return Status::OK();
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::RemoveUnusedOperandFromSort(
-    HloInstruction* sort) {
-  if (!sort->shape().IsTuple()) {
-    return false;
-  }
-
-  if (sort->parent()->root_instruction() == sort) {
-    // Can't analyse users of the root instruction.
-    return false;
-  }
-
-  // Index 0 is the sorting key used by the sort HLO itself.
-  absl::flat_hash_set<int64> used_indices{0};
-  for (const HloInstruction* user : sort->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
-      // Can't analyse users other then get-tuple-element.
-      return false;
-    }
-    used_indices.insert(user->tuple_index());
-  }
-
-  if (used_indices.size() == sort->operand_count()) {
-    // All operands are used.
-    return false;
-  }
-
-  std::vector<HloInstruction*> operands{sort->mutable_operand(0)};
-  std::vector<Shape> new_shapes{sort->operand(0)->shape()};
-  for (int64 i = 1; i < sort->operand_count(); ++i) {
-    if (used_indices.count(i)) {
-      operands.push_back(sort->mutable_operand(i));
-      new_shapes.push_back(sort->operand(i)->shape());
-    }
-  }
-  Shape new_sort_shape = new_shapes.size() == 1
-                             ? new_shapes[0]
-                             : ShapeUtil::MakeTupleShape(new_shapes);
-  HloInstruction* new_sort = computation_->AddInstruction(
-      sort->CloneWithNewOperands(new_sort_shape, operands));
-
-  // Map from original get-tuple-element tuple index to new HLO instruction
-  absl::flat_hash_map<int64, HloInstruction*> result_map;
-  if (new_sort->shape().IsTuple()) {
-    // Old sort key maps to new sort key.
-    int64 new_index = 0;
-    for (int64 i = 0; i < sort->operand_count(); ++i) {
-      if (used_indices.count(i)) {
-        result_map[i] =
-            computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
-                new_shapes[new_index], new_sort, new_index));
-        ++new_index;
-      }
-    }
-  } else {
-    result_map[0] = new_sort;
-  }
-  for (HloInstruction* user : sort->users()) {
-    TF_RETURN_IF_ERROR(
-        user->ReplaceAllUsesWith(result_map.at(user->tuple_index())));
-  }
-  return true;
-}
-
 Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
   auto operand = sort->mutable_operand(0);
   int64 dimension_to_sort = sort->dimensions(0);
@@ -2893,13 +2825,6 @@ Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
     // If it is key/value sort, the output of sort is a tuple.
     return ReplaceWithNewInstruction(
         sort, HloInstruction::CreateTuple(sort->operands()));
-  }
-
-  // Remove the unused values from a key-value sort.
-  TF_ASSIGN_OR_RETURN(bool removed_operand, RemoveUnusedOperandFromSort(sort));
-  if (removed_operand) {
-    changed_ = true;
-    return Status::OK();
   }
 
   if (!options_.enable_permutation_sort_replacement()) {
@@ -2955,10 +2880,11 @@ Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
         concat_shape.add_dimensions(rank);
         concat_shape.mutable_layout()->add_minor_to_major(rank);
         auto scatter_indices =
-            rank > 1 ? computation_->AddInstruction(
-                           HloInstruction::CreateConcatenate(
-                               concat_shape, concat_operands, rank))
-                     : reshaped_permutation;
+            rank > 1
+                ? computation_->AddInstruction(
+                      HloInstruction::CreateConcatenate(concat_shape,
+                                                        concat_operands, rank))
+                : reshaped_permutation;
 
         // We don't care about the operand, it will be completely overridden by
         // the updates.

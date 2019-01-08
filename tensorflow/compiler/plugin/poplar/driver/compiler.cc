@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
@@ -309,6 +310,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloPassFix<FuseOpsEarly>>(resources.annotations);
     pipeline.AddPass<HloCSE>(false);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
+    pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<ReshapeMover>();
     pipeline.AddPass<MapInliner>();
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
@@ -329,6 +331,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       pass.AddPass<HloDCE>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
+      pass.AddPass<SortSimplifier>();
       pass.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
       pass.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
       pass.AddPass<FuseWideConst>(resources.annotations);
