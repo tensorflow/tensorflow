@@ -41,8 +41,9 @@ namespace {
 BwdWeightCacheKey GetBwdWeightCacheKey(const poplar::Tensor& weights,
                                        const poplar::Tensor& bwd_weights,
                                        const uint64 device_id) {
-  return {graph_caching_util::GetPoplarTensorSignature(weights),
-          graph_caching_util::GetPoplarTensorSignature(bwd_weights), device_id};
+  return std::make_tuple(
+      graph_caching_util::GetPoplarTensorSignature(weights),
+      graph_caching_util::GetPoplarTensorSignature(bwd_weights), device_id);
 }
 
 void CreateCachedBwdWeights(poplar::Graph& graph, CompilerResources& res,
