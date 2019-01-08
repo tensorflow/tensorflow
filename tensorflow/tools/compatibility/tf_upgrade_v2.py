@@ -21,6 +21,7 @@ from __future__ import print_function
 import ast
 
 import pasta
+import six
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
@@ -93,6 +94,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
+        },
+        "tf.nn.softmax_cross_entropy_with_logits": {
+            "dim": "axis",
+            "_sentinel": None,
         },
         "tf.nn.softmax_cross_entropy_with_logits_v2": {
             "dim": "axis"
@@ -682,6 +687,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.norm",
         "tf.reverse_sequence",
         "tf.sparse_split",
+        # tf.nn.softmax_cross_entropy_with_logits *must* be called with
+        # keyword arguments. Add keyword arguments in rare case when they
+        # are not specified.
+        "tf.nn.softmax_cross_entropy_with_logits",
     }
 
     # Functions that were reordered should be changed to the new keyword args
@@ -714,6 +723,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.to_float": self._cast_transformer,
         "tf.to_int32": self._cast_transformer,
         "tf.to_int64": self._cast_transformer,
+        "tf.nn.softmax_cross_entropy_with_logits":
+            self._softmax_cross_entropy_with_logits_transformer,
     }
 
     decay_function_comment = (
@@ -950,10 +961,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "'deterministic' arguments. Now it takes a single 'seed' arg. If "
             "'seed' is zero, the execution is random and deterministic "
             "otherwise",
-        "tf.nn.softmax_cross_entropy_with_logits":
-            "tf.nn.softmax_cross_entropy_with_logits behavior has changed. "
-            "'labels' needs to be wrapped with tf.stop_gradient to keep the "
-            "old behavior. Also, 'dim' argument has been renamed to 'axis'.",
         "tf.test.assert_equal_graph_def":
             "tf.assert_equal_graph_def no longer takes 'checkpoint_v2' "
             "argument. 'checkpoint_v2' now defaults to True.",
@@ -1226,6 +1233,36 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     logs.append((node.lineno, node.col_offset,
                  "Changed %s call to tf.cast(..., dtype=tf.%s)." % (full_name,
                                                                     dtype_str)))
+    return node
+
+  @staticmethod
+  def _softmax_cross_entropy_with_logits_transformer(
+      parent, node, full_name, name, logs, errors):
+    def _wrap_label(parent, old_value):
+      """Wrap labels with tf.stop_gradient."""
+      if six.PY3:
+        new_value = ast.Call(
+            ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
+            [old_value], [])
+      else:
+        new_value = ast.Call(
+            ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
+            [old_value], [], None, None)
+
+      # This copies the prefix and suffix on old_value to new_value.
+      pasta.ast_utils.replace_child(parent, old_value, new_value)
+      ast.copy_location(new_value, old_value)
+
+    # Check if we have a labels keyword arg
+    for karg in node.keywords:
+      if karg.arg == "labels":
+        logs.append((node.lineno, node.col_offset,
+                     "Changing labels arg of "
+                     "tf.nn.softmax_cross_entropy_with_logits to "
+                     "tf.stop_gradient(labels). Please check this "
+                     "transformation.\n"))
+        _wrap_label(karg, karg.value)
+        return node
     return node
 
   @staticmethod
