@@ -231,7 +231,7 @@ TEST_F(MetaOptimizerTest, RunToggleOptimizersAndCustomGraphOptimizerTwice) {
 TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   using test::function::NDef;
 
-  // Enable ony function optimization.
+  // Enable only function optimization.
   ConfigProto config_proto;
   auto& rewriter_config =
       *config_proto.mutable_graph_options()->mutable_rewrite_options();
@@ -300,7 +300,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
                                            output.library());
 
   // Specialized and optimized functions should be added to the graph.
-  EXPECT_EQ(6, optimized_flib.num_functions());
+  EXPECT_EQ(5, optimized_flib.num_functions());
 
   // Get a specialized function name.
   const auto specialized_name = [](const string& fn, const string& node,
@@ -314,25 +314,22 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
       specialized_name("MyQuadratic", "quadratic", "tf_graph");
 
   // MySquare should be specialized and optimized for 3 instantiations:
-  //   1. 'square' node in the main graph
-  //   2. 'square' node in the MyQuadratic specialization (not in a fetch set)
-  //   3. 'quadratic' node in the MyQuadratic specialization (is in a fetch set)
+  //   1.  'square' node in the main graph
+  //   2.  'square' node in the MyQuadratic specialization
+  //   3*. 'quadratic' node in the MyQuadratic specialization
+  //        has identical instantiation context to #2
 
   const string optimized_1 = specialized_name("MySquare", "square", "tf_graph");
   const string optimized_2 =
       specialized_name("MySquare", "square", optimized_0);
-  const string optimized_3 =
-      specialized_name("MySquare", "quadratic", optimized_0);
 
   const FunctionDef* optimized_func_0 = optimized_flib.Find(optimized_0);
   const FunctionDef* optimized_func_1 = optimized_flib.Find(optimized_1);
   const FunctionDef* optimized_func_2 = optimized_flib.Find(optimized_2);
-  const FunctionDef* optimized_func_3 = optimized_flib.Find(optimized_3);
 
   ASSERT_NE(optimized_func_0, nullptr);
   ASSERT_NE(optimized_func_1, nullptr);
   ASSERT_NE(optimized_func_2, nullptr);
-  ASSERT_NE(optimized_func_3, nullptr);
 
   // Graph should call optimized function.
   int count = 0;
@@ -351,13 +348,13 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
     if (node.name() == "square" && ++count) {
       EXPECT_EQ(optimized_2, node.op());
     } else if (node.name() == "quadratic" && ++count) {
-      EXPECT_EQ(optimized_3, node.op());
+      EXPECT_EQ(optimized_2, node.op());
     }
   }
   EXPECT_EQ(2, count);
 
-  const std::vector<const FunctionDef*> optimized_funcs = {
-      optimized_func_1, optimized_func_2, optimized_func_3};
+  const std::vector<const FunctionDef*> optimized_funcs = {optimized_func_1,
+                                                           optimized_func_2};
 
   // MyMul should be inlined into all optimized versions of MySquare.
   for (const FunctionDef* optimized_func : optimized_funcs) {
@@ -401,6 +398,96 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
 
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
   test::ExpectTensorEqual<int>(tensors_expected[1], tensors[1]);
+}
+
+TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneUnusedOutputs) {
+  using test::function::NDef;
+
+  ConfigProto config_proto;
+  MetaOptimizer optimizer(nullptr, config_proto);
+
+  // MyMul computes x*y three times and has three output values.
+  FunctionDef my_mul = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z0:T", "z1:T", "z2:T"}, {"T: {float, int32}"},
+      {{{"output0"}, "Mul", {"x", "y"}, {{"T", "$T"}}},
+       {{"output1"}, "Mul", {"x", "y"}, {{"T", "$T"}}},
+       {{"output2"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z0", "output0:z:0"}, {"z1", "output1:z:0"}, {"z2", "output2:z:0"}});
+
+  // Call MyMyl and forward all three outputs.
+  FunctionDef my_fwd = FunctionDefHelper::Create(
+      "Fwd", {"x:T", "y:T"}, {"z0:T", "z1:T", "z2:T"}, {"T: {float, int32}"},
+      {{{"output"}, "MyMul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z0", "output:z0:0"}, {"z1", "output:z1:0"}, {"z2", "output:z2:0"}});
+
+  // Mark both functions as `_noinline` to trigger specialization.
+  (*my_mul.mutable_attr())["_noinline"].set_b(true);
+  (*my_fwd.mutable_attr())["_noinline"].set_b(true);
+  std::vector<FunctionDef> function_library = {my_mul, my_fwd};
+
+  // Tensorflow graph:
+  //   a = Placeholder[T=float]
+  //   b = Placeholder[T=float]
+  //   fwd = Fwd(a, b)
+  //
+  // Fetch fwd:2 via Identity node.
+  GrapplerItem item;
+  item.id = "tf_graph";
+  item.fetch = {"ret"};
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("fwd", "Fwd", {"a", "b"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("ret", "Identity", {"fwd:2"}, {{"T", DT_FLOAT}}, kDevice)},
+      function_library);
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  FunctionLibraryDefinition optimized_flib(OpRegistry::Global(),
+                                           output.library());
+
+  // Specialized functions should be added to the graph.
+  EXPECT_EQ(3, optimized_flib.num_functions());
+
+  // Expected names of the specialized functions.
+  const string specialized_my_fwd = "Fwd_specialized_for_fwd_at_tf_graph";
+  const string specialized_my_mul =
+      absl::StrCat("MyMul_specialized_for_output_at_", specialized_my_fwd);
+
+  // Specialized MyMul should have just one output argument.
+  FunctionDef expected_my_mul = FunctionDefHelper::Create(
+      specialized_my_mul, {"x:float", "y:float"}, {"z2:float"}, {},
+      {{{"output2"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z2", "output2:z:0"}});
+
+  // Specialized Fwd should also have just one output argument.
+  FunctionDef expected_my_fwd = FunctionDefHelper::Create(
+      specialized_my_fwd, {"x:float", "y:float"}, {"z2:float"}, {},
+      {{{"output"}, specialized_my_mul, {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z2", "output:z2:0"}});
+
+  const FunctionDef* my_mul_spec = optimized_flib.Find(specialized_my_mul);
+  const FunctionDef* my_fwd_spec = optimized_flib.Find(specialized_my_fwd);
+
+  ASSERT_NE(my_mul_spec, nullptr);
+  ASSERT_NE(my_fwd_spec, nullptr);
+
+  CompareFunctions(expected_my_mul, *my_mul_spec);
+  CompareFunctions(expected_my_fwd, *my_fwd_spec);
+
+  item.feed.emplace_back("a", test::AsScalar<float>(2.0f));
+  item.feed.emplace_back("b", test::AsScalar<float>(4.0f));
+  auto tensors_expected = EvaluateFetchNodes(item);
+
+  GrapplerItem optimized = item.WithGraph(std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {

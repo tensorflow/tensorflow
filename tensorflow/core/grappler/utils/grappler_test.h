@@ -62,6 +62,13 @@ class GrapplerTest : public ::testing::Test {
   // equality, and adds all failuires to the current test.
   void CompareNodes(const NodeDef& want, const NodeDef& got) const;
 
+  // Checks if two functions are equal. Both functions must have the same set of
+  // nodes with the same inputs and attributes. Nodes can be in different order.
+  //
+  // NOTE: This function uses EXPECT/ASSERT macros to check node properties
+  // equality, and adds all failures to the current test.
+  void CompareFunctions(FunctionDef want, FunctionDef got) const;
+
   // Checks if node 'src' is directly connected to the input($position) of
   // 'dst'.
   bool IsNodesDirectlyConnected(const NodeMap& node_map, const string& src,
