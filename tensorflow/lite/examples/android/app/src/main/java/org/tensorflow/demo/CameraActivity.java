@@ -18,8 +18,11 @@ package org.tensorflow.demo;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Fragment;
 import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
@@ -30,11 +33,13 @@ import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Trace;
+import android.provider.Settings;
 import android.util.Size;
 import android.view.KeyEvent;
 import android.view.Surface;
@@ -50,6 +55,7 @@ public abstract class CameraActivity extends Activity
   private static final Logger LOGGER = new Logger();
 
   private static final int PERMISSIONS_REQUEST = 1;
+  private static final int PERMISSIONS_DETAILS_REQUEST_CODE = 1000;
 
   private static final String PERMISSION_CAMERA = Manifest.permission.CAMERA;
   private static final String PERMISSION_STORAGE = Manifest.permission.WRITE_EXTERNAL_STORAGE;
@@ -69,6 +75,8 @@ public abstract class CameraActivity extends Activity
 
   private Runnable postInferenceCallback;
   private Runnable imageConverter;
+
+  private AlertDialog permissionDialog;
 
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
@@ -232,11 +240,6 @@ public abstract class CameraActivity extends Activity
   public synchronized void onPause() {
     LOGGER.d("onPause " + this);
 
-    if (!isFinishing()) {
-      LOGGER.d("Requesting finish");
-      finish();
-    }
-
     handlerThread.quitSafely();
     try {
       handlerThread.join();
@@ -258,6 +261,9 @@ public abstract class CameraActivity extends Activity
   @Override
   public synchronized void onDestroy() {
     LOGGER.d("onDestroy " + this);
+    if (null != permissionDialog && permissionDialog.isShowing()) {
+      permissionDialog.dismiss();
+    }
     super.onDestroy();
   }
 
@@ -268,6 +274,37 @@ public abstract class CameraActivity extends Activity
   }
 
   @Override
+  public void onActivityResult(int requestCode, int resultCode, Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
+    if (PERMISSIONS_DETAILS_REQUEST_CODE == requestCode) {
+      if (hasPermission()) {
+        setFragment();
+      } else {
+        showGetPermissionFromSettingDialog();
+      }
+    }
+  }
+
+  private void showGetPermissionFromSettingDialog() {
+    if (null != permissionDialog && permissionDialog.isShowing())
+      permissionDialog.dismiss();
+    permissionDialog = new AlertDialog.Builder(this)
+        .setMessage("Camera and Storage permission are required for this demo." +
+            " You can grant them in app settings.")
+        .setPositiveButton("GOTO SETTINGS", new DialogInterface.OnClickListener() {
+          public void onClick(DialogInterface dialog, int whichButton) {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            Uri uri = Uri.fromParts("package", getPackageName(), null);
+            intent.setData(uri);
+            startActivityForResult(intent, PERMISSIONS_DETAILS_REQUEST_CODE);
+            dialog.dismiss();
+          }
+        })
+        .setCancelable(false)
+        .show();
+  }
+
+  @Override
   public void onRequestPermissionsResult(
       final int requestCode, final String[] permissions, final int[] grantResults) {
     if (requestCode == PERMISSIONS_REQUEST) {
@@ -275,6 +312,10 @@ public abstract class CameraActivity extends Activity
           && grantResults[0] == PackageManager.PERMISSION_GRANTED
           && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
         setFragment();
+      } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+          !shouldShowRequestPermissionRationale(PERMISSION_CAMERA) &&
+          !shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
+        showGetPermissionFromSettingDialog();
       } else {
         requestPermission();
       }
@@ -292,11 +333,6 @@ public abstract class CameraActivity extends Activity
 
   private void requestPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) ||
-          shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
-        Toast.makeText(CameraActivity.this,
-            "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
-      }
       requestPermissions(new String[] {PERMISSION_CAMERA, PERMISSION_STORAGE}, PERMISSIONS_REQUEST);
     }
   }
