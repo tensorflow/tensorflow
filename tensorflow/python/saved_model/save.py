@@ -222,7 +222,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
 
 
 def _tensor_dict_to_tensorinfo(tensor_dict):
-  return {key: utils_impl.build_tensor_info(value)
+  return {key: utils_impl.build_tensor_info_internal(value)
           for key, value in tensor_dict.items()}
 
 
