@@ -146,13 +146,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ] + if_static(
-        [
-            "@local_config_cuda//cuda:cublas",
-            "@local_config_cuda//cuda:cudart_static",
-        ],
-        ["@local_config_cuda//cuda:cudart"],
-    ),
+    ] + if_static(["@local_config_cuda//cuda:cublas"]),
     alwayslink = True,
 )
 
@@ -214,13 +208,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ] + tf_additional_cudnn_plugin_deps() + if_static(
-        [
-            "@local_config_cuda//cuda:cudnn",
-            "@local_config_cuda//cuda:cudart_static",
-        ],
-        ["@local_config_cuda//cuda:cudart"],
-    ),
+    ] + tf_additional_cudnn_plugin_deps() + if_static(["@local_config_cuda//cuda:cudnn"]),
     alwayslink = True,
 )
 
