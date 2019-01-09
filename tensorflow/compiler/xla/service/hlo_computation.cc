@@ -846,7 +846,7 @@ std::unique_ptr<HloComputation> HloComputation::Clone(
   return CloneWithReplacements(
       /*replacements=*/std::unordered_map<const HloInstruction*,
                                           std::unique_ptr<HloInstruction>>(),
-      context, suffix);
+      /*extra_parameters=*/{}, context, suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
@@ -855,7 +855,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
   std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(std::move(r1));
-  return CloneWithReplacements(std::move(replacements), context, suffix);
+  return CloneWithReplacements(std::move(replacements), /*extra_parameters=*/{},
+                               context, suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
@@ -866,7 +867,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
       replacements;
   replacements.emplace(std::move(r1));
   replacements.emplace(std::move(r2));
-  return CloneWithReplacements(std::move(replacements), context, suffix);
+  return CloneWithReplacements(std::move(replacements), /*extra_parameters=*/{},
+                               context, suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
@@ -879,12 +881,14 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
   replacements.emplace(std::move(r1));
   replacements.emplace(std::move(r2));
   replacements.emplace(std::move(r3));
-  return CloneWithReplacements(std::move(replacements), context, suffix);
+  return CloneWithReplacements(std::move(replacements), /*extra_parameters=*/{},
+                               context, suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements,
+    absl::Span<const HloInstruction* const> extra_parameters,
     HloCloneContext* context, const string& suffix) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
@@ -950,6 +954,12 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   }
 
   std::vector<std::unique_ptr<HloInstruction>> instructions;
+  // First add the extra parameters to 'instructions'.
+  for (const auto& instr : extra_parameters) {
+    CHECK_EQ(instr->opcode(), HloOpcode::kParameter)
+        << "Only parameter instructions are allowed in 'extra_parameters'";
+    instructions.emplace_back(instr->Clone());
+  }
   for (auto instr : postorder) {
     std::vector<HloInstruction*> new_operands;
     for (auto operand : instr->operands()) {
