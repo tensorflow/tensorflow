@@ -32,7 +32,7 @@ struct RunConvOptions {
   // Nullable output-parameter pointer for profiling results.
   se::dnn::ProfileResult* profile_result = nullptr;
 
-  // Use this algorithm, instead the one from the instrcution.
+  // Use this algorithm, instead of the one from the instruction.
   absl::optional<se::dnn::AlgorithmDesc> algo_override;
 };
 
