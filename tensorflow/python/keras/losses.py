@@ -821,15 +821,15 @@ def poisson(y_true, y_pred):
               'keras.metrics.cosine',
               'keras.losses.cosine_proximity',
               'keras.losses.cosine')
-def cosine_proximity(y_true, y_pred):
-  y_true = nn.l2_normalize(y_true, axis=-1)
-  y_pred = nn.l2_normalize(y_pred, axis=-1)
-  return -math_ops.reduce_sum(y_true * y_pred, axis=-1)
+def cosine_proximity(y_true, y_pred, axis=-1):
+  y_true = nn.l2_normalize(y_true, axis=axis)
+  y_pred = nn.l2_normalize(y_pred, axis=axis)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
 
 
 @keras_export('keras.losses.CosineProximity')
 class CosineProximity(Loss):
-  """Computes the cosine distance between `y_true` and `y_pred`.
+  """Computes the cosine proximity between `y_true` and `y_pred`.
 
   Usage:
 
@@ -845,7 +845,21 @@ class CosineProximity(Loss):
   model = keras.models.Model(inputs, outputs)
   model.compile('sgd', loss=tf.losses.CosineProximity())
   ```
+
+  Args:
+    axis: (Optional) Defaults to -1. The dimension along which the cosine
+      proximity is computed.
+    reduction: (Optional) Type of `tf.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
   """
+
+  def __init__(self,
+               axis=-1,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    super(CosineProximity, self).__init__(reduction=reduction, name=name)
+    self.axis = axis
 
   def call(self, y_true, y_pred):
     """Calculates the cosine proximity loss.
@@ -859,7 +873,7 @@ class CosineProximity(Loss):
     """
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
-    return cosine_proximity(y_true, y_pred)
+    return cosine_proximity(y_true, y_pred, axis=self.axis)
 
 
 # Aliases.

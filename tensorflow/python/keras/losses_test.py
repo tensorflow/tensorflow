@@ -485,58 +485,87 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class CosineProximityTest(test.TestCase):
 
+  def l2_norm(self, x, axis):
+    epsilon = 1e-12
+    square_sum = np.sum(np.square(x), axis=axis, keepdims=True)
+    x_inv_norm = 1 / np.sqrt(np.maximum(square_sum, epsilon))
+    return np.multiply(x, x_inv_norm)
+
+  def setup(self, axis=1):
+    self.np_y_true = np.asarray([[1, 9, 2], [-5, -2, 6]], dtype=np.float32)
+    self.np_y_pred = np.asarray([[4, 8, 12], [8, 1, 3]], dtype=np.float32)
+
+    y_true = self.l2_norm(self.np_y_true, axis)
+    y_pred = self.l2_norm(self.np_y_pred, axis)
+    self.expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(axis,))
+
+    self.y_true = constant_op.constant(self.np_y_true)
+    self.y_pred = constant_op.constant(self.np_y_pred)
+
   def test_config(self):
     cosine_obj = keras.losses.CosineProximity(
-        reduction=losses_impl.ReductionV2.SUM, name='cosine_loss')
+        axis=2, reduction=losses_impl.ReductionV2.SUM, name='cosine_loss')
     self.assertEqual(cosine_obj.name, 'cosine_loss')
     self.assertEqual(cosine_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(cosine_obj.axis, 2)
 
   def test_unweighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    loss = cosine_obj(y_true, y_pred)
-    self.assertAlmostEqual(self.evaluate(loss), -0.18722, 3)
+    loss = cosine_obj(self.y_true, self.y_pred)
+    expected_loss = np.mean(self.expected_loss)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_scalar_weighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    loss = cosine_obj(y_true, y_pred, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), -0.43060, 3)
+    sample_weight = 2.3
+    loss = cosine_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    expected_loss = np.mean(self.expected_loss * sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_sample_weighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
-    loss = cosine_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), 0.15599, 3)
+    sample_weight = np.asarray([1.2, 3.4])
+    loss = cosine_obj(
+        self.y_true,
+        self.y_pred,
+        sample_weight=constant_op.constant(sample_weight))
+    expected_loss = np.mean(self.expected_loss * sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_timestep_weighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3, 1),
-                                  dtype=dtypes.float32)
-    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2], shape=(2, 3))
-    loss = cosine_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), -2.0000, 3)
+    np_y_true = self.np_y_true.reshape((2, 3, 1))
+    np_y_pred = self.np_y_pred.reshape((2, 3, 1))
+    sample_weight = np.asarray([3, 6, 5, 0, 4, 2]).reshape((2, 3))
+
+    y_true = self.l2_norm(np_y_true, 2)
+    y_pred = self.l2_norm(np_y_pred, 2)
+    expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(2,))
+
+    y_true = constant_op.constant(np_y_true)
+    y_pred = constant_op.constant(np_y_pred)
+    loss = cosine_obj(
+        y_true, y_pred, sample_weight=constant_op.constant(sample_weight))
+
+    expected_loss = np.mean(expected_loss * sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_zero_weighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    loss = cosine_obj(y_true, y_pred, sample_weight=0)
+    loss = cosine_obj(self.y_true, self.y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+  def test_axis(self):
+    self.setup(axis=1)
+    cosine_obj = keras.losses.CosineProximity(axis=1)
+    loss = cosine_obj(self.y_true, self.y_pred)
+    expected_loss = np.mean(self.expected_loss)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
