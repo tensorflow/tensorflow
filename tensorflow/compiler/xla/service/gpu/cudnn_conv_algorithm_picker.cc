@@ -146,7 +146,8 @@ tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
 // trouble, but we may want to revisit this if we ever find a model where
 // caching would speed up compilation a lot.
 StatusOr<CudnnConvAlgorithmPicker::AutotuneResult>
-CudnnConvAlgorithmPicker::PickBestAlgorithm(HloCustomCallInstruction* instr) {
+CudnnConvAlgorithmPicker::PickBestAlgorithm(
+    const HloCustomCallInstruction* instr) {
   // TODO(timshen): for now only check fp16. It can be expanded to other types,
   // with some work on the HLO routines.
   const bool cross_check_enabled =
@@ -249,12 +250,13 @@ CudnnConvAlgorithmPicker::PickBestAlgorithm(HloCustomCallInstruction* instr) {
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
 
-    backend_config.set_algorithm(alg.algo_id());
-    backend_config.set_tensor_ops_enabled(alg.tensor_ops_enabled());
-    TF_RETURN_IF_ERROR(instr->set_backend_config(backend_config));
+    // Use assignment insetad of brace-list to make GCC 4.9 happy.
+    RunConvOptions options;
+    options.profile_result = &profile_result;
+    options.algo_override = alg;
     bool launch_ok =
         RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                     &scratch_allocator, &stream, &profile_result)
+                     &scratch_allocator, &stream, options)
             .ok();
 
     if (launch_ok && profile_result.is_valid()) {
