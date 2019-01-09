@@ -61,10 +61,6 @@ static inline bool hasStringAttribute(const Record &record,
   return isa<CodeInit>(valueInit) || isa<StringInit>(valueInit);
 }
 
-static std::string getAttributeName(const Operator::NamedAttribute &attr) {
-  return attr.name->getAsUnquotedString();
-}
-
 static std::string getArgumentName(const Operator &op, int index) {
   const auto &operand = op.getOperand(index);
   if (operand.name)
@@ -180,7 +176,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
 
 void OpEmitter::emitAttrGetters() {
   for (auto &namedAttr : op.getAttributes()) {
-    auto name = getAttributeName(namedAttr);
+    auto name = namedAttr.getName();
     const auto &attr = namedAttr.attr;
 
     // Emit the derived attribute body.
@@ -251,7 +247,7 @@ void OpEmitter::emitBuilder() {
     const auto &attr = namedAttr.attr;
     if (attr.isDerivedAttr())
       break;
-    os << ", " << attr.getStorageType() << ' ' << getAttributeName(namedAttr);
+    os << ", " << attr.getStorageType() << ' ' << namedAttr.getName();
   }
 
   os << ") {\n";
@@ -276,7 +272,7 @@ void OpEmitter::emitBuilder() {
   for (const auto &namedAttr : op.getAttributes())
     if (!namedAttr.attr.isDerivedAttr())
       OUT(4) << formatv("result->addAttribute(\"{0}\", {0});\n",
-                        getAttributeName(namedAttr));
+                        namedAttr.getName());
   OUT(2) << "}\n";
 
   // 2. Aggregated parameters
@@ -362,7 +358,7 @@ void OpEmitter::emitVerifier() {
     if (attr.isDerivedAttr())
       continue;
 
-    auto name = getAttributeName(namedAttr);
+    auto name = namedAttr.getName();
     if (!attr.hasStorageType()) {
       OUT(4) << "if (!this->getAttr(\"" << name
              << "\")) return emitOpError(\"requires attribute '" << name
