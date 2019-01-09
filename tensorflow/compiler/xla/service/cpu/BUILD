@@ -385,6 +385,7 @@ cc_library(
     srcs = ["dot_op_emitter.cc"],
     hdrs = [
         "dot_op_emitter.h",
+        "dot_op_emitter_internal.h",
     ],
     deps = [
         ":cpu_options",
@@ -1028,6 +1029,7 @@ tf_cc_test(
     size = "small",
     srcs = ["cpu_eigen_tensor_alignment_test.cc"],
     deps = [
+        ":dot_op_emitter",
         ":ir_emission_utils",
         ":target_machine_features_fake",
         "//tensorflow/compiler/xla:test",
