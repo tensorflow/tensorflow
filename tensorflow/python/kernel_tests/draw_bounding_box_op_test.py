@@ -93,7 +93,7 @@ class DrawBoundingBoxOpTest(test.TestCase):
       if colors is None:
         image = image_ops.draw_bounding_boxes(image, bboxes)
       else:
-        image = gen_image_ops.draw_bounding_boxes_v2(image, bboxes, colors)
+        image = image_ops.draw_bounding_boxes_v2(image, bboxes, colors)
       with self.cached_session(use_gpu=False) as sess:
         op_drawn_image = np.squeeze(sess.run(image), 0)
         self.assertAllEqual(test_drawn_image, op_drawn_image)
