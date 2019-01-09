@@ -32,6 +32,8 @@
 using namespace llvm;
 using namespace mlir;
 
+using mlir::tblgen::Operator;
+
 static const char *const generatedArgName = "_arg";
 
 // Helper macro that returns indented os.

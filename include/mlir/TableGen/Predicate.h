@@ -31,6 +31,7 @@ class Record;
 } // end namespace llvm
 
 namespace mlir {
+namespace tblgen {
 
 // Predicate in Conjunctive Normal Form (CNF).
 //
@@ -67,6 +68,7 @@ private:
   const llvm::Record *def;
 };
 
+} // end namespace tblgen
 } // end namespace mlir
 
 #endif // MLIR_TABLEGEN_PREDICATE_H_

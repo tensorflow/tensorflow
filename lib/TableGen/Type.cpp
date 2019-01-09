@@ -42,7 +42,7 @@ StringRef tblgen::Type::getBuilderCall() const {
   return {};
 }
 
-PredCNF tblgen::Type::getPredicate() const {
+tblgen::PredCNF tblgen::Type::getPredicate() const {
   auto *val = def.getValue("predicate");
   assert(val && "TableGen 'Type' class should have 'predicate' field");
 

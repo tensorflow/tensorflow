@@ -27,7 +27,7 @@
 
 using namespace mlir;
 
-PredCNF::PredCNF(const llvm::Init *init) : def(nullptr) {
+tblgen::PredCNF::PredCNF(const llvm::Init *init) : def(nullptr) {
   if (const auto *defInit = dyn_cast<llvm::DefInit>(init)) {
     def = defInit->getDef();
     assert(def->isSubClassOf("PredCNF") &&
@@ -35,14 +35,14 @@ PredCNF::PredCNF(const llvm::Init *init) : def(nullptr) {
   }
 }
 
-const llvm::ListInit *PredCNF::getConditions() const {
+const llvm::ListInit *tblgen::PredCNF::getConditions() const {
   if (!def)
     return nullptr;
 
   return def->getValueAsListInit("conditions");
 }
 
-std::string PredCNF::createTypeMatcherTemplate() const {
+std::string tblgen::PredCNF::createTypeMatcherTemplate() const {
   const auto *conjunctiveList = getConditions();
   if (!conjunctiveList)
     return "true";

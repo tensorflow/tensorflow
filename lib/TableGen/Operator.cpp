@@ -28,56 +28,64 @@
 #include "llvm/TableGen/Record.h"
 
 using namespace mlir;
+
 using llvm::DagInit;
 using llvm::DefInit;
 using llvm::Record;
 
-Operator::Operator(const llvm::Record &def) : def(def) {
+tblgen::Operator::Operator(const llvm::Record &def) : def(def) {
   SplitString(def.getName(), splittedDefName, "_");
   populateOperandsAndAttributes();
 }
 
-const SmallVectorImpl<StringRef> &Operator::getSplitDefName() const {
+const SmallVectorImpl<StringRef> &tblgen::Operator::getSplitDefName() const {
   return splittedDefName;
 }
 
-StringRef Operator::getOperationName() const {
+StringRef tblgen::Operator::getOperationName() const {
   return def.getValueAsString("opName");
 }
 
-StringRef Operator::cppClassName() const { return getSplitDefName().back(); }
-std::string Operator::qualifiedCppClassName() const {
+StringRef tblgen::Operator::cppClassName() const {
+  return getSplitDefName().back();
+}
+std::string tblgen::Operator::qualifiedCppClassName() const {
   return llvm::join(getSplitDefName(), "::");
 }
 
-StringRef Operator::getArgName(int index) const {
+StringRef tblgen::Operator::getArgName(int index) const {
   DagInit *argumentValues = def.getValueAsDag("arguments");
   return argumentValues->getArgName(index)->getValue();
 }
 
-auto Operator::attribute_begin() -> attribute_iterator {
+auto tblgen::Operator::attribute_begin() -> attribute_iterator {
   return attributes.begin();
 }
-auto Operator::attribute_end() -> attribute_iterator {
+auto tblgen::Operator::attribute_end() -> attribute_iterator {
   return attributes.end();
 }
-auto Operator::getAttributes() -> llvm::iterator_range<attribute_iterator> {
+auto tblgen::Operator::getAttributes()
+    -> llvm::iterator_range<attribute_iterator> {
   return {attribute_begin(), attribute_end()};
 }
 
-auto Operator::operand_begin() -> operand_iterator { return operands.begin(); }
-auto Operator::operand_end() -> operand_iterator { return operands.end(); }
-auto Operator::getOperands() -> llvm::iterator_range<operand_iterator> {
+auto tblgen::Operator::operand_begin() -> operand_iterator {
+  return operands.begin();
+}
+auto tblgen::Operator::operand_end() -> operand_iterator {
+  return operands.end();
+}
+auto tblgen::Operator::getOperands() -> llvm::iterator_range<operand_iterator> {
   return {operand_begin(), operand_end()};
 }
 
-auto Operator::getArg(int index) -> Argument {
+auto tblgen::Operator::getArg(int index) -> Argument {
   if (index < nativeAttrStart)
     return {&operands[index]};
   return {&attributes[index - nativeAttrStart]};
 }
 
-void Operator::populateOperandsAndAttributes() {
+void tblgen::Operator::populateOperandsAndAttributes() {
   auto &recordKeeper = def.getRecords();
   auto attrClass = recordKeeper.getClass("Attr");
   auto derivedAttrClass = recordKeeper.getClass("DerivedAttr");
@@ -142,7 +150,7 @@ void Operator::populateOperandsAndAttributes() {
   }
 }
 
-std::string mlir::Operator::Attribute::getName() const {
+std::string tblgen::Operator::Attribute::getName() const {
   std::string ret = name->getAsUnquotedString();
   // TODO(jpienaar): Revise this post dialect prefixing attribute discussion.
   auto split = StringRef(ret).split("__");
@@ -151,18 +159,18 @@ std::string mlir::Operator::Attribute::getName() const {
   return llvm::join_items("$", split.first, split.second);
 }
 
-StringRef mlir::Operator::Attribute::getReturnType() const {
+StringRef tblgen::Operator::Attribute::getReturnType() const {
   return record->getValueAsString("returnType").trim();
 }
 
-StringRef mlir::Operator::Attribute::getStorageType() const {
+StringRef tblgen::Operator::Attribute::getStorageType() const {
   return record->getValueAsString("storageType").trim();
 }
 
-bool mlir::Operator::Operand::hasMatcher() const {
+bool tblgen::Operator::Operand::hasMatcher() const {
   return !tblgen::Type(defInit).getPredicate().isEmpty();
 }
 
-std::string mlir::Operator::Operand::createTypeMatcherTemplate() const {
+std::string tblgen::Operator::Operand::createTypeMatcherTemplate() const {
   return tblgen::Type(defInit).getPredicate().createTypeMatcherTemplate();
 }

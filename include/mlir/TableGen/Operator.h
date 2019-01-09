@@ -35,6 +35,7 @@ class StringInit;
 } // end namespace llvm
 
 namespace mlir {
+namespace tblgen {
 
 // Wrapper class that contains a MLIR op's information (e.g., operands,
 // atributes) defined in TableGen and provides helper methods for
@@ -128,6 +129,7 @@ private:
   const llvm::Record &def;
 };
 
+} // end namespace tblgen
 } // end namespace mlir
 
 #endif // MLIR_TABLEGEN_OPERATOR_H_

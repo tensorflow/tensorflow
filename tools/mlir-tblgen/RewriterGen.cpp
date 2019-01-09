@@ -37,6 +37,9 @@
 using namespace llvm;
 using namespace mlir;
 
+using mlir::tblgen::Operator;
+using mlir::tblgen::Type;
+
 namespace {
 
 // Wrapper around dag argument.
@@ -89,7 +92,7 @@ private:
 void Pattern::emitAttributeValue(Record *constAttr) {
   Record *attr = constAttr->getValueAsDef("attr");
   auto value = constAttr->getValue("value");
-  tblgen::Type type(attr->getValueAsDef("type"));
+  Type type(attr->getValueAsDef("type"));
   auto storageType = attr->getValueAsString("storageType").trim();
 
   // For attributes stored as strings we do not need to query builder etc.
@@ -308,7 +311,7 @@ void Pattern::emit(StringRef rewriteName) {
 
     // TODO(jpienaar): Refactor out into map to avoid recomputing these.
     auto argument = resultOp.getArg(i);
-    if (!argument.is<mlir::Operator::Attribute *>())
+    if (!argument.is<Operator::Attribute *>())
       PrintFatalError(pattern->getLoc(),
                       Twine("expected attribute ") + Twine(i));
 
