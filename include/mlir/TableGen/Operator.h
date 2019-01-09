@@ -23,6 +23,7 @@
 #define MLIR_TABLEGEN_OPERATOR_H_
 
 #include "mlir/Support/LLVM.h"
+#include "mlir/TableGen/Attribute.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -57,26 +58,25 @@ public:
   // Returns the C++ class name of the op with namespace added.
   std::string qualifiedCppClassName() const;
 
-  struct Attribute {
+  struct NamedAttribute {
     std::string getName() const;
-    StringRef getReturnType() const;
-    StringRef getStorageType() const;
 
     llvm::StringInit *name;
-    llvm::Record *record;
-    bool isDerived;
+    Attribute attr;
   };
 
   // Op attribute interators.
-  using attribute_iterator = Attribute *;
+  using attribute_iterator = NamedAttribute *;
   attribute_iterator attribute_begin();
   attribute_iterator attribute_end();
   llvm::iterator_range<attribute_iterator> getAttributes();
 
   // Op attribute accessors.
   int getNumAttributes() const { return attributes.size(); }
-  Attribute &getAttribute(int index) { return attributes[index]; }
-  const Attribute &getAttribute(int index) const { return attributes[index]; }
+  NamedAttribute &getAttribute(int index) { return attributes[index]; }
+  const NamedAttribute &getAttribute(int index) const {
+    return attributes[index];
+  }
 
   struct Operand {
     bool hasMatcher() const;
@@ -99,7 +99,7 @@ public:
   const Operand &getOperand(int index) const { return operands[index]; }
 
   // Op argument (attribute or operand) accessors.
-  using Argument = llvm::PointerUnion<Attribute *, Operand *>;
+  using Argument = llvm::PointerUnion<NamedAttribute *, Operand *>;
   Argument getArg(int index);
   StringRef getArgName(int index) const;
   int getNumArgs() const { return operands.size() + attributes.size(); }
@@ -115,7 +115,7 @@ private:
   SmallVector<Operand, 4> operands;
 
   // The attributes of the op.
-  SmallVector<Attribute, 4> attributes;
+  SmallVector<NamedAttribute, 4> attributes;
 
   // The start of native attributes, which are specified when creating the op
   // as a part of the op's definition.

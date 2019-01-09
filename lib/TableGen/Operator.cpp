@@ -125,7 +125,7 @@ void tblgen::Operator::populateOperandsAndAttributes() {
     if (isDerived)
       PrintFatalError(def.getLoc(),
                       "derived attributes not allowed in argument list");
-    attributes.push_back({givenName, argDef, isDerived});
+    attributes.push_back({givenName, Attribute(argDef)});
   }
 
   // Handle derived attributes.
@@ -144,27 +144,18 @@ void tblgen::Operator::populateOperandsAndAttributes() {
             "unsupported attribute modelling, only single class expected");
       }
       attributes.push_back({cast<llvm::StringInit>(val.getNameInit()),
-                            cast<DefInit>(val.getValue())->getDef(),
-                            /*isDerived=*/true});
+                            Attribute(cast<DefInit>(val.getValue()))});
     }
   }
 }
 
-std::string tblgen::Operator::Attribute::getName() const {
+std::string tblgen::Operator::NamedAttribute::getName() const {
   std::string ret = name->getAsUnquotedString();
   // TODO(jpienaar): Revise this post dialect prefixing attribute discussion.
   auto split = StringRef(ret).split("__");
   if (split.second.empty())
     return ret;
   return llvm::join_items("$", split.first, split.second);
-}
-
-StringRef tblgen::Operator::Attribute::getReturnType() const {
-  return record->getValueAsString("returnType").trim();
-}
-
-StringRef tblgen::Operator::Attribute::getStorageType() const {
-  return record->getValueAsString("storageType").trim();
 }
 
 bool tblgen::Operator::Operand::hasMatcher() const {

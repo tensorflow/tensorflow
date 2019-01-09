@@ -37,6 +37,7 @@
 using namespace llvm;
 using namespace mlir;
 
+using mlir::tblgen::Attribute;
 using mlir::tblgen::Operator;
 using mlir::tblgen::Type;
 
@@ -90,10 +91,10 @@ private:
 } // end namespace
 
 void Pattern::emitAttributeValue(Record *constAttr) {
-  Record *attr = constAttr->getValueAsDef("attr");
+  Attribute attr(constAttr->getValueAsDef("attr"));
   auto value = constAttr->getValue("value");
-  Type type(attr->getValueAsDef("type"));
-  auto storageType = attr->getValueAsString("storageType").trim();
+  Type type = attr.getType();
+  auto storageType = attr.getStorageType();
 
   // For attributes stored as strings we do not need to query builder etc.
   if (storageType == "StringAttr") {
@@ -183,7 +184,7 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
       }
 
       // TODO(jpienaar): Verify attributes.
-      if (auto *attr = opArg.dyn_cast<Operator::Attribute *>()) {
+      if (auto *attr = opArg.dyn_cast<Operator::NamedAttribute *>()) {
       }
     }
 
@@ -194,10 +195,11 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
     if (opArg.is<Operator::Operand *>())
       os.indent(indent) << "state->" << name << " = op" << depth
                         << "->getOperand(" << i << ");\n";
-    if (auto attr = opArg.dyn_cast<Operator::Attribute *>()) {
+    if (auto namedAttr = opArg.dyn_cast<Operator::NamedAttribute *>()) {
       os.indent(indent) << "state->" << name << " = op" << depth
-                        << "->getAttrOfType<" << attr->getStorageType()
-                        << ">(\"" << attr->getName() << "\");\n";
+                        << "->getAttrOfType<"
+                        << namedAttr->attr.getStorageType() << ">(\""
+                        << namedAttr->getName() << "\");\n";
     }
   }
 }
@@ -234,8 +236,8 @@ void Pattern::emit(StringRef rewriteName) {
   for (auto &arg : boundArguments) {
     if (arg.second.isAttr()) {
       DefInit *defInit = cast<DefInit>(arg.second.init);
-      os.indent(4) << defInit->getDef()->getValueAsString("storageType").trim()
-                   << " " << arg.first() << ";\n";
+      os.indent(4) << Attribute(defInit).getStorageType() << " " << arg.first()
+                   << ";\n";
     } else {
       os.indent(4) << "Value* " << arg.first() << ";\n";
     }
@@ -311,7 +313,7 @@ void Pattern::emit(StringRef rewriteName) {
 
     // TODO(jpienaar): Refactor out into map to avoid recomputing these.
     auto argument = resultOp.getArg(i);
-    if (!argument.is<Operator::Attribute *>())
+    if (!argument.is<Operator::NamedAttribute *>())
       PrintFatalError(pattern->getLoc(),
                       Twine("expected attribute ") + Twine(i));
 

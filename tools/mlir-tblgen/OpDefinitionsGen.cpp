@@ -61,17 +61,7 @@ static inline bool hasStringAttribute(const Record &record,
   return isa<CodeInit>(valueInit) || isa<StringInit>(valueInit);
 }
 
-// Returns `fieldName`'s value queried from `record` if `fieldName` is set as
-// an string in record; otherwise, returns `defaultVal`.
-static inline StringRef getAsStringOrDefault(const Record &record,
-                                             StringRef fieldName,
-                                             StringRef defaultVal) {
-  return hasStringAttribute(record, fieldName)
-             ? record.getValueAsString(fieldName)
-             : defaultVal;
-}
-
-static std::string getAttributeName(const Operator::Attribute &attr) {
+static std::string getAttributeName(const Operator::NamedAttribute &attr) {
   return attr.name->getAsUnquotedString();
 }
 
@@ -189,14 +179,14 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
 }
 
 void OpEmitter::emitAttrGetters() {
-  for (auto &attr : op.getAttributes()) {
-    auto name = getAttributeName(attr);
-    auto *def = attr.record;
+  for (auto &namedAttr : op.getAttributes()) {
+    auto name = getAttributeName(namedAttr);
+    const auto &attr = namedAttr.attr;
 
     // Emit the derived attribute body.
-    if (attr.isDerived) {
+    if (attr.isDerivedAttr()) {
       OUT(2) << attr.getReturnType() << ' ' << name << "() const {"
-             << def->getValueAsString("body") << " }\n";
+             << attr.getDerivedCodeBody() << " }\n";
       continue;
     }
 
@@ -206,8 +196,7 @@ void OpEmitter::emitAttrGetters() {
     // Return the queried attribute with the correct return type.
     std::string attrVal = formatv("this->getAttrOfType<{0}>(\"{1}\")",
                                   attr.getStorageType(), name);
-    OUT(4) << "return "
-           << formatv(def->getValueAsString("convertFromStorage"), attrVal)
+    OUT(4) << "return " << formatv(attr.getConvertFromStorageCall(), attrVal)
            << ";\n  }\n";
   }
 }
@@ -258,12 +247,11 @@ void OpEmitter::emitBuilder() {
 
   // Emit parameters for all attributes
   // TODO(antiagainst): Support default initializer for attributes
-  for (const auto &attr : op.getAttributes()) {
-    if (attr.isDerived)
+  for (const auto &namedAttr : op.getAttributes()) {
+    const auto &attr = namedAttr.attr;
+    if (attr.isDerivedAttr())
       break;
-    const Record &def = *attr.record;
-    os << ", " << getAsStringOrDefault(def, "storageType", "Attribute").trim()
-       << ' ' << getAttributeName(attr);
+    os << ", " << attr.getStorageType() << ' ' << getAttributeName(namedAttr);
   }
 
   os << ") {\n";
@@ -285,10 +273,10 @@ void OpEmitter::emitBuilder() {
   }
 
   // Push all attributes to the result
-  for (const auto &attr : op.getAttributes())
-    if (!attr.isDerived)
+  for (const auto &namedAttr : op.getAttributes())
+    if (!namedAttr.attr.isDerivedAttr())
       OUT(4) << formatv("result->addAttribute(\"{0}\", {0});\n",
-                        getAttributeName(attr));
+                        getAttributeName(namedAttr));
   OUT(2) << "}\n";
 
   // 2. Aggregated parameters
@@ -368,12 +356,14 @@ void OpEmitter::emitVerifier() {
 
   OUT(2) << "bool verify() const {\n";
   // Verify the attributes have the correct type.
-  for (const auto &attr : op.getAttributes()) {
-    if (attr.isDerived)
+  for (const auto &namedAttr : op.getAttributes()) {
+    const auto &attr = namedAttr.attr;
+
+    if (attr.isDerivedAttr())
       continue;
 
-    auto name = getAttributeName(attr);
-    if (!hasStringAttribute(*attr.record, "storageType")) {
+    auto name = getAttributeName(namedAttr);
+    if (!attr.hasStorageType()) {
       OUT(4) << "if (!this->getAttr(\"" << name
              << "\")) return emitOpError(\"requires attribute '" << name
              << "'\");\n";
