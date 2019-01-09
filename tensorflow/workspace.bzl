@@ -141,7 +141,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         sha256 = "9de38f2d162c51599b802f7c36d9f3773980d19ac908c61638f8344d2c10e1ca",
         strip_prefix = "eigen-eigen-88fc23324517",
         urls = [
-            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/88fc23324517..tar.gz",
+            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/88fc23324517.tar.gz",
             "https://bitbucket.org/eigen/eigen/get/88fc23324517.tar.gz",
         ],
     )
