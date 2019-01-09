@@ -113,8 +113,10 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
       node_estimator_(std::move(node_estimator)),
       node_manager_(std::move(node_manager)),
       use_static_shapes_(use_static_shapes) {
-  scheduler_ = absl::make_unique<VirtualScheduler>(use_static_shapes_, cluster_,
-                                                   node_manager_.get());
+  // Use aggressive static shape inference to minimize unknown shapes.
+  scheduler_ = absl::make_unique<VirtualScheduler>(
+      use_static_shapes_,
+      /*use_aggressive_shape_inference=*/true, cluster_, node_manager_.get());
 }
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
