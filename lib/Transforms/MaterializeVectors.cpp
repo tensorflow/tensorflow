@@ -373,12 +373,16 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
     auto stride = vectorShape[i - numMemRefIndices - numSuperVectorIndices];
     affineExprs.push_back(d_i + offset * stride);
   }
-  auto affineMap = AffineMap::get(numIndices, 0, affineExprs, {});
 
-  // TODO(ntv): support a concrete map and composition.
-  auto app = b->create<AffineApplyOp>(b->getInsertionPoint()->getLoc(),
-                                      affineMap, memrefIndices);
-  return SmallVector<mlir::Value *, 8>{app->getResults()};
+  // Create a bunch of single result maps.
+  return functional::map(
+      [b, numIndices, memrefIndices](AffineExpr expr) {
+        auto map = AffineMap::get(numIndices, 0, expr, {});
+        auto app = makeNormalizedAffineApply(
+            b, b->getInsertionPoint()->getLoc(), map, memrefIndices);
+        return app->getResult(0);
+      },
+      affineExprs);
 }
 
 /// Returns attributes with the following substitutions applied:
@@ -553,11 +557,17 @@ static bool instantiateMaterialization(Instruction *inst,
   // Create a builder here for unroll-and-jam effects.
   FuncBuilder b(inst);
   auto *opInst = cast<OperationInst>(inst);
+  // AffineApplyOp are ignored: instantiating the proper vector op will take
+  // care of AffineApplyOps by composing them properly.
+  if (opInst->isa<AffineApplyOp>()) {
+    return false;
+  }
   if (auto write = opInst->dyn_cast<VectorTransferWriteOp>()) {
     auto *clone = instantiate(&b, write, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     return clone == nullptr;
-  } else if (auto read = opInst->dyn_cast<VectorTransferReadOp>()) {
+  }
+  if (auto read = opInst->dyn_cast<VectorTransferReadOp>()) {
     auto *clone = instantiate(&b, read, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     if (!clone) {
@@ -570,10 +580,12 @@ static bool instantiateMaterialization(Instruction *inst,
   // The only op with 0 results reaching this point must, by construction, be
   // VectorTransferWriteOps and have been caught above. Ops with >= 2 results
   // are not yet supported. So just support 1 result.
-  if (opInst->getNumResults() != 1)
+  if (opInst->getNumResults() != 1) {
     return inst->emitError("NYI: ops with != 1 results");
-  if (opInst->getResult(0)->getType() != state->superVectorType)
+  }
+  if (opInst->getResult(0)->getType() != state->superVectorType) {
     return inst->emitError("Op does not return a supervector.");
+  }
   auto *clone =
       instantiate(&b, opInst, state->hwVectorType, state->substitutionsMap);
   if (!clone) {
