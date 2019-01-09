@@ -29,12 +29,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export(v1=['layers.BatchNormalization'])
 class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
-  """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
-
-  "Batch Normalization: Accelerating Deep Network Training by Reducing
-  Internal Covariate Shift"
-
-  Sergey Ioffe, Christian Szegedy
+  """Batch Normalization layer from (Ioffe et al., 2015).
 
   Arguments:
     axis: An `int` or list of `int`, the axis or axes that should be
@@ -66,9 +61,9 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
         not safe to use when doing asynchronous distributed training.
     gamma_constraint: An optional projection function to be applied to the
         `gamma` weight after being updated by an `Optimizer`.
-    renorm: Whether to use Batch Renormalization
-      (https://arxiv.org/abs/1702.03275). This adds extra variables during
-      training. The inference is the same for either value of this parameter.
+    renorm: Whether to use Batch Renormalization (Ioffe, 2017).
+      This adds extra variables during training.
+      The inference is the same for either value of this parameter.
     renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
       scalar `Tensors` used to clip the renorm correction. The correction
       `(r, d)` is used as `corrected_value = normalized_value * r + d`, with
@@ -102,6 +97,14 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
       `None`, no adjustment is applied. Cannot be specified if
       virtual_batch_size is specified.
     name: A string, the name of the layer.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
+    Batch Renormalization - Towards Reducing Minibatch Dependence in Batch-Normalized Models:
+      [Ioffe, 2017](http://papers.nips.cc/paper/6790-batch-renormalization-towards-reducing-minibatch-dependence-in-batch-normalized-models)
+      ([pdf](http://papers.nips.cc/paper/6790-batch-renormalization-towards-reducing-minibatch-dependence-in-batch-normalized-models.pdf))
   """
 
   def __init__(self,
@@ -182,14 +185,8 @@ def batch_normalization(inputs,
                         fused=None,
                         virtual_batch_size=None,
                         adjustment=None):
-  """Functional interface for the batch normalization layer.
-
-  Reference: http://arxiv.org/abs/1502.03167
-
-  "Batch Normalization: Accelerating Deep Network Training by Reducing
-  Internal Covariate Shift"
-
-  Sergey Ioffe, Christian Szegedy
+  """Functional interface for the batch normalization layer from_config
+ (Ioffe et al., 2015).
 
   Note: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
@@ -245,9 +242,9 @@ def batch_normalization(inputs,
     name: String, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
-    renorm: Whether to use Batch Renormalization
-      (https://arxiv.org/abs/1702.03275). This adds extra variables during
-      training. The inference is the same for either value of this parameter.
+    renorm: Whether to use Batch Renormalization (Ioffe, 2017).
+      This adds extra variables during training.
+      The inference is the same for either value of this parameter.
     renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
       scalar `Tensors` used to clip the renorm correction. The correction
       `(r, d)` is used as `corrected_value = normalized_value * r + d`, with
@@ -284,6 +281,14 @@ def batch_normalization(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
+    Batch Renormalization - Towards Reducing Minibatch Dependence in Batch-Normalized Models:
+      [Ioffe, 2017](http://papers.nips.cc/paper/6790-batch-renormalization-towards-reducing-minibatch-dependence-in-batch-normalized-models)
+      ([pdf](http://papers.nips.cc/paper/6790-batch-renormalization-towards-reducing-minibatch-dependence-in-batch-normalized-models.pdf))
   """
   layer = BatchNormalization(
       axis=axis,
