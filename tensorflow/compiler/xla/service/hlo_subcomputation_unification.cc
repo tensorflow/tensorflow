@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -33,12 +33,12 @@ StatusOr<bool> HloSubcomputationUnification::Run(HloModule* module) {
       continue;
     }
     auto& callers = node.callers();
-    if (std::any_of(callers.begin(), callers.end(),
-                    [](HloComputation* c) {
-                      return c->IsFusionComputation();
-                    })) {
+    if (std::any_of(callers.begin(), callers.end(), [](HloComputation* c) {
+          return c->IsFusionComputation();
+        })) {
       continue;
     }
+    computations.push_back(comp);
   }
 
   // For each computation C in the module, find the first computation C0 in the
