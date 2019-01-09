@@ -893,5 +893,17 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
       strategy.extended.call_for_each_replica(f)
 
 
+class LocalParameterServerStrategyTest(strategy_test_lib.DistributionTestBase,
+                                       parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager'],
+                                              use_core_strategy=[True, False],
+                                              required_gpus=2))
+  def testNumpyIterator(self, use_core_strategy):
+    strategy, _, _ = create_test_objects(
+        num_gpus=2, use_core_strategy=use_core_strategy)
+    self._test_numpy_iterator(strategy)
+
+
 if __name__ == '__main__':
   test.main()

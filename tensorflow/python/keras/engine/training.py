@@ -2161,53 +2161,47 @@ class Model(Network):
                        'you should specify the `{steps_name}` argument.'
                        .format(steps_name=steps_name))
 
-    first_x_value = nest.flatten(x)[0]
-    if isinstance(first_x_value, np.ndarray):
-      # We need to use the drop_remainder argument to allow for a static
-      # input shape which is required for TPUs.
-      drop_remainder = self._distribution_strategy.require_static_shapes
-      if y is not None:
-        var_x = distributed_training_utils.get_var_for_numpy(
-            self._distribution_strategy, x)
-        var_y = distributed_training_utils.get_var_for_numpy(
-            self._distribution_strategy, y)
-        if sample_weight is not None:
-          var_sample_weights = distributed_training_utils.get_var_for_numpy(
-              self._distribution_strategy, sample_weight)
+    if ops.executing_eagerly_outside_functions():
+      session = None
+    else:
+      session = K.get_session()
 
-          x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y,
-                                                      var_sample_weights))
+    with self._distribution_strategy.scope():
+      first_x_value = nest.flatten(x)[0]
+      if isinstance(first_x_value, np.ndarray):
+        x = distributed_training_utils.list_to_tuple(x)
+        if y is not None:
+          y = distributed_training_utils.list_to_tuple(y)
+          if sample_weight is not None:
+            sample_weight = distributed_training_utils.list_to_tuple(
+                sample_weight)
+            in_tuple = (x, y, sample_weight)
+          else:
+            in_tuple = (x, y)
         else:
-          x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
+          in_tuple = x
 
         if shuffle:
           # 1024 is a good buffer size since it is much larger than the average
           # batch size provided by the user and provides sufficient randomness.
           # One thing to keep in mind is the memory usage based on the size of
           # each sample.
-          x = x.shuffle(1024)
-        x = x.repeat()
-        x = x.batch(batch_size, drop_remainder=drop_remainder)
-        y = None
-        sample_weight = None
+          shuffle_buffer = 1024
+        else:
+          shuffle_buffer = None
+        iterator = self._distribution_strategy.experimental_make_numpy_iterator(
+            in_tuple, batch_size, num_epochs=None, shuffle=shuffle_buffer,
+            session=session)
       else:
-        # This case is for the predict call where the dataset only contains
-        # inputs and no targets, i.e. it does not return a tuple
-        var_x = distributed_training_utils.get_var_for_numpy(
-            self._distribution_strategy, x)
-        x = dataset_ops.Dataset.from_tensor_slices(var_x)
-        x = x.batch(batch_size, drop_remainder=drop_remainder)
+        assert isinstance(x, dataset_ops.DatasetV2)
+        training_utils.validate_dataset_input(x, y, sample_weight,
+                                              validation_split)
+        iterator = self._distribution_strategy.make_dataset_iterator(x)
 
-    assert isinstance(x, dataset_ops.DatasetV2)
-
-    with self._distribution_strategy.scope():
-      iterator = self._distribution_strategy.make_dataset_iterator(x)
       init_op = iterator.initialize()
       if not context.executing_eagerly():
         K.get_session().run(init_op)
 
-    training_utils.validate_dataset_input(x, y, sample_weight,
-                                          validation_split)
     return iterator
 
   def _standardize_user_data(self,

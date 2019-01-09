@@ -131,6 +131,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:numpy_dataset",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
@@ -153,6 +154,7 @@ py_library(
         "//tensorflow/python/distribute:cross_device_utils",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:numpy_dataset",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
     ],
@@ -178,6 +180,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -303,6 +306,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:numpy_dataset",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
     ],

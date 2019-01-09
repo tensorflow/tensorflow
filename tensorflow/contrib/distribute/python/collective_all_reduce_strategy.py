@@ -28,6 +28,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -86,6 +87,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       local_devices = ("/device:CPU:0",)
     self._worker_device = device_util.canonicalize("/device:CPU:0")
+    self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
     self._initialize_local(local_devices)
@@ -121,6 +123,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                                                 task_id)
 
     self._worker_device = "/job:%s/task:%d" % (task_type, task_id)
+    self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
     if num_gpus_per_worker:
       local_devices = tuple(
           "%s/device:GPU:%d" % (self._worker_device, i)
@@ -157,6 +160,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     if colocate_with is None:
       device_map = self._device_map
       logical_device = 0  # TODO(josh11b): Get logical device from scope here.
+    elif isinstance(colocate_with, numpy_dataset.SingleDevice):
+      with ops.device(colocate_with.device):
+        return next_creator(*args, **kwargs)
     else:
       device_map = colocate_with.device_map
       logical_device = colocate_with.logical_device
@@ -347,4 +353,4 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
-    return False
+    return True

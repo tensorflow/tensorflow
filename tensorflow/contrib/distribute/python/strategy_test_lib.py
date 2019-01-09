@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -294,6 +296,33 @@ class DistributionTestBase(test.TestCase):
       global_step_tensors = strategy.unwrap(value)
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
+
+  def _test_numpy_iterator(self, strategy):
+    with strategy.scope(), self.cached_session() as sess:
+      x = np.asarray([[1, 2], [6, 12], [2, 4],
+                      [5, 10], [3, 6], [4, 8]])
+      y = np.asarray([5, 4, 3, 2, 1, 0])
+      batch_size = 6
+      if not strategy.extended._global_batch_size:  # pylint: disable=protected-access
+        batch_size = batch_size // strategy.num_replicas_in_sync
+      i = strategy.experimental_make_numpy_iterator(
+          (x, y), batch_size=batch_size, num_epochs=2, shuffle=None,
+          session=sess)
+      self.evaluate(i.initialize())
+
+      def run_and_concatenate(strategy, i):
+        x, y = strategy.experimental_run(lambda z: z, i)
+        x, y = self.evaluate((strategy.unwrap(x), strategy.unwrap(y)))
+        return np.concatenate(x), np.concatenate(y)
+
+      x_1, y_1 = run_and_concatenate(strategy, i)
+      self.assertAllEqual(x, x_1)
+      self.assertAllEqual(y, y_1)
+      x_2, y_2 = run_and_concatenate(strategy, i)
+      self.assertAllEqual(x, x_2)
+      self.assertAllEqual(y, y_2)
+      with self.assertRaises(errors.OutOfRangeError):
+        run_and_concatenate(strategy, i)
 
 
 class OneDeviceDistributionTestBase(test.TestCase):

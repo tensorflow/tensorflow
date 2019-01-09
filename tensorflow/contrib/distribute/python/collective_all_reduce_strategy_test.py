@@ -466,6 +466,13 @@ class LocalCollectiveAllReduceStrategy(
     with self.cached_session(config=config, target=target):
       self._test_all_reduce_mean_gradient_tape(distribution)
 
+  def testNumpyIterator(self):
+    num_gpus = 2
+    if context.num_gpus() < num_gpus:
+      self.skipTest('Not enough GPUs')
+    strategy, _, _ = self._get_test_object(None, None, num_gpus)
+    self._test_numpy_iterator(strategy)
+
 
 if __name__ == '__main__':
   test.main()
