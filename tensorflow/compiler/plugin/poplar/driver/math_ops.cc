@@ -235,19 +235,33 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
   } else {
     if (in0.shape() != in1.shape()) {
-      tensorflow::BCast::Vec shape1 =
-          convert_array<tensorflow::BCast::Vec>(in0.shape());
-      tensorflow::BCast::Vec shape2 =
-          convert_array<tensorflow::BCast::Vec>(in1.shape());
+      auto shape0_optional = convert_array<tensorflow::BCast::Vec>(in0.shape());
+      auto shape1_optional = convert_array<tensorflow::BCast::Vec>(in1.shape());
+      if (!shape0_optional || !shape1_optional) {
+        return xla::FailedPrecondition(
+            "ExpressionOutliner - cannot cast input shape.");
+      }
+      tensorflow::BCast::Vec shape0 = *shape0_optional;
+      tensorflow::BCast::Vec shape1 = *shape1_optional;
 
-      tensorflow::BCast bcast(shape1, shape2);
+      tensorflow::BCast bcast(shape0, shape1);
       if (!bcast.IsValid()) {
         return xla::FailedPrecondition("Incompatible broadcast on %s",
                                        inst->name().c_str());
       }
 
-      in0 = in0.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
-      in1 = in1.reshape(convert_array<std::vector<size_t>>(bcast.y_reshape()));
+      auto bcast_x_shape_optional =
+          convert_array<std::vector<size_t>>(bcast.x_reshape());
+      auto bcast_y_shape_optional =
+          convert_array<std::vector<size_t>>(bcast.y_reshape());
+      if (!bcast_x_shape_optional || !bcast_y_shape_optional) {
+        return xla::FailedPrecondition(
+            "ExpressionOutliner - cannot cast broadcast shape.");
+      }
+      std::vector<size_t> bcast_x_shape = *bcast_x_shape_optional;
+      std::vector<size_t> bcast_y_shape = *bcast_y_shape_optional;
+      in0 = in0.reshape(bcast_x_shape);
+      in1 = in1.reshape(bcast_y_shape);
 
       in0 = TileTensor(bcast.x_bcast(), in0);
       in1 = TileTensor(bcast.y_bcast(), in1);

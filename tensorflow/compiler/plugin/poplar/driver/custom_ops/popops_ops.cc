@@ -28,8 +28,8 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFnForCustomOp(
   std::vector<std::string> op_info =
       absl::StrSplit(inst->custom_call_target(), "::");
   if (op_info.size() != 2) {
-    return xla::FailedPrecondition("Invalid custom poplibs call info: ",
-                                   inst->custom_call_target());
+    return xla::FailedPrecondition("Invalid custom poplibs call info: %s",
+                                   inst->custom_call_target().c_str());
   }
   std::string op_name = op_info[1];
 

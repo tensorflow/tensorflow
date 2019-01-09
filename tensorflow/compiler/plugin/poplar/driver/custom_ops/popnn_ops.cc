@@ -38,10 +38,20 @@ StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
   const auto input_shape = inst->operand(0)->shape();
   const auto time_steps = input_shape.dimensions(0);
   const auto batch_size = input_shape.dimensions(1);
-  const auto input_size = input_shape.dimensions(2);
+  auto optional_input_size = convert_scalar<uint32>(input_shape.dimensions(2));
+  if (!optional_input_size) {
+    return xla::FailedPrecondition("LSTM - Input size can't be casted.");
+  }
+  const auto input_size = *optional_input_size;
 
-  TF_ASSIGN_OR_RETURN(int32 num_channels,
+  TF_ASSIGN_OR_RETURN(int32 num_channels_int32,
                       attribute_map.GetAttributeAsInt("num_channels"));
+  auto optional_num_channels = convert_scalar<uint32>(num_channels_int32);
+  if (!optional_num_channels) {
+    return xla::FailedPrecondition("LSTM - Num Channels can't be casted.");
+  }
+  const auto num_channels = *optional_num_channels;
+
   TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(input_shape));
   popnn::lstm::LstmParams lstm_params(type, batch_size, time_steps,
                                       {input_size, num_channels});

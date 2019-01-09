@@ -529,8 +529,13 @@ static StatusOr<poplar::Tensor> PathTransform(
     auto& inst = *i;
     switch (inst->opcode()) {
       case HloOpcode::kTranspose: {
-        std::vector<unsigned> permutation(
-            convert_array<std::vector<unsigned>>(inst->dimensions()));
+        auto optional_permutation =
+            convert_array<std::vector<unsigned>>(inst->dimensions());
+        if (!optional_permutation) {
+          return xla::FailedPrecondition(
+              "PathTransform - cannot cast permutation.");
+        }
+        std::vector<unsigned> permutation = *optional_permutation;
         std::vector<unsigned> shuffle(permutation.size());
         for (int d = 0; d < permutation.size(); d++) {
           shuffle[permutation[d]] = d;
@@ -1008,8 +1013,13 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
     return in;
   }
 
-  tensorflow::BCast::Vec bcast_shape =
+  auto optional_bcast_shape =
       convert_array<tensorflow::BCast::Vec>(out.dimensions());
+  if (!optional_bcast_shape) {
+    return xla::FailedPrecondition(
+        "BroadcastTensor - cannot cast output shape.");
+  }
+  tensorflow::BCast::Vec bcast_shape = *optional_bcast_shape;
 
   tensorflow::BCast::Vec tensor_shape(ShapeUtil::Rank(out), 1);
   if (dimensions.size() > 0) {
@@ -1030,7 +1040,14 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
   }
 
   poplar::Tensor o = in;
-  o = in.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
+  auto optional_bcast_x_shape =
+      convert_array<std::vector<size_t>>(bcast.x_reshape());
+  if (!optional_bcast_x_shape) {
+    return xla::FailedPrecondition(
+        "BroadcastTensor - cannot cast broadcast shape.");
+  }
+  std::vector<size_t> bcast_x_shape = *optional_bcast_x_shape;
+  o = in.reshape(bcast_x_shape);
   o = TileTensor(bcast.x_bcast(), o);
   return o.reshape(PoplarShapeFromXlaShape(out));
 }

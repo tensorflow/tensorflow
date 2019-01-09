@@ -58,8 +58,8 @@ StatusOr<const CustomPoplibOpInfo> GetCustomPoplibOpInfo(
   std::vector<std::string> op_info =
       absl::StrSplit(inst->custom_call_target(), "::");
   if (op_info.size() != 2) {
-    return xla::FailedPrecondition("Invalid custom poplibs call info: ",
-                                   inst->custom_call_target());
+    return xla::FailedPrecondition("Invalid custom poplibs call info: %s",
+                                   inst->custom_call_target().c_str());
   }
   // First find the right poplibs library map
   auto it_type = poplibs_info_map.find(op_info[0]);
