@@ -144,7 +144,10 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
           outputs=[OUTPUT_NODE_NAME],
           max_batch_size=max_batch_size,
           precision_mode='INT8',
-          max_workspace_size_bytes=4096 << 19,
+          # There is a 2GB GPU memory limit for each test, so we set
+          # max_workspace_size_bytes to 256MB to leave enough room for TF
+          # runtime to allocate GPU memory.
+          max_workspace_size_bytes=1 << 28,
           minimum_segment_size=2,
           use_calibration=False,
       )
