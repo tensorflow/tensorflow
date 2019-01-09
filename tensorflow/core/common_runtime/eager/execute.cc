@@ -712,22 +712,37 @@ Status EagerExecute(EagerContext* ctx, Device* device,
   std::vector<Tensor> outputs(1);
   const MemoryTypeVector* output_memory_types = nullptr;
   output_memory_types = &kernel->kernel()->output_memory_types();
-  std::vector<Tensor> inputs(op_inputs.size());
+
+  // If there are multiple references to a TensorHandle in 'op_inputs' we must
+  // increment the reference count of the corresponding Tensor or risk it being
+  // overwritten during kernel execution. The reference count is incremented
+  // below when we insert a copy of the Tensor into protected_tensors, and will
+  // be decremented once execution is complete.
+  std::vector<tensorflow::Tensor> protected_tensors;
   for (int i = 0; i < op_inputs.size(); ++i) {
-    const Tensor* input_tensor = nullptr;
-    TF_RETURN_IF_ERROR(op_inputs[i]->Tensor(&input_tensor));
-    inputs[i] = *input_tensor;
+    if (!op_inputs[i]->RefCountIsOne()) {
+      const Tensor* input_tensor = nullptr;
+      TF_RETURN_IF_ERROR(op_inputs[i]->Tensor(&input_tensor));
+      protected_tensors.push_back(*input_tensor);
+    }
   }
+
+  gtl::InlinedVector<TensorValue, 4> input_vector(op_inputs.size());
+  for (int i = 0; i < op_inputs.size(); ++i) {
+    TF_RETURN_IF_ERROR(op_inputs[i]->TensorValue(&input_vector[i]));
+  }
+
   //  TODO(apassos) figure out how to record stats for ops which are a part of
   //  functions.
   // TODO(agarwal): change Run to take vector of handles ?
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
-    TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats,
+    TF_RETURN_IF_ERROR(kernel->Run(input_vector, &outputs, maybe_stats,
                                    maybe_step_stats, graph_collector));
   } else {
-    TF_RETURN_IF_ERROR(kernel->Run(container, &inputs, &outputs, maybe_stats,
-                                   maybe_step_stats, graph_collector));
+    TF_RETURN_IF_ERROR(kernel->Run(container, input_vector, &outputs,
+                                   maybe_stats, maybe_step_stats,
+                                   graph_collector));
   }
   if (maybe_stats != nullptr) {
     int64 nanos = Env::Default()->NowNanos();

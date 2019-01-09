@@ -9,22 +9,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "PaddingFIFOQueue"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "PriorityQueue"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "QueueBase"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "RandomShuffleQueue"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SparseFeature"
     mtype: "<type \'type\'>"
   }

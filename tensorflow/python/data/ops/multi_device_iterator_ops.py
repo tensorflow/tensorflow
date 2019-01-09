@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
@@ -31,12 +30,11 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
-class _PerDeviceGenerator(dataset_ops.Dataset):
+class _PerDeviceGenerator(dataset_ops.DatasetV2):
   """A `dummy` generator dataset."""
 
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
-               source_device, target_device, element_structure):
-    self._target_device = target_device
+               source_device, element_structure):
     self._structure = element_structure
 
     multi_device_iterator_string_handle = (
@@ -108,16 +106,15 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
     )
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
-  def _as_variant_tensor(self):
-    with ops.device(self._target_device):
-      return gen_dataset_ops.generator_dataset(
-          self._init_captured_args,
-          self._next_captured_args,
-          self._finalize_captured_args,
-          init_func=self._init_func,
-          next_func=self._next_func,
-          finalize_func=self._finalize_func,
-          **dataset_ops.flat_structure(self))
+    variant_tensor = gen_dataset_ops.generator_dataset(
+        self._init_captured_args,
+        self._next_captured_args,
+        self._finalize_captured_args,
+        init_func=self._init_func,
+        next_func=self._next_func,
+        finalize_func=self._finalize_func,
+        **dataset_ops.flat_structure(self))
+    super(_PerDeviceGenerator, self).__init__(variant_tensor)
 
   def _inputs(self):
     # TODO(b/116506223): Determine which datasets should be used as inputs here.
@@ -156,10 +153,6 @@ class MultiDeviceIterator(object):
     Raises:
       RuntimeError: If run in Eager mode.
     """
-    if context.executing_eagerly():
-      # TODO(rohanj): Fix this. Tracking bug: b/116467184
-      raise RuntimeError("MultiDeviceIterator is not currently supported in "
-                         "Eager mode.")
     self._dataset = dataset._apply_options()  # pylint: disable=protected-access
     self._devices = devices
     self._source_device = source_device
@@ -167,17 +160,23 @@ class MultiDeviceIterator(object):
 
     # Create the MultiDeviceIterator.
     with ops.device(self._source_device):
+      # TODO(b/121378567): Get rid of this shared_name hack.
+      shared_name = ""
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        shared_name += str(ops.uid())
       self._multi_device_iterator_resource = (
           gen_dataset_ops.multi_device_iterator(
               devices=self._devices,
-              shared_name="",
+              shared_name=shared_name,
               container="",
               **dataset_ops.flat_structure(dataset)))
 
       # The incarnation ID is used to ensure consistency between the per-device
       # iterators and the multi-device iterator.
       self._incarnation_id = gen_dataset_ops.multi_device_iterator_init(
-          self._dataset._as_variant_tensor(),  # pylint: disable=protected-access
+          self._dataset._variant_tensor,  # pylint: disable=protected-access
           self._multi_device_iterator_resource,
           max_buffer_size=max_buffer_size)
 
@@ -188,28 +187,36 @@ class MultiDeviceIterator(object):
     # Create the per device iterators.
     self._device_iterators = []
     for i, device in enumerate(self._devices):
-      ds = _PerDeviceGenerator(
-          i, self._multi_device_iterator_resource, self._incarnation_id,
-          self._source_device_tensor, device, dataset._element_structure)  # pylint: disable=protected-access
-      if prefetch_buffer_size > 0:
-        ds = ds.prefetch(prefetch_buffer_size)
-      # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
-      # non-CPU devices.
-      options = dataset_ops.Options()
-      options.experimental_autotune = False
-      opt_options = optimization_options.OptimizationOptions()
-      opt_options.apply_default_optimizations = False
-      options.experimental_optimization = opt_options
-      ds = ds.with_options(options)
       with ops.device(device):
-        self._device_iterators.append(ds.make_initializable_iterator())
+        ds = _PerDeviceGenerator(
+            i, self._multi_device_iterator_resource, self._incarnation_id,
+            self._source_device_tensor, dataset._element_structure)  # pylint: disable=protected-access
+        if prefetch_buffer_size > 0:
+          ds = ds.prefetch(prefetch_buffer_size)
+        # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
+        # non-CPU devices.
+        options = dataset_ops.Options()
+        options.experimental_autotune = False
+        options.experimental_optimization.apply_default_optimizations = False
+        ds = ds.with_options(options)
+        if context.executing_eagerly():
+          self._device_iterators.append(dataset_ops.make_one_shot_iterator(ds))
+        else:
+          self._device_iterators.append(
+              dataset_ops.make_initializable_iterator(ds))
 
-    device_iterator_initializers = [
-        iterator.initializer for iterator in self._device_iterators
-    ]
-    self._initializer = control_flow_ops.group(*device_iterator_initializers)
+    if not context.executing_eagerly():
+      device_iterator_initializers = [
+          iterator.initializer for iterator in self._device_iterators
+      ]
+      self._initializer = control_flow_ops.group(*device_iterator_initializers)
 
-  def get_next(self):
+  def get_next(self, device=None):
+    """Returns the next element given a `device`, else returns all in a list."""
+    if device is not None:
+      index = self._devices.index(device)
+      return self._device_iterators[index].get_next()
+
     result = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
@@ -226,6 +233,8 @@ class MultiDeviceIterator(object):
 
   @property
   def initializer(self):
+    if context.executing_eagerly():
+      return control_flow_ops.no_op()
     return self._initializer
 
   @property

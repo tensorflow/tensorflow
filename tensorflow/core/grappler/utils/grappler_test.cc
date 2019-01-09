@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include <memory>
+#include "absl/algorithm/container.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -122,6 +124,31 @@ void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) const {
       const TensorId got_tensor = ParseTensorName(got.node(i).input(j));
       EXPECT_EQ(want_tensor.ToString(), got_tensor.ToString());
     }
+  }
+}
+
+void GrapplerTest::CompareNodes(const NodeDef& want, const NodeDef& got) const {
+  EXPECT_EQ(want.name(), got.name());
+  EXPECT_EQ(want.op(), got.op());
+
+  std::vector<string> want_inputs(want.input().begin(), want.input().end());
+  std::vector<string> got_inputs(got.input().begin(), got.input().end());
+  EXPECT_EQ(want_inputs, got_inputs);
+
+  const auto attr_name = [](const std::pair<const string, AttrValue>& attr) {
+    return attr.first;
+  };
+
+  std::vector<string> want_attrs;
+  std::vector<string> got_attrs;
+  absl::c_transform(want.attr(), std::back_inserter(want_attrs), attr_name);
+  absl::c_transform(got.attr(), std::back_inserter(got_attrs), attr_name);
+  absl::c_sort(want_attrs);
+  absl::c_sort(got_attrs);
+  EXPECT_EQ(want_attrs, got_attrs);
+
+  for (const string& attr : want_attrs) {
+    EXPECT_TRUE(AreAttrValuesEqual(want.attr().at(attr), got.attr().at(attr)));
   }
 }
 

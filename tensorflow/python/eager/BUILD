@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_py_test", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -255,11 +255,10 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "execution_callbacks_test",
     srcs = ["execution_callbacks_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":execution_callbacks",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -373,11 +372,10 @@ tf_py_logged_benchmark(
     target = "//tensorflow/python/eager:benchmarks_test",
 )
 
-py_test(
+tf_py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":backprop",
         ":context",
         ":test",
@@ -414,20 +412,19 @@ cuda_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":backprop",
         ":context",
         ":core",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -491,11 +488,10 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -519,13 +515,24 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "wrap_function_test",
     srcs = ["wrap_function_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":wrap_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_library(
+    name = "remote",
+    srcs = ["remote.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
     ],
 )

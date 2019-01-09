@@ -22,14 +22,15 @@ import collections
 import os
 import re
 
+from six.moves import urllib
+from six.moves.urllib.error import URLError
 from six.moves.urllib.request import Request
 from six.moves.urllib.request import urlopen
 
-from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import get_accelerator_devices
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
@@ -161,6 +162,20 @@ class TPUClusterResolver(ClusterResolver):
   def _environmentDiscoveryUrl():
     return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
 
+  @staticmethod
+  def _isRunningInGCE():
+    """Checks for GCE presence by attempting to query the metadata service."""
+    try:
+      req = Request('http://metadata.google.internal/computeMetadata/v1',
+                    headers={'Metadata-Flavor': 'Google'})
+      resp = urllib.request.urlopen(req, timeout=1)
+      info = resp.info()
+      if 'Metadata-Flavor' in info and info['Metadata-Flavor'] == 'Google':
+        return True
+    except URLError:
+      pass
+    return False
+
   def __init__(self,
                tpu=None,
                zone=None,
@@ -209,6 +224,8 @@ class TPUClusterResolver(ClusterResolver):
     Raises:
       ImportError: If the googleapiclient is not installed.
       ValueError: If no TPUs are specified.
+      RuntimeError: If an empty TPU name is specified and this is running in a
+        Google Cloud environment.
     """
     if isinstance(tpu, list):
       if not tpu:
@@ -230,6 +247,11 @@ class TPUClusterResolver(ClusterResolver):
       raise ValueError('Please provide a TPU Name to connect to.')
 
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
+
+    # If we are running in Cloud and don't specify a TPU name
+    if self._isRunningInGCE() and not self._tpu:
+      raise RuntimeError('You need to specify a TPU Name if you are running in '
+                         'the Google Cloud environment.')
 
     # By default the task_type is 'worker` and the task_index is 0 (which is the
     # first worker in the task).
@@ -451,17 +473,16 @@ class TPUClusterResolver(ClusterResolver):
         retrieve the system metadata.
 
     Raises:
-      RuntimeError: If this is used with a non-TPU accelerator_type.
+      RuntimeError: If we cannot talk to a TPU worker after retrying or if the
+        number of TPU devices per host is different.
     """
     retry_count = 1
     # TODO(b/120564445): Replace with standard library for retries.
     while True:
       try:
-        with ops.Graph().as_default():
-          with session.Session(self.master(), config=config_proto) as s:
-            devices = s.list_devices()
-            device_details = _get_device_dict_and_cores(devices)
-            break
+        device_details = _get_device_dict_and_cores(
+            get_accelerator_devices(self.master(), config_proto=config_proto))
+        break
       except errors.DeadlineExceededError:
         error_message = ('Failed to connect to master. The TPU might not be '
                          'ready (e.g. still scheduling) or the master '
@@ -483,7 +504,8 @@ class TPUClusterResolver(ClusterResolver):
     return self._environment
 
   def _start_local_server(self):
-    address = self._requestComputeMetadata('instance/network-interfaces/0/ip')
+    address = compat.as_text(self._requestComputeMetadata(
+        'instance/network-interfaces/0/ip'))
     self._server = server_lib.Server(
         {
             'local': ['0.0.0.0:0']

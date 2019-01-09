@@ -119,7 +119,13 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       other_arguments_types.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -180,6 +186,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         Status s = instantiated_captured_func_->Run(ctx, std::move(args),
                                                     &state_and_output);
+        DCHECK(state_and_output.size() <=
+               dataset()->state_types_.size() + output_dtypes().size());
         if (s.ok()) {
           state_.clear();
           size_t i = 0;

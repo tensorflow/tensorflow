@@ -27,6 +27,7 @@ from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import test
@@ -55,6 +56,7 @@ class DatasetsTest(test.TestCase):
     session_config = config_pb2.ConfigProto(cluster_def=self._cluster_def)
 
     self._sess = session.Session(self._worker.target, config=session_config)
+    self._worker_device = '/job:' + worker_job.name
 
   def testTextLineDataset(self):
     all_contents = []
@@ -70,7 +72,8 @@ class DatasetsTest(test.TestCase):
     dataset = datasets.StreamingFilesDataset(
         os.path.join(self.get_temp_dir(), 'text_line.*.txt'), filetype='text')
 
-    iterator = dataset_ops.make_initializable_iterator(dataset)
+    with ops.device(self._worker_device):
+      iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 
@@ -94,7 +97,8 @@ class DatasetsTest(test.TestCase):
     dataset = datasets.StreamingFilesDataset(
         os.path.join(self.get_temp_dir(), 'tf_record*'), filetype='tfrecord')
 
-    iterator = dataset_ops.make_initializable_iterator(dataset)
+    with ops.device(self._worker_device):
+      iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 
@@ -121,7 +125,8 @@ class DatasetsTest(test.TestCase):
 
     dataset = datasets.StreamingFilesDataset(filenames, filetype='tfrecord')
 
-    iterator = dataset_ops.make_initializable_iterator(dataset)
+    with ops.device(self._worker_device):
+      iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 
@@ -154,7 +159,8 @@ class DatasetsTest(test.TestCase):
         os.path.join(self.get_temp_dir(), 'fixed_length*'),
         filetype=FixedLengthFile)
 
-    iterator = dataset_ops.make_initializable_iterator(dataset)
+    with ops.device(self._worker_device):
+      iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 
@@ -177,7 +183,8 @@ class DatasetsTest(test.TestCase):
     dataset = datasets.StreamingFilesDataset(
         dataset_ops.Dataset.range(10), filetype=gen_dataset)
 
-    iterator = dataset_ops.make_initializable_iterator(dataset)
+    with ops.device(self._worker_device):
+      iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 

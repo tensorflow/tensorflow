@@ -100,6 +100,10 @@ class SetVector {
   std::vector<T> vector_;
 };
 
+// Returns formatted string from TensorId specific to grappler. Specifically,
+// for the 0 port (first output), only the node name is returned.
+string TensorIdToString(const TensorId& tensor_id);
+
 // True iff 'name' refers to a control inputs, i.e. a node name prefixed with
 // the ^ character.
 bool IsControlInput(const string& name);
@@ -238,6 +242,9 @@ string AsControlDependency(const string& node);
 // Returns true if the node is assigned to run on CPU device.
 bool NodeIsOnCpu(const NodeDef* node);
 
+// Returns true if the node is assigned to run on GPU device.
+bool NodeIsOnGpu(const NodeDef* node);
+
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
 int NumOutputs(const NodeDef& node, GraphDef* graph);
@@ -297,68 +304,6 @@ void EraseNodesFromGraph(std::vector<int>&& nodes_to_delete, GraphDef* graph);
 
 void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
                          GraphDef* graph);
-
-class SimpleGraphView {
- public:
-  // Build a graph view for the specified graphdef.
-  Status Initialize(const GraphDef& graph) {
-    return Initialize(graph, nullptr, true, true);
-  }
-  // Build a graph view for the specified graphdef augmented with the additional
-  // edges specified in 'extra_dependencies' if any. Note that
-  // extra_dependencies can be null.
-  Status Initialize(
-      const GraphDef& graph,
-      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
-          extra_dependencies) {
-    return Initialize(graph, extra_dependencies, true, true);
-  }
-  Status Initialize(
-      const GraphDef& graph,
-      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
-          extra_dependencies,
-      bool dedup_inputs, bool dedup_outputs);
-
-  const GraphDef* graph() const { return graph_; }
-  inline int num_nodes() const { return index_to_name_.size(); }
-  inline bool has_node(const string& node_name) const {
-    return name_to_index_.find(node_name) != name_to_index_.end();
-  }
-  inline const int index(const string& node_name) const {
-    const auto& it = name_to_index_.find(node_name);
-    DCHECK(it != name_to_index_.end());
-    return it == name_to_index_.end() ? -1 : it->second;
-  }
-  inline const NodeDef& node(int node_idx) const {
-    return graph_->node(node_idx);
-  }
-  inline const string& node_name(int node_idx) const {
-    return index_to_name_[node_idx];
-  }
-  inline const gtl::InlinedVector<int, 4>& inputs(int node_idx) const {
-    return inputs_[node_idx];
-  }
-  inline const gtl::InlinedVector<int, 2>& outputs(int node_idx) const {
-    return outputs_[node_idx];
-  }
-
-  // Traverse the graph starting at `node_idx`, collecting indices of nodes
-  // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
-  // walk continues to its children. It is assumed that *graph_ was not modified
-  // after the call to Initialize().
-  // If `op_types_to_traverse` is empty the DFS will traverse any node type.
-  void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
-                        int node_idx, std::set<int>* nodes_found) const;
-
-  string PrintToString() const;
-
- private:
-  const GraphDef* graph_;  // Not owned.
-  std::vector<string> index_to_name_;
-  gtl::FlatMap<string, int> name_to_index_;
-  std::vector<gtl::InlinedVector<int, 4>> inputs_;
-  std::vector<gtl::InlinedVector<int, 2>> outputs_;
-};
 
 }  // end namespace grappler
 }  // end namespace tensorflow

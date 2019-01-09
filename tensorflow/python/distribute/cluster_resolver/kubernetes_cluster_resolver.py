@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.client import device_lib
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.training import server_lib
@@ -108,14 +107,12 @@ class KubernetesClusterResolver(ClusterResolver):
     Returns:
       The name or URL of the session master.
     """
+    task_type = task_type if task_type is not None else self.task_type
+    task_index = task_index if task_index is not None else self.task_index
+
     if task_type is not None and task_index is not None:
       return format_master_url(
           self.cluster_spec().task_address(task_type, task_index),
-          rpc_layer or self.rpc_layer)
-
-    if self.task_type is not None and self.task_index is not None:
-      return format_master_url(
-          self.cluster_spec().task_address(self.task_type, self.task_index),
           rpc_layer or self.rpc_layer)
 
     return ''
@@ -167,16 +164,3 @@ class KubernetesClusterResolver(ClusterResolver):
     on internal systems.
     """
     return ''
-
-  def num_accelerators(self,
-                       task_type=None,
-                       task_index=None,
-                       accelerator_type='GPU',
-                       config_proto=None):
-    # TODO(frankchn): Make querying non-local accelerators work
-    if task_type is not None or task_index is not None:
-      raise NotImplementedError('Querying non-local accelerators is not yet'
-                                'implemented.')
-
-    local_devices = device_lib.list_local_devices(config_proto)
-    return sum(d.device_type == accelerator_type for d in local_devices)

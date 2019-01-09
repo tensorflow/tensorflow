@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/split.h"
 
@@ -188,8 +190,15 @@ class TfLiteDriver::Expectation {
   size_t num_elements_;
 };
 
-TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name)
+TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name,
+                           bool reference_kernel)
     : use_nnapi_(use_nnapi) {
+  if (reference_kernel) {
+    resolver_.reset(new ops::builtin::BuiltinRefOpResolver);
+  } else {
+    resolver_.reset(new ops::builtin::BuiltinOpResolver);
+  }
+
   if (delegate_name == "FLEX") {
     delegate_ = FlexDelegate::Create();
   }
@@ -221,8 +230,7 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     Invalidate("Failed to mmap model " + bin_file_path);
     return;
   }
-  ops::builtin::BuiltinOpResolver builtins;
-  InterpreterBuilder(*model_, builtins)(&interpreter_);
+  InterpreterBuilder(*model_, *resolver_)(&interpreter_);
   if (!interpreter_) {
     Invalidate("Failed build interpreter");
     return;

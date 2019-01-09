@@ -13,6 +13,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dynamic"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "inbound_nodes"
     mtype: "<type \'property\'>"
   }

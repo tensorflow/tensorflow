@@ -45,11 +45,12 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
     EXPECT_TRUE(aliased_output);
     EXPECT_EQ(aliased_output.value(), output_index);
 
-    absl::optional<std::pair<int64, ShapeIndex>> aliased_param =
+    absl::optional<HloInputOutputAliasConfig::Alias> aliased_param =
         config.GetAliasedParameter(output_index);
 
     EXPECT_TRUE(aliased_param);
-    EXPECT_EQ(aliased_param.value(), std::make_pair(param_number, param_index));
+    EXPECT_EQ(aliased_param->parameter_number, param_number);
+    EXPECT_EQ(aliased_param->parameter_index, param_index);
   }
 
   void expect_not_aliased(const ShapeIndex& output_index, int64 param_number,
@@ -60,11 +61,12 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
 
     EXPECT_FALSE(aliased_output && aliased_output == output_index);
 
-    absl::optional<std::pair<int64, ShapeIndex>> aliased_param =
+    absl::optional<HloInputOutputAliasConfig::Alias> aliased_param =
         config.GetAliasedParameter(output_index);
 
-    EXPECT_FALSE(aliased_param && aliased_param->first == param_number &&
-                 aliased_param->second == param_index);
+    EXPECT_FALSE(aliased_param &&
+                 aliased_param->parameter_number == param_number &&
+                 aliased_param->parameter_index == param_index);
   }
 };
 
@@ -84,8 +86,10 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{0}, /*param_number=*/1,
-                                 /*param_index=*/{}));
+  TF_ASSERT_OK(config.SetUpAlias(
+      /*output_index=*/{0}, /*param_number=*/1,
+      /*param_index=*/{},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   expect_aliased(/*output_index=*/{0}, /*param_number=*/1,
                  /*param_index=*/{}, config);
@@ -114,11 +118,15 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{0}, /*param_number=*/0,
-                                 /*param_index=*/{0}));
+  TF_ASSERT_OK(config.SetUpAlias(
+      /*output_index=*/{0}, /*param_number=*/0,
+      /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
-  TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{1}, /*param_number=*/0,
-                                 /*param_index=*/{1}));
+  TF_ASSERT_OK(config.SetUpAlias(
+      /*output_index=*/{1}, /*param_number=*/0,
+      /*param_index=*/{1},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   expect_aliased(/*output_index=*/{0}, /*param_number=*/0,
                  /*param_index=*/{0}, config);
@@ -149,11 +157,15 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{0}, /*param_number=*/0,
-                                 /*param_index=*/{}));
+  TF_ASSERT_OK(config.SetUpAlias(
+      /*output_index=*/{0}, /*param_number=*/0,
+      /*param_index=*/{},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
-  TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{1}, /*param_number=*/0,
-                                 /*param_index=*/{}));
+  TF_ASSERT_OK(config.SetUpAlias(
+      /*output_index=*/{1}, /*param_number=*/0,
+      /*param_index=*/{},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   ASSERT_IS_NOT_OK(config.Verify(*module, [](const Shape& shape) {
     return ShapeUtil::ByteSizeOf(shape);
@@ -176,8 +188,10 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{1}, /*param_number=*/0,
-                                 /*param_index=*/{}));
+  TF_ASSERT_OK(config.SetUpAlias(
+      /*output_index=*/{1}, /*param_number=*/0,
+      /*param_index=*/{},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   ASSERT_IS_NOT_OK(config.Verify(*module, [](const Shape& shape) {
     return ShapeUtil::ByteSizeOf(shape);
@@ -200,11 +214,15 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{0}, /*param_number=*/0,
-                                 /*param_index=*/{}));
+  TF_ASSERT_OK(config.SetUpAlias(
+      /*output_index=*/{0}, /*param_number=*/0,
+      /*param_index=*/{},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
-  ASSERT_IS_NOT_OK(config.SetUpAlias(/*output_index=*/{0}, /*param_number=*/1,
-                                     /*param_index=*/{}));
+  ASSERT_IS_NOT_OK(config.SetUpAlias(
+      /*output_index=*/{0}, /*param_number=*/1,
+      /*param_index=*/{},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 }
 }  // namespace
 }  // namespace xla

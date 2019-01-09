@@ -123,7 +123,7 @@ PyObject* PyShapeInfoFromXlaShape(const Shape& shape) {
   PyArray_Descr* np_dtype = PyArray_DescrFromType(np_typenum);
 
   PyObject* dimensions;
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     int num_elements = ShapeUtil::TupleElementCount(shape);
     dimensions = PyTuple_New(ShapeUtil::TupleElementCount(shape));
     for (int i = 0; i < num_elements; ++i) {
@@ -132,7 +132,7 @@ PyObject* PyShapeInfoFromXlaShape(const Shape& shape) {
           PyShapeInfoFromXlaShape(ShapeUtil::GetTupleElementShape(shape, i)));
     }
   } else {
-    int rank = ShapeUtil::Rank(shape);
+    int rank = shape.rank();
     dimensions = PyTuple_New(rank);
     for (int i = 0; i < rank; ++i) {
       PyTuple_SET_ITEM(dimensions, i,
@@ -345,7 +345,7 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
 }
 
 PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
-  if (ShapeUtil::IsTuple(literal.shape())) {
+  if (literal.shape().IsTuple()) {
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
     PyObject* tuple = PyTuple_New(num_elements);
     for (int i = 0; i < num_elements; i++) {
@@ -354,7 +354,7 @@ PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
     }
     return tuple;
   } else {
-    int rank = ShapeUtil::Rank(literal.shape());
+    int rank = literal.shape().rank();
     std::vector<long> dimensions(rank);  // NOLINT - PyArray requires a long*
     for (int i = 0; i < rank; i++) {
       dimensions[i] = ShapeUtil::GetDimension(literal.shape(), i);

@@ -42,7 +42,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 class Conv(Layer):
@@ -199,21 +199,8 @@ class Conv(Layer):
           # nn.bias_add does not accept a 1D input tensor.
           bias = array_ops.reshape(self.bias, (1, self.filters, 1))
           outputs += bias
-        if self.rank == 2:
+        else:
           outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
-        if self.rank == 3:
-          # As of Mar 2017, direct addition is significantly slower than
-          # bias_add when computing gradients. To use bias_add, we collapse Z
-          # and Y into a single dimension to obtain a 4D input tensor.
-          outputs_shape = outputs.shape.as_list()
-          if outputs_shape[0] is None:
-            outputs_shape[0] = -1
-          outputs_4d = array_ops.reshape(outputs,
-                                         [outputs_shape[0], outputs_shape[1],
-                                          outputs_shape[2] * outputs_shape[3],
-                                          outputs_shape[4]])
-          outputs_4d = nn.bias_add(outputs_4d, self.bias, data_format='NCHW')
-          outputs = array_ops.reshape(outputs_4d, outputs_shape)
       else:
         outputs = nn.bias_add(outputs, self.bias, data_format='NHWC')
 
@@ -282,7 +269,7 @@ class Conv(Layer):
     return causal_padding
 
 
-@tf_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
+@keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
 class Conv1D(Conv):
   """1D convolution layer (e.g. temporal convolution).
 
@@ -384,7 +371,7 @@ class Conv1D(Conv):
     return super(Conv1D, self).call(inputs)
 
 
-@tf_export('keras.layers.Conv2D', 'keras.layers.Convolution2D')
+@keras_export('keras.layers.Conv2D', 'keras.layers.Convolution2D')
 class Conv2D(Conv):
   """2D convolution layer (e.g. spatial convolution over images).
 
@@ -495,7 +482,7 @@ class Conv2D(Conv):
         **kwargs)
 
 
-@tf_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
+@keras_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
 class Conv3D(Conv):
   """3D convolution layer (e.g. spatial convolution over volumes).
 
@@ -613,8 +600,8 @@ class Conv3D(Conv):
         **kwargs)
 
 
-@tf_export('keras.layers.Conv2DTranspose',
-           'keras.layers.Convolution2DTranspose')
+@keras_export('keras.layers.Conv2DTranspose',
+              'keras.layers.Convolution2DTranspose')
 class Conv2DTranspose(Conv2D):
   """Transposed convolution layer (sometimes called Deconvolution).
 
@@ -885,8 +872,8 @@ class Conv2DTranspose(Conv2D):
     return config
 
 
-@tf_export('keras.layers.Conv3DTranspose',
-           'keras.layers.Convolution3DTranspose')
+@keras_export('keras.layers.Conv3DTranspose',
+              'keras.layers.Convolution3DTranspose')
 class Conv3DTranspose(Conv3D):
   """Transposed convolution layer (sometimes called Deconvolution).
 
@@ -1127,24 +1114,10 @@ class Conv3DTranspose(Conv3D):
       outputs.set_shape(out_shape)
 
     if self.use_bias:
-      outputs_shape = outputs.shape.as_list()
-      if outputs_shape[0] is None:
-        outputs_shape[0] = -1
-      if self.data_format == 'channels_first':
-        outputs_4d = array_ops.reshape(outputs, [
-            outputs_shape[0], outputs_shape[1],
-            outputs_shape[2] * outputs_shape[3], outputs_shape[4]
-        ])
-      else:
-        outputs_4d = array_ops.reshape(outputs, [
-            outputs_shape[0], outputs_shape[1] * outputs_shape[2],
-            outputs_shape[3], outputs_shape[4]
-        ])
-      outputs_4d = nn.bias_add(
-          outputs_4d,
+      outputs = nn.bias_add(
+          outputs,
           self.bias,
           data_format=conv_utils.convert_data_format(self.data_format, ndim=4))
-      outputs = array_ops.reshape(outputs_4d, outputs_shape)
 
     if self.activation is not None:
       return self.activation(outputs)
@@ -1401,8 +1374,8 @@ class SeparableConv(Conv):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.SeparableConv1D',
-           'keras.layers.SeparableConvolution1D')
+@keras_export('keras.layers.SeparableConv1D',
+              'keras.layers.SeparableConvolution1D')
 class SeparableConv1D(SeparableConv):
   """Depthwise separable 1D convolution.
 
@@ -1549,8 +1522,8 @@ class SeparableConv1D(SeparableConv):
     return outputs
 
 
-@tf_export('keras.layers.SeparableConv2D',
-           'keras.layers.SeparableConvolution2D')
+@keras_export('keras.layers.SeparableConv2D',
+              'keras.layers.SeparableConvolution2D')
 class SeparableConv2D(SeparableConv):
   """Depthwise separable 2D convolution.
 
@@ -1701,7 +1674,7 @@ class SeparableConv2D(SeparableConv):
     return outputs
 
 
-@tf_export('keras.layers.DepthwiseConv2D')
+@keras_export('keras.layers.DepthwiseConv2D')
 class DepthwiseConv2D(Conv2D):
   """Depthwise separable 2D convolution.
 
@@ -1895,7 +1868,7 @@ class DepthwiseConv2D(Conv2D):
     return config
 
 
-@tf_export('keras.layers.UpSampling1D')
+@keras_export('keras.layers.UpSampling1D')
 class UpSampling1D(Layer):
   """Upsampling layer for 1D inputs.
 
@@ -1931,7 +1904,7 @@ class UpSampling1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.UpSampling2D')
+@keras_export('keras.layers.UpSampling2D')
 class UpSampling2D(Layer):
   """Upsampling layer for 2D inputs.
 
@@ -2010,7 +1983,7 @@ class UpSampling2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.UpSampling3D')
+@keras_export('keras.layers.UpSampling3D')
 class UpSampling3D(Layer):
   """Upsampling layer for 3D inputs.
 
@@ -2083,7 +2056,7 @@ class UpSampling3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.ZeroPadding1D')
+@keras_export('keras.layers.ZeroPadding1D')
 class ZeroPadding1D(Layer):
   """Zero-padding layer for 1D input (e.g. temporal sequence).
 
@@ -2124,7 +2097,7 @@ class ZeroPadding1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.ZeroPadding2D')
+@keras_export('keras.layers.ZeroPadding2D')
 class ZeroPadding2D(Layer):
   """Zero-padding layer for 2D input (e.g. picture).
 
@@ -2226,7 +2199,7 @@ class ZeroPadding2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.ZeroPadding3D')
+@keras_export('keras.layers.ZeroPadding3D')
 class ZeroPadding3D(Layer):
   """Zero-padding layer for 3D data (spatial or spatio-temporal).
 
@@ -2344,7 +2317,7 @@ class ZeroPadding3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Cropping1D')
+@keras_export('keras.layers.Cropping1D')
 class Cropping1D(Layer):
   """Cropping layer for 1D input (e.g. temporal sequence).
 
@@ -2389,7 +2362,7 @@ class Cropping1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Cropping2D')
+@keras_export('keras.layers.Cropping2D')
 class Cropping2D(Layer):
   """Cropping layer for 2D input (e.g. picture).
 
@@ -2521,7 +2494,7 @@ class Cropping2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Cropping3D')
+@keras_export('keras.layers.Cropping3D')
 class Cropping3D(Layer):
   """Cropping layer for 3D data (e.g.
 

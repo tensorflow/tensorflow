@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Tan"
+  endpoint {
+    name: "math.Tan"
+  }
+}

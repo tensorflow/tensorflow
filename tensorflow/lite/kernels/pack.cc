@@ -35,7 +35,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input0 = GetInput(context, node, 0);
-  TF_LITE_ENSURE(context, NumDimensions(input0) < 4);
   TF_LITE_ENSURE(context, NumDimensions(input0) >= data->axis);
   // TODO(renjieliu): Support negative axis.
   TF_LITE_ENSURE(context, data->axis >= 0);

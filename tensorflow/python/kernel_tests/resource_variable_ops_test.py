@@ -36,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -285,12 +286,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       tmp_dir = self.get_temp_dir()
       fname = os.path.join(tmp_dir, "var.pickle")
       with open(fname, "wb") as f:
-        v = resource_variable_ops.ResourceVariable(10.0)
+        v = resource_variable_ops.ResourceVariable(
+            10.0,
+            dtype=dtypes.float16,
+            name="v")
         pickle.dump(v, f)
 
       with open(fname, "rb") as f:
-        v = pickle.load(f)
-        self.assertAllEqual(v.numpy(), 10.0)
+        new_v = pickle.load(f)
+        self.assertEqual(new_v.name, v.name)
+        self.assertEqual(new_v.shape, v.shape)
+        self.assertEqual(new_v.dtype, v.dtype)
+        self.assertEqual(new_v.trainable, v.trainable)
+        self.assertAllEqual(new_v.numpy(), v.numpy())
 
   @test_util.run_in_graph_and_eager_modes
   def testScatterDiv(self):
@@ -628,7 +636,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           variable_def=other_v_def)
       self.assertTrue(other_v_prime._cached_value is not None)
 
-  @test_util.run_v1_only("b/120545219")
   def testVariableDefInitializedInstances(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v_def = resource_variable_ops.ResourceVariable(
@@ -688,7 +695,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testToFromProto(self):
     with self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
       self.assertEquals(2, math_ops.add(w, 1).eval())
@@ -792,11 +799,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         _ = w.value().op.get_attr("_class")
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_deprecated_v1
   def testSharedName(self):
     with self.cached_session():
       v = resource_variable_ops.ResourceVariable(300.0, name="var4")
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       w = resource_variable_ops.var_handle_op(
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var4",
@@ -953,14 +960,44 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       state_ops.scatter_sub(v, [1], [3])
       self.assertAllEqual([1.0, -1.0], v.numpy())
 
+  def testScatterUpdateVariant(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable([
+          list_ops.empty_tensor_list(
+              element_dtype=dtypes.float32, element_shape=[])
+      ])
+      v.scatter_update(
+          ops.IndexedSlices(
+              list_ops.tensor_list_from_tensor([1., 2.], element_shape=[]), 0))
+      self.assertAllEqual(
+          list_ops.tensor_list_get_item(v[0], 0, element_dtype=dtypes.float32),
+          1.)
+
+  def testGroupDoesntForceRead(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      assign = v.assign_add(1.0)
+      g = control_flow_ops.group([assign])
+      self.assertEqual(g.control_inputs[0].type, "AssignAddVariableOp")
+
   def testScatterNdAddStateOps(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(
-          [1, 1, 1, 1, 1, 1, 1, 1], dtype=dtypes.float32, name="add")
+          [1, 2, 3, 4, 5, 6, 7, 8], dtype=dtypes.float32, name="add")
       indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
       updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
-      expected = np.array([1, 12, 1, 11, 10, 1, 1, 13])
+      expected = np.array([1, 13, 3, 14, 14, 6, 7, 20])
       state_ops.scatter_nd_add(v, indices, updates)
+      self.assertAllClose(expected, v.numpy())
+
+  def testScatterNdSubStateOps(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(
+          [1, 2, 3, 4, 5, 6, 7, 8], dtype=dtypes.float32, name="sub")
+      indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
+      expected = np.array([1, -9, 3, -6, -4, 6, 7, -4])
+      state_ops.scatter_nd_sub(v, indices, updates)
       self.assertAllClose(expected, v.numpy())
 
   def testScatterUpdateCast(self):
@@ -1053,6 +1090,11 @@ class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):
     self.assertEqual(NotImplemented, v._dense_var_to_tensor(as_ref=True))
     self.assertEqual(NotImplemented,
                      v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=True))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testDistributeStrategy(self):
+    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int32)
+    self.assertIsNone(v.distribute_strategy)
 
 
 if __name__ == "__main__":

@@ -34,9 +34,9 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("PriorityQueue removed from v2")
 class PriorityQueueTest(test.TestCase):
 
-  @test_util.run_v1_only("b/120545219")
   def testRoundTripInsertReadOnceSorts(self):
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (dtypes.string, dtypes.string), (
@@ -114,7 +114,6 @@ class PriorityQueueTest(test.TestCase):
         missed.remove((dv0, dv1))
       self.assertEqual(missed, set())
 
-  @test_util.run_v1_only("b/120545219")
   def testRoundTripFillsCapacityMultiThreadedEnqueueAndDequeue(self):
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(10, (dtypes.int64), (()))
@@ -270,7 +269,6 @@ class PriorityQueueTest(test.TestCase):
         missed.remove((dv0, dv1))
       self.assertEqual(missed, set())
 
-  @test_util.run_v1_only("b/120545219")
   def testRoundTripInsertOnceReadOnceSorts(self):
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (dtypes.string, dtypes.string), (
@@ -292,7 +290,6 @@ class PriorityQueueTest(test.TestCase):
       for e, dv0, dv1 in zip(deq_elem, deq_value_0, deq_value_1):
         self.assertTrue((dv0, dv1) in allowed[e])
 
-  @test_util.run_v1_only("b/120545219")
   def testRoundTripInsertOnceReadManySorts(self):
     with self.cached_session():
       q = data_flow_ops.PriorityQueue(2000, (dtypes.int64), (()))
@@ -301,7 +298,6 @@ class PriorityQueueTest(test.TestCase):
       deq_values = np.hstack((q.dequeue_many(100)[0].eval() for _ in range(10)))
       self.assertAllEqual(deq_values, sorted(elem))
 
-  @test_util.run_v1_only("b/120545219")
   def testRoundTripInsertOnceReadOnceLotsSorts(self):
     with self.cached_session():
       q = data_flow_ops.PriorityQueue(2000, (dtypes.int64), (()))
@@ -317,7 +313,6 @@ class PriorityQueueTest(test.TestCase):
       with self.assertRaises(TypeError):
         q.enqueue_many((["a", "b", "c"], ["a", "b", "c"])).run()
 
-  @test_util.run_v1_only("b/120545219")
   def testInsertingNonScalarFails(self):
     with self.cached_session() as sess:
       input_priority = array_ops.placeholder(dtypes.int64)

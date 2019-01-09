@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
 #ifndef TENSORFLOW_C_ENV_H_
 #define TENSORFLOW_C_ENV_H_
 
@@ -21,12 +25,13 @@ limitations under the License.
 // --------------------------------------------------------------------------
 // C API for tensorflow::Env.
 
-struct TF_WritableFileHandle;
-struct TF_StringStream;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct TF_WritableFileHandle TF_WritableFileHandle;
+typedef struct TF_StringStream TF_StringStream;
+typedef struct TF_Thread TF_Thread;
 
 typedef struct TF_FileStatistics {
   // The length of the file in bytes.
@@ -36,6 +41,20 @@ typedef struct TF_FileStatistics {
   // Whether the name refers to a directory.
   bool is_directory;
 } TF_FileStatistics;
+
+typedef struct TF_ThreadOptions {
+  // Thread stack size to use (in bytes), zero implies that the system default
+  // will be used.
+  size_t stack_size;
+
+  // Guard area size to use near thread stacks to use (in bytes), zero implies
+  // that the system default will be used.
+  size_t guard_size;
+
+  // The NUMA node to use, -1 implies that there should be no NUMA affinity for
+  // this thread.
+  int numa_node;
+} TF_ThreadOptions;
 
 // Creates the specified directory. Typical status code are:
 //  * TF_OK - successfully created the directory
@@ -149,6 +168,25 @@ TF_CAPI_EXPORT extern uint64_t TF_NowMicros(void);
 
 // Returns the number of seconds since the Unix epoch.
 TF_CAPI_EXPORT extern uint64_t TF_NowSeconds(void);
+
+// Populates a TF_ThreadOptions struct with system-default values.
+TF_CAPI_EXPORT extern void TF_DefaultThreadOptions(TF_ThreadOptions* options);
+
+// Returns a new thread that is running work_func and is identified
+// (for debugging/performance-analysis) by thread_name.
+//
+// The given param (which may be null) is passed to work_func when the thread
+// starts. In this way, data may be passed from the thread back to the caller.
+//
+// Caller takes ownership of the result and must call TF_JoinThread on it
+// eventually.
+TF_CAPI_EXPORT extern TF_Thread* TF_StartThread(const TF_ThreadOptions* options,
+                                                const char* thread_name,
+                                                void (*work_func)(void*),
+                                                void* param);
+
+// Waits for the given thread to finish execution, then deletes it.
+TF_CAPI_EXPORT extern void TF_JoinThread(TF_Thread* thread);
 
 #ifdef __cplusplus
 }

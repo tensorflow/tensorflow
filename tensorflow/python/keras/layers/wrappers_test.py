@@ -165,7 +165,6 @@ class TimeDistributedTest(test.TestCase):
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_TimeDistributed_batchnorm(self):
     with self.cached_session():
       # test that wrapped BN updates still work.
@@ -188,7 +187,6 @@ class TimeDistributedTest(test.TestCase):
       # Verify input_map has one mapping from inputs to reshaped inputs.
       self.assertEqual(len(td._input_map.keys()), 1)
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_TimeDistributed_trainable(self):
     # test layers that need learning_phase to be set
     x = keras.layers.Input(shape=(3, 2))
@@ -203,7 +201,6 @@ class TimeDistributedTest(test.TestCase):
     assert len(layer.updates) == 2
     assert len(layer.trainable_weights) == 2
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_TimeDistributed_with_masked_embedding_and_unspecified_shape(self):
     with self.cached_session():
       # test with unspecified shape and Embeddings with mask_zero
@@ -236,7 +233,6 @@ class TimeDistributedTest(test.TestCase):
         self.assertAllEqual(mask_outputs_val[i], ref_mask_val[i])
       self.assertIs(mask_outputs[-1], None)  # final layer
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_TimeDistributed_with_masking_layer(self):
     with self.cached_session():
       # test with Masking layer

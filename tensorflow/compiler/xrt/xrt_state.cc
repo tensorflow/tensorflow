@@ -272,6 +272,11 @@ const se::DeviceMemoryBase& XRTTupleAllocation::root_allocation() {
   return rm->Delete<XRTTupleAllocation>(kTupleContainer, key_string);
 }
 
+/* static */ Status XRTTupleAllocation::ReleaseAllAllocations(ResourceMgr* rm) {
+  VLOG(1) << "Releasing all XRT held device memory";
+  return rm->Cleanup(kTupleContainer);
+}
+
 // Helper typedef to make ShapeTree ForEach helper lambda signatures more
 // readable. They need a type of const T& where in this case T is the
 // following pointer.

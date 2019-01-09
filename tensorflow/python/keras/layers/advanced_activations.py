@@ -26,10 +26,10 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.LeakyReLU')
+@keras_export('keras.layers.LeakyReLU')
 class LeakyReLU(Layer):
   """Leaky version of a Rectified Linear Unit.
 
@@ -68,7 +68,7 @@ class LeakyReLU(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.PReLU')
+@keras_export('keras.layers.PReLU')
 class PReLU(Layer):
   """Parametric Rectified Linear Unit.
 
@@ -121,11 +121,9 @@ class PReLU(Layer):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     param_shape = list(input_shape[1:])
-    self.param_broadcast = [False] * len(param_shape)
     if self.shared_axes is not None:
       for i in self.shared_axes:
         param_shape[i - 1] = 1
-        self.param_broadcast[i - 1] = True
     self.alpha = self.add_weight(
         shape=param_shape,
         name='alpha',
@@ -143,12 +141,7 @@ class PReLU(Layer):
 
   def call(self, inputs, mask=None):
     pos = K.relu(inputs)
-    if K.backend() == 'theano':
-      neg = (
-          K.pattern_broadcast(self.alpha, self.param_broadcast) *
-          (inputs - math_ops.abs(inputs)) * 0.5)
-    else:
-      neg = -self.alpha * K.relu(-inputs)
+    neg = -self.alpha * K.relu(-inputs)
     return pos + neg
 
   def get_config(self):
@@ -166,7 +159,7 @@ class PReLU(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.ELU')
+@keras_export('keras.layers.ELU')
 class ELU(Layer):
   """Exponential Linear Unit.
 
@@ -205,7 +198,7 @@ class ELU(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.ThresholdedReLU')
+@keras_export('keras.layers.ThresholdedReLU')
 class ThresholdedReLU(Layer):
   """Thresholded Rectified Linear Unit.
 
@@ -245,7 +238,7 @@ class ThresholdedReLU(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.Softmax')
+@keras_export('keras.layers.Softmax')
 class Softmax(Layer):
   """Softmax activation function.
 
@@ -279,7 +272,7 @@ class Softmax(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.ReLU')
+@keras_export('keras.layers.ReLU')
 class ReLU(Layer):
   """Rectified Linear Unit activation function.
 

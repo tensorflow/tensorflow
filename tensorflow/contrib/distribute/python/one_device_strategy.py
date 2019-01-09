@@ -18,10 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -51,41 +50,37 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     super(OneDeviceExtended, self).__init__(container_strategy)
     self._device = device
     self._default_device = device
+    worker = device_util.canonicalize("/device:CPU:0")
+    worker_device_pairs = [(worker, [self._device])]
+    device_map = values.SingleDeviceMap(device)
+    self._input_workers = input_lib.InputWorkers(
+        device_map, worker_device_pairs)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       with ops.device(self._device):
         return next_creator(*args, **kwargs)
-    if isinstance(colocate_with, six.string_types):
-      with ops.device(colocate_with):
-        return next_creator(*args, **kwargs)
-    if (isinstance(colocate_with, (list, tuple)) and len(colocate_with) == 1 and
-        isinstance(colocate_with[0], six.string_types)):
-      with ops.device(colocate_with[0]):
-        return next_creator(*args, **kwargs)
     with ops.colocate_with(colocate_with):
       return next_creator(*args, **kwargs)
 
+  def _validate_colocate_with_variable(self, colocate_with_variable):
+    values.validate_colocate(colocate_with_variable, self)
+
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch."""
-    worker = device_util.canonicalize("/device:CPU:0")
-    worker_device_pairs = [(worker, [self._device])]
-    return values.DatasetIterator(dataset, worker_device_pairs)
+    return input_lib.DatasetIterator(dataset, self._input_workers)
 
   def _distribute_dataset(self, dataset_fn):
-    return values.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn), [self._device])
+    return input_lib.PerReplicaDataset(
+        self._call_dataset_fn(dataset_fn), self._input_workers, 0)
 
   def _make_input_fn_iterator(
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    worker = device_util.canonicalize("/device:CPU:0")
-    worker_device_pairs = [(worker, [self._device])]
-    return values.InputFunctionIterator(
-        input_fn, worker_device_pairs,
-        [distribute_lib.InputContext()])
+    return input_lib.InputFunctionIterator(
+        input_fn, self._input_workers, [distribute_lib.InputContext()])
 
   def _broadcast_to(self, tensor, destinations):
     del destinations
@@ -98,14 +93,11 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
 
-    ctx = values.MultiStepContext()
+    ctx = input_lib.MultiStepContext()
     def body(i, *args):
       """A wrapper around `fn` to create the while loop body."""
       del args
-      fn_inputs = iterator.get_next()
-      if not isinstance(fn_inputs, tuple):
-        fn_inputs = (fn_inputs,)
-      fn_result = fn(ctx, fn_inputs)
+      fn_result = fn(ctx, iterator.get_next())
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       with ops.control_dependencies([fn_result]):
         return [i + 1] + flat_last_step_outputs
@@ -208,12 +200,11 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""
 
-  def __init__(self, distribution_strategy):
+  def __init__(self, strategy):
+    zero = constant_op.constant(0, dtypes.int32)
     distribute_lib.ReplicaContext.__init__(
-        self,
-        distribution_strategy,
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
+        self, strategy, replica_id_in_sync_group=zero)
 
   @property
   def devices(self):
-    return self._distribution_strategy.extended.worker_devices
+    return self._strategy.extended.worker_devices

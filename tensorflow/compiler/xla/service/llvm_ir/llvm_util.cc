@@ -219,10 +219,10 @@ int GetSizeInBits(llvm::Type* type) {
 
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
   llvm::Type* result_type = PrimitiveTypeToIrType(shape.element_type(), module);
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
-  } else if (ShapeUtil::IsArray(shape)) {
+  } else if (shape.IsArray()) {
     for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
           llvm::ArrayType::get(result_type, shape.dimensions(dimension));

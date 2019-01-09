@@ -21,10 +21,43 @@ HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32
 TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
+# Look for platform or target-specific implementation files to replace reference
+# implementations with, given a tag. These are expected to occur in subfolders
+# of a directory where a reference implementation exists, and have the same
+# interface and header file. For example,
+# tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.cc
+# defines a module for supplying audio data, but since no platform or OS can be
+# presumed, it just always returns zeroes for its samples. The MacOS-specific
+# tensorflow/lite/experimental/micro/examples/micro_speech/osx/audio_provider.cc
+# has an implementation that relies on CoreAudio, and there are equivalent
+# versions for other operating systems. 
+# All lists of source files are put through this substitution process with the
+# tags of their target OS and architecture, so that implementations can be added
+# by simply placing them in the file tree, with no changes to the build files
+# needed.
+# One confusing thing about this implementation is that we're using wildcard to
+# act as a 'does file exist?' function, rather than expanding an expression.
+# Wildcard will return an empty string if given a plain file path with no actual
+# wildcards, if the file doesn't exist, so taking the first word of the list
+# between that and the reference path will pick the specialized one if it's
+# available.
+substitute_specialized_implementation = \
+  $(firstword $(wildcard $(dir $(1))$(2)/$(notdir $(1))) $(wildcard $(1)))
+substitute_specialized_implementations = \
+  $(foreach source,$(1),$(call substitute_specialized_implementation,$(source),$(2)))
+# Here we're first looking for specialized implementations in ref_dir/$(TARGET)
+# and then ref_dir/$(TARGET_ARCH), before falling back to ref_dir's
+# implementation.
+# The argument to this function should be a list of space-separated file paths,
+# with any wildcards already expanded.
+specialize = \
+  $(call substitute_specialized_implementations,$(call substitute_specialized_implementations,$(1),$(TARGET)),$(TARGET_ARCH))
+
 INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/../../../../../ \
 -I$(MAKEFILE_DIR)/../../../../../../ \
+-I$(MAKEFILE_DIR)/../../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
@@ -52,29 +85,6 @@ CC_PREFIX :=
 # runtime that can be linked in to other programs.
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
-# Test binary for the microcontroller speech model.
-MICRO_SPEECH_TEST_SRCS := \
-tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/no_features_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.cc
-
-# Test binary for the microcontroller speech model.
-PREPROCESSOR_TEST_SRCS := \
-tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor_test.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/no_30ms_sample_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_30ms_sample_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/no_power_spectrum_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_power_spectrum_data.cc
-
-PREPROCESSOR_REFERENCE_TEST_SRCS = \
-$(PREPROCESSOR_TEST_SRCS) \
-tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.cc
-
-PREPROCESSOR_FIXED_TEST_SRCS += \
-$(PREPROCESSOR_TEST_SRCS) \
-tensorflow/lite/experimental/micro/examples/micro_speech/fixed_point/preprocessor.cc
-
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*test.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc)
@@ -89,6 +99,7 @@ tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/kernels/kernel_util.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
+MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
@@ -97,9 +108,6 @@ MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SR
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
 
 ALL_SRCS := \
-	$(MICRO_SPEECH_TEST_SRCS) \
-	$(PREPROCESSOR_REFERENCE_TEST_SRCS) \
-	$(PREPROCESSOR_FIXED_TEST_SRCS) \
 	$(MICROLITE_CC_SRCS) \
 	$(MICROLITE_TEST_SRCS)
 
@@ -111,22 +119,12 @@ LIBDIR := $(GENDIR)lib/
 
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 
-MICRO_SPEECH_TEST_BINARY := $(BINDIR)micro_speech_test
-PREPROCESSOR_REFERENCE_TEST_BINARY := $(BINDIR)preprocessor_reference_test
-PREPROCESSOR_FIXED_TEST_BINARY := $(BINDIR)preprocessor_fixed_test
-
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
 AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 
-MICRO_SPEECH_TEST_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICRO_SPEECH_TEST_SRCS))))
-
-PREPROCESSOR_REFERENCE_TEST_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_REFERENCE_TEST_SRCS))))
-
-PREPROCESSOR_FIXED_TEST_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_FIXED_TEST_SRCS))))
+# Load the examples.
+include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
 
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
@@ -144,8 +142,13 @@ $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
+  # For normal manually-created TensorFlow ASM source files.
+$(OBJDIR)%.o: %.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+
 # The target that's compiled if there's no command-line arguments.
-all: $(MICROLITE_LIB_PATH) $(MICRO_SPEECH_TEST_BINARY) $(PREPROCESSOR_TEST_BINARY)
+all: $(MICROLITE_LIB_PATH)
 
 microlite: $(MICROLITE_LIB_PATH)
 
@@ -158,42 +161,6 @@ $(MICROLITE_LIB_PATH): tensorflow/lite/schema/schema_generated.h $(MICROLITE_LIB
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(MICROLITE_LIB_PATH) $(MICROLITE_LIB_OBJS)
 
-$(MICRO_SPEECH_TEST_BINARY): $(MICRO_SPEECH_TEST_OBJS) $(MICROLITE_LIB_PATH)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(MICRO_SPEECH_TEST_BINARY) $(MICRO_SPEECH_TEST_OBJS) \
-	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
-
-micro_speech_test: $(MICRO_SPEECH_TEST_BINARY)
-micro_speech_test_bin: $(MICRO_SPEECH_TEST_BINARY).bin
-
-test_micro_speech: $(MICRO_SPEECH_TEST_BINARY)
-	$(TEST_SCRIPT) $(MICRO_SPEECH_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
-
-$(PREPROCESSOR_REFERENCE_TEST_BINARY): $(PREPROCESSOR_REFERENCE_TEST_OBJS) $(MICROLITE_LIB_PATH)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(PREPROCESSOR_REFERENCE_TEST_BINARY) $(PREPROCESSOR_REFERENCE_TEST_OBJS) \
-	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
-
-preprocessor_reference_test: $(PREPROCESSOR_REFERENCE_TEST_BINARY)
-preprocessor_reference_test_bin: $(PREPROCESSOR_REFERENCE_TEST_BINARY).bin
-
-test_preprocessor_reference: $(PREPROCESSOR_REFERENCE_TEST_BINARY)
-	$(TEST_SCRIPT) $(PREPROCESSOR_REFERENCE_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
-
-$(PREPROCESSOR_FIXED_TEST_BINARY): $(PREPROCESSOR_FIXED_TEST_OBJS) $(MICROLITE_LIB_PATH)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(PREPROCESSOR_FIXED_TEST_BINARY) $(PREPROCESSOR_FIXED_TEST_OBJS) \
-	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
-
-preprocessor_fixed_test: $(PREPROCESSOR_FIXED_TEST_BINARY)
-preprocessor_fixed_test_bin: $(PREPROCESSOR_FIXED_TEST_BINARY).bin
-
-test_preprocessor_fixed: $(PREPROCESSOR_FIXED_TEST_BINARY)
-	$(TEST_SCRIPT) $(PREPROCESSOR_FIXED_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
-
 $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
@@ -203,7 +170,13 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
-$(info $(MICROLITE_TEST_TARGETS))
+# snease: Add %.bin rule here since BINDIR is now defined
+# These are microcontroller-specific rules for converting the ELF output
+# of the linker into a binary image that can be loaded directly.
+OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+$(BINDIR)%.bin: $(BINDIR)%
+	@mkdir -p $(dir $@)
+	$(OBJCOPY) $< $@ -O binary
 
 test: test_micro_speech $(MICROLITE_TEST_TARGETS)
 

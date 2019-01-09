@@ -82,102 +82,6 @@ TEST(ShapeUtilTest, Rank4DimensionIndexing) {
   ASSERT_EQ(3, shape.dimensions(0));
 }
 
-TEST(ShapeUtilTest, ParseShapeStringR2F32) {
-  string shape_string = "f32[123,456]";
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
-                          ShapeUtil::ParseShapeString(shape_string));
-  Shape expected = ShapeUtil::MakeShape(F32, {123, 456});
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST(ShapeUtilTest, ParseShapeStringTupleOfArrays) {
-  string shape_string = "(f32[1572864],s8[5120,1024])";
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
-                          ShapeUtil::ParseShapeString(shape_string));
-  Shape expected =
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1572864}),
-                                 ShapeUtil::MakeShape(S8, {5120, 1024})});
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST(ShapeUtilTest, ParseShapeStringNestedTuple) {
-  string shape_string = "(f32[1],(f32[2], token[]), opaque[], f32[3])";
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
-                          ShapeUtil::ParseShapeString(shape_string));
-  Shape expected = ShapeUtil::MakeTupleShape({
-      ShapeUtil::MakeShape(F32, {1}),
-      ShapeUtil::MakeTupleShape(
-          {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeTokenShape()}),
-      ShapeUtil::MakeOpaqueShape(),
-      ShapeUtil::MakeShape(F32, {3}),
-  });
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST(ShapeUtilTest, ParseShapeStringWithLayout) {
-  string shape_string = "f32[123,456]{0,1}";
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
-                          ShapeUtil::ParseShapeString(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST(ShapeUtilTest, ParseShapeStringWithExplicitDenseLayout) {
-  string shape_string = "f32[123,456]dense{0,1}";
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
-                          ShapeUtil::ParseShapeString(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST(ShapeUtilTest, ParseShapeStringWithSparseLayout) {
-  string shape_string = "f32[123,456]sparse{10}";
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
-                          ShapeUtil::ParseShapeString(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithSparseLayout(F32, {123, 456}, 10);
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual: " << ShapeUtil::HumanString(actual);
-}
-
-TEST(ShapeUtilTest, ParseOpaqueType) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
-                          ShapeUtil::ParseShapeString("opaque[]"));
-  Shape expected = ShapeUtil::MakeOpaqueShape();
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST(ShapeUtilTest, ParseTokenType) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ShapeUtil::ParseShapeString("token[]"));
-  Shape expected = ShapeUtil::MakeTokenShape();
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST(ShapeUtilTest, ParseInvalidShapeString) {
-  string shape_strings[] = {
-      "f32[123,456]foobar{0,1}", "f32[123,456]sparse{0,1}", "f32[123,456]{foo}",
-      "f32[123,456]dense{foo}",  "f32[123,456]sparse{foo}",
-  };
-  for (const string& shape_string : shape_strings) {
-    StatusOr<Shape> result = ShapeUtil::ParseShapeString(shape_string);
-    ASSERT_FALSE(result.ok()) << "shape: " << shape_string;
-  }
-}
-
 TEST(ShapeUtilTest, CompatibleIdenticalShapes) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {3, 2});
   Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});
@@ -270,6 +174,28 @@ TEST(ShapeUtilTest, UnequalIgnoringFpPrecision) {
   EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
       ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
       ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, EqualDynamicShapes) {
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
+                       ShapeUtil::MakeShape(F32, {4, 3}, {true, false})));
+  EXPECT_FALSE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
+                       ShapeUtil::MakeShape(F32, {4, 3}, {false, false})));
+}
+
+TEST(ShapeUtilTest, CompatibleDynamicShapes) {
+  Shape shape_a = ShapeUtil::MakeShape(F32, {4, 3}, {true, false});
+  *shape_a.mutable_layout() = Layout({1, 0});
+  Shape shape_b = ShapeUtil::MakeShape(F32, {4, 3}, {true, false});
+  *shape_b.mutable_layout() = Layout({0, 1});
+  Shape shape_c = ShapeUtil::MakeShape(F32, {4, 3}, {false, true});
+  *shape_c.mutable_layout() = Layout({0, 1});
+
+  EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_a));
+  EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_b));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape_a, shape_c));
 }
 
 TEST(ShapeUtilTest, CompatibleTuples) {

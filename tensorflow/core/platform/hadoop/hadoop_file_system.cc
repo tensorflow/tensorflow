@@ -66,6 +66,7 @@ class LibHDFS {
   std::function<tSize(hdfsFS, hdfsFile, const void*, tSize)> hdfsWrite;
   std::function<int(hdfsFS, hdfsFile)> hdfsHFlush;
   std::function<int(hdfsFS, hdfsFile)> hdfsHSync;
+  std::function<tOffset(hdfsFS, hdfsFile)> hdfsTell;
   std::function<hdfsFile(hdfsFS, const char*, int, int, short, tSize)>
       hdfsOpenFile;
   std::function<int(hdfsFS, const char*)> hdfsExists;
@@ -92,6 +93,7 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsPread);
       BIND_HDFS_FUNC(hdfsWrite);
       BIND_HDFS_FUNC(hdfsHFlush);
+      BIND_HDFS_FUNC(hdfsTell);
       BIND_HDFS_FUNC(hdfsHSync);
       BIND_HDFS_FUNC(hdfsOpenFile);
       BIND_HDFS_FUNC(hdfsExists);
@@ -203,6 +205,11 @@ class HDFSRandomAccessFile : public RandomAccessFile {
     }
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
@@ -308,8 +315,21 @@ class HDFSWritableFile : public WritableFile {
     return Status::OK();
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Sync() override {
     if (hdfs_->hdfsHSync(fs_, file_) != 0) {
+      return IOError(filename_, errno);
+    }
+    return Status::OK();
+  }
+
+  Status Tell(int64* position) override {
+    *position = hdfs_->hdfsTell(fs_, file_);
+    if (*position == -1) {
       return IOError(filename_, errno);
     }
     return Status::OK();

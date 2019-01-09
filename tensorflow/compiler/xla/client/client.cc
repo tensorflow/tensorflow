@@ -186,7 +186,7 @@ StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
   ComputeConstantGraphRequest request;
   *request.mutable_computation() = computation.proto();
   if (output_layout != nullptr) {
-    *request.mutable_output_layout() = *output_layout;
+    *request.mutable_output_layout() = output_layout->ToProto();
   }
 
   ComputeConstantResponse response;

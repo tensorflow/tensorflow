@@ -51,7 +51,7 @@ class ThreadPoolResource : public ResourceBase {
 
   int32 NumThreads() { return thread_pool_.NumThreads(); }
 
-  string DebugString() override { return "ThreadPoolResource"; }
+  string DebugString() const override { return "ThreadPoolResource"; }
 
  private:
   thread::ThreadPool thread_pool_;

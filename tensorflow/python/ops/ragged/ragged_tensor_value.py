@@ -20,11 +20,17 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.util.tf_export import tf_export
 
+
+@tf_export(v1=["ragged.RaggedTensorValue"])
 class RaggedTensorValue(object):
   """Represents the value of a `RaggedTensor`.
 
-  See `RaggedTensor` for a description of ragged tensors.
+  Warning: `RaggedTensorValue` should only be used in graph mode; in
+  eager mode, the `tf.RaggedTensor` class contains its value directly.
+
+  See `tf.RaggedTensor` for a description of ragged tensors.
   """
 
   def __init__(self, values, row_splits):
@@ -98,10 +104,3 @@ class RaggedTensorValue(object):
         values_as_list[self._row_splits[i]:self._row_splits[i + 1]]
         for i in range(len(self._row_splits) - 1)
     ]
-
-  def value_rowids(self, name=None):
-    del name
-    row_lengths = self._row_splits[1:] - self._row_splits[:-1]
-    nrows = self._row_splits.shape[-1] - 1
-    indices = np.arange(nrows)
-    return np.repeat(indices, repeats=row_lengths, axis=0)

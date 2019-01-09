@@ -90,7 +90,8 @@ def disable_v2_tensorshape():
   TensorShape = TensorShapeV1
 
 
-@tf_export(v1=["dimension_value"])
+@tf_export("compat.dimension_value",
+           v1=["dimension_value", "compat.dimension_value"])
 def dimension_value(dimension):
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
@@ -122,7 +123,8 @@ def dimension_value(dimension):
   return dimension
 
 
-@tf_export(v1=["dimension_at_index"])
+@tf_export("compat.dimension_at_index",
+           v1=["dimension_at_index", "compat.dimension_at_index"])
 def dimension_at_index(shape, index):
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
@@ -269,10 +271,11 @@ class Dimension(object):
     Dimensions are combined as follows:
 
     ```python
-    tf.Dimension(n)   .merge_with(tf.Dimension(n))    == tf.Dimension(n)
-    tf.Dimension(n)   .merge_with(tf.Dimension(None)) == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(n))    == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(None)) == tf.Dimension(None)
+    tf.Dimension(n)   .merge_with(tf.Dimension(n))     == tf.Dimension(n)
+    tf.Dimension(n)   .merge_with(tf.Dimension(None))  == tf.Dimension(n)
+    tf.Dimension(None).merge_with(tf.Dimension(n))     == tf.Dimension(n)
+    # equivalent to tf.Dimension(None)
+    tf.Dimension(None).merge_with(tf.Dimension(None))
 
     # raises ValueError for n != m
     tf.Dimension(n)   .merge_with(tf.Dimension(m))
@@ -302,10 +305,10 @@ class Dimension(object):
     Dimensions are summed as follows:
 
     ```python
-    tf.Dimension(m)    + tf.Dimension(n)    == tf.Dimension(m + n)
-    tf.Dimension(m)    + tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    + tf.Dimension(n)     == tf.Dimension(m + n)
+    tf.Dimension(m)    + tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -337,10 +340,10 @@ class Dimension(object):
     Dimensions are subtracted as follows:
 
     ```python
-    tf.Dimension(m)    - tf.Dimension(n)    == tf.Dimension(m - n)
-    tf.Dimension(m)    - tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    - tf.Dimension(n)     == tf.Dimension(m - n)
+    tf.Dimension(m)    - tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -376,10 +379,10 @@ class Dimension(object):
     Dimensions are summed as follows:
 
     ```python
-    tf.Dimension(m)    * tf.Dimension(n)    == tf.Dimension(m * n)
-    tf.Dimension(m)    * tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    * tf.Dimension(n)     == tf.Dimension(m * n)
+    tf.Dimension(m)    * tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -415,10 +418,10 @@ class Dimension(object):
     Dimensions are divided as follows:
 
     ```python
-    tf.Dimension(m)    // tf.Dimension(n)    == tf.Dimension(m // n)
-    tf.Dimension(m)    // tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    // tf.Dimension(n)     == tf.Dimension(m // n)
+    tf.Dimension(m)    // tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -473,10 +476,10 @@ class Dimension(object):
     Dimension moduli are computed as follows:
 
     ```python
-    tf.Dimension(m)    % tf.Dimension(n)    == tf.Dimension(m % n)
-    tf.Dimension(m)    % tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    % tf.Dimension(n)     == tf.Dimension(m % n)
+    tf.Dimension(m)    % tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:

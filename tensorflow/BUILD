@@ -203,6 +203,12 @@ config_setting(
 )
 
 config_setting(
+    name = "arm",
+    values = {"cpu": "arm"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
@@ -264,6 +270,15 @@ config_setting(
 config_setting(
     name = "with_xla_support",
     define_values = {"with_xla_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+# By default, XLA GPU is compiled into tensorflow when building with
+# --config=cuda even when `with_xla_support` is false. The config setting
+# here allows us to override the behavior if needed.
+config_setting(
+    name = "no_xla_deps_in_cuda",
+    define_values = {"no_xla_deps_in_cuda": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -355,11 +370,22 @@ config_setting(
     define_values = {"tf_api_version": "2"},
 )
 
+# This flag is defined for select statements that match both
+# on 'windows' and 'api_version_2'. In this case, bazel requires
+# having a flag which is a superset of these two.
+config_setting(
+    name = "windows_and_api_version_2",
+    define_values = {"tf_api_version": "2"},
+    values = {"cpu": "x64_windows"},
+)
+
 package_group(
     name = "internal",
     packages = [
         "-//third_party/tensorflow/python/estimator",
+        "//learning/deepmind/...",
         "//learning/meta_rank/...",
+        "//learning/pathways/...",  # While dataset C++ api requires internals
         "//tensorflow/...",
         "//tensorflow_estimator/contrib/...",
         "//tensorflow_fold/llgtm/...",
@@ -606,9 +632,11 @@ py_library(
     name = "tensorflow_py",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = select({
+        "api_version_2": [],
+        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+    }) + [
         ":tensorflow_py_no_contrib",
-        "//tensorflow/contrib:contrib_py",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
@@ -618,7 +646,11 @@ py_library(
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],
         "//conditions:default": [":tf_python_api_gen_v1"],
-    }) + [":root_init_gen"],
+    }) + [":root_init_gen"] + [
+        "//tensorflow/python/keras/api:keras_python_api_gen",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],

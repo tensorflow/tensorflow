@@ -18,10 +18,63 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.client import session
+from tensorflow.python.distribute.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import UnionClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
+
+mock = test.mock
+
+
+class MockBaseClusterResolver(ClusterResolver):
+
+  def cluster_spec(self):
+    return None
+
+  def master(self, task_type=None, task_index=None, rpc_layer=None):
+    return ""
+
+  def environment(self):
+    return ""
+
+
+class BaseClusterResolverTest(test.TestCase):
+
+  @mock.patch.object(session.BaseSession, "list_devices")
+  def testNumAcceleratorsSuccess(self, mock_list_devices):
+    device_names = [
+        "/job:worker/task:0/device:GPU:0",
+        "/job:worker/task:0/device:GPU:1",
+        "/job:worker/task:0/device:GPU:2",
+        "/job:worker/task:0/device:GPU:3",
+    ]
+    device_list = [
+        session._DeviceAttributes(
+            name, "GPU", 1024, 0) for name in device_names
+    ]
+    mock_list_devices.return_value = device_list
+
+    resolver = MockBaseClusterResolver()
+    self.assertEqual(resolver.num_accelerators(), 4)
+
+  @mock.patch.object(session.BaseSession, "list_devices")
+  def testNumAcceleratorsFilterSuccess(self, mock_list_devices):
+    device_names = [
+        "/job:worker/task:0/device:TPU:0",
+        "/job:worker/task:0/device:TPU:1",
+        "/job:worker/task:0/device:TPU:2",
+        "/job:worker/task:0/device:TPU:3",
+    ]
+    device_list = [
+        session._DeviceAttributes(
+            name, "TPU", 1024, 0) for name in device_names
+    ]
+    mock_list_devices.return_value = device_list
+
+    resolver = MockBaseClusterResolver()
+    self.assertEqual(resolver.num_accelerators(), 0)
 
 
 class UnionClusterResolverTest(test.TestCase):

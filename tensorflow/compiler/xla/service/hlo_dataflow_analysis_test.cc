@@ -73,8 +73,8 @@ class HloDataflowAnalysisTest : public HloTestBase,
   bool InstructionsMayInterfere(const HloOrdering& ordering,
                                 const HloInstruction* a,
                                 const HloInstruction* b) {
-    EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_FALSE(a->shape().IsTuple());
+    EXPECT_FALSE(b->shape().IsTuple());
     return ordering.MayInterfere(analysis_->GetValueDefinedAt(a),
                                  analysis_->GetValueDefinedAt(b), *analysis_);
   }
@@ -1882,8 +1882,8 @@ TEST_P(HloDataflowAnalysisTest, AddDependency) {
 HloModule AddDependency
 ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   %p = f32[3] parameter(0)
-  %token = token[] after-all()
-  ROOT %add_dep = f32[3] add-dependency(f32[3] %p, token[] %token)
+  %token0 = token[] after-all()
+  ROOT %add_dep = f32[3] add-dependency(f32[3] %p, token[] %token0)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(

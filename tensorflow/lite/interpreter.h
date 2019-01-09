@@ -343,6 +343,15 @@ class Interpreter {
     return context_->allow_fp32_relax_to_fp16;
   }
 
+  // Sets the cancellation function pointer in order to cancel a request in the
+  // middle of a call to Invoke(). The interpreter queries this function during
+  // inference, between op invocations; when it returns true, the interpreter
+  // will abort execution and return `kTfLiteError`. The `data` parameter
+  // contains any data used by the cancellation function, and if non-null,
+  // remains owned by the caller.
+  // WARNING: This is an experimental API and subject to change.
+  void SetCancellationFunction(void* data, bool (*check_cancelled_func)(void*));
+
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;

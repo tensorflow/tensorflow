@@ -265,6 +265,7 @@ class Context(object):
       execution_mode = SYNC
     self._execution_mode = execution_mode
     self._server_def = server_def
+    self._collective_ops_server_def = None
 
   # pylint: enable=redefined-outer-name
 
@@ -325,9 +326,16 @@ class Context(object):
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
+      assert not (self._server_def and self._collective_ops_server_def), (
+          "Cannot enable remote execution as well as collective ops at the "
+          "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
         pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
+                                                  server_def_str)
+      elif self._collective_ops_server_def is not None:
+        server_def_str = self._collective_ops_server_def.SerializeToString()
+        pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
                                                   server_def_str)
 
       self._initialize_devices()
@@ -368,6 +376,30 @@ class Context(object):
       # Clear all the caches in case there are remote tensors in them.
       self._clear_caches()
 
+      self._initialize_devices()
+
+  def enable_collective_ops(self, server_def):
+    """Enable collective ops with an appropriate server_def.
+
+    If previously enabled, this cannot be re-enabled.
+
+    Args:
+      server_def: A tensorflow::ServerDef proto. Enables execution on remote
+        devices.
+
+    Raises:
+      ValueError: if server_def is None.
+    """
+    if not server_def:
+      raise ValueError("server_def is None.")
+    if not self._context_handle:
+      self._collective_ops_server_def = server_def
+    else:
+      server_def_str = server_def.SerializeToString()
+      pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
+                                                server_def_str)
+
+      self._clear_caches()
       self._initialize_devices()
 
   @property
@@ -756,6 +788,27 @@ def in_eager_mode():
   return executing_eagerly()
 
 
+def shared_name(name=None):
+  """Returns the anonymous shared name GUID if no shared name is specified.
+
+  In eager mode we need to use a unique shared name to avoid spurious sharing
+  issues. The runtime generates a unique name on our behalf when the reserved
+  GUID is used as a shared name.
+
+  Args:
+    name: Optional shared name
+
+  Returns:
+    Eager compatible shared name.
+  """
+  if name or not executing_eagerly():
+    return name
+
+  # Ensure a unique name when eager execution is enabled to avoid spurious
+  # sharing issues.
+  return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
+
+
 def graph_mode():
   """Context-manager to disable eager execution for the current thread."""
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
@@ -923,6 +976,10 @@ def add_function(fdef):
 # but they do all import this file.  Note that IS_IN_GRAPH_MODE and
 # in_graph_mode are both parameterless functions.
 def _tmp_in_graph_mode():
+  if context_safe() is None:
+    # Context not yet initialized. Assume graph mode following the
+    # default implementation in `is_in_graph_mode`.
+    return True
   return not executing_eagerly()
 
 

@@ -315,8 +315,7 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   DotDimensionNumbers dim_nums = GetDimensionNumbers(*hlo_instruction());
   CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
            dim_nums.rhs_batch_dimensions_size());
-  CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
-           ShapeUtil::Rank(output_shape_));
+  CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2, output_shape_.rank());
 
   int64 row_dim = dim_nums.lhs_batch_dimensions_size();
   int64 col_dim = dim_nums.lhs_batch_dimensions_size() + 1;

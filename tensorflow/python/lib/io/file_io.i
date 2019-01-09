@@ -220,6 +220,16 @@ void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
   }
 }
 
+int64 TellFile(tensorflow::WritableFile* file, TF_Status* out_status) {
+  int64 position = -1;
+  tensorflow::Status status = file->Tell(&position);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+  return position;
+}
+
+
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
                       TF_Status* out_status) {
@@ -265,6 +275,7 @@ tensorflow::WritableFile* CreateWritableFile(const string& filename,
                                              TF_Status* out_status);
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
                   TF_Status* out_status);
+int64 TellFile(tensorflow::WritableFile* file, TF_Status* out_status);
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
                       TF_Status* out_status);

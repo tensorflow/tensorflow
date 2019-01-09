@@ -1,4 +1,8 @@
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = [
+    "//tensorflow/contrib/lite:__subpackages__",
+    "//tensorflow/lite:__subpackages__",
+    "//tensorflow/tools/pip_package:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -6,37 +10,31 @@ load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "py_binary")
 
-config_setting(
-    name = "tflite_convert_with_select_tf_ops",
-    define_values = {"tflite_convert_with_select_tf_ops": "true"},
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "toco_python_api",
     srcs = ["toco_python_api.cc"],
     hdrs = ["toco_python_api.h"],
     deps = [
-        "//third_party/python_runtime:headers",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:toco_tooling",
-    ] + select({
-        # This is required when running `tflite_convert` from `bazel`.
-        # It requires to link with TensorFlow Ops to get the op definitions.
-        ":tflite_convert_with_select_tf_ops": [
-            "//tensorflow/core:ops",
-        ],
-        "//conditions:default": [],
-    }),
+        "//third_party/python_runtime:headers",
+    ],
 )
 
 tf_py_wrap_cc(
     name = "tensorflow_wrap_toco",
     srcs = ["toco.i"],
+    visibility = [
+        "//learning/expander/pod/deep_pod/utils:__subpackages__",
+        "//research/handwriting/converters/tflite:__subpackages__",
+        "//tensorflow/contrib/lite:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
+    ],
     deps = [
         ":toco_python_api",
         "//tensorflow/lite/toco:model_flags_proto_cc",

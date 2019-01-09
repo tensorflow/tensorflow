@@ -97,7 +97,7 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
 WhileUtil::MakeInstructionsLiveIn(
     HloInstruction* while_instr,
     absl::Span<HloInstruction* const> instructions) {
-  CHECK(ShapeUtil::IsTuple(while_instr->shape()));
+  CHECK(while_instr->shape().IsTuple());
 
   int64 elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
   Shape new_while_shape = while_instr->shape();

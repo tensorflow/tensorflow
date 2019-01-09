@@ -32,7 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 class Loss(object):
@@ -117,7 +117,7 @@ class Loss(object):
     NotImplementedError('Must be implemented in subclasses.')
 
 
-@tf_export('keras.losses.MeanSquaredError')
+@keras_export('keras.losses.MeanSquaredError')
 class MeanSquaredError(Loss):
   """Computes the mean of squares of errors between labels and predictions.
 
@@ -155,7 +155,7 @@ class MeanSquaredError(Loss):
     return mean_squared_error(y_true, y_pred)
 
 
-@tf_export('keras.losses.MeanAbsoluteError')
+@keras_export('keras.losses.MeanAbsoluteError')
 class MeanAbsoluteError(Loss):
   """Computes the mean of absolute difference between labels and predictions.
 
@@ -193,7 +193,7 @@ class MeanAbsoluteError(Loss):
     return mean_absolute_error(y_true, y_pred)
 
 
-@tf_export('keras.losses.MeanAbsolutePercentageError')
+@keras_export('keras.losses.MeanAbsolutePercentageError')
 class MeanAbsolutePercentageError(Loss):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
@@ -231,7 +231,7 @@ class MeanAbsolutePercentageError(Loss):
     return mean_absolute_percentage_error(y_true, y_pred)
 
 
-@tf_export('keras.losses.MeanSquaredLogarithmicError')
+@keras_export('keras.losses.MeanSquaredLogarithmicError')
 class MeanSquaredLogarithmicError(Loss):
   """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
 
@@ -269,7 +269,7 @@ class MeanSquaredLogarithmicError(Loss):
     return mean_squared_logarithmic_error(y_true, y_pred)
 
 
-@tf_export('keras.losses.BinaryCrossentropy')
+@keras_export('keras.losses.BinaryCrossentropy')
 class BinaryCrossentropy(Loss):
   """Computes the binary cross entropy loss between the labels and predictions.
 
@@ -325,7 +325,7 @@ class BinaryCrossentropy(Loss):
     return binary_crossentropy(y_true, y_pred, from_logits=self.from_logits)
 
 
-@tf_export('keras.losses.CategoricalCrossentropy')
+@keras_export('keras.losses.CategoricalCrossentropy')
 class CategoricalCrossentropy(Loss):
   """Computes categorical cross entropy loss between the `y_true` and `y_pred`.
 
@@ -395,69 +395,369 @@ class CategoricalCrossentropy(Loss):
           y_true, y_pred, from_logits=self.from_logits)
 
 
-@tf_export('keras.metrics.mean_squared_error',
-           'keras.metrics.mse',
-           'keras.metrics.MSE',
-           'keras.losses.mean_squared_error',
-           'keras.losses.mse',
-           'keras.losses.MSE')
+@keras_export('keras.losses.Hinge')
+class Hinge(Loss):
+  """Computes the hinge loss between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  h = tf.losses.Hinge()
+  loss = h([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.66
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.Hinge())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Calculates the hinge loss.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Hinge loss.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return hinge(y_true, y_pred)
+
+
+@keras_export('keras.losses.SquaredHinge')
+class SquaredHinge(Loss):
+  """Computes the squared hinge loss between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  sh = tf.losses.SquaredHinge()
+  loss = sh([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.66
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.SquaredHinge())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Calculates the squared hinge loss.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Squared hinge loss.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return squared_hinge(y_true, y_pred)
+
+
+@keras_export('keras.losses.CategoricalHinge')
+class CategoricalHinge(Loss):
+  """Computes the categorical hinge loss between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  ch = tf.losses.CategoricalHinge()
+  loss = ch([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.CategoricalHinge())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Calculates the categorical hinge loss.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Categorical hinge loss.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return categorical_hinge(y_true, y_pred)
+
+
+class LogLoss(Loss):
+  """Computes the log loss between `y_true` and `y_pred`.
+
+  logloss = - y_true * log(y_pred) - (1 - y_true) * log(1 - y_pred)
+
+  Usage:
+
+  ```python
+  l = tf.losses.LogLoss()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 10.745
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.LogLoss())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return logloss(y_true, y_pred)
+
+
+class Poisson(Loss):
+  """Computes the poisson loss between `y_true` and `y_pred`.
+
+  loss = y_pred - y_true * log(y_pred)
+
+  Usage:
+
+  ```python
+  p = tf.losses.Poisson()
+  loss = p([1, 9, 2], [4, 8, 12])
+  print('Loss: ', loss.numpy())  # Loss: -4.63
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.Poisson())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return poisson(y_true, y_pred)
+
+
+class Logcosh(Loss):
+  """Computes the logarithm of the hyperbolic cosine of the prediction error.
+
+  logcosh = log((exp(x) + exp(-x))/2) where x is the error `y_pred` - `y_true`.
+
+  Usage:
+
+  ```python
+  l = tf.losses.Logcosh()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.289
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.Logcosh())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return logcosh(y_true, y_pred)
+
+
+class KullbackLeiblerDivergence(Loss):
+  """Computes kullback leibler divergence loss between `y_true` and `y_pred`.
+
+  loss = y_true * log(y_true / y_pred)
+
+  Usage:
+
+  ```python
+  k = tf.losses.KullbackLeiblerDivergence()
+  loss = k([.4, .9, .2], [.5, .8, .12])
+  print('Loss: ', loss.numpy())  # Loss: -0.043
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.KullbackLeiblerDivergence())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return kullback_leibler_divergence(y_true, y_pred)
+
+
+class HuberLoss(Loss):
+  """Computes the huber loss between `y_true` and `y_pred`.
+
+  For each value x in `error=y_true-y_pred`, the following is calculated:
+
+    ```
+    0.5 * x^2                  if |x| <= d
+    0.5 * d^2 + d * (|x| - d)  if |x| > d
+    ```
+  where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
+
+  Usage:
+
+  ```python
+  l = tf.losses.HuberLoss()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.333
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.HuberLoss())
+  ```
+
+  Args:
+    delta: A float, the point where the huber loss function changes from a
+      quadratic to linear.
+    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
+      `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
+  """
+
+  def __init__(self,
+               delta=1.0,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    super(HuberLoss, self).__init__(reduction=reduction, name=name)
+    self.delta = delta
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return huber_loss(y_true, y_pred, delta=self.delta)
+
+
+@keras_export('keras.metrics.mean_squared_error',
+              'keras.metrics.mse',
+              'keras.metrics.MSE',
+              'keras.losses.mean_squared_error',
+              'keras.losses.mse',
+              'keras.losses.MSE')
 def mean_squared_error(y_true, y_pred):
   return K.mean(math_ops.square(y_pred - y_true), axis=-1)
 
 
-@tf_export('keras.metrics.mean_absolute_error',
-           'keras.metrics.mae',
-           'keras.metrics.MAE',
-           'keras.losses.mean_absolute_error',
-           'keras.losses.mae',
-           'keras.losses.MAE')
+@keras_export('keras.metrics.mean_absolute_error',
+              'keras.metrics.mae',
+              'keras.metrics.MAE',
+              'keras.losses.mean_absolute_error',
+              'keras.losses.mae',
+              'keras.losses.MAE')
 def mean_absolute_error(y_true, y_pred):
   return K.mean(math_ops.abs(y_pred - y_true), axis=-1)
 
 
-@tf_export('keras.metrics.mean_absolute_percentage_error',
-           'keras.metrics.mape',
-           'keras.metrics.MAPE',
-           'keras.losses.mean_absolute_percentage_error',
-           'keras.losses.mape',
-           'keras.losses.MAPE')
+@keras_export('keras.metrics.mean_absolute_percentage_error',
+              'keras.metrics.mape',
+              'keras.metrics.MAPE',
+              'keras.losses.mean_absolute_percentage_error',
+              'keras.losses.mape',
+              'keras.losses.MAPE')
 def mean_absolute_percentage_error(y_true, y_pred):
   diff = math_ops.abs(
       (y_true - y_pred) / K.clip(math_ops.abs(y_true), K.epsilon(), None))
   return 100. * K.mean(diff, axis=-1)
 
 
-@tf_export('keras.metrics.mean_squared_logarithmic_error',
-           'keras.metrics.msle',
-           'keras.metrics.MSLE',
-           'keras.losses.mean_squared_logarithmic_error',
-           'keras.losses.msle',
-           'keras.losses.MSLE')
+@keras_export('keras.metrics.mean_squared_logarithmic_error',
+              'keras.metrics.msle',
+              'keras.metrics.MSLE',
+              'keras.losses.mean_squared_logarithmic_error',
+              'keras.losses.msle',
+              'keras.losses.MSLE')
 def mean_squared_logarithmic_error(y_true, y_pred):
   first_log = math_ops.log(K.clip(y_pred, K.epsilon(), None) + 1.)
   second_log = math_ops.log(K.clip(y_true, K.epsilon(), None) + 1.)
   return K.mean(math_ops.square(first_log - second_log), axis=-1)
 
 
-@tf_export('keras.metrics.squared_hinge', 'keras.losses.squared_hinge')
+@keras_export('keras.metrics.squared_hinge', 'keras.losses.squared_hinge')
 def squared_hinge(y_true, y_pred):
   return K.mean(
       math_ops.square(math_ops.maximum(1. - y_true * y_pred, 0.)), axis=-1)
 
 
-@tf_export('keras.metrics.hinge', 'keras.losses.hinge')
+@keras_export('keras.metrics.hinge', 'keras.losses.hinge')
 def hinge(y_true, y_pred):
   return K.mean(math_ops.maximum(1. - y_true * y_pred, 0.), axis=-1)
 
 
-@tf_export('keras.losses.categorical_hinge')
+@keras_export('keras.losses.categorical_hinge')
 def categorical_hinge(y_true, y_pred):
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
   return math_ops.maximum(0., neg - pos + 1.)
 
 
-@tf_export('keras.losses.logcosh')
+def logloss(y_true, y_pred):
+  losses = math_ops.multiply(y_true, math_ops.log(y_pred + K.epsilon()))
+  losses += math_ops.multiply((1 - y_true),
+                              math_ops.log(1 - y_pred + K.epsilon()))
+  return K.mean(-losses, axis=-1)
+
+
+def huber_loss(y_true, y_pred, delta=1.0):
+  """Computes huber loss value.
+
+  For each value x in `error=y_true-y_pred`, the following is calculated:
+
+    ```
+    0.5 * x^2                  if |x| <= d
+    0.5 * d^2 + d * (|x| - d)  if |x| > d
+    ```
+  where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
+
+  Args:
+    y_true: tensor of true targets.
+    y_pred: tensor of predicted targets.
+    delta: A float, the point where the huber loss function changes from a
+      quadratic to linear.
+
+  Returns:
+    Tensor with one scalar loss entry per sample.
+  """
+  y_pred = math_ops.cast(y_pred, dtype=K.floatx())
+  y_true = math_ops.cast(y_true, dtype=K.floatx())
+  error = math_ops.subtract(y_pred, y_true)
+  abs_error = math_ops.abs(error)
+  quadratic = math_ops.minimum(abs_error, delta)
+  linear = math_ops.subtract(abs_error, quadratic)
+  return math_ops.add(
+      math_ops.multiply(
+          ops.convert_to_tensor(0.5, dtype=quadratic.dtype),
+          math_ops.multiply(quadratic, quadratic)),
+      math_ops.multiply(delta, linear))
+
+
+@keras_export('keras.losses.logcosh')
 def logcosh(y_true, y_pred):
   """Logarithm of the hyperbolic cosine of the prediction error.
 
@@ -480,53 +780,54 @@ def logcosh(y_true, y_pred):
   return K.mean(_logcosh(y_pred - y_true), axis=-1)
 
 
-@tf_export('keras.metrics.categorical_crossentropy',
-           'keras.losses.categorical_crossentropy')
+@keras_export('keras.metrics.categorical_crossentropy',
+              'keras.losses.categorical_crossentropy')
 def categorical_crossentropy(y_true, y_pred, from_logits=False):
   return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
 
-@tf_export('keras.metrics.sparse_categorical_crossentropy',
-           'keras.losses.sparse_categorical_crossentropy')
+@keras_export('keras.metrics.sparse_categorical_crossentropy',
+              'keras.losses.sparse_categorical_crossentropy')
 def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False):
   return K.sparse_categorical_crossentropy(
       y_true, y_pred, from_logits=from_logits)
 
 
-@tf_export('keras.metrics.binary_crossentropy',
-           'keras.losses.binary_crossentropy')
+@keras_export('keras.metrics.binary_crossentropy',
+              'keras.losses.binary_crossentropy')
 def binary_crossentropy(y_true, y_pred, from_logits=False):
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
 
 
-@tf_export('keras.metrics.kullback_leibler_divergence',
-           'keras.metrics.kld',
-           'keras.metrics.KLD',
-           'keras.losses.kullback_leibler_divergence',
-           'keras.losses.kld',
-           'keras.losses.KLD')
+@keras_export('keras.metrics.kullback_leibler_divergence',
+              'keras.metrics.kld',
+              'keras.metrics.KLD',
+              'keras.losses.kullback_leibler_divergence',
+              'keras.losses.kld',
+              'keras.losses.KLD')
 def kullback_leibler_divergence(y_true, y_pred):
   y_true = K.clip(y_true, K.epsilon(), 1)
   y_pred = K.clip(y_pred, K.epsilon(), 1)
   return math_ops.reduce_sum(y_true * math_ops.log(y_true / y_pred), axis=-1)
 
 
-@tf_export('keras.metrics.poisson', 'keras.losses.poisson')
+@keras_export('keras.metrics.poisson', 'keras.losses.poisson')
 def poisson(y_true, y_pred):
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
 
 
-@tf_export('keras.metrics.cosine_proximity',
-           'keras.metrics.cosine',
-           'keras.losses.cosine_proximity',
-           'keras.losses.cosine')
+@keras_export('keras.metrics.cosine_proximity',
+              'keras.metrics.cosine',
+              'keras.losses.cosine_proximity',
+              'keras.losses.cosine')
 def cosine_proximity(y_true, y_pred):
   y_true = nn.l2_normalize(y_true, axis=-1)
   y_pred = nn.l2_normalize(y_pred, axis=-1)
   return -math_ops.reduce_sum(y_true * y_pred, axis=-1)
 
 
+@keras_export('keras.losses.CosineProximity')
 class CosineProximity(Loss):
   """Computes the cosine distance between `y_true` and `y_pred`.
 
@@ -571,12 +872,12 @@ kld = KLD = kullback_leibler_divergence
 cosine = cosine_proximity
 
 
-@tf_export('keras.losses.serialize')
+@keras_export('keras.losses.serialize')
 def serialize(loss):
   return serialize_keras_object(loss)
 
 
-@tf_export('keras.losses.deserialize')
+@keras_export('keras.losses.deserialize')
 def deserialize(name, custom_objects=None):
   return deserialize_keras_object(
       name,
@@ -585,7 +886,7 @@ def deserialize(name, custom_objects=None):
       printable_module_name='loss function')
 
 
-@tf_export('keras.losses.get')
+@keras_export('keras.losses.get')
 def get(identifier):
   if identifier is None:
     return None

@@ -34,6 +34,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
@@ -49,12 +50,12 @@ def model_iteration(model,
                     max_queue_size=10,
                     workers=1,
                     use_multiprocessing=False,
-                    shuffle=True,
+                    shuffle=False,
                     initial_epoch=0,
-                    mode='train',
+                    mode=ModeKeys.TRAIN,
                     batch_size=None,
                     **kwargs):
-  """Loop function for arrays of data with modes 'train'/'test'/'predict'.
+  """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
 
   Arguments:
       model: Keras Model instance.
@@ -89,16 +90,16 @@ def model_iteration(model,
         `None`.
       initial_epoch: Epoch at which to start training (useful for resuming a
         previous training run).
-      mode: One of 'train'/'test'/'predict'.
+      mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
       batch_size: Integer batch size or None if unknown. Will only be used if
         `data` is in NumPy/Tensor format.
       **kwargs: Additional arguments for backwards compatibility. `steps` is
         accepted as an alias for `steps_per_epoch`.
 
   Returns:
-      - In 'train' mode: `History` object.
-      - In 'test' mode: Evaluation metrics.
-      - In 'predict' mode: Outputs of the Model called on inputs.
+      - In TRAIN mode: `History` object.
+      - In TEST mode: Evaluation metrics.
+      - In PREDICT mode: Outputs of the Model called on inputs.
 
   Raises:
       ValueError: in case of invalid arguments.
@@ -151,14 +152,14 @@ def model_iteration(model,
   progbar.params = callbacks.params
   progbar.params['verbose'] = verbose
 
-  if mode == 'predict':
+  if mode == ModeKeys.PREDICT:
     aggregator = training_utils.OutputsAggregator(True, steps_per_epoch)
   else:
     aggregator = training_utils.MetricsAggregator(True, steps_per_epoch)
 
   if should_set_learning_phase:
     old_learning_phase = backend.learning_phase()
-    backend.set_learning_phase(1 if mode == 'train' else 0)
+    backend.set_learning_phase(1 if mode == ModeKeys.TRAIN else 0)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -170,7 +171,8 @@ def model_iteration(model,
     # Setup work for each epoch.
     model.reset_metrics()
     epoch_logs = {}
-    callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
+    if mode == ModeKeys.TRAIN:
+      callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
 
     for step in range(steps_per_epoch):
@@ -198,7 +200,7 @@ def model_iteration(model,
       aggregator.aggregate(batch_outs)
 
       # Callbacks batch end.
-      batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+      batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
       callbacks._call_batch_hook(mode, 'end', step, batch_logs)
       progbar.on_batch_end(step, batch_logs)
 
@@ -207,7 +209,7 @@ def model_iteration(model,
 
     aggregator.finalize()
     results = aggregator.results
-    epoch_logs.update(training_utils.make_logs(model, results, mode))
+    epoch_logs = cbks.make_logs(model, epoch_logs, results, mode)
     if len(results) == 1:
       results = results[0]
 
@@ -222,15 +224,20 @@ def model_iteration(model,
           workers=workers,
           use_multiprocessing=use_multiprocessing,
           max_queue_size=max_queue_size,
-          mode='test')
+          callbacks=callbacks,
+          verbose=0,
+          mode=ModeKeys.TEST)
 
       if not isinstance(val_results, list):
         val_results = [val_results]
-      epoch_logs.update(
-          training_utils.make_logs(model, val_results, mode, prefix='val_'))
+      epoch_logs = cbks.make_logs(
+          model, epoch_logs, val_results, mode, prefix='val_')
 
-    callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
-    progbar.on_epoch_end(epoch, epoch_logs)
+    if mode == ModeKeys.TRAIN:
+      # Epochs only apply to `fit`.
+      callbacks.on_epoch_end(epoch, epoch_logs)
+      progbar.on_epoch_end(epoch, epoch_logs)
+
   callbacks._call_end_hook(mode)
 
   if enqueuer is not None:
@@ -239,15 +246,17 @@ def model_iteration(model,
   if should_set_learning_phase:
     backend.set_learning_phase(old_learning_phase)
 
-  if mode == 'train':
+  if mode == ModeKeys.TRAIN:
     return model.history
   return results
 
 
 # Maintain compatibility with the existing names.
-fit_generator = functools.partial(model_iteration, mode='train')
-evaluate_generator = functools.partial(model_iteration, mode='test')
-predict_generator = functools.partial(model_iteration, mode='predict')
+fit_generator = functools.partial(model_iteration, mode=ModeKeys.TRAIN)
+evaluate_generator = functools.partial(
+    model_iteration, mode=ModeKeys.TEST, shuffle=False)
+predict_generator = functools.partial(
+    model_iteration, mode=ModeKeys.PREDICT, shuffle=False)
 
 
 def _get_next_batch(output_generator, mode):
@@ -259,7 +268,7 @@ def _get_next_batch(output_generator, mode):
     logging.warning('Your dataset iterator ran out of data.')
     return None
   if not isinstance(generator_output, tuple):
-    if mode == 'predict':
+    if mode == ModeKeys.PREDICT:
       # Always wrap in a tuple.
       return (generator_output,)
     else:
@@ -298,7 +307,7 @@ def _validate_arguments(is_sequence, use_multiprocessing, workers,
       `keras.utils.data_utils.Sequence` object or Eager Iterator or Dataset.
     validation_steps: Total number of steps (batches of samples) before
       declaring validation finished.
-    mode: One of 'train'/'test'/'predict'.
+    mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
     kwargs: Additional arguments for backwards compatibility.
 
   Raises:
@@ -314,7 +323,7 @@ def _validate_arguments(is_sequence, use_multiprocessing, workers,
                     ' class.'))
 
   if steps_per_epoch is None:
-    arg_name = 'steps_per_epoch' if mode == 'train' else 'steps'
+    arg_name = 'steps_per_epoch' if mode == ModeKeys.TRAIN else 'steps'
     raise ValueError('Please specify the number of steps via the '
                      '`{}` argument.'.format(arg_name))
 
@@ -420,11 +429,11 @@ def _make_enqueued_generator(generator,
 
 def _make_execution_function(model, mode, class_weight=None):
   """Makes function to run one step of model execution."""
-  if mode == 'train':
+  if mode == ModeKeys.TRAIN:
     if not context.executing_eagerly():
       model._make_fit_function()
     f = functools.partial(model.train_on_batch, class_weight=class_weight)
-  elif mode == 'test':
+  elif mode == ModeKeys.TEST:
     if not context.executing_eagerly():
       model._make_eval_function()
     f = model.test_on_batch
@@ -437,7 +446,7 @@ def _make_execution_function(model, mode, class_weight=None):
     f = predict_on_batch
 
   # Maintain stateful metrics across batch-level calls.
-  if mode != 'predict':
+  if mode != ModeKeys.PREDICT:
     f = functools.partial(f, reset_metrics=False)
 
   return f

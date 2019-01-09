@@ -133,6 +133,22 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SessionRunArgs"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunValues"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "StepCounterHook"
     mtype: "<type \'type\'>"
   }
@@ -162,10 +178,6 @@ tf_module {
   }
   member {
     name: "export"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "inputs"
     mtype: "<type \'module\'>"
   }
   member_method {

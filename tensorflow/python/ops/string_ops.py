@@ -367,7 +367,7 @@ def string_length_v2(input, unit="BYTE", name=None):
 string_length.__doc__ = gen_string_ops.string_length.__doc__
 
 
-@tf_export("substr")
+@tf_export(v1=["substr"])
 @deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
 def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
   return substr(input, pos, len, name=name, unit=unit)
@@ -380,14 +380,15 @@ substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
 def substr(input, pos, len, name=None, unit="BYTE"):
   return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
 
+substr.__doc__ = gen_string_ops.substr.__doc__
+
 
 @tf_export("strings.substr", v1=[])
 @dispatch.add_dispatch_support
 def substr_v2(input, pos, len, unit="BYTE", name=None):
-  return substr(input, pos, len, name=name, unit=unit)
+  return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
 
-
-substr.__doc__ = gen_string_ops.substr.__doc__
+substr_v2.__doc__ = gen_string_ops.substr.__doc__
 
 
 ops.NotDifferentiable("RegexReplace")
