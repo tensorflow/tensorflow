@@ -130,17 +130,6 @@ TensorShape PoolParameters::forward_output_shape() {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef GOOGLE_CUDA
-namespace {
-template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
-  se::DeviceMemory<T> typed(wrapped);
-  return typed;
-}
-}  // namespace
-#endif
-
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                         \
