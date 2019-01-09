@@ -1463,9 +1463,9 @@ class SymbolicShapeRefiner {
       // Due to the cost of EvaluateNode(), we run it only for certain op types
       // (white listed) and small integer tensors.
 
-      const int max_elelment_size = 17;  // Max up to 4x4 matrix or similar.
+      const int max_element_size = 17;  // Max up to 4x4 matrix or similar.
       if (AllOutputValuesKnown(c) || !AllInputValuesKnown(c) ||
-          !ShouldUpdateOutputValues(c, max_elelment_size)) {
+          !ShouldUpdateOutputValues(c, max_element_size)) {
         return Status::OK();
       }
       UpdateOutputValues(node, c).IgnoreError();  // This is optional.
