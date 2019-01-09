@@ -101,7 +101,6 @@ TEST_F(RemapperTest, FusedBatchNormNCHW) {
   }
 }
 
-#ifndef INTEL_MKL
 TEST_F(RemapperTest, FuseConv2DWithBias) {
   if (!EigenSupportsContractionOutputKernel()) return;
 
@@ -457,7 +456,6 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
-#endif // INTEL_MKL
 
 }  // namespace grappler
 }  // namespace tensorflow
