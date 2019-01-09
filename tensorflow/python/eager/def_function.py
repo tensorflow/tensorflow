@@ -446,10 +446,12 @@ class PolymorphicFunction(object):
   @property
   def _cached_input_signatures(self):
     """All input signatures used to call this PolymorphicFunction."""
-    seen = set()
-    # Preserves signature ordering rather than returning a set() so that we
-    # don't need to re-sort signatures later to work around Python 2's set
-    # nondeterminism.
+    seen = list()
+    # We are using a list so that:
+    #  - the returned collection is deterministic, and
+    #  - we can use a custom equality operator (is_same_structure).
+    # This is run only at serialization time on likely very small inputs so we
+    # are not concerned about O(n^2) runtime.
     # pylint: disable=protected-access
     concrete_functions = []
     if self._stateful_fn:
@@ -458,9 +460,11 @@ class PolymorphicFunction(object):
       concrete_functions.extend(self._stateless_fn._function_cache.values())
     for concrete_function in concrete_functions:
       signature = concrete_function._python_call_signature
-      if signature not in seen:
+      equal_to_signature = functools.partial(
+          function_lib.is_same_structure, signature, check_values=True)
+      if not any(equal_to_signature(s) for s in seen):
         yield signature
-        seen.add(signature)
+        seen.append(signature)
     # pylint: enable=protected-access
 
   def get_concrete_function(self, *args, **kwargs):
