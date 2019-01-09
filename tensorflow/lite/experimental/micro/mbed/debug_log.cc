@@ -12,25 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_ERROR_REPORTER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_ERROR_REPORTER_H_
 
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/experimental/micro/compatibility.h"
 #include "tensorflow/lite/experimental/micro/debug_log.h"
-#include "tensorflow/lite/experimental/micro/debug_log_numbers.h"
 
-namespace tflite {
+#include <mbed.h>
 
-class MicroErrorReporter : public ErrorReporter {
- public:
-  ~MicroErrorReporter() {}
-  int Report(const char* format, va_list args) override;
-
- private:
-  TF_LITE_REMOVE_VIRTUAL_DELETE
-};
-
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_ERROR_REPORTER_H_
+// On mbed platforms, we set up a serial port and write to it for debug logging.
+extern "C" void DebugLog(const char* s) {
+  static Serial pc(USBTX, USBRX);
+  pc.printf("%s", s);
+}
