@@ -52,24 +52,23 @@ int ConvBackpropDimensions::SpatialPadding(const Padding& padding,
                                        1 - input_size(dim)));
 }
 
-// The V2 version computes windowed output size with arbitrary dilation_rate,
-// while the original version only handles the cases where dilation_rates equal
-// to 1.
-Status ConvBackpropExtractAndVerifyDimensionV2(
+namespace {
+
+Status ConvBackpropExtractAndVerifyDimension(
     StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
-    Padding padding, int spatial_dim, int filter_spatial_dim,
-    ConvBackpropSpatialDimension* dim) {
+    Padding padding, int64 padding_before, int64 padding_after, int spatial_dim,
+    int filter_spatial_dim, ConvBackpropSpatialDimension* dim) {
   dim->input_size = input_shape.dim_size(spatial_dim);
   dim->filter_size = filter_shape.dim_size(filter_spatial_dim);
   dim->output_size = output_shape.dim_size(spatial_dim);
   dim->stride = strides[spatial_dim];
   dim->dilation = dilations[spatial_dim];
-  int64 out_size = 0, pad_size = 0;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeV2(dim->input_size, dim->filter_size,
-                                             dim->dilation, dim->stride,
-                                             padding, &out_size, &pad_size));
+  int64 out_size = 0;
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
+      dim->input_size, dim->filter_size, dim->dilation, dim->stride, padding,
+      &out_size, &padding_before, &padding_after));
   if (dim->output_size != out_size) {
     return errors::InvalidArgument(
         label, ": Size of out_backprop doesn't match computed: ", "actual = ",
@@ -79,10 +78,13 @@ Status ConvBackpropExtractAndVerifyDimensionV2(
         " stride: ", dim->stride, " dilation: ", dim->dilation);
   }
 
+  // TODO(reedwm): Correctly handle explicit padding here. The rest of the
+  // fields set on 'dim' are only used in XLA. TensorFlow ops do not yet support
+  // explicit padding for XLA.
   int64 effective_filter_size = (dim->filter_size - 1) * dim->dilation + 1;
   dim->expanded_output_size = (dim->output_size - 1) * dim->stride + 1;
   const auto padded_out_size = dim->input_size + effective_filter_size - 1;
-  dim->pad_before = effective_filter_size - 1 - pad_size;
+  dim->pad_before = effective_filter_size - 1 - padding_before;
   dim->pad_after =
       padded_out_size - dim->expanded_output_size - dim->pad_before;
   VLOG(2) << label << ": expanded_out = " << dim->expanded_output_size
@@ -94,22 +96,14 @@ Status ConvBackpropExtractAndVerifyDimensionV2(
   return Status::OK();
 }
 
-Status ConvBackpropExtractAndVerifyDimension(
-    StringPiece label, const TensorShape& input_shape,
-    const TensorShape& filter_shape, const TensorShape& output_shape,
-    const std::vector<int32>& strides, Padding padding, int spatial_dim,
-    int filter_spatial_dim, ConvBackpropSpatialDimension* dim) {
-  static constexpr std::array<int32, 5> one_dilations = {{1, 1, 1, 1, 1}};
-  return ConvBackpropExtractAndVerifyDimensionV2(
-      label, input_shape, filter_shape, output_shape, one_dilations, strides,
-      padding, spatial_dim, filter_spatial_dim, dim);
-}
+}  // namespace
 
 Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
-    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims) {
+    Padding padding, const std::vector<int64>& explicit_paddings,
+    TensorFormat data_format, ConvBackpropDimensions* dims) {
   // The + 2 in the following line is for the batch and feature dimensions.
   const int num_dims = num_spatial_dims + 2;
   if (input_shape.dims() != num_dims) {
@@ -152,9 +146,15 @@ Status ConvBackpropComputeDimensionsV2(
   dims->spatial_dims.resize(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
     int image_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-    TF_RETURN_IF_ERROR(ConvBackpropExtractAndVerifyDimensionV2(
+    int64 padding_before = -1, padding_after = -1;
+    if (padding == EXPLICIT) {
+      padding_before = explicit_paddings[2 * image_dim];
+      padding_after = explicit_paddings[2 * image_dim + 1];
+    }
+    TF_RETURN_IF_ERROR(ConvBackpropExtractAndVerifyDimension(
         label, input_shape, filter_shape, out_backprop_shape, dilations,
-        strides, padding, image_dim, i, &dims->spatial_dims[i]));
+        strides, padding, padding_before, padding_after, image_dim, i,
+        &dims->spatial_dims[i]));
   }
   return Status::OK();
 }
@@ -169,7 +169,8 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
   static constexpr std::array<int32, 5> one_dilations = {{1, 1, 1, 1, 1}};
   return ConvBackpropComputeDimensionsV2(
       label, num_spatial_dims, input_shape, filter_shape, out_backprop_shape,
-      one_dilations, strides, padding, data_format, dims);
+      one_dilations, strides, padding, /*explicit_paddings=*/{}, data_format,
+      dims);
 }
 
 }  // namespace tensorflow
