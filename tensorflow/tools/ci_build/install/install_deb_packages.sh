@@ -68,11 +68,14 @@ apt-get install -y --no-install-recommends \
     zip \
     zlib1g-dev
 
+pushd /tmp
+wget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1604/x86_64/nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda10.0_1-1_amd64.deb
+dpkg -i ./nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda10.0_1-1_amd64.deb
+popd
+
 apt-get update && \
-  apt-get install nvinfer-runtime-trt-repo-ubuntu1604-4.0.1-ga-cuda9.0 && \
-  apt-get update && \
-  apt-get install libnvinfer4=4.1.2-1+cuda9.0 && \
-  apt-get install libnvinfer-dev=4.1.2-1+cuda9.0
+  apt-get install libnvinfer5=5.0.2-1+cuda10.0 && \
+  apt-get install libnvinfer-dev=5.0.2-1+cuda10.0
 
 # populate the database
 updatedb
