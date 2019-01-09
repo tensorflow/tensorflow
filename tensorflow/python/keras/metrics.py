@@ -1443,8 +1443,16 @@ class CosineProximity(MeanMetricWrapper):
   ```
   """
 
-  def __init__(self, name='cosine_proximity', dtype=None):
-    super(CosineProximity, self).__init__(cosine, name, dtype=dtype)
+  def __init__(self, name='cosine_proximity', dtype=None, axis=-1):
+    """Creates a `CosineProximity` instance.
+
+    Args:
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+      axis: (Optional) Defaults to -1. The dimension along which the cosine
+        proximity is computed.
+    """
+    super(CosineProximity, self).__init__(cosine, name, dtype=dtype, axis=axis)
 
   @classmethod
   def from_config(cls, config):
