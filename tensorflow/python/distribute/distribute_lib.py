@@ -26,6 +26,7 @@ import enum
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import constant_op
@@ -360,7 +361,7 @@ class DistributionStrategy(object):
     return self._extended._distribute_dataset(dataset_fn)  # pylint: disable=protected-access
 
   def make_dataset_iterator(self, dataset):
-    """Makes an iterator for input provided via input_dataset.
+    """Makes an iterator for input provided via `dataset`.
 
     Data from the given dataset will be distributed evenly across all the
     compute replicas. We will assume that the input dataset is batched by the
@@ -417,6 +418,40 @@ class DistributionStrategy(object):
           "Input replication mode not supported: %r" % replication_mode)
     return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
         input_fn, replication_mode=replication_mode)
+
+  def experimental_make_numpy_iterator(
+      self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
+    """Makes an iterator for input provided via a nest of numpy arrays.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+      batch_size: The number of entries from the array we should consume in one
+        step of the computation, across all replicas. This is the global batch
+        size. It should be divisible by `num_replicas_in_sync`.
+      num_epochs: The number of times to iterate through the examples. A value
+        of `None` means repeat forever.
+      shuffle: Size of buffer to use for shuffling the input examples.
+        Use `None` to disable shuffling.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      An `tf.distribute.InputIterator` which returns inputs for each step of the
+      computation.  User should call `initialize` on the returned iterator.
+    """
+    ds = self.extended.experimental_make_numpy_dataset(
+        numpy_input, session=session)
+    if shuffle:
+      ds = ds.shuffle(shuffle)
+    if num_epochs != 1:
+      ds = ds.repeat(num_epochs)
+    # We need to use the drop_remainder argument to get a known static
+    # input shape which is required for TPUs.
+    drop_remainder = self.extended.experimental_require_static_shapes
+    ds = ds.batch(batch_size, drop_remainder=drop_remainder)
+    return self.make_dataset_iterator(ds)
 
   def experimental_run(self, fn, input_iterator=None):
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
@@ -1083,6 +1118,29 @@ class DistributionStrategyExtended(object):
   def _make_input_fn_iterator(self, input_fn, replication_mode):
     raise NotImplementedError("must be implemented in descendants")
 
+  def experimental_make_numpy_dataset(self, numpy_input, session=None):
+    """Makes a dataset for input provided via a numpy array.
+
+    This avoids adding `numpy_input` as a large constant in the graph,
+    and copies the data to the machine or machines that will be processing
+    the input.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      A `tf.data.Dataset` representing `numpy_input`.
+    """
+    _require_cross_replica_context_extended(self)
+    return self._experimental_make_numpy_dataset(numpy_input, session=session)
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    raise NotImplementedError("must be implemented in descendants")
+
   def broadcast_to(self, tensor, destinations):
     """Mirror a tensor on one device to all worker devices.
 
@@ -1659,6 +1717,18 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
                               input_fn,
                               replication_mode=InputReplicationMode.PER_WORKER):
     return input_fn(InputContext()).make_initializable_iterator()
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    numpy_flat = nest.flatten(numpy_input)
+    vars_flat = tuple(
+        variable_scope.variable(array_ops.zeros(i.shape, i.dtype),
+                                trainable=False, use_resource=True)
+        for i in numpy_flat
+    )
+    for v, i in zip(vars_flat, numpy_flat):
+      numpy_dataset.init_var_from_numpy(v, i, session)
+    vars_nested = nest.pack_sequence_as(numpy_input, vars_flat)
+    return dataset_ops.Dataset.from_tensor_slices(vars_nested)
 
   def _broadcast_to(self, tensor, destinations):
     if destinations is None:

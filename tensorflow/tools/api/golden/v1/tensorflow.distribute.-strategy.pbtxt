@@ -75,6 +75,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_make_numpy_iterator"
+    argspec: "args=[\'self\', \'numpy_input\', \'batch_size\', \'num_epochs\', \'shuffle\', \'session\'], varargs=None, keywords=None, defaults=[\'1\', \'1024\', \'None\'], "
+  }
+  member_method {
     name: "experimental_run"
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

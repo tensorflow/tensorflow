@@ -34,6 +34,7 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver_lib
@@ -303,6 +304,11 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
         functools.partial(self._call_dataset_fn, dataset_fn),
         self._input_workers)
 
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    return numpy_dataset.one_host_numpy_dataset(
+        numpy_input, numpy_dataset.SingleDevice(self.get_host_cpu_device(0)),
+        session)
+
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
   # a mechanism to infer the outputs of `fn`. Pending b/110550782.
@@ -466,6 +472,9 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     if colocate_with is None:
       device_map = self._device_map
       logical_device = 0  # TODO(josh11b): Get logical device from scope here.
+    elif isinstance(colocate_with, numpy_dataset.SingleDevice):
+      with ops.device(colocate_with.device):
+        return next_creator(*args, **kwargs)
     else:
       device_map = colocate_with.device_map
       logical_device = colocate_with.logical_device

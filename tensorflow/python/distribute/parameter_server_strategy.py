@@ -26,6 +26,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
@@ -137,6 +138,7 @@ class ParameterServerStrategyExtended(
     assert cluster_spec.as_dict()
 
     worker_device = "/job:%s/task:%d" % (task_type, task_id)
+    self._input_host_device = numpy_dataset.SingleDevice(worker_device)
 
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
@@ -195,6 +197,7 @@ class ParameterServerStrategyExtended(
   def _initialize_local(self, cluster_resolver):
     """Initialize internal devices for local training."""
     worker_device = device_util.canonicalize("/device:CPU:0")
+    self._input_host_device = numpy_dataset.SingleDevice(worker_device)
     num_gpus = cluster_resolver.num_accelerators()
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
@@ -261,6 +264,10 @@ class ParameterServerStrategyExtended(
         num_replicas_in_sync=self._num_replicas_in_sync)
     return input_lib.InputFunctionIterator(input_fn, self._input_workers,
                                            [input_context])
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    return numpy_dataset.one_host_numpy_dataset(
+        numpy_input, self._input_host_device, session)
 
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay
@@ -329,8 +336,12 @@ class ParameterServerStrategyExtended(
       var_creator = next_creator
 
     if "colocate_with" in kwargs:
+      colocate_with = kwargs["colocate_with"]
+      if isinstance(colocate_with, numpy_dataset.SingleDevice):
+        with ops.device(colocate_with.device):
+          return var_creator(*args, **kwargs)
       with ops.device(None):
-        with ops.colocate_with(kwargs["colocate_with"]):
+        with ops.colocate_with(colocate_with):
           return var_creator(*args, **kwargs)
 
     with ops.colocate_with(None, ignore_existing=True):
