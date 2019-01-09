@@ -1287,7 +1287,7 @@ class FunctionsFromProtos(test.TestCase):
       gradients_impl.gradients([f1, f2, f3, f4], c)
 
     library = g.as_graph_def().library
-    new_funcs = function._from_library(library)
+    new_funcs = function.from_library(library)
 
     def CheckNewFunc(func):
       new_func = [f for f in new_funcs if f.name == func.name]
@@ -1303,7 +1303,7 @@ class FunctionsFromProtos(test.TestCase):
 
   def testFromLibraryEmptyLib(self):
     library = function_pb2.FunctionDefLibrary()
-    self.assertEqual(len(function._from_library(library)), 0)
+    self.assertEqual(len(function.from_library(library)), 0)
 
   def testFromLibraryMissingFuncDef(self):
 
@@ -1327,7 +1327,7 @@ class FunctionsFromProtos(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         "FunctionDefLibrary missing 'G1_[0-9a-zA-Z]{8,11}' FunctionDef"):
-      function._from_library(library)
+      function.from_library(library)
 
     # Create invalid function def that is missing F1 function def
     library = function_pb2.FunctionDefLibrary()
@@ -1337,7 +1337,7 @@ class FunctionsFromProtos(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         "FunctionDefLibrary missing 'F1_[0-9a-zA-Z]{8,11}' FunctionDef"):
-      function._from_library(library)
+      function.from_library(library)
 
   def testFromLibraryCyclicGradFuncs(self):
 
@@ -1366,7 +1366,7 @@ class FunctionsFromProtos(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError, "FunctionDefLibrary contains cyclic gradient functions!"):
-      function._from_library(library)
+      function.from_library(library)
 
   def testExperimentalAttrs(self):
 

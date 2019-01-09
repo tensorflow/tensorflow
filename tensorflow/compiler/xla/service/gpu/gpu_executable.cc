@@ -218,7 +218,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
 
       const Literal& literal =
           llvm_ir::LiteralForConstantAllocation(allocation);
-      CHECK(ShapeUtil::IsArray(literal.shape()));
+      CHECK(literal.shape().IsArray());
       if (!ShouldEmitLiteralInLlvmIr(literal)) {
         VLOG(3) << "H2D memcpy for constant with shape "
                 << ShapeUtil::HumanString(literal.shape());

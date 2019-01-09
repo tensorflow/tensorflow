@@ -276,8 +276,8 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
       if (bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(
               *use.instruction, use.operand_number)) {
         if (use.instruction->opcode() == HloOpcode::kTuple ||
-            (use.instruction->opcode() == HloOpcode::kCrossReplicaSum &&
-             ShapeUtil::IsTuple(use.instruction->shape()))) {
+            (use.instruction->opcode() == HloOpcode::kAllReduce &&
+             use.instruction->shape().IsTuple())) {
           ShapeIndex use_output_index{use.operand_number};
           for (int64 i : use.operand_index) {
             use_output_index.push_back(i);

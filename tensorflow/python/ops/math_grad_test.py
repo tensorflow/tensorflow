@@ -29,9 +29,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+
+RAISE = execution_callbacks.ExecutionCallback.RAISE
 
 
 class SquaredDifferenceOpTest(test.TestCase):
@@ -385,13 +388,67 @@ class PowGradTest(test.TestCase):
     self.assertAllClose([-2., 0., 2.], g)
 
   def test_zero_grad_tape(self):
-    with execution_callbacks.errstate(inf_or_nan=execution_callbacks.RAISE):
+    with execution_callbacks.errstate(inf_or_nan=RAISE):
       x = constant_op.constant([-1, 0., 1.])
       with backprop.GradientTape() as tape:
         tape.watch(x)
         g = tape.gradient(math_ops.pow(x, 2), x)
       g = self.evaluate(g)
       self.assertAllClose([-2., 0., 2.], g)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NextAfterTest(test.TestCase):
+
+  def _nextafter_gradient(self, x1, x2):
+    with backprop.GradientTape() as tape:
+      tape.watch(x1)
+      tape.watch(x2)
+      y = math_ops.nextafter(x1, x2)
+      return tape.gradient(y, [x1, x2])
+
+  def testBasic(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x1 = constant_op.constant(0.1, dtype=dtype)
+      x2 = constant_op.constant(3.1, dtype=dtype)
+      dx1, dx2 = self._nextafter_gradient(x1, x2)
+      expected_dx1 = constant_op.constant(1, dtype=dtype)
+      expected_dx2 = constant_op.constant(0, dtype=dtype)
+      self.assertAllClose(expected_dx1, dx1)
+      self.assertAllClose(expected_dx2, dx2)
+
+  def testDynamicShapes(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      default_x1 = constant_op.constant(0.1, dtype=dtype)
+      default_x2 = constant_op.constant(3.1, dtype=dtype)
+      x1 = array_ops.placeholder_with_default(default_x1, shape=None)
+      x2 = array_ops.placeholder_with_default(default_x2, shape=None)
+      dx1, dx2 = self._nextafter_gradient(x1, x2)
+      expected_dx1 = constant_op.constant(1, dtype=dtype)
+      expected_dx2 = constant_op.constant(0, dtype=dtype)
+      self.assertAllClose(expected_dx1, dx1)
+      self.assertAllClose(expected_dx2, dx2)
+
+  def testWithGradientChecker(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        x1 = np.array([-1, 0, 1, 2, 3], dtype=dtype.as_numpy_dtype)
+        x2 = np.array([2, 2, 2, 2, 2], dtype=dtype.as_numpy_dtype)
+        err = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(
+                lambda x: math_ops.nextafter(x, x2), [x1]))  # pylint: disable=cell-var-from-loop
+        self.assertLess(err, 1e-3)
+
+  def testBroadcastingWithGradientChecker(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        x1 = np.array([-1, 0, 1, 2, 3], dtype=dtype.as_numpy_dtype)
+        x2 = np.array([2], dtype=dtype.as_numpy_dtype)
+        err = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(
+                lambda x: math_ops.nextafter(x, x2), [x1]))  # pylint: disable=cell-var-from-loop
+        self.assertLess(err, 1e-3)
+
 
 if __name__ == "__main__":
   test.main()

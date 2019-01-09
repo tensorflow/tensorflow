@@ -24,11 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
-// IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -70,6 +68,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
@@ -111,10 +111,9 @@ IrEmitter::IrEmitter(
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, const string& function_name_prefix,
     bool is_top_level_computation,
-    const std::vector<HloInstruction*>* instruction_order) {
+    absl::Span<HloInstruction* const> instruction_order) {
   string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
-  VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix
-          << "]; ordered? " << (instruction_order != nullptr);
+  VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
   num_dynamic_loop_bounds_ = 0;
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
@@ -141,11 +140,7 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   bool use_rdtscp = arch_type_ == llvm::Triple::ArchType::x86 ||
                     arch_type_ == llvm::Triple::ArchType::x86_64;
   profiling_state_ = ProfilingState(use_rdtscp);
-  if (instruction_order == nullptr) {
-    TF_RETURN_IF_ERROR(computation->Accept(this));
-  } else {
-    TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, *instruction_order));
-  }
+  TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
   InsertOrDie(&emitted_functions_, computation, ir_function);
   // Delete 'compute_function', finalizing 'ir_function' and restoring caller
@@ -228,11 +223,11 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status IrEmitter::HandleCopy(HloInstruction* copy) {
-  if (ShapeUtil::IsTuple(copy->shape())) {
+  if (copy->shape().IsTuple()) {
     // kCopy shallow copies a tuple so just memcpy the top-level buffer.
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
-  } else if (ShapeUtil::IsArray(copy->shape())) {
+  } else if (copy->shape().IsArray()) {
     // Use the elemental emitter for array shapes.
     return DefaultAction(copy);
   }
@@ -321,7 +316,7 @@ Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
   auto on_false = tuple_select->operand(2);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
   TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()));
-  TF_RET_CHECK(ShapeUtil::IsTuple(tuple_select->shape()));
+  TF_RET_CHECK(tuple_select->shape().IsTuple());
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple_select));
   llvm_ir::EmitTupleSelect(GetIrArrayFor(tuple_select), GetIrArrayFor(pred),
                            GetEmittedValueFor(on_true),
@@ -351,7 +346,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   llvm_ir::EmitTuple(GetIrArrayFor(infeed), {data_address, token_address}, &b_,
                      module_);
 
-  if (ShapeUtil::IsTuple(data_shape)) {
+  if (data_shape.IsTuple()) {
     TF_RET_CHECK(!ShapeUtil::IsNestedTuple(data_shape));
 
     // For a tuple, we first copy each of the internal elements to
@@ -475,7 +470,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
   const Shape& operand_shape = operand->shape();
 
   llvm::Value* value = GetEmittedValueFor(operand);
-  if (!ShapeUtil::IsTuple(operand_shape)) {
+  if (!operand_shape.IsTuple()) {
     return EmitXfeedTransfer(XfeedKind::kOutfeed, operand_shape, value);
   }
 
@@ -540,7 +535,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     higher_dimensions *= normalized_keys_shape.dimensions(i);
   }
   int64 lower_dimensions = 1;
-  for (int64 i = ShapeUtil::Rank(normalized_keys_shape) - 1;
+  for (int64 i = normalized_keys_shape.rank() - 1;
        i > physical_dimension_to_sort; --i) {
     lower_dimensions *= normalized_keys_shape.dimensions(i);
   }
@@ -784,8 +779,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   const auto init_value = select_and_scatter->operand(2);
   const Window& window = select_and_scatter->window();
   PrimitiveType operand_element_type = operand->shape().element_type();
-  const int64 rank = ShapeUtil::Rank(operand->shape());
-  CHECK_EQ(rank, ShapeUtil::Rank(source->shape()));
+  const int64 rank = operand->shape().rank();
+  CHECK_EQ(rank, source->shape().rank());
   CHECK_EQ(rank, window.dimensions_size());
 
   // TODO(b/31410564): Implement dilation for select-and-scatter.
@@ -975,10 +970,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
           << llvm_ir::DumpToString(*target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  return DotOpEmitter::EmitDotOperation(
-      *dot, target_array, lhs_array, rhs_array, /*addend_array=*/nullptr,
-      GetExecutableRunOptionsArgument(), &b_, hlo_module_config_,
-      target_machine_features_);
+  return EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                          /*addend_array=*/nullptr,
+                          GetExecutableRunOptionsArgument(), &b_,
+                          hlo_module_config_, target_machine_features_);
 }
 
 StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
@@ -1338,11 +1333,11 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
+Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() != 1) {
     // TODO(b/33011107): Support nontrivial cross replica sum on CPU.
     return Unimplemented(
-        "CrossReplicaSum with >1 replica is not implemented on CPU.");
+        "AllReduce with >1 replica is not implemented on CPU.");
   }
 
   // When there is a single replica, a cross replica sum is the identity
@@ -1367,8 +1362,8 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
                         assignment_.GetUniqueSlice(crs, {i}));
 
     const Shape& operand_shape = crs->operand(i)->shape();
-    CHECK(ShapeUtil::IsArray(operand_shape))
-        << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
+    CHECK(operand_shape.IsArray())
+        << "Operands to all-reduce must be arrays: " << crs->ToString();
     operand_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
 
     // TODO(b/63762267): Be more aggressive about specifying alignment.
@@ -1404,7 +1399,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
 
   int64 delta = 0;
   for (int64 i = 0; i < operand_shape.dimensions_size(); i++) {
-    if (reduced_dims.count(i)) {
+    if (reduced_dims.contains(i)) {
       delta++;
     } else {
       InsertOrDie(&unreduced_dim_map, i, i - delta);
@@ -1417,7 +1412,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   for (int64 operand_dim_idx = 0;
        operand_dim_idx < operand_shape.dimensions_size(); operand_dim_idx++) {
     int64 operand_dim = operand_shape.layout().minor_to_major(operand_dim_idx);
-    if (!reduced_dims.count(operand_dim)) {
+    if (!reduced_dims.contains(operand_dim)) {
       if (FindOrDie(unreduced_dim_map, operand_dim) !=
           result_shape.layout().minor_to_major(result_dim_idx++)) {
         return false;
@@ -1714,10 +1709,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
       vectorization_factor_in_bytes /
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type());
 
-  bool is_reduction_over_minor_dimension =
-      std::find(dimensions.begin(), dimensions.end(),
-                LayoutUtil::Minor(arg->shape().layout(), 0)) !=
-      dimensions.end();
+  bool is_reduction_over_minor_dimension = absl::c_linear_search(
+      dimensions, LayoutUtil::Minor(arg->shape().layout(), 0));
 
   unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
@@ -1729,7 +1722,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     return false;
   }
 
-  CHECK(!ShapeUtil::IsTuple(reduce->shape()));
+  CHECK(!reduce->shape().IsTuple());
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(reduce));
 
   // We know we're not reducing over the most minor dimension, which means we
@@ -1896,7 +1889,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   // TODO(b/112040122): Support variadic reduce.
-  if (!ShapeUtil::IsArray(reduce->shape())) {
+  if (!reduce->shape().IsArray()) {
     return Unimplemented("Variadic reduce is not supported on CPU");
   }
   auto arg = reduce->mutable_operand(0);
@@ -1995,7 +1988,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   // The memcpy will copy elements that are logically this shape (allowed to be
   // scalar).
   const Shape logical_element_shape = ShapeUtil::FilterDimensions(
-      [&inner_dims](int64 dim) -> bool { return inner_dims.count(dim); },
+      [&inner_dims](int64 dim) { return inner_dims.contains(dim); },
       operand->shape());
 
   const int64 primitive_elements_per_logical_element =
@@ -2210,10 +2203,10 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray addend_array(
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
-    TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
-        *dot, target_array, lhs_array, rhs_array, &addend_array,
-        GetExecutableRunOptionsArgument(), &b_, hlo_module_config_,
-        target_machine_features_));
+    TF_RETURN_IF_ERROR(
+        EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                         &addend_array, GetExecutableRunOptionsArgument(), &b_,
+                         hlo_module_config_, target_machine_features_));
     return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
@@ -2271,6 +2264,21 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
               /*isVarArg=*/false)));
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  // Write the tuple table if the output is a tuple.
+  if (custom_call->shape().IsTuple()) {
+    std::vector<llvm::Value*> base_ptrs;
+    for (int i = 0; i < ShapeUtil::TupleElementCount(custom_call->shape());
+         ++i) {
+      const Shape& elem_shape =
+          ShapeUtil::GetTupleElementShape(custom_call->shape(), i);
+      TF_RET_CHECK(!elem_shape.IsTuple()) << "Nested tuples not implemented";
+      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                          assignment_.GetUniqueSlice(custom_call, {i}));
+      llvm::Value* addr = EmitBufferPointer(slice, elem_shape);
+      base_ptrs.push_back(addr);
+    }
+    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_, module_);
+  }
   auto* output_address_arg =
       PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
 
@@ -2391,8 +2399,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   int64 concat_dim = concatenate->dimensions(0);
   const Layout& output_layout = output_shape.layout();
   auto output_min2maj = LayoutUtil::MinorToMajor(output_layout);
-  auto concat_dim_layout_itr =
-      std::find(output_min2maj.begin(), output_min2maj.end(), concat_dim);
+  auto concat_dim_layout_itr = absl::c_find(output_min2maj, concat_dim);
 
   std::vector<int64> inner_dims(output_min2maj.begin(), concat_dim_layout_itr);
   std::vector<int64> outer_dims(std::next(concat_dim_layout_itr),
@@ -2792,7 +2799,7 @@ llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
           llvm_ir::EmitBufferIndexingGEP(params, param_number, &b_);
       llvm::LoadInst* param_address_untyped = Load(param_address_offset);
 
-      if (!ShapeUtil::IsOpaque(target_shape)) {
+      if (!target_shape.IsOpaque()) {
         AttachAlignmentMetadataForLoad(param_address_untyped, target_shape);
         AttachDereferenceableMetadataForLoad(param_address_untyped,
                                              target_shape);
@@ -2851,7 +2858,9 @@ llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
   if (slice.allocation()->is_thread_local()) {
     return EmitThreadLocalBufferPointer(slice, target_shape);
   } else if (slice.allocation()->is_constant()) {
-    return FindOrDie(constant_buffer_to_global_, slice.allocation()->index());
+    return BitCast(
+        FindOrDie(constant_buffer_to_global_, slice.allocation()->index()),
+        IrShapeType(target_shape)->getPointerTo());
   } else {
     return EmitGlobalBufferPointer(slice, target_shape);
   }
@@ -2944,8 +2953,7 @@ Status IrEmitter::ElementTypesSameAndSupported(
 
   TF_RET_CHECK(!operands.empty());
   PrimitiveType primitive_type = operands[0]->shape().element_type();
-  if (std::find(supported_types.begin(), supported_types.end(),
-                primitive_type) == supported_types.end()) {
+  if (!absl::c_linear_search(supported_types, primitive_type)) {
     return Unimplemented("unsupported operand type %s in op %s",
                          PrimitiveType_Name(primitive_type),
                          HloOpcodeString(instruction.opcode()));

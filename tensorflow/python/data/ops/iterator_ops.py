@@ -357,7 +357,7 @@ class Iterator(checkpointable.CheckpointableBase):
                           (self.output_shapes, dataset.output_shapes))
     with ops.colocate_with(self._iterator_resource):
       return gen_dataset_ops.make_iterator(
-          dataset._as_variant_tensor(), self._iterator_resource, name=name)  # pylint: disable=protected-access
+          dataset._variant_tensor, self._iterator_resource, name=name)  # pylint: disable=protected-access
 
   def get_next(self, name=None):
     """Returns a nested structure of `tf.Tensor`s representing the next element.
@@ -524,7 +524,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
     with ops.device("/cpu:0"):
       # pylint: disable=protected-access
       dataset = dataset._apply_options()
-      ds_variant = dataset._as_variant_tensor()
+      ds_variant = dataset._variant_tensor
       self._structure = structure_lib.convert_legacy_structure(
           dataset.output_types, dataset.output_shapes, dataset.output_classes)
       self._flat_output_types = self._structure._flat_types

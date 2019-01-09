@@ -26,7 +26,13 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
     }
-     reserved_range {
+    field {
+      name: "collective_deterministic_sequential_execution"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    reserved_range {
       start: 2
       end: 3
     }

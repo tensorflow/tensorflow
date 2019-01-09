@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ResizeBilinear"
+  endpoint {
+    name: "image.ResizeBilinear"
+  }
+}

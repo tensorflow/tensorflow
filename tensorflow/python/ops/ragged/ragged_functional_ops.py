@@ -21,18 +21,20 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("ragged.map_flat_values")
 def map_flat_values(op, *args, **kwargs):
-  """Applies `op` to the inner values of one or more RaggedTensors.
+  """Applies `op` to the values of one or more RaggedTensors.
 
   Replaces any `RaggedTensor` in `args` or `kwargs` with its `flat_values`
   tensor, and then calls `op`.  Returns a `RaggedTensor` that is constructed
-  from the input `RaggedTensor`s' `splits` and the value returned by
+  from the input `RaggedTensor`s' `nested_row_splits` and the value returned by
   the `op`.
 
   If the input arguments contain multiple `RaggedTensor`s, then they must have
-  identical `splits`.
+  identical `nested_row_splits`.
 
   Examples:
 

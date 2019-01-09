@@ -317,6 +317,7 @@ class DirectSession : public Session {
   std::vector<Device*> devices_;  // not owned
   DeviceSet device_set_;
 
+  // Unique session identifier.
   string session_handle_;
   mutex graph_state_lock_;
   bool graph_created_ GUARDED_BY(graph_state_lock_) = false;

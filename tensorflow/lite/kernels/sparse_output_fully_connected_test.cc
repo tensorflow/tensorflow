@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
@@ -61,7 +62,7 @@ class BaseSparseOutputFullyConnectedOpModel : public SingleOpModel {
     PopulateTensor(input_, data);
   }
 
-  void SetLookup(const std::vector<int32>& f) { PopulateTensor(lookup_, f); }
+  void SetLookup(const std::vector<int32_t>& f) { PopulateTensor(lookup_, f); }
 
   void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
 
@@ -93,6 +94,10 @@ class HybridSparseOutputFullyConnectedOpModel
   void SetWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(weights_, f);
   }
+
+  void SetSignedWeights(const std::vector<float>& f) {
+    SignedSymmetricQuantizeAndPopulate(weights_, f);
+  }
 };
 
 TEST(SparseOutputFullyConnectedOpTest, SimpleTestFloat) {
@@ -117,7 +122,7 @@ TEST(SparseOutputFullyConnectedOpTest, SimpleTestFloat) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({28}));
 }
 
-TEST(SparseOutputFullyConnectedOpTest, SimpleTestHybrid) {
+TEST(SparseOutputFullyConnectedOpTest, SimpleTestHybridUint8) {
   HybridSparseOutputFullyConnectedOpModel m({TensorType_FLOAT32, {1, 5}},
                                             {TensorType_UINT8, {3, 5}},
                                             {TensorType_FLOAT32, {}});
@@ -127,6 +132,35 @@ TEST(SparseOutputFullyConnectedOpTest, SimpleTestHybrid) {
   m.SetLookup({2});
 
   m.SetWeights({
+      -1.0, 0.0, 1.0, 2.0, 3.0,  //
+      0.0, 1.0, 2.0, 3.0, 4.0,   //
+      1.0, 2.0, 3.0, 4.0, 5.0,   //
+  });
+
+  m.SetBias({1.0, 2.0, 3.0});
+
+  m.Invoke();
+
+  // We get 28.0552 instead of 28.
+  //
+  // Input -> -42, 0, 42, 85, 127 with scale factor of 127/3.
+  // Looked up weights ->  25, 51, 76, 102, 127 with scale factor of 127/5.
+  //
+  // (-42 * 25 + 0 * 51 + 42 * 76 + 85 * 102 + 127 * 127) * (3*5/127^2) + 3.0
+  // gives us the expected result.
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({28}, 0.0553)));
+}
+
+TEST(SparseOutputFullyConnectedOpTest, SimpleTestHybridInt8) {
+  HybridSparseOutputFullyConnectedOpModel m({TensorType_FLOAT32, {1, 5}},
+                                            {TensorType_INT8, {3, 5}},
+                                            {TensorType_FLOAT32, {}});
+
+  m.SetInput({-1.0, 0.0, 1.0, 2.0, 3.0});
+
+  m.SetLookup({2});
+
+  m.SetSignedWeights({
       -1.0, 0.0, 1.0, 2.0, 3.0,  //
       0.0, 1.0, 2.0, 3.0, 4.0,   //
       1.0, 2.0, 3.0, 4.0, 5.0,   //

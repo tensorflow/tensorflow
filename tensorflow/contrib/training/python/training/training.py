@@ -419,7 +419,7 @@ def create_train_op(total_loss,
     update_ops = set(update_ops)
   if not global_update_ops.issubset(update_ops):
     logging.warning('update_ops in create_train_op does not contain all the '
-                    ' update_ops in GraphKeys.UPDATE_OPS')
+                    'update_ops in GraphKeys.UPDATE_OPS')
 
   # Make sure update_ops are computed before total_loss.
   if update_ops:

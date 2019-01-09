@@ -50,8 +50,6 @@ class GraphDefBuilder;
 class Node;
 
 namespace data {
-// A constant that can be used to enable auto-tuning.
-constexpr int kAutoTune = -1;
 
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
@@ -723,36 +721,36 @@ class DatasetBaseIterator : public IteratorBase {
     return model::MakeUnknownNode(std::move(args));
   }
 
-  // When performance modeling is enabled, this method records the fact that
-  // this iterator has dequeued a element from an internal buffer.
+  // When modeling is enabled, this method records the fact that this iterator
+  // has dequeued an element from an internal buffer.
   void RecordBufferDequeue(IteratorContext* ctx,
                            const std::vector<Tensor>& element) {
-    if (node_) {
+    if (collect_resource_usage(ctx)) {
       node_->add_buffered_bytes(-GetAllocatedBytes(element));
     }
   }
 
-  // When performance modeling is enabled, this method records the fact that
-  // this iterator has enqueued a element in an internal buffer.
+  // When modeling is enabled, this method records the fact that this iterator
+  // has enqueued an element in an internal buffer.
   void RecordBufferEnqueue(IteratorContext* ctx,
                            const std::vector<Tensor>& element) {
-    if (node_) {
+    if (collect_resource_usage(ctx)) {
       node_->add_buffered_bytes(GetAllocatedBytes(element));
     }
   }
 
-  // When performance modeling is enabled, this method records the fact that
-  // this iterator has produced an element.
+  // When modeling is enabled, this method records the fact that this iterator
+  // has produced an element.
   void RecordElement(IteratorContext* ctx) {
     if (node_) {
       node_->record_element();
     }
   }
 
-  // When performance modeling is enabled, this method records the fact that
-  // a thread of this iterator has started work.
+  // When modeling is enabled, this method records the fact that a thread of
+  // this iterator has started work.
   void RecordStart(IteratorContext* ctx, bool stop_output = false) {
-    if (node_) {
+    if (collect_resource_usage(ctx)) {
       int64 now_nanos = Env::Default()->NowNanos();
       if (stop_output && node_->output()) {
         node_->output()->record_stop(now_nanos);
@@ -761,10 +759,10 @@ class DatasetBaseIterator : public IteratorBase {
     }
   }
 
-  // When performance modeling is enabled, this method records the fact that
-  // a thread of this iterator has stopped work.
+  // When modeling is enabled, this method records the fact that a thread of
+  // this iterator has stopped work.
   void RecordStop(IteratorContext* ctx, bool start_output = false) {
-    if (node_) {
+    if (collect_resource_usage(ctx)) {
       int64 now_nanos = Env::Default()->NowNanos();
       node_->record_stop(now_nanos);
       if (start_output && node_->output()) {
@@ -774,6 +772,11 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
  private:
+  inline bool collect_resource_usage(IteratorContext* ctx) {
+    auto model = ctx->model();
+    return model && model->collect_resource_usage() && node_;
+  }
+
   BaseParams params_;
 };
 

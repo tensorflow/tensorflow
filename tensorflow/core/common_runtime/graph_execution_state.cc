@@ -59,6 +59,7 @@ GraphExecutionState::GraphExecutionState(
     : stateful_placements_(options.stateful_placements),
       device_set_(options.device_set),
       session_options_(options.session_options),
+      session_handle_(options.session_handle),
       flib_def_(new FunctionLibraryDefinition(OpRegistry::Global(),
                                               graph_def->library())),
       graph_(nullptr) {
@@ -198,6 +199,7 @@ Status GraphExecutionState::Extend(
   GraphExecutionStateOptions combined_options;
   combined_options.device_set = device_set_;
   combined_options.session_options = session_options_;
+  combined_options.session_handle = session_handle_;
   combined_options.stateful_placements = stateful_placements_;
 
   // NOTE(mrry): `gdef` is no longer valid after the constructor
@@ -546,10 +548,6 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
-  for (const Node* n : new_graph->nodes()) {
-    VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
-    node_name_to_cost_id_map_[n->name()] = n->cost_id();
-  }
   if (session_options_ &&
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
@@ -562,6 +560,7 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   RestoreStatefulNodes(new_graph.get());
 
   GraphOptimizationPassOptions optimization_options;
+  optimization_options.session_handle = session_handle_;
   optimization_options.session_options = session_options_;
   optimization_options.graph = &new_graph;
   optimization_options.flib_def = flib_def_.get();
@@ -577,6 +576,11 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
+
+  for (const Node* n : new_graph->nodes()) {
+    VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
+    node_name_to_cost_id_map_[n->name()] = n->cost_id();
+  }
 
   SaveStatefulNodes(new_graph.get());
   graph_ = new_graph.release();

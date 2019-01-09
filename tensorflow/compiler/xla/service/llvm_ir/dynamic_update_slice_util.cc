@@ -36,19 +36,20 @@ bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
 // EmitFusedDynamicUpdateSliceInPlace.
 //
 // Emits a sequential loop if launch_dimensions is null.
+using IndexGenerator = std::function<StatusOr<llvm::Value*>(int64)>;
+
 static Status EmitDynamicUpdateSliceInPlaceImpl(
-    const Shape& update_shape, const ElementGenerator& start_indices_generator,
+    const Shape& update_shape, const IndexGenerator& start_indices_generator,
     bool is_signed, ElementGenerator update_array_generator,
     const IrArray& output_array, const gpu::LaunchDimensions* launch_dimensions,
     absl::string_view name, llvm::IRBuilder<>* b) {
   const Shape& output_shape = output_array.GetShape();
 
   // Read start indices from start_indices_generator.
-  const int64 rank = ShapeUtil::Rank(output_shape);
+  const int64 rank = output_shape.rank();
   IrArray::Index start_index(b->getInt64Ty(), rank);
   for (int64 i = 0; i < rank; ++i) {
-    IrArray::Index dim_index({b->getInt64(i)});
-    TF_ASSIGN_OR_RETURN(start_index[i], start_indices_generator(dim_index));
+    TF_ASSIGN_OR_RETURN(start_index[i], start_indices_generator(i));
     llvm::Value* output_dim_size = llvm::ConstantInt::get(
         start_index[i]->getType(), output_shape.dimensions(i));
     llvm::Value* update_dim_size = llvm::ConstantInt::get(
@@ -112,9 +113,20 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
   Shape output_shape = output_array.GetShape();
   Shape update_shape = update_array.GetShape();
 
-  ElementGenerator start_indices_generator = [&](const IrArray::Index& index) {
-    return start_indices_array.EmitReadArrayElement(index, b);
-  };
+  IndexGenerator start_indices_generator;
+  // TODO(b/118437727): Remove the R1 path, and rename the variables.
+  if (start_indices_array.GetShape().rank() == 1) {
+    start_indices_generator = [&](int64 index) {
+      return start_indices_array.EmitReadArrayElement(
+          IrArray::Index({b->getInt64(index)}), b);
+    };
+  } else {
+    start_indices_generator = [&](int64 index) {
+      return operand_arrays[2 + index].EmitReadArrayElement(
+          IrArray::Index(b->getInt64Ty()), b);
+    };
+  }
+
   ElementGenerator update_array_generator = [&](const IrArray::Index& index) {
     return update_array.EmitReadArrayElement(index, b);
   };
@@ -165,8 +177,21 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
                                elemental_emitter);
   TF_RETURN_IF_ERROR(dynamic_update_slice->Accept(&fused_emitter));
   ElementGenerator update_array_generator = fused_emitter.GetGenerator(update);
-  ElementGenerator start_indices_generator =
-      fused_emitter.GetGenerator(start_indices);
+
+  // TODO(b/118437727): Remove the R1 path, and rename the variables.
+  IndexGenerator start_indices_generator;
+  if (start_indices->shape().rank() == 1) {
+    start_indices_generator = [&](int64 index) {
+      return fused_emitter.GetGenerator(start_indices)(
+          IrArray::Index({b->getInt64(index)}));
+    };
+  } else {
+    start_indices_generator = [&](int64 index) {
+      ElementGenerator element_generator =
+          fused_emitter.GetGenerator(dynamic_update_slice->operand(2 + index));
+      return element_generator(IrArray::Index(b->getInt64Ty()));
+    };
+  }
 
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());
   return EmitDynamicUpdateSliceInPlaceImpl(

@@ -16,6 +16,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
+    argspec: "args=[\'self\', \'variant_tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "apply"

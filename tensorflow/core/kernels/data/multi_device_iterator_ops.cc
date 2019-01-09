@@ -59,7 +59,7 @@ class MultiDeviceIterator : public ResourceBase {
     DCHECK(lib_ != nullptr);
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat("MultiDeviceIterator for ", devices_.size(),
                            " devices");
   }

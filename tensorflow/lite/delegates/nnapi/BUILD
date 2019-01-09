@@ -3,6 +3,7 @@ package(default_visibility = [
 ])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -23,7 +24,7 @@ tf_cc_test(
     name = "nnapi_delegate_test",
     size = "small",
     srcs = ["nnapi_delegate_test.cc"],
-    tags = ["no_oss"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":nnapi_delegate",
         "//tensorflow/lite:framework",
@@ -32,3 +33,5 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+tflite_portable_test_suite()

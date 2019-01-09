@@ -200,7 +200,8 @@ def matches(node, pattern):
     bool
   """
   if isinstance(pattern, str):
-    pattern = parser.parse_expression(pattern)
+    pattern, = parser.parse_str(pattern).body
+
   matcher = PatternMatcher(pattern)
   matcher.visit(node)
   return matcher.matches
@@ -348,6 +349,26 @@ class FunctionDefMatcher(gast.NodeVisitor):
 
     return True
 
+  def _argspec_compatible(self, node):
+    arg_spec = tf_inspect.getfullargspec(self.fn)
+
+    node_args = tuple(self._arg_name(arg) for arg in node.args.args)
+    if len(node_args) != len(arg_spec.args) and node.args.vararg is None:
+      return False
+
+    if arg_spec.varargs is not None and node.args.vararg is None:
+      return False
+
+    if arg_spec.varkw is not None and node.args.kwarg is None:
+      return False
+
+    node_kwonlyargs = tuple(self._arg_name(arg) for arg in node.args.kwonlyargs)
+    if (len(node_kwonlyargs) != len(arg_spec.kwonlyargs) and
+        node.args.kwarg is None):
+      return False
+
+    return True
+
   def visit_Lambda(self, node):
     self.generic_visit(node)
 
@@ -363,8 +384,17 @@ class FunctionDefMatcher(gast.NodeVisitor):
 
     if self.fn.__name__ != node.name:
       return
-    if not self._argspec_matches(node):
-      return
+
+    # Decorators have the ability to modify a function's signature. They usually
+    # claim that the result is indistinguishable from the original function,
+    # but it's very difficult to fool this test. As a consequence, we relax the
+    # verification and just check that the arguments are compatible.
+    if node.decorator_list:
+      if not self._argspec_compatible(node):
+        return
+    else:
+      if not self._argspec_matches(node):
+        return
 
     self.matching_nodes.append(node)
 

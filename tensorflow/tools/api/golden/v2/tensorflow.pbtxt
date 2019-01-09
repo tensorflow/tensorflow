@@ -13,10 +13,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "FIFOQueue"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GradientTape"
     mtype: "<type \'type\'>"
   }
@@ -30,6 +26,10 @@ tf_module {
   }
   member {
     name: "Operation"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RaggedTensor"
     mtype: "<type \'type\'>"
   }
   member {
@@ -81,6 +81,10 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "autograph"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "bfloat16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -103,6 +107,10 @@ tf_module {
   member {
     name: "complex64"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "config"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "constant_initializer"
@@ -157,10 +165,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "glorot_uniform_initializer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "graph_util"
     mtype: "<type \'module\'>"
   }
@@ -170,10 +174,6 @@ tf_module {
   }
   member {
     name: "image"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "initializers"
     mtype: "<type \'module\'>"
   }
   member {
@@ -249,12 +249,20 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "queue"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "quint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
     name: "quint8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "ragged"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "random"
@@ -271,6 +279,10 @@ tf_module {
   member {
     name: "resource"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "rnn"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "saved_model"
@@ -311,10 +323,6 @@ tf_module {
   member {
     name: "train"
     mtype: "<type \'module\'>"
-  }
-  member {
-    name: "truncated_normal_initializer"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "uint16"
@@ -423,10 +431,6 @@ tf_module {
   member_method {
     name: "atanh"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "batch_gather"
-    argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "batch_to_space"
@@ -598,7 +602,7 @@ tf_module {
   }
   member_method {
     name: "gather"
-    argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\'], "
+    argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'axis\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\', \'None\'], "
   }
   member_method {
     name: "gather_nd"
@@ -967,10 +971,6 @@ tf_module {
   member_method {
     name: "string_split"
     argspec: "args=[\'source\', \'delimiter\', \'skip_empty\'], varargs=None, keywords=None, defaults=[\' \', \'True\'], "
-  }
-  member_method {
-    name: "substr"
-    argspec: "args=[\'input\', \'pos\', \'len\', \'name\', \'unit\'], varargs=None, keywords=None, defaults=[\'None\', \'BYTE\'], "
   }
   member_method {
     name: "subtract"

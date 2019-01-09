@@ -488,6 +488,7 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
 // Non-static for testing.
 TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
                                TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
   if (!src.IsInitialized()) {
     status->status = FailedPrecondition(
         "attempt to use a tensor with an uninitialized value");
@@ -2880,6 +2881,9 @@ const char* TF_ServerTarget(TF_Server* server) {
 #endif
 }
 
-void TF_DeleteServer(TF_Server* server) { delete server; }
-
+void TF_DeleteServer(TF_Server* server) {
+#ifndef __ANDROID__
+  delete server;
+#endif
+}
 }  // end extern "C"

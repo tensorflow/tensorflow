@@ -30,4 +30,9 @@ void EagerOperation::AddInput(tensorflow::TensorHandle* h) {
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
+
+void EagerOperation::ConsumeInput(tensorflow::TensorHandle* h) {
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
+}
 }  // namespace tensorflow

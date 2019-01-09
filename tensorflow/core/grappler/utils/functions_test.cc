@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/functions.h"
+
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -77,7 +79,7 @@ TEST_F(FunctionsTest, InstantiationParameters) {
   func_instantiation_attr["B"].set_type(DT_INT32);
   func_instantiation_attr["C"].set_type(DT_DOUBLE);
 
-  std::unordered_map<string, DataType> type_parameters;
+  absl::flat_hash_map<string, DataType> type_parameters;
   TF_EXPECT_OK(InstantiationTypeParameters(
       func, AttrSlice(&func_instantiation_attr), &type_parameters));
 
@@ -86,7 +88,7 @@ TEST_F(FunctionsTest, InstantiationParameters) {
   EXPECT_EQ(DT_INT32, type_parameters["B"]);
   EXPECT_EQ(DT_DOUBLE, type_parameters["C"]);
 
-  std::unordered_map<string, AttrValue> body_parameters;
+  absl::flat_hash_map<string, AttrValue> body_parameters;
   TF_EXPECT_OK(InstantiationBodyParameters(
       func, AttrSlice(&func_instantiation_attr), &body_parameters));
 
@@ -599,8 +601,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
   EXPECT_EQ(3, item.function_body().node_size());
   EXPECT_EQ(1, item.input_size());
   EXPECT_EQ(0, item.output_size());
-  ASSERT_EQ(1, item.keep_ops.size());
-  EXPECT_EQ("update", item.keep_ops[0]);
+  EXPECT_EQ(false, item.allowed_optimizations().prune_ops_with_side_effects);
 }
 
 TEST_F(FunctionsTest, MakeFunctionDef) {

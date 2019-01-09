@@ -47,6 +47,18 @@ load(
 def register_extension_info(**kwargs):
     pass
 
+def if_v2(a):
+    return select({
+        clean_dep("//tensorflow:api_version_2"): a,
+        "//conditions:default": [],
+    })
+
+def if_not_v2(a):
+    return select({
+        clean_dep("//tensorflow:api_version_2"): [],
+        "//conditions:default": a,
+    })
+
 # if_cuda_is_configured def placeholder
 
 def if_cuda_is_configured_compat(x):
@@ -1666,8 +1678,7 @@ def tf_py_wrap_cc(
     )
     extra_linkopts = select({
         "@local_config_cuda//cuda:darwin": [
-            "-Wl,-exported_symbols_list",
-            "$(location %s.lds)" % vscriptname,
+            "-Wl,-exported_symbols_list,$(location %s.lds)" % vscriptname,
         ],
         clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
@@ -1782,6 +1793,7 @@ def tf_py_test(
         tags = [],
         shard_count = 1,
         additional_deps = [],
+        additional_visibility = [],
         kernels = [],
         flaky = 0,
         xla_enabled = False,
@@ -1802,7 +1814,7 @@ def tf_py_test(
         shard_count = shard_count,
         srcs_version = "PY2AND3",
         tags = tags,
-        visibility = [clean_dep("//tensorflow:internal")],
+        visibility = [clean_dep("//tensorflow:internal")] + additional_visibility,
         deps = [
             clean_dep("//tensorflow/python:extra_py_tests_deps"),
             clean_dep("//tensorflow/python:gradient_checker"),

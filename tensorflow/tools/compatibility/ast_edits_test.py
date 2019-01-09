@@ -54,7 +54,6 @@ class NoUpdateSpec(ast_edits.APIChangeSpec):
     self.function_keyword_renames = {}
     self.symbol_renames = {}
     self.function_warnings = {}
-    self.unrestricted_function_warnings = {}
     self.change_to_function = {}
 
 
@@ -401,7 +400,8 @@ class TestAstEdits(test_util.TensorFlowTestCase):
 
       def __init__(self):
         NoUpdateSpec.__init__(self)
-        self.unrestricted_function_warnings = {"foo": "not good"}
+        self.function_warnings = {"*.foo": "not good"}
+
     texts = ["object.foo()", "get_object().foo()",
              "get_object().foo()", "object.foo().bar()"]
     for text in texts:

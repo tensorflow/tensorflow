@@ -86,7 +86,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(weights, 0));
 
   const bool is_hybrid_op =
-      (weights->type == kTfLiteUInt8 && input->type == kTfLiteFloat32);
+      ((weights->type == kTfLiteUInt8 || weights->type == kTfLiteInt8) &&
+       input->type == kTfLiteFloat32);
 
   // Resize output.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -103,7 +104,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     node->temporaries->data[kInputQuantized] = op_data->scratch_tensor_index;
     TfLiteTensor* input_quantized =
         GetTemporary(context, node, /*index=*/kInputQuantized);
-    input_quantized->type = kTfLiteUInt8;
+    input_quantized->type = weights->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
       TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
@@ -164,16 +165,23 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input, const TfLiteTensor* lookup,
   const int n_input = SizeOfDimension(input, 1);
 
   const float* input_ptr_batch = input->data.f;
-  // Initialize the pointer to storage for quantized values and
-  // scaling factors.
-  int8_t* quantized_input_ptr_batch =
-      reinterpret_cast<int8_t*>(input_quantized->data.uint8);
-  float* scaling_factors_ptr = scaling_factors->data.f;
 
-  // Initialize pointer to right row according to lookup value.
+  // Initialize the pointer to storage for scaling factors.
+  float* scaling_factors_ptr = scaling_factors->data.f;
   int32 lookup_index = lookup->data.i32[0];
-  int8_t* weights_ptr =
-      reinterpret_cast<int8_t*>(weights->data.uint8) + lookup_index * n_input;
+
+  // Initialize the pointer to storage for quantized values and a pointer to
+  // the row according to lookup value.
+  int8_t *quantized_input_ptr_batch, *weights_ptr;
+  if (weights->type == kTfLiteUInt8) {
+    quantized_input_ptr_batch =
+        reinterpret_cast<int8_t*>(input_quantized->data.uint8);
+    weights_ptr =
+        reinterpret_cast<int8_t*>(weights->data.uint8) + lookup_index * n_input;
+  } else {
+    quantized_input_ptr_batch = input_quantized->data.int8;
+    weights_ptr = weights->data.int8 + lookup_index * n_input;
+  }
 
   // Initialize output to bias.
   if (bias) {
@@ -212,7 +220,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32: {
       return EvalFloat(input, lookup, weights, bias, output);
     }
-    case kTfLiteUInt8: {
+    case kTfLiteUInt8:
+    case kTfLiteInt8: {
       TfLiteTensor* input_quantized =
           GetTemporary(context, node, /*index=*/kInputQuantized);
       TfLiteTensor* scaling_factors =

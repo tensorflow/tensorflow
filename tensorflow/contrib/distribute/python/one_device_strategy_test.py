@@ -25,7 +25,9 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 
 
-class OneDeviceStrategyTest(strategy_test_lib.DistributionTestBase):
+class OneDeviceStrategyTest(
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.OneDeviceDistributionTestBase):
 
   def _get_distribution_strategy(self):
     return one_device_strategy.OneDeviceStrategy("/device:CPU:0")
@@ -56,6 +58,24 @@ class OneDeviceStrategyTest(strategy_test_lib.DistributionTestBase):
     iterator = d.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(
         iterator, d.extended.worker_devices, expected_values)
+
+  def testAllReduceSum(self):
+    self._test_all_reduce_sum(self._get_distribution_strategy())
+
+  def testAllReduceSumGradients(self):
+    self._test_all_reduce_sum_gradients(self._get_distribution_strategy())
+
+  def testAllReduceSumGradientTape(self):
+    self._test_all_reduce_sum_gradient_tape(self._get_distribution_strategy())
+
+  def testAllReduceMean(self):
+    self._test_all_reduce_mean(self._get_distribution_strategy())
+
+  def testAllReduceMeanGradients(self):
+    self._test_all_reduce_mean_gradients(self._get_distribution_strategy())
+
+  def testAllReduceMeanGradientTape(self):
+    self._test_all_reduce_mean_gradient_tape(self._get_distribution_strategy())
 
 
 if __name__ == "__main__":

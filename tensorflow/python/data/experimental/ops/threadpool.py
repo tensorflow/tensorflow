@@ -64,15 +64,13 @@ class _ThreadPoolDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and sets a custom threadpool."""
 
   def __init__(self, input_dataset, thread_pool):
-    super(_ThreadPoolDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._thread_pool = thread_pool
-
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_thread_pool_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    variant_tensor = ged_ops.experimental_thread_pool_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._thread_pool._resource,  # pylint: disable=protected-access
         **dataset_ops.flat_structure(self))
+    super(_ThreadPoolDataset, self).__init__(input_dataset, variant_tensor)
 
 
 # TODO(b/73383364): Properly export in the `tf.data.experimental` API when

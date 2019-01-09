@@ -57,6 +57,16 @@ int BackendOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
 }
 
+BackendOptions& BackendOptions::set_allowed_devices(
+    const absl::optional<std::set<int>>& allowed_devices) {
+  allowed_devices_ = allowed_devices;
+  return *this;
+}
+
+const absl::optional<std::set<int>>& BackendOptions::allowed_devices() const {
+  return allowed_devices_;
+}
+
 // Define this in .cc file to avoid having to include eigen or forward declare
 // these types in the header.
 struct Backend::EigenThreadPoolWrapper {
@@ -76,8 +86,9 @@ struct Backend::EigenThreadPoolWrapper {
     const BackendOptions& options) {
   se::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
-  TF_ASSIGN_OR_RETURN(auto stream_executors,
-                      PlatformUtil::GetStreamExecutors(platform));
+  TF_ASSIGN_OR_RETURN(
+      auto stream_executors,
+      PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto computation_placer,
@@ -104,12 +115,10 @@ StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal) {
 
 StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
   tensorflow::mutex_lock l(mu_);
-  if (0 == stream_pools_.count(executor)) {
-    stream_pools_.emplace(std::piecewise_construct,
-                          std::forward_as_tuple(executor),
-                          std::forward_as_tuple());
+  if (!stream_pools_.contains(executor)) {
+    stream_pools_.emplace(executor, absl::make_unique<StreamPool>());
   }
-  return stream_pools_.at(executor).BorrowStream(executor);
+  return stream_pools_.at(executor)->BorrowStream(executor);
 }
 
 Backend::Backend(se::Platform* platform, Compiler* compiler,

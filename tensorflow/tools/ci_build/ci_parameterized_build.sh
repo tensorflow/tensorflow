@@ -398,7 +398,8 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
         NEW_ITEM="${NEW_ITEM},-benchmark-test"
       fi
       if [[ ${IS_MAC} == "1" ]] && [[ ${NEW_ITEM} != *"nomac"* ]]; then
-        NEW_ITEM="${NEW_ITEM},-nomac"
+        # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+        NEW_ITEM="${NEW_ITEM},-nomac,-no_mac"
       fi
       EXTRA_ARGS="${EXTRA_ARGS} ${NEW_ITEM}"
     else
@@ -408,11 +409,13 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
 else
   EXTRA_ARGS="${EXTRA_ARGS} ${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
-    EXTRA_ARGS="${EXTRA_ARGS},-nomac"
+    # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac,-no_mac"
   fi
   EXTRA_ARGS="${EXTRA_ARGS} --build_tag_filters=-no_oss,-oss_serial,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
-    EXTRA_ARGS="${EXTRA_ARGS},-nomac"
+    # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac,-no_mac"
   fi
 fi
 

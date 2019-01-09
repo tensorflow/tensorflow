@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace xla {
 
@@ -26,7 +27,7 @@ XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
 
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
 
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     TF_RET_CHECK(n_minor_dims <= n_dims);
     auto major_dims = AsInt64Slice(shape.dimensions())
                           .subspan(
@@ -51,17 +52,17 @@ XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
 XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64> start) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    const int64 n_dims = shape.rank();
+    TF_RET_CHECK(start.size() == n_dims);
+
     // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
     std::vector<int32> start_as_int32(start.begin(), start.end());
-    auto start_constant = ConstantR1<int32>(builder, start_as_int32);
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
-    TF_ASSIGN_OR_RETURN(Shape start_constant_shape,
-                        builder->GetShape(start_constant));
-    const int64 start_length =
-        ShapeUtil::GetDimension(start_constant_shape, -1);
-    TF_RET_CHECK(start_length == n_dims);
-    return DynamicUpdateSlice(x, update, start_constant);
+    std::vector<XlaOp> start_ops(start.size());
+    for (int i = 0; i < start.size(); ++i) {
+      start_ops[i] = ConstantR0(builder, start_as_int32[i]);
+    }
+    return DynamicUpdateSlice(x, update, start_ops);
   });
 }
 
@@ -70,7 +71,7 @@ XlaOp UpdateSliceInMinorDims(XlaOp x, XlaOp update,
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     const int64 n_minor_dims = start.size();
     TF_RET_CHECK(n_minor_dims <= n_dims);
     std::vector<int64> padded_start(n_dims, 0);
@@ -90,18 +91,17 @@ std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
   return output;
 }
 
-XlaOp PrependZerosInMajorDims(XlaOp x, absl::Span<const XlaOp> starts) {
+StatusOr<std::vector<XlaOp>> PrependZerosInMajorDims(
+    XlaOp x, absl::Span<const XlaOp> starts) {
   XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
-    auto zero = Reshape(ConstantR0<int32>(builder, 0), {1});
-    std::vector<XlaOp> padded_starts(n_dims, zero);
-    for (int i = 0; i < starts.size(); ++i) {
-      padded_starts[n_dims - starts.size() + i] = Reshape(starts[i], {1});
-    }
-    return ConcatInDim(builder, padded_starts, 0);
-  });
+  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+  const int64 n_dims = shape.rank();
+  auto zero = ConstantR0<int32>(builder, 0);
+  std::vector<XlaOp> padded_starts(n_dims, zero);
+  for (int i = 0; i < starts.size(); ++i) {
+    padded_starts[n_dims - starts.size() + i] = starts[i];
+  }
+  return padded_starts;
 }
 
 }  // namespace
@@ -111,7 +111,7 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     int64 n_minor_dims = starts.size();
     TF_RET_CHECK(n_minor_dims == sizes.size());
     TF_RET_CHECK(n_minor_dims <= n_dims);
@@ -119,7 +119,7 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
                           .subspan(
                               /*pos=*/0,
                               /*len=*/n_dims - sizes.size());
-    auto padded_starts = PrependZerosInMajorDims(x, starts);
+    TF_ASSIGN_OR_RETURN(auto padded_starts, PrependZerosInMajorDims(x, starts));
     auto padded_sizes = ConcatVectors(major_dims, sizes);
     return DynamicSlice(x, padded_starts, padded_sizes);
   });
@@ -127,8 +127,11 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
 
 XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
                                     absl::Span<const XlaOp> starts) {
-  auto padded_starts = PrependZerosInMajorDims(x, starts);
-  return DynamicUpdateSlice(x, update, padded_starts);
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto padded_starts, PrependZerosInMajorDims(x, starts));
+    return DynamicUpdateSlice(x, update, padded_starts);
+  });
 }
 
 }  // namespace xla

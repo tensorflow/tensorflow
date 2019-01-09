@@ -189,6 +189,47 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
+  def _testStackWithUninitializedTensors(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t), [0., 0., 0.])
+
+  def testStackWithUninitializedTensors(self):
+    self._testStackWithUninitializedTensors()
+
+  def testStackWithUninitializedTensorsGpu(self):
+    if not context.num_gpus():
+      return
+    with context.device("gpu:0"):
+      self._testStackWithUninitializedTensors()
+
+  def _testStackWithUninitializedTensorsInferShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    l = list_ops.tensor_list_set_item(l, 1, [1., 2.])
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t), [[0., 0.], [1., 2.], [0., 0.]])
+
+  def testStackWithUninitializedTensorsInferShape(self):
+    self._testStackWithUninitializedTensorsInferShape()
+
+  def testStackWithUninitializedTensorsInferShapeGpu(self):
+    if not context.num_gpus():
+      return
+    with context.device("gpu:0"):
+      self._testStackWithUninitializedTensorsInferShape()
+
+  def testStackReservedListWithNoElementsAndPartialElementShapeFails(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Tried to stack list which only contains "
+                                 "uninitialized tensors and has a "
+                                 "non-fully-defined element_shape: <unknown>"):
+      t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
   def testGatherGrad(self, max_num_elements):
@@ -290,6 +331,47 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       t = list_ops.tensor_list_gather(l, [], element_dtype=dtypes.float32)
       self.evaluate(t)
 
+  def testGatherGradWithNonContiguousIndices(self):
+    with backprop.GradientTape(persistent=True) as tape:
+      t = constant_op.constant([1.0, 2.0, 3.0])
+      l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+      c = constant_op.constant(5.0)
+      tape.watch(c)
+      l = list_ops.tensor_list_set_item(l, 1, c)
+      t = list_ops.tensor_list_gather(l, [1], element_dtype=dtypes.float32)
+      self.assertAllEqual(self.evaluate(t), [5.0])
+      s = t[0] * t[0]
+    dt = tape.gradient(s, c)
+    self.assertAllEqual(self.evaluate(dt), 10.0)
+    dl = tape.gradient(t, l)
+    dl_length = list_ops.tensor_list_length(dl)
+    self.assertAllEqual(self.evaluate(dl_length), 3)
+
+  def testScatterOutputListSize(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    l = list_ops.tensor_list_scatter(
+        c0, [1, 3], ops.convert_to_tensor([], dtype=dtypes.int32))
+    # TensorListScatter should return a list with size largest index + 1.
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 4)
+
+  def testScatterWithInvalidRowsInInputTensorFails(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Invalid number of rows in input tensor. Expected: 3 Actual: 2"):
+      l = list_ops.tensor_list_scatter(
+          c0, [1, 0, 2], ops.convert_to_tensor([], dtype=dtypes.int32))
+      self.evaluate(l)
+
+  def testScatterWithNegativeIndicesFails(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Indices in TensorListScatter must all be positive."):
+      l = list_ops.tensor_list_scatter(
+          c0, [-1, -2], ops.convert_to_tensor([], dtype=dtypes.int32))
+      self.evaluate(l)
+
   def testScatterGrad(self):
     with backprop.GradientTape() as tape:
       c0 = constant_op.constant([1.0, 2.0])
@@ -344,6 +426,20 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       e = list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)
       self.assertAllEqual(self.evaluate(e), 10.0)
     self.assertAllEqual(self.evaluate(tape.gradient(e, t)), 2.0)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testSkipEagerSetItemIndexOutOfBounds(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[])
+    e0 = constant_op.constant(5.)
+    l = list_ops.tensor_list_set_item(
+        l, 0, 2. * e0, resize_if_index_out_of_bounds=True)
+    l = list_ops.tensor_list_set_item(
+        l, 1, 1., resize_if_index_out_of_bounds=True)
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    grad = gradients_impl.gradients(t, e0)[0]
+    self.assertAllEqual(self.evaluate(grad), 2.)
 
   @test_util.run_deprecated_v1
   def testSetOnEmptyListWithMaxNumElementsFails(self):
@@ -1095,6 +1191,47 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         list_ops.tensor_list_split([[1.], [2.]],
                                    element_shape=[1],
                                    lengths=[1, 1])
+
+  def testResizeGrow(self):
+    l = list_ops.tensor_list_from_tensor([1., 2.], element_shape=[])
+    l = list_ops.tensor_list_resize(l, 4)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 4)
+    self.assertEqual(
+        self.evaluate(
+            list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)),
+        1.)
+    self.assertEqual(
+        self.evaluate(
+            list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)),
+        2.)
+
+  def testResizeShrink(self):
+    l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
+    l = list_ops.tensor_list_resize(l, 2)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 2)
+    self.assertAllEqual(
+        self.evaluate(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)),
+        [1., 2.])
+
+  def testResizeWithInvalidSizeFails(self):
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListSlice expects size to be non-negative"):
+      l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
+      l = list_ops.tensor_list_resize(l, -1)
+      self.evaluate(l)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testSkipEagerResizeGrad(self):
+    t = constant_op.constant([1., 2., 3.])
+    l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+    l = list_ops.tensor_list_set_item(
+        l, 3, 4., resize_if_index_out_of_bounds=True)
+    t1 = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    grad = gradients_impl.gradients(t1, t)[0]
+    self.assertAllEqual(self.evaluate(grad), [1., 1., 1.])
 
 
 if __name__ == "__main__":

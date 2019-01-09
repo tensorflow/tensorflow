@@ -1,14 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_kernel_library")
+
 licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
 )
 
 tf_kernel_library(
@@ -106,6 +101,7 @@ tf_kernel_library(
         "variable_ops.cc",
         "xla_broadcast_helper_op.cc",
         "xla_conv_op.cc",
+        "xla_dequantize_op.cc",
         "xla_dot_op.cc",
         "xla_pad_op.cc",
         "xla_reduce_op.cc",
@@ -122,12 +118,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:broadcast",
-        "//tensorflow/compiler/tf2xla/lib:cholesky",
-        "//tensorflow/compiler/tf2xla/lib:qr",
         "//tensorflow/compiler/tf2xla/lib:random",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/lib:util",
-        "//tensorflow/compiler/tf2xla/lib:while_loop",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:literal",
@@ -140,11 +133,15 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:cholesky",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:pooling",
         "//tensorflow/compiler/xla/client/lib:prng",
+        "//tensorflow/compiler/xla/client/lib:qr",
+        "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/compiler/xla/client/lib:triangular_solve",
         "//tensorflow/core:framework",

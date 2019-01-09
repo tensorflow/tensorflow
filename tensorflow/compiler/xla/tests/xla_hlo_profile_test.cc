@@ -225,14 +225,17 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
 
   line_no++;  // Skip 'Execution profile for ....'
 
+  ASSERT_LT(line_no, profile_output_lines.size());
   TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
                                          /*expect_hlo=*/false,
                                          &parsed_profile_lines));
 
+  ASSERT_LT(line_no, profile_output_lines.size());
   TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
                                          /*expect_hlo=*/true,
                                          &parsed_profile_lines));
 
+  ASSERT_LT(line_no, profile_output_lines.size());
   TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
                                          /*expect_hlo=*/true,
                                          &parsed_profile_lines));

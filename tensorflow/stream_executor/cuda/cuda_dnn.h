@@ -55,8 +55,14 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* state_allocator) override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
+                                    dnn::DataType data_type) override;
+
+  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+                                    int data_size,
+                                    const absl::Span<const int>& seq_lengths,
                                     dnn::DataType data_type) override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
@@ -532,6 +538,14 @@ class CudnnSupport : public dnn::DnnSupport {
                      const DeviceMemory<Eigen::half>& input_data,
                      const dnn::BatchDescriptor& output_dimensions,
                      DeviceMemory<Eigen::half>* output_data,
+                     ScratchAllocator* workspace_allocator) override;
+
+  bool DoPoolForward(Stream* stream,
+                     const dnn::PoolingDescriptor& pooling_dimensions,
+                     const dnn::BatchDescriptor& input_dimensions,
+                     const DeviceMemory<int8>& input_data,
+                     const dnn::BatchDescriptor& output_dimensions,
+                     DeviceMemory<int8>* output_data,
                      ScratchAllocator* workspace_allocator) override;
 
   bool DoPoolBackward(Stream* stream,

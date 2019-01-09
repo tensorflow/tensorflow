@@ -1088,7 +1088,8 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
                output_attention=True,
                initial_cell_state=None,
                name=None,
-               attention_layer=None):
+               attention_layer=None,
+               attention_fn=None):
     """Construct the `AttentionWrapper`.
 
     **NOTE** If you are using the `BeamSearchDecoder` with a cell wrapped in
@@ -1132,7 +1133,9 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         feed the context and cell output into the attention layer to generate
         attention at each time step. If attention_mechanism is a list,
         attention_layer_size must be a list of the same length. If
-        attention_layer is set, this must be None.
+        attention_layer is set, this must be None. If attention_fn is set,
+        it must guaranteed that the outputs of attention_fn also meet the
+        above requirements.
       alignment_history: Python boolean, whether to store alignment history
         from all time steps in the final output state (currently stored as a
         time major `TensorArray` on which you must call `stack()`).
@@ -1158,6 +1161,12 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         the context as attention at each time step. If attention_mechanism is a
         list, attention_layer must be a list of the same length. If
         attention_layers_size is set, this must be None.
+      attention_fn: An optional callable function that allows users to provide
+        their own customized attention function, which takes input
+        (attention_mechanism, cell_output, attention_state, attention_layer) and
+        outputs (attention, alignments, next_attention_state). If provided,
+        the attention_layer_size should be the size of the outputs of
+        attention_fn.
 
     Raises:
       TypeError: `attention_layer_size` is not None and (`attention_mechanism`
@@ -1239,6 +1248,10 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
       self._attention_layer_size = sum(
           tensor_shape.dimension_value(attention_mechanism.values.shape[-1])
           for attention_mechanism in attention_mechanisms)
+
+    if attention_fn is None:
+      attention_fn = _compute_attention
+    self._attention_fn = attention_fn
 
     self._cell = cell
     self._attention_mechanisms = attention_mechanisms
@@ -1443,7 +1456,7 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
     all_attention_states = []
     maybe_all_histories = []
     for i, attention_mechanism in enumerate(self._attention_mechanisms):
-      attention, alignments, next_attention_state = _compute_attention(
+      attention, alignments, next_attention_state = self._attention_fn(
           attention_mechanism, cell_output, previous_attention_state[i],
           self._attention_layers[i] if self._attention_layers else None)
       alignment_history = previous_alignment_history[i].write(

@@ -61,21 +61,21 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
-    add_control_dependencies = util.in_defun()
+    add_control_dependencies = ops.get_default_graph()._add_control_dependencies
     pred = ops.convert_to_tensor(pred)
 
     true_graph = func_graph_module.func_graph_from_py_func(
         true_name,
         true_fn, [], {},
         func_graph=util.CondBranchFuncGraph(
-            true_name, read_only_collections=False),
+            true_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
     false_graph = func_graph_module.func_graph_from_py_func(
         false_name,
         false_fn, [], {},
         func_graph=util.CondBranchFuncGraph(
-            false_name, read_only_collections=False),
+            false_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
 
@@ -554,7 +554,8 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
   """
 
   def __init__(self, name, forward_graph):
-    super(_CondGradFuncGraph, self).__init__(name, read_only_collections=False)
+    super(_CondGradFuncGraph, self).__init__(
+        name, collections=ops.get_default_graph()._collections)  # pylint: disable=protected-access
     self.if_op_needs_rewrite = False
     self._forward_graph = forward_graph
     # Maps from forward intermediate tensor -> the unwrapped captured

@@ -102,15 +102,16 @@ TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  TfLiteStatus status = primary_subgraph().Invoke();
+  TF_LITE_ENSURE_STATUS(primary_subgraph().Invoke());
 
   if (!allow_buffer_handle_output_) {
     for (int tensor_index : outputs()) {
-      primary_subgraph().EnsureTensorDataIsReadable(tensor_index);
+      TF_LITE_ENSURE_STATUS(
+          primary_subgraph().EnsureTensorDataIsReadable(tensor_index));
     }
   }
 
-  return status;
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
@@ -164,6 +165,15 @@ void Interpreter::SetNumThreads(int num_threads) {
 void Interpreter::SetAllowFp16PrecisionForFp32(bool allow) {
   for (auto& subgraph : subgraphs_) {
     subgraph->context()->allow_fp32_relax_to_fp16 = allow;
+  }
+}
+
+// TODO(b/121264966): Subgraphs added after cancellation is set will not get the
+// cancellation function added to their context.
+void Interpreter::SetCancellationFunction(void* data,
+                                          bool (*check_cancelled_func)(void*)) {
+  for (auto& subgraph : subgraphs_) {
+    subgraph->SetCancellationFunction(data, check_cancelled_func);
   }
 }
 

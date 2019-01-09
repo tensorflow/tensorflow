@@ -29,25 +29,21 @@ from tensorflow.python.platform import test
 _NUMPY_RANDOM_SEED = 42
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SleepTest(test_base.DatasetTestBase):
 
-  @test_util.run_deprecated_v1
   def testSleep(self):
     sleep_microseconds = 100
     dataset = dataset_ops.Dataset.range(10).apply(
         sleep.sleep(sleep_microseconds))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
-
-    with self.cached_session() as sess:
-      self.evaluate(iterator.initializer)
-      start_time = time.time()
-      for i in range(10):
-        self.assertEqual(i, self.evaluate(next_element))
-      end_time = time.time()
-      self.assertGreater(end_time - start_time, (10 * sleep_microseconds) / 1e6)
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(next_element)
+    next_element = self.getNext(dataset)
+    start_time = time.time()
+    for i in range(10):
+      self.assertEqual(i, self.evaluate(next_element()))
+    end_time = time.time()
+    self.assertGreater(end_time - start_time, (10 * sleep_microseconds) / 1e6)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(next_element())
 
 
 if __name__ == "__main__":

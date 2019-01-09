@@ -279,21 +279,92 @@ TEST(QuantizedAddOpModel, QuantizedVariousInputShapes) {
   }
 }
 
-TEST(QuantizedAddOpModel, QuantizedWithBroadcast) {
-  float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
+TEST(QuantizedAddOpModel, QuantizedWithScalarBroadcast) {
+  float kQuantizedTolerance = GetTolerance(-3.f, 3.f);
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    QuantizedAddOpModel m({TensorType_UINT8, test_shapes[i], -3.0, 3.0},
-                          {TensorType_UINT8, {}, -3.0, 3.0},
-                          {TensorType_UINT8, {}, -3.0, 3.0},
-                          ActivationFunctionType_NONE);
-    m.QuantizeAndPopulate<uint8_t>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
-    m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.1});
-    m.Invoke();
-    EXPECT_THAT(m.GetDequantizedOutput(),
-                ElementsAreArray(ArrayFloatNear({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1},
-                                                kQuantizedTolerance)))
+    QuantizedAddOpModel model_fixture(
+        {TensorType_UINT8, test_shapes[i], -3.f, 3.f},
+        {TensorType_UINT8, {}, -3.f, 3.f}, {TensorType_UINT8, {}, -3.f, 3.f},
+        ActivationFunctionType_NONE);
+    model_fixture.QuantizeAndPopulate<uint8_t>(
+        model_fixture.input1(), {-2.0f, 0.2f, 0.7f, 0.8f, 1.1f, 2.0f});
+    model_fixture.QuantizeAndPopulate<uint8_t>(model_fixture.input2(), {0.1f});
+    model_fixture.Invoke();
+    EXPECT_THAT(
+        model_fixture.GetDequantizedOutput(),
+        ElementsAreArray(ArrayFloatNear({-1.9f, 0.3f, 0.8f, 0.9f, 1.2f, 2.1f},
+                                        kQuantizedTolerance)))
+        << "With shape number " << i;
+  }
+  // Re-run with exchanged inputs.
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    QuantizedAddOpModel model_fixture(
+        {TensorType_UINT8, {}, -3.f, 3.f},
+        {TensorType_UINT8, test_shapes[i], -3.f, 3.f},
+        {TensorType_UINT8, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
+    model_fixture.QuantizeAndPopulate<uint8_t>(model_fixture.input1(), {0.1f});
+    model_fixture.QuantizeAndPopulate<uint8_t>(
+        model_fixture.input2(), {-2.0f, 0.2f, 0.7f, 0.8f, 1.1f, 2.0f});
+    model_fixture.Invoke();
+    EXPECT_THAT(
+        model_fixture.GetDequantizedOutput(),
+        ElementsAreArray(ArrayFloatNear({-1.9f, 0.3f, 0.8f, 0.9f, 1.2f, 2.1f},
+                                        kQuantizedTolerance)))
+        << "With shape number " << i;
+  }
+}
+
+TEST(QuantizedAddOpModel, QuantizedWithMixedBroadcast) {
+  float kQuantizedTolerance = GetTolerance(-3.f, 3.f);
+  const std::vector<int> base_shape = {2, 3, 1, 2};
+  std::vector<std::vector<int>> test_shapes = {
+      {1, 1, 3, 2}, {1, 3, 1, 2}, {2, 1, 3, 1}, {2, 3, 1, 1}};
+  std::vector<std::vector<float>> test_outputs = {
+      {-0.1f, 2.6f,  -0.7f, 2.8f, 0.7f,  3.0f, 1.1f,  0.8f, 0.5f,
+       1.0f,  1.9f,  1.4f,  1.0f, -0.8f, 0.4f, -0.6f, 1.8f, -0.2f,
+       1.4f,  3.0f,  0.8f,  3.0f, 2.2f,  3.0f, -1.4f, 0.3f, -2.0f,
+       0.5f,  -0.6f, 0.9f,  0.9f, -1.9f, 0.3f, -1.7f, 1.7f, -1.3f},
+      {-0.1f, 2.6f, 0.5f, 1.0f, 1.8f, -0.2f, 1.4f, 3.0f, -2.0f, 0.5f, 1.7f,
+       -1.3f},
+      {-0.1f, 2.5f,  0.0f, 2.6f, -0.7f, 1.9f, 1.1f,  0.7f, 1.2f,
+       0.8f,  0.5f,  0.1f, 1.0f, -0.9f, 1.1f, -0.8f, 0.4f, -1.5f,
+       1.7f,  3.0f,  2.2f, 3.0f, 2.1f,  3.0f, -1.1f, 0.5f, -0.6f,
+       1.0f,  -0.7f, 0.9f, 1.2f, -1.7f, 1.7f, -1.2f, 1.6f, -1.3f},
+      {-0.1f, 2.5f, 1.2f, 0.8f, 0.4f, -1.5f, 1.7f, 3.0f, -0.6f, 1.0f, 1.6f,
+       -1.3f}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    QuantizedAddOpModel model_fixture(
+        {TensorType_UINT8, base_shape, -3.f, 3.f},
+        {TensorType_UINT8, test_shapes[i], -3.f, 3.f},
+        {TensorType_UINT8, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
+    model_fixture.QuantizeAndPopulate<uint8_t>(
+        model_fixture.input1(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
+                                 2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
+    model_fixture.QuantizeAndPopulate<uint8_t>(
+        model_fixture.input2(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
+    model_fixture.Invoke();
+    EXPECT_THAT(
+        model_fixture.GetDequantizedOutput(),
+        ElementsAreArray(ArrayFloatNear(test_outputs[i], kQuantizedTolerance)))
+        << "With shape number " << i;
+  }
+  // Re-run with exchanged inputs.
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    QuantizedAddOpModel model_fixture(
+        {TensorType_UINT8, test_shapes[i], -3.f, 3.f},
+        {TensorType_UINT8, base_shape, -3.f, 3.f},
+        {TensorType_UINT8, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
+    model_fixture.QuantizeAndPopulate<uint8_t>(
+        model_fixture.input1(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
+    model_fixture.QuantizeAndPopulate<uint8_t>(
+        model_fixture.input2(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
+                                 2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
+    model_fixture.Invoke();
+    EXPECT_THAT(
+        model_fixture.GetDequantizedOutput(),
+        ElementsAreArray(ArrayFloatNear(test_outputs[i], kQuantizedTolerance)))
         << "With shape number " << i;
   }
 }

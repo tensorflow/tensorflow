@@ -142,7 +142,8 @@ void GenerateFeatures(TfLiteAudioMicrofrontendParams* data,
 
     if (output.values != nullptr) {
       frame_buffer[frame_index].reserve(output.size);
-      for (int i = 0; i < output.size; ++i) {
+      int i;
+      for (i = 0; i < output.size; ++i) {
         frame_buffer[frame_index].push_back(static_cast<T>(output.values[i]) /
                                             data->out_scale);
       }
@@ -152,9 +153,10 @@ void GenerateFeatures(TfLiteAudioMicrofrontendParams* data,
 
   int index = 0;
   std::vector<T> pad(data->state->filterbank.num_channels, 0);
-  for (int anchor = 0; anchor < frame_buffer.size();
-       anchor += data->frame_stride) {
-    for (int frame = anchor - data->left_context;
+  int anchor;
+  for (anchor = 0; anchor < frame_buffer.size(); anchor += data->frame_stride) {
+    int frame;
+    for (frame = anchor - data->left_context;
          frame <= anchor + data->right_context; ++frame) {
       std::vector<T>* feature;
       if (data->zero_padding && (frame < 0 || frame >= frame_buffer.size())) {

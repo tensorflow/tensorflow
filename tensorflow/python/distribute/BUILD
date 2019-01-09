@@ -219,6 +219,7 @@ py_library(
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
+        ":input_lib",
         ":multi_worker_util",
         ":reduce_util",
         ":shared_variable_creator",
@@ -242,6 +243,28 @@ py_library(
 )
 
 py_library(
+    name = "parameter_server_strategy",
+    srcs = ["parameter_server_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":input_lib",
+        ":mirrored_strategy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
     name = "multi_worker_util",
     srcs = [
         "multi_worker_util.py",
@@ -250,6 +273,23 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "input_lib",
+    srcs = ["input_lib.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":input_ops",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -270,6 +310,7 @@ cuda_py_test(
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:traverse",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -347,14 +388,12 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
-        ":input_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",

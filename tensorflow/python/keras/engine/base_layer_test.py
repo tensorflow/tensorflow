@@ -18,19 +18,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class DynamicLayer1(base_layer.Layer):
+
+  def __init__(self, dynamic=False, **kwargs):
+    super(DynamicLayer1, self).__init__(dynamic=dynamic, **kwargs)
 
   def call(self, inputs):
     if math_ops.reduce_sum(inputs) > 0:
@@ -43,6 +51,9 @@ class DynamicLayer1(base_layer.Layer):
 
 
 class DynamicLayer2(base_layer.Layer):
+
+  def __init__(self, dynamic=False, **kwargs):
+    super(DynamicLayer2, self).__init__(dynamic=dynamic, **kwargs)
 
   def call(self, inputs):
     samples = []
@@ -59,67 +70,145 @@ class InvalidLayer(base_layer.Layer):
   def call(self, inputs):
     raise ValueError('You did something wrong!')
 
-  def compute_output_shape(self, input_shape):
-    return input_shape
 
+class BaseLayerTest(test.TestCase, parameterized.TestCase):
 
-class BaseLayerTest(test.TestCase):
-
-  def test_dynamic_layer_in_functional_model_in_graph_mode(self):
+  @parameterized.parameters(DynamicLayer1, DynamicLayer2)
+  def test_dynamic_layer_in_functional_model_in_graph_mode(self, layer_class):
     with context.graph_mode():
       inputs = keras.Input((3,))
+      # Works when `dynamic=True` is declared.
+      outputs = layer_class(dynamic=True)(inputs)
+      model = keras.Model(inputs, outputs)
+      self.assertEqual(model.dynamic, True)
+      # But then you cannot run the model since you're in a graph scope.
       with self.assertRaisesRegexp(
-          TypeError, 'Using a `tf.Tensor` as a Python `bool` is not allowed'):
-        _ = DynamicLayer1()(inputs)
+          ValueError, 'You must enable eager execution'):
+        model.compile(rmsprop.RMSprop(0.001), loss='mse')
 
-      inputs = keras.Input((3,))
+      # Fails when `dynamic=True` not declared.
       with self.assertRaisesRegexp(
-          TypeError, 'Tensor objects are only iterable when eager'):
-        _ = DynamicLayer2()(inputs)
+          TypeError, 'attempting to use Python control flow'):
+        _ = layer_class()(inputs)
 
-  def test_dynamic_layer_in_functional_model_in_eager_mode(self):
+  @parameterized.parameters(DynamicLayer1, DynamicLayer2)
+  def test_dynamic_layer_in_functional_model_in_eager_mode(self, layer_class):
     inputs = keras.Input((3,))
-    outputs = DynamicLayer1()(inputs)
+    # Fails when `dynamic=True` not declared.
+    with self.assertRaisesRegexp(
+        TypeError, 'attempting to use Python control flow'):
+      _ = layer_class()(inputs)
+    # Works when `dynamic=True` is declared.
+    outputs = layer_class(dynamic=True)(inputs)
     model = keras.Model(inputs, outputs)
-    self.assertEqual(model._static_graph_friendly, False)
-    model.compile(RMSPropOptimizer(0.001), loss='mse')
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
 
+  def test_nested_dynamic_layers_in_eager_mode(self):
     inputs = keras.Input((3,))
-    outputs = DynamicLayer2()(inputs)
-    model = keras.Model(inputs, outputs)
-    self.assertEqual(model._static_graph_friendly, False)
-    model.compile(RMSPropOptimizer(0.001), loss='mse')
-    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
-
-  def nested_dynamic_layers_in_eager_mode(self):
-    inputs = keras.Input((3,))
-    outputs = DynamicLayer1()(inputs)
+    outputs = DynamicLayer1(dynamic=True)(inputs)
     inner_model = keras.Model(inputs, outputs)
+    self.assertEqual(inner_model.dynamic, True)
 
     inputs = keras.Input((3,))
-    x = DynamicLayer2()(inputs)
+    x = DynamicLayer2(dynamic=True)(inputs)
     outputs = inner_model(x)
 
     model = keras.Model(inputs, outputs)
-    self.assertEqual(model._static_graph_friendly, False)
-    model.compile(RMSPropOptimizer(0.001), loss='mse')
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
 
-  def test_invalid_forward_pass_in_graph_mode(self):
-    with context.graph_mode():
-      inputs = keras.Input((3,))
-      with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
-        _ = InvalidLayer()(inputs)
+  def test_dynamic_layers_in_sequential_model(self):
+    # Without input_shape argument
+    model = keras.Sequential([DynamicLayer1(dynamic=True),
+                              keras.layers.Dense(3),
+                              DynamicLayer2(dynamic=True)])
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
+    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
 
-  def test_invalid_forward_pass_in_eager_mode(self):
+    # With input_shape argument
+    model = keras.Sequential([DynamicLayer1(dynamic=True, input_shape=(3,)),
+                              DynamicLayer2(dynamic=True)])
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
+    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+
+  def test_dynamic_layers_in_subclassed_model(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer1 = DynamicLayer1(dynamic=True)
+
+      def call(self, inputs):
+        return self.layer1(inputs)
+
+    model = MyModel()
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
+    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+
+  def test_dynamic_subclassed_model_no_shape_inference(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__(dynamic=True)
+        self.layer1 = keras.layers.Dense(3)
+        self.layer2 = keras.layers.Dense(3)
+
+      def call(self, inputs):
+        if math_ops.reduce_sum(inputs) > 0:
+          return self.layer1(inputs)
+        else:
+          return self.layer2(inputs)
+
+    model = MyModel()
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
+    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    self.assertEqual(model.outputs, [None])
+
+  def test_dynamic_subclassed_model_with_shape_inference(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__(dynamic=True)
+        self.layer1 = keras.layers.Dense(3)
+        self.layer2 = keras.layers.Dense(3)
+
+      def call(self, inputs):
+        if math_ops.reduce_sum(inputs) > 0:
+          return self.layer1(inputs)
+        else:
+          return self.layer2(inputs)
+
+      def compute_output_shape(self, input_shape):
+        return tensor_shape.TensorShape(
+            tuple(input_shape[:-1].as_list()) + (3,))
+
+    model = MyModel()
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    self.assertEqual(model.outputs[0].shape.as_list(), [None, 3])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_forward_pass(self):
     inputs = keras.Input((3,))
-    outputs = InvalidLayer()(inputs)
-    model = keras.Model(inputs, outputs)
-    self.assertEqual(model._static_graph_friendly, False)
-    model.compile(RMSPropOptimizer(0.001), loss='mse')
     with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
-      model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+      _ = InvalidLayer()(inputs)
 
   def test_using_symbolic_tensors_with_tf_ops(self):
     # Single-input.
@@ -149,7 +238,7 @@ class BaseLayerTest(test.TestCase):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = array_ops.ones((3, 3))
-    self.assertTrue(isinstance(x2, ops.EagerTensor))
+    self.assertIsInstance(x2, ops.EagerTensor)
     with self.assertRaisesRegexp(TypeError,
                                  'provided list of inputs contains '
                                  'objects other than \'EagerTensor\''):
@@ -164,22 +253,117 @@ class BaseLayerTest(test.TestCase):
                                  'objects other than \'EagerTensor\''):
       math_ops.matmul(x1, x2)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_mixing_keras_symbolic_tensors_and_eager_tensors(self):
     x1 = keras.Input((3,))
     x2 = array_ops.ones((3, 3))
-    with self.assertRaisesRegexp(
-        TypeError,
-        'mix computation of symbolic Tensors'):
-      math_ops.matmul(x1, x2)
+    y = math_ops.matmul(x1, x2)
+    self.assertEqual(y.graph, keras.backend.get_graph())
+    fn = keras.backend.function(inputs=[x1], outputs=[y])
+    x_val = np.random.random((3, 3))
+    y_val = np.ones((3, 3))
+    self.assertAllClose(fn([x_val])[0],
+                        np.matmul(x_val, y_val),
+                        atol=1e-5)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_mixing_keras_symbolic_tensors_and_numpy_arrays(self):
-    # For the time being we treat Numpy arrays as EagerTensors when mixing both.
     x1 = keras.Input((3,))
     x2 = np.ones((3, 3), dtype='float32')
-    with self.assertRaisesRegexp(
-        TypeError,
-        'mix computation of symbolic Tensors'):
-      math_ops.matmul(x1, x2)
+    y = math_ops.matmul(x1, x2)
+    self.assertEqual(y.graph, keras.backend.get_graph())
+    fn = keras.backend.function(inputs=[x1], outputs=[y])
+    x_val = np.random.random((3, 3))
+    y_val = np.ones((3, 3))
+    self.assertAllClose(fn([x_val])[0],
+                        np.matmul(x_val, y_val),
+                        atol=1e-5)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NestedTrackingTest(test.TestCase):
+
+  def test_nested_layer_variable_tracking(self):
+    # Test that variables from nested sublayers are
+    # being tracked by subclassed layers.
+
+    class MyLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(MyLayer, self).__init__()
+        self.dense1 = keras.layers.Dense(1)
+        self.dense2 = keras.layers.BatchNormalization()
+
+      def build(self, input_shape):
+        self.v1 = self.add_weight('v1', shape=input_shape[1:].as_list())
+        self.v2 = variables.Variable(
+            name='v2',
+            initial_value=np.zeros(input_shape[1:].as_list(), dtype='float32'),
+            trainable=False)
+
+      def call(self, inputs):
+        x = self.dense1(inputs) + self.dense2(inputs)
+        return x + self.v1 + self.v2
+
+    layer = MyLayer()
+    inputs = keras.Input((1,))
+    _ = layer(inputs)
+
+    self.assertEqual(len(layer.weights), 8)
+    self.assertEqual(len(layer.trainable_weights), 5)
+    self.assertEqual(len(layer.non_trainable_weights), 3)
+
+    layer.dense1.trainable = False
+    self.assertEqual(len(layer.weights), 8)
+    self.assertEqual(len(layer.trainable_weights), 3)
+    self.assertEqual(len(layer.non_trainable_weights), 5)
+
+    layer.trainable = False
+    self.assertEqual(len(layer.weights), 8)
+    self.assertEqual(len(layer.trainable_weights), 0)
+    self.assertEqual(len(layer.non_trainable_weights), 8)
+
+  def test_nested_layer_updates_losses_tracking(self):
+    # Test that updates and losses from nested sublayers are
+    # being tracked by subclassed layers.
+
+    class UpdateAndLossLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.v1 = self.add_weight('v1', shape=())
+
+      def call(self, inputs):
+        self.add_loss(math_ops.reduce_sum(inputs))
+        self.add_update(state_ops.assign_add(self.v1, 1))
+        return inputs + 1
+
+    class MyLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.v1 = self.add_weight('v1', shape=())
+
+      def __init__(self):
+        super(MyLayer, self).__init__()
+        self.ul1 = UpdateAndLossLayer()
+        self.ul2 = UpdateAndLossLayer()
+
+      def call(self, inputs):
+        self.add_loss(math_ops.reduce_sum(inputs))
+        self.add_update(state_ops.assign_add(self.v1, 1))
+        x = self.ul1(inputs)
+        return self.ul2(x)
+
+    layer = MyLayer()
+
+    if context.executing_eagerly():
+      inputs = array_ops.ones((3, 1))
+      _ = layer(inputs)
+      self.assertEqual(len(layer.losses), 3)
+    else:
+      inputs = keras.Input((1,))
+      _ = layer(inputs)
+      self.assertEqual(len(layer.losses), 3)
+      self.assertEqual(len(layer.updates), 3)
 
 
 if __name__ == '__main__':

@@ -407,7 +407,7 @@ struct LaunchConvOp<GPUDevice, T> {
         AsDeviceMemory(transformed_output.template flat<T>().data(),
                        transformed_output.template flat<T>().size());
 
-    static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
+    static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     int device_id = stream->parent()->device_ordinal();
@@ -450,7 +450,7 @@ struct LaunchConvOp<GPUDevice, T> {
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
-        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
@@ -486,7 +486,7 @@ struct LaunchConvOp<GPUDevice, T> {
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
-    CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     bool cudnn_launch_status =
         stream
             ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,

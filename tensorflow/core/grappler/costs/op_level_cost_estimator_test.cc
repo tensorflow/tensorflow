@@ -29,8 +29,8 @@ namespace grappler {
 
 namespace {
 // Wrangles the minimum number of proto fields to set up a matrix.
-void DescribeMatrix(int rows, int columns, OpInfo* op_features) {
-  auto input = op_features->add_inputs();
+void DescribeMatrix(int rows, int columns, OpInfo* op_info) {
+  auto input = op_info->add_inputs();
   auto shape = input->mutable_shape();
   auto shape_rows = shape->add_dim();
   shape_rows->set_size(rows);
@@ -39,8 +39,8 @@ void DescribeMatrix(int rows, int columns, OpInfo* op_features) {
   input->set_dtype(DT_FLOAT);
 }
 
-void SetCpuDevice(OpInfo* op_features) {
-  auto device = op_features->mutable_device();
+void SetCpuDevice(OpInfo* op_info) {
+  auto device = op_info->mutable_device();
   device->set_type("CPU");
   device->set_num_cores(10);
   device->set_bandwidth(10000000);  // 10000000 KB/s = 10 GB/s
@@ -413,15 +413,14 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     return estimator_.PredictCosts(op_context);
   }
 
-  int64 CountMatMulOperations(const OpInfo& op_features,
+  int64 CountMatMulOperations(const OpInfo& op_info,
                               bool* found_unknown_shapes) const {
-    return estimator_.CountMatMulOperations(op_features, found_unknown_shapes);
+    return estimator_.CountMatMulOperations(op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulOperations(const OpInfo& op_features,
+  int64 CountBatchMatMulOperations(const OpInfo& op_info,
                                    bool* found_unknown_shapes) const {
-    return estimator_.CountBatchMatMulOperations(op_features,
-                                                 found_unknown_shapes);
+    return estimator_.CountBatchMatMulOperations(op_info, found_unknown_shapes);
   }
 
   void SetComputeMemoryOverlap(bool value) {
@@ -704,6 +703,16 @@ TEST_F(OpLevelCostEstimatorTest, ModExecutionTime) {
 
 TEST_F(OpLevelCostEstimatorTest, ReluExecutionTime) {
   auto cost = PredictCosts(DescribeUnaryOp("Relu", 1000));
+  EXPECT_EQ(Costs::Duration(800), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(100), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(900), cost.execution_time);
+  EXPECT_EQ(1, cost.num_ops_total);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
+TEST_F(OpLevelCostEstimatorTest, CastExecutionTime) {
+  auto cost = PredictCosts(DescribeUnaryOp("Cast", 1000));
   EXPECT_EQ(Costs::Duration(800), cost.memory_time);
   EXPECT_EQ(Costs::Duration(100), cost.compute_time);
   EXPECT_EQ(Costs::Duration(900), cost.execution_time);

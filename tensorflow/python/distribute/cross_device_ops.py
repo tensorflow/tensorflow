@@ -38,7 +38,7 @@ def check_destinations(destinations):
   """Checks whether `destinations` is not empty.
 
   Args:
-    destinations: a DistributedValues, Variable, string or a list of strings.
+    destinations: a `DistributedValues`, variable, or string object.
 
   Returns:
     Boolean which is True if `destinations` is not empty.
@@ -50,16 +50,46 @@ def check_destinations(destinations):
 
 
 def validate_destinations(destinations):
-  if not isinstance(
-      destinations,
-      (value_lib.DistributedValues, resource_variable_ops.ResourceVariable,
-       value_lib.AggregatingVariable, six.string_types, list, tuple)):
+  if not isinstance(destinations,
+                    (value_lib.DistributedValues,
+                     resource_variable_ops.ResourceVariable,
+                     value_lib.AggregatingVariable,
+                     six.string_types,
+                     value_lib.TPUMirroredVariable,
+                     # LogicalDeviceSpec is only used internally, e.g. as a
+                     # broadcast destination, never supplied by a user.
+                     value_lib.LogicalDeviceSpec)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
-                     " a tf.Variable object, a device string, a list or tuple "
-                     "of device strings")
+                     " a tf.Variable object, or a device string.")
 
   if not check_destinations(destinations):
     raise ValueError("destinations can not be empty")
+
+
+def reduce_non_distributed_value(reduce_op, device_map, value, destinations):
+  """Reduce a non-DistributedValue `value` to `destinations`."""
+  if isinstance(value, value_lib.DistributedValues):
+    raise ValueError("You are passing a `DistributedValue` to "
+                     "`reduce_non_distributed_value`, which is not allowed.")
+
+  # If the same value is present on all replicas then the PerReplica value will
+  # be a single value. We also handle the case when `value` is a single value
+  # and equal to 0.
+  if value == 0:
+    return 0
+  # If there is only a single value and the reduce op is MEAN,
+  # that value should be on all destinations.
+  if reduce_op == reduce_util.ReduceOp.MEAN:
+    return value
+
+  validate_destinations(destinations)
+  # We do not support a reduce op of SUM if the value is the same across
+  # all replicas. We call this as part of assign functions for MirroredVariables
+  # and summing up identical values across replicas is not clearly defined.
+  if device_map.num_replicas_in_graph != 1:
+    raise ValueError("A non-DistributedValues value %s cannot be reduced with "
+                     "the given reduce op %s." % (value, reduce_op))
+  return simple_broadcast(value, destinations)
 
 
 def _make_tensor_into_per_replica(input_tensor):
@@ -77,7 +107,8 @@ def _make_tensor_into_per_replica(input_tensor):
     raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object "
                      "because it doesn't have device set.")
 
-  return value_lib.PerReplica({device: input_tensor})
+  device_map = value_lib.SingleDeviceMap(device)
+  return value_lib.PerReplica(device_map, (input_tensor,))
 
 
 def _normalize_value_destination_pairs(value_destination_pairs):
@@ -115,16 +146,24 @@ def _validate_value_destination_pairs(value_destination_pairs):
 # CrossDeviceOps.
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
-    return list(destinations.devices)
-  elif isinstance(destinations, (resource_variable_ops.ResourceVariable,
-                                 value_lib.AggregatingVariable)):
-    return [destinations.device]
+    return destinations.devices
+  elif isinstance(destinations, value_lib.LogicalDeviceSpec):
+    return destinations.device_map.logical_to_actual_devices(
+        destinations.logical_device)
   elif isinstance(destinations, six.string_types):
-    return [device_util.resolve(destinations)]
-  elif isinstance(destinations, (list, tuple)):
-    return [device_util.resolve(destination) for destination in destinations]
+    return (device_util.resolve(destinations),)
+  return (destinations.device,)
+
+
+def get_device_map_from(destinations):
+  if isinstance(destinations, (value_lib.DistributedValues,
+                               value_lib.LogicalDeviceSpec)):
+    return destinations.device_map, destinations.logical_device
+  if isinstance(destinations, six.string_types):
+    device = device_util.resolve(destinations)
   else:
-    return [destinations.device]
+    device = destinations.device
+  return value_lib.SingleDeviceMap(device), 0
 
 
 def _devices_match(left, right):
@@ -140,25 +179,29 @@ def _all_devices_match(value_destination_pairs):
   return True
 
 
-def _simple_broadcast(value, destinations):
-  index = {}
-  devices = get_devices_from(destinations)
-  for d in devices:
-    index[d] = cross_device_utils.copy_tensor_or_indexed_slices_to_device(
-        value, d)
-  return value_lib.Mirrored(index)
+def simple_broadcast(value, destinations, always_mirrored=False):
+  """Broadcast `value` to `destinations` using simple copies."""
+  device_map, logical_device = get_device_map_from(destinations)
+  devices = device_map.logical_to_actual_devices(logical_device)
+  if len(devices) == 1 and not always_mirrored:
+    return cross_device_utils.copy_tensor_or_indexed_slices_to_device(
+        value, devices[0])
+  else:
+    value_updates = []
+    for d in devices:
+      value_updates.append(
+          cross_device_utils.copy_tensor_or_indexed_slices_to_device(
+              value, d))
+    return value_lib.Mirrored(device_map, value_updates, logical_device)
 
 
 def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
                    reduce_op):
   # pylint: disable=g-missing-docstring
-  all_values = []
-  count = 0
-  for v in per_replica_value._index.values():  # pylint: disable=protected-access
-    count += 1
-    all_values.append(v)
+  all_values = per_replica_value.values
   if not all_values:
     raise ValueError("`per_replica_value` must be non-empty")
+  count = len(all_values)
 
   with ops.device(reduce_to_device):
     with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
@@ -194,7 +237,8 @@ class CrossDeviceOps(object):
       a Mirrored object.
 
     Raises:
-      ValueError: if per_replica_value is not a PerReplica object.
+      ValueError: if per_replica_value can't be converted to a PerReplica
+        object.
     """
     if not isinstance(per_replica_value, value_lib.PerReplica):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
@@ -254,7 +298,7 @@ class CrossDeviceOps(object):
         "_batch_reduce method must be implemented in descendants.")
 
   def _broadcast(self, tensor, destinations):
-    return _simple_broadcast(tensor, destinations)
+    return simple_broadcast(tensor, destinations, always_mirrored=True)
 
 
 class ReductionToOneDeviceCrossDeviceOps(CrossDeviceOps):
@@ -276,14 +320,12 @@ class ReductionToOneDeviceCrossDeviceOps(CrossDeviceOps):
     super(ReductionToOneDeviceCrossDeviceOps, self).__init__()
 
   def _reduce(self, reduce_op, per_replica_value, destinations):
-    if check_destinations(destinations):
-      devices = get_devices_from(destinations)
-    else:
-      devices = get_devices_from(per_replica_value)
+    assert check_destinations(destinations)
+    devices = get_devices_from(destinations)
     reduce_to_device = self.reduce_to_device or devices[0]
     reduced = _simple_reduce(per_replica_value, reduce_to_device,
                              self.accumulation_fn, reduce_op)
-    return self.broadcast(reduced, devices)
+    return self.broadcast(reduced, destinations)
 
   def _batch_reduce(self, reduce_op, value_destination_pairs):
     return [
@@ -314,7 +356,7 @@ def _group_value_by_device(per_replica_values):
   grouped = [[] for _ in range(len(destinations))]
   for per_replica_value in per_replica_values:
     # pylint: disable=protected-access
-    for i, v in enumerate(per_replica_value._index.values()):
+    for i, v in enumerate(per_replica_value.values):
       assert per_replica_value.devices == destinations
       grouped[i].append((v, None))
   return grouped
@@ -333,7 +375,7 @@ def _ungroup_and_make_mirrored(grouped_reduced,
     grouped_reduced: a list of lists, each sublist has components for each
       device, paired with a None. It is the result from
       cross_device_utils.aggregate_gradients_using*.
-    destinations: a list of device strings for returned Mirrored objects.
+    destinations: a value to colocate the result with.
     reduce_op: Indicates how values will be aggregated. Accepted values
       are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
     num_between_graph_workers: number of workers in the between-graph
@@ -342,15 +384,16 @@ def _ungroup_and_make_mirrored(grouped_reduced,
   Returns:
     a list of Mirrored objects.
   """
-  index = [{} for _ in range(len(grouped_reduced[0]))]
-  for d, per_replica_reduced in enumerate(grouped_reduced):
+  device_map, logical_device = get_device_map_from(destinations)
+  num_replicas = device_map.num_replicas_in_graph * num_between_graph_workers
+  index = [[] for _ in range(len(grouped_reduced[0]))]
+  for per_replica_reduced in grouped_reduced:
     for i, (v, _) in enumerate(per_replica_reduced):
       if reduce_op == reduce_util.ReduceOp.MEAN:
-        index[i][destinations[d]] = v / (
-            len(destinations) * num_between_graph_workers)
+        index[i].append(v / num_replicas)
       else:
-        index[i][destinations[d]] = v
-  return [value_lib.Mirrored(v) for v in index]
+        index[i].append(v)
+  return [value_lib.Mirrored(device_map, v, logical_device) for v in index]
 
 
 class ConcatAndSplitPacker(object):
@@ -576,7 +619,7 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
       reduce_to_device = devices[0]
       reduced = _simple_reduce(per_replica_value, reduce_to_device,
                                math_ops.add_n, reduce_op)
-      return self.broadcast(reduced, devices)
+      return self.broadcast(reduced, destinations)
 
   def _batch_reduce(self, reduce_op, value_destination_pairs):
     all_devices_match = _all_devices_match(value_destination_pairs)
@@ -628,8 +671,7 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
               destinations, device_grad_packs))
 
     reduced = _unpack_tensors(reduced, tensor_packer)
-    return _ungroup_and_make_mirrored(reduced, per_replica_values[0].devices,
-                                      reduce_op)
+    return _ungroup_and_make_mirrored(reduced, per_replica_values[0], reduce_op)
 
 
 # For compatibility with code using the old name of `AllReduceCrossDeviceOps`.
@@ -722,7 +764,6 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
         (len(per_replica_values), self._all_reduce_spec, self._num_packs,
          self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
 
-    destinations = sorted(per_replica_values[0].devices)
     device_grads = _group_value_by_device(per_replica_values)
 
     # The all reduce library requires fully defined shapes.
@@ -759,7 +800,7 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
             aggregated_grads[i] += range_agg_grads[i]
     assert not remaining_grads
 
-    return _ungroup_and_make_mirrored(aggregated_grads, destinations,
+    return _ungroup_and_make_mirrored(aggregated_grads, per_replica_values[0],
                                       reduce_op)
 
 
@@ -803,20 +844,22 @@ class CollectiveAllReduce(CrossDeviceOps):
           "Eager execution is not supported for Collective All-Reduce")
 
     all_reduced = self._batch_all_reduce(reduce_op, [per_replica_value])[0]
-    if _devices_match(per_replica_value, destinations):
+    device_map, logical_device = get_device_map_from(destinations)
+    if (all_reduced.device_map is device_map and
+        all_reduced.logical_device == logical_device):
       return all_reduced
-    else:
-      index = {}
-      for d in get_devices_from(destinations):
-        # pylint: disable=protected-access
-        if d in all_reduced._index:
-          index[d] = all_reduced._index[d]
-        else:
-          with ops.control_dependencies(list(
-              all_reduced._index.values())), ops.device(d):
-            index[d] = array_ops.identity(list(all_reduced._index.values())[0])
+    devices = device_map.logical_to_actual_devices(logical_device)
+    index = []
+    for d in devices:
+      if d in all_reduced.devices:
+        index.append(all_reduced.get(d))
+      else:
+        # TODO(josh11b): Once we add support for model parallelism, get the
+        # copy from the corresponding replica instead of the primary.
+        with ops.control_dependencies(all_reduced.values), ops.device(d):
+          index.append(array_ops.identity(all_reduced.primary))
 
-      return value_lib.Mirrored(index)
+    return value_lib.Mirrored(device_map, index, logical_device)
 
   def _batch_reduce(self, reduce_op, value_destination_pairs):
     if cross_device_utils.contains_indexed_slices(value_destination_pairs):
@@ -881,7 +924,7 @@ class CollectiveAllReduce(CrossDeviceOps):
     new_device_grads = [list(x) for x in zip(*reduced_gv_list)]
     return _ungroup_and_make_mirrored(
         new_device_grads,
-        per_replica_values[0].devices,
+        per_replica_values[0],
         reduce_op,
         num_between_graph_workers=self._num_workers)
 

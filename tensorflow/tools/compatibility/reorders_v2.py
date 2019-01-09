@@ -28,6 +28,7 @@ from __future__ import print_function
 reorders = {
     'tf.argmax': ['input', 'axis', 'name', 'dimension', 'output_type'],
     'tf.argmin': ['input', 'axis', 'name', 'dimension', 'output_type'],
+    'tf.batch_gather': ['params', 'indices', 'name'],
     'tf.batch_to_space': ['input', 'crops', 'block_size', 'name'],
     'tf.boolean_mask': ['tensor', 'mask', 'name', 'axis'],
     'tf.confusion_matrix': ['labels', 'predictions', 'num_classes', 'dtype', 'name', 'weights'],
@@ -64,6 +65,7 @@ reorders = {
     'tf.nn.moments': ['x', 'axes', 'shift', 'name', 'keep_dims'],
     'tf.nn.pool': ['input', 'window_shape', 'pooling_type', 'padding', 'dilation_rate', 'strides', 'name', 'data_format'],
     'tf.nn.separable_conv2d': ['input', 'depthwise_filter', 'pointwise_filter', 'strides', 'padding', 'rate', 'name', 'data_format'],
+    'tf.nn.softmax_cross_entropy_with_logits': ['_sentinel', 'labels', 'logits', 'dim', 'name'],
     'tf.nn.space_to_batch': ['input', 'paddings', 'block_size', 'name'],
     'tf.nn.space_to_depth': ['input', 'block_size', 'name', 'data_format'],
     'tf.nn.weighted_moments': ['x', 'axes', 'frequency_weights', 'name', 'keep_dims'],
@@ -109,6 +111,7 @@ reorders = {
     'tf.strings.length': ['input', 'name', 'unit'],
     'tf.strings.reduce_join': ['inputs', 'axis', 'keep_dims', 'separator', 'name', 'reduction_indices'],
     'tf.strings.substr': ['input', 'pos', 'len', 'name', 'unit'],
+    'tf.substr': ['input', 'pos', 'len', 'name', 'unit'],
     'tf.transpose': ['a', 'perm', 'name', 'conjugate'],
     'tf.tuple': ['tensors', 'name', 'control_inputs'],
     'tf.while_loop': ['cond', 'body', 'loop_vars', 'shape_invariants', 'parallel_iterations', 'back_prop', 'swap_memory', 'name', 'maximum_iterations', 'return_same_structure']

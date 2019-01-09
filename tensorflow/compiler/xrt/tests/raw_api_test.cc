@@ -217,7 +217,6 @@ xla::ProgramShape XlaCompiledProgramShape(
 
 TEST(RawApiTest, AllocAndRewrite) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() =
       xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
 
@@ -259,15 +258,138 @@ TEST(RawApiTest, AllocAndRewrite) {
   EXPECT_TRUE(new_response.ParseFromString(outputs[0].scalar<string>()()));
   EXPECT_TRUE(CompareLiteralProtos(new_literal, new_response));
 
-  auto release =
-      ops::XRTReleaseAllocationHandle(root, Input(allocation_handle));
+  Tensor release_tensor(DT_INT64, TensorShape({1}));
+  release_tensor.flat<int64>()(0) = allocation_handle;
+
+  auto release = ops::XRTReleaseAllocationHandle(root, release_tensor);
   TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
                            &outputs));
 }
 
+TEST(RawApiTest, AllocReleaseMany) {
+  xrt::XLAAllocation alloc1;
+  *alloc1.mutable_value() =
+      xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
+  xrt::XLAAllocation alloc2;
+  *alloc2.mutable_value() =
+      xla::LiteralUtil::CreateR2({{6, 7}, {4, 5}}).ToProto();
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto value1 =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc1.SerializeAsString());
+  auto value2 =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc2.SerializeAsString());
+  auto handle1 = ops::XRTAllocate(root, value1);
+  auto handle2 = ops::XRTAllocate(root, value2);
+  TF_ASSERT_OK(root.status());
+
+  tensorflow::ClientSession session(root);
+  std::vector<tensorflow::Tensor> outputs;
+  TF_EXPECT_OK(session.Run({handle1, handle2}, &outputs));
+  EXPECT_EQ(outputs.size(), 2);
+
+  int64 allocation_handle1 = outputs[0].scalar<int64>()();
+  int64 allocation_handle2 = outputs[1].scalar<int64>()();
+
+  Tensor release_tensor(DT_INT64, TensorShape({2}));
+  release_tensor.flat<int64>()(0) = allocation_handle1;
+  release_tensor.flat<int64>()(1) = allocation_handle2;
+
+  auto release = ops::XRTReleaseAllocationHandle(root, release_tensor);
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
+                           &outputs));
+}
+
+TEST(RawApiTest, CompileAndReleaseMany) {
+  xrt::XLAComputation c1;
+  auto config1 = c1.mutable_config();
+  auto shapes1 = config1->mutable_program_shape();
+  *shapes1->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes1->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes1->mutable_result() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  StoreComputationSnapshot(AddAndScale(), c1.mutable_hlo_snapshot());
+
+  xrt::XLAComputation c2;
+  auto config2 = c2.mutable_config();
+  auto shapes2 = config2->mutable_program_shape();
+  *shapes2->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes2->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes2->mutable_result() =
+      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::F32, {2})})
+          .ToProto();
+  StoreComputationSnapshot(AddAndTuple(), c2.mutable_hlo_snapshot());
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(true);
+  e.set_release_compilation_handle(false);
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto computation1 =
+      ops::Const(root.WithDevice("/device:CPU:0"), c1.SerializeAsString());
+  auto c_handle1 = ops::XRTCompile(root, computation1);
+  auto computation2 =
+      ops::Const(root.WithDevice("/device:CPU:0"), c2.SerializeAsString());
+  auto c_handle2 = ops::XRTCompile(root, computation2);
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({c_handle1.handle, c_handle2.handle}, &outputs));
+  EXPECT_EQ(outputs.size(), 2);
+
+  int64 compilation_handle1 = outputs[0].scalar<int64>()();
+  int64 compilation_handle2 = outputs[1].scalar<int64>()();
+
+  Tensor release_tensor(DT_INT64, TensorShape({2}));
+  release_tensor.flat<int64>()(0) = compilation_handle1;
+  release_tensor.flat<int64>()(1) = compilation_handle2;
+
+  auto release = ops::XRTReleaseCompilationHandle(root, release_tensor);
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
+                           &outputs));
+}
+
+TEST(RawApiTest, AllocAndClearAll) {
+  xrt::XLAAllocation alloc;
+  *alloc.mutable_value() =
+      xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto value =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc.SerializeAsString());
+  auto handle = ops::XRTAllocate(root, value);
+  TF_ASSERT_OK(root.status());
+
+  tensorflow::ClientSession session(root);
+  std::vector<tensorflow::Tensor> outputs;
+  TF_EXPECT_OK(session.Run({handle}, &outputs));
+  EXPECT_EQ(outputs.size(), 1);
+
+  int64 allocation_handle = outputs[0].scalar<int64>()();
+
+  auto clear_all = ops::XRTReleaseAllAllocations(root);
+
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {},
+                           {clear_all}, &outputs));
+  EXPECT_EQ(outputs.size(), 0);
+
+  auto read_after_clear = ops::XRTReadLiteral(root, Input(allocation_handle));
+  EXPECT_EQ(session.Run({read_after_clear}, &outputs).code(),
+            tensorflow::error::Code::NOT_FOUND);
+}
+
 TEST(RawApiTest, ReadAndWriteState) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = TwoElementTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -292,7 +414,6 @@ TEST(RawApiTest, ReadAndWriteState) {
 
 TEST(RawApiTest, ReadAndWriteStateAutoFree) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = TwoElementTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -313,7 +434,6 @@ TEST(RawApiTest, ReadAndWriteStateAutoFree) {
 
 TEST(RawApiTest, SubBuffer) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = NestedTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -354,10 +474,8 @@ TEST(RawApiTest, SubBuffer) {
 
 TEST(RawApiTest, MakeTuple) {
   xrt::XLAAllocation alloc_0;
-  alloc_0.set_device_ordinal(0);
   *alloc_0.mutable_value() = TwoElementTuple();
   xrt::XLAAllocation alloc_1;
-  alloc_1.set_device_ordinal(0);
   *alloc_1.mutable_value() = ScalarLiteral();
 
   // The trivial tuple that just forwards its input and releases it.
@@ -428,10 +546,8 @@ TEST(RawApiTest, MakeTuple) {
 
 TEST(RawApiTest, CompileAndExecute) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -483,10 +599,8 @@ TEST(RawApiTest, CompileAndExecute) {
 
 TEST(RawApiTest, CompileAndExecuteWithArgumentVector) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -606,10 +720,8 @@ TEST(RawApiTest, DotGeneralWithLayoutTest) {
   auto layout = xla::LayoutUtil::MakeLayout({0, 1});
 
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatMatrix({{1.0f, 2.0f}, {3.0f, 4.0f}}, layout);
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatMatrix({{8.0f}, {5.0f}}, layout);
 
   xrt::XLAComputation c;
@@ -692,10 +804,8 @@ TEST(RawApiTest, CompileAndExecuteZeroArg) {
 
 TEST(RawApiTest, CompileAndExecuteReturnTuple) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -745,11 +855,9 @@ TEST(RawApiTest, CompileAndExecuteReturnTuple) {
 
 TEST(RawApiTest, CompileAndExecuteReturnExplodedTuple) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = xla::LiteralUtil::CreateR0<float>(12.0f).ToProto();
 
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = xla::LiteralUtil::CreateR0<float>(3.0f).ToProto();
 
   xrt::XLAComputation c;
@@ -833,10 +941,8 @@ TEST(RawApiTest, LeakCompilationReference) {
 
 TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = xla::LiteralUtil::CreateR0<int64>(11031965).ToProto();
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = xla::LiteralUtil::CreateR0<int64>(4091934).ToProto();
 
   xrt::XLAComputation c;
@@ -850,6 +956,7 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   xrt::XRTExecutionConfig e;
   e.set_release_input_handles(true);
   e.set_release_compilation_handle(true);
+  e.set_return_exploded_tuple(true);
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
   auto e_config =

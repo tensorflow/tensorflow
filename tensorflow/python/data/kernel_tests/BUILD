@@ -445,6 +445,19 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "options_test",
+    size = "small",
+    srcs = ["options_test.py"],
+    additional_deps = [
+        ":test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/experimental/ops:optimization_options",
+        "//tensorflow/python/data/experimental/ops:threading_options",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "padded_batch_test",
     size = "small",
     srcs = ["padded_batch_test.py"],

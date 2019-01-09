@@ -78,6 +78,25 @@ class QuantizedPoolingOpModel : public BasePoolingOpModel {
   }
 };
 
+class SymmetricQuantizedPoolingOpModel : public BasePoolingOpModel {
+ public:
+  using BasePoolingOpModel::BasePoolingOpModel;
+
+  void SetInput(std::initializer_list<float> data) {
+    QuantizeAndPopulate<int8_t>(input_, data);
+  }
+
+  void SetInput(const std::vector<float>& data) {
+    QuantizeAndPopulate<int8_t>(input_, data);
+  }
+
+  std::vector<int8_t> GetOutput() { return ExtractVector<int8_t>(output_); }
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<int8_t>(ExtractVector<int8_t>(output_), GetScale(output_),
+                              GetZeroPoint(output_));
+  }
+};
+
 TEST(FloatPoolingOpTest, AveragePool) {
   FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
                         /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
@@ -126,6 +145,29 @@ TEST(QuantizedPoolingOpTest, AveragePoolImageSize16) {
 
   EXPECT_THAT(m.GetOutput(), ::testing::ElementsAre(255));
   EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear({16})));
+}
+
+// Test quantized AveragePool with int8 input and output. The input is the same
+// as the uint8 test QuantizedPoolingOpTest.AveragePool. The float output is
+// identical to uint8 test and quantized output is identical to uint8 test with
+// a 128 shift.
+TEST(QuantizedPoolingOpTest, SymmetricAveragePool) {
+  // Choose the input ranges carefully so that the dequantized output matches
+  // the results of the float model above.
+  SymmetricQuantizedPoolingOpModel m(
+      BuiltinOperator_AVERAGE_POOL_2D,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*filter_width=*/2, /*filter_height=*/2,
+      /*output=*/{TensorType_INT8, {}, 0, 15.9375});
+  m.SetInput({
+      0, 6, 2, 4,   //
+      3, 2, 10, 7,  //
+  });
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({2.75, 5.75})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({44 - 128, 92 - 128}));
 }
 
 // Send in a white image, expect something other than a white pixel, due to
