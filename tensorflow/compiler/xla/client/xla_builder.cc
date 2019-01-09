@@ -350,8 +350,9 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
                              alias.param_number,
                              alias.param_index.ToString().c_str());
     }
-    TF_RETURN_IF_ERROR(config.SetUpAlias(alias.output_index, alias.param_number,
-                                         alias.param_index));
+    TF_RETURN_IF_ERROR(config.SetUpAlias(
+        alias.output_index, alias.param_number, alias.param_index,
+        HloInputOutputAliasConfig::AliasKind::kUserAlias));
   }
   *module->mutable_input_output_alias() = config.ToProto();
   return Status::OK();
