@@ -27,10 +27,28 @@
 
 using namespace mlir;
 
-std::string mlir::PredCNF::createTypeMatcherTemplate() const {
+PredCNF::PredCNF(const llvm::Init *init) : def(nullptr) {
+  if (const auto *defInit = dyn_cast<llvm::DefInit>(init)) {
+    def = defInit->getDef();
+    assert(def->isSubClassOf("PredCNF") &&
+           "must be subclass of TableGen 'PredCNF' class");
+  }
+}
+
+const llvm::ListInit *PredCNF::getConditions() const {
+  if (!def)
+    return nullptr;
+
+  return def->getValueAsListInit("conditions");
+}
+
+std::string PredCNF::createTypeMatcherTemplate() const {
+  const auto *conjunctiveList = getConditions();
+  if (!conjunctiveList)
+    return "true";
+
   std::string outString;
   llvm::raw_string_ostream ss(outString);
-  auto conjunctiveList = conditions;
   bool firstDisjunctive = true;
   for (auto disjunctiveInit : *conjunctiveList) {
     ss << (firstDisjunctive ? "(" : " && (");

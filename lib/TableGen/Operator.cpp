@@ -21,6 +21,7 @@
 
 #include "mlir/TableGen/Operator.h"
 #include "mlir/TableGen/Predicate.h"
+#include "mlir/TableGen/Type.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Error.h"
@@ -159,13 +160,9 @@ StringRef mlir::Operator::Attribute::getStorageType() const {
 }
 
 bool mlir::Operator::Operand::hasMatcher() const {
-  llvm::Init *matcher = defInit->getDef()->getValue("predicate")->getValue();
-  return !isa<llvm::UnsetInit>(matcher);
+  return !tblgen::Type(defInit).getPredicate().isEmpty();
 }
 
 std::string mlir::Operator::Operand::createTypeMatcherTemplate() const {
-  auto predicate = defInit->getDef()->getValue("predicate")->getValue();
-  auto predCnf = cast<llvm::DefInit>(predicate);
-  PredCNF pred(predCnf->getDef()->getValueAsListInit("conditions"));
-  return pred.createTypeMatcherTemplate();
+  return tblgen::Type(defInit).getPredicate().createTypeMatcherTemplate();
 }

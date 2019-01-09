@@ -22,6 +22,7 @@
 #include "mlir/TableGen/GenInfo.h"
 #include "mlir/TableGen/Operator.h"
 #include "mlir/TableGen/Predicate.h"
+#include "mlir/TableGen/Type.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
@@ -88,7 +89,7 @@ private:
 void Pattern::emitAttributeValue(Record *constAttr) {
   Record *attr = constAttr->getValueAsDef("attr");
   auto value = constAttr->getValue("value");
-  Record *type = attr->getValueAsDef("type");
+  tblgen::Type type(attr->getValueAsDef("type"));
   auto storageType = attr->getValueAsString("storageType").trim();
 
   // For attributes stored as strings we do not need to query builder etc.
@@ -98,20 +99,15 @@ void Pattern::emitAttributeValue(Record *constAttr) {
     return;
   }
 
-  // Construct the attribute based on storage type and builder.
-  if (auto b = type->getValue("builderCall")) {
-    if (isa<UnsetInit>(b->getValue()))
-      PrintFatalError(pattern->getLoc(),
-                      "no builder specified for " + type->getName());
-    CodeInit *builder = cast<CodeInit>(b->getValue());
-    // TODO(jpienaar): Verify the constants here
-    os << formatv("{0}::get(rewriter.{1}, {2})", storageType,
-                  builder->getValue(),
-                  value->getValue()->getAsUnquotedString());
-    return;
-  }
+  auto builder = type.getBuilderCall();
+  if (builder.empty())
+    PrintFatalError(pattern->getLoc(),
+                    "no builder specified for " + type.getTableGenDefName());
 
-  PrintFatalError(pattern->getLoc(), "unable to emit attribute");
+  // Construct the attribute based on storage type and builder.
+  // TODO(jpienaar): Verify the constants here
+  os << formatv("{0}::get(rewriter.{1}, {2})", storageType, builder,
+                value->getValue()->getAsUnquotedString());
 }
 
 void Pattern::collectBoundArguments(DagInit *tree) {
@@ -174,12 +170,8 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
           PrintFatalError(pattern->getLoc(),
                           "type argument required for operand");
 
-        // TODO(jpienaar): Factor out type class and move these there.
-        auto predicate = defInit->getDef()->getValue("predicate")->getValue();
-        auto predCnf = cast<DefInit>(predicate);
-        auto conjunctiveList =
-            predCnf->getDef()->getValueAsListInit("conditions");
-        PredCNF pred(conjunctiveList);
+        auto pred = tblgen::Type(defInit).getPredicate();
+
         os.indent(indent)
             << "if (!("
             << formatv(pred.createTypeMatcherTemplate().c_str(),
