@@ -12,25 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_ERROR_REPORTER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_ERROR_REPORTER_H_
 
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/experimental/micro/compatibility.h"
 #include "tensorflow/lite/experimental/micro/debug_log.h"
-#include "tensorflow/lite/experimental/micro/debug_log_numbers.h"
 
-namespace tflite {
-
-class MicroErrorReporter : public ErrorReporter {
- public:
-  ~MicroErrorReporter() {}
-  int Report(const char* format, va_list args) override;
-
- private:
-  TF_LITE_REMOVE_VIRTUAL_DELETE
-};
-
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_ERROR_REPORTER_H_
+// For Arm Cortex-M devices, calling SYS_WRITE0 will output the zero-terminated
+// string pointed to by R1 to any debug console that's attached to the system.
+extern "C" void DebugLog(const char* s) {
+  asm("mov r0, #0x04\n"  // SYS_WRITE0
+      "mov r1, %[str]\n"
+      "bkpt #0xAB\n"
+      :
+      : [ str ] "r"(s)
+      : "r0", "r1");
+}
