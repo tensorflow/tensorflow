@@ -36,8 +36,8 @@ def add_leading_unit_dimensions(x, num_dimensions):
 def _RandomGammaGrad(op, grad):  # pylint: disable=invalid-name
   """Returns the gradient of a Gamma sample w.r.t. alpha.
 
-  The gradient is computed using implicit differentiation, see
-  "Implicit Reparameterization Gradients" (https://arxiv.org/abs/1805.08498).
+  The gradient is computed using implicit differentiation
+  (Figurnov et al., 2018).
 
   Args:
     op: A `RandomGamma` operation. We assume that the inputs to the operation
@@ -46,7 +46,12 @@ def _RandomGammaGrad(op, grad):  # pylint: disable=invalid-name
       `op.outputs[0]`.
 
   Returns:
-    A `Tensor` with derivatives `dloss / dalpha`
+    A `Tensor` with derivatives `dloss / dalpha`.
+
+  References:
+    Implicit Reparameterization Gradients:
+      [Figurnov et al., 2018](http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients)
+      ([pdf](http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients.pdf))
   """
   shape = op.inputs[0]
   alpha = op.inputs[1]

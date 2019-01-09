@@ -93,10 +93,8 @@ class Gamma(distribution.Distribution):
   `rate` is very large. See note in `tf.random_gamma` docstring.
 
   Samples of this distribution are reparameterized (pathwise differentiable).
-  The derivatives are computed using the approach described in the paper
-
-  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
-  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+  The derivatives are computed using the approach described in
+  (Figurnov et al., 2018).
 
   #### Examples
 
@@ -120,6 +118,10 @@ class Gamma(distribution.Distribution):
   grads = tf.gradients(loss, [concentration, rate])
   ```
 
+  References:
+    Implicit Reparameterization Gradients:
+      [Figurnov et al., 2018](http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients)
+      ([pdf](http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients.pdf))
   """
 
   @deprecation.deprecated(

@@ -37,7 +37,8 @@ from tensorflow.python.util.tf_export import tf_export
 def stft(signals, frame_length, frame_step, fft_length=None,
          window_fn=window_ops.hann_window,
          pad_end=False, name=None):
-  """Computes the [Short-time Fourier Transform][stft] of `signals`.
+  """Computes the [Short-time Fourier Transform](https://en.wikipedia.org/wiki/Short-time_Fourier_transform)
+  of `signals`.
 
   Implemented with GPU-compatible ops and supports gradients.
 
@@ -62,8 +63,6 @@ def stft(signals, frame_length, frame_step, fft_length=None,
   Raises:
     ValueError: If `signals` is not at least rank 1, `frame_length` is
       not scalar, or `frame_step` is not scalar.
-
-  [stft]: https://en.wikipedia.org/wiki/Short-time_Fourier_transform
   """
   with ops.name_scope(name, 'stft', [signals, frame_length,
                                      frame_step]):
@@ -160,7 +159,8 @@ def inverse_stft(stfts,
                  fft_length=None,
                  window_fn=window_ops.hann_window,
                  name=None):
-  """Computes the inverse [Short-time Fourier Transform][stft] of `stfts`.
+  """Computes the inverse [Short-time Fourier Transform](https://en.wikipedia.org/wiki/Short-time_Fourier_transform)
+  of `stfts`.
 
   To reconstruct an original waveform, a complimentary window function should
   be used in inverse_stft. Such a window function can be constructed with
@@ -217,8 +217,6 @@ def inverse_stft(stfts,
   Raises:
     ValueError: If `stfts` is not at least rank 2, `frame_length` is not scalar,
       `frame_step` is not scalar, or `fft_length` is not scalar.
-
-  [stft]: https://en.wikipedia.org/wiki/Short-time_Fourier_transform
   """
   with ops.name_scope(name, 'inverse_stft', [stfts]):
     stfts = ops.convert_to_tensor(stfts, name='stfts')

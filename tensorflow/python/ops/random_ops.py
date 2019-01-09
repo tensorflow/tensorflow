@@ -417,10 +417,8 @@ def random_gamma(shape,
   `alpha << 1` or large values of `beta`, i.e., `beta >> 1`.
 
   The samples are differentiable w.r.t. alpha and beta.
-  The derivatives are computed using the approach described in the paper
-
-  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
-  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+  The derivatives are computed using the approach described in
+  (Figurnov et al., 2018).
 
   Example:
 
@@ -466,6 +464,11 @@ def random_gamma(shape,
     samples: a `Tensor` of shape
       `tf.concat([shape, tf.shape(alpha + beta)], axis=0)` with values of type
       `dtype`.
+
+  References:
+    Implicit Reparameterization Gradients:
+      [Figurnov et al., 2018](http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients)
+      ([pdf](http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients.pdf))
   """
   with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)

@@ -371,7 +371,8 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
 def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
-  """Adds a Huber Loss term to the training procedure.
+  """Adds a [Huber Loss](https://en.wikipedia.org/wiki/Huber_loss) term
+  to the training procedure.
 
   For each value x in `error=labels-predictions`, the following is calculated:
 
@@ -381,8 +382,6 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
   ```
 
   where d is `delta`.
-
-  See: https://en.wikipedia.org/wiki/Huber_loss
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size

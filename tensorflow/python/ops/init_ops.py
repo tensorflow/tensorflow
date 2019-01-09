@@ -417,8 +417,9 @@ class UniformUnitScaling(Initializer):
       calling the initializer. Only floating point types are supported.
 
   References:
-      [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
-      ([pdf](http://arxiv.org/pdf/1412.6558.pdf))
+    Random Walk Initialization for Training Very Deep Feedforward Networks:
+    [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
+    ([pdf](http://arxiv.org/pdf/1412.6558.pdf))
   """
 
   @deprecated_args(None,
@@ -581,6 +582,7 @@ class Orthogonal(Initializer):
       calling the initializer. Only floating point types are supported.
 
   References:
+    Exact solutions to the nonlinear dynamics of learning in deep linear neural networks:
       [Saxe et al., 2014](https://openreview.net/forum?id=_wzZwKpTDF_9C)
       ([pdf](https://arxiv.org/pdf/1312.6120.pdf))
   """
@@ -649,6 +651,7 @@ class ConvolutionDeltaOrthogonal(Initializer):
       calling the initializer. Only floating point types are supported.
 
   References:
+    Dynamical Isometry and a Mean Field Theory of CNNs:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
   """
@@ -710,6 +713,7 @@ class ConvolutionOrthogonal(Initializer):
       calling the initializer. Only floating point types are supported.
 
   References:
+    Dynamical Isometry and a Mean Field Theory of CNNs:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
   """
@@ -780,6 +784,7 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       calling the initializer. Only floating point types are supported.
 
   References:
+    Dynamical Isometry and a Mean Field Theory of CNNs:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
   """
@@ -922,6 +927,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
       calling the initializer. Only floating point types are supported.
 
   References:
+    Dynamical Isometry and a Mean Field Theory of CNNs:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
   """
@@ -1043,6 +1049,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       calling the initializer. Only floating point types are supported.
 
   References:
+    Dynamical Isometry and a Mean Field Theory of CNNs:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
   """
@@ -1240,6 +1247,7 @@ class GlorotUniform(VarianceScaling):
       calling the initializer. Only floating point types are supported.
 
   References:
+    Understanding the difficulty of training deep feedforward neural networks:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
       ([pdf](http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf))
   """
@@ -1279,6 +1287,7 @@ class GlorotNormal(VarianceScaling):
       calling the initializer. Only floating point types are supported.
 
   References:
+    Understanding the difficulty of training deep feedforward neural networks:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
       ([pdf](http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf))
   """
@@ -1337,10 +1346,10 @@ def lecun_normal(seed=None):
       An initializer.
 
   References:
-      - Self-Normalizing Neural Networks,
-      [Klambauer et al., 2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)  # pylint: disable=line-too-long
+    Self-Normalizing Neural Networks:
+      [Klambauer et al., 2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)
       ([pdf](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks.pdf))
-      - Efficient Backprop,
+    Efficient Backprop:
       [Lecun et al., 1998](http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf)
   """
   return VarianceScaling(
@@ -1362,10 +1371,10 @@ def lecun_uniform(seed=None):
       An initializer.
 
   References:
-      - Self-Normalizing Neural Networks,
-      [Klambauer et al., 2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)  # pylint: disable=line-too-long
+    Self-Normalizing Neural Networks:
+      [Klambauer et al., 2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)
       ([pdf](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks.pdf))
-      - Efficient Backprop,
+    Efficient Backprop:
       [Lecun et al., 1998](http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf)
   """
   return VarianceScaling(
@@ -1388,8 +1397,8 @@ def he_normal(seed=None):
       An initializer.
 
   References:
-      [He et al., 2015]
-      (https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html)  # pylint: disable=line-too-long
+    Delving Deep into Rectifiers:
+      [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html)
       ([pdf](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/He_Delving_Deep_into_ICCV_2015_paper.pdf))
   """
   return VarianceScaling(

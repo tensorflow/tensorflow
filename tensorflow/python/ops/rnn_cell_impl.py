@@ -479,7 +479,7 @@ class BasicRNNCell(LayerRNNCell):
 
 @tf_export(v1=["nn.rnn_cell.GRUCell"])
 class GRUCell(LayerRNNCell):
-  """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
+  """Gated Recurrent Unit cell.
 
   Note that this cell is not optimized for performance. Please use
   `tf.contrib.cudnn_rnn.CudnnGRU` for better performance on GPU, or
@@ -501,6 +501,11 @@ class GRUCell(LayerRNNCell):
       of the first input). Required when `build` is called before `call`.
     **kwargs: Dict, keyword named properties for common layer attributes, like
       `trainable` etc when constructing the cell from configs of get_config().
+
+  References:
+    Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation:
+    [Cho et al., 2014](https://aclanthology.coli.uni-saarland.de/papers/D14-1179/d14-1179)
+    ([pdf](http://emnlp2014.org/papers/pdf/EMNLP2014179.pdf))
   """
 
   @deprecated(None, "This class is equivalent as tf.keras.layers.GRUCell,"
@@ -635,7 +640,7 @@ class BasicLSTMCell(LayerRNNCell):
 
   Basic LSTM recurrent network cell.
 
-  The implementation is based on: http://arxiv.org/abs/1409.2329.
+  The implementation is based on (Zaremba et al., 2015).
 
   We add forget_bias (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
@@ -650,6 +655,14 @@ class BasicLSTMCell(LayerRNNCell):
   `tf.contrib.cudnn_rnn.CudnnLSTM` for better performance on GPU, or
   `tf.contrib.rnn.LSTMBlockCell` and `tf.contrib.rnn.LSTMBlockFusedCell` for
   better performance on CPU.
+
+  References:
+    Recurrent Neural Network Regularization:
+      [Zaremba et al., 2015](https://arxiv.org/abs/1409.2329)
+      ([pdf](https://arxiv.org/pdf/1409.2329.pdf))
+    Long Short-Term Memory:
+      [Hochreiter et al., 1997](https://www.mitpressjournals.org/doi/abs/10.1162/neco.1997.9.8.1735)
+      ([pdf](http://ml.jku.at/publications/older/3504.pdf))
   """
 
   @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
@@ -802,20 +815,8 @@ class BasicLSTMCell(LayerRNNCell):
 class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
-  The default non-peephole implementation is based on:
-
-    https://pdfs.semanticscholar.org/1154/0131eae85b2e11d53df7f1360eeb6476e7f4.pdf
-
-  Felix Gers, Jurgen Schmidhuber, and Fred Cummins.
-  "Learning to forget: Continual prediction with LSTM." IET, 850-855, 1999.
-
-  The peephole implementation is based on:
-
-    https://research.google.com/pubs/archive/43905.pdf
-
-  Hasim Sak, Andrew Senior, and Francoise Beaufays.
-  "Long short-term memory recurrent neural network architectures for
-   large scale acoustic modeling." INTERSPEECH, 2014.
+  The default non-peephole implementation is based on (Gers et al., 1999).
+  The peephole implementation is based on (Sak et al., 2014).
 
   The class uses optional peep-hole connections, optional cell clipping, and
   an optional projection layer.
@@ -824,6 +825,17 @@ class LSTMCell(LayerRNNCell):
   `tf.contrib.cudnn_rnn.CudnnLSTM` for better performance on GPU, or
   `tf.contrib.rnn.LSTMBlockCell` and `tf.contrib.rnn.LSTMBlockFusedCell` for
   better performance on CPU.
+
+  References:
+    Long short-term memory recurrent neural network architectures for large scale acoustic modeling:
+      [Sak et al., 2014](https://www.isca-speech.org/archive/interspeech_2014/i14_0338.html)
+      ([pdf](https://www.isca-speech.org/archive/archive_papers/interspeech_2014/i14_0338.pdf))
+    Learning to forget:
+      [Gers et al., 1999](http://digital-library.theiet.org/content/conferences/10.1049/cp_19991218)
+      ([pdf](https://arxiv.org/pdf/1409.2329.pdf))
+    Long Short-Term Memory:
+      [Hochreiter et al., 1997](https://www.mitpressjournals.org/doi/abs/10.1162/neco.1997.9.8.1735)
+      ([pdf](http://ml.jku.at/publications/older/3504.pdf))
   """
 
   @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
@@ -1197,10 +1209,8 @@ class DropoutWrapperBase(object):
     """Create a cell with added input, state, and/or output dropout.
 
     If `variational_recurrent` is set to `True` (**NOT** the default behavior),
-    then the same dropout mask is applied at every step, as described in:
-
-    Y. Gal, Z Ghahramani.  "A Theoretically Grounded Application of Dropout in
-    Recurrent Neural Networks".  https://arxiv.org/abs/1512.05287
+    then the same dropout mask is applied at every step, as described in
+    (Gal et al., 2016).
 
     Otherwise a different dropout mask is applied at every time step.
 
@@ -1256,6 +1266,11 @@ class DropoutWrapperBase(object):
       TypeError: if `cell` is not an `RNNCell`, or `keep_state_fn` is provided
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
+
+    References:
+      A Theoretically Grounded Application of Dropout in Recurrent Neural Networks:
+        [Gal et al., 2016](http://papers.nips.cc/paper/6241-a-theoretically-grounded-application-of-dropout-in-recurrent-neural-networks)
+        ([pdf](http://papers.nips.cc/paper/6241-a-theoretically-grounded-application-of-dropout-in-recurrent-neural-networks.pdf))
     """
     super(DropoutWrapperBase, self).__init__(cell)
     assert_like_rnncell("cell", cell)

@@ -527,8 +527,6 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   This means that the result of matrix multiplication `v = Au` has `Lth` column
   given circular convolution between `h` with the `Lth` column of `u`.
 
-  See http://ee.stanford.edu/~gray/toeplitz.pdf
-
   #### Description in terms of the frequency spectrum
 
   There is an equivalent description in terms of the [batch] spectrum `H` and
@@ -684,6 +682,11 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   * If `is_X == False`, callers should expect the operator to not have `X`.
   * If `is_X == None` (the default), callers should have no expectation either
     way.
+
+  References:
+    Toeplitz and Circulant Matrices - A Review:
+      [Gray, 2006](https://www.nowpublishers.com/article/Details/CIT-006)
+      ([pdf](https://ee.stanford.edu/~gray/toeplitz.pdf))
   """
 
   def __init__(self,
