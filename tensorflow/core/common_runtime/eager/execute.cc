@@ -752,8 +752,8 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     maybe_stats->set_all_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
                                         maybe_stats->all_start_micros());
     maybe_stats->set_all_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
-    mutex_lock ml(*ctx->MetadataMu());
     if (ctx->ShouldStoreMetadata()) {
+      mutex_lock ml(*ctx->MetadataMu());
       {
         GraphCollector* collector = ctx->GetGraphCollector();
         mutex_lock mll(collector->mu);

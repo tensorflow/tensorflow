@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/example/example.pb.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
@@ -64,6 +65,12 @@ enum ContextDevicePlacementPolicy {
   // Default placement policy which silently copies int32 tensors but not other
   // dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
+};
+
+class RunMetadataListener {
+ public:
+  virtual ~RunMetadataListener() {}
+  virtual void BeforeClearRunMetadata() = 0;
 };
 
 class EagerContext {
@@ -172,10 +179,15 @@ class EagerContext {
   void ReleaseDeviceMgr() { local_device_manager_.release(); }
 
   // TODO(apassos) clean up RunMetadata storage.
-  mutex* MetadataMu() { return &metadata_mu_; }
-  bool ShouldStoreMetadata() { return should_store_metadata_.load(); }
+  mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
+  bool ShouldStoreMetadata() LOCKS_EXCLUDED(metadata_mu_);
   void SetShouldStoreMetadata(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
+  void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
+
+  Status RegisterRunMetadataListener(RunMetadataListener* listener)
+      LOCKS_EXCLUDED(metadata_mu_);
+  void ClearRunMetadataListener() LOCKS_EXCLUDED(metadata_mu_);
 
   void StartStep();
   void EndStep();
@@ -269,6 +281,7 @@ class EagerContext {
   std::atomic<bool> should_store_metadata_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
+  RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;
   GraphCollector graph_collector_;
   const bool log_device_placement_;
   // EagerExecutor for async execution.
