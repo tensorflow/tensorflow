@@ -60,6 +60,11 @@ def build_tensor_info(tensor):
   """
   if context.executing_eagerly():
     raise RuntimeError("build_tensor_info is not supported in Eager mode.")
+  return build_tensor_info_internal(tensor)
+
+
+def build_tensor_info_internal(tensor):
+  """Utility function to build TensorInfo proto from a Tensor."""
   tensor_info = meta_graph_pb2.TensorInfo(
       dtype=dtypes.as_dtype(tensor.dtype).as_datatype_enum,
       tensor_shape=tensor.get_shape().as_proto())
