@@ -904,6 +904,14 @@ tf.print('abc')
       for s in expected_text:
         self.assertIn(s, new_text)
 
+  def testCond(self):
+    text = "tf.cond(a, b, c, True)"
+    expected_text = "tf.cond(pred=a, true_fn=b, false_fn=c)"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+    self.assertIn("tf.cond", errors[0])
+    self.assertIn("requires manual check", errors[0])
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

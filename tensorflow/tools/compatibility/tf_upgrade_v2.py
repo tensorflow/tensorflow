@@ -50,6 +50,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "*.compute_gradients": {
             "colocate_gradients_with_ops": None,
         },
+        "tf.cond": {
+            "strict": None,
+            "fn1": "true_fn",
+            "fn2": "false_fn"
+        },
         "tf.argmin": {
             "dimension": "axis",
         },
@@ -620,6 +625,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.argmin",
         "tf.batch_gather",
         "tf.batch_to_space",
+        "tf.cond",
         "tf.nn.space_to_batch",
         "tf.boolean_mask",
         "tf.convert_to_tensor",
@@ -847,10 +853,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_return_type_comment,
         "tf.assert_rank":
             assert_rank_comment,
-        "tf.cond":
-            "tf.cond no longer takes 'strict'. "
-            "Now 'strict' defaults to True."
-            "fn1/fn2 arguments are replaced by true_fn/false_fn.",
         "tf.debugging.assert_equal":
             assert_return_type_comment,
         "tf.debugging.assert_greater":
@@ -1146,22 +1148,27 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Warnings that are emitted only if a specific arg is found.
     self.function_arg_warnings = {
         "tf.gradients": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 4):
                 "tf.gradients no longer takes "
                 "'colocate_gradients_with_ops' argument, it behaves as if it "
                 "was set to True.",
         },
         "*.minimize": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 5):
                 "Optimizer.minimize no longer takes "
                 "'colocate_gradients_with_ops' argument, it behaves as if it "
                 "was set to True.",
         },
         "*.compute_gradients": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 4):
                 "Optimizer.compute_gradients no "
                 "longer takes 'colocate_gradients_with_ops' argument, it "
                 "behaves as if it was set to True.",
+        },
+        "tf.cond": {
+            ("strict", 3):
+                "tf.cond no longer takes 'strict' argument, it behaves as "
+                "if was set to True."
         },
     }
 
