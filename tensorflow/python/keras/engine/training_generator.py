@@ -430,12 +430,8 @@ def _make_enqueued_generator(generator,
 def _make_execution_function(model, mode, class_weight=None):
   """Makes function to run one step of model execution."""
   if mode == ModeKeys.TRAIN:
-    if not context.executing_eagerly():
-      model._make_fit_function()
     f = functools.partial(model.train_on_batch, class_weight=class_weight)
   elif mode == ModeKeys.TEST:
-    if not context.executing_eagerly():
-      model._make_eval_function()
     f = model.test_on_batch
   else:
     # Match signature of other modes to allow
