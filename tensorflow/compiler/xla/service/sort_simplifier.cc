@@ -92,8 +92,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   }
   return true;
 }
-
-} // namespace
+}  // namespace
 
 StatusOr<bool> SortSimplifier::Run(HloModule* module) {
   VLOG(2) << "HLO module before SortSimplifier:";
@@ -109,8 +108,7 @@ StatusOr<bool> SortSimplifier::Run(HloModule* module) {
   }
 
   for (HloInstruction* sort_instr : sort_instrs) {
-    TF_ASSIGN_OR_RETURN(bool result,
-                        RemoveUnusedOperandFromSort(sort_instr));
+    TF_ASSIGN_OR_RETURN(bool result, RemoveUnusedOperandFromSort(sort_instr));
     changed |= result;
   }
 
