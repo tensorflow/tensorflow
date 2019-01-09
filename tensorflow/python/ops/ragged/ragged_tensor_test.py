@@ -1226,9 +1226,8 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     r = ragged_factory_ops.constant(values)
     i = 0
     for elem in r:
-      value = values[i]
+      self.assertAllEqual(elem, values[i])
       i += 1
-      self.assertAllEqual(elem, value)
 
 if __name__ == '__main__':
   googletest.main()

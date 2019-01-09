@@ -169,7 +169,7 @@ def _ragged_getitem(rt_input, key_list):
       # will simply be ignored as it will be processed later anyway.
       try:
         if row_key >= len(starts):
-          raise IndexError('row key {} out of bounds'.format(row_key))
+          raise IndexError('Row key {} out of bounds'.format(row_key))
       except TypeError:
         pass
     row = rt_input.values[starts[row_key]:limits[row_key]]
