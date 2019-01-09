@@ -323,6 +323,9 @@ class ReductionToOneDeviceCrossDeviceOps(CrossDeviceOps):
     assert check_destinations(destinations)
     devices = get_devices_from(destinations)
     reduce_to_device = self.reduce_to_device or devices[0]
+    logging.log_first_n(
+        logging.INFO,
+        "Reduce to %s then broadcast to %r." % (reduce_to_device, devices), 10)
     reduced = _simple_reduce(per_replica_value, reduce_to_device,
                              self.accumulation_fn, reduce_op)
     return self.broadcast(reduced, destinations)
@@ -839,9 +842,6 @@ class CollectiveAllReduce(CrossDeviceOps):
     if cross_device_utils.contains_indexed_slices(per_replica_value):
       raise ValueError(
           "`IndexSlices` is not supported for Collective All-Reduce.")
-    if context.executing_eagerly():
-      raise ValueError(
-          "Eager execution is not supported for Collective All-Reduce")
 
     all_reduced = self._batch_all_reduce(reduce_op, [per_replica_value])[0]
     device_map, logical_device = get_device_map_from(destinations)
@@ -865,9 +865,6 @@ class CollectiveAllReduce(CrossDeviceOps):
     if cross_device_utils.contains_indexed_slices(value_destination_pairs):
       raise ValueError(
           "`IndexSlices` is not supported for Collective All-Reduce.")
-    if context.executing_eagerly():
-      raise ValueError(
-          "Eager execution is not supported for Collective All-Reduce")
 
     all_devices_match = _all_devices_match(value_destination_pairs)
     if all_devices_match:
@@ -886,9 +883,6 @@ class CollectiveAllReduce(CrossDeviceOps):
 
   def _batch_all_reduce(self, reduce_op, per_replica_values):
     """All-reduce across all workers in a batch."""
-    if context.executing_eagerly():
-      raise ValueError(
-          "Eager execution with collective ops is not supported yet.")
 
     logging.log_first_n(
         logging.INFO, "Collective All-reduce invoked with batches size = %d, "
@@ -949,12 +943,9 @@ def _has_dgx1_like_links(gpu_links):
 
 def _choose_all_reduce_algorithm(device_links):
   if _has_dgx1_like_links(device_links):
-    logging.info("Configured hierarchical_copy with num_packs=%d",
-                 len(device_links))
     return AllReduceCrossDeviceOps(
         "hierarchical_copy", num_packs=len(device_links))
   else:
-    logging.info("Configured nccl all-reduce.")
     return AllReduceCrossDeviceOps("nccl", num_packs=1)
 
 
