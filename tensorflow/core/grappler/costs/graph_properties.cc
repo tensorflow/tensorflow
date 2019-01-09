@@ -669,7 +669,7 @@ class SymbolicShapeRefiner {
     ctx->output_tensor_protos.resize(grappler_function_item.output_size(),
                                      nullptr);
     for (auto const& out_arg : grappler_function_item.outputs()) {
-      if (out_arg.output_tensors.size() > 1) {
+      if (out_arg.output_nodes.size() > 1) {
         // TODO(jmdecker): Handle case of multiple output tensors
         return errors::Unimplemented(
             "Output arguments with multiple output tensors are not yet "
@@ -678,7 +678,7 @@ class SymbolicShapeRefiner {
 
       // It is guaranteed that output_tensors does not contain any control
       // inputs, so port_id >= 0.
-      TensorId out_tensor = ParseTensorName(out_arg.output_tensors[0]);
+      TensorId out_tensor = ParseTensorName(out_arg.output_nodes[0]);
 
       const NodeDef* retnode = gv.GetNode(out_tensor.node());
       if (retnode == nullptr) {
