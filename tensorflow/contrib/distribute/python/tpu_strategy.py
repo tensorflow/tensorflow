@@ -51,9 +51,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
-_TPU_INITIALIZE_SYSTEM_COLLECTION = "TPU_STRATEGY_INITIALIZE"
-
-
 def initialize_tpu_system(cluster_resolver=None):
   """Initialize the TPU devices in a separate session and graph.
 
@@ -462,28 +459,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     should directly be calling `tf.contrib.distribute.initialize_tpu_system`
     """
     initialize_tpu_system(self._tpu_cluster_resolver)
-
-  def _initialize(self):
-    if context.executing_eagerly():
-      # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
-      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
-    else:
-      # TODO(jhseu): We need this hack because DistributionStrategies must be
-      # pickleable for copy.deepcopy(). Remove when initialize_system goes away.
-      graph = ops.get_default_graph()
-      tpu_init = graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
-      if tpu_init:
-        return tpu_init
-      graph.add_to_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION,
-                              tpu.initialize_system())
-      return graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
-
-  def _finalize(self):
-    if context.executing_eagerly():
-      # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
-      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
-    else:
-      return []
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
