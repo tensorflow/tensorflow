@@ -269,6 +269,49 @@ class LoadTest(test.TestCase):
       grad = t.gradient(loss, [imported.weight, imported.bias])
       self.assertAllClose(grad, [3.5, 1.0])
 
+  def test_callable(self):
+    class M1(tracking.Checkpointable):
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+      def __call__(self, x):
+        return x
+
+    root = tracking.Checkpointable()
+    root.m1 = M1()
+    root.m2 = tracking.Checkpointable()
+    root.m2.__call__ = def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
+            lambda x: x*3.0)
+    imported = self.cycle(root)
+    x = constant_op.constant(1.0)
+
+    self.assertTrue(callable(imported.m1))
+    self.assertAllEqual(root.m1(x), imported.m1(x))
+
+    # Note: `root.m2` was not callable since `__call__` attribute was set
+    # into the instance and not on the class. But after a serialization cycle
+    # that starts to work.
+    self.assertTrue(callable(imported.m2))
+    self.assertAllEqual(root.m2.__call__(x), imported.m2(x))
+
+    # Verify that user objects without `__call__` attribute are not callable.
+    self.assertFalse(callable(imported))
+
+  def test_chain_callable(self):
+    func = def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
+            lambda x: x*3.0)
+    root = tracking.Checkpointable()
+    root.__call__ = tracking.Checkpointable()
+    root.__call__.__call__ = tracking.Checkpointable()
+    root.__call__.__call__.__call__ = func
+
+    imported = self.cycle(root)
+    self.assertTrue(callable(imported))
+    x = constant_op.constant(1.0)
+    self.assertAllEqual(imported(x).numpy(), 3.0)
+
 
 if __name__ == "__main__":
   test.main()
