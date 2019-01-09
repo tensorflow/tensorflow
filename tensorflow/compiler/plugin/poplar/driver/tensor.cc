@@ -747,6 +747,7 @@ static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
   } else {
     tensor = graph.addConstant(type, dim, data);
   }
+  graph.setTileMapping(tensor, 0);
 
   tensor = ConvertToDeviceLayout(shape, tensor);
 }
@@ -767,6 +768,7 @@ static void AddFp16ConstantTensor(poplar::Graph& graph,
   } else {
     tensor = graph.addConstantHalf(type, dim, (uint16_t*)data);
   }
+  graph.setTileMapping(tensor, 0);
 
   tensor = ConvertToDeviceLayout(shape, tensor);
 }
@@ -792,6 +794,7 @@ static void Add64BitConstantTensor(poplar::Graph& graph,
   } else {
     tensor = graph.addConstant(type, dim, data32);
   }
+  graph.setTileMapping(tensor, 0);
 }
 
 template <typename TYPE>
