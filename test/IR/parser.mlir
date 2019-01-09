@@ -379,6 +379,26 @@ func @bbargs() -> (i16, i8) {
   return %1#0, %1#1 : i16, i8
 }
 
+// CHECK-LABEL: func @verbose_terminators() -> (i1, i17)
+func @verbose_terminators() -> (i1, i17) {
+  %0 = "foo"() : () -> (i1, i17)
+// CHECK:  br ^bb1(%0#0, %0#1 : i1, i17)
+  "br"()[^bb1(%0#0, %0#1 : i1, i17)] : () -> ()
+
+^bb1(%x : i1, %y : i17):
+// CHECK:  cond_br %1, ^bb2(%2 : i17), ^bb3(%1, %2 : i1, i17)
+  "cond_br"(%x)[^bb2(%y : i17), ^bb3(%x, %y : i1, i17)] : (i1) -> ()
+
+^bb2(%a : i17):
+  %true = constant 1 : i1
+// CHECK:  return %true, %3 : i1, i17
+  "return"(%true, %a) : (i1, i17) -> ()
+
+^bb3(%b : i1, %c : i17):
+// CHECK:  return %4, %5 : i1, i17
+  "return"(%b, %c) : (i1, i17) -> ()
+}
+
 // CHECK-LABEL: func @condbr_simple
 func @condbr_simple() -> (i32) {
   %cond = "foo"() : () -> i1

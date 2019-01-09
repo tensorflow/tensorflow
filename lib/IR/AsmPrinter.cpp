@@ -1278,16 +1278,37 @@ void FunctionPrinter::printDefaultOp(const OperationInst *op) {
   printEscapedString(op->getName().getStringRef(), os);
   os << "\"(";
 
-  interleaveComma(op->getOperands(),
+  // Get the list of operands that are not successor operands.
+  unsigned totalNumSuccessorOperands = 0;
+  unsigned numSuccessors = op->getNumSuccessors();
+  for (unsigned i = 0; i < numSuccessors; ++i)
+    totalNumSuccessorOperands += op->getNumSuccessorOperands(i);
+  unsigned numProperOperands = op->getNumOperands() - totalNumSuccessorOperands;
+  SmallVector<const Value *, 8> properOperands(
+      op->operand_begin(), std::next(op->operand_begin(), numProperOperands));
+
+  interleaveComma(properOperands,
                   [&](const Value *value) { printValueID(value); });
 
   os << ')';
+
+  // For terminators, print the list of successors and their operands.
+  if (op->isTerminator() && numSuccessors > 0) {
+    os << '[';
+    for (unsigned i = 0; i < numSuccessors; ++i) {
+      if (i != 0)
+        os << ", ";
+      printSuccessorAndUseList(op, i);
+    }
+    os << ']';
+  }
+
   auto attrs = op->getAttrs();
   printOptionalAttrDict(attrs);
 
   // Print the type signature of the operation.
   os << " : (";
-  interleaveComma(op->getOperands(),
+  interleaveComma(properOperands,
                   [&](const Value *value) { printType(value->getType()); });
   os << ") -> ";
 

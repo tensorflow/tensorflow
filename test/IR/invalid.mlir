@@ -414,6 +414,22 @@ func @condbr_a_bb_is_not_a_type() {
 
 // -----
 
+func @successors_in_unknown(%a : i32, %b : i32) {
+  "foo"()[^bb1] : () -> () // expected-error {{successors in non-terminator}}
+^bb1:
+  return
+}
+
+// -----
+
+func @successors_in_non_terminator(%a : i32, %b : i32) {
+  %c = "addi"(%a, %b)[^bb1] : () -> () // expected-error {{successors in non-terminator}}
+^bb1:
+  return
+}
+
+// -----
+
 func @undef() {
 ^bb0:
   %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undeclared SSA value name}}

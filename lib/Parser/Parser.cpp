@@ -1937,6 +1937,11 @@ public:
   bool parseSuccessorAndUseList(Block *&dest,
                                 SmallVectorImpl<Value *> &operands);
 
+  /// Parse a comma-separated list of operation successors in brackets.
+  ParseResult
+  parseSuccessors(SmallVectorImpl<Block *> &destinations,
+                  SmallVectorImpl<SmallVector<Value *, 4>> &operands);
+
   ParseResult
   parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
                             Block *owner);
@@ -2427,6 +2432,28 @@ bool FunctionParser::parseSuccessorAndUseList(
   return false;
 }
 
+/// Parse a comma-separated list of operation successors in brackets.
+///
+///   successor-list ::= `[` successor (`,` successor )* `]`
+///
+ParseResult FunctionParser::parseSuccessors(
+    SmallVectorImpl<Block *> &destinations,
+    SmallVectorImpl<SmallVector<Value *, 4>> &operands) {
+  if (parseToken(Token::l_square, "expected '['"))
+    return ParseFailure;
+
+  auto parseElt = [this, &destinations, &operands]() {
+    Block *dest;
+    SmallVector<Value *, 4> destOperands;
+    bool r = parseSuccessorAndUseList(dest, destOperands);
+    destinations.push_back(dest);
+    operands.push_back(destOperands);
+    return r ? ParseFailure : ParseSuccess;
+  };
+  return parseCommaSeparatedListUntil(Token::r_square, parseElt,
+                                      /*allowEmptyList=*/false);
+}
+
 /// Parse a (possibly empty) list of SSA operands with types as block arguments.
 ///
 ///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
@@ -2543,6 +2570,19 @@ OperationInst *FunctionParser::parseVerboseOperation() {
     return nullptr;
   }
 
+  // Parse the successor list but don't add successors to the result yet to
+  // avoid messing up with the argument order.
+  SmallVector<Block *, 2> successors;
+  SmallVector<SmallVector<Value *, 4>, 2> successorOperands;
+  if (getToken().is(Token::l_square)) {
+    // Check if the operation is a known terminator.
+    const AbstractOperation *abstractOp = result.name.getAbstractOperation();
+    if (!abstractOp || !abstractOp->hasProperty(OperationProperty::Terminator))
+      return emitError("successors in non-terminator"), nullptr;
+    if (parseSuccessors(successors, successorOperands))
+      return nullptr;
+  }
+
   if (getToken().is(Token::l_brace)) {
     if (parseAttributeDict(result.attributes))
       return nullptr;
@@ -2576,6 +2616,13 @@ OperationInst *FunctionParser::parseVerboseOperation() {
     result.operands.push_back(resolveSSAUse(operandInfos[i], operandTypes[i]));
     if (!result.operands.back())
       return nullptr;
+  }
+
+  // Add the sucessors, and their operands after the proper operands.
+  for (const auto &succ : llvm::zip(successors, successorOperands)) {
+    Block *successor = std::get<0>(succ);
+    const SmallVector<Value *, 4> &operands = std::get<1>(succ);
+    result.addSuccessor(successor, operands);
   }
 
   return builder.createOperation(result);

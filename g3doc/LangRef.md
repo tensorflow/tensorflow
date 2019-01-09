@@ -1104,7 +1104,8 @@ Syntax:
 
 ``` {.ebnf}
 operation ::= (ssa-id `=`)? string-literal `(` ssa-use-list? `)`
-              attribute-dict? `:` function-type
+              (`[` successor-list `]`)? attribute-dict? `:` function-type
+successor-list ::= successor (`,` successor)*
 ```
 
 MLIR represents computation within functions with a uniform concept called
@@ -1134,6 +1135,17 @@ Example:
              : (vector<8x128xf32>, vector<8x128xf32>) -> vector<8x128xf32>
 ```
 
+[Terminator operations](#terminator-operations) may also have a list of
+successors ([blocks](#blocks) and their arguments).
+
+Example:
+
+```mlir {.mlir}
+// Branch to ^bb1 or ^bb2 depending on the condition %cond.
+// Pass value %v to ^bb2, but not to ^bb1.
+"br_cond"(%cond)[^bb1, ^bb2(%v : index)] : (i1) -> ()
+```
+
 In addition to the basic syntax above, applications may register tables of known
 operations. This allows those applications to support custom syntax for parsing
 and printing operations. In the operation sets listed below, we show both forms.
@@ -1153,12 +1165,18 @@ TODO: rank, which returns an index.
 
 #### Terminator operations {#terminator-operations}
 
+Terminator operations are required at the end of each block. They may contain a
+list of successors, i.e. other blocks to which the control flow will proceed.
+Currently, all terminator operations must be registered in some known
+[dialect](#dialects), unlike regular operations.
+
 ##### 'br' terminator operation {#'br'-terminator-operation}
 
 Syntax:
 
 ``` {.ebnf}
-operation ::= `br` bb-id branch-use-list?
+operation ::= `br` successor
+successor ::= bb-id branch-use-list?
 branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
 ```
 
@@ -1175,7 +1193,7 @@ Syntax:
 
 ``` {.ebnf}
 operation ::=
-  `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id branch-use-list?
+  `cond_br` ssa-use `,` successor `,` successor
 ```
 
 The `cond_br` terminator instruction represents a conditional branch on a
@@ -2049,7 +2067,7 @@ same element type, and the source and destination types may not be the same.
 They must either have the same rank, or one may be an unknown rank. The
 operation is invalid if converting to a mismatching constant dimension.
 
-## Dialects
+## Dialects {#dialects}
 
 MLIR supports multiple dialects containing a set of operations and types defined
 together, potentially outside of the main tree. Dialects are produced and

@@ -292,6 +292,9 @@ OperationInst *OperationInst::create(Location location, OperationName name,
       OperationInst(location, name, numOperands, resultTypes.size(),
                     numSuccessors, attributes, context);
 
+  assert((numSuccessors == 0 || inst->isTerminator()) &&
+         "unexpected successors in a non-terminator operation");
+
   // Initialize the results and operands.
   auto instResults = inst->getInstResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
