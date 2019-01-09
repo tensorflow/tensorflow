@@ -3,11 +3,10 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_cc_test",
-    "tf_cc_test",
     "tf_copts",
-    "tfe_xla_copts",
+    "tf_cuda_cc_test",
     "tf_cuda_library",
+    "tfe_xla_copts",
 )
 
 tf_cuda_library(
@@ -29,6 +28,7 @@ tf_cuda_library(
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
+            "//tensorflow/core/common_runtime/eager:profiler",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
@@ -89,6 +89,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
+        "//tensorflow/core/common_runtime/eager:profiler",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
@@ -201,6 +202,31 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core:gpu_runtime",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_experimental_test",
+    size = "small",
+    srcs = [
+        "c_api_experimental_test.cc",
+    ],
+    extra_copts = tfe_xla_copts(),
+    tags = [
+        "guitar",
+        "multi_gpu",
+    ],
+    deps = [
+        ":c_api_experimental",
+        ":c_api_test_util",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
