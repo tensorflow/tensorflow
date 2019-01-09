@@ -1213,10 +1213,21 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Find out the dtype to cast to from the function name
     dtype_str = name[3:]
+    # Special cases where the full dtype is not given
+    if dtype_str == "float":
+      dtype_str = "float32"
+    elif dtype_str == "double":
+      dtype_str = "float64"
     new_arg = ast.keyword(arg="dtype",
                           value=ast.Attribute(value=ast.Name(id="tf",
                                                              ctx=ast.Load()),
                                               attr=dtype_str, ctx=ast.Load()))
+    # Ensures a valid transformation when a positional name arg is given
+    if len(node.args) == 2:
+      name_arg = ast.keyword(arg="name",
+                             value=node.args[-1])
+      node.args = node.args[:-1]
+      node.keywords.append(name_arg)
 
     # Python3 ast requires the args for the Attribute, but codegen will mess up
     # the arg order if we just set them to 0.

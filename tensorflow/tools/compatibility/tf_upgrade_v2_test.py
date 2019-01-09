@@ -861,9 +861,27 @@ tf.print('abc')
     self.assertIn(new_text, [expected_text1, expected_text2])
 
   def testCast(self):
-    for dtype in ["int32", "int64", "float", "double",
-                  "complex64", "complex128", "bfloat16"]:
-      text = "tf.to_%s(x, name='test')" % dtype
+    for (name, dtype) in [("int32", "int32"),
+                          ("int64", "int64"),
+                          ("float", "float32"),
+                          ("double", "float64"),
+                          ("complex64", "complex64"),
+                          ("complex128", "complex128"),
+                          ("bfloat16", "bfloat16")]:
+      text = "tf.to_%s(x, name='test')" % name
+      expected_text = "tf.cast(x, name='test', dtype=tf.%s)" % dtype
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+
+  def testCastPositionalSecondArgument(self):
+    for (name, dtype) in [("int32", "int32"),
+                          ("int64", "int64"),
+                          ("float", "float32"),
+                          ("double", "float64"),
+                          ("complex64", "complex64"),
+                          ("complex128", "complex128"),
+                          ("bfloat16", "bfloat16")]:
+      text = "tf.to_%s(x, 'test')" % name
       expected_text = "tf.cast(x, name='test', dtype=tf.%s)" % dtype
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
