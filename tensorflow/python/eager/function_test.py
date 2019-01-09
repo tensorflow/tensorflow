@@ -45,6 +45,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -2062,6 +2063,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # means the object has been deleted. This should be true as long as the
     # function itself is not involved in a reference cycle.
     self.assertIs(None, weak_fn())
+
+  def testFunctionStackInErrorMessage(self):
+
+    @def_function.function()
+    def fn3(x):
+      return x + 2
+
+    @def_function.function()
+    def fn2(x):
+      check_ops.assert_equal(fn3(x), 3)
+      return 2
+
+    @def_function.function()
+    def fn(x):
+      return fn2(x)
+
+    try:
+      fn(2)
+      self.assertFail()
+    except errors.InvalidArgumentError as e:
+      self.assertIn('fn -> fn2', e.message)
+      self.assertIn('node assert_equal/Assert/Assert (defined at', e.message)
+      self.assertNotIn('fn3', e.message)
 
 
 if __name__ == '__main__':
