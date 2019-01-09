@@ -381,7 +381,7 @@ auto-generated for any target you can compile using the main Make system, using
 a command like this (making sure you've run `download_dependencies.sh` first):
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_main_test_mbed_project
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_mbed_project
 ```
 
 This will create a folder in
