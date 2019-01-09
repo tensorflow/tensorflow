@@ -230,7 +230,7 @@ public:
     auto &lhs = operandExprStack.back();
     // TODO(bondhugula): handle modulo by zero case when this issue is fixed
     // at the other places in the IR.
-    assert(rhsConst != 0 && "RHS constant can't be zero");
+    assert(rhsConst > 0 && "RHS constant has to be positive");
 
     // Check if the LHS expression is a multiple of modulo factor.
     unsigned i, e;
@@ -243,23 +243,36 @@ public:
       return;
     }
 
-    // Add an existential quantifier. expr1 % c is replaced by (expr1 -
-    // q * c) where q is the existential quantifier introduced.
-    auto a = toAffineExpr(lhs, numDims, numSymbols, localExprs, context);
-    auto b = getAffineConstantExpr(rhsConst, context);
+    // Add a local variable for the quotient, i.e., expr % c is replaced by
+    // (expr - q * c) where q = expr floordiv c. Do this while canceling out
+    // the GCD of expr and c.
+    SmallVector<int64_t, 8> floorDividend(lhs);
+    uint64_t gcd = rhsConst;
+    for (unsigned i = 0, e = lhs.size(); i < e; i++)
+      gcd = llvm::GreatestCommonDivisor64(gcd, std::abs(lhs[i]));
+    // Simplify the numerator and the denominator.
+    if (gcd != 1) {
+      for (unsigned i = 0, e = floorDividend.size(); i < e; i++)
+        floorDividend[i] = floorDividend[i] / static_cast<int64_t>(gcd);
+    }
+    int64_t floorDivisor = rhsConst / static_cast<int64_t>(gcd);
+
+    // Construct the AffineExpr form of the floordiv to store in localExprs.
+    auto dividendExpr =
+        toAffineExpr(floorDividend, numDims, numSymbols, localExprs, context);
+    auto divisorExpr = getAffineConstantExpr(floorDivisor, context);
+    auto floorDivExpr = dividendExpr.floorDiv(divisorExpr);
     int loc;
-    auto floorDiv = a.floorDiv(b);
-    if ((loc = findLocalId(floorDiv)) == -1) {
-      addLocalId(floorDiv);
+    if ((loc = findLocalId(floorDivExpr)) == -1) {
+      addLocalFloorDivId(floorDividend, floorDivisor, floorDivExpr);
+      // Set result at top of stack to "lhs - rhsConst * q".
       lhs[getLocalVarStartIndex() + numLocals - 1] = -rhsConst;
-      // Update localVarCst:  0 <= expr1 - c * expr2  <= c - 1.
-      localVarCst.addConstantLowerBound(lhs, 0);
-      localVarCst.addConstantUpperBound(lhs, rhsConst - 1);
     } else {
       // Reuse the existing local id.
       lhs[getLocalVarStartIndex() + loc] = -rhsConst;
     }
   }
+
   void visitCeilDivExpr(AffineBinaryOpExpr expr) {
     visitDivExpr(expr, /*isCeil=*/true);
   }
@@ -291,21 +304,20 @@ private:
   // t = expr floordiv c   <=> t = q, c * q <= expr <= c * q + c - 1
   // A floordiv is thus flattened by introducing a new local variable q, and
   // replacing that expression with 'q' while adding the constraints
-  // c * q <= expr <= c * q + c - 1 to localVarCst.
+  // c * q <= expr <= c * q + c - 1 to localVarCst (done by
+  // FlatAffineConstraints::addLocalFloorDiv).
   //
   // A ceildiv is similarly flattened:
-  // t = expr ceildiv c   <=> t = q, c * q - (c - 1) <= expr <= c * q
-  // Note that although t = expr ceildiv c, it is equivalent to
-  // (expr + c - 1) floordiv c.
+  // t = expr ceildiv c   <=> t =  (expr + c - 1) floordiv c
   void visitDivExpr(AffineBinaryOpExpr expr, bool isCeil) {
     assert(operandExprStack.size() >= 2);
     assert(expr.getRHS().isa<AffineConstantExpr>());
 
     // This is a pure affine expr; the RHS is a positive constant.
-    auto rhsConst = operandExprStack.back()[getConstantIndex()];
+    int64_t rhsConst = operandExprStack.back()[getConstantIndex()];
     // TODO(bondhugula): handle division by zero at the same time the issue is
     // fixed at other places.
-    assert(rhsConst != 0 && "RHS constant can't be zero");
+    assert(rhsConst > 0 && "RHS constant has to be positive");
     operandExprStack.pop_back();
     auto &lhs = operandExprStack.back();
 
@@ -319,35 +331,30 @@ private:
       for (unsigned i = 0, e = lhs.size(); i < e; i++)
         lhs[i] = lhs[i] / static_cast<int64_t>(gcd);
     }
-    int64_t denominator = rhsConst / gcd;
-    // If the denominator becomes 1, the updated LHS is the result. (The
-    // denominator can't be negative since rhsConst is positive).
-    if (denominator == 1)
+    int64_t divisor = rhsConst / static_cast<int64_t>(gcd);
+    // If the divisor becomes 1, the updated LHS is the result. (The
+    // divisor can't be negative since rhsConst is positive).
+    if (divisor == 1)
       return;
 
-    // If the denominator cannot be simplified to one, we will have to retain
+    // If the divisor cannot be simplified to one, we will have to retain
     // the ceil/floor expr (simplified up until here). Add an existential
     // quantifier to express its result, i.e., expr1 div expr2 is replaced
     // by a new identifier, q.
     auto a = toAffineExpr(lhs, numDims, numSymbols, localExprs, context);
-    auto b = getAffineConstantExpr(denominator, context);
+    auto b = getAffineConstantExpr(divisor, context);
 
     int loc;
-    auto div = isCeil ? a.ceilDiv(b) : a.floorDiv(b);
-    if ((loc = findLocalId(div)) == -1) {
-      addLocalId(div);
-      std::vector<int64_t> bound(lhs.size(), 0);
-      bound[getLocalVarStartIndex() + numLocals - 1] = rhsConst;
+    auto divExpr = isCeil ? a.ceilDiv(b) : a.floorDiv(b);
+    if ((loc = findLocalId(divExpr)) == -1) {
       if (!isCeil) {
-        // q = lhs floordiv c  <=>  c*q <= lhs <= c*q + c - 1.
-        localVarCst.addLowerBound(lhs, bound);
-        bound[bound.size() - 1] = rhsConst - 1;
-        localVarCst.addUpperBound(lhs, bound);
+        SmallVector<int64_t, 8> dividend(lhs);
+        addLocalFloorDivId(dividend, divisor, divExpr);
       } else {
-        // q = lhs ceildiv c  <=>  c*q - (c - 1) <= lhs <= c*q.
-        localVarCst.addUpperBound(lhs, bound);
-        bound[bound.size() - 1] = -(rhsConst - 1);
-        localVarCst.addLowerBound(lhs, bound);
+        // lhs ceildiv c <=>  (lhs + c - 1) floordiv c
+        SmallVector<int64_t, 8> dividend(lhs);
+        dividend.back() += divisor - 1;
+        addLocalFloorDivId(dividend, divisor, divExpr);
       }
     }
     // Set the expression on stack to the local var introduced to capture the
@@ -359,16 +366,20 @@ private:
       lhs[getLocalVarStartIndex() + loc] = 1;
   }
 
-  // Add an existential quantifier (used to flatten a mod, floordiv, ceildiv
-  // expr). localExpr is the simplified tree expression (AffineExpr)
-  // corresponding to the quantifier.
-  void addLocalId(AffineExpr localExpr) {
-    for (auto &subExpr : operandExprStack) {
+  // Add a local identifier (needed to flatten a mod, floordiv, ceildiv expr).
+  // The local identifier added is always a floordiv of a pure add/mul affine
+  // function of other identifiers, coefficients of which are specified in
+  // dividend and with respect to a positive constant divisor. localExpr is the
+  // simplified tree expression (AffineExpr) corresponding to the quantifier.
+  void addLocalFloorDivId(ArrayRef<int64_t> dividend, int64_t divisor,
+                          AffineExpr localExpr) {
+    assert(divisor > 0 && "positive constant divisor expected");
+    for (auto &subExpr : operandExprStack)
       subExpr.insert(subExpr.begin() + getLocalVarStartIndex() + numLocals, 0);
-    }
     localExprs.push_back(localExpr);
     numLocals++;
-    localVarCst.addLocalId(localVarCst.getNumLocalIds());
+    // Update localVarCst.
+    localVarCst.addLocalFloorDiv(dividend, divisor);
   }
 
   int findLocalId(AffineExpr localExpr) {

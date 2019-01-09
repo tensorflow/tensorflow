@@ -16,7 +16,7 @@
 #map6 = (d0, d1) -> (d0 mod 8, d1 - d1 mod 8)
 
 // Test map with nested floordiv/mod. Simply should scale by GCD.
-// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> ((d0 * 72 + d1) floordiv 2304, (d0 * 72 + d1 - ((d0 * 9216 + d1 * 128) floordiv 294912) * 2304) floordiv 1152)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> ((d0 * 72 + d1) floordiv 2304, ((d0 * 72 + d1) mod 2304) floordiv 1152)
 #map7 = (d0, d1) -> ((d0 * 9216 + d1 * 128) floordiv 294912, ((d0 * 9216 + d1 * 128) mod 294912) floordiv 147456)
 
 // floordiv/mul/sub to mod conversion

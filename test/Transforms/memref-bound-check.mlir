@@ -168,3 +168,15 @@ func @zero_d_memref(%arg0: memref<i32>) {
   store %c0, %arg0[] : memref<i32>
   return
 }
+
+// CHECK-LABEL: func @out_of_bounds
+func @out_of_bounds() {
+  %in = alloc() : memref<1xi32>
+  %c9 = constant 9 : i32
+
+  for %i0 = 10 to 11 {
+    %idy = affine_apply (d0) ->  (100 * d0 floordiv 1000) (%i0)
+    store %c9, %in[%idy] : memref<1xi32> // expected-error {{'store' op memref out of upper bound access along dimension #1}}
+  }
+  return
+}

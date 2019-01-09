@@ -407,8 +407,12 @@ public:
   /// Adds a constant upper bound constraint for the specified identifier.
   void addConstantUpperBound(unsigned pos, int64_t ub);
 
-  /// Adds a lower bound expression for the specified expression.
-  void addLowerBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> lb);
+  /// Adds a new local identifier as the floordiv of an affine function of other
+  /// identifiers, the coefficients of which are provided in 'dividend' and with
+  /// respect to a positive constant 'divisor'. Two constraints are added to the
+  /// system to capture equivalence with the floordiv:
+  /// q = dividend floordiv c    <=>   c*q <= dividend <= c*q + c - 1.
+  void addLocalFloorDiv(ArrayRef<int64_t> dividend, int64_t divisor);
 
   /// Adds constraints (lower and upper bounds) for the specified 'for'
   /// instruction's Value using IR information stored in its bound maps. The
@@ -421,9 +425,6 @@ public:
   /// depending on whether the operand is a valid ML Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.
   bool addForInstDomain(const ForInst &forInst);
-
-  /// Adds an upper bound expression for the specified expression.
-  void addUpperBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> ub);
 
   /// Adds a constant lower bound constraint for the specified expression.
   void addConstantLowerBound(ArrayRef<int64_t> expr, int64_t lb);

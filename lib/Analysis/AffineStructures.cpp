@@ -1459,30 +1459,33 @@ void FlatAffineConstraints::addConstantUpperBound(ArrayRef<int64_t> expr,
   inequalities[offset + getNumCols() - 1] += ub;
 }
 
-void FlatAffineConstraints::addLowerBound(ArrayRef<int64_t> expr,
-                                          ArrayRef<int64_t> lb) {
-  assert(expr.size() == getNumCols());
-  assert(lb.size() == getNumCols());
-  unsigned offset = inequalities.size();
-  inequalities.resize(inequalities.size() + numReservedCols);
-  std::fill(inequalities.begin() + offset,
-            inequalities.begin() + offset + getNumCols(), 0);
-  for (unsigned i = 0, e = getNumCols(); i < e; i++) {
-    inequalities[offset + i] = expr[i] - lb[i];
-  }
-}
+/// Adds a new local identifier as the floordiv of an affine function of other
+/// identifiers, the coefficients of which are provided in 'dividend' and with
+/// respect to a positive constant 'divisor'. Two constraints are added to the
+/// system to capture equivalence with the floordiv.
+///      q = expr floordiv c    <=>   c*q <= expr <= c*q + c - 1.
+void FlatAffineConstraints::addLocalFloorDiv(ArrayRef<int64_t> dividend,
+                                             int64_t divisor) {
+  assert(dividend.size() == getNumCols() && "incorrect dividend size");
+  assert(divisor > 0 && "positive divisor expected");
 
-void FlatAffineConstraints::addUpperBound(ArrayRef<int64_t> expr,
-                                          ArrayRef<int64_t> ub) {
-  assert(expr.size() == getNumCols());
-  assert(ub.size() == getNumCols());
-  unsigned offset = inequalities.size();
-  inequalities.resize(inequalities.size() + numReservedCols);
-  std::fill(inequalities.begin() + offset,
-            inequalities.begin() + offset + getNumCols(), 0);
-  for (unsigned i = 0, e = getNumCols(); i < e; i++) {
-    inequalities[offset + i] = ub[i] - expr[i];
-  }
+  addLocalId(getNumLocalIds());
+
+  // Add two constraints for this new identifier 'q'.
+  SmallVector<int64_t, 8> bound(dividend.size() + 1);
+
+  // dividend - q * divisor >= 0
+  std::copy(dividend.begin(), dividend.begin() + dividend.size() - 1,
+            bound.begin());
+  bound.back() = dividend.back();
+  bound[getNumIds() - 1] = -divisor;
+  addInequality(bound);
+
+  // -dividend +qdivisor * q + divisor - 1 >= 0
+  std::transform(bound.begin(), bound.end(), bound.begin(),
+                 std::negate<int64_t>());
+  bound[bound.size() - 1] += divisor - 1;
+  addInequality(bound);
 }
 
 bool FlatAffineConstraints::findId(const Value &id, unsigned *pos) const {
