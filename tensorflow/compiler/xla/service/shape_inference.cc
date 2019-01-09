@@ -2358,7 +2358,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   };
 
   // Check the shapes of computation parameters and return types.
-  if (!ShapeUtil::ShapeIs(condition.result(), PRED, {})) {
+  if (!ShapeUtil::Equal(condition.result(), ShapeUtil::MakeShape(PRED, {}))) {
     return InvalidArgument("Condition must return a boolean; got %s.",
                            shape_string());
   }
@@ -2378,7 +2378,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& predicate, const Shape& true_operand,
     const Shape& false_operand, const ProgramShape& true_computation,
     const ProgramShape& false_computation) {
-  if (!ShapeUtil::ShapeIs(predicate, PRED, {})) {
+  if (!ShapeUtil::Equal(predicate, ShapeUtil::MakeShape(PRED, {}))) {
     return InvalidArgument("Predicate must be a boolean; got %s.",
                            ShapeUtil::HumanString(predicate));
   }

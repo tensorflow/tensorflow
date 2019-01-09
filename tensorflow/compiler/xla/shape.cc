@@ -80,7 +80,7 @@ string Shape::ToString(bool print_layout) const {
 }
 
 bool Shape::is_static() const {
-  if (ShapeUtil::IsTuple(*this)) {
+  if (IsTuple()) {
     for (const Shape& subshape : tuple_shapes_) {
       if (!subshape.is_static()) {
         return false;
@@ -91,7 +91,7 @@ bool Shape::is_static() const {
 }
 
 void Shape::DeleteDimension(int64 dim_to_delete) {
-  CHECK(ShapeUtil::IsArray(*this));
+  CHECK(IsArray());
   CHECK_GE(dim_to_delete, 0);
   CHECK_LT(dim_to_delete, dimensions_.size());
   dimensions_.erase(dimensions_.begin() + dim_to_delete);
