@@ -606,7 +606,7 @@ REGISTER_OP("ExtractGlimpse")
     .Attr("centered: bool = true")
     .Attr("normalized: bool = true")
     .Attr("uniform_noise: bool = true")
-    .Attr("noise: string = ''")
+    .Attr("noise: string = 'uniform'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
@@ -623,7 +623,7 @@ REGISTER_OP("ExtractGlimpse")
       TF_RETURN_IF_ERROR(c->GetAttr("uniform_noise", &uniform_noise));
       string noise;
       TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
-      if (uniform_noise && noise != "") {
+      if (uniform_noise && (noise != "" && noise != "uniform")) {
         return errors::InvalidArgument(
             "The uniform_noise and noise should not be specified at the same "
             "time");

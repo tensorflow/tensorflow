@@ -38,7 +38,7 @@ class ExtractGlimpseOp : public OpKernel {
     string noise;
     OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise));
     OP_REQUIRES_OK(context, context->GetAttr("noise", &noise));
-    OP_REQUIRES(context, !uniform_noise || noise == "",
+    OP_REQUIRES(context, !(uniform_noise && (noise != "" && noise != "uniform")),
                 errors::InvalidArgument("The uniform_noise and noise could not "
                                         "be specified at the same time"));
     if (noise == "") {
