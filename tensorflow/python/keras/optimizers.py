@@ -740,7 +740,7 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
     return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
-    if distribution_strategy_context.has_distribution_strategy():
+    if distribution_strategy_context.has_strategy():
       self.updates = []
 
       if not params:

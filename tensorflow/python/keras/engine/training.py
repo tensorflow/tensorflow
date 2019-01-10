@@ -216,14 +216,14 @@ class Model(Network):
       self._distribution_strategy = distribute
       self._compile_distribution = True
     else:
-      if distribution_strategy_context.has_distribution_strategy():
+      if distribution_strategy_context.has_strategy():
         # When the user builds the model in the DS scope and cross replica
         # context we want distribution strategy to be set but when building the
         # replica copies of the models internally we should not be compiling
         # with distribution strategy and use the default compilation path.
         if distribution_strategy_context.in_cross_replica_context():
           self._distribution_strategy = (
-              distribution_strategy_context.get_distribution_strategy())
+              distribution_strategy_context.get_strategy())
 
     # Validate that arguments passed by the user to `compile` are supported by
     # DistributionStrategy.
