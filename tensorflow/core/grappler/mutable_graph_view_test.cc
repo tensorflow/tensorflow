@@ -186,10 +186,10 @@ GraphDef SimpleMutateFaninGraph() {
 void CompareNodeInputs(const MutableGraphView& graph, const NodeDef* expected,
                        NodeDef* actual) {
   ASSERT_EQ(actual->input_size(), expected->input_size());
-  int port;
   for (int i = 0; i < actual->input_size(); ++i) {
     EXPECT_EQ(actual->input(i), expected->input(i));
     TensorId tensor_id = ParseTensorName(expected->input(i));
+    int port;
     if (tensor_id.index() == Graph::kControlSlot) {
       port = Graph::kControlSlot;
     } else {
@@ -203,8 +203,9 @@ void CompareNodeInputs(const MutableGraphView& graph, const NodeDef* expected,
   }
 }
 
-void TestAddFanin(absl::string_view node_name, const TensorId& fanin_to_add,
-                  bool modified, const NodeDef* expected_node) {
+void TestAddRegularFanin(absl::string_view node_name,
+                         const TensorId& fanin_to_add, bool modified,
+                         const NodeDef* expected_node) {
   GraphDef graph_def = SimpleMutateFaninGraph();
 
   MutableGraphView graph(&graph_def);
@@ -216,70 +217,71 @@ void TestAddFanin(absl::string_view node_name, const TensorId& fanin_to_add,
     EXPECT_NE(node, nullptr);
   }
 
-  EXPECT_EQ(modified, graph.AddFanin(node_name, fanin_to_add));
+  EXPECT_EQ(modified, graph.AddRegularFanin(node_name, fanin_to_add));
   if (expected_node != nullptr) {
     CompareNodeInputs(graph, expected_node, node);
   }
 }
 
-TEST(MutableGraphViewTest, AddFanin) {
+TEST(MutableGraphViewTest, AddRegularFanin) {
   NodeDef expected_node;
   // Add input to node with 1 input 0 controls.
   expected_node = NDef("", "", {"a", "b:1"});
-  TestAddFanin("foo_1", {"b", 1}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_1", {"b", 1}, /*modified=*/true, &expected_node);
   // Add input to node with multiple inputs and 0 controls.
   expected_node = NDef("", "", {"b", "a:1", "a:1", "b:2"});
-  TestAddFanin("foo_3", {"b", 2}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_3", {"b", 2}, /*modified=*/true, &expected_node);
   // Add input to node with 1 input multiple controls.
   expected_node = NDef("", "", {"b", "a", "^c"});
-  TestAddFanin("foo_2", {"a", 0}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_2", {"a", 0}, /*modified=*/true, &expected_node);
   // Add input to node with multiple inputs and controls.
   expected_node = NDef("", "", {"a", "b:2", "b:2", "a:1", "^d", "^c"});
-  TestAddFanin("foo_4", {"a", 1}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_4", {"a", 1}, /*modified=*/true, &expected_node);
   // Add input to node with 0 inputs 0 controls.
   expected_node = NDef("", "", {"a:1"});
-  TestAddFanin("foo_5", {"a", 1}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_5", {"a", 1}, /*modified=*/true, &expected_node);
   // Add input to node with 0 inputs multiple controls.
   expected_node = NDef("", "", {"c:1", "^b", "^a"});
-  TestAddFanin("foo_6", {"c", 1}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_6", {"c", 1}, /*modified=*/true, &expected_node);
 
   // Add control to node with 1 input 0 controls.
-  expected_node = NDef("", "", {"a", "^b"});
-  TestAddFanin("foo_1", {"b", Graph::kControlSlot}, /*modified=*/true,
-               &expected_node);
+  expected_node = NDef("", "", {"a"});
+  TestAddRegularFanin("foo_1", {"b", Graph::kControlSlot}, /*modified=*/false,
+                      &expected_node);
   // Add control to node with multiple inputs and 0 controls.
-  expected_node = NDef("", "", {"b", "a:1", "a:1", "^c"});
-  TestAddFanin("foo_3", {"c", Graph::kControlSlot}, /*modified=*/true,
-               &expected_node);
+  expected_node = NDef("", "", {"b", "a:1", "a:1"});
+  TestAddRegularFanin("foo_3", {"c", Graph::kControlSlot}, /*modified=*/false,
+                      &expected_node);
   // Add control to node with 1 input multiple controls.
-  expected_node = NDef("", "", {"b", "^a", "^c", "^d"});
-  TestAddFanin("foo_2", {"d", Graph::kControlSlot}, /*modified=*/true,
-               &expected_node);
+  expected_node = NDef("", "", {"b", "^a", "^c"});
+  TestAddRegularFanin("foo_2", {"d", Graph::kControlSlot}, /*modified=*/false,
+                      &expected_node);
   // Add control to node with multiple input multiple controls.
   expected_node = NDef("", "", {"a", "b:2", "b:2", "^c", "^d"});
-  TestAddFanin("foo_4", {"a", Graph::kControlSlot}, /*modified=*/false,
-               &expected_node);
+  TestAddRegularFanin("foo_4", {"a", Graph::kControlSlot},
+                      /*modified=*/false, &expected_node);
   // Add control to node with 0 inputs 0 controls.
-  expected_node = NDef("", "", {"^a"});
-  TestAddFanin("foo_5", {"a", Graph::kControlSlot}, /*modified=*/true,
-               &expected_node);
+  expected_node = NDef("", "", {});
+  TestAddRegularFanin("foo_5", {"a", Graph::kControlSlot}, /*modified=*/false,
+                      &expected_node);
   // Add control to node with 0 inputs multiple controls.
-  expected_node = NDef("", "", {"^a", "^b", "^c"});
-  TestAddFanin("foo_6", {"c", Graph::kControlSlot}, /*modified=*/true,
-               &expected_node);
+  expected_node = NDef("", "", {"^a", "^b"});
+  TestAddRegularFanin("foo_6", {"c", Graph::kControlSlot}, /*modified=*/false,
+                      &expected_node);
   // Add control to node with control that already exists.
   expected_node = NDef("", "", {"b", "^a", "^c"});
-  TestAddFanin("foo_2", {"a", Graph::kControlSlot}, /*modified=*/false,
-               &expected_node);
+  TestAddRegularFanin("foo_2", {"a", Graph::kControlSlot},
+                      /*modified=*/false, &expected_node);
 
   // Add fanin to node where node is missing.
-  TestAddFanin("foo_missing", {"a", 0}, /*modified=*/false, nullptr);
+  TestAddRegularFanin("foo_missing", {"a", 0}, /*modified=*/false, nullptr);
   // Add fanin to node where fanin is missing.
   expected_node = NDef("", "", {"a"});
-  TestAddFanin("foo_1", {"bar_missing", 0}, /*modified=*/false, &expected_node);
+  TestAddRegularFanin("foo_1", {"bar_missing", 0}, /*modified=*/false,
+                      &expected_node);
   // Add fanin to node where node and fanin are missing.
-  TestAddFanin("foo_missing", {"bar_missing", 0}, /*modified=*/false,
-               /*expected_node=*/nullptr);
+  TestAddRegularFanin("foo_missing", {"bar_missing", 0}, /*modified=*/false,
+                      /*expected_node=*/nullptr);
 }
 
 void CheckFanout(const MutableGraphView& graph, const TensorId& fanin,
@@ -292,9 +294,9 @@ void CheckFanout(const MutableGraphView& graph, const TensorId& fanin,
   }
 }
 
-void TestRemoveFanin(absl::string_view node_name,
-                     const TensorId& fanin_to_remove, bool modified,
-                     const NodeDef* expected_node) {
+void TestRemoveRegularFanin(absl::string_view node_name,
+                            const TensorId& fanin_to_remove, bool modified,
+                            const NodeDef* expected_node) {
   GraphDef graph_def = SimpleMutateFaninGraph();
 
   MutableGraphView graph(&graph_def);
@@ -306,7 +308,7 @@ void TestRemoveFanin(absl::string_view node_name,
     EXPECT_NE(nullptr, node);
   }
 
-  EXPECT_EQ(modified, graph.RemoveFanin(node_name, fanin_to_remove));
+  EXPECT_EQ(modified, graph.RemoveRegularFanin(node_name, fanin_to_remove));
   if (expected_node != nullptr) {
     CompareNodeInputs(graph, expected_node, node);
     if (modified) {
@@ -315,63 +317,68 @@ void TestRemoveFanin(absl::string_view node_name,
   }
 }
 
-TEST(MutableGraphViewTest, RemoveFanin) {
+TEST(MutableGraphViewTest, RemoveRegularFanin) {
   NodeDef expected_node;
   // Remove input from node with 1 input 0 controls.
   expected_node = NDef("", "", {});
-  TestRemoveFanin("foo_1", {"a", 0}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_1", {"a", 0}, /*modified=*/true, &expected_node);
   // Remove input from node with multiple inputs and 0 controls.
   expected_node = NDef("", "", {"b"});
-  TestRemoveFanin("foo_3", {"a", 1}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_3", {"a", 1}, /*modified=*/true, &expected_node);
   // Remove input from node with 1 input multiple controls.
   expected_node = NDef("", "", {"^a", "^c"});
-  TestRemoveFanin("foo_2", {"b", 0}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_2", {"b", 0}, /*modified=*/true, &expected_node);
   // Remove input from node with multiple inputs and controls.
   expected_node = NDef("", "", {"a", "^c", "^d"});
-  TestRemoveFanin("foo_4", {"b", 2}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_4", {"b", 2}, /*modified=*/true, &expected_node);
+  // Remove input from node with multiple inputs and controls, and results in
+  // shifting of ports.
+  expected_node = NDef("", "", {"b:2", "b:2", "^c", "^d"});
+  TestRemoveRegularFanin("foo_4", {"a", 0}, /*modified=*/true, &expected_node);
 
   // Remove control from node with 1 input multiple controls.
-  expected_node = NDef("", "", {"b", "^c"});
-  TestRemoveFanin("foo_2", {"a", Graph::kControlSlot}, /*modified=*/true,
-                  &expected_node);
+  expected_node = NDef("", "", {"b", "^a", "^c"});
+  TestRemoveRegularFanin("foo_2", {"a", Graph::kControlSlot},
+                         /*modified=*/false, &expected_node);
   // Remove control from node with multiple input multiple controls.
-  expected_node = NDef("", "", {"a", "b:2", "b:2", "^c"});
-  TestRemoveFanin("foo_4", {"d", Graph::kControlSlot}, /*modified=*/true,
-                  &expected_node);
+  expected_node = NDef("", "", {"a", "b:2", "b:2", "^c", "^d"});
+  TestRemoveRegularFanin("foo_4", {"d", Graph::kControlSlot},
+                         /*modified=*/false, &expected_node);
   // Remove control from node with 0 inputs multiple controls.
-  expected_node = NDef("", "", {"^b"});
-  TestRemoveFanin("foo_6", {"a", Graph::kControlSlot}, /*modified=*/true,
-                  &expected_node);
+  expected_node = NDef("", "", {"^a", "^b"});
+  TestRemoveRegularFanin("foo_6", {"a", Graph::kControlSlot},
+                         /*modified=*/false, &expected_node);
 
   // Remove input from node with 0 inputs 0 controls.
   expected_node = NDef("", "", {});
-  TestRemoveFanin("foo_5", {"a", 1}, /*modified=*/false, &expected_node);
+  TestRemoveRegularFanin("foo_5", {"a", 1}, /*modified=*/false, &expected_node);
   // Remove input from node with 0 inputs multiple controls.
   expected_node = NDef("", "", {"^a", "^b"});
-  TestRemoveFanin("foo_6", {"a", 1}, /*modified=*/false, &expected_node);
+  TestRemoveRegularFanin("foo_6", {"a", 1}, /*modified=*/false, &expected_node);
+
   // Remove control from node with 1 input 0 controls.
   expected_node = NDef("", "", {"a"});
-  TestRemoveFanin("foo_1", {"b", Graph::kControlSlot}, /*modified=*/false,
-                  &expected_node);
+  TestRemoveRegularFanin("foo_1", {"b", Graph::kControlSlot},
+                         /*modified=*/false, &expected_node);
   // Remove control from node with multiple inputs and 0 controls.
   expected_node = NDef("", "", {"b", "a:1", "a:1"});
-  TestRemoveFanin("foo_3", {"c", Graph::kControlSlot}, /*modified=*/false,
-                  &expected_node);
+  TestRemoveRegularFanin("foo_3", {"c", Graph::kControlSlot},
+                         /*modified=*/false, &expected_node);
   // Remove control from node with 0 inputs 0 controls.
   expected_node = NDef("", "", {});
-  TestRemoveFanin("foo_5", {"a", Graph::kControlSlot}, /*modified=*/false,
-                  &expected_node);
+  TestRemoveRegularFanin("foo_5", {"a", Graph::kControlSlot},
+                         /*modified=*/false, &expected_node);
 
   // Remove fanin from node where node is missing.
-  TestRemoveFanin("foo_missing", {"a", 0}, /*modified=*/false,
-                  /*expected_node=*/nullptr);
+  TestRemoveRegularFanin("foo_missing", {"a", 0}, /*modified=*/false,
+                         /*expected_node=*/nullptr);
   // Remove fanin from node where fanin is missing.
   expected_node = NDef("", "", {"a"});
-  TestRemoveFanin("foo_1", {"bar_missing", 0}, /*modified=*/false,
-                  &expected_node);
+  TestRemoveRegularFanin("foo_1", {"bar_missing", 0}, /*modified=*/false,
+                         &expected_node);
   // Remove fanin from node where node and fanin are missing.
-  TestRemoveFanin("foo_missing", {"bar_missing", 0}, /*modified=*/false,
-                  /*expected_node=*/nullptr);
+  TestRemoveRegularFanin("foo_missing", {"bar_missing", 0}, /*modified=*/false,
+                         /*expected_node=*/nullptr);
 }
 
 void TestRemoveAllFanins(absl::string_view node_name,
@@ -540,56 +547,59 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnGraphInit) {
   MutableGraphView graph(&graph_def);
 
   EXPECT_EQ(graph.graph()->node_size(), 11);
+  NodeDef expected;
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
-  ASSERT_EQ(a->input_size(), 0);
+  expected = NDef("", "", {});
+  CompareNodeInputs(graph, &expected, a);
+
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
-  ASSERT_EQ(b->input_size(), 0);
+  CompareNodeInputs(graph, &expected, b);
+
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
-  ASSERT_EQ(c->input_size(), 0);
+  CompareNodeInputs(graph, &expected, c);
+
   NodeDef* d = graph.GetNode("d");
   ASSERT_NE(d, nullptr);
-  ASSERT_EQ(d->input_size(), 1);
-  EXPECT_EQ(d->input(0), "c:1");
+  expected = NDef("", "", {"c:1"});
+  CompareNodeInputs(graph, &expected, d);
+
   NodeDef* foo_1 = graph.GetNode("foo_1");
   ASSERT_NE(foo_1, nullptr);
-  ASSERT_EQ(foo_1->input_size(), 2);
-  EXPECT_EQ(foo_1->input(0), "a");
-  EXPECT_EQ(foo_1->input(1), "b:1");
+  expected = NDef("", "", {"a", "b:1"});
+  CompareNodeInputs(graph, &expected, foo_1);
+
   NodeDef* foo_2 = graph.GetNode("foo_2");
   ASSERT_NE(foo_2, nullptr);
-  ASSERT_EQ(foo_2->input_size(), 2);
-  EXPECT_EQ(foo_2->input(0), "a");
-  EXPECT_EQ(foo_2->input(1), "^b");
+  expected = NDef("", "", {"a", "^b"});
+  CompareNodeInputs(graph, &expected, foo_2);
+
   NodeDef* foo_3 = graph.GetNode("foo_3");
   ASSERT_NE(foo_3, nullptr);
-  ASSERT_EQ(foo_3->input_size(), 2);
-  EXPECT_EQ(foo_3->input(0), "a");
-  EXPECT_EQ(foo_3->input(1), "b:1");
+  expected = NDef("", "", {"a", "b:1"});
+  CompareNodeInputs(graph, &expected, foo_3);
+
   NodeDef* foo_4 = graph.GetNode("foo_4");
   ASSERT_NE(foo_4, nullptr);
-  ASSERT_EQ(foo_4->input_size(), 2);
-  EXPECT_EQ(foo_4->input(0), "a:2");
-  EXPECT_EQ(foo_4->input(1), "b:1");
+  expected = NDef("", "", {"a:2", "b:1"});
+  CompareNodeInputs(graph, &expected, foo_4);
+
   NodeDef* foo_5 = graph.GetNode("foo_5");
   ASSERT_NE(foo_5, nullptr);
-  ASSERT_EQ(foo_5->input_size(), 2);
-  EXPECT_EQ(foo_5->input(0), "a:2");
-  EXPECT_EQ(foo_5->input(1), "b:1");
+  expected = NDef("", "", {"a:2", "b:1"});
+  CompareNodeInputs(graph, &expected, foo_5);
+
   NodeDef* foo_6 = graph.GetNode("foo_6");
   ASSERT_NE(foo_6, nullptr);
-  ASSERT_EQ(foo_6->input_size(), 2);
-  EXPECT_EQ(foo_6->input(0), "d");
-  EXPECT_EQ(foo_6->input(1), "^d");
+  expected = NDef("", "", {"d", "^d"});
+  CompareNodeInputs(graph, &expected, foo_6);
+
   NodeDef* foo_7 = graph.GetNode("foo_7");
   ASSERT_NE(foo_7, nullptr);
-  ASSERT_EQ(foo_7->input_size(), 4);
-  EXPECT_EQ(foo_7->input(0), "a:3");
-  EXPECT_EQ(foo_7->input(1), "b:2");
-  EXPECT_EQ(foo_7->input(2), "d");
-  EXPECT_EQ(foo_7->input(3), "^d");
+  expected = NDef("", "", {"a:3", "b:2", "d", "^d"});
+  CompareNodeInputs(graph, &expected, foo_7);
 }
 
 TEST(MutableGraphViewTest, DedupControllingFaninsOnAddFanin) {
@@ -601,17 +611,18 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddFanin("b", {"a", 2}));
+  EXPECT_TRUE(graph.AddRegularFanin("b", {"a", 2}));
+  NodeDef expected;
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
-  ASSERT_EQ(b->input_size(), 1);
-  EXPECT_EQ(b->input(0), "a:2");
+  expected = NDef("", "", {"a:2"});
+  CompareNodeInputs(graph, &expected, b);
 
-  EXPECT_FALSE(graph.AddFanin("c", {"a", Graph::kControlSlot}));
+  EXPECT_FALSE(graph.AddControllingFanin("c", {"a", Graph::kControlSlot}));
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
-  ASSERT_EQ(c->input_size(), 1);
-  EXPECT_EQ(c->input(0), "a:1");
+  expected = NDef("", "", {"a:1"});
+  CompareNodeInputs(graph, &expected, c);
 }
 
 TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnAddFanin) {
@@ -622,32 +633,30 @@ TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddFanin("c", {"b", 2}));
+  EXPECT_TRUE(graph.AddRegularFanin("c", {"b", 2}));
+  NodeDef expected;
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
-  ASSERT_EQ(c->input_size(), 1);
-  EXPECT_EQ(c->input(0), "b:2");
-  EXPECT_TRUE(graph.AddFanin("c", {"b", Graph::kControlSlot}));
-  ASSERT_EQ(c->input_size(), 2);
-  EXPECT_EQ(c->input(0), "b:2");
-  EXPECT_EQ(c->input(1), "^b");
-  EXPECT_FALSE(graph.AddFanin("c", {"b", Graph::kControlSlot}));
-  ASSERT_EQ(c->input_size(), 2);
-  EXPECT_EQ(c->input(0), "b:2");
-  EXPECT_EQ(c->input(1), "^b");
+  expected = NDef("", "", {"b:2"});
+  CompareNodeInputs(graph, &expected, c);
+  EXPECT_TRUE(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}));
+  expected = NDef("", "", {"b:2", "^b"});
+  CompareNodeInputs(graph, &expected, c);
+  EXPECT_FALSE(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}));
+  expected = NDef("", "", {"b:2", "^b"});
+  CompareNodeInputs(graph, &expected, c);
 
-  EXPECT_TRUE(graph.AddFanin("d", {"b", Graph::kControlSlot}));
+  EXPECT_TRUE(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
   NodeDef* d = graph.GetNode("d");
   ASSERT_NE(d, nullptr);
-  ASSERT_EQ(d->input_size(), 1);
-  EXPECT_EQ(d->input(0), "^b");
-  EXPECT_FALSE(graph.AddFanin("d", {"b", Graph::kControlSlot}));
-  ASSERT_EQ(d->input_size(), 1);
-  EXPECT_EQ(d->input(0), "^b");
-  EXPECT_TRUE(graph.AddFanin("d", {"b", 3}));
-  ASSERT_EQ(d->input_size(), 2);
-  EXPECT_EQ(d->input(0), "b:3");
-  EXPECT_EQ(d->input(1), "^b");
+  expected = NDef("", "", {"^b"});
+  CompareNodeInputs(graph, &expected, d);
+  EXPECT_FALSE(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
+  expected = NDef("", "", {"^b"});
+  CompareNodeInputs(graph, &expected, d);
+  EXPECT_TRUE(graph.AddRegularFanin("d", {"b", 3}));
+  expected = NDef("", "", {"b:3", "^b"});
+  CompareNodeInputs(graph, &expected, d);
 }
 
 TEST(MutableGraphViewTest, DedupControllingFaninsOnUpdateFanin) {
@@ -662,8 +671,8 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnUpdateFanin) {
   EXPECT_TRUE(graph.UpdateFanin("c", {"a", 1}, {"b", 2}));
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
-  ASSERT_EQ(c->input_size(), 1);
-  EXPECT_EQ(c->input(0), "b:2");
+  NodeDef expected = NDef("", "", {"b:2"});
+  CompareNodeInputs(graph, &expected, c);
 }
 
 TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnUpdateFanin) {
@@ -677,23 +686,22 @@ TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnUpdateFanin) {
 
   EXPECT_TRUE(graph.UpdateFanin("d", {"b", Graph::kControlSlot},
                                 {"c", Graph::kControlSlot}));
+  NodeDef expected;
   NodeDef* d = graph.GetNode("d");
   ASSERT_NE(d, nullptr);
-  ASSERT_EQ(d->input_size(), 2);
-  EXPECT_EQ(d->input(0), "c");
-  EXPECT_EQ(d->input(1), "^c");
+  expected = NDef("", "", {"c", "^c"});
+  CompareNodeInputs(graph, &expected, d);
 
   EXPECT_TRUE(graph.UpdateFanin("e", {"b", 0}, {"c", 3}));
   NodeDef* e = graph.GetNode("e");
   ASSERT_NE(e, nullptr);
-  ASSERT_EQ(e->input_size(), 2);
-  EXPECT_EQ(e->input(0), "c:3");
-  EXPECT_EQ(e->input(1), "^c");
+  expected = NDef("", "", {"c:3", "^c"});
+  CompareNodeInputs(graph, &expected, e);
 
   EXPECT_TRUE(graph.UpdateFanin("e", {"c", 3}, {"c", Graph::kControlSlot}));
   ASSERT_NE(e, nullptr);
-  ASSERT_EQ(e->input_size(), 1);
-  EXPECT_EQ(e->input(0), "^c");
+  expected = NDef("", "", {"^c"});
+  CompareNodeInputs(graph, &expected, e);
 }
 
 TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnAddFanin) {
@@ -705,14 +713,17 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddFanin("c", {"a", 3}));
+  EXPECT_TRUE(graph.AddRegularFanin("c", {"a", 3}));
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
+
   auto fanouts = graph.GetFanouts(*a, /*include_controlled_nodes=*/true);
   EXPECT_EQ(fanouts.size(), 2);
+
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
   EXPECT_EQ(fanouts.count(MutableGraphView::InputPort(b, 0)), 1);
+
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
   EXPECT_EQ(fanouts.count(MutableGraphView::InputPort(c, 0)), 1);
@@ -727,11 +738,13 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnRemoveFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveFanin("c", {"a", 2}));
+  EXPECT_TRUE(graph.RemoveRegularFanin("c", {"a", 2}));
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
+
   auto fanouts = graph.GetFanouts(*a, /*include_controlled_nodes=*/true);
   EXPECT_EQ(fanouts.size(), 1);
+
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
   EXPECT_EQ(fanouts.count(MutableGraphView::InputPort(b, 0)), 1);
@@ -746,11 +759,13 @@ TEST(MutableGraphViewTest, KeepMaxRegularOutputPortOnRemoveFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveFanin("b", {"a", 1}));
+  EXPECT_TRUE(graph.RemoveRegularFanin("b", {"a", 1}));
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
+
   auto fanouts = graph.GetFanouts(*a, /*include_controlled_nodes=*/true);
   EXPECT_EQ(fanouts.size(), 1);
+
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
   EXPECT_EQ(fanouts.count(MutableGraphView::InputPort(c, 0)), 1);
@@ -768,13 +783,17 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnUpdateFanin) {
   EXPECT_TRUE(graph.UpdateFanin("c", {"a", 2}, {"b", 3}));
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
+
   auto a_fanouts = graph.GetFanouts(*a, /*include_controlled_nodes=*/true);
   EXPECT_EQ(a_fanouts.size(), 1);
+
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
   EXPECT_EQ(a_fanouts.count(MutableGraphView::InputPort(b, 0)), 1);
+
   auto b_fanouts = graph.GetFanouts(*b, /*include_controlled_nodes=*/true);
   EXPECT_EQ(b_fanouts.size(), 1);
+
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
   EXPECT_EQ(b_fanouts.count(MutableGraphView::InputPort(c, 0)), 1);
@@ -795,12 +814,15 @@ TEST(MutableGraphViewTest, AddControllingFaninMissing) {
   EXPECT_FALSE(graph.AddControllingFanin("c", {"d", Graph::kControlSlot}));
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
+  NodeDef expected;
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
-  ASSERT_EQ(a->input_size(), 0);
+  expected = NDef("", "", {});
+  CompareNodeInputs(graph, &expected, a);
+
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
-  ASSERT_EQ(b->input_size(), 0);
+  CompareNodeInputs(graph, &expected, b);
 }
 
 TEST(MutableGraphViewTest, AddControllingFaninExistingControl) {
@@ -814,13 +836,16 @@ TEST(MutableGraphViewTest, AddControllingFaninExistingControl) {
   EXPECT_FALSE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}));
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
+  NodeDef expected;
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
-  ASSERT_EQ(a->input_size(), 1);
-  EXPECT_EQ(a->input(0), "^b");
+  expected = NDef("", "", {"^b"});
+  CompareNodeInputs(graph, &expected, a);
+
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
-  ASSERT_EQ(b->input_size(), 0);
+  expected = NDef("", "", {});
+  CompareNodeInputs(graph, &expected, b);
 }
 
 TEST(MutableGraphViewTest, AddControllingFaninNotSwitch) {
@@ -834,13 +859,16 @@ TEST(MutableGraphViewTest, AddControllingFaninNotSwitch) {
   EXPECT_FALSE(graph.AddControllingFanin("a", {"b", 2}));
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
+  NodeDef expected;
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
-  ASSERT_EQ(a->input_size(), 1);
-  EXPECT_EQ(a->input(0), "^b");
+  expected = NDef("", "", {"^b"});
+  CompareNodeInputs(graph, &expected, a);
+
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
-  ASSERT_EQ(b->input_size(), 0);
+  expected = NDef("", "", {});
+  CompareNodeInputs(graph, &expected, b);
 }
 
 TEST(MutableGraphViewTest, AddControllingFaninSwitchWithIdentity) {
@@ -857,8 +885,8 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithIdentity) {
   ASSERT_EQ(graph.graph()->node_size(), 3);
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
-  ASSERT_EQ(a->input_size(), 1);
-  EXPECT_EQ(a->input(0), "^identity");
+  NodeDef expected = NDef("", "", {"^identity"});
+  CompareNodeInputs(graph, &expected, a);
 }
 
 TEST(MutableGraphViewTest, AddControllingFaninSwitchWithNoExistingIdentity) {
@@ -874,14 +902,16 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithNoExistingIdentity) {
   EXPECT_FALSE(graph.AddControllingFanin("a", {"switch", 0}));
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
+  NodeDef expected;
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
-  ASSERT_EQ(a->input_size(), 1);
-  EXPECT_EQ(a->input(0), "^ConstantFoldingCtrl/switch_0");
+  expected = NDef("", "", {"^ConstantFoldingCtrl/switch_0"});
+  CompareNodeInputs(graph, &expected, a);
+
   NodeDef* identity = graph.GetNode("ConstantFoldingCtrl/switch_0");
   ASSERT_NE(identity, nullptr);
-  ASSERT_EQ(identity->input_size(), 1);
-  EXPECT_EQ(identity->input(0), "switch");
+  expected = NDef("", "", {"switch"});
+  CompareNodeInputs(graph, &expected, identity);
   EXPECT_EQ(identity->op(), "Identity");
   EXPECT_EQ(identity->device(), kDevice);
   ASSERT_TRUE(identity->attr().count("T"));
@@ -902,8 +932,72 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithExistingAddedIdentity) {
   ASSERT_EQ(graph.graph()->node_size(), 3);
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
-  ASSERT_EQ(a->input_size(), 1);
-  EXPECT_EQ(a->input(0), "^ConstantFoldingCtrl/switch_0");
+  NodeDef expected = NDef("", "", {"^ConstantFoldingCtrl/switch_0"});
+  CompareNodeInputs(graph, &expected, a);
+}
+
+TEST(MutableGraphViewTest, RemoveControllingFaninMissing) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {
+          NDef("a", "NotImportant", {}, {}),
+          NDef("b", "NotImportant", {}, {}),
+          NDef("c", "NotImportant", {}, {}),
+          NDef("d", "NotImportant", {"^a", "^b"}),
+      },
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_FALSE(graph.RemoveControllingFanin("d", "c"));
+
+  ASSERT_EQ(graph.graph()->node_size(), 4);
+  NodeDef* d = graph.GetNode("d");
+  ASSERT_NE(d, nullptr);
+  NodeDef expected = NDef("", "", {"^a", "^b"});
+  CompareNodeInputs(graph, &expected, d);
+}
+
+TEST(MutableGraphViewTest, RemoveControllingFaninExisting) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {
+          NDef("a", "NotImportant", {}, {}),
+          NDef("b", "NotImportant", {}, {}),
+          NDef("c", "NotImportant", {}, {}),
+          NDef("d", "NotImportant", {"^a", "^b", "^c"}),
+      },
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_TRUE(graph.RemoveControllingFanin("d", "a"));
+  EXPECT_FALSE(graph.RemoveControllingFanin("d", "a"));
+
+  ASSERT_EQ(graph.graph()->node_size(), 4);
+  NodeDef* d = graph.GetNode("d");
+  ASSERT_NE(d, nullptr);
+  NodeDef expected = NDef("", "", {"^c", "^b"});
+  CompareNodeInputs(graph, &expected, d);
+}
+
+TEST(MutableGraphViewTest, RemoveControllingFaninOnRegularFanin) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {"a"}),
+       NDef("c", "NotImportant", {"a", "b", "^c"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_FALSE(graph.RemoveControllingFanin("c", "a"));
+  EXPECT_FALSE(graph.RemoveControllingFanin("c", "b"));
+
+  ASSERT_EQ(graph.graph()->node_size(), 3);
+  NodeDef* c = graph.GetNode("c");
+  ASSERT_NE(c, nullptr);
+  NodeDef expected = NDef("", "", {"a", "b", "^c"});
+  CompareNodeInputs(graph, &expected, c);
 }
 
 TEST(MutableGraphViewTest, DeleteNodes) {
