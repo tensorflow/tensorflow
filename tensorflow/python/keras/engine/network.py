@@ -335,9 +335,11 @@ class Network(base_layer.Layer):
     if not getattr(self, '_setattr_tracking', True):
       super(Network, self).__setattr__(name, value)
       return
-    if (isinstance(value, (base_layer.Layer,
-                           data_structures.CheckpointableDataStructure))
-        or checkpointable_layer_utils.has_weights(value)):
+
+    if all(
+        isinstance(v, (base_layer.Layer,
+                       data_structures.CheckpointableDataStructure)) or
+        checkpointable_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._is_graph_network
       except AttributeError:
