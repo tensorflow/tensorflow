@@ -104,6 +104,10 @@ static Node* AddIdentity(Graph* g, Endpoint input) {
   NodeDef ndef;
   ndef.set_name(g->NewName(kNodeLabel));
   ndef.set_op("Identity");
+  // NOTE(skyewm): we explicitly set the device here to address a multi-GPU
+  // performance issue where this Identity would be placed alone on a GPU,
+  // causing unnecessary device traffic. See b/122483225 for details.
+  ndef.set_device(input.node->def().device());
   ndef.add_input(input.name());
   AddNodeAttr("T", BaseType(input.dtype()), &ndef);
   Status s;
