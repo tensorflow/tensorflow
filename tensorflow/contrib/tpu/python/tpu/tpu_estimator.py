@@ -1412,7 +1412,8 @@ class _ModelFnWrapper(object):
       if tensor_tracer.TensorTracer.is_enabled():
         tt = tensor_tracer.TensorTracer()
         loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
-                                         self._ctx.num_replicas)
+                                         self._ctx.num_replicas,
+                                         fetches=[loss, train_op])
 
       # We must run train_op to update the variables prior to running the
       # outfeed.
