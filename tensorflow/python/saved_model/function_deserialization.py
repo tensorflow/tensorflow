@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tools for deserializing PolymorphicFunctions."""
+"""Tools for deserializing `Function`s."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -54,25 +54,24 @@ def _inputs_compatible(args, stored_inputs):
   return True
 
 
-def recreate_polymorphic_function(
-    saved_polymorphic_function, functions):
-  """Creates a PolymorphicFunction from a SavedPolymorphicFunction.
+def recreate_function(saved_function, concrete_functions):
+  """Creates a `Function` from a `SavedPolymorphicFunction`.
 
   Args:
-    saved_polymorphic_function: SavedPolymorphicFunction proto.
-    functions: map from function name to `ConcreteFunction`.
+    saved_function: `SavedPolymorphicFunction` proto.
+    concrete_functions: map from function name to `ConcreteFunction`.
 
   Returns:
-    A PolymorphicFunction.
+    A `Function`.
   """
-  # TODO(andresp): Construct a PolymorphicFunction with the cache populated
-  # instead of creating a new PolymorphicFunction backed by a Python layer to
+  # TODO(andresp): Construct a `Function` with the cache populated
+  # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
 
   coder = nested_structure_coder.StructureCoder()
   function_spec_tuple = coder.decode_proto(
-      saved_polymorphic_function.function_spec_tuple)
+      saved_function.function_spec_tuple)
   function_spec = function_lib.FunctionSpec.from_tuple(function_spec_tuple)
 
   # TODO(mdan): We may enable autograph once exceptions are supported.
@@ -81,8 +80,8 @@ def recreate_polymorphic_function(
     """Calls a restored function."""
     # TODO(allenl): Functions saved with input_signatures should revive with
     # input_signatures.
-    for monomorphic_function in saved_polymorphic_function.monomorphic_function:
-      function_obj = functions[monomorphic_function.concrete_function]
+    for monomorphic_function in saved_function.monomorphic_function:
+      function_obj = concrete_functions[monomorphic_function.concrete_function]
       canonicalized_original_inputs = coder.decode_proto(
           monomorphic_function.canonicalized_input)
 

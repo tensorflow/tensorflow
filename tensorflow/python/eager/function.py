@@ -997,16 +997,16 @@ class FunctionSpec(object):
       return inputs, {}
 
 
-class PolymorphicFunction(object):
+class Function(object):
   """Wrapper class for the graph functions defined for a Python function.
 
   See the documentation for `defun` for more information on the semantics of
   defined functions.
 
-  PolymorphicFunction class is thread-compatible meaning that minimal
-  usage of defuns (defining and calling) is thread-safe, but if users call other
-  methods or invoke the base `python_function` themselves, external
-  synchronization is necessary.
+  `Function` class is thread-compatible meaning that minimal usage of defuns
+  (defining and calling) is thread-safe, but if users call other methods or
+  invoke the base `python_function` themselves, external synchronization is
+  necessary.
   """
 
   def __init__(self,
@@ -1015,7 +1015,7 @@ class PolymorphicFunction(object):
                input_signature=None,
                attributes=None,
                autograph=True):
-    """Initializes a polymorphic function.
+    """Initializes a `Function`.
 
     Args:
       python_function: the function to be wrapped.
@@ -1042,14 +1042,14 @@ class PolymorphicFunction(object):
     self._name = name
     self._autograph = autograph
     self._function_cache = collections.OrderedDict()
-    self._garbage_collector = _PolymorphicFunctionGarbageCollector(
+    self._garbage_collector = _FunctionGarbageCollector(
         self._function_cache)
     self._function_attributes = attributes or {}
 
     self._lock = threading.Lock()
     # _descriptor_cache is a of instance of a class to an instance-specific
-    # PolymorphicFunction, used to make sure defun-decorated methods create
-    # different functions for each instance.
+    # `Function`, used to make sure defun-decorated methods create different
+    # functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
 
   def __call__(self, *args, **kwargs):
@@ -1169,8 +1169,8 @@ class PolymorphicFunction(object):
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
-    # `instance` here is the instance that this `PolymorphicFunction` was
-    # accessed through; e.g., for
+    # `instance` here is the instance that this `Function` was accessed through
+    # e.g., for
     #
     #   class Foo(object):
     #
@@ -1179,26 +1179,25 @@ class PolymorphicFunction(object):
     #       ...
     #
     #   foo = Foo()
-    #   foo.bar()  # `foo.bar` is a `PolymorphicFunction` instance
+    #   foo.bar()  # `foo.bar` is a `Function` instance
     #
     # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of PolymorphicFunction here to allow different instances each
+    # new instance of `Function` here to allow different instances each
     # to create variables once, thereby allowing methods to be decorated with
     # defun. Keeps a cache to avoid retracing the function every time the
     # descriptor is accessed.
     if instance not in self._descriptor_cache:
       if instance is None:
         return self
-      # If there is no instance-specific polymorphic func in the cache,
-      # we construct an instance-specific polymorphic function
-      # that uses a weak reference to the instance (so that the instance will
-      # be correctly gc'd).
+      # If there is no instance-specific `Function` in the cache, we construct
+      # an instance-specific `Function` that uses a weak reference to the
+      # instance (so that the instance will be correctly gc'd).
 
       # And finally add the wrapped function to the description cache
       self._descriptor_cache[instance] = class_method_to_instance_method(
           self, instance)
 
-    # Return the cached polymorphic function for the instance
+    # Return the cached `Function` for the instance
     return self._descriptor_cache[instance]
 
   def _cache_key(self, args, kwargs):
@@ -1256,8 +1255,8 @@ class PolymorphicFunction(object):
   def _maybe_define_function(self, args, kwargs):
     """Gets a function for these inputs, defining it if necessary.
 
-    `args` and `kwargs` can be None if this `PolymorphicFunction` was created
-    with an `input_signature`.
+    `args` and `kwargs` can be None if this `Function` was created with an
+    `input_signature`.
 
     Args:
       args: The varargs for the Python function.
@@ -1311,13 +1310,13 @@ class PolymorphicFunction(object):
               _encode_arg_for_serialization(arg) for arg in args)
         # pylint: disable=protected-access
         # Save information about non-Tensor arguments with the concrete
-        # function. Used to serialize PolymorphicFunctions.
+        # function. Used to serialize `Function`s.
         graph_function._python_call_signature = python_call_signature
         # Tell the ConcreteFunction to clean up its graph once it goes out of
         # scope. ConcreteFunction does not do this in its constructor since it
         # gets used in some places (like Keras) where the FuncGraph lives longer
         # than the ConcreteFunction.
-        graph_function._garbage_collector = _FunctionGarbageCollector(
+        graph_function._garbage_collector = _ConcreteFunctionGarbageCollector(
             graph_function.graph)
         # pylint: enable=protected-access
         self._function_cache[cache_key] = graph_function
@@ -1325,14 +1324,14 @@ class PolymorphicFunction(object):
 
 
 def register(func, *args, **kwargs):
-  """Register a specialization of a PolymorphicFunction into the graph.
+  """Register a specialization of a `Function` into the graph.
 
   This won't actually call the function with the inputs, and only put the
   function definition into graph. Register function with different input param
   will result into multiple version of functions registered in graph.
 
   Args:
-    func: the PolymorphicFunction instance that generated by a @defun
+    func: the `Function` instance that generated by a @defun
     *args: input arguments for the Python function.
     **kwargs: input keyword arguments for the Python function.
 
@@ -1342,7 +1341,7 @@ def register(func, *args, **kwargs):
   Raises:
     ValueError: When the input function is not a defun wrapped python function.
   """
-  if not isinstance(func, PolymorphicFunction):
+  if not isinstance(func, Function):
     raise ValueError("Only defun function is allowed to be registered. "
                      "Got type: %s" % type(func))
   concrete_func = func.get_concrete_function(*args, **kwargs)
@@ -1729,7 +1728,7 @@ def defun_with_attributes(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         function,
-        PolymorphicFunction(
+        Function(
             function,
             name,
             input_signature=input_signature,
@@ -1761,7 +1760,7 @@ class _WeakrefSelf(object):
 
 
 def class_method_to_instance_method(original_function, instance):
-  """Constructs a new PolymorphicFunction with `self` bound."""
+  """Constructs a new `Function` with `self` bound."""
   weak_instance = weakref.ref(instance)
 
   # Note: while we could bind to a weakref proxy instead, that causes the
@@ -1769,8 +1768,8 @@ def class_method_to_instance_method(original_function, instance):
   bound_method = types_lib.MethodType(original_function.python_function,
                                       _WeakrefSelf(weak_instance))
 
-  # original_function is expected to be of one of the two PolymorphicFunction
-  # types (defined either in function.py or def_function.py).
+  # original_function is expected to be of one of the two `Function` types
+  # (defined either in function.py or def_function.py).
   assert hasattr(original_function, "_name")
   assert hasattr(original_function, "_autograph")
   assert hasattr(original_function, "_input_signature")
@@ -1812,7 +1811,7 @@ def class_method_to_instance_method(original_function, instance):
   return wrapped_instance_func
 
 
-class _PolymorphicFunctionGarbageCollector(object):
+class _FunctionGarbageCollector(object):
   """Cleans up cycles when a defun goes out of scope."""
 
   def __init__(self, cache):
@@ -1829,7 +1828,7 @@ class _PolymorphicFunctionGarbageCollector(object):
       pass
 
 
-class _FunctionGarbageCollector(object):
+class _ConcreteFunctionGarbageCollector(object):
   """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
 
   def __init__(self, func_graph):
