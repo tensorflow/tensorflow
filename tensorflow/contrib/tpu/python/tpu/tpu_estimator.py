@@ -2186,7 +2186,9 @@ class TPUEstimator(estimator_lib.Estimator):
       eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
         model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
       export_to_tpu: If True, `export_savedmodel()` exports a metagraph for
-        serving on TPU besides the one on CPU.
+        serving on TPU besides the one on CPU. Note that unsupported export
+        modes such as EVAL will be ignored. For those modes, only a CPU model
+        will be exported. Currently, export_to_tpu only supports PREDICT.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
         warm-start from, or a `tf.estimator.WarmStartSettings` object to fully
         configure warm-starting.  If the string filepath is provided instead of
@@ -2277,10 +2279,9 @@ class TPUEstimator(estimator_lib.Estimator):
                                export_tags=None,
                                check_variables=True):
     if self._export_to_tpu and mode != model_fn_lib.ModeKeys.PREDICT:
-      raise NotImplementedError(
-          'TPUEstimator only handles mode PREDICT for exporting '
-          'when `export_to_tpu` is `True`; '
-          'got {}.'.format(mode))
+      logging.warning('TPUEstimator only handles mode PREDICT for exporting '
+                      'when `export_to_tpu` is `True`; Mode {} will be ignored '
+                      'for TPU.'.format(mode))
 
     (super(TPUEstimator, self)._add_meta_graph_for_mode(
         builder,
@@ -2291,7 +2292,7 @@ class TPUEstimator(estimator_lib.Estimator):
         export_tags=export_tags,
         check_variables=check_variables))
 
-    if self._export_to_tpu:
+    if self._export_to_tpu and mode == model_fn_lib.ModeKeys.PREDICT:
       input_receiver_fn_map = {
           _REWRITE_FOR_INFERENCE_MODE: input_receiver_fn_map[mode]
       }
