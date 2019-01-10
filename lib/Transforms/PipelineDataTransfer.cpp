@@ -118,8 +118,9 @@ static bool doubleBuffer(Value *oldMemRef, ForInst *forInst) {
 
   // Create 'iv mod 2' value to index the leading dimension.
   auto d0 = bInner.getAffineDimExpr(0);
-  auto modTwoMap =
-      bInner.getAffineMap(/*dimCount=*/1, /*symbolCount=*/0, {d0 % 2}, {});
+  int64_t step = forInst->getStep();
+  auto modTwoMap = bInner.getAffineMap(/*dimCount=*/1, /*symbolCount=*/0,
+                                       {d0.floorDiv(step) % 2}, {});
   auto ivModTwoOp =
       bInner.create<AffineApplyOp>(forInst->getLoc(), modTwoMap, forInst);
 

@@ -1,6 +1,7 @@
 // RUN: mlir-opt %s -pipeline-data-transfer | FileCheck %s
 
-// CHECK-DAG: [[MOD_2_2D:#map[0-9]+]] = (d0) -> (d0 mod 2, d0 mod 2)
+// CHECK-DAG: [[FLOOR_MOD_2_2D:#map[0-9]+]] = (d0) -> ((d0 floordiv 4) mod 2, (d0 floordiv 4) mod 2)
+// CHECK-DAG: [[FLOOR_MOD_2:#map[0-9]+]] = (d0) -> ((d0 floordiv 4) mod 2)
 // CHECK-DAG: [[MOD_2:#map[0-9]+]] = (d0) -> (d0 mod 2)
 // CHECK-DAG: [[REMAP_SHIFT_MINUS_4:#map[0-9]+]] = (d0) -> (d0 - 4)
 
@@ -73,21 +74,19 @@ func @loop_step(%arg0: memref<512xf32>,
   return
 }
 // CHECK:        [[TAG:%[0-9]+]] = alloc() : memref<2x1xi32>
-// CHECK:        %2 = affine_apply [[MOD_2_2D]](%c0)
+// CHECK:        %2 = affine_apply [[FLOOR_MOD_2_2D]](%c0)
 // CHECK-NEXT:   dma_start %arg0[%c0], %0[%2#0, %c0_0], %c4, [[TAG]][%2#1, %c0_0] : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
 // CHECK-NEXT:   for %i0 = 4 to 512 step 4 {
-// CHECK-NEXT:     %3 = affine_apply [[MOD_2_2D]](%i0)
+// CHECK-NEXT:     %3 = affine_apply [[FLOOR_MOD_2_2D]](%i0)
 // CHECK-NEXT:     dma_start %arg0[%i0], %0[%3#0, %c0_0], %c4, [[TAG]][%3#1, %c0_0] : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
-// CHECK-NEXT:     %4 = affine_apply #map3(%i0)
-// CHECK-NEXT:     %5 = affine_apply [[MOD_2]](%4)
-// CHECK-NEXT:     %6 = affine_apply [[MOD_2]](%4)
-// CHECK-NEXT:     dma_wait [[TAG]][%5, %c0_0], %c4 : memref<2x1xi32>
+// CHECK-NEXT:     %4 = affine_apply [[REMAP_SHIFT_MINUS_4]](%i0)
+// CHECK-NEXT:     %5 = affine_apply [[FLOOR_MOD_2]](%4)
+// CHECK:          dma_wait [[TAG]][%5, %c0_0], %c4 : memref<2x1xi32>
 // CHECK-NEXT:     "compute"(%4) : (index) -> ()
 // CHECK-NEXT:   }
-// CHECK-NEXT:   %7 = affine_apply [[REMAP_SHIFT_MINUS_4]](%c512)
-// CHECK-NEXT:   %8 = affine_apply [[MOD_2]](%7)
-// CHECK-NEXT:   %9 = affine_apply [[MOD_2]](%7)
-// CHECK-NEXT:   dma_wait [[TAG]][%8, %c0_0], %c4 : memref<2x1xi32>
+// CHECK-NEXT:   [[SHIFTED:%[0-9]+]] = affine_apply [[REMAP_SHIFT_MINUS_4]](%c512)
+// CHECK-NEXT:   %8 = affine_apply [[FLOOR_MOD_2]]([[SHIFTED]])
+// CHECK:        dma_wait [[TAG]][%8, %c0_0], %c4 : memref<2x1xi32>
 // CHECK-NEXT:   "compute"(%7) : (index) -> ()
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
