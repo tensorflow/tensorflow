@@ -1024,6 +1024,16 @@ bool FlatAffineConstraints::isEmpty() const {
   for (unsigned i = 0, e = tmpCst.getNumIds(); i < e; i++) {
     tmpCst.FourierMotzkinEliminate(
         getBestIdToEliminate(tmpCst, 0, tmpCst.getNumIds()));
+    // Check for a constraint explosion. This rarely happens in practice, but
+    // this check exists as a safeguard against improperly constructed
+    // constraint systems or artifically created arbitrarily complex systems
+    // that aren't the intended use case for FlatAffineConstraints. This is
+    // needed since FM has a worst case exponential complexity in theory.
+    if (tmpCst.getNumConstraints() >= kExplosionFactor * getNumIds()) {
+      LLVM_DEBUG(llvm::dbgs() << "FM constraint explosion detected");
+      return false;
+    }
+
     // FM wouldn't have modified the equalities in any way. So no need to again
     // run GCD test. Check for trivial invalid constraints.
     if (tmpCst.hasInvalidConstraint())

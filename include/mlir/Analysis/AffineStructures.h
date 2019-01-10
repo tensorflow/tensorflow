@@ -203,8 +203,15 @@ class IntegerValueSet {
   /// Returns true if this integer set is determined to be empty. Emptiness is
   /// checked by by eliminating identifiers successively (through either
   /// Gaussian or Fourier-Motzkin) while using the GCD test and a trivial
-  /// constraint check. Returns 'true' if the constaint system is found to be
-  /// empty; false otherwise.
+  /// invalid constraint check. Returns 'true' if the constaint system is found
+  /// to be empty; false otherwise. This method is exact for rational spaces but
+  /// not integer spaces - thus, if it returns true, the set is provably integer
+  /// empty as well, but if it returns false, it doesn't necessarily mean an
+  /// integer point exists in it. This method also returns false where an
+  /// explosion of constraints is detected - due to the super-exponential
+  /// worse-case complexity of Fourier-Motzkin elimination (rare for realistic
+  /// problem cases but possible for artificial adversarial or improperly
+  // constructed ones), this method returns false conservatively.
   bool isEmpty() const;
 
   bool getNumDims() const { return set.getNumDims(); }
@@ -673,6 +680,18 @@ private:
   /// Temporary ones or those that aren't associated to any Value are to be
   /// set to None.
   SmallVector<Optional<Value *>, 8> ids;
+
+  /// A parameter that controls detection of an unrealistic number of
+  /// constraints. If the number of constraints is this many times the number of
+  /// variables, we consider such a system out of line with the intended use
+  /// case of FlatAffineConstraints.
+  // The rationale for 32 is that in the typical simplest of cases, an
+  // identifier is expected to have one lower bound and one upper bound
+  // constraint. With a level of tiling or a connection to another identifier
+  // through a div or mod, an extra pair of bounds gets added. As a limit, we
+  // don't expect an identifier to have more than 32 lower/upper/equality
+  // constraints. This is conservatively set low and can be raised if needed.
+  constexpr static unsigned kExplosionFactor = 32;
 };
 
 } // end namespace mlir.
