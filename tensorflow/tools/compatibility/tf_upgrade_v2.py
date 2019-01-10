@@ -794,7 +794,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.resize_bicubic": self._image_resize_transformer,
         "tf.image.resize_bilinear": self._image_resize_transformer,
         "tf.image.resize_nearest_neighbor": self._image_resize_transformer,
-
+        "tf.image.extract_glimpse": self._extract_glimpse_transformer,
     }
 
     decay_function_comment = (
@@ -1265,6 +1265,48 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                  "Please check this transformation.\n" % (name, name)))
 
     return node
+
+  @staticmethod
+  def _extract_glimpse_transformer(parent, node, full_name, name, logs):
+    def _replace_uniform_noise_node(parent, old_value):
+      """Replaces old_value with 'uniform' or 'guassian'."""
+      uniform = ast.Str(s="uniform")
+      gaussian = ast.Str(s="gaussian")
+      new_value = ast.IfExp(body=uniform, test=old_value,
+                            orelse=gaussian)
+      # This copies the prefix and suffix on old_value to new_value.
+      pasta.ast_utils.replace_child(parent, old_value, new_value)
+      ast.copy_location(new_value, old_value)
+      # Put parentheses around noise.value (and remove the old prefix/
+      # suffix, they should only be around new_value).
+      pasta.base.formatting.set(new_value, "prefix", "(")
+      pasta.base.formatting.set(new_value, "suffix", ")")
+
+    # Check if we have a uniform_noise keyword arg
+    for uniform_noise in node.keywords:
+      if uniform_noise.arg == "uniform_noise":
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "Changing uniform_noise arg of tf.image.extract_glimpse "
+                     "to noise, and recomputing value. Please check this "
+                     "transformation.\n"))
+        uniform_noise.arg = "noise"
+        value = "uniform" if uniform_noise.value else "gaussian"
+        _replace_uniform_noise_node(uniform_noise, uniform_noise.value)
+        return node
+
+    # Maybe it was a positional arg
+    if len(node.args) < 5:
+      logs.append((ast_edits.ERROR, node.lineno, node.col_offset,
+                   "tf.image.extract_glimpse called without "
+                   "arguments, so automatic fix was disabled. "
+                   "tf.image.extract_glimpse has changed the semantics "
+                   "of the sxth argument."))
+    else:
+      _replace_uniform_noise_node(node, node.args[5])
+      logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                   "Changing uniform_noise arg of tf.image.extract_glimpse to "
+                   "noise, and recomputing value.\n"))
+      return node
 
   @staticmethod
   def _dropout_transformer(parent, node, full_name, name, logs):
