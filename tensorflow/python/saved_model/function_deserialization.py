@@ -60,7 +60,7 @@ def recreate_polymorphic_function(
 
   Args:
     saved_polymorphic_function: SavedPolymorphicFunction proto.
-    functions: map from function name to Function.
+    functions: map from function name to `ConcreteFunction`.
 
   Returns:
     A PolymorphicFunction.
@@ -123,8 +123,8 @@ def load_function_def_library(library):
     library: FunctionDefLibrary proto message.
 
   Returns:
-    Map of original function names in the library to instances of `Function`
-    without captured inputs.
+    Map of original function names in the library to instances of
+    `ConcreteFunction` without captured inputs.
 
   Raises:
     ValueError: if functions dependencies have a cycle.
@@ -142,7 +142,7 @@ def load_function_def_library(library):
       copy = _fix_fdef(fdef, name_mapping)
 
       func_graph = function_def_lib.function_def_to_graph(copy)
-      func = function_lib.Function(func_graph)
+      func = function_lib.ConcreteFunction(func_graph)
       func.add_to_graph(import_graph)
 
       name_mapping[fdef.signature.name] = func.name
@@ -209,8 +209,8 @@ def _list_function_deps(fdef):
 
 def _clean_function_name(name):
   """Vanity function to keep the function names comprehensible."""
-  # Note: each time a function is wrapped into `function_lib.Function` its
-  # name becomes "__inference_<orig>_xyz".
+  # Note: each time a function is wrapped into `function_lib.ConcreteFunction`
+  # its name becomes "__inference_<orig>_xyz".
   match = re.search(r"^__inference_(.*)_\d+$", name)
   if match:
     return match.group(1)
