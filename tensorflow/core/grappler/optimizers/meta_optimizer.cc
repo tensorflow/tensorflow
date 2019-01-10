@@ -427,6 +427,14 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
+  // Constructs a FunctionLibraryDefinition with functions that are reachable
+  // from the nodes of the graph.
+  const auto minimized_flib =
+      [](const GraphDef& graph) -> FunctionLibraryDefinition {
+    return FunctionLibraryDefinition(OpRegistry::Global(), graph.library())
+        .ReachableDefinitions(graph);
+  };
+
   // 0. Original graph might contain a huge function library, that is mostly
   // unused. This library copied over by each individual Grappler optimizer,
   // which adds a huge overhead. Before starting optimization passes we just
@@ -436,11 +444,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   GraphDef trimmed_graph;  // do not copy graph with a potentially huge library
   *trimmed_graph.mutable_node() = item.graph.node();
   *trimmed_graph.mutable_versions() = item.graph.versions();
-  *trimmed_graph.mutable_library() =
-      grappler::ReachableFunctionLibraryDefinition(
-          FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library()),
-          item.graph)
-          .ToProto();
+  *trimmed_graph.mutable_library() = minimized_flib(item.graph).ToProto();
 
   GrapplerItem trimmed_item = item.WithGraph(std::move(trimmed_graph));
 
@@ -472,10 +476,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   // 2. Optimize functions reachable from the optimized graph.
-  FunctionLibraryDefinition flib = ReachableFunctionLibraryDefinition(
-      FunctionLibraryDefinition(OpRegistry::Global(),
-                                optimized_graph->library()),
-      *optimized_graph);
+  FunctionLibraryDefinition flib = minimized_flib(*optimized_graph);
 
   // Find functions for which we might need to compute a gradient at runtime.
   absl::flat_hash_set<string> differentiable_functions;

@@ -548,6 +548,20 @@ class Model(Network):
       trainable_weights = self.trainable_weights
       self._collected_trainable_weights = trainable_weights
 
+      # Validate all variables were correctly created in distribution scope.
+      if self._distribution_strategy and not self._compile_distribution:
+        for v in self.variables:
+          if v.distribute_strategy is not self._distribution_strategy:
+            raise ValueError(
+                'Variable (%s) was not created in the distribution strategy '
+                'scope of (%s). It is most likely due to not all layers or '
+                'the model or optimizer being created outside the distribution '
+                'strategy scope. Try to make sure your code looks similar '
+                'to the following.\n'
+                'with strategy.scope():\n'
+                '  model=_create_model()\n'
+                '  model.compile(...)'% (v, self._distribution_strategy))
+
   @property
   def metrics(self):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
@@ -1977,7 +1991,7 @@ class Model(Network):
           ' without calling `model.compile` after ?', 1)
 
   def _make_train_function_helper(self, fn_name, outputs, metric_updates=None):
-    if not hasattr(self, fn_name):
+    if not self._is_compiled:
       raise RuntimeError('You must compile your model before using it.')
     self._check_trainable_weights_consistency()
     if getattr(self, fn_name) is None:
@@ -2026,7 +2040,7 @@ class Model(Network):
         '_fit_function', [self.total_loss] + metrics_tensors)
 
   def _make_test_function_helper(self, fn_name, outputs, metric_updates=None):
-    if not hasattr(self, fn_name):
+    if not self._is_compiled:
       raise RuntimeError('You must compile your model before using it.')
     if getattr(self, fn_name) is None:
       inputs = (self._feed_inputs +
@@ -2177,7 +2191,6 @@ class Model(Network):
         else:
           x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
 
-        x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
         if shuffle:
           # 1024 is a good buffer size since it is much larger than the average
           # batch size provided by the user and provides sufficient randomness.

@@ -377,7 +377,7 @@ def skip_if(condition):
       else:
         skip = condition
       if not skip:
-        fn(*args, **kwargs)
+        return fn(*args, **kwargs)
 
     return wrapper
 
@@ -414,7 +414,7 @@ def enable_control_flow_v2(fn):
     enable_control_flow_v2_old = control_flow_util.ENABLE_CONTROL_FLOW_V2
     control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
     try:
-      fn(*args, **kwargs)
+      return fn(*args, **kwargs)
     finally:
       control_flow_util.ENABLE_CONTROL_FLOW_V2 = enable_control_flow_v2_old
 
@@ -598,9 +598,9 @@ def assert_no_new_tensors(f):
       ops.get_default_graph()._graph_key = outside_graph_key
       if outside_executed_eagerly:
         with context.eager_mode():
-          f(self, **kwargs)
+          result = f(self, **kwargs)
       else:
-        f(self, **kwargs)
+        result = f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
     context.context()._clear_caches()  # pylint: disable=protected-access
@@ -614,6 +614,7 @@ def assert_no_new_tensors(f):
           len(tensors_after),
           str(tensors_after),
       )))
+    return result
 
   return decorator
 
@@ -745,7 +746,7 @@ def assert_no_garbage_created(f):
     gc.set_debug(gc.DEBUG_SAVEALL)
     gc.collect()
     previous_garbage = len(gc.garbage)
-    f(self, **kwargs)
+    result = f(self, **kwargs)
     gc.collect()
     new_garbage = len(gc.garbage)
     if new_garbage > previous_garbage:
@@ -790,6 +791,7 @@ def assert_no_garbage_created(f):
     # not hold on to every object in other tests.
     gc.set_debug(previous_debug_flags)
     gc.enable()
+    return result
 
   return decorator
 
@@ -1078,9 +1080,9 @@ def deprecated_graph_mode_only(func=None):
     def decorated(self, *args, **kwargs):
       if tf2.enabled():
         with context.graph_mode():
-          f(self, *args, **kwargs)
+          return f(self, *args, **kwargs)
       else:
-        f(self, *args, **kwargs)
+        return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1130,7 +1132,7 @@ def run_v1_only(reason, func=None):
       if tf2.enabled():
         self.skipTest(reason)
 
-      f(self, *args, **kwargs)
+      return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1167,7 +1169,7 @@ def run_v2_only(func=None):
       if not tf2.enabled():
         self.skipTest("Test is only comptaible in v2")
 
-      f(self, *args, **kwargs)
+      return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1200,7 +1202,7 @@ def run_gpu_only(func=None):
       if not is_gpu_available():
         self.skipTest("Test requires GPU")
 
-      f(self, *args, **kwargs)
+      return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1233,7 +1235,7 @@ def run_cuda_only(func=None):
       if not is_gpu_available(cuda_only=True):
         self.skipTest("Test requires CUDA GPU")
 
-      f(self, *args, **kwargs)
+      return f(self, *args, **kwargs)
 
     return decorated
 

@@ -305,6 +305,8 @@ class VirtualScheduler {
     return &node_map_;
   }
 
+  void enable_mem_usage_tracking() { track_mem_usage_snapshot_ = true; }
+
  private:
   // Constants.
   const string kAttrInputSrc = "input_source_";
@@ -356,6 +358,7 @@ class VirtualScheduler {
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;
   bool initialized_;
+  bool track_mem_usage_snapshot_;
 
   VirtualPlacer placer_;  // owned.
 };

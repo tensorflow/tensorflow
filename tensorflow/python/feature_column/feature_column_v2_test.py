@@ -2015,7 +2015,7 @@ class LinearModelTest(test.TestCase):
       }
       model(features)
       for var in model.variables:
-        self.assertTrue(isinstance(var, variables_lib.RefVariable))
+        self.assertIsInstance(var, variables_lib.VariableV1)
       variable_names = [var.name for var in model.variables]
       self.assertItemsEqual([
           'linear_model/dense_feature_bucketized/weights:0',
@@ -4010,7 +4010,7 @@ class FunctionalInputLayerTest(test.TestCase):
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
       self.assertIsInstance(cols_to_vars[some_embedding_column][0],
-                            variables_lib.Variable)
+                            variables_lib.VariableV1)
       self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [5, 10])
 
   @test_util.run_deprecated_v1
@@ -6839,7 +6839,7 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertItemsEqual(('dense_features/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
     for v in global_vars:
-      self.assertTrue(isinstance(v, variables_lib.RefVariable))
+      self.assertIsInstance(v, variables_lib.Variable)
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     self.assertItemsEqual(('dense_features/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in trainable_vars]))
@@ -7732,7 +7732,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         ['aaa_bbb_shared_embedding:0', 'ccc_ddd_shared_embedding:0'],
         tuple([v.name for v in global_vars]))
     for v in global_vars:
-      self.assertTrue(isinstance(v, variables_lib.RefVariable))
+      self.assertIsInstance(v, variables_lib.Variable)
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     if trainable:
       self.assertItemsEqual(

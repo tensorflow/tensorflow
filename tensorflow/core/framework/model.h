@@ -310,7 +310,7 @@ class Node {
   std::map<string, std::shared_ptr<Parameter>> parameters_ GUARDED_BY(mu_);
   std::list<std::shared_ptr<Node>> inputs_ GUARDED_BY(mu_);
 
-  // The reference to the output node is not owned so that that deletion of a
+  // The reference to the output node is not owned so that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
 };

@@ -57,9 +57,9 @@ struct PreluOpData : public OpData {
 };
 
 namespace {
-TfLiteStatus CheckInputQuantParams(TfLiteContext* context,
-                                   const TfLiteTensor* input,
-                                   const TfLiteTensor* output) {
+TfLiteStatus CheckOutputQuantParams(TfLiteContext* context,
+                                    const TfLiteTensor* input,
+                                    const TfLiteTensor* output) {
   if (input->type == kTfLiteUInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
@@ -236,7 +236,7 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, num_dims >= 1 && num_dims <= 4);
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-    if (CheckInputQuantParams(context, input, output) == kTfLiteError) {
+    if (CheckOutputQuantParams(context, input, output) == kTfLiteError) {
       return kTfLiteError;
     }
 

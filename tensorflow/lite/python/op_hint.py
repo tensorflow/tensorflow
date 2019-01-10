@@ -964,6 +964,35 @@ def _convert_op_hints_to_stubs_helper(
   return curr_graph_def
 
 
+def find_all_hinted_output_nodes(session=None, graph_def=None):
+  """Find all Ophints output nodes in the graph.
+
+  This is used to get all the output nodes those are ophinted, it is important
+  for operation like convert_variables_to_constants keep all ophints structure.
+  Note: only one of session or graph_def should be used, not both.
+
+  Args:
+    session: A TensorFlow session that contains the graph to convert.
+    graph_def: A graph def that we should convert.
+
+  Returns:
+    A list of OpHints output nodes.
+  Raises:
+    ValueError: If both session and graph_def are provided.
+  """
+  if session is not None and graph_def is not None:
+    raise ValueError("Provide only one of session and graph_def.")
+  hinted_outputs_nodes = []
+  if session is not None:
+    hints = _find_all_hints_in_graph_def(session.graph_def)
+  elif graph_def is not None:
+    hints = _find_all_hints_in_graph_def(graph_def)
+  for hint in _six.itervalues(hints):
+    _, ouput_nodes = hint.flattened_inputs_and_outputs()
+    hinted_outputs_nodes.extend(ouput_nodes)
+  return hinted_outputs_nodes
+
+
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
                               write_callback=lambda graph_def, comments: None):
@@ -996,6 +1025,7 @@ def convert_op_hints_to_stubs(session=None,
 
 
 _allowed_symbols = [
-    "OpHint", "convert_op_hints_to_stubs", "convert_op_hints_to_stubs_new"
+    "OpHint", "convert_op_hints_to_stubs", "convert_op_hints_to_stubs_new",
+    "find_all_hinted_output_nodes"
 ]
 remove_undocumented(__name__, _allowed_symbols)

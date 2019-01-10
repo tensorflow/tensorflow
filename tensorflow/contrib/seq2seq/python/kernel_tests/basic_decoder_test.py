@@ -34,8 +34,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import bernoulli
-from tensorflow.python.ops.distributions import categorical
 from tensorflow.python.platform import test
 # pylint: enable=g-import-not-at-top
 
@@ -517,7 +515,7 @@ class BasicDecoderTest(test.TestCase):
         vocabulary_size)
 
     # The sample function samples categorically from the logits.
-    sample_fn = lambda x: categorical.Categorical(logits=x).sample()
+    sample_fn = lambda x: helper_py.categorical_sample(logits=x)
     # The next inputs are a one-hot encoding of the sampled labels.
     next_inputs_fn = (
         lambda x: array_ops.one_hot(x, vocabulary_size, dtype=dtypes.float32))
@@ -599,7 +597,7 @@ class BasicDecoderTest(test.TestCase):
 
     # The sample function samples independent bernoullis from the logits.
     sample_fn = (
-        lambda x: bernoulli.Bernoulli(logits=x, dtype=dtypes.bool).sample())
+        lambda x: helper_py.bernoulli_sample(logits=x, dtype=dtypes.bool))
     # The next inputs are a one-hot encoding of the sampled labels.
     next_inputs_fn = math_ops.to_float
     end_fn = lambda sample_ids: sample_ids[:, end_token]

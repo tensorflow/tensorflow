@@ -185,7 +185,8 @@ def all_worker_devices(session):
   """Return a list of devices for each worker in the system."""
   devices = session.list_devices()
   return [
-      device.name for device in devices
+      device.name
+      for device in devices
       if ':CPU:' in device.name and 'coordinator' not in device.name
   ]
 
@@ -255,12 +256,14 @@ class WatchdogManager(threading.Thread):
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
             watchdog_config=event_pb2.WatchdogConfig(
-                timeout_ms=self.shutdown_timeout * 1000,)))
+                timeout_ms=self.shutdown_timeout * 1000,),
+            shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
 
   def configure_and_run(self):
-    logging.info('Enabling watchdog timer with %d second timeout '
-                 'and %d second ping interval.',
-                 self.shutdown_timeout, self.ping_interval)
+    logging.info(
+        'Enabling watchdog timer with %d second timeout '
+        'and %d second ping interval.', self.shutdown_timeout,
+        self.ping_interval)
     self._reset_manager()
     self._running = True
     self.start()
@@ -269,7 +272,8 @@ class WatchdogManager(threading.Thread):
     logging.info('Stopping worker watchdog.')
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
-            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=-1,)))
+            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=-1,),
+            shutdown_mode=event_pb2.NOT_CONFIGURED))
     self._running = False
     self.join()
 

@@ -2924,5 +2924,71 @@ ENTRY main {
             "Expected 1 argument, but got 2.");
 }
 
+TEST_F(HloEvaluatorTest, PreserveFusionInputLayout) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule FusionInputLayout
+
+    fused_computation {
+      param_0 = f32[20,20]{0,1} parameter(0)
+      ROOT bitcast = f32[20,20]{1,0} bitcast(param_0)
+    }
+
+    ENTRY kernel_entry {
+      parameter.0 = f32[20,20]{0,1} parameter(0)
+      ROOT fusion = f32[20,20]{1,0} fusion(parameter.0),
+        kind=kLoop, calls=fused_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  Literal actual = Evaluate({&args[0]});
+  EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
+}
+
+TEST_F(HloEvaluatorTest, PreserveFusionOutputLayout) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule FusionOutputLayout
+
+    fused_computation {
+      param_0 = f32[20,20]{1,0} parameter(0)
+      ROOT bitcast = f32[20,20]{0,1} bitcast(param_0)
+    }
+
+    ENTRY kernel_entry {
+      parameter.0 = f32[20,20]{1,0} parameter(0)
+      ROOT fusion = f32[20,20]{0,1} fusion(parameter.0),
+        kind=kLoop, calls=fused_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  Literal actual = Evaluate({&args[0]});
+  EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
+}
+
+TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule MOFusionOutputLayout
+
+    fused_computation {
+      param_0 = f32[20,20]{1,0} parameter(0)
+      bitcast = f32[20,20]{0,1} bitcast(param_0)
+      ROOT tuple = (f32[20,20]{0,1}) tuple(bitcast)
+    }
+
+    ENTRY kernel_entry {
+      parameter.0 = f32[20,20]{1,0} parameter(0)
+      ROOT fusion = (f32[20,20]{0,1}) fusion(parameter.0),
+        kind=kLoop, calls=fused_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  Literal actual_tuple = Evaluate({&args[0]});
+  std::vector<Literal> actual_literals = actual_tuple.DecomposeTuple();
+  EXPECT_TRUE(
+      absl::c_equal(args[0].data<float>(), actual_literals[0].data<float>()));
+}
+
 }  // namespace
 }  // namespace xla

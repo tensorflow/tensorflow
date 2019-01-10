@@ -603,6 +603,7 @@ cc_library(
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:using_rocm_hipcc": [],
         ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",

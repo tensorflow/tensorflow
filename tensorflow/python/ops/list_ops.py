@@ -28,6 +28,12 @@ from tensorflow.python.ops import gen_list_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_list_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+# list_ops -> control_flow_ops -> tensor_array_ops -> list_ops
+control_flow_ops = LazyLoader(
+    "control_flow_ops", globals(),
+    "tensorflow.python.ops.control_flow_ops")
 
 
 ops.NotDifferentiable("TensorListConcatLists")
@@ -65,11 +71,13 @@ def tensor_list_from_tensor(tensor, element_shape, name=None):
       name=name)
 
 
-def tensor_list_concat(input_handle, element_dtype, name=None):
+def tensor_list_concat(input_handle, element_dtype, element_shape=None,
+                       name=None):
   # Ignore the lengths output of TensorListConcat. It is only used during
   # gradient computation.
   return gen_list_ops.tensor_list_concat(
-      input_handle=input_handle, element_dtype=element_dtype, name=name)[0]
+      input_handle=input_handle, element_dtype=element_dtype,
+      element_shape=element_shape, name=name)[0]
 
 
 def tensor_list_split(tensor, element_shape, lengths, name=None):
@@ -78,6 +86,25 @@ def tensor_list_split(tensor, element_shape, lengths, name=None):
       element_shape=_build_element_shape(element_shape),
       lengths=lengths,
       name=name)
+
+
+def tensor_list_set_item(input_handle,
+                         index,
+                         item,
+                         resize_if_index_out_of_bounds=False,
+                         name=None):
+  """Sets `item` at `index` in input list."""
+  if resize_if_index_out_of_bounds:
+    input_list_size = gen_list_ops.tensor_list_length(input_handle)
+    # TODO(srbs): This could cause some slowdown. Consider fusing resize
+    # functionality in the SetItem op.
+    input_handle = control_flow_ops.cond(
+        index >= input_list_size,
+        lambda: gen_list_ops.tensor_list_resize(  # pylint: disable=g-long-lambda
+            input_handle, index + 1),
+        lambda: input_handle)
+  return gen_list_ops.tensor_list_set_item(
+      input_handle=input_handle, index=index, item=item, name=name)
 
 
 @ops.RegisterGradient("TensorListPushBack")
@@ -164,19 +191,32 @@ def _TensorListSetItemGrad(op, dlist):
   return list_grad, index_grad, element_grad
 
 
+@ops.RegisterGradient("TensorListResize")
+def _TensorListResizeGrad(op, dlist):
+  input_list, _ = op.inputs
+  input_list_size = gen_list_ops.tensor_list_length(input_list)
+  return gen_list_ops.tensor_list_resize(dlist, input_list_size), None
+
+
 @ops.RegisterGradient("TensorListGather")
 def _TensorListGatherGrad(op, dtensor):
-  _, indices = op.inputs
-  return gen_list_ops.tensor_list_scatter(
-      tensor=dtensor, indices=indices,
-      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32)), None
+  input_list, indices = op.inputs
+  dlist = gen_list_ops.tensor_list_scatter(
+      tensor=dtensor,
+      indices=indices,
+      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32))
+  # TensorListScatter returns a list with size `max(indices) + 1`
+  # so we manually resize it to match the size of the input list.
+  input_list_size = gen_list_ops.tensor_list_length(input_list)
+  dlist = gen_list_ops.tensor_list_resize(dlist, input_list_size)
+  return dlist, None
 
 
 @ops.RegisterGradient("TensorListScatter")
 def _TensorListScatterGrad(op, dlist):
   t, indices, _ = op.inputs
   return gen_list_ops.tensor_list_gather(
-      dlist, indices, element_dtype=t.dtype), None
+      dlist, indices, element_dtype=t.dtype), None, None
 
 
 def _build_element_shape(shape):

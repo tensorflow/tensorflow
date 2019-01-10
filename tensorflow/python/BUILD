@@ -79,6 +79,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow:internal",
         "//tensorflow/python/estimator:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
@@ -1067,6 +1068,7 @@ py_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY2AND3",
     deps = [
+        ":keras_lib",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1081,7 +1083,6 @@ py_library(
         ":client",
         ":errors",
         ":framework_for_generated_wrappers",
-        ":layers_base",
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
@@ -1096,7 +1097,6 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/keras:layers",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3311,7 +3311,6 @@ cuda_py_test(
         ":framework_test_lib",
         ":functional_ops",
         ":gradients",
-        ":layers",
         ":list_ops",
         ":math_grad",
         ":math_ops",
@@ -3708,7 +3707,6 @@ tf_py_test(
         ":framework",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
-        ":layers",
         ":math_ops",
         ":metrics",
         ":platform",
@@ -4982,7 +4980,6 @@ tf_py_test(
         ":variable_scope",
         ":variables",
         "//third_party/py/numpy",
-        "//tensorflow/python/feature_column:feature_column_py",
     ],
 )
 
@@ -5753,7 +5750,6 @@ cuda_py_test(
         ":constant_op",
         ":dtypes",
         ":functional_ops",
-        ":layers",
         ":math_ops",
         ":nn",
         ":ops",

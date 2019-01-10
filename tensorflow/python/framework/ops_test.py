@@ -2052,6 +2052,9 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope(None, default_scope_name, [a, b]) as scope:
       self.assertEqual("%s/" % default_scope_name, scope)
       self.assertEqual(g0, ops.get_default_graph())
+    with self.assertRaises(TypeError):
+      with ops.name_scope(scope_name, [a, b]):
+        pass
 
   def _testGraphElements(self, graph_elements):
     scope_name = "my_scope"

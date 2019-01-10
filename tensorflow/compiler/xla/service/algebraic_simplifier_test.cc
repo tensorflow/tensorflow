@@ -2709,6 +2709,74 @@ TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortWrongDimensions) {
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
+TEST_F(AlgebraicSimplifierTest, RemoveUnusedSortOperandArrayResult) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = s32[64,8732]{1,0} parameter(1)
+      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values),
+        dimensions={1}
+      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, RemoveUnusedSortOperandTuple) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,87] parameter(0)
+      values.0 = s32[64,87] parameter(1)
+      values.1 = u32[64,87] parameter(2)
+      sort = (f32[64,87], s32[64,87], u32[64,87]) sort(
+          keys, values.0, values.1),
+        dimensions={1}
+      gte.0 = f32[64,87] get-tuple-element(sort), index=0
+      gte.1 = u32[64,87] get-tuple-element(sort), index=2
+      ROOT tuple = (f32[64,87], u32[64,87]) tuple(gte.0, gte.1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(m::Sort(m::Parameter(0), m::Parameter(2)), 0),
+          m::GetTupleElement(m::Sort(m::Parameter(0), m::Parameter(2)), 1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DontRemoveUnusedSortKey) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = s32[64,8732]{1,0} parameter(1)
+      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}
+      ROOT gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   auto builder = HloComputation::Builder(TestName());
 
@@ -4467,14 +4535,17 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
 
   int32 start_row = (spec.lcd == 0) ? 0 : spec.s;
   int32 start_col = (spec.lcd == 0) ? spec.s : 0;
-  const auto start_indices =
+  std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<int32>({start_row, start_col})));
+          LiteralUtil::CreateR0<int32>(start_row))),
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int32>(start_col)))};
   int64 slice_row_size = (spec.lcd == 0) ? spec.k : 1;
   int64 slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
-  Shape ds_shape = ShapeUtil::MakeShape(F32, {slice_row_size, slice_col_size});
+  std::vector<int64> slice_sizes = {slice_row_size, slice_col_size};
+  Shape ds_shape = ShapeUtil::MakeShape(F32, slice_sizes);
   auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ds_shape, lhs, start_indices, {slice_row_size, slice_col_size}));
+      ds_shape, lhs, start_indices, slice_sizes));
 
   int64 rhs_rows = (spec.rcd == 0) ? spec.k : spec.n;
   int64 rhs_cols = (spec.rcd == 0) ? spec.n : spec.k;
@@ -4507,7 +4578,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   } else {
     EXPECT_THAT(computation->root_instruction(),
                 GmockMatch(m::DynamicSlice(m::Dot(m::Constant(), m::Constant()),
-                                           m::Concatenate())));
+                                           m::Constant(), m::Constant())));
   }
 }
 
@@ -4545,14 +4616,17 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
 
   int32 start_row = (spec.rcd == 0) ? 0 : spec.s;
   int32 start_col = (spec.rcd == 0) ? spec.s : 0;
-  const auto start_indices =
+  std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<int32>({start_row, start_col})));
+          LiteralUtil::CreateR0<int32>(start_row))),
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int32>(start_col)))};
   int64 slice_row_size = (spec.rcd == 0) ? spec.k : 1;
   int64 slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
-  Shape ds_shape = ShapeUtil::MakeShape(F32, {slice_row_size, slice_col_size});
+  std::vector<int64> slice_sizes = {slice_row_size, slice_col_size};
+  Shape ds_shape = ShapeUtil::MakeShape(F32, slice_sizes);
   auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ds_shape, rhs, start_indices, {slice_row_size, slice_col_size}));
+      ds_shape, rhs, start_indices, slice_sizes));
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(spec.lcd);
@@ -4577,7 +4651,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   } else {
     EXPECT_THAT(computation->root_instruction(),
                 GmockMatch(m::DynamicSlice(m::Dot(m::Constant(), m::Constant()),
-                                           m::Concatenate())));
+                                           m::Constant(), m::Constant())));
   }
 }
 

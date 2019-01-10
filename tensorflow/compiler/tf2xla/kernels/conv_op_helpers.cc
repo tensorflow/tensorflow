@@ -428,11 +428,8 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   int n_dim = GetTensorBatchDimIndex(num_dims, attrs.data_format);
   int c_dim = GetTensorFeatureDimIndex(num_dims, attrs.data_format);
 
-  // The conversion logic below assumes that the data format is NHWC, so we also
-  // check that here.
   bool use_batch_group_count =
-      filter_tensor_shape.dim_size(num_dims - 1) == 1 && attrs.depthwise &&
-      attrs.data_format == FORMAT_NHWC;
+      filter_tensor_shape.dim_size(num_dims - 1) == 1 && attrs.depthwise;
 
   std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
   std::vector<int64> rhs_dilation(attrs.num_spatial_dims);

@@ -590,6 +590,84 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
     return super(SparseCategoricalAccuracy, cls).from_config(config)
 
 
+class TopKCategoricalAccuracy(MeanMetricWrapper):
+  """Computes how often targets are in the top `K` predictions.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.TopKCategoricalAccuracy()
+  m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  print('Final result: ', m.result().numpy())  # Final result: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.TopKCategoricalAccuracy()])
+  ```
+  """
+
+  def __init__(self, k=5, name='top_k_categorical_accuracy', dtype=None):
+    """Creates a `TopKCategoricalAccuracy` instance.
+
+    Args:
+      k: (Optional) Number of top elements to look at for computing accuracy.
+        Defaults to 5.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(TopKCategoricalAccuracy, self).__init__(
+        top_k_categorical_accuracy, name, dtype=dtype, k=k)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(TopKCategoricalAccuracy, cls).from_config(config)
+
+
+class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
+  """Computes how often integer targets are in the top `K` predictions.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.SparseTopKCategoricalAccuracy()
+  m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  print('Final result: ', m.result().numpy())  # Final result: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+    'sgd',
+    metrics=[tf.keras.metrics.SparseTopKCategoricalAccuracy()])
+  ```
+  """
+
+  def __init__(self, k=5, name='sparse_top_k_categorical_accuracy', dtype=None):
+    """Creates a `SparseTopKCategoricalAccuracy` instance.
+
+    Args:
+      k: (Optional) Number of top elements to look at for computing accuracy.
+        Defaults to 5.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(SparseTopKCategoricalAccuracy, self).__init__(
+        sparse_top_k_categorical_accuracy, name, dtype=dtype, k=k)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(SparseTopKCategoricalAccuracy, cls).from_config(config)
+
+
 class _ConfusionMatrixConditionCount(Metric):
   """Calculates the number of the given confusion matrix condition."""
 
@@ -612,6 +690,7 @@ class _ConfusionMatrixConditionCount(Metric):
     """
     super(_ConfusionMatrixConditionCount, self).__init__(name=name, dtype=dtype)
     self._confusion_matrix_cond = confusion_matrix_cond
+    self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
     self.accumulator = self.add_weight(
@@ -647,6 +726,11 @@ class _ConfusionMatrixConditionCount(Metric):
     num_thresholds = len(to_list(self.thresholds))
     for v in self.variables:
       K.set_value(v, np.zeros((num_thresholds,)))
+
+  def get_config(self):
+    config = {'thresholds': self.init_thresholds}
+    base_config = super(_ConfusionMatrixConditionCount, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.metrics.FalsePositives')
@@ -894,6 +978,7 @@ class Precision(Metric):
       dtype: (Optional) data type of the metric result.
     """
     super(Precision, self).__init__(name=name, dtype=dtype)
+    self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
     self.tp = self.add_weight(
@@ -931,6 +1016,11 @@ class Precision(Metric):
     num_thresholds = len(to_list(self.thresholds))
     for v in self.variables:
       K.set_value(v, np.zeros((num_thresholds,)))
+
+  def get_config(self):
+    config = {'thresholds': self.init_thresholds}
+    base_config = super(Precision, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.metrics.Recall')
@@ -978,6 +1068,7 @@ class Recall(Metric):
       dtype: (Optional) data type of the metric result.
     """
     super(Recall, self).__init__(name=name, dtype=dtype)
+    self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
     self.tp = self.add_weight(
@@ -1015,6 +1106,11 @@ class Recall(Metric):
     num_thresholds = len(to_list(self.thresholds))
     for v in self.variables:
       K.set_value(v, np.zeros((num_thresholds,)))
+
+  def get_config(self):
+    config = {'thresholds': self.init_thresholds}
+    base_config = super(Recall, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -1132,6 +1228,8 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
     """
     if specificity < 0 or specificity > 1:
       raise ValueError('`specificity` must be in the range [0, 1].')
+    self.specificity = specificity
+    self.num_thresholds = num_thresholds
     super(SensitivityAtSpecificity, self).__init__(
         specificity, num_thresholds=num_thresholds, name=name, dtype=dtype)
 
@@ -1148,6 +1246,14 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
     # Compute sensitivity at that index.
     return math_ops.div_no_nan(self.tp[min_index],
                                self.tp[min_index] + self.fn[min_index])
+
+  def get_config(self):
+    config = {
+        'num_thresholds': self.num_thresholds,
+        'specificity': self.specificity
+    }
+    base_config = super(SensitivityAtSpecificity, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.metrics.SpecificityAtSensitivity')
@@ -1201,6 +1307,8 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     """
     if sensitivity < 0 or sensitivity > 1:
       raise ValueError('`sensitivity` must be in the range [0, 1].')
+    self.sensitivity = sensitivity
+    self.num_thresholds = num_thresholds
     super(SpecificityAtSensitivity, self).__init__(
         sensitivity, num_thresholds=num_thresholds, name=name, dtype=dtype)
 
@@ -1217,6 +1325,14 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     # Compute specificity at that index.
     return math_ops.div_no_nan(self.tn[min_index],
                                self.tn[min_index] + self.fp[min_index])
+
+  def get_config(self):
+    config = {
+        'num_thresholds': self.num_thresholds,
+        'sensitivity': self.sensitivity
+    }
+    base_config = super(SpecificityAtSensitivity, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.metrics.CosineProximity')
@@ -1266,8 +1382,8 @@ class MeanAbsoluteError(MeanMetricWrapper):
 
   Usage:
   ```python
-  mae = tf.metrics.MeanAbsoluteError()
-  mae.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  m = tf.metrics.MeanAbsoluteError()
+  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 0.75
   ```
 
@@ -1275,7 +1391,7 @@ class MeanAbsoluteError(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.MeanAbsoluteError())
+  model.compile('sgd', metrics=[tf.keras.metrics.MeanAbsoluteError()])
   ```
   """
 
@@ -1300,8 +1416,8 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
   Usage:
 
   ```python
-  mape = tf.keras.losses.MeanAbsolutePercentageError()
-  mape.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  m = tf.keras.metrics.MeanAbsolutePercentageError()
+  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 5e+08
   ```
 
@@ -1309,7 +1425,7 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.MeanAbsolutePercentageError())
+  model.compile('sgd', metrics=[tf.keras.metrics.MeanAbsolutePercentageError()])
   ```
   """
 
@@ -1334,8 +1450,8 @@ class MeanSquaredError(MeanMetricWrapper):
   Usage:
 
   ```python
-  mape = tf.keras.losses.MeanSquaredError()
-  mape.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  m = tf.keras.metrics.MeanSquaredError()
+  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 0.75
   ```
 
@@ -1343,7 +1459,7 @@ class MeanSquaredError(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.MeanSquaredError())
+  model.compile('sgd', metrics=[tf.keras.metrics.MeanSquaredError()])
   ```
   """
 
@@ -1368,8 +1484,8 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
   Usage:
 
   ```python
-  msle = tf.keras.losses.MeanSquaredLogarithmicError()
-  msle.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  m = tf.keras.metrics.MeanSquaredLogarithmicError()
+  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 0.36034
   ```
 
@@ -1377,7 +1493,7 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.MeanSquaredLogarithmicError())
+  model.compile('sgd', metrics=[tf.keras.metrics.MeanSquaredLogarithmicError()])
   ```
   """
 
@@ -1402,8 +1518,8 @@ class Hinge(MeanMetricWrapper):
   Usage:
 
   ```python
-  h = tf.keras.metrics.Hinge()
-  h.update_state([0., 1., 1.], [1., 0., 1.])
+  m = tf.keras.metrics.Hinge()
+  m.update_state([0., 1., 1.], [1., 0., 1.])
   print('Final result: ', m.result().numpy())  # Final result: 0.66
   ```
 
@@ -1411,7 +1527,7 @@ class Hinge(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.metrics.Hinge())
+  model.compile('sgd', metrics=[tf.keras.metrics.Hinge()])
   ```
   """
 
@@ -1435,8 +1551,8 @@ class SquaredHinge(MeanMetricWrapper):
   Usage:
 
   ```python
-  h = tf.keras.metrics.SquaredHinge()
-  h.update_state([0., 1., 1.], [1., 0., 1.])
+  m = tf.keras.metrics.SquaredHinge()
+  m.update_state([0., 1., 1.], [1., 0., 1.])
   print('Final result: ', m.result().numpy())  # Final result: 0.66
   ```
 
@@ -1444,7 +1560,7 @@ class SquaredHinge(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.metrics.SquaredHinge())
+  model.compile('sgd', metrics=[tf.keras.metrics.SquaredHinge()])
   ```
   """
 
@@ -1468,8 +1584,8 @@ class CategoricalHinge(MeanMetricWrapper):
   Usage:
 
   ```python
-  h = tf.keras.metrics.CategoricalHinge()
-  h.update_state([0., 1., 1.], [1., 0., 1.])
+  m = tf.keras.metrics.CategoricalHinge()
+  m.update_state([0., 1., 1.], [1., 0., 1.])
   print('Final result: ', m.result().numpy())  # Final result: 1.0
   ```
 
@@ -1477,7 +1593,7 @@ class CategoricalHinge(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.metrics.CategoricalHinge())
+  model.compile('sgd', metrics=[tf.keras.metrics.CategoricalHinge()])
   ```
   """
 
@@ -1489,6 +1605,147 @@ class CategoricalHinge(MeanMetricWrapper):
     if 'fn' in config:
       config.pop('fn')
     return super(CategoricalHinge, cls).from_config(config)
+
+
+class RootMeanSquaredError(Mean):
+  """Computes root mean squared error metric between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.RootMeanSquaredError()
+  m.update_state([2., 4., 6.], [1., 3., 2.])
+  print('Final result: ', m.result().numpy())  # Final result: 2.449
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.RootMeanSquaredError()])
+  ```
+  """
+
+  def __init__(self, name='root_mean_squared_error', dtype=None):
+    super(RootMeanSquaredError, self).__init__(name, dtype=dtype)
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates root mean squared error statistics.
+
+    Args:
+      y_true: The ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional weighting of each example. Defaults to 1. Can be a
+        `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
+        be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
+    """
+    y_true = math_ops.cast(y_true, self._dtype)
+    y_pred = math_ops.cast(y_pred, self._dtype)
+    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
+        y_pred, y_true, sample_weight)
+    error_sq = math_ops.square(y_pred - y_true)
+    return super(RootMeanSquaredError, self).update_state(
+        error_sq, sample_weight=sample_weight)
+
+  def result(self):
+    return math_ops.sqrt(math_ops.div_no_nan(self.total, self.count))
+
+
+class Logcosh(MeanMetricWrapper):
+  """Computes the logarithm of the hyperbolic cosine of the prediction error.
+
+  logcosh = log((exp(x) + exp(-x))/2) where x is the error `y_pred` - `y_true`.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.Logcosh()
+  m.update_state([0., 1., 1.], [1., 0., 1.])
+  print('Final result: ', m.result().numpy())  # Final result: 0.289
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.Logcosh()])
+  ```
+  """
+
+  def __init__(self, name='logcosh', dtype=None):
+    super(Logcosh, self).__init__(logcosh, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(Logcosh, cls).from_config(config)
+
+
+class Poisson(MeanMetricWrapper):
+  """Computes the poisson metric between `y_true` and `y_pred`.
+
+  metric = y_pred - y_true * log(y_pred)
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.Poisson()
+  m.update_state([1, 9, 2], [4, 8, 12])
+  print('Final result: ', m.result().numpy())  # Final result: -4.63
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.Poisson()])
+  ```
+  """
+
+  def __init__(self, name='poisson', dtype=None):
+    super(Poisson, self).__init__(poisson, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(Poisson, cls).from_config(config)
+
+
+class KullbackLeiblerDivergence(MeanMetricWrapper):
+  """Computes kullback leibler divergence metric between `y_true` and `y_pred`.
+
+  metric = y_true * log(y_true / y_pred)
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.KullbackLeiblerDivergence()
+  m.update_state([.4, .9, .2], [.5, .8, .12])
+  print('Final result: ', m.result().numpy())  # Final result: -0.043
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.KullbackLeiblerDivergence()])
+  ```
+  """
+
+  def __init__(self, name='kullback_leibler_divergence', dtype=None):
+    super(KullbackLeiblerDivergence, self).__init__(
+        kullback_leibler_divergence, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(KullbackLeiblerDivergence, cls).from_config(config)
 
 
 def accuracy(y_true, y_pred):

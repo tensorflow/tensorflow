@@ -28,6 +28,7 @@ import six
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -576,7 +577,8 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     value = self._get_hyper(hyperparameter_name)
     if callable(value):
       return value()
-    if isinstance(value, (ops.Tensor, tf_variables.Variable)):
+    if isinstance(value, (ops.Tensor, tf_variables.Variable,
+                          distributed_values.TPUMirroredVariable)):
       return backend.get_value(value)
     return value
 

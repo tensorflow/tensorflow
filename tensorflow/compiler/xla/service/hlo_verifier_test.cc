@@ -450,8 +450,9 @@ TEST_F(HloVerifierTestLayoutSensitive, SliceWithLayoutChangeNotAllowed) {
    HloModule SliceWithLayoutChange
     ENTRY SliceWithLayoutChange {
       par0 = f32[4,5]{0,1} parameter(0)
-      par1 = s32[2] parameter(1)
-      ROOT dslice0 = f32[3,4]{1,0} dynamic-slice(par0, par1),
+      par1 = s32[] parameter(1)
+      par2 = s32[] parameter(2)
+      ROOT dslice0 = f32[3,4]{1,0} dynamic-slice(par0, par1, par2),
         dynamic_slice_sizes={3,4}
     }
   )";
@@ -480,5 +481,23 @@ TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
   EXPECT_THAT(status.error_message(),
               HasSubstr("Instruction shouldn't change layouts"));
 }
+
+TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY BitcastCanNotChangeElementType {
+   constant.0 = f32[2] constant({0.0, 0.0})
+   ROOT bitcast = s32[2] bitcast(constant.0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Bitcast can not change the element type"));
+}
+
 }  // namespace
 }  // namespace xla

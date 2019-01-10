@@ -1,14 +1,13 @@
 # Description:
 #   Contains the Keras API (internal TensorFlow version).
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 config_setting(
     name = "empty_condition",
@@ -1022,7 +1021,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
     ],
-    shard_count = 2,
+    shard_count = 8,
     tags = ["notsan"],  # b/67509773
 )
 

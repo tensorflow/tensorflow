@@ -262,16 +262,17 @@ class Sequential(Model):
           with ops.name_scope(layer._name_scope()):
             layer._maybe_build(x)
           layer.built = True
+        if layer.supports_masking:
+          mask = layer.compute_mask(x, mask)
+        else:
+          mask = None
+
         if context.executing_eagerly():
           x = layer(x, **kwargs)
         elif layer.dynamic:
           x = layer._symbolic_call(x)
         else:
           x = layer.call(x, **kwargs)
-        if layer.supports_masking:
-          mask = layer.compute_mask(x, mask)
-        else:
-          mask = None
       if not context.executing_eagerly():
         x._keras_mask = mask
     return x, mask
