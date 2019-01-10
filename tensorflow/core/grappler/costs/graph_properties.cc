@@ -1087,15 +1087,20 @@ class SymbolicShapeRefiner {
         c->output_tensor_protos.size() < ic->num_outputs()) {
       return false;
     } else {
+      // Checks if we can get output value via either output_tensor_proto or
+      // output_tensors_as_shapes.
       for (int i = 0; i < ic->num_outputs(); i++) {
-        if (c->output_tensor_protos.size() <= i ||
-            c->output_tensor_protos[i] == nullptr) {
-          return false;
+        if (c->output_tensor_protos.size() > i &&
+            c->output_tensor_protos[i] != nullptr) {
+          continue;
         }
-        if (c->output_tensors_as_shapes.size() <= i ||
-            !ic->FullyDefined(c->output_tensors_as_shapes[i])) {
-          return false;
+        if (c->output_tensors_as_shapes.size() > i &&
+            ic->FullyDefined(c->output_tensors_as_shapes[i])) {
+          continue;
         }
+
+        // Unknown for output[i].
+        return false;
       }
     }
     return true;
