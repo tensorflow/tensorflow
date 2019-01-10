@@ -53,9 +53,107 @@ namespace {
 bool ShouldUseMultiThreadedEigen(const HloModuleConfig& config) {
   return config.debug_options().xla_cpu_multi_thread_eigen();
 }
+
+// Helper class for emitting LLVM IR to perform the dot operation.
+class DotOpEmitter {
+ public:
+  explicit DotOpEmitter(DotInfo dot_info, string dot_hlo_name,
+                        const llvm_ir::IrArray& target_array,
+                        const llvm_ir::IrArray& lhs_array,
+                        const llvm_ir::IrArray& rhs_array,
+                        const llvm_ir::IrArray* addend_array,
+                        llvm::Value* executable_run_options_value,
+                        llvm::IRBuilder<>* b,
+                        const HloModuleConfig& hlo_module_config,
+                        const TargetMachineFeatures& target_machine_features);
+
+  // Emits the IR to perform the dot operation.
+  Status Emit();
+
+ private:
+  // Emits instructions to perform a scalar dot product (a multiply of the
+  // LHS and RHS) and store the results in the target.
+  Status EmitScalarDot();
+
+  // Emits a call to the CPU runtime to perform the matrix multiply.
+  Status EmitCallToRuntime();
+
+  // Represents the dimensions of a matrix-matrix multiply operation.
+  struct MatMultDims {
+    // The number of rows in the LHS.
+    int64 m;
+
+    // The number of columns in the LHS, which is also must be equal to the
+    // number of rows in the RHS.
+    int64 k;
+
+    // The number of columns on the RHS.
+    int64 n;
+
+    // True if the LHS matrix is column major.
+    bool lhs_column_major;
+
+    // True if the LHS contraction dimension is not 1.
+    bool lhs_non_canonical;
+
+    // True if the RHS matrix is column major.
+    bool rhs_column_major;
+
+    // True if the RHS contraction dimension is not 0.
+    bool rhs_non_canonical;
+
+    // True if the result matrix is column major.
+    bool target_column_major;
+  };
+
+  // Get the MatMultDims instance for the dot product this DotOpEmitter
+  // represents.  Precondition: the dot is of rank 2 (and thus its operands are
+  // of rank 2 as well).
+  MatMultDims GetMatMultDims() const;
+
+  // Lowers the dot operation as a tiled Matrix*Vector loop.
+  void EmitTiledLlvmIrGemv();
+
+  // Lowers the dot operation as a tiled Matrix*Matrix loop.
+  void EmitTiledLlvmIrGemm();
+
+  // Lowers the dot operation as a naive nested loop that computes the result
+  // one element at a time.
+  void EmitNaiveLlvmIrGemm();
+
+  // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
+  // registers.
+  int64 GetGemvTilingFactor() const {
+    const int64 kDefaultTilingFactor = 8;
+    return options::LlvmIrGemvTilingFactor(hlo_module_config_)
+        .value_or(kDefaultTilingFactor);
+  }
+
+  std::tuple<int64, int64, int64> GetGemmTileSize() const {
+    // Tuned for broadwell - Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz
+    //
+    // TODO(b/80093688): Tune for other architectures and centralize this
+    // information in one place.
+    const std::tuple<int64, int64, int64> kDefaultTileSize =
+        std::tuple<int64, int64, int64>(11, 9, 1);
+    return options::LlvmIrGemmTileSize(hlo_module_config_)
+        .value_or(kDefaultTileSize);
+  }
+
+  DotInfo dot_info_;
+  string dot_hlo_name_;
+  const llvm_ir::IrArray& target_array_;
+  const llvm_ir::IrArray& lhs_array_;
+  const llvm_ir::IrArray& rhs_array_;
+  const llvm_ir::IrArray* addend_array_;
+  llvm::Value* executable_run_options_value_;
+  llvm::IRBuilder<>* b_;
+  const HloModuleConfig& hlo_module_config_;
+  const TargetMachineFeatures& target_machine_features_;
+};
 }  // namespace
 
-DotOpEmitter::DotOpEmitter(const HloInstruction& dot,
+DotOpEmitter::DotOpEmitter(DotInfo dot_info, string dot_hlo_name,
                            const llvm_ir::IrArray& target_array,
                            const llvm_ir::IrArray& lhs_array,
                            const llvm_ir::IrArray& rhs_array,
@@ -64,7 +162,8 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot,
                            llvm::IRBuilder<>* b,
                            const HloModuleConfig& hlo_module_config,
                            const TargetMachineFeatures& target_machine_features)
-    : dot_(dot),
+    : dot_info_(std::move(dot_info)),
+      dot_hlo_name_(std::move(dot_hlo_name)),
       target_array_(target_array),
       lhs_array_(lhs_array),
       rhs_array_(rhs_array),
@@ -74,23 +173,8 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot,
       hlo_module_config_(hlo_module_config),
       target_machine_features_(target_machine_features) {}
 
-/* static */ Status DotOpEmitter::EmitDotOperation(
-    const HloInstruction& dot, const llvm_ir::IrArray& target_array,
-    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-    const HloModuleConfig& hlo_module_config,
-    const TargetMachineFeatures& target_machine_features) {
-  PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
-  DotOpEmitter dot_emitter(dot, target_array, lhs_array, rhs_array,
-                           addend_array, executable_run_options_value, b,
-                           hlo_module_config, target_machine_features);
-  return dot_emitter.Emit();
-}
-
 void DotOpEmitter::EmitTiledLlvmIrGemm() {
-  PrimitiveType primitive_type = dot_.shape().element_type();
+  PrimitiveType primitive_type = dot_info_.result_shape.element_type();
   MatMultDims mat_mult_dims = GetMatMultDims();
 
   llvm::Value* lhs = lhs_array_.GetBasePointer();
@@ -136,7 +220,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
 }
 
 void DotOpEmitter::EmitTiledLlvmIrGemv() {
-  PrimitiveType primitive_type = dot_.shape().element_type();
+  PrimitiveType primitive_type = dot_info_.result_shape.element_type();
 
   CHECK(primitive_util::IsFloatingPointType(primitive_type) ||
         primitive_util::IsIntegralType(primitive_type));
@@ -258,11 +342,6 @@ Status DotOpEmitter::Emit() {
   // which performs the sum-of-products (the reduction loop) before storing
   // the result in the output buffer.
 
-  // This routine assumes that the dot operation is not in a parallelized
-  // enclosing computation.
-  CHECK(
-      dot_.parent()->root_instruction()->outer_dimension_partitions().empty());
-
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
 
@@ -273,7 +352,7 @@ Status DotOpEmitter::Emit() {
     return EmitScalarDot();
   }
 
-  switch (GetDotImplementationStrategy(hlo_module_config_, DotInfo(dot_),
+  switch (GetDotImplementationStrategy(hlo_module_config_, dot_info_,
                                        target_machine_features_)) {
     case DotImplementationStrategy::kNaiveLlvmIr:
       EmitNaiveLlvmIrGemm();
@@ -297,7 +376,7 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
-  const DotDimensionNumbers& dim_nums = dot_.dot_dimension_numbers();
+  const DotDimensionNumbers& dim_nums = dot_info_.dim_nums;
 
   // Reduce along dimension 0 of the LHS and 1 of the RHS. Vectors are a special
   // case where the reduction dimension is 0 for both LHS and RHS. This results
@@ -317,7 +396,7 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   // Create loop nests which loop through the LHS operand dimensions and the RHS
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
-  llvm_ir::ForLoopNest loop_nest(llvm_ir::IrName(&dot_), b_);
+  llvm_ir::ForLoopNest loop_nest(llvm_ir::IrName(dot_hlo_name_), b_);
   llvm_ir::IrArray::Index lhs_index = loop_nest.EmitOperandArrayLoopNest(
       lhs_array_, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
   llvm_ir::IrArray::Index rhs_index = loop_nest.EmitOperandArrayLoopNest(
@@ -561,11 +640,11 @@ Status DotOpEmitter::EmitCallToRuntime() {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
-  CHECK_EQ(dot_.shape().dimensions_size(), 2);
+  CHECK_EQ(dot_info_.result_shape.dimensions_size(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
-  const DotDimensionNumbers& dim_nums = dot_.dot_dimension_numbers();
+  const DotDimensionNumbers& dim_nums = dot_info_.dim_nums;
 
   return {
       /*m=*/lhs_shape.dimensions(1 - dim_nums.lhs_contracting_dimensions(0)),
@@ -753,6 +832,28 @@ bool DotOperandsAndResultMustHaveRowMajorLayout(
 
   return impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemm ||
          impl_strategy == DotImplementationStrategy::kEigen;
+}
+
+Status EmitDotOperation(const HloInstruction& dot,
+                        const llvm_ir::IrArray& target_array,
+                        const llvm_ir::IrArray& lhs_array,
+                        const llvm_ir::IrArray& rhs_array,
+                        const llvm_ir::IrArray* addend_array,
+                        llvm::Value* executable_run_options_value,
+                        llvm::IRBuilder<>* b,
+                        const HloModuleConfig& hlo_module_config,
+                        const TargetMachineFeatures& target_machine_features) {
+  // This routine assumes that the dot operation is not in a parallelized
+  // enclosing computation.
+  CHECK(dot.parent()->root_instruction()->outer_dimension_partitions().empty());
+
+  PrimitiveType type = target_array.GetShape().element_type();
+  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
+  DotOpEmitter dot_emitter(DotInfo(dot), dot.name(), target_array, lhs_array,
+                           rhs_array, addend_array,
+                           executable_run_options_value, b, hlo_module_config,
+                           target_machine_features);
+  return dot_emitter.Emit();
 }
 }  // namespace cpu
 }  // namespace xla

@@ -554,14 +554,15 @@ class Optimizer(
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
 
-    # Handle DistributionStrategy case.
-    if distribute_ctx.get_cross_replica_context():
-      raise RuntimeError("Use `_distributed_apply()` instead of "
-                         "`apply_gradients()` in a cross-replica context.")
-    # TODO(isaprykin): Get rid of `has_distribution_strategy()` check by
+    # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    if distribute_ctx.has_distribution_strategy():
+    if distribute_ctx.has_strategy():
+      # Handle DistributionStrategy case.
+      if distribute_ctx.in_cross_replica_context():
+        raise RuntimeError("Use `_distributed_apply()` instead of "
+                           "`apply_gradients()` in a cross-replica context.")
+
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
       return distribute_ctx.get_replica_context().merge_call(
           self._distributed_apply, args=(grads_and_vars, global_step, name))

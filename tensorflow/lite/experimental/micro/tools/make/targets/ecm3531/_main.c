@@ -85,7 +85,7 @@ void EtaPrintExecutionTime(uint64_t time_ms) {
       time_ms = time_ms / 10;
       time_string[k1] = (char)(0x30 + c);
     }
-    for (k1 = 4; k1 > 0; k1--) {  // print out 1 char at a time
+    for (k1 = 4; k1 >= 0; k1--) {  // print out 1 char at a time
       EtaCspUartPutc(&g_sUart1, time_string[k1]);
     }
   } else {

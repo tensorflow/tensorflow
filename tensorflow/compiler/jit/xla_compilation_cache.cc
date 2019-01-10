@@ -62,7 +62,7 @@ XlaCompilationCache::~XlaCompilationCache() {
   // about?
 }
 
-string XlaCompilationCache::DebugString() {
+string XlaCompilationCache::DebugString() const {
   return "XLA JIT compilation cache";
 }
 

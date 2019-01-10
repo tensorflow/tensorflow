@@ -669,7 +669,7 @@ class SymbolicShapeRefiner {
     ctx->output_tensor_protos.resize(grappler_function_item.output_size(),
                                      nullptr);
     for (auto const& out_arg : grappler_function_item.outputs()) {
-      if (out_arg.output_tensors.size() > 1) {
+      if (out_arg.output_nodes.size() > 1) {
         // TODO(jmdecker): Handle case of multiple output tensors
         return errors::Unimplemented(
             "Output arguments with multiple output tensors are not yet "
@@ -678,7 +678,7 @@ class SymbolicShapeRefiner {
 
       // It is guaranteed that output_tensors does not contain any control
       // inputs, so port_id >= 0.
-      TensorId out_tensor = ParseTensorName(out_arg.output_tensors[0]);
+      TensorId out_tensor = ParseTensorName(out_arg.output_nodes[0]);
 
       const NodeDef* retnode = gv.GetNode(out_tensor.node());
       if (retnode == nullptr) {
@@ -1087,15 +1087,20 @@ class SymbolicShapeRefiner {
         c->output_tensor_protos.size() < ic->num_outputs()) {
       return false;
     } else {
+      // Checks if we can get output value via either output_tensor_proto or
+      // output_tensors_as_shapes.
       for (int i = 0; i < ic->num_outputs(); i++) {
-        if (c->output_tensor_protos.size() <= i ||
-            c->output_tensor_protos[i] == nullptr) {
-          return false;
+        if (c->output_tensor_protos.size() > i &&
+            c->output_tensor_protos[i] != nullptr) {
+          continue;
         }
-        if (c->output_tensors_as_shapes.size() <= i ||
-            !ic->FullyDefined(c->output_tensors_as_shapes[i])) {
-          return false;
+        if (c->output_tensors_as_shapes.size() > i &&
+            ic->FullyDefined(c->output_tensors_as_shapes[i])) {
+          continue;
         }
+
+        // Unknown for output[i].
+        return false;
       }
     }
     return true;
@@ -1463,9 +1468,9 @@ class SymbolicShapeRefiner {
       // Due to the cost of EvaluateNode(), we run it only for certain op types
       // (white listed) and small integer tensors.
 
-      const int max_elelment_size = 17;  // Max up to 4x4 matrix or similar.
+      const int max_element_size = 17;  // Max up to 4x4 matrix or similar.
       if (AllOutputValuesKnown(c) || !AllInputValuesKnown(c) ||
-          !ShouldUpdateOutputValues(c, max_elelment_size)) {
+          !ShouldUpdateOutputValues(c, max_element_size)) {
         return Status::OK();
       }
       UpdateOutputValues(node, c).IgnoreError();  // This is optional.

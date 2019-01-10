@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.layers import layers as tf_layers
 from tensorflow.python.ops import array_ops
@@ -338,6 +339,7 @@ def create_fc_per_eg_jacobians(batch_size, activation_size, num_layers):
   return jacobians, per_eg_jacobians_pfor, per_eg_jacobians_while
 
 
+@test_util.run_v1_only("b/122612051")
 class GradientsTest(test.TestCase):
 
   def run_and_assert_equal(self, targets1, targets2, atol=1e-4, rtol=1e-4):

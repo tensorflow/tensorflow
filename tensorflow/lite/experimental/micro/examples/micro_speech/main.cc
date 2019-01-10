@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/feature_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/timer.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
   // Keep reading and analysing audio data in an infinite loop.
   while (true) {
     // Fetch the spectrogram for the current time.
-    const int32_t current_time = TimeInMilliseconds();
+    const int32_t current_time = LatestAudioTimestamp();
     int how_many_new_slices = 0;
     TfLiteStatus feature_status = feature_provider.PopulateFeatureData(
         error_reporter, previous_time, current_time, &how_many_new_slices);

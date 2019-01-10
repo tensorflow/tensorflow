@@ -7477,6 +7477,19 @@ func Conv2DBackpropFilterUseCudnnOnGpu(value bool) Conv2DBackpropFilterAttr {
 	}
 }
 
+// Conv2DBackpropFilterExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to <>
+func Conv2DBackpropFilterExplicitPaddings(value []int64) Conv2DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
 // Conv2DBackpropFilterDataFormat sets the optional data_format attribute to value.
 //
 // value: Specify the data format of the input and output data. With the
@@ -8176,7 +8189,7 @@ func RegexReplaceReplaceGlobal(value bool) RegexReplaceAttr {
 // Arguments:
 //	input: The text to be processed.
 //	pattern: The regular expression to match the input.
-//	rewrite: The rewrite to be applied to the matched expresion.
+//	rewrite: The rewrite to be applied to the matched expression.
 //
 // Returns The text after applying pattern and rewrite.
 func RegexReplace(scope *Scope, input tf.Output, pattern tf.Output, rewrite tf.Output, optional ...RegexReplaceAttr) (output tf.Output) {
@@ -11605,15 +11618,12 @@ func NthElement(scope *Scope, input tf.Output, n tf.Output, optional ...NthEleme
 //
 // Arguments:
 //
-//	segment_ids: A tensor whose shape is a prefix of `data.shape`.END
-//   }
-//   out_arg {
-//     name: "output"
-//     description: <<END
-// Has same shape as data, except for the first `segment_ids.rank`
+//	segment_ids: A tensor whose shape is a prefix of `data.shape`.
+//
+//
+// Returns Has same shape as data, except for the first `segment_ids.rank`
 // dimensions, which are replaced with a single dimension which has size
 // `num_segments`.
-//
 func UnsortedSegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -33501,6 +33511,19 @@ func Conv2DBackpropInputUseCudnnOnGpu(value bool) Conv2DBackpropInputAttr {
 	}
 }
 
+// Conv2DBackpropInputExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to <>
+func Conv2DBackpropInputExplicitPaddings(value []int64) Conv2DBackpropInputAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
 // Conv2DBackpropInputDataFormat sets the optional data_format attribute to value.
 //
 // value: Specify the data format of the input and output data. With the
@@ -35305,6 +35328,19 @@ type Conv2DAttr func(optionalAttr)
 func Conv2DUseCudnnOnGpu(value bool) Conv2DAttr {
 	return func(m optionalAttr) {
 		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to <>
+func Conv2DExplicitPaddings(value []int64) Conv2DAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
 	}
 }
 

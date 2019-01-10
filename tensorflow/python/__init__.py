@@ -150,7 +150,7 @@ nn.rnn_cell = rnn_cell
 # pylint: disable=undefined-variable
 tf_export(v1=['AttrValue'])(AttrValue)
 tf_export(v1=['ConfigProto'])(ConfigProto)
-tf_export('Event', 'summary.Event')(Event)
+tf_export(v1=['Event', 'summary.Event'])(Event)
 tf_export(v1=['GPUOptions'])(GPUOptions)
 tf_export(v1=['GraphDef'])(GraphDef)
 tf_export(v1=['GraphOptions'])(GraphOptions)
@@ -163,10 +163,10 @@ tf_export(v1=['OptimizerOptions'])(OptimizerOptions)
 tf_export(v1=['RunMetadata'])(RunMetadata)
 tf_export(v1=['RunOptions'])(RunOptions)
 tf_export(v1=['SessionLog', 'summary.SessionLog'])(SessionLog)
-tf_export('Summary', 'summary.Summary')(Summary)
-tf_export('summary.SummaryDescription')(SummaryDescription)
-tf_export('SummaryMetadata')(SummaryMetadata)
-tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
+tf_export(v1=['Summary', 'summary.Summary'])(Summary)
+tf_export(v1=['summary.SummaryDescription'])(SummaryDescription)
+tf_export(v1=['SummaryMetadata'])(SummaryMetadata)
+tf_export(v1=['summary.TaggedRunMetadata'])(TaggedRunMetadata)
 tf_export(v1=['TensorInfo'])(TensorInfo)
 # pylint: enable=undefined-variable
 

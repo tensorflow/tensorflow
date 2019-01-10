@@ -73,7 +73,11 @@ Status VirtualCluster::Run(const GraphDef& graph,
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(true, this, node_manager_.get());
+  // Note that we do not use aggressive shape inference to preserve unknown
+  // shapes from the input graph.
+  VirtualScheduler scheduler(/*use_static_shapes=*/true,
+                             /*use_aggressive_shape_inference=*/false, this,
+                             node_manager_.get());
   TF_RETURN_IF_ERROR(scheduler.Init(&item));
 
   if (metadata) {

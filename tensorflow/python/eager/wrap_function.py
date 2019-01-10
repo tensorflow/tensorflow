@@ -197,6 +197,7 @@ def wrap_function(fn, signature, name=None):
           name,
           holder,
           args=None, kwargs=None, signature=signature,
-          add_control_dependencies=False),
+          add_control_dependencies=False,
+          collections={}),
       variable_holder=holder,
       signature=signature)

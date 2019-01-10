@@ -1376,9 +1376,11 @@ TEST_F(CopyInsertionTest, CrossingParameters) {
   builder.AddInstruction(HloInstruction::CreateTuple({gte1, gte0}));
   module->AddEntryComputation(builder.Build());
   ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   InsertCopies(module.get());
 
   EXPECT_EQ(CountCopies(*module), 4);
@@ -1409,9 +1411,11 @@ TEST_F(CopyInsertionTest, ParametersAliasing) {
   builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
   module->AddEntryComputation(builder.Build());
   ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   InsertCopies(module.get());
 
   EXPECT_EQ(CountCopies(*module), 0);
@@ -1475,7 +1479,8 @@ TEST_F(CopyInsertionTest, ParameterWithPartialAliasing) {
   builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
   module->AddEntryComputation(builder.Build());
   ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   InsertCopies(module.get());
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1516,7 +1521,8 @@ TEST_F(CopyInsertionTest, ParameterAndParallelOpsWithPartialAliasing) {
   builder.AddInstruction(HloInstruction::CreateTuple({negate0, negate1}));
   module->AddEntryComputation(builder.Build());
   ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   InsertCopies(module.get());
 
   EXPECT_EQ(CountCopies(*module), 0);
@@ -1557,7 +1563,8 @@ TEST_F(CopyInsertionTest, ParameterAndOpsWithPartialAliasing) {
   builder.AddInstruction(HloInstruction::CreateTuple({add, negate1}));
   module->AddEntryComputation(builder.Build());
   ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   InsertCopies(module.get());
 
   EXPECT_EQ(CountCopies(*module), 0);

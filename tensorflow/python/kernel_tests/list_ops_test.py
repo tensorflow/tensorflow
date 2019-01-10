@@ -189,6 +189,47 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
+  def _testStackWithUninitializedTensors(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t), [0., 0., 0.])
+
+  def testStackWithUninitializedTensors(self):
+    self._testStackWithUninitializedTensors()
+
+  def testStackWithUninitializedTensorsGpu(self):
+    if not context.num_gpus():
+      return
+    with context.device("gpu:0"):
+      self._testStackWithUninitializedTensors()
+
+  def _testStackWithUninitializedTensorsInferShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    l = list_ops.tensor_list_set_item(l, 1, [1., 2.])
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t), [[0., 0.], [1., 2.], [0., 0.]])
+
+  def testStackWithUninitializedTensorsInferShape(self):
+    self._testStackWithUninitializedTensorsInferShape()
+
+  def testStackWithUninitializedTensorsInferShapeGpu(self):
+    if not context.num_gpus():
+      return
+    with context.device("gpu:0"):
+      self._testStackWithUninitializedTensorsInferShape()
+
+  def testStackReservedListWithNoElementsAndPartialElementShapeFails(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Tried to stack list which only contains "
+                                 "uninitialized tensors and has a "
+                                 "non-fully-defined element_shape: <unknown>"):
+      t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
   def testGatherGrad(self, max_num_elements):

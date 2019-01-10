@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import collections as py_collections
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
@@ -80,7 +80,7 @@ class FuncGraph(ops.Graph):
     seed: The graph-level random seed.
   """
 
-  def __init__(self, name, read_only_collections=True):
+  def __init__(self, name, collections=None):
     """Construct a new FuncGraph.
 
     The graph will inherit its graph key, collections, seed, and distribution
@@ -88,8 +88,13 @@ class FuncGraph(ops.Graph):
 
     Args:
       name: the name of the function.
-      read_only_collections: whether to not write function graph collections
-        back to default graph. Defaults to True.
+      collections: a dictionary of collections this FuncGraph should start
+        with. If not specified (None), the FuncGraph will read (but not write
+        to) the outer graph's collections that are not whitelisted, and both
+        read and write to the outer graph's collections that are whitelisted.
+        The current whitelisted collections are the global variables, the
+        local variables, and the trainable variables.
+        Defaults to None.
     """
     super(FuncGraph, self).__init__()
 
@@ -97,10 +102,9 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.structured_outputs = None
-    self._read_only_collections = read_only_collections
     self._weak_variables = []
     self.outer_graph = ops.get_default_graph()
-    self.captures = collections.OrderedDict()
+    self.captures = py_collections.OrderedDict()
 
     self._building_function = True
     # Map from resource tensor name to last op (in program order) which uses
@@ -122,9 +126,7 @@ class FuncGraph(ops.Graph):
       # specialization (currently used in cond_v2), here and in the cache key.
       self._colocation_stack = graph._colocation_stack.copy()  # pylint: disable=protected-access
 
-    if not self._read_only_collections:
-      self._collections = graph._collections  # pylint: disable=protected-access
-    else:
+    if collections is None:
       for collection_name in graph.get_all_collection_keys():
         if collection_name not in WHITELIST_COLLECTIONS:
           self._collections[collection_name] = graph.get_collection(
@@ -132,6 +134,8 @@ class FuncGraph(ops.Graph):
       for collection_name in WHITELIST_COLLECTIONS:
         self._collections[collection_name] = graph.get_collection_ref(
             collection_name)
+    else:
+      self._collections = collections
 
   def as_default(self):
     outer_cm = super(FuncGraph, self).as_default()
@@ -338,7 +342,8 @@ def func_graph_from_py_func(name,
                             autograph=False,
                             add_control_dependencies=True,
                             arg_names=None,
-                            op_return_value=None):
+                            op_return_value=None,
+                            collections=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -365,6 +370,13 @@ def func_graph_from_py_func(name,
     op_return_value: Optional. A Tensor. If set and `python_func` returns
       Operations, those return values will be replaced with this value. If not
       set, returning an Operation triggers an error.
+    collections: a dictionary of collections this FuncGraph should start
+      with. If not specified (None), the FuncGraph will read (but not write to)
+      the outer graph's collections that are not whitelisted, and both
+      read and write to the outer graph's collections that are whitelisted.
+      The current whitelisted collections are the global variables, the
+      local variables, and the trainable variables.
+      Defaults to None.
 
   Returns:
     A FuncGraph.
@@ -376,7 +388,7 @@ def func_graph_from_py_func(name,
   if op_return_value is not None:
     assert isinstance(op_return_value, ops.Tensor), op_return_value
   if func_graph is None:
-    func_graph = FuncGraph(name)
+    func_graph = FuncGraph(name, collections=collections)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
     control_manager = AutomaticControlDependencies

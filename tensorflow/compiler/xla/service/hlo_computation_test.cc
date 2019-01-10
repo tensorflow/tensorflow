@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 
+#include <memory>
 #include <set>
+#include <unordered_map>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -490,6 +493,41 @@ TEST_F(HloComputationTest, CloneWithControlDependency) {
   EXPECT_EQ(HloOpcode::kNegate, predecessors[0]->opcode());
   auto successors = predecessors[0]->control_successors();
   EXPECT_THAT(successors, ::testing::ElementsAre(cloned_add));
+}
+
+TEST_F(HloComputationTest, CloneWithReplacements) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape r0s64 = ShapeUtil::MakeShape(S64, {});
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  Shape r0u32 = ShapeUtil::MakeShape(U32, {});
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "p.0.lhs"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
+  auto param2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
+  auto lt = builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param0, param1));
+  auto module = CreateNewVerifiedModule();
+  auto computation =
+      module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
+  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  replacements.emplace(param2,
+                       HloInstruction::CreateParameter(2, r0s32, "p.1"));
+  auto param3 = HloInstruction::CreateParameter(3, r0u32, "p.2");
+  std::vector<const HloInstruction*> extra_parameters{param3.get()};
+  auto clone = computation->CloneWithReplacements(std::move(replacements),
+                                                  extra_parameters);
+  ASSERT_EQ(clone->num_parameters(), 4);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(1)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(2)->shape(), r0s32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(3)->shape(), r0u32));
 }
 
 TEST_F(HloComputationTest, Stringification) {

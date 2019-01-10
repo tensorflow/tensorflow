@@ -603,9 +603,11 @@ class ParameterServerStrategyTestBase(
         self.assertEqual(expected_value, computed_value)
 
 
-class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
-                                  strategy_test_lib.DistributionTestBase,
-                                  parameterized.TestCase):
+class ParameterServerStrategyTest(
+    ParameterServerStrategyTestBase,
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase,
+    parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -782,6 +784,36 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
+  def testAllReduceSum(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum(distribution)
+
+  def testAllReduceSumGradients(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum_gradients(distribution)
+
+  def testAllReduceSumGradientTape(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum_gradient_tape(distribution)
+
+  def testAllReduceMean(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean(distribution)
+
+  def testAllReduceMeanGradients(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean_gradients(distribution)
+
+  def testAllReduceMeanGradientTape(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean_gradient_tape(distribution)
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):
@@ -859,6 +891,18 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
         self.assertIs(values.AggregatingVariable, type(w))
 
       strategy.extended.call_for_each_replica(f)
+
+
+class LocalParameterServerStrategyTest(strategy_test_lib.DistributionTestBase,
+                                       parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager'],
+                                              use_core_strategy=[True, False],
+                                              required_gpus=2))
+  def testNumpyIterator(self, use_core_strategy):
+    strategy, _, _ = create_test_objects(
+        num_gpus=2, use_core_strategy=use_core_strategy)
+    self._test_numpy_iterator(strategy)
 
 
 if __name__ == '__main__':

@@ -212,8 +212,8 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
       XLAShapeToTensorShape(out_backprop_shape, &out_backprop_tensor_shape));
   return ConvBackpropComputeDimensionsV2(
       label, num_spatial_dims, input_tensor_shape, filter_tensor_shape,
-      out_backprop_tensor_shape, dilations, strides, padding, data_format,
-      dims);
+      out_backprop_tensor_shape, dilations, strides, padding,
+      /*explicit_paddings=*/{}, data_format, dims);
 }
 
 }  // anonymous namespace
@@ -227,6 +227,11 @@ xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
   TF_RETURN_IF_ERROR(ctx->GetAttr("dilations", &attrs.dilations));
   TF_RETURN_IF_ERROR(ctx->GetAttr("strides", &attrs.strides));
   TF_RETURN_IF_ERROR(ctx->GetAttr("padding", &attrs.padding));
+  // TODO(reedwm): Support explicit padding.
+  if (attrs.padding == EXPLICIT) {
+    return errors::Unimplemented(
+        "XLA does not yet support Conv2D with explicit padding.");
+  }
 
   string data_format;
   TF_RETURN_IF_ERROR(ctx->GetAttr("data_format", &data_format));

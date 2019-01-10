@@ -614,7 +614,9 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
      public:
       MemoryCache() = default;
 
-      string DebugString() override { return "CacheDataset::MemoryCache"; }
+      string DebugString() const override {
+        return "CacheDataset::MemoryCache";
+      }
 
       // Marks the cache as completed.
       void Complete() {

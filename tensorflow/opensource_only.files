@@ -241,7 +241,7 @@ tensorflow/third_party/tflite_ovic_testdata.BUILD
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/third_party/eigen.BUILD
-tensorflow/stream_executor/BUILD
+tensorflow/stream_executor/build_defs.bzl
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/api_template.__init__.py

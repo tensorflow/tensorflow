@@ -34,7 +34,8 @@ class Cluster;
 struct GrapplerItem;
 
 // Estimate the cost of running a Grappler item based on the theoretical
-// performance of the hardware that will run the model.
+// performance of the hardware that will run the model. Note that this
+// internally uses aggressive shape inference with static shape inference.
 class AnalyticalCostEstimator : public CostEstimator {
  public:
   // Does not take ownership of cluster.

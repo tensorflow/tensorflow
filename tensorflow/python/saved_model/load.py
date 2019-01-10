@@ -58,6 +58,11 @@ class _Loader(object):
           bound_inputs = [
               self._get_tensor_from_node(node_id)
               for node_id in monomorphic_function.bound_inputs]
+          bound_variables = [
+              self._nodes[node_id]
+              for node_id in monomorphic_function.bound_inputs
+              if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
+          ]
           if name in seen_functions:
             if self._functions[name]._captured_inputs != bound_inputs:  # pylint: disable=protected-access
               raise NotImplementedError(
@@ -69,6 +74,7 @@ class _Loader(object):
             # concrete function, note that we did not modify the FuncGraph
             # itself.
             self._functions[name]._captured_inputs = bound_inputs  # pylint: disable=protected-access
+            self._functions[name]._func_graph.variables = bound_variables  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
     obj = self._nodes[node_id]
@@ -79,11 +85,17 @@ class _Loader(object):
     raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
   def _load_all(self):
+    """Load all saved objects and wire their properties."""
     self._nodes = [self._recreate(proto) for proto in self._proto.nodes]
     # After creating the objects, construct the edges between the objects.
     for obj, object_proto in zip(self._nodes, self._proto.nodes):
       for reference in object_proto.children:
         setattr(obj, reference.local_name, self._nodes[reference.node_id])
+        # Note: if an object has an attribute `__call__` add a class method
+        # that allows `obj()` syntax to work. This is done per-instance to
+        # allow `callable` to be used to find out if an object is callable.
+        if reference.local_name == "__call__":
+          setattr(type(obj), "__call__", _call_attribute)
 
   def _restore_checkpoint(self):
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
@@ -107,8 +119,16 @@ class _Loader(object):
     return factory[kind]()
 
   def _recreate_user_object(self, proto):
+    """Instantiates a SavedUserObject."""
     del proto
-    return tracking.Checkpointable()
+
+    # Note: each user object has its own class. This allows to make each one
+    # individually callable by adding a `__call__` method to the classes of
+    # the objects instances that have a `__call__` property.
+    class _UserObject(tracking.Checkpointable):
+      pass
+
+    return _UserObject()
 
   def _recreate_asset(self, proto):
     filename = os.path.join(
@@ -123,7 +143,11 @@ class _Loader(object):
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?
     dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
-    return variables.Variable(dummy_value)
+    return variables.Variable(dummy_value, trainable=proto.trainable)
+
+
+def _call_attribute(instance, *args, **kwargs):
+  return instance.__call__(*args, **kwargs)
 
 
 def _load_saved_object_graph_proto(filename):

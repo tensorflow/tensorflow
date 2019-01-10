@@ -1049,8 +1049,26 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class CosineProximityTest(test.TestCase):
 
+  def l2_norm(self, x, axis):
+    epsilon = 1e-12
+    square_sum = np.sum(np.square(x), axis=axis, keepdims=True)
+    x_inv_norm = 1 / np.sqrt(np.maximum(square_sum, epsilon))
+    return np.multiply(x, x_inv_norm)
+
+  def setup(self, axis=1):
+    self.np_y_true = np.asarray([[1, 9, 2], [-5, -2, 6]], dtype=np.float32)
+    self.np_y_pred = np.asarray([[4, 8, 12], [8, 1, 3]], dtype=np.float32)
+
+    y_true = self.l2_norm(self.np_y_true, axis)
+    y_pred = self.l2_norm(self.np_y_pred, axis)
+    self.expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(axis,))
+
+    self.y_true = constant_op.constant(self.np_y_true)
+    self.y_pred = constant_op.constant(self.np_y_pred)
+
   def test_config(self):
-    cosine_obj = metrics.CosineProximity(name='my_cos', dtype=dtypes.int32)
+    cosine_obj = metrics.CosineProximity(
+        axis=2, name='my_cos', dtype=dtypes.int32)
     self.assertEqual(cosine_obj.name, 'my_cos')
     self.assertEqual(cosine_obj._dtype, dtypes.int32)
 
@@ -1060,29 +1078,33 @@ class CosineProximityTest(test.TestCase):
     self.assertEqual(cosine_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
+    self.setup()
     cosine_obj = metrics.CosineProximity()
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
-
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
-
-    update_op = cosine_obj.update_state(y_true, y_pred)
-    self.evaluate(update_op)
-    result = cosine_obj.result()
-    self.assertAllClose(-0.60723, result, atol=1e-5)
+    loss = cosine_obj(self.y_true, self.y_pred)
+    expected_loss = np.mean(self.expected_loss)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_weighted(self):
+    self.setup()
     cosine_obj = metrics.CosineProximity()
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
-    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
-    result = cosine_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose(-0.59916, self.evaluate(result), atol=1e-5)
+    sample_weight = np.asarray([1.2, 3.4])
+    loss = cosine_obj(
+        self.y_true,
+        self.y_pred,
+        sample_weight=constant_op.constant(sample_weight))
+    expected_loss = np.sum(
+        self.expected_loss * sample_weight) / np.sum(sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_axis(self):
+    self.setup(axis=1)
+    cosine_obj = metrics.CosineProximity(axis=1)
+    self.evaluate(variables.variables_initializer(cosine_obj.variables))
+    loss = cosine_obj(self.y_true, self.y_pred)
+    expected_loss = np.mean(self.expected_loss)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1601,6 +1623,62 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
     expected_result = np.multiply(self.expected_results, sample_weight)
     expected_result = np.sum(expected_result) / (1.2 + 3.4)
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MeanRelativeErrorTest(test.TestCase):
+
+  def test_config(self):
+    normalizer = constant_op.constant([1, 3], dtype=dtypes.float32)
+    mre_obj = metrics.MeanRelativeError(normalizer=normalizer, name='mre')
+    self.assertEqual(mre_obj.name, 'mre')
+    self.assertArrayNear(self.evaluate(mre_obj.normalizer), [1, 3], 1e-1)
+
+    mre_obj2 = metrics.MeanRelativeError.from_config(mre_obj.get_config())
+    self.assertEqual(mre_obj2.name, 'mre')
+    self.assertArrayNear(self.evaluate(mre_obj2.normalizer), [1, 3], 1e-1)
+
+  def test_unweighted(self):
+    np_y_pred = np.asarray([2, 4, 6, 8], dtype=np.float32)
+    np_y_true = np.asarray([1, 3, 2, 3], dtype=np.float32)
+    expected_error = np.mean(
+        np.divide(np.absolute(np_y_pred - np_y_true), np_y_true))
+
+    y_pred = constant_op.constant(np_y_pred, shape=(1, 4), dtype=dtypes.float32)
+    y_true = constant_op.constant(np_y_true, shape=(1, 4))
+
+    mre_obj = metrics.MeanRelativeError(normalizer=y_true)
+    self.evaluate(variables.variables_initializer(mre_obj.variables))
+
+    result = mre_obj(y_true, y_pred)
+    self.assertAllClose(self.evaluate(result), expected_error, atol=1e-3)
+
+  def test_weighted(self):
+    np_y_pred = np.asarray([2, 4, 6, 8], dtype=np.float32)
+    np_y_true = np.asarray([1, 3, 2, 3], dtype=np.float32)
+    sample_weight = np.asarray([0.2, 0.3, 0.5, 0], dtype=np.float32)
+    rel_errors = np.divide(np.absolute(np_y_pred - np_y_true), np_y_true)
+    expected_error = np.sum(rel_errors * sample_weight)
+
+    y_pred = constant_op.constant(np_y_pred, dtype=dtypes.float32)
+    y_true = constant_op.constant(np_y_true)
+
+    mre_obj = metrics.MeanRelativeError(normalizer=y_true)
+    self.evaluate(variables.variables_initializer(mre_obj.variables))
+
+    result = mre_obj(
+        y_true, y_pred, sample_weight=constant_op.constant(sample_weight))
+    self.assertAllClose(self.evaluate(result), expected_error, atol=1e-3)
+
+  def test_zero_normalizer(self):
+    y_pred = constant_op.constant([2, 4], dtype=dtypes.float32)
+    y_true = constant_op.constant([1, 3])
+
+    mre_obj = metrics.MeanRelativeError(normalizer=array_ops.zeros_like(y_true))
+    self.evaluate(variables.variables_initializer(mre_obj.variables))
+
+    result = mre_obj(y_true, y_pred)
+    self.assertEqual(self.evaluate(result), 0)
 
 
 def _get_model(compile_metrics):

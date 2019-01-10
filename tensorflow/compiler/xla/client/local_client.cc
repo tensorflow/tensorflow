@@ -164,9 +164,8 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   //    ExecutableRunOptions.eigen_intra_op_thread_pool.
   // *) The thread pool used for XLA CPU ops is from
   //    backend_->eigen_intra_op_thread_pool().
-  ServiceExecutableRunOptions service_options(
-      run_options, backend_->StreamBorrower(),
-      backend_->eigen_intra_op_thread_pool());
+  ServiceExecutableRunOptions service_options(run_options,
+                                              backend_->StreamBorrower());
 
   if (executable_->dumping_snapshot()) {
     return ExecuteAndDump(&service_options, arguments);

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/import_tensorflow.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -569,5 +570,6 @@ TEST(ImportTest, UnsupportedOpWithMultipleOutputs) {
 int main(int argc, char** argv) {
   ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
+  ::toco::port::InitGoogleWasDoneElsewhere();
   return RUN_ALL_TESTS();
 }

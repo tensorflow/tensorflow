@@ -7,7 +7,6 @@ recursive-include * *.dll
 recursive-include * *.lib
 recursive-include * *.csv
 recursive-include * *.gp
-recursive-include tensorflow/aux-bin *
 recursive-include tensorflow/include/tensorflow *.h
 recursive-include tensorflow/include/Eigen *
 recursive-include tensorflow/include/external *
