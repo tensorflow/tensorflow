@@ -48,7 +48,7 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
     allocator_.reset();
   }
 
-  string DebugString() const override {
+  string DebugString() override {
     std::stringstream oss;
     using std::dec;
     using std::endl;
