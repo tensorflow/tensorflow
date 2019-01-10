@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_wide_const.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_computation_name_uniquify.h"
+#include "tensorflow/compiler/plugin/poplar/driver/not_supported_gather_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/not_supported_scatter_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -302,7 +302,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     HloPassPipeline pipeline("IPU");
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<HloComputationNameUniquify>();
-    pipeline.AddPass<GatherExpander>();
+    pipeline.AddPass<NotSupportedGatherExpander>();
     pipeline.AddPass<NotSupportedScatterExpander>();
     pipeline.AddPass<DynamicIndexSplitter>();
     pipeline.AddPass<DotDecomposer>();

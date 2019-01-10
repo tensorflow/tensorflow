@@ -70,6 +70,7 @@ cc_library(
         "driver/inplace_util.cc",
         "driver/input_output_aliasing_map.cc",
         "driver/matcher_predicates.cc",
+        "driver/not_supported_gather_expander.cc",
         "driver/not_supported_scatter_expander.cc",
         "driver/scheduler.cc",
         "driver/sharding_pass.cc",
@@ -104,6 +105,7 @@ cc_library(
         "driver/input_output_aliasing_map.h",
         "driver/matcher_predicates.h",
         "driver/meta_graph.h",
+        "driver/not_supported_gather_expander.h",
         "driver/not_supported_scatter_expander.h",
         "driver/scheduler.h",
         "driver/sharding_pass.h",
@@ -120,6 +122,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:gather_expander",
         "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla/service:while_loop_analysis",
         "//tensorflow/core:framework_headers_lib",
@@ -208,7 +211,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",
         "//tensorflow/compiler/xla/service:generic_transfer_manager",
-        "//tensorflow/compiler/xla/service:gather_expander",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
@@ -616,6 +618,16 @@ tf_cc_test(
     extra_copts = [
         "-fexceptions",
     ],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "not_supported_gather_expander_test",
+    srcs = ["tests/not_supported_gather_expander_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -1098,6 +1110,7 @@ test_suite(
         "find_all_users_test",
         "hlo_computation_name_uniquify_test",
         "popops_custom_ops_test",
+        "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
     ],
 )
