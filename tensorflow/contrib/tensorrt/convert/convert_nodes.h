@@ -128,8 +128,7 @@ struct EngineInfo {
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
-    const std::set<string>& subgraph_node_names,
-    const std::vector<int>& subgraph_node_ids,
+    const std::vector<const Node*>& subgraph_nodes,
     std::vector<EngineConnection>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope);
 

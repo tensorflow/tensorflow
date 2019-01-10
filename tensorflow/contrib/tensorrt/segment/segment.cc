@@ -673,10 +673,11 @@ tensorflow::Status SegmentGraph(
   // --------------------------------- Step 3 ---------------------------------
   // Convert the segments into the expected return format
   for (const auto& itr : sg_map) {
-    const std::set<const tensorflow::Node*, NodePtrCompare>& segment_nodes =
-        itr.second;
+    const string& segment_root = itr.first;
+    // Return format does not require set comparator.
+    std::set<const Node*> segment_nodes(itr.second.begin(), itr.second.end());
     if (VLOG_IS_ON(1)) {
-      string s = "parent=" + itr.first + ":";
+      string s = "parent=" + segment_root + ":";
       for (auto node : segment_nodes) s += " " + node->name();
       VLOG(1) << "Segment " << segments->size() << ": " << s;
     }
@@ -689,12 +690,10 @@ tensorflow::Status SegmentGraph(
     }
 
     // TODO(sami): Make segmenter placement aware once trtscopes are in place
-    std::set<string> segment_node_names;
-    for (auto node : itr.second) segment_node_names.insert(node->name());
-    const auto& dev_itr = device_maps.find(itr.first);
+    const auto& dev_itr = device_maps.find(segment_root);
     if (dev_itr == device_maps.end() || dev_itr->second.empty()) {
       VLOG(1) << "No device assigned to segment " << segments->size();
-      segments->emplace_back(std::make_pair(segment_node_names, string()));
+      segments->emplace_back(std::make_pair(segment_nodes, string()));
     } else if (dev_itr->second.size() > 1) {
       string s("Segment ");
       StrAppend(&s, segments->size(), " has multiple devices attached: ");
@@ -703,10 +702,10 @@ tensorflow::Status SegmentGraph(
       }
       LOG(WARNING) << s << " choosing " << *(dev_itr->second.begin());
       segments->emplace_back(
-          std::make_pair(segment_node_names, *(dev_itr->second.begin())));
+          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
     } else {
       segments->emplace_back(
-          std::make_pair(segment_node_names, *(dev_itr->second.begin())));
+          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
     }
   }
   if (VLOG_IS_ON(1)) {
