@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -420,11 +419,6 @@ tensorflow::Status SegmentGraph(
   //    segment but are not eligible, using input/output_candidate_fn to
   //    determine the eligibilities;
   // 3. convert the segment into expected return format and return the result.
-  auto get_device_type = [](const string& device) {
-    DeviceNameUtils::ParsedName parsed_name;
-    DeviceNameUtils::ParseFullName(device, &parsed_name);
-    return parsed_name.type;
-  };
 
   // --------------------------------- Step 1 ---------------------------------
   auto graph = std::unique_ptr<SimpleGraph>(new SimpleGraph(tf_graph));
@@ -436,7 +430,6 @@ tensorflow::Status SegmentGraph(
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
-
     if (options.exclude_node_list.count(node->name()) != 0) {
       VLOG(1) << "Not a TF-TRT candidate, "
               << "(Op type: " << node->tf_node()->type_string() << "), "
