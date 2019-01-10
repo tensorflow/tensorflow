@@ -104,6 +104,7 @@ namespace poplarplugin {
 static const char* s_cache_env_variable = "TF_POPLAR_ENGINE_CACHE";
 static const char* s_max_compilation_threads_variable =
     "TF_POPLAR_MAX_COMPILATION_THREADS";
+static const char* s_force_ipu_model = "TF_POPLAR_FORCE_IPU_MODEL";
 
 std::string GetInputCopyHandle(int64 parameter, int64 index) {
   return tensorflow::strings::Printf("%lld.%lld", parameter, index);
@@ -263,11 +264,10 @@ bool PoplarExecutor::HostCallback(se::Stream* stream,
   return true;
 }
 
-bool PoplarExecutor::HostCallback(se::Stream *stream,
+bool PoplarExecutor::HostCallback(se::Stream* stream,
                                   std::function<Status()> callback) {
   AsPoplarStream(stream)->EnqueueTask(callback);
 }
-
 
 bool PoplarExecutor::CreateStreamDependency(se::Stream* dependent,
                                             se::Stream* other) {
@@ -352,7 +352,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       bool opened = false;
 
       bool have_ipu_hardware = false;
-      {
+
+      if (getenv(s_force_ipu_model) == nullptr) {
         auto device_list = device_mgr.getDevices();
         for (const auto& d : device_list) {
           if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
