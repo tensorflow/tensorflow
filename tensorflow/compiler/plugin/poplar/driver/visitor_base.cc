@@ -272,8 +272,27 @@ Status BaseVisitor::HandleTranspose(HloInstruction* inst) {
 Status BaseVisitor::HandleFusion(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(
-      prog, CreateFusionOp(resources_, inst, GetOutputShape(inst), tensor_map));
+  HloComputation* comp = inst->fused_instructions_computation();
+
+  // If is is a special fusion-type op
+  if (IsPopOpsFusion(comp)) {
+    VLOG(1) << "Processing " << inst->name()
+            << " as Poplibs fusion: " << comp->name();
+    auto end = comp->name().find('.');
+    std::string name = comp->name().substr(8, end - 8);
+
+    if (custom_call_map.count(name) == 1) {
+      TF_ASSIGN_OR_RETURN(
+          prog, custom_call_map.at(name)(resources_, inst, GetOutputShape(inst),
+                                         tensor_map));
+    } else {
+      return xla::FailedPrecondition("Unrecognized special call op %s: %s",
+                                     inst->name().c_str(), name.c_str());
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(prog, CreateFusionOp(resources_, inst,
+                                             GetOutputShape(inst), tensor_map));
+  }
   sequence.add(prog);
   return Status::OK();
 };
@@ -282,23 +301,7 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
   HloComputation* comp = inst->to_apply();
   VLOG(1) << "Processing " << inst->name() << " : " << comp->name();
 
-  // If is is a special fusion-type op
-  if (IsPopOpsCall(comp)) {
-    auto end = comp->name().find('.');
-    std::string name = comp->name().substr(8, end - 8);
-
-    if (custom_call_map.count(name) == 1) {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(
-          prog, custom_call_map.at(name)(resources_, inst, GetOutputShape(inst),
-                                         tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    } else {
-      return xla::FailedPrecondition("Unrecognized special call op %s: %s",
-                                     inst->name().c_str(), name.c_str());
-    }
-  } else if (IsRepeatCall(comp)) {
+  if (IsRepeatCall(comp)) {
     TF_ASSIGN_OR_RETURN(
         poplar::program::Program prog,
         CreateRepeatOp(resources_, inst, GetOutputShape(inst), tensor_map));

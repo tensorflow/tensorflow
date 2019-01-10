@@ -465,25 +465,44 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     const HloInstruction* pooling_inst;
 
     popnn::PoolingType reduction_type;
-
-    // Find the type of the reduction
-    if (inst->opcode() == HloOpcode::kCall) {
-      if (IsPopOpsCall(inst, "avg_pool")) {
-        reduction_type = popnn::PoolingType::AVG;
-        pooling_inst = inst->to_apply()->root_instruction()->operand(0);
-      } else if (IsPopOpsCall(inst, "max_pool")) {
-        reduction_type = popnn::PoolingType::MAX;
-        pooling_inst = inst->to_apply()->root_instruction();
-      } else {
-        return xla::FailedPrecondition("Unknown outlined op");
+    switch (inst->opcode()) {
+      case HloOpcode::kFusion: {
+        if (IsPopOpsFusion(inst, "avg_pool")) {
+          reduction_type = popnn::PoolingType::AVG;
+          pooling_inst = inst->fused_instructions_computation()
+                             ->root_instruction()
+                             ->operand(0);
+        } else if (IsPopOpsFusion(inst, "max_pool")) {
+          reduction_type = popnn::PoolingType::MAX;
+          pooling_inst =
+              inst->fused_instructions_computation()->root_instruction();
+        } else {
+          return xla::FailedPrecondition("Unknown outlined fusion.");
+        }
+        break;
       }
-    } else if (inst->to_apply()->root_instruction()->opcode() ==
-               HloOpcode::kMaximum) {
-      reduction_type = popnn::PoolingType::MAX;
-      pooling_inst = inst;
-    } else {
-      reduction_type = popnn::PoolingType::SUM;
-      pooling_inst = inst;
+      case HloOpcode::kReduceWindow: {
+        pooling_inst = inst;
+        switch (inst->to_apply()->root_instruction()->opcode()) {
+          case HloOpcode::kMaximum: {
+            reduction_type = popnn::PoolingType::MAX;
+            break;
+          }
+          case HloOpcode::kAdd: {
+            reduction_type = popnn::PoolingType::SUM;
+            break;
+          }
+          default: {
+            return xla::FailedPrecondition("Unsupported window reduction %s.",
+                                           inst->name());
+          }
+        }
+        break;
+      }
+      default: {
+        return xla::FailedPrecondition("Unsupported window reduction %s.",
+                                       inst->name());
+      }
     }
 
     // Find the input tensors
@@ -746,7 +765,8 @@ StatusOr<poplar::program::Program> CreateBwdMaxPool(
   TF_ASSIGN_OR_RETURN(fwd_max_pool_output,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
 
-  HloInstruction* reduce_window = inst->to_apply()->root_instruction();
+  HloInstruction* reduce_window =
+      inst->fused_instructions_computation()->root_instruction();
   const Window& window(reduce_window->window());
   if (window.dimensions().size() != 4) {
     return xla::FailedPrecondition("Poplar pooling only supports 2D pooling");
@@ -782,7 +802,8 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
 
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
   const Window& window(root->window());
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));

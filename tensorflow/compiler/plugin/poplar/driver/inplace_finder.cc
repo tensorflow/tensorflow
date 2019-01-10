@@ -48,12 +48,12 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
       }
       break;
     }
-    case HloOpcode::kCall:
-      if (IsPopOpsCall(inst, "conv_scaled_inplace")) {
+    case HloOpcode::kFusion:
+      if (IsPopOpsFusion(inst, "conv_scaled_inplace")) {
         // This is always acceptable on a variable update inplace route
         break;
       }
-      if (!IsPopOpsCall(inst, "scaled_inplace")) {
+      if (!IsPopOpsFusion(inst, "scaled_inplace")) {
         return;
       }
     // Fall through since inplace subgraphs have to pass all the same
@@ -115,7 +115,7 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
 StatusOr<bool> InplaceFinder::Run(HloModule* module) {
   bool changed = false;
   for (auto* comp : module->computations()) {
-    if (IsPopOpsCall(comp)) {
+    if (IsPopOpsFusion(comp)) {
       continue;
     }
 
@@ -137,7 +137,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
       for (auto& inst : r.second) {
         switch (inst->opcode()) {
           case HloOpcode::kAdd:
-          case HloOpcode::kCall:
+          case HloOpcode::kFusion:
           case HloOpcode::kDynamicUpdateSlice:
           case HloOpcode::kGetTupleElement:
           case HloOpcode::kMultiply:
@@ -163,7 +163,6 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
       switch (inst->opcode()) {
         case HloOpcode::kBitcast:
         case HloOpcode::kBroadcast:
-        case HloOpcode::kCall:
         case HloOpcode::kConcatenate:
         case HloOpcode::kCustomCall:
         case HloOpcode::kDynamicUpdateSlice:

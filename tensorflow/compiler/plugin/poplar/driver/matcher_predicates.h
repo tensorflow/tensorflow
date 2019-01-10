@@ -14,7 +14,6 @@ bool IsRandomUniform(const HloInstruction*);
 bool IsConstantZero(const HloInstruction*);
 bool IsConstantHalf(const HloInstruction*);
 bool IsConstantOne(const HloInstruction*);
-bool IsPoplarConvolution(const HloInstruction*);
 bool IsExternalPadding(const HloInstruction*);
 bool IsAveragePool(const HloInstruction*);
 bool Is2DMaxPool(const HloInstruction*);

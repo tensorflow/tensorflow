@@ -219,7 +219,7 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
 
   auto* comp = hlo_module->entry_computation();
   auto* call_inst = comp->root_instruction()->operand(0);
-  EXPECT_EQ("add", call_inst->to_apply()->name());
+  EXPECT_EQ("add", call_inst->fused_instructions_computation()->name());
 
   EXPECT_EQ("long/add2", call_inst->metadata().op_name());
   EXPECT_EQ("long/add1", call_inst->operand(1)->metadata().op_name());
@@ -286,7 +286,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
 
   auto* comp = hlo_module->entry_computation();
   auto* call_inst = comp->root_instruction()->operand(0)->operand(0);
-  EXPECT_EQ("fuse", call_inst->to_apply()->name());
+  EXPECT_EQ("fuse", call_inst->fused_instructions_computation()->name());
 
   EXPECT_EQ("long/bc", call_inst->metadata().op_name());
   EXPECT_TRUE(call_inst->has_sharding());
@@ -409,8 +409,8 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
   auto i2 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::One(F32)));
-  auto bc = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(shape1, i2, {}));
+  auto bc =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i2, {}));
   auto sub1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, bc));
   auto add1 = builder.AddInstruction(
@@ -451,7 +451,7 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
 
   auto* comp = hlo_module->entry_computation();
   auto* call_inst = comp->root_instruction()->operand(0)->operand(1);
-  EXPECT_EQ("abc", call_inst->to_apply()->name());
+  EXPECT_EQ("abc", call_inst->fused_instructions_computation()->name());
 }
 
 TEST_F(HloMatcherTest, LookThroughAssociativeOps) {
@@ -507,15 +507,16 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOps) {
   EXPECT_EQ(root, add);
 
   // Expect that operand 1 of add has changed to a call
-  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kFusion);
   auto* call_inst = comp->root_instruction()->operand(1);
   // Expect the name
-  EXPECT_EQ("abc", call_inst->to_apply()->name());
+  EXPECT_EQ("abc", call_inst->fused_instructions_computation()->name());
   // Expect the parameters
   EXPECT_EQ(call_inst->operand(0), i1);
   EXPECT_EQ(call_inst->operand(1), c1);
   // Expect the call body
-  auto* call_root = call_inst->to_apply()->root_instruction();
+  auto* call_root =
+      call_inst->fused_instructions_computation()->root_instruction();
   EXPECT_EQ(call_root->opcode(), HloOpcode::kAdd);
   EXPECT_EQ(call_root->operand(1)->opcode(), HloOpcode::kParameter);
   EXPECT_EQ(call_root->operand(1)->parameter_number(), 1);
@@ -579,15 +580,16 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsParameter) {
   EXPECT_EQ(root, add);
 
   // Expect that operand 1 of add has changed to a call
-  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kFusion);
   auto* call_inst = comp->root_instruction()->operand(1);
   // Expect the name
-  EXPECT_EQ("abc", call_inst->to_apply()->name());
+  EXPECT_EQ("abc", call_inst->fused_instructions_computation()->name());
   // Expect the parameters
   EXPECT_EQ(call_inst->operand(0), c1);
   EXPECT_EQ(call_inst->operand(1), sub);
   // Expect the call body
-  auto* call_root = call_inst->to_apply()->root_instruction();
+  auto* call_root =
+      call_inst->fused_instructions_computation()->root_instruction();
   EXPECT_EQ(call_root->opcode(), HloOpcode::kAdd);
   EXPECT_EQ(call_root->operand(0)->opcode(), HloOpcode::kParameter);
   EXPECT_EQ(call_root->operand(0)->parameter_number(), 1);
@@ -658,15 +660,16 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsLongerChain) {
   EXPECT_EQ(root, mul1);
 
   // Expect that operand 1 of mul1 has changed to a call
-  EXPECT_EQ(mul1->operand(1)->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(mul1->operand(1)->opcode(), HloOpcode::kFusion);
   auto* call_inst = comp->root_instruction()->operand(1);
   // Expect the name
-  EXPECT_EQ("abc", call_inst->to_apply()->name());
+  EXPECT_EQ("abc", call_inst->fused_instructions_computation()->name());
   // Expect the parameters
   EXPECT_EQ(call_inst->operand(0), i1);
   EXPECT_EQ(call_inst->operand(1), c1);
   // Expect the call body
-  auto* call_root = call_inst->to_apply()->root_instruction();
+  auto* call_root =
+      call_inst->fused_instructions_computation()->root_instruction();
   EXPECT_EQ(call_root->opcode(), HloOpcode::kMultiply);
   EXPECT_EQ(call_root->operand(1)->opcode(), HloOpcode::kParameter);
   EXPECT_EQ(call_root->operand(1)->parameter_number(), 1);

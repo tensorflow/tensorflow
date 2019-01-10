@@ -60,8 +60,10 @@ template <typename NativeT>
 StatusOr<std::vector<NativeT>> WideConstToNativeType(
     const xla::HloInstruction* wide_const);
 
-bool IsPopOpsCall(const xla::HloComputation*, const std::string& postfix = "");
-bool IsPopOpsCall(const xla::HloInstruction*, const std::string& postfix = "");
+bool IsPopOpsFusion(const xla::HloComputation*,
+                    const std::string& postfix = "");
+bool IsPopOpsFusion(const xla::HloInstruction*,
+                    const std::string& postfix = "");
 bool IsRepeatCall(const xla::HloComputation*);
 bool IsRepeatCall(const xla::HloInstruction*);
 // This functions assumes that IsRepeatCall(inst) is true

@@ -286,7 +286,8 @@ StatusOr<poplar::program::Program> CreateWideConstant(
 
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
       out, AddConstantTensor(graph, std::make_pair(inst, 0), inst->shape(),
@@ -304,7 +305,8 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(CompilerResources& res,
 
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
   const PaddingConfig& cfg(root->padding_config());
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));

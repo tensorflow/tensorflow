@@ -123,9 +123,8 @@ static bool IsPrefixPathOk(const std::vector<HloInstruction*>& path) {
 // For valid paths, either returns the GTE index for the last node or 0.
 static absl::optional<int64> IsSuffixPathOk(
     const std::vector<HloInstruction*>& path) {
-  const auto is_node_ok_on_path = [](HloInstruction* inst,
-                                     const unsigned path_idx,
-                                     const unsigned path_size) {
+  const auto is_node_ok_on_path = [](
+      HloInstruction* inst, const unsigned path_idx, const unsigned path_size) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
       return true;
@@ -328,7 +327,7 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   }
 
   for (const auto& computation : module->computations()) {
-    if (IsPopOpsCall(computation) || IsRepeatCall(computation)) {
+    if (IsPopOpsFusion(computation) || IsRepeatCall(computation)) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(bool found_targets_in_computation,

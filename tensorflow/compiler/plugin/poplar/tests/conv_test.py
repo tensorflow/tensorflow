@@ -96,7 +96,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
         ok = ['progIdCopy',
               'host-exchange-local-copy-',
               'cnv3*/convolution.*/Conv_3x3',
-              'ba3*/call/addToChannel']
+              'ba3*/fusion/addToChannel']
 
         self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -135,7 +135,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
               'host-exchange-local-copy-',
               'Copy_XLA_Args/arg2.*_weights_to_cnv4*/convolution.*/Conv_8x8_stride4x4/weightsRearranged',
               'cnv4*/convolution.*/Conv_8x8_stride4x4',
-              'ba4*/call/addToChannel']
+              'ba4*/fusion/addToChannel']
         self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testConv1x1_WithBias(self):
@@ -172,7 +172,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
               'host-exchange-local-copy-',
               'Copy_*Conv',
               'cnv5*/convolution.*/Conv_1x1',
-              'ba5*/call/addToChannel']
+              'ba5*/fusion/addToChannel']
         self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testConvBackpropInput(self):
@@ -281,7 +281,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'Copy_',
             'depthwise/convolution.*/Conv_1x1',
-            'add/call*/addToChannel']
+            'add/fusion*/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testDepthwiseConv3x1(self):
@@ -324,7 +324,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'Copy_',
             'depthwise/convolution.*/Conv_1x1',
             'Copy_depthwise/convolution.*/Conv_1x1/partials_to_depthwise/convolution.*/Conv_1x1/partials[[]cloned[]]',
-            'add/call*/addToChannel']
+            'add/fusion*/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
@@ -496,7 +496,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6',
             'Copy_',
-            'Relu/call.*/Nonlinearity']
+            'Relu/fusion.*/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testDataLayout(self):

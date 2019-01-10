@@ -657,10 +657,10 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         }
         break;
       }
-      case HloOpcode::kCall: {
-        const HloComputation* comp = tgt->to_apply();
-        if (IsPopOpsCall(comp)) {
-          if (IsPopOpsCall(comp, "depthwise_conv")) {
+      case HloOpcode::kFusion: {
+        const HloComputation* comp = tgt->fused_instructions_computation();
+        if (IsPopOpsFusion(comp)) {
+          if (IsPopOpsFusion(comp, "depthwise_conv")) {
             const HloInstruction* conv_inst = comp->root_instruction();
             switch (target->second.input_index) {
               case 0: {
@@ -680,17 +680,17 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                     "invalid operand for tensor allocation on %s",
                     src.first->name().c_str());
             }
-          } else if (IsPopOpsCall(comp, "conv_biasadd")) {
+          } else if (IsPopOpsFusion(comp, "conv_biasadd")) {
             TF_ASSIGN_OR_RETURN(
                 out,
                 AddConvAddBiasTensor(graph, name, *optional_layout,
                                      *optional_layout_output_idx, tensor_map));
-          } else if (IsPopOpsCall(comp, "matmul_biasadd")) {
+          } else if (IsPopOpsFusion(comp, "matmul_biasadd")) {
             TF_ASSIGN_OR_RETURN(
                 out, AddMatMulAddBiasTensor(graph, name, *optional_layout,
                                             *optional_layout_output_idx,
                                             tensor_map));
-          } else if (IsPopOpsCall(comp, "scaled_inplace")) {
+          } else if (IsPopOpsFusion(comp, "scaled_inplace")) {
             TF_ASSIGN_OR_RETURN(
                 out,
                 AddElementwiseBinary(graph, name, *optional_layout,

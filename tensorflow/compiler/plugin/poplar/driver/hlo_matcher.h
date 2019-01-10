@@ -81,7 +81,7 @@ struct HloMatcherPattern {
   PatternType type;
 
   // The index of the op within the fusion which should have its op_metadata
-  // copied to the kCall instruction.
+  // copied to the kFusion instruction.
   PatternMetaTarget meta_target;
 
   // If op is an input then don't include this instruction in the fusion. The

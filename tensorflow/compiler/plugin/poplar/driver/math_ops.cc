@@ -334,7 +334,8 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
   TF_ASSIGN_OR_RETURN(
       in1, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
 
-  const auto* root_inst = inst->to_apply()->root_instruction();
+  const auto* root_inst =
+      inst->fused_instructions_computation()->root_instruction();
   const auto* const_inst = root_inst->operand(1)->operand(1)->operand(0);
   CHECK_EQ(const_inst->opcode(), HloOpcode::kConstant);
 
