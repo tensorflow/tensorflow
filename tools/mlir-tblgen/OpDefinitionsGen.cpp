@@ -378,7 +378,7 @@ void OpEmitter::emitVerifier() {
     // concise code.
     if (operand.hasMatcher()) {
       auto pred =
-          "if (!(" + operand.createTypeMatcherTemplate() + ")) return false;\n";
+          "if (!(" + operand.createTypeMatcherTemplate() + ")) return true;\n";
       OUT(4) << formatv(pred, "this->getInstruction()->getOperand(" +
                                   Twine(opIndex) + ")->getType()");
     }
