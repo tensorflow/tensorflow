@@ -169,7 +169,7 @@ def _canonicalize_signatures(signatures):
              "converted to concrete functions using "
              "`f.get_concrete_function(...)`.").format(signature_function))
       signature_function = signature_function.get_concrete_function()
-    elif not isinstance(signature_function, defun.Function):
+    elif not isinstance(signature_function, defun.ConcreteFunction):
       raise ValueError(
           ("Expected a TensorFlow function to generate a signature for, but "
            "got {}. Python functions may be decorated with "

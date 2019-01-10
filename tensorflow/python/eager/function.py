@@ -271,8 +271,8 @@ class _EagerDefinedFunction(object):
   def call(self, ctx, args):
     """Calls this function with `args` as inputs.
 
-    Function execution respects device annotations only if the function won't
-    be compiled with xla.
+    `ConcreteFunction` execution respects device annotations only if the
+    function won't be compiled with xla.
 
     Args:
       ctx: a Context object
@@ -340,15 +340,15 @@ class _EagerDefinedFunction(object):
       return outputs
 
 
-class Function(object):
+class ConcreteFunction(object):
   """Callable object encapsulating a function definition and its gradient.
 
-  `Function` is a callable that encapsulates a function definition and
+  `ConcreteFunction` is a callable that encapsulates a function definition and
   is differentiable under `tf.GradientTape` objects.
   """
 
   def __init__(self, func_graph, attrs=None, signature=None):
-    """Initialize a Function.
+    """Initialize a `ConcreteFunction`.
 
     Args:
       func_graph: An instance of FuncGraph: the function body to wrap.
@@ -384,8 +384,8 @@ class Function(object):
       *args: Tensors or Variables. Positional arguments are only accepted when
         they correspond one-to-one with arguments of the traced Python function.
       **kwargs: Tensors or Variables specified by name. When
-        `get_concrete_function` was called to create this `Function`, each
-        Tensor input was given a name, defaulting to the name of the Python
+        `get_concrete_function` was called to create this `ConcreteFunction`,
+        each Tensor input was given a name, defaulting to the name of the Python
         function's argument but possibly overridden by the `name=` argument to
         `tf.TensorSpec`. These names become the argument names for the concrete
         function.
@@ -394,7 +394,7 @@ class Function(object):
       The result of applying the TF function on the given Tensors.
 
     Raises:
-      AssertionError: If this `Function` was not created through
+      AssertionError: If this `ConcreteFunction` was not created through
         `get_concrete_function`.
       ValueError: If arguments contains anything other than Tensors or
         Variables.
@@ -478,7 +478,7 @@ class Function(object):
         tensor_inputs.append(
             ops.convert_to_tensor(arg, self._signature[i].dtype))
       else:
-        raise ValueError("All inputs to `Function`s must be Tensors; "
+        raise ValueError("All inputs to `ConcreteFunction`s must be Tensors; "
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + self._captured_inputs
@@ -504,7 +504,8 @@ class Function(object):
     return self._build_call_outputs(outputs)
 
   def _register_gradient(self, name):
-    """Registers the gradient for the current Function under the given name.
+    """Registers the gradient for the current `ConcreteFunction` under the given
+    name.
 
     The gradient rewrites an inference call op to a forward call op, but does
     not modify a pre-existing forward call op. It then computes the gradient
@@ -545,7 +546,7 @@ class Function(object):
 
   @property
   def name(self):
-    """Function name."""
+    """`ConcreteFunction` name."""
     return self._inference_function.name
 
   @property
@@ -672,7 +673,7 @@ class Function(object):
         grad for grad in func_graph_module.flatten(gradients_wrt_inputs)
         if grad is not None)
     backwards_graph.structured_outputs = gradients_wrt_inputs
-    self._backward_graph_function = Function(
+    self._backward_graph_function = ConcreteFunction(
         backwards_graph, attrs=backward_function_attr)
 
     forward_function_attr = _parse_func_attrs({
@@ -1087,14 +1088,15 @@ class PolymorphicFunction(object):
     graph_function = self._get_concrete_function_internal_garbage_collected(
         *args, **kwargs)
     # We're returning this concrete function to someone, and they may keep a
-    # reference to the FuncGraph without keeping a reference to the Function
-    # object. So we won't clean up the reference cycles manually and instead
-    # will leave them to Python's garbage collector.
+    # reference to the FuncGraph without keeping a reference to the
+    # ConcreteFunction object. So we won't clean up the reference cycles
+    # manually and instead will leave them to Python's garbage collector.
     graph_function._garbage_collector.release()  # pylint: disable=protected-access
     return graph_function
 
   def get_concrete_function(self, *args, **kwargs):
-    """Returns a `Function` object specialized to inputs and execution context.
+    """Returns a `ConcreteFunction` object specialized to inputs and execution
+    context.
 
     Args:
       *args: inputs to specialize on.
@@ -1292,7 +1294,7 @@ class PolymorphicFunction(object):
             self._function_spec.arg_names[:arglen]
             + [self._function_spec.vararg_name] *
             (arglen - len(self._function_spec.arg_names)))
-        graph_function = Function(
+        graph_function = ConcreteFunction(
             func_graph_module.func_graph_from_py_func(
                 self._name,
                 self._python_function,
@@ -1311,10 +1313,10 @@ class PolymorphicFunction(object):
         # Save information about non-Tensor arguments with the concrete
         # function. Used to serialize PolymorphicFunctions.
         graph_function._python_call_signature = python_call_signature
-        # Tell the Function to clean up its graph once it goes out of
-        # scope. Function does not do this in its constructor since it gets used
-        # in some places (like Keras) where the FuncGraph lives longer than the
-        # Function.
+        # Tell the ConcreteFunction to clean up its graph once it goes out of
+        # scope. ConcreteFunction does not do this in its constructor since it
+        # gets used in some places (like Keras) where the FuncGraph lives longer
+        # than the ConcreteFunction.
         graph_function._garbage_collector = _FunctionGarbageCollector(
             graph_function.graph)
         # pylint: enable=protected-access
@@ -1335,7 +1337,7 @@ def register(func, *args, **kwargs):
     **kwargs: input keyword arguments for the Python function.
 
   Returns:
-    a `Function` object specialized to inputs and execution context.
+    a `ConcreteFunction` object specialized to inputs and execution context.
 
   Raises:
     ValueError: When the input function is not a defun wrapped python function.
@@ -1706,7 +1708,7 @@ def defun_with_attributes(func=None,
       whitelisted attribute name is allowed. Unwhitelisted attribute name or
       unsupported value will result into ValueError. `func_name` is also one of
       the whitelisted argument which is a python string, and sets the name for
-      this `Function` in the graph.
+      this `ConcreteFunction` in the graph.
     autograph: same as defun()'s autograph.
 
   Returns:
@@ -1828,7 +1830,7 @@ class _PolymorphicFunctionGarbageCollector(object):
 
 
 class _FunctionGarbageCollector(object):
-  """Cleans up reference cycles when a Function goes out of scope."""
+  """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
 
   def __init__(self, func_graph):
     self._func_graph = func_graph

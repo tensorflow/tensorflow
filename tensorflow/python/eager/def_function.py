@@ -408,7 +408,8 @@ class PolymorphicFunction(object):
     return self._function_spec
 
   def get_initialization_function(self, *args, **kwargs):
-    """Returns a `Function` object which initializes this function's variables.
+    """Returns a `ConcreteFunction` object which initializes this function's
+    variables.
 
     Requires that this function hasn't been accessed yet through either calling
     it or calling get_concrete_function. Fails if we cannot build an initializer
@@ -420,7 +421,8 @@ class PolymorphicFunction(object):
       **kwargs: keyword arguments to the python callable.
 
     Returns:
-      A `Function` object which initializes the variables of this function.
+      A `ConcreteFunction` object which initializes the variables of this
+      function.
 
     Raises:
       RuntimeError: if called after the variables have been initialized.
@@ -468,7 +470,8 @@ class PolymorphicFunction(object):
     # pylint: enable=protected-access
 
   def get_concrete_function(self, *args, **kwargs):
-    """Returns a `Function` object specialized to inputs and execution context.
+    """Returns a `ConcreteFunction` object specialized to inputs and execution
+    context.
 
     If this `PolymorphicFunction` was created with an `input_signature`, `args`
     and `kwargs` may be omitted. With an input signature there is only one
