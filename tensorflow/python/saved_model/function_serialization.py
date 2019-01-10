@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tools for serializing PolymorphicFunctions."""
+"""Tools for serializing `Function`s."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,15 +24,14 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
 
 
-def serialize_polymorphic_function(polymorphic_function, node_ids):
-  """Build a SavedPolymorphicProto."""
+def serialize_function(function, node_ids):
+  """Build a SavedPolymorphicFunction proto."""
   coder = nested_structure_coder.StructureCoder()
   proto = saved_object_graph_pb2.SavedPolymorphicFunction()
 
   proto.function_spec_tuple.CopyFrom(
-      coder.encode_structure(polymorphic_function.function_spec.as_tuple()))  # pylint: disable=protected-access
-  for signature, concrete_function in list_all_concrete_functions(
-      polymorphic_function):
+      coder.encode_structure(function.function_spec.as_tuple()))  # pylint: disable=protected-access
+  for signature, concrete_function in list_all_concrete_functions(function):
     bound_inputs = []
     try:
       for capture in concrete_function.captured_inputs:
@@ -52,23 +51,23 @@ def serialize_polymorphic_function(polymorphic_function, node_ids):
   return proto
 
 
-def list_all_concrete_functions(polymorphic_function):
-  """Given a polymorphic function, returns all of its concrete functions.
+def list_all_concrete_functions(function):
+  """Given a `Function`, returns all of its concrete functions.
 
   Args:
-    polymorphic_function: Instance of `PolymorphicFunction`.
+    function: Instance of `Function`.
 
   Returns:
-    A list of tuples in the form (signature, concrete_function), where concrete
-    function is an instance of `Function`.
+    A list of tuples in the form (signature, concrete_function), where
+    `concrete_function` is an instance of `ConcreteFunction`.
   """
-  input_signature = polymorphic_function._input_signature  # pylint: disable=protected-access
+  input_signature = function._input_signature  # pylint: disable=protected-access
   if input_signature is not None:
-    polymorphic_function.get_concrete_function()
+    function.get_concrete_function()
   concrete_functions = []
-  for signature in polymorphic_function._cached_input_signatures:  # pylint: disable=protected-access
+  for signature in function._cached_input_signatures:  # pylint: disable=protected-access
     if any(isinstance(arg, defun_lib.UnknownArgument) for arg in signature):
       continue
-    concrete_function = polymorphic_function.get_concrete_function(*signature)
+    concrete_function = function.get_concrete_function(*signature)
     concrete_functions.append((signature, concrete_function))
   return concrete_functions

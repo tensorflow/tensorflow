@@ -42,15 +42,16 @@ class _Loader(object):
     self._asset_file_def = meta_graph.asset_file_def
     self._proto = object_graph_proto
     self._export_dir = export_dir
-    self._functions = function_deserialization.load_function_def_library(
-        meta_graph.graph_def.library)
+    self._concrete_functions = (
+        function_deserialization.load_function_def_library(
+            meta_graph.graph_def.library))
     self._load_all()
     self._bind_function_captures()
     self._restore_checkpoint()
 
   def _bind_function_captures(self):
     """Setup captured tensors in restored concrete functions."""
-    seen_functions = set()
+    seen_concrete_functions = set()
     for object_proto in self._proto.nodes:
       if object_proto.WhichOneof("kind") == "function":
         for monomorphic_function in object_proto.function.monomorphic_function:
@@ -63,18 +64,18 @@ class _Loader(object):
               for node_id in monomorphic_function.bound_inputs
               if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
           ]
-          if name in seen_functions:
-            if self._functions[name]._captured_inputs != bound_inputs:  # pylint: disable=protected-access
+          if name in seen_concrete_functions:
+            if self._concrete_functions[name]._captured_inputs != bound_inputs:  # pylint: disable=protected-access
               raise NotImplementedError(
                   "Function %s is used more than once with different "
                   "captured inputs." % name)
           else:
-            seen_functions.add(name)
+            seen_concrete_functions.add(name)
             # TODO(andresp): This is only injecting the captured inputs into the
             # concrete function, note that we did not modify the FuncGraph
             # itself.
-            self._functions[name]._captured_inputs = bound_inputs  # pylint: disable=protected-access
-            self._functions[name]._func_graph.variables = bound_variables  # pylint: disable=protected-access
+            self._concrete_functions[name]._captured_inputs = bound_inputs  # pylint: disable=protected-access
+            self._concrete_functions[name]._func_graph.variables = bound_variables  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
     obj = self._nodes[node_id]
@@ -137,8 +138,8 @@ class _Loader(object):
     return tracking.TrackableAsset(filename)
 
   def _recreate_function(self, proto):
-    return function_deserialization.recreate_polymorphic_function(
-        proto, self._functions)
+    return function_deserialization.recreate_function(
+        proto, self._concrete_functions)
 
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?

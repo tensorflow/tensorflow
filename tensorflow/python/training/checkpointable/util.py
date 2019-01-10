@@ -1748,8 +1748,7 @@ class Checkpoint(tracking.Checkpointable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.CheckpointableBase,
-                            def_function.PolymorphicFunction)):
+      if not isinstance(v, (base.CheckpointableBase, def_function.Function)):
         raise ValueError(
             ("`Checkpoint` was expecting a checkpointable object (an object "
              "derived from `CheckpointableBase`), got %s. If you believe this "
