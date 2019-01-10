@@ -130,8 +130,9 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                         if init_from_fn else [initial_value]) as name:
       # pylint: disable=protected-access
       with ops.init_scope():
-        shared_name = ops._name_from_scope_name(name)
-        shared_name = "%s_%d" % (shared_name, ops.uid())
+        handle_name = ops._name_from_scope_name(name)
+        unique_id = "%s_%d" % (handle_name, ops.uid())
+        shared_name = context.shared_name(unique_id)
       with ops.name_scope("Initializer"), ops.device(None):
         initial_value = ops.convert_to_tensor(
             initial_value() if init_from_fn else initial_value,
@@ -144,8 +145,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             name=name,
             graph_mode=self._in_graph_mode)
       self._shape = initial_value.shape
-      self._unique_id = shared_name
-      self._handle_name = shared_name + ":0"
+      self._unique_id = unique_id
+      self._handle_name = handle_name + ":0"
       self._dtype = initial_value.dtype.base_dtype
       self._constraint = constraint
       assert initial_value is not None
@@ -445,10 +446,12 @@ class PolymorphicFunction(object):
   @property
   def _cached_input_signatures(self):
     """All input signatures used to call this PolymorphicFunction."""
-    seen = set()
-    # Preserves signature ordering rather than returning a set() so that we
-    # don't need to re-sort signatures later to work around Python 2's set
-    # nondeterminism.
+    seen = list()
+    # We are using a list so that:
+    #  - the returned collection is deterministic, and
+    #  - we can use a custom equality operator (is_same_structure).
+    # This is run only at serialization time on likely very small inputs so we
+    # are not concerned about O(n^2) runtime.
     # pylint: disable=protected-access
     concrete_functions = []
     if self._stateful_fn:
@@ -457,9 +460,11 @@ class PolymorphicFunction(object):
       concrete_functions.extend(self._stateless_fn._function_cache.values())
     for concrete_function in concrete_functions:
       signature = concrete_function._python_call_signature
-      if signature not in seen:
+      equal_to_signature = functools.partial(
+          function_lib.is_same_structure, signature, check_values=True)
+      if not any(equal_to_signature(s) for s in seen):
         yield signature
-        seen.add(signature)
+        seen.append(signature)
     # pylint: enable=protected-access
 
   def get_concrete_function(self, *args, **kwargs):

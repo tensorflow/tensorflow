@@ -402,39 +402,6 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-
-class GRULayerGradientTapeTest(test.TestCase):
-
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_in_tape(self):
-    if not context.executing_eagerly():
-      self.skipTest('bloo')
-    time_steps = 10
-    embedding_size = 11
-    gru_unit_size = 12
-
-    gru = keras.layers.UnifiedGRU(gru_unit_size,
-                                  return_sequences=True,
-                                  return_state=True,
-                                  recurrent_activation='sigmoid',
-                                  recurrent_initializer='glorot_uniform')
-
-    x = random_ops.random_uniform([1, time_steps, embedding_size])
-    y = random_ops.random_uniform([1, gru_unit_size])
-
-    with backprop.GradientTape() as tape:
-      hidden_state = array_ops.zeros([1, gru_unit_size], dtype=dtypes.float32)
-      _, state = gru(x, initial_state=hidden_state)
-
-      loss = math_ops.reduce_mean(math_ops.square(state - y))
-
-    tape.gradient(loss, gru.variables)
-
-
-class GRULayerV1OnlyTest(test.TestCase, parameterized.TestCase):
-
-  @test_util.run_v1_only('b/120941292')
-  @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -452,7 +419,8 @@ class GRULayerV1OnlyTest(test.TestCase, parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer='sgd', loss='mse')
+    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -495,6 +463,34 @@ class GRULayerV1OnlyTest(test.TestCase, parameterized.TestCase):
     out7 = model.predict(right_padded_input)
 
     np.testing.assert_allclose(out7, out6, atol=1e-5)
+
+
+class GRULayerGradientTapeTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_in_tape(self):
+    if not context.executing_eagerly():
+      self.skipTest('bloo')
+    time_steps = 10
+    embedding_size = 11
+    gru_unit_size = 12
+
+    gru = keras.layers.UnifiedGRU(gru_unit_size,
+                                  return_sequences=True,
+                                  return_state=True,
+                                  recurrent_activation='sigmoid',
+                                  recurrent_initializer='glorot_uniform')
+
+    x = random_ops.random_uniform([1, time_steps, embedding_size])
+    y = random_ops.random_uniform([1, gru_unit_size])
+
+    with backprop.GradientTape() as tape:
+      hidden_state = array_ops.zeros([1, gru_unit_size], dtype=dtypes.float32)
+      _, state = gru(x, initial_state=hidden_state)
+
+      loss = math_ops.reduce_mean(math_ops.square(state - y))
+
+    tape.gradient(loss, gru.variables)
 
 
 class GRULayerGraphOnlyTest(test.TestCase):

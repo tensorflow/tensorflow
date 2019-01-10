@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
 from tensorflow.python import tf2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
@@ -34,7 +32,6 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -42,6 +39,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.util.tf_export import tf_export
 
 
 @keras_export('keras.layers.BatchNormalization', v1=[])
@@ -419,20 +417,12 @@ class BatchNormalizationV2(Layer):
       # since TPUStrategy does not implement replica local variables.
       # Remove this hack once we support TPULocalVariables.
       is_tpu_strategy = False
-      if distribution_strategy_context.has_distribution_strategy():
-        distribute = distribution_strategy_context.get_distribution_strategy()
+      if distribution_strategy_context.has_strategy():
+        distribute = distribution_strategy_context.get_strategy()
         if distribute.__class__.__name__ == 'TPUStrategy':
           is_tpu_strategy = True
 
-      # TODO(apassos,srbs,skyewm): the colocation constraints here are disabled
-      # because of a bug which leads cond_v2/while_v2 to skip rewriting them
-      # creating conflicts.
-      if (control_flow_util.EnableControlFlowV2(ops.get_default_graph()) or
-          is_tpu_strategy):
-        cm = contextlib.contextmanager(lambda: (yield))()
-      else:
-        cm = ops.colocate_with(variable)
-      with cm:
+      with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
@@ -484,7 +474,7 @@ class BatchNormalizationV2(Layer):
       momentum = ops.convert_to_tensor(self.momentum)
     if training_value or training_value is None:
       if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_distribution_strategy()
+        strategy = distribution_strategy_context.get_strategy()
         mean_update = strategy.extended.update(
             self.moving_mean, self._assign_moving_average,
             (mean, self.momentum))
@@ -676,7 +666,8 @@ class BatchNormalizationV2(Layer):
         scale, offset = _compose_transforms(r, d, scale, offset)
 
       if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_distribution_strategy()
+        strategy = distribution_strategy_context.get_strategy()
+
         def _do_update(var, value):
           """Compute the updates for mean and variance."""
           if in_eager_mode and not self.trainable:
@@ -797,7 +788,22 @@ class BatchNormalizationV1(BatchNormalizationV2):
   _USE_V2_BEHAVIOR = False
 
 
-if tf2.enabled():
+BatchNormalization = None  # pylint: disable=invalid-name
+
+
+@tf_export(v1=['enable_v2_batch_normalization'])
+def enable_v2_batch_normalization():
+  global BatchNormalization  # pylint: disable=invalid-name
   BatchNormalization = BatchNormalizationV2
-else:
+
+
+@tf_export(v1=['disable_v2_batch_normalization'])
+def disable_v2_batch_normalization():
+  global BatchNormalization  # pylint: disable=invalid-name
   BatchNormalization = BatchNormalizationV1
+
+
+if tf2.enabled():
+  enable_v2_batch_normalization()
+else:
+  disable_v2_batch_normalization()

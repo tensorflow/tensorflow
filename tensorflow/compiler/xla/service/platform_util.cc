@@ -260,8 +260,8 @@ PlatformUtil::GetStreamExecutors(
     // Block here in thread_pool destructor until all devices are initialized.
   }
   VLOG(1) << "Device initialization complete";
-  if (std::all_of(stream_executors.begin(), stream_executors.end(),
-                  [](se::StreamExecutor* s) { return s == nullptr; })) {
+  if (absl::c_all_of(stream_executors,
+                     [](se::StreamExecutor* s) { return s == nullptr; })) {
     return InternalError("no supported devices found for platform %s",
                          platform->Name());
   }

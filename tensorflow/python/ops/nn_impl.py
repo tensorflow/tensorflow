@@ -467,7 +467,7 @@ def depthwise_conv2d(input,
   to `channel_multiplier` channels for each), then concatenates the results
   together.  The output has `in_channels * channel_multiplier` channels.
 
-  In detail,
+  In detail, with the default NHWC format,
 
       output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
            filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
@@ -540,7 +540,7 @@ def depthwise_conv2d_v2(input,
   to `channel_multiplier` channels for each), then concatenates the results
   together.  The output has `in_channels * channel_multiplier` channels.
 
-  In detail,
+  In detail, with the default NHWC format,
 
       output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
            filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
@@ -599,7 +599,7 @@ def separable_conv2d(input,
   between dimensions `[1, 2]` and `3`, not spatial separability between
   dimensions `1` and `2`.
 
-  In detail,
+  In detail, with the default NHWC format,
 
       output[b, i, j, k] = sum_{di, dj, q, r}
           input[b, strides[1] * i + di, strides[2] * j + dj, q] *
@@ -699,7 +699,7 @@ def separable_conv2d_v2(
   between dimensions `[1, 2]` and `3`, not spatial separability between
   dimensions `1` and `2`.
 
-  In detail,
+  In detail, with the default NHWC format,
 
       output[b, i, j, k] = sum_{di, dj, q, r}
           input[b, strides[1] * i + di, strides[2] * j + dj, q] *
@@ -1380,6 +1380,8 @@ def _compute_sampled_logits(weights,
     # weights shape is [num_classes, dim]
     all_w = embedding_ops.embedding_lookup(
         weights, all_ids, partition_strategy=partition_strategy)
+    if all_w.dtype != inputs.dtype:
+      all_w = math_ops.cast(all_w, inputs.dtype)
 
     # true_w shape is [batch_size * num_true, dim]
     true_w = array_ops.slice(all_w, [0, 0],
@@ -1397,6 +1399,8 @@ def _compute_sampled_logits(weights,
     # add the biases to the true and sampled logits.
     all_b = embedding_ops.embedding_lookup(
         biases, all_ids, partition_strategy=partition_strategy)
+    if all_b.dtype != inputs.dtype:
+      all_b = math_ops.cast(all_b, inputs.dtype)
     # true_b is a [batch_size * num_true] tensor
     # sampled_b is a [num_sampled] float tensor
     true_b = array_ops.slice(all_b, [0], array_ops.shape(labels_flat))

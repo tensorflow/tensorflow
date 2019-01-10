@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -663,6 +664,23 @@ class NextAfterTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual(math_ops.nextafter(one, two) - one, eps_const)
 
+
+class BinaryOpsTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testErrorReceivedIfDtypeMismatchFromOp(self):
+    if context.executing_eagerly():
+      error = errors_impl.InvalidArgumentError
+      error_message = (
+          r"cannot compute Add as input #0\(zero-based\) was expected to be a "
+          r"float tensor but is a int32 tensor \[Op:Add\] name: add/")
+    else:
+      error = TypeError
+      error_message = ("Input 'y' of 'Add' Op has type float32 that does not "
+                       "match type int32 of argument 'x'.")
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
+      self.evaluate(a)
 
 if __name__ == "__main__":
   googletest.main()

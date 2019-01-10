@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -44,11 +45,24 @@ bool MatchesArCrsPattern(HloInstruction* instruction) {
     if (instruction->user_count() != 1) {
       return false;
     }
-    auto opcode = instruction->opcode();
-    return opcode == HloOpcode::kBitcast || opcode == HloOpcode::kTranspose ||
-           opcode == HloOpcode::kReshape || opcode == HloOpcode::kConvert ||
-           opcode == HloOpcode::kAdd || opcode == HloOpcode::kSubtract ||
-           opcode == HloOpcode::kMultiply;
+    switch (instruction->opcode()) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kReshape:
+        return true;
+      case HloOpcode::kConvert:
+        // Can be moved across if both input and output is either float or
+        // integer (e.g. S32<->U32 or F32<->BF16)
+        return ShapeUtil::ElementIsFloating(instruction->shape()) ==
+               ShapeUtil::ElementIsFloating(instruction->operand(0)->shape());
+      case HloOpcode::kAdd:
+      case HloOpcode::kSubtract:
+      case HloOpcode::kMultiply:
+        // Only supported for floating point operands.
+        return ShapeUtil::ElementIsFloating(instruction->shape());
+      default:
+        return false;
+    }
   };
 
   auto computation_is_addition = [](HloComputation* c) {
@@ -176,6 +190,15 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   if (opcode1 != i2->opcode() || operands1.size() != i2->operands().size()) {
     return false;
   }
+  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
+    return *a == *b;
+  };
+  if (i1->IsCrossModuleAllReduce()) {
+    return i1->Identical(*i2,
+                         /*eq_operands=*/std::equal_to<const HloInstruction*>(),
+                         eq_computations,
+                         /*layout_sensitive=*/false);
+  }
   visited_pairs->emplace(min_uid, max_uid);
   for (int i = 0; i < operands1.size(); ++i) {
     auto operand1 = operands1[i];
@@ -201,9 +224,6 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   // InstructionsComputeSameValue earlier.
   auto eq_instructions = [](const HloInstruction* i1,
                             const HloInstruction* i2) -> bool { return true; };
-  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
-    return *a == *b;
-  };
   return i1->Identical(*i2, eq_instructions, eq_computations,
                        /*layout_sensitive=*/false);
 }

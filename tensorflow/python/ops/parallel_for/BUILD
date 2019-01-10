@@ -15,11 +15,13 @@ py_library(
         "control_flow_ops.py",
         "gradients.py",
         "pfor.py",
+        "test_util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":control_flow_ops",
         ":gradients",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -83,12 +85,25 @@ py_library(
     ],
 )
 
+py_library(
+    name = "test_util",
+    srcs = ["test_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pfor_lib",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+    ],
+)
+
 cuda_py_test(
     name = "control_flow_ops_test",
-    size = "large",
     srcs = ["control_flow_ops_test.py"],
     additional_deps = [
         ":control_flow_ops",
+        ":test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:gradients",
@@ -99,6 +114,34 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
+)
+
+cuda_py_test(
+    name = "array_test",
+    srcs = ["array_test.py"],
+    additional_deps = [
+        ":control_flow_ops",
+        ":test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:backprop",
+    ],
+)
+
+cuda_py_test(
+    name = "math_test",
+    srcs = ["math_test.py"],
+    additional_deps = [
+        ":control_flow_ops",
+        ":test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:util",
+    ],
+    tags = ["optonly"],  # Too slow in non-opt mode
 )
 
 py_library(
@@ -115,7 +158,6 @@ py_library(
 
 cuda_py_test(
     name = "gradients_test",
-    size = "large",
     srcs = ["gradients_test.py"],
     additional_deps = [
         ":control_flow_ops",
@@ -128,4 +170,5 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/losses",
     ],
+    tags = ["optonly"],  # Too slow in non-opt mode
 )

@@ -17,8 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
 
@@ -90,7 +96,11 @@ class RMSprop(optimizer_v2.OptimizerV2):
         `epsilon` can each be a callable that takes no arguments and returns the
         actual value to use. This can be useful for changing these values across
         different invocations of optimizer functions. @end_compatibility
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
     """
     super(RMSprop, self).__init__(name, **kwargs)
     self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
@@ -110,77 +120,122 @@ class RMSprop(optimizer_v2.OptimizerV2):
   def _create_slots(self, var_list):
     for var in var_list:
       self.add_slot(var, "rms")
-      self.add_slot(var, "momentum")
-      if self.centered:
+    if self._momentum:
+      for var in var_list:
+        self.add_slot(var, "momentum")
+    if self.centered:
+      for var in var_list:
         self.add_slot(var, "mg")
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
     lr_t = self._decayed_lr(var_dtype)
     rms = self.get_slot(var, "rms")
-    mom = self.get_slot(var, "momentum")
     rho = self._get_hyper("rho", var_dtype)
     momentum = self._get_hyper("momentum", var_dtype)
     epsilon = self._get_hyper("epsilon", var_dtype)
-    if self.centered:
-      mg = self.get_slot(var, "mg")
-      return training_ops.resource_apply_centered_rms_prop(
-          var.handle,
-          mg.handle,
-          rms.handle,
-          mom.handle,
-          lr_t,
-          rho,
-          momentum,
-          epsilon,
-          grad,
-          use_locking=self._use_locking)
+    if self._momentum:
+      mom = self.get_slot(var, "momentum")
+      if self.centered:
+        mg = self.get_slot(var, "mg")
+        return training_ops.resource_apply_centered_rms_prop(
+            var.handle,
+            mg.handle,
+            rms.handle,
+            mom.handle,
+            lr_t,
+            rho,
+            momentum,
+            epsilon,
+            grad,
+            use_locking=self._use_locking)
+      else:
+        return training_ops.resource_apply_rms_prop(
+            var.handle,
+            rms.handle,
+            mom.handle,
+            lr_t,
+            rho,
+            momentum,
+            epsilon,
+            grad,
+            use_locking=self._use_locking)
     else:
-      return training_ops.resource_apply_rms_prop(
-          var.handle,
-          rms.handle,
-          mom.handle,
-          lr_t,
-          rho,
-          momentum,
-          epsilon,
-          grad,
-          use_locking=self._use_locking)
+      rms_t = rho * rms + (1. - rho) * math_ops.square(grad)
+      rms_t = state_ops.assign(rms, rms_t, use_locking=self._use_locking)
+      denom_t = rms_t
+      if self.centered:
+        mg = self.get_slot(var, "mg")
+        mg_t = rho * mg + (1. - rho) * grad
+        mg_t = state_ops.assign(mg, mg_t, use_locking=self._use_locking)
+        denom_t = rms_t - math_ops.square(mg_t)
+      var_t = var - lr_t * grad / (math_ops.sqrt(denom_t) + epsilon)
+      return state_ops.assign(var, var_t, use_locking=self._use_locking).op
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
     lr_t = self._decayed_lr(var_dtype)
     rms = self.get_slot(var, "rms")
-    mom = self.get_slot(var, "momentum")
     rho = self._get_hyper("rho", var_dtype)
     momentum = self._get_hyper("momentum", var_dtype)
     epsilon = self._get_hyper("epsilon", var_dtype)
-    if self.centered:
-      mg = self.get_slot(var, "mg")
-      return training_ops.resource_sparse_apply_centered_rms_prop(
-          var.handle,
-          mg.handle,
-          rms.handle,
-          mom.handle,
-          lr_t,
-          rho,
-          momentum,
-          epsilon,
-          grad,
-          indices,
-          use_locking=self._use_locking)
+    if self._momentum:
+      mom = self.get_slot(var, "momentum")
+      if self.centered:
+        mg = self.get_slot(var, "mg")
+        return training_ops.resource_sparse_apply_centered_rms_prop(
+            var.handle,
+            mg.handle,
+            rms.handle,
+            mom.handle,
+            lr_t,
+            rho,
+            momentum,
+            epsilon,
+            grad,
+            indices,
+            use_locking=self._use_locking)
+      else:
+        return training_ops.resource_sparse_apply_rms_prop(
+            var.handle,
+            rms.handle,
+            mom.handle,
+            lr_t,
+            rho,
+            momentum,
+            epsilon,
+            grad,
+            indices,
+            use_locking=self._use_locking)
     else:
-      return training_ops.resource_sparse_apply_rms_prop(
-          var.handle,
-          rms.handle,
-          mom.handle,
-          lr_t,
-          rho,
-          momentum,
-          epsilon,
-          grad,
-          indices,
-          use_locking=self._use_locking)
+      rms_scaled_g_values = (grad * grad) * (1. - rho)
+      rms_t = state_ops.assign(rms, rms * rho, use_locking=self._use_locking)
+      with ops.control_dependencies([rms_t]):
+        rms_t = self._resource_scatter_add(rms, indices, rms_scaled_g_values)
+        rms_slice = array_ops.gather(rms_t, indices)
+      denom_slice = rms_slice
+      if self.centered:
+        mg = self.get_slot(var, "mg")
+        mg_scaled_g_values = grad * (1. - rho)
+        mg_t = state_ops.assign(mg, mg * rho, use_locking=self._use_locking)
+        with ops.control_dependencies([mg_t]):
+          mg_t = self._resource_scatter_add(mg, indices, mg_scaled_g_values)
+          mg_slice = array_ops.gather(mg_t, indices)
+          denom_slice = rms_slice - math_ops.square(mg_slice)
+      var_update = self._resource_scatter_add(
+          var, indices, -lr_t * grad / (math_ops.sqrt(denom_slice) + epsilon))
+      if self.centered:
+        return control_flow_ops.group(*[var_update, rms_t, mg_t])
+      return control_flow_ops.group(*[var_update, rms_t])
+
+  def set_weights(self, weights):
+    params = self.weights
+    # Override set_weights for backward compatibility of Keras V1 optimizer
+    # since it does not include iteration at head of the weight list. Set
+    # iteration to 0.
+    if len(params) == len(weights) + 1:
+      weights = [np.array(0)] + weights
+    super(RMSprop, self).set_weights(weights)
 
   def get_config(self):
     config = super(RMSprop, self).get_config()

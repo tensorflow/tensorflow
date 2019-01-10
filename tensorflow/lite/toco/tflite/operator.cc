@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
@@ -1478,6 +1479,31 @@ class MirrorPad
                    : MirrorPadMode::kSymmetric;
   }
 
+  int GetVersion(const OperatorSignature& op) const override { return 1; }
+};
+
+class Unique : public BuiltinOperator<UniqueOperator, ::tflite::UniqueOptions,
+                                      ::tflite::BuiltinOptions_UniqueOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    const UniqueOperator& unique_op = static_cast<const UniqueOperator&>(op);
+    return ::tflite::CreateUniqueOptions(
+        *builder, unique_op.idx_out_type == toco::ArrayDataType::kInt64
+                      ? ::tflite::TensorType::TensorType_INT64
+                      : ::tflite::TensorType_INT32);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    UniqueOperator* unique_op = static_cast<UniqueOperator*>(op);
+    unique_op->idx_out_type =
+        options.idx_out_type() == ::tflite::TensorType_INT64
+            ? toco::ArrayDataType::kInt64
+            : toco::ArrayDataType::kInt32;
+  }
+
   int GetVersion(const OperatorSignature& op_signature) const override {
     return 1;
   }
@@ -1819,6 +1845,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       OperatorType::kSquaredDifference));
   ops.push_back(MakeUnique<MirrorPad>(::tflite::BuiltinOperator_MIRROR_PAD,
                                       OperatorType::kMirrorPad));
+  ops.push_back(MakeUnique<Unique>(::tflite::BuiltinOperator_UNIQUE,
+                                   OperatorType::kUnique));
 
   // Custom Operators.
   ops.push_back(

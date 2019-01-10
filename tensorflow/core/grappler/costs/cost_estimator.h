@@ -20,6 +20,7 @@ limitations under the License.
 #include <cmath>
 #include <unordered_map>
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 class GraphDef;
@@ -223,6 +224,19 @@ class CostEstimator {
   // not.
   virtual Status PredictCosts(const GraphDef& optimized_graph,
                               CostGraphDef* cost_graph, Costs* cost) const = 0;
+
+  // TODO(dyoon): Delete PredictCosts() with CostGraphDef as RunMetadata is a
+  // superset of CostGraphDef.
+  // Same method, but returns RunMetadata.
+  virtual Status PredictCostsAndReturnRunMetadata(
+      const GraphDef& optimized_graph, RunMetadata* run_metadata,
+      Costs* cost) const {
+    CostGraphDef* cost_graph = nullptr;
+    if (run_metadata) {
+      cost_graph = run_metadata->mutable_cost_graph();
+    }
+    return PredictCosts(optimized_graph, cost_graph, cost);
+  }
 };
 
 }  // end namespace grappler

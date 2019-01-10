@@ -31,6 +31,7 @@ from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -1081,10 +1082,10 @@ def is_feature_layer(layer):
 
 
 def is_eager_dataset_or_iterator(data):
-  if context.executing_eagerly():
-    if isinstance(data, (dataset_ops.DatasetV2, iterator_ops.EagerIterator)):
-      return True
-  return False
+  return context.executing_eagerly() and isinstance(
+      data, (dataset_ops.DatasetV1,
+             dataset_ops.DatasetV2,
+             iterator_ops.EagerIterator))
 
 
 # pylint: disable=protected-access
@@ -1197,6 +1198,64 @@ def assert_not_shuffled(dataset):
           assert_not_shuffled(input_dataset)
         return
     raise ValueError('Could not assert that dataset is not shuffled.')
+
+
+def is_dataset_or_iterator(data):
+  return isinstance(data, (dataset_ops.DatasetV1,
+                           dataset_ops.DatasetV2,
+                           iterator_ops.EagerIterator,
+                           iterator_ops.Iterator))
+
+
+def extract_tensors_from_dataset(dataset):
+  """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
+
+  Works only for graph mode.
+
+  Arguments:
+    dataset: Dataset instance.
+
+  Returns:
+    Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
+  """
+  iterator = dataset_ops.make_initializable_iterator(dataset)
+  K.get_session().run(iterator.initializer)
+  inputs, targets, sample_weight = unpack_iterator_input(iterator)
+  return inputs, targets, sample_weight
+
+
+def unpack_iterator_input(iterator):
+  """Convert a dataset iterator to a tuple of tensors `x, y, sample_weights`.
+
+  Arguments:
+    iterator: Instance of a dataset iterator.
+
+  Returns:
+    Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
+  """
+  try:
+    next_element = iterator.get_next()
+  except errors.OutOfRangeError:
+    raise RuntimeError('Your dataset iterator ran out of data; '
+                       'Make sure that your dataset can generate '
+                       'required number of samples.')
+
+  if isinstance(next_element, (list, tuple)):
+    if len(next_element) not in [2, 3]:
+      raise ValueError(
+          'Please provide model inputs as a list or tuple of 2 or 3 '
+          'elements: (input, target) or (input, target, sample_weights) '
+          'Received %s' % next_element)
+    if len(next_element) == 2:
+      x, y = next_element
+      weights = None
+    else:
+      x, y, weights = next_element
+  else:
+    x = next_element
+    y = None
+    weights = None
+  return x, y, weights
 
 
 class ModelInputs(object):
@@ -1402,3 +1461,22 @@ def set_run_eagerly_for_dict_structure(model, x):
       if isinstance(item, dict):
         model.run_eagerly = True
         return
+
+
+def convert_eager_tensors_to_numpy(structure):
+  """Convert every EagerTensor in `structure` to NumPy.
+
+  Arguments:
+    structure: An arbitrary structure of elements to be converted to NumPy
+      arrays.
+
+  Returns:
+    An identical structure with EagerTensors converted to NumPy arrays.
+  """
+
+  def _convert(element):
+    if isinstance(element, ops.EagerTensor):
+      return element.numpy()
+    return element
+
+  return nest.map_structure(_convert, structure)

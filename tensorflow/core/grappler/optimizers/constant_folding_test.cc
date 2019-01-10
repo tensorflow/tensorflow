@@ -1601,7 +1601,7 @@ TEST_F(ConstantFoldingTest, SplitRemoval) {
   AddNode("split_dim", "Const", {}, {}, &want);
   AddNode("s1", "Identity", {"in1", AsControlDependency("split_dim")}, {},
           &want);
-  AddNode("s2", "Split", {"in2", "split_dim"}, {}, &want);
+  AddNode("s2", "Split", {"split_dim", "in2"}, {}, &want);
   AddNode("out", "Add", {"s1", "s2"}, {}, &want);
 
   CompareGraphs(want, got);

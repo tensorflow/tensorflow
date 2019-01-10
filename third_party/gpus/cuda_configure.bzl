@@ -400,7 +400,7 @@ def _cuda_include_path(repository_ctx, cuda_config):
   return "\n".join(inc_entries)
 
 
-def _enable_cuda(repository_ctx):
+def enable_cuda(repository_ctx):
   if "TF_NEED_CUDA" in repository_ctx.os.environ:
     enable_cuda = repository_ctx.os.environ["TF_NEED_CUDA"].strip()
     return enable_cuda == "1"
@@ -1545,7 +1545,7 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
 
 def _cuda_autoconf_impl(repository_ctx):
   """Implementation of the cuda_autoconf repository rule."""
-  if not _enable_cuda(repository_ctx):
+  if not enable_cuda(repository_ctx):
     _create_dummy_repository(repository_ctx)
   elif _TF_CUDA_CONFIG_REPO in repository_ctx.os.environ:
     _create_remote_cuda_repository(

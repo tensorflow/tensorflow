@@ -122,14 +122,15 @@ class OpKernel {
   // determine whether an operation should be place in a threadpool.  Operations
   // start out "expensive".
   static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-  static const uint64 kOpIsExpensiveThresholdCycles = 25000;
+  static const uint64 kOpIsExpensiveThresholdCycles = 5000;
   static const uint64 kCostDecay = 10;
 
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
   virtual bool IsExpensive() {
-    return expensive_ && (cost_estimate_ > kOpIsExpensiveThresholdCycles);
+    return expensive_ && (cost_estimate_.load(std::memory_order_relaxed) >
+                          kOpIsExpensiveThresholdCycles);
   }
 
   // Updates the dynamic cost estimate, which is used to determine whether this
@@ -605,6 +606,9 @@ class OpKernelContext {
     // The session state for this op.
     SessionState* session_state = nullptr;
 
+    // Unique session identifier. Can be empty.
+    string session_handle;
+
     // The tensor store for this op.
     TensorStore* tensor_store = nullptr;
 
@@ -1032,6 +1036,9 @@ class OpKernelContext {
 
   // An op kernel can access the session state it belongs to.
   SessionState* session_state() const { return params_->session_state; }
+
+  // Unique identifier of the session it belongs to. Can be empty.
+  string session_handle() const { return params_->session_handle; }
 
   // An op kernel can access the tensor store of the run it belongs to.
   TensorStore* tensor_store() const { return params_->tensor_store; }

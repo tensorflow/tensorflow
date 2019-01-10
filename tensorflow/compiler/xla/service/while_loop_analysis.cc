@@ -301,7 +301,7 @@ optional<int64> ComputeWhileLoopTripCountUpperBound(HloInstruction* while_op) {
                                   /*dest_shape_index=*/{indvar_index},
                                   /*src_shape_index=*/{}));
   StatusOr<Literal> eval_result =
-      evaluator.Evaluate<Literal>(*while_cond, {std::move(fake_input)});
+      evaluator.Evaluate(*while_cond, {std::move(fake_input)});
 
   if (!eval_result.ok()) {
     VLOG(2) << "Couldn't evaluate while loop condition.";

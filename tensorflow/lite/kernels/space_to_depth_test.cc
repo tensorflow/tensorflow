@@ -50,10 +50,12 @@ class SpaceToDepthOpModel : public SingleOpModel {
   int output_;
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(SpaceToDepthOpModel, BadBlockSize) {
   EXPECT_DEATH(SpaceToDepthOpModel({TensorType_FLOAT32, {1, 2, 2, 1}}, 3),
                "Cannot allocate tensors");
 }
+#endif
 
 TEST(SpaceToDepthOpModel, Float32) {
   SpaceToDepthOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, 2);

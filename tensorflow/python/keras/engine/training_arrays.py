@@ -23,6 +23,7 @@ import functools
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
@@ -146,15 +147,15 @@ def model_iteration(model,
 
   Arguments:
       model: Keras Model instance.
-      inputs: Either a list of arrays or a dictionary.
-      targets: List of target arrays.
+      inputs: Either a list or dictionary of arrays, or a dataset instance.
+      targets: List/dictionary of input arrays.
       sample_weights: Optional list of sample weight arrays.
       batch_size: Integer batch size or None if unknown.
       epochs: Number of times to iterate over the data
       verbose: Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
-      val_inputs: List of input arrays.
-      val_targets: List of target arrays.
+      val_inputs: Either a list or dictionary of arrays, or a dataset instance.
+      val_targets: List/dictionary of target arrays.
       val_sample_weights: Optional list of sample weight arrays.
       shuffle: Whether to shuffle the data at the beginning of each epoch
         concatenation of list the display names of the outputs of `f` and the
@@ -186,6 +187,20 @@ def model_iteration(model,
   if 'steps' in kwargs:
     steps_per_epoch = kwargs['steps']
 
+  # In case we are passed datasets, we extract symbolic tensors from them.
+  if isinstance(inputs, (dataset_ops.DatasetV2, dataset_ops.DatasetV1)):
+    inputs, targets, sample_weights = model._standardize_user_data(
+        inputs,
+        steps_name='steps_per_epoch',
+        steps=steps_per_epoch,
+        extract_tensors_from_dataset=True)
+  if isinstance(val_inputs, (dataset_ops.DatasetV2, dataset_ops.DatasetV1)):
+    val_inputs, val_targets, val_sample_weights = model._standardize_user_data(
+        val_inputs,
+        steps_name='validation_steps',
+        steps=validation_steps,
+        extract_tensors_from_dataset=True)
+
   _validate_arguments(steps_per_epoch, validation_steps, kwargs)
   if mode == ModeKeys.TRAIN:
     _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
@@ -199,6 +214,10 @@ def model_iteration(model,
   f = _make_execution_function(model, mode)
   use_steps = steps_per_epoch is not None
   do_validation = val_inputs is not None
+
+  # Convert Eager Tensors to NumPy arrays to support batching/shuffling.
+  inputs, targets, sample_weights = training_utils. \
+      convert_eager_tensors_to_numpy((inputs, targets, sample_weights))
 
   # Prepare input data.
   ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)

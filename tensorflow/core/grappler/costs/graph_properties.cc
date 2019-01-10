@@ -425,9 +425,11 @@ NodeDef MakeConstNodeDefFromShape(InferenceContext* ic,
 // information is refined.
 class TopoQueue {
  public:
-  explicit TopoQueue(const std::unordered_map<const NodeDef*, int>& topo_order)
-      : topo_order_(topo_order) {}
+  explicit TopoQueue(const std::vector<const NodeDef*>& topo_order)
+      : topo_order_(TopoOrder(topo_order)) {}
+
   void push(const NodeDef* n) { queue_.emplace(n, topo_order_.at(n)); }
+
   const NodeDef* pop() {
     CHECK(!empty());
     auto it = queue_.begin();
@@ -448,7 +450,18 @@ class TopoQueue {
       return lhs.second < rhs.second;
     }
   };
-  const std::unordered_map<const NodeDef*, int>& topo_order_;
+
+  const std::unordered_map<const NodeDef*, int> TopoOrder(
+      const std::vector<const NodeDef*>& topo_order) const {
+    std::unordered_map<const NodeDef*, int> map;
+    map.reserve(topo_order.size());
+    for (int i = 0; i < topo_order.size(); ++i) {
+      map.emplace(topo_order[i], i);
+    }
+    return map;
+  }
+
+  const std::unordered_map<const NodeDef*, int> topo_order_;
   std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
@@ -656,7 +669,7 @@ class SymbolicShapeRefiner {
     ctx->output_tensor_protos.resize(grappler_function_item.output_size(),
                                      nullptr);
     for (auto const& out_arg : grappler_function_item.outputs()) {
-      if (out_arg.output_tensors.size() > 1) {
+      if (out_arg.output_nodes.size() > 1) {
         // TODO(jmdecker): Handle case of multiple output tensors
         return errors::Unimplemented(
             "Output arguments with multiple output tensors are not yet "
@@ -665,7 +678,7 @@ class SymbolicShapeRefiner {
 
       // It is guaranteed that output_tensors does not contain any control
       // inputs, so port_id >= 0.
-      TensorId out_tensor = ParseTensorName(out_arg.output_tensors[0]);
+      TensorId out_tensor = ParseTensorName(out_arg.output_nodes[0]);
 
       const NodeDef* retnode = gv.GetNode(out_tensor.node());
       if (retnode == nullptr) {
@@ -1074,15 +1087,20 @@ class SymbolicShapeRefiner {
         c->output_tensor_protos.size() < ic->num_outputs()) {
       return false;
     } else {
+      // Checks if we can get output value via either output_tensor_proto or
+      // output_tensors_as_shapes.
       for (int i = 0; i < ic->num_outputs(); i++) {
-        if (c->output_tensor_protos.size() <= i ||
-            c->output_tensor_protos[i] == nullptr) {
-          return false;
+        if (c->output_tensor_protos.size() > i &&
+            c->output_tensor_protos[i] != nullptr) {
+          continue;
         }
-        if (c->output_tensors_as_shapes.size() <= i ||
-            !ic->FullyDefined(c->output_tensors_as_shapes[i])) {
-          return false;
+        if (c->output_tensors_as_shapes.size() > i &&
+            ic->FullyDefined(c->output_tensors_as_shapes[i])) {
+          continue;
         }
+
+        // Unknown for output[i].
+        return false;
       }
     }
     return true;
@@ -1450,9 +1468,9 @@ class SymbolicShapeRefiner {
       // Due to the cost of EvaluateNode(), we run it only for certain op types
       // (white listed) and small integer tensors.
 
-      const int max_elelment_size = 17;  // Max up to 4x4 matrix or similar.
+      const int max_element_size = 17;  // Max up to 4x4 matrix or similar.
       if (AllOutputValuesKnown(c) || !AllInputValuesKnown(c) ||
-          !ShouldUpdateOutputValues(c, max_elelment_size)) {
+          !ShouldUpdateOutputValues(c, max_element_size)) {
         return Status::OK();
       }
       UpdateOutputValues(node, c).IgnoreError();  // This is optional.
@@ -1970,7 +1988,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
   }
 
   std::unordered_map<const NodeDef*, const NodeDef*> resource_handles;
-  std::vector<std::pair<const NodeDef*, const NodeDef*>> extra_deps;
+  std::vector<TopologicalDependency> extra_deps;
   for (const auto& resource : resources) {
     for (const NodeDef* src : resource.second.first) {
       resource_handles[src] = resource.first;
@@ -1982,8 +2000,8 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
     }
   }
 
-  std::unordered_map<const NodeDef*, int> topo_order;
-  Status s = ComputeTopologicalOrder(item_.graph, &topo_order, &extra_deps);
+  std::vector<const NodeDef*> topo_order;
+  Status s = ComputeTopologicalOrder(item_.graph, extra_deps, &topo_order);
   if (!s.ok()) {
     if (extra_deps.empty()) {
       return s;
@@ -1992,8 +2010,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
       // order. This will make the shape inference less precise but since this
       // isn't common it's not worth to figure out where to break the loop and
       // do a proper relaxation.
-      TF_RETURN_IF_ERROR(
-          ComputeTopologicalOrder(item_.graph, &topo_order, nullptr));
+      TF_RETURN_IF_ERROR(ComputeTopologicalOrder(item_.graph, &topo_order));
     }
   }
 

@@ -34,6 +34,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
     ],
 )
 
@@ -172,9 +173,9 @@ cuda_py_test(
 
 py_test(
     name = "optimizer_v2_test",
-    size = "large",
+    size = "medium",
     srcs = ["optimizer_v2_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_windows",
     ],
@@ -212,4 +213,5 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 2,
 )

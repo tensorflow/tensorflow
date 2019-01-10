@@ -871,9 +871,7 @@ DotGeneral performs the sum of products over contracting dimensions specified
 in 'dimension_numbers'.
 
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
-to be the same, but must be listed in the same order in both
-'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
-There must be exactly one contracting dimension on both 'lhs' and 'rhs'.
+to be the same and but must have the same dimension sizes.
 
 Example with contracting dimension numbers:
 
@@ -892,10 +890,8 @@ DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
 {15.0, 30.0} }
 ```
 
-Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
-dimension number, must be listed in the same order in both arrays, must
-have the same dimension sizes, and must be ordered before contracting and
-non-contracting/non-batch dimension numbers.
+Associated batch dimension numbers from the 'lhs' and 'rhs' must
+have the same dimension sizes.
 
 Example with batch dimension numbers (batch size 2, 2x2 matrices):
 
@@ -944,21 +940,21 @@ dimension: [start, start + size). The shape of `start_indices` must be rank ==
 
 <b> `DynamicSlice(operand, start_indices, size_indices)` </b>
 
-| Arguments       | Type                | Semantics                           |
-| --------------- | ------------------- | ----------------------------------- |
-| `operand`       | `XlaOp`             | N dimensional array of type T       |
-| `start_indices` | `XlaOp`             | Rank 1 array of N integers          |
-:                 :                     : containing the starting indices of  :
-:                 :                     : the slice for each dimension. Value :
-:                 :                     : must be greater than or equal to    :
-:                 :                     : zero.                               :
-| `size_indices`  | `ArraySlice<int64>` | List of N integers containing the   |
-:                 :                     : slice size for each dimension. Each :
-:                 :                     : value must be strictly greater than :
-:                 :                     : zero, and start + size must be less :
-:                 :                     : than or equal to the size of the    :
-:                 :                     : dimension to avoid wrapping modulo  :
-:                 :                     : dimension size.                     :
+| Arguments       | Type                  | Semantics                          |
+| --------------- | --------------------- | ---------------------------------- |
+| `operand`       | `XlaOp`               | N dimensional array of type T      |
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
+| `size_indices`  | `ArraySlice<int64>`   | List of N integers containing the  |
+:                 :                       : slice size for each dimension.     :
+:                 :                       : Each value must be strictly        :
+:                 :                       : greater than zero, and start +     :
+:                 :                       : size must be less than or equal to :
+:                 :                       : the size of the dimension to avoid :
+:                 :                       : wrapping modulo dimension size.    :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
@@ -1009,19 +1005,22 @@ the rank of `operand`.
 
 <b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
 
-| Arguments       | Type    | Semantics                                        |
-| --------------- | ------- | ------------------------------------------------ |
-| `operand`       | `XlaOp` | N dimensional array of type T                    |
-| `update`        | `XlaOp` | N dimensional array of type T containing the     |
-:                 :         : slice update. Each dimension of update shape     :
-:                 :         : must be strictly greater than zero, and start +  :
-:                 :         : update must be less than or equal to the operand :
-:                 :         : size for each dimension to avoid generating      :
-:                 :         : out-of-bounds update indices.                    :
-| `start_indices` | `XlaOp` | Rank 1 array of N integers containing the        |
-:                 :         : starting indices of the slice for each           :
-:                 :         : dimension. Value must be greater than or equal   :
-:                 :         : to zero.                                         :
+| Arguments       | Type                  | Semantics                          |
+| --------------- | --------------------- | ---------------------------------- |
+| `operand`       | `XlaOp`               | N dimensional array of type T      |
+| `update`        | `XlaOp`               | N dimensional array of type T      |
+:                 :                       : containing the slice update. Each  :
+:                 :                       : dimension of update shape must be  :
+:                 :                       : strictly greater than zero, and    :
+:                 :                       : start + update must be less than   :
+:                 :                       : or equal to the operand size for   :
+:                 :                       : each dimension to avoid generating :
+:                 :                       : out-of-bounds update indices.      :
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
@@ -1095,7 +1094,7 @@ When `Op` is `Rem`, the sign of the result is taken from the dividend, and the
 absolute value of the result is always less than the divisor's absolute value.
 
 Integer division overflow (signed/unsigned division/remainder by zero or signed
-divison/remainder of `INT_SMIN` with `-1`) produces an implementation defined
+division/remainder of `INT_SMIN` with `-1`) produces an implementation defined
 value.
 
 An alternative variant with different-rank broadcasting support exists for these

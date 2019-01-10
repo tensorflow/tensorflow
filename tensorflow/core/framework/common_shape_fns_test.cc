@@ -408,12 +408,14 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
 TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   ShapeInferenceTestOp op("Conv2D");
   auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
-                      const string& data_format, const string& filter_format) {
+                      const string& data_format, const string& filter_format,
+                      const std::vector<int32>& explicit_paddings = {}) {
     TF_CHECK_OK(NodeDefBuilder("test", "Conv2D")
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
                     .Attr("strides", strides)
                     .Attr("padding", padding)
+                    .Attr("explicit_paddings", explicit_paddings)
                     .Attr("data_format", data_format)
                     .Attr("filter_format", filter_format)
                     .Finalize(&op.node_def));
@@ -536,19 +538,73 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,?,2,d1_3]");
   INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,2,?,d1_3]");
   INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,2,2,d1_3]");
+
+  // Some tests for "EXPLICIT" padding
+
+  // 4x4 input, 1x1 filter, 1x1 stride, [0, 2, 1, 4] padding
+  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 0, 2, 1, 4, 0, 0});
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,6,9,d1_3]");
+
+  // 3x3 input, 2x2 filter, 1x1 stride, [1, 0, 1, 2] padding
+  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 1, 0, 1, 2, 0, 0});
+  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,3,5,d1_3]");
+
+  // 4x4 input, 2x2 filter, 2x2 stride, [3, 2, 1, 0] padding
+  set_op({{1, 2, 2, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 3, 2, 1, 0, 0, 0});
+  INFER_OK(op, "[1,4,4,2];[2,2,2,3]", "[d0_0,4,2,d1_3]");
+
+  // 2x2 input, 2x1 filter, 1x2 stride, [1, 1, 2, 2] padding
+  set_op({{1, 1, 2, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 1, 1, 2, 2, 0, 0});
+  INFER_OK(op, "[1,2,2,1];[2,1,1,1]", "[d0_0,3,3,d1_3]");
+
+  // Unknown dims in the critical fields lead to partial inference.
+  INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,5,4,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[2,1,1,1]", "[d0_0,?,4,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[2,1,1,1]", "[d0_0,5,?,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[2,1,1,1]", "[d0_0,5,4,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,1,1,1]", "[d0_0,?,4,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[2,?,1,1]", "[d0_0,5,?,d1_3]");
+
+  // Explicit padding errors
+  // Negative padding
+  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 0, -1, 0, 0, 0, 0});
+  INFER_ERROR("must be nonnegative", op, "[1,2,2,1];[1,1,1,1]");
+
+  // Too little padding (7 explicit paddings instead of 8)
+  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 0, 0, 0, 0, 0});
+  INFER_ERROR("must contain 8 values", op, "[1,2,2,1];[1,1,1,1]");
+
+  // Too much padding (9 explicit paddings instead of 8)
+  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO",
+         {0, 0, 0, 0, 0, 0, 0, 0, 0});
+  INFER_ERROR("must contain 8 values", op, "[1,2,2,1];[1,1,1,1]");
+
+  // Padding in batch dimension
+  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {1, 0, 0, 0, 0, 0, 0, 0});
+  INFER_ERROR("batch or depth dimensions", op, "[1,2,2,1];[1,1,1,1]");
+
+  // Padding in depth dimension
+  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 0, 0, 0, 0, 1, 0});
+  INFER_ERROR("batch or depth dimensions", op, "[1,2,2,1];[1,1,1,1]");
+
+  // Padding explicit_paddings when padding is not EXPLICIT
+  set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO", {0, 0, 0, 0, 0, 0, 0, 0});
+  INFER_ERROR("must be empty", op, "[1,2,2,1];[1,1,1,1]");
 }
 
 TEST(CommonShapeFnsTest, Conv2DDilatedShapeTest) {
   ShapeInferenceTestOp op("Conv2D");
   auto set_op = [&op](const std::vector<int32>& dilations,
                       const std::vector<int32>& strides, const string& padding,
-                      const string& data_format) {
+                      const string& data_format,
+                      const std::vector<int32>& explicit_paddings = {}) {
     TF_CHECK_OK(NodeDefBuilder("test", "Conv2D")
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
                     .Attr("dilations", dilations)
                     .Attr("strides", strides)
                     .Attr("padding", padding)
+                    .Attr("explicit_paddings", explicit_paddings)
                     .Attr("data_format", data_format)
                     .Finalize(&op.node_def));
   };
@@ -628,6 +684,28 @@ TEST(CommonShapeFnsTest, Conv2DDilatedShapeTest) {
   // 4x4 input, 2x2 filter, 2x2 dilations, 1x1 stride
   set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "SAME", "NHWC");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // Some tests for "EXPLICIT" padding
+
+  // 4x4 input, 1x1 filter, 2x1 dilations, 1x1 stride, [0, 2, 1, 4] padding
+  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1}}, "EXPLICIT", "NHWC",
+         {0, 0, 0, 2, 1, 4, 0, 0});
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,6,9,d1_3]");
+
+  // 3x3 input, 2x2 filter, 2x2 dilations, 1x1 stride, [1, 0, 1, 2] padding
+  set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "EXPLICIT", "NHWC",
+         {0, 0, 1, 0, 1, 2, 0, 0});
+  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,2,4,d1_3]");
+
+  // 4x4 input, 2x2 filter, 1x2 dilations, 2x2 stride, [3, 2, 1, 0] padding
+  set_op({{1, 1, 2, 1}}, {{1, 2, 2, 1}}, "EXPLICIT", "NHWC",
+         {0, 0, 3, 2, 1, 0, 0, 0});
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,2,d1_3]");
+
+  // 4x4 input, 2x2 filter, 2x2 dilations, 1x1 stride, [1, 1, 2, 2] padding
+  set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "EXPLICIT", "NHWC",
+         {0, 0, 1, 1, 2, 2, 0, 0});
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,6,d1_3]");
 }
 
 TEST(CommonShapeFnsTest, Conv3DShapeTest) {

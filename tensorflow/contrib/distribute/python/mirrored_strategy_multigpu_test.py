@@ -66,8 +66,10 @@ GPU_TEST = "test_gpu" in sys.argv[0]
         combinations.core_mirrored_strategy_with_gpu_and_cpu,
         combinations.core_mirrored_strategy_with_two_gpus],
     mode=["graph", "eager"]))
-class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase,
-                                        parameterized.TestCase):
+class MirroredTwoDeviceDistributionTest(
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase,
+    parameterized.TestCase):
 
   def testMinimizeLoss(self, distribution):
     if context.executing_eagerly():
@@ -114,8 +116,29 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase,
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values)
 
+  def testNumpyIterator(self, distribution):
+    self._test_numpy_iterator(distribution)
+
   def testGlobalStepUpdate(self, distribution):
     self._test_global_step_update(distribution)
+
+  def testAllReduceSum(self, distribution):
+    self._test_all_reduce_sum(distribution)
+
+  def testAllReduceSumGradients(self, distribution):
+    self._test_all_reduce_sum_gradients(distribution)
+
+  def testAllReduceSumGradientTape(self, distribution):
+    self._test_all_reduce_sum_gradient_tape(distribution)
+
+  def testAllReduceMean(self, distribution):
+    self._test_all_reduce_mean(distribution)
+
+  def testAllReduceMeanGradients(self, distribution):
+    self._test_all_reduce_mean_gradients(distribution)
+
+  def testAllReduceMeanGradientTape(self, distribution):
+    self._test_all_reduce_mean_gradient_tape(distribution)
 
 
 def one_device_combinations():
@@ -128,24 +151,41 @@ def one_device_combinations():
       mode=["graph", "eager"])
 
 
+@combinations.generate(one_device_combinations())
 class MirroredOneDeviceDistributionTest(
     strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.OneDeviceDistributionTestBase,
     parameterized.TestCase):
 
-  @combinations.generate(one_device_combinations())
   def testMinimizeLoss(self, distribution):
     if context.executing_eagerly():
       self._test_minimize_loss_eager(distribution)
     else:
       self._test_minimize_loss_graph(distribution)
 
-  @combinations.generate(one_device_combinations())
   def testReplicaId(self, distribution):
     self._test_replica_id(distribution)
 
-  @combinations.generate(one_device_combinations())
   def testCallAndMergeExceptions(self, distribution):
     self._test_call_and_merge_exceptions(distribution)
+
+  def testAllReduceSum(self, distribution):
+    self._test_all_reduce_sum(distribution)
+
+  def testAllReduceSumGradients(self, distribution):
+    self._test_all_reduce_sum_gradients(distribution)
+
+  def testAllReduceSumGradientTape(self, distribution):
+    self._test_all_reduce_sum_gradient_tape(distribution)
+
+  def testAllReduceMean(self, distribution):
+    self._test_all_reduce_mean(distribution)
+
+  def testAllReduceMeanGradients(self, distribution):
+    self._test_all_reduce_mean_gradients(distribution)
+
+  def testAllReduceMeanGradientTape(self, distribution):
+    self._test_all_reduce_mean_gradient_tape(distribution)
 
 
 class MirroredStrategyVariableCreatorStackTest(

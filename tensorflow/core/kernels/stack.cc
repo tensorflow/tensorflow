@@ -96,7 +96,7 @@ class Stack : public ResourceBase {
 
   DataType ElemType() { return elem_type_; }
 
-  string DebugString() override {
+  string DebugString() const override {
     mutex_lock l(mu_);
     return strings::StrCat("Stack[", stack_name_, "]");
   }

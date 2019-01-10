@@ -245,6 +245,18 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
+def all_strategy_combinations_minus_default():
+  strategy_minus_default_combinations = combinations.combine(
+      distribution=[
+          combinations.one_device_strategy,
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.mirrored_strategy_with_two_gpus,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_two_gpus],
+      mode=['graph', 'eager'])
+  return strategy_minus_default_combinations + tpu_strategy_combinations()
+
+
 # TODO(priyag): Add v2 optimizers here.
 def strategy_and_optimizer_combinations():
   return combinations.times(
@@ -418,15 +430,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                               parameterized.TestCase):
 
   @combinations.generate(strategy_for_numpy_input_combinations())
-  def test_creating_var_with_numpy_arrays(self, distribution):
-    with self.cached_session():
-      x = np.asarray(np.random.random((64, 3)), dtype=np.float32)
-      var_x = distributed_training_utils.get_var_for_numpy(distribution, x)
-      val = self.evaluate(var_x.value())
-      # Verify that the numpy value is copied to the variable.
-      self.assertAllEqual(x, val)
-
-  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calculating_input_params_no_steps_no_batch_size(self, distribution):
     # Calculate the per_replica_batch_size scaling factor for strategies
     # that use per_core_batch_size
@@ -564,26 +567,26 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         metrics = ['mae']
         model.compile(optimizer, loss, metrics=metrics)
 
-      inputs = np.zeros((64, 3), dtype=np.float32)
-      targets = np.zeros((64, 4), dtype=np.float32)
+        inputs = np.zeros((64, 3), dtype=np.float32)
+        targets = np.zeros((64, 4), dtype=np.float32)
 
-      # Call fit with validation data
-      model.fit(inputs, targets, epochs=1, batch_size=2, verbose=0,
-                validation_data=(inputs, targets))
+        # Call fit with validation data
+        model.fit(inputs, targets, epochs=1, batch_size=2, verbose=0,
+                  validation_data=(inputs, targets))
 
-      # TODO(anjalisridhar): We need tests for when the batch size and steps are
-      # smaller and results in a 0 batch_size and steps value.
-      model.evaluate(inputs, targets)
-      # with steps
-      model.evaluate(inputs, targets, steps=2)
-      # with batch_size
-      model.evaluate(inputs, targets, batch_size=8)
+        # TODO(anjalisridhar): We need tests for when the batch size and steps
+        # are smaller and results in a 0 batch_size and steps value.
+        model.evaluate(inputs, targets)
+        # with steps
+        model.evaluate(inputs, targets, steps=2)
+        # with batch_size
+        model.evaluate(inputs, targets, batch_size=8)
 
-      model.predict(inputs)
-      # with steps
-      model.predict(inputs, steps=2)
-      # with batch_size
-      model.predict(inputs, batch_size=8)
+        model.predict(inputs)
+        # with steps
+        model.predict(inputs, steps=2)
+        # with batch_size
+        model.predict(inputs, batch_size=8)
 
   @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calling_model_with_nested_numpy_arrays(self, distribution):
@@ -1147,6 +1150,38 @@ class TestDistributionStrategyWithNormalizationLayer(
       out /= keras.backend.eval(norm.gamma)
       np.testing.assert_allclose(out.mean(), 0.0, atol=1e-1)
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
+
+
+class TestDistributionStrategyValidation(test.TestCase,
+                                         parameterized.TestCase):
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_layer_outside_scope(self, distribution):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          ValueError, 'was not created in the distribution strategy'):
+        x = keras.layers.Input(shape=(3,), name='input')
+        y = keras.layers.Dense(4, name='dense')(x)
+        with distribution.scope():
+          model = keras.Model(x, y)
+          optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+          loss = 'mse'
+          metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+          model.compile(optimizer, loss, metrics=metrics)
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_model_outside_scope(self, distribution):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          ValueError, 'was not created in the distribution strategy'):
+        x = keras.layers.Input(shape=(3,), name='input')
+        y = keras.layers.Dense(4, name='dense')(x)
+        model = keras.Model(x, y)
+        with distribution.scope():
+          optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+          loss = 'mse'
+          metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+          model.compile(optimizer, loss, metrics=metrics)
 
 
 if __name__ == '__main__':
