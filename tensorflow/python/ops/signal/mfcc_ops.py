@@ -28,14 +28,12 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export('signal.mfccs_from_log_mel_spectrograms')
 def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
-  """Computes [MFCCs](https://en.wikipedia.org/wiki/Mel-frequency_cepstrum)
-  of `log_mel_spectrograms`.
+  """Computes [MFCCs][mfcc] of `log_mel_spectrograms`.
 
   Implemented with GPU-compatible ops and supports gradients.
 
-  [Mel-Frequency Cepstral Coefficient (MFCC)](https://en.wikipedia.org/wiki/Mel-frequency_cepstrum)
-  calculation consists of taking the DCT-II of a log-magnitude mel-scale
-  spectrogram. [HTK](https://en.wikipedia.org/wiki/HTK_(software))'s MFCCs
+  [Mel-Frequency Cepstral Coefficient (MFCC)][mfcc] calculation consists of
+  taking the DCT-II of a log-magnitude mel-scale spectrogram. [HTK][htk]'s MFCCs
   use a particular scaling of the DCT-II which is almost orthogonal
   normalization. We follow this convention.
 
@@ -85,6 +83,9 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
 
   Raises:
     ValueError: If `num_mel_bins` is not positive.
+
+  [mfcc]: https://en.wikipedia.org/wiki/Mel-frequency_cepstrum
+  [htk]: https://en.wikipedia.org/wiki/HTK_(software)
   """
   with ops.name_scope(name, 'mfccs_from_log_mel_spectrograms',
                       [log_mel_spectrograms]):

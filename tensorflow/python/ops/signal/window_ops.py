@@ -32,7 +32,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export('signal.hann_window')
 def hann_window(window_length, periodic=True, dtype=dtypes.float32, name=None):
-  """Generate a [Hann window](https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows).
+  """Generate a [Hann window][hann].
 
   Args:
     window_length: A scalar `Tensor` indicating the window length to generate.
@@ -48,6 +48,8 @@ def hann_window(window_length, periodic=True, dtype=dtypes.float32, name=None):
 
   Raises:
     ValueError: If `dtype` is not a floating point type.
+
+  [hann]: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
   """
   return _raised_cosine_window(name, 'hann_window', window_length, periodic,
                                dtype, 0.5, 0.5)
@@ -56,7 +58,7 @@ def hann_window(window_length, periodic=True, dtype=dtypes.float32, name=None):
 @tf_export('signal.hamming_window')
 def hamming_window(window_length, periodic=True, dtype=dtypes.float32,
                    name=None):
-  """Generate a [Hamming](https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows) window.
+  """Generate a [Hamming][hamming] window.
 
   Args:
     window_length: A scalar `Tensor` indicating the window length to generate.
@@ -72,6 +74,8 @@ def hamming_window(window_length, periodic=True, dtype=dtypes.float32,
 
   Raises:
     ValueError: If `dtype` is not a floating point type.
+
+  [hamming]: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
   """
   return _raised_cosine_window(name, 'hamming_window', window_length, periodic,
                                dtype, 0.54, 0.46)

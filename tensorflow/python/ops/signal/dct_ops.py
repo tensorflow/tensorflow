@@ -51,13 +51,13 @@ def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
 # TODO(rjryan): Implement `n` and `axis` parameters.
 @tf_export("signal.dct", v1=["signal.dct", "spectral.dct"])
 def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
-  """Computes the 1D [Discrete Cosine Transform (DCT)](https://en.wikipedia.org/wiki/Discrete_cosine_transform)
-  of `input`.
+  """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
 
   Currently only Types I, II and III are supported.
   Type I is implemented using a length `2N` padded `tf.spectral.rfft`.
   Type II is implemented using a length `2N` padded `tf.spectral.rfft`, as
-  described [here](https://dsp.stackexchange.com/a/10606).
+  described here:
+  https://dsp.stackexchange.com/a/10606.
   Type III is a fairly straightforward inverse of Type II
   (i.e. using a length `2N` padded `tf.spectral.irfft`).
 
@@ -83,6 +83,8 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is
       not `-1`, or `norm` is not `None` or `'ortho'`.
     ValueError: If `type` is `1` and `norm` is `ortho`.
+
+  [dct]: https://en.wikipedia.org/wiki/Discrete_cosine_transform
   """
   _validate_dct_arguments(input, type, n, axis, norm)
   with _ops.name_scope(name, "dct", [input]):
@@ -149,8 +151,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
 # TODO(rjryan): Implement `n` and `axis` parameters.
 @tf_export("signal.idct", v1=["signal.idct", "spectral.idct"])
 def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
-  """Computes the 1D [Inverse Discrete Cosine Transform (DCT)](https://en.wikipedia.org/wiki/Discrete_cosine_transform#Inverse_transforms)
-  of `input`.
+  """Computes the 1D [Inverse Discrete Cosine Transform (DCT)][idct] of `input`.
 
   Currently only Types I, II and III are supported. Type III is the inverse of
   Type II, and vice versa.
@@ -182,6 +183,9 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
   Raises:
     ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is
       not `-1`, or `norm` is not `None` or `'ortho'`.
+
+  [idct]:
+  https://en.wikipedia.org/wiki/Discrete_cosine_transform#Inverse_transforms
   """
   _validate_dct_arguments(input, type, n, axis, norm)
   inverse_type = {1: 1, 2: 3, 3: 2}[type]

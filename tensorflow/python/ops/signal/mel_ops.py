@@ -95,14 +95,12 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
                                 upper_edge_hertz=3800.0,
                                 dtype=dtypes.float32,
                                 name=None):
-  """Returns a matrix to warp linear scale spectrograms to the
-  [mel scale](https://en.wikipedia.org/wiki/Mel_scale).
+  """Returns a matrix to warp linear scale spectrograms to the [mel scale][mel].
 
   Returns a weight matrix that can be used to re-weight a `Tensor` containing
   `num_spectrogram_bins` linearly sampled frequency information from
   `[0, sample_rate / 2]` into `num_mel_bins` frequency information from
-  `[lower_edge_hertz, upper_edge_hertz]` on the
-  [mel scale](https://en.wikipedia.org/wiki/Mel_scale).
+  `[lower_edge_hertz, upper_edge_hertz]` on the [mel scale][mel].
 
   For example, the returned matrix `A` can be used to right-multiply a
   spectrogram `S` of shape `[frames, num_spectrogram_bins]` of linear
@@ -146,6 +144,8 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
     ValueError: If num_mel_bins/num_spectrogram_bins/sample_rate are not
       positive, lower_edge_hertz is negative, frequency edges are incorrectly
       ordered, or upper_edge_hertz is larger than the Nyquist frequency.
+
+  [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
   with ops.name_scope(name, 'linear_to_mel_weight_matrix') as name:
     # Note: As num_spectrogram_bins is passed to `math_ops.linspace`
