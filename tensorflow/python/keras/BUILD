@@ -395,7 +395,7 @@ tf_py_test(
 
 tf_py_test(
     name = "metrics_functional_test",
-    size = "medium",
+    size = "small",
     srcs = ["metrics_functional_test.py"],
     additional_deps = [
         ":keras",
@@ -408,6 +408,19 @@ tf_py_test(
     name = "metrics_test",
     size = "medium",
     srcs = ["metrics_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+)
+
+tf_py_test(
+    name = "metrics_confusion_matrix_test",
+    size = "medium",
+    srcs = ["metrics_confusion_matrix_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
