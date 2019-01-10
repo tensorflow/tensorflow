@@ -114,6 +114,7 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTest) {
                                                4, 8, 11, 15, 12, 16}));
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(BatchToSpaceNDOpTest, InvalidShapeTest) {
   EXPECT_DEATH(BatchToSpaceNDOpConstModel({3, 2, 2, 1}, {2, 2}, {0, 0, 0, 0}),
                "Cannot allocate tensors");
@@ -131,6 +132,7 @@ TEST(BatchToSpaceNDOpTest, InvalidCropsDynamicTest) {
   m.SetCrops({0, 0, -1, 0});
   EXPECT_DEATH(m.Invoke(), "crops.2. >= 0 was not true.");
 }
+#endif
 
 }  // namespace
 }  // namespace tflite

@@ -30,6 +30,7 @@ from tensorflow.contrib.distribute.python.monitor import Monitor
 from tensorflow.contrib.distribute.python.one_device_strategy import OneDeviceStrategy
 from tensorflow.contrib.distribute.python.parameter_server_strategy import ParameterServerStrategy
 from tensorflow.contrib.distribute.python.step_fn import *
+from tensorflow.contrib.distribute.python.tpu_strategy import initialize_tpu_system
 from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
 from tensorflow.python.distribute.cross_device_ops import *
 from tensorflow.python.distribute.distribute_config import DistributeConfig
@@ -58,11 +59,14 @@ _allowed_symbols = [
     'StandardSingleLossStep',
     'ReplicaContext',
     'TPUStrategy',
+    'initialize_tpu_system',
     'get_cross_replica_context',
     'get_distribution_strategy',
     'get_loss_reduction',
     'get_replica_context',
+    'get_strategy',
     'has_distribution_strategy',
+    'has_strategy',
     'in_cross_replica_context',
     'require_replica_context',
     'run_standard_tensorflow_server',

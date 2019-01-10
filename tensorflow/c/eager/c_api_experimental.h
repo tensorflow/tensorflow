@@ -25,6 +25,24 @@ extern "C" {
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 
+// A profiler which will start profiling when creating the object and will stop
+// when the object is destroyed. It will profile all operations run under the
+// given TFE_Context. Multiple instance of it can be created, but at most one
+// of them will profile for each TFE_Context.
+// Thread-safety: TFE_Profiler is thread-safe.
+typedef struct TFE_Profiler TFE_Profiler;
+
+TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler(TFE_Context* ctx);
+TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
+
+// The output string is a binary string of tensorflow.tfprof.ProfileProto.
+// User can write the string to file for offline analysis by tfprof command-line
+// tools or graphical user interface.
+TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Context* ctx,
+                                                         TFE_Profiler* profiler,
+                                                         TF_Buffer* buf,
+                                                         TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

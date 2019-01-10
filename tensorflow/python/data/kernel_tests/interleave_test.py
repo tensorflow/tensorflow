@@ -17,19 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
-
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -76,47 +72,6 @@ def _interleave(lists, cycle_length, block_length):
           open_iterators[i] = None
           num_open -= 1
           break
-
-
-def _make_coordinated_sloppy_dataset(input_values, cycle_length, block_length,
-                                     num_parallel_calls):
-  """Produces a dataset iterator and events to control the order of elements.
-
-  Args:
-    input_values: the values to generate lists to interleave from
-    cycle_length: the length of the interleave cycle
-    block_length: the length of the interleave block
-    num_parallel_calls: the degree of interleave parallelism
-
-  Returns:
-    A dataset iterator (represented as `get_next` op) and events that can be
-    used to control the order of output elements.
-  """
-
-  # Set up threading events used to sequence when items are produced that
-  # are subsequently interleaved. These events allow us to deterministically
-  # simulate slowdowns and force sloppiness.
-  coordination_events = {i: threading.Event() for i in input_values}
-
-  def map_py_fn(x):
-    coordination_events[x].wait()
-    coordination_events[x].clear()
-    return x * x
-
-  def map_fn(x):
-    return script_ops.py_func(map_py_fn, [x], x.dtype)
-
-  def interleave_fn(x):
-    dataset = dataset_ops.Dataset.from_tensors(x)
-    dataset = dataset.repeat(x)
-    return dataset.map(map_fn)
-
-  options = dataset_ops.Options()
-  options.experimental_deterministic = False
-  dataset = dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
-      2).interleave(interleave_fn, cycle_length, block_length,
-                    num_parallel_calls).with_options(options)
-  return dataset, coordination_events
 
 
 def _repeat(values, count):
@@ -252,63 +207,37 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
   @parameterized.named_parameters(
-      ("1", np.int64([4, 5, 6]), 2, 1, 1),
-      ("2", np.int64([4, 5, 6]), 2, 1, 2),
-      ("3", np.int64([4, 5, 6]), 2, 3, 1),
-      ("4", np.int64([4, 5, 6]), 2, 3, 2),
-      ("5", np.int64([4, 5, 6]), 3, 2, 1),
-      ("6", np.int64([4, 5, 6]), 3, 2, 2),
-      ("7", np.int64([4, 5, 6]), 3, 2, 3),
-      ("8", np.int64([4, 0, 6]), 2, 3, 1),
-      ("9", np.int64([4, 0, 6]), 2, 3, 2),
+      ("1", np.int64([4, 5, 6]), 1, 3, 1),
+      ("2", np.int64([4, 5, 6]), 2, 1, 1),
+      ("3", np.int64([4, 5, 6]), 2, 1, 2),
+      ("4", np.int64([4, 5, 6]), 2, 3, 1),
+      ("5", np.int64([4, 5, 6]), 2, 3, 2),
+      ("6", np.int64([4, 5, 6]), 7, 2, 1),
+      ("7", np.int64([4, 5, 6]), 7, 2, 3),
+      ("8", np.int64([4, 5, 6]), 7, 2, 5),
+      ("9", np.int64([4, 5, 6]), 7, 2, 7),
+      ("10", np.int64([4, 0, 6]), 2, 3, 1),
+      ("11", np.int64([4, 0, 6]), 2, 3, 2),
   )
-  def testSloppyInterleaveInOrder(self, input_values, cycle_length,
+  def testSloppyInterleaveDataset(self, input_values, cycle_length,
                                   block_length, num_parallel_calls):
-    dataset, coordination_events = _make_coordinated_sloppy_dataset(
-        input_values, cycle_length, block_length, num_parallel_calls)
+    count = 2
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
+        count).interleave(
+            lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
+            cycle_length, block_length, num_parallel_calls)
     options = dataset_ops.Options()
-    options.experimental_threading = threading_options.ThreadingOptions()
-    options.experimental_threading.private_threadpool_size = (
-        num_parallel_calls + 1)
+    options.experimental_deterministic = False
     dataset = dataset.with_options(options)
-
-    get_next = self.getNext(dataset, requires_initialization=True)
-    for expected_element in _interleave(
-        _repeat(input_values, 2), cycle_length, block_length):
-      coordination_events[expected_element].set()
-      self.assertEqual(expected_element * expected_element,
-                       self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
-
-  @parameterized.named_parameters(
-      ("1", np.int64([4, 5, 6]), 2, 1, 2),
-      ("2", np.int64([4, 5, 6]), 2, 3, 2),
-      ("3", np.int64([4, 5, 6]), 3, 2, 3),
-      ("4", np.int64([4, 0, 6]), 2, 3, 2),
-  )
-  def testSloppyInterleaveOutOfOrder(self, input_values, cycle_length,
-                                     block_length, num_parallel_calls):
-    dataset, coordination_events = _make_coordinated_sloppy_dataset(
-        input_values, cycle_length, block_length, num_parallel_calls)
-    options = dataset_ops.Options()
-    options.experimental_threading = threading_options.ThreadingOptions()
-    options.experimental_threading.private_threadpool_size = (
-        num_parallel_calls + 1)
-    dataset = dataset.with_options(options)
-    get_next = self.getNext(dataset, requires_initialization=True)
-    elements = [
-        x for x in _interleave(
-            _repeat(input_values, 2), cycle_length, block_length)
+    expected_output = [
+        element for element in _interleave(
+            _repeat(input_values, count), cycle_length, block_length)
     ]
-    for i in [1, 4, 7]:
-      elements[i], elements[i + 1] = elements[i + 1], elements[i]
-
-    for element in elements:
-      coordination_events[element].set()
-      self.assertEqual(element * element, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+    get_next = self.getNext(dataset)
+    actual_output = []
+    for _ in range(len(expected_output)):
+      actual_output.append(self.evaluate(get_next()))
+    self.assertAllEqual(expected_output.sort(), actual_output.sort())
 
 
 if __name__ == "__main__":

@@ -390,7 +390,6 @@ bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
       0, d.stream()>>>(output_size, bottom_data, height, width, channels,
                        pooled_height, pooled_width, kernel_h, kernel_w,
                        stride_h, stride_w, pad_t, pad_l, top_data);
-  d.synchronize();
   return d.ok();
 }
 

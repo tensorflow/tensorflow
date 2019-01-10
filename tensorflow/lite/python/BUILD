@@ -74,6 +74,7 @@ py_test(
     data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
     ],
     deps = [
@@ -115,8 +116,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",

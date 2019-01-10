@@ -505,13 +505,13 @@ class ExponentialMovingAverage(object):
     ```
     Args:
       moving_avg_variables: a list of variables that require to use of the
-        moving variable name to be restored. If None, it will default to
+        moving average variable name to be restored. If None, it will default to
         variables.moving_average_variables() + variables.trainable_variables()
 
     Returns:
-      A map from restore_names to variables. The restore_name can be the
-      moving_average version of the variable name if it exist, or the original
-      variable name.
+      A map from restore_names to variables. The restore_name is either the
+      original or the moving average version of the variable name, depending
+      on whether the variable name is in the `moving_avg_variables`.
     """
     name_map = {}
     if moving_avg_variables is None:

@@ -669,6 +669,7 @@ cc_library(
     name = "side_effect_util",
     srcs = ["side_effect_util.cc"],
     hdrs = ["side_effect_util.h"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:core_cpu",
         "@com_google_absl//absl/strings",

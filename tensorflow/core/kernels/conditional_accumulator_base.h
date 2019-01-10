@@ -68,7 +68,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
 
   const DataType& dtype() const { return dtype_; }
 
-  string DebugString() override { return "A conditional accumulator"; }
+  string DebugString() const override { return "A conditional accumulator"; }
 
   // SetGlobalStep is a modifier method for current_global_step.
   // It returns an InvalidArgument error if the new_global_step is less than

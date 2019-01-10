@@ -235,13 +235,14 @@ class CudaSolver {
                       int batch_size) TF_MUST_USE_RESULT;
 
   // Batched linear solver using LU factorization from getrfBatched.
-  // See:
+  // Notice that lapack_info is returned on the host, as opposed to
+  // most of the other functions that return it on the device. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched
   template <typename Scalar>
   Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
                       const Scalar* const dev_Aarray[], int lda,
                       const int* devIpiv, const Scalar* const dev_Barray[],
-                      int ldb, DeviceLapackInfo* dev_lapack_info,
+                      int ldb, int* host_lapack_info,
                       int batch_size) TF_MUST_USE_RESULT;
 
   // Computes matrix inverses for a batch of small matrices. Uses the outputs

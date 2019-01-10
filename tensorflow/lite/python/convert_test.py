@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
+from tensorflow.python.framework.graph_util_impl import _node_name
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -388,6 +389,28 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
         _types_pb2.COMPLEX64)
     with self.assertRaises(ValueError):
       convert.convert_dtype_to_tflite_type(dtypes.bool)
+
+  def testFindHintedOutputNodes(self):
+    """Test if all hinted output nodes are correctly found."""
+
+    def _build_ophinted_op(name, input1, input2):
+      custom_op = op_hint.OpHint(name)
+      input1 = custom_op.add_input(input1)
+      input2 = custom_op.add_input(input2)
+      output = math_ops.mul(input1, input2)
+      return custom_op.add_output(output)
+
+    output_1 = _build_ophinted_op("custom_op_1", array_ops.constant([1.]),
+                                  array_ops.constant([2.]))
+    output_2 = _build_ophinted_op("custom_op_2", array_ops.constant([3.]),
+                                  array_ops.constant([4.]))
+    with self.cached_session() as sess:
+      hinted_outputs_nodes = op_hint.find_all_hinted_output_nodes(sess)
+      expected_hinted_output_nodes = [
+          _node_name(output_1.name),
+          _node_name(output_2.name)
+      ]
+      self.assertCountEqual(hinted_outputs_nodes, expected_hinted_output_nodes)
 
 
 if __name__ == "__main__":

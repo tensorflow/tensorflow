@@ -1,8 +1,7 @@
-# Files for using TFGAN framework.
+# Files for using TF-GAN framework.
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(default_visibility = [
-    "//learning/brain/contrib/tfgan:__subpackages__",
     "//tensorflow:__subpackages__",
 ])
 
@@ -107,6 +106,7 @@ py_library(
     deps = [
         ":gan_estimator",
         ":head",
+        ":latent_gan_estimator",
         ":stargan_estimator",
         ":tpu_gan_estimator",
         "//tensorflow/python:util",
@@ -132,6 +132,7 @@ py_library(
         ":clip_weights",
         ":conditioning_utils",
         ":random_tensor_pool",
+        ":spectral_normalization",
         ":virtual_batchnorm",
         "//tensorflow/python:util",
     ],
@@ -145,16 +146,15 @@ py_library(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
+        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/losses",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -570,22 +570,18 @@ py_test(
     deps = [
         ":namedtuples",
         ":stargan_estimator",
-        ":tuple_losses",
         "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/learn",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
-        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:numpy_io",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
@@ -648,6 +644,41 @@ py_test(
 )
 
 py_library(
+    name = "latent_gan_estimator",
+    srcs = [
+        "python/estimator/python/latent_gan_estimator.py",
+        "python/estimator/python/latent_gan_estimator_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":train",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_test(
+    name = "latent_gan_estimator_test",
+    srcs = [
+        "python/estimator/python/latent_gan_estimator_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":latent_gan_estimator",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
+py_library(
     name = "sliced_wasserstein",
     srcs = [
         "python/eval/python/sliced_wasserstein.py",
@@ -678,6 +709,48 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "spectral_normalization",
+    srcs = [
+        "python/features/python/spectral_normalization.py",
+        "python/features/python/spectral_normalization_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:standard_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/keras:engine",
+    ],
+)
+
+py_test(
+    name = "spectral_normalization_test",
+    srcs = ["python/features/python/spectral_normalization_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":spectral_normalization",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/slim",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/keras:layers",
         "//third_party/py/numpy",
     ],
 )

@@ -3,6 +3,12 @@ licenses(["restricted"])
 load(":generate.bzl", "tensorflow_rbe_config")
 
 tensorflow_rbe_config(
+    name = "ubuntu16.04-py3-clang",
+    compiler = "clang",
+    python_version = "3",
+)
+
+tensorflow_rbe_config(
     name = "ubuntu14.04-py3-gcc-cuda9.0-cudnn7-tensorrt5",
     compiler = "gcc",
     cuda_version = "9.0",

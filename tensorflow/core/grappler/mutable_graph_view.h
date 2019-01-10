@@ -24,8 +24,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -41,7 +43,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
  public:
   explicit MutableGraphView(GraphDef* graph) : GraphViewInternal(graph) {
     for (NodeDef& node : *graph->mutable_node()) AddUniqueNodeOrDie(&node);
-    for (NodeDef& node : *graph->mutable_node()) AddFanouts(&node);
+    for (NodeDef& node : *graph->mutable_node()) AddAndDedupFanouts(&node);
   }
 
   // Lookup fanouts/fanins using immutable ports.
@@ -63,60 +65,30 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // Updates all fanouts (input ports fetching output tensors) from `from_node`
   // to the `to_node`, including control dependencies.
   //
-  // Example: We have 2 nodes that use `bar` node output tensors as inputs:
-  //   1. foo1(bar:0, bar:1, other:0, ^bar)
+  // Example: We have 3 nodes that use `bar` node output tensors as inputs:
+  //   1. foo1(bar:0, bar:1, other:0)
   //   2. foo2(bar:1, other:1)
+  //   3. foo3(other:2, ^bar)
   //
   // After calling ForwardOutputs(bar, new_bar):
-  //   1. foo1(new_bar:0, new_bar:1, other:0, ^new_bar)
+  //   1. foo1(new_bar:0, new_bar:1, other:0)
   //   2. foo2(new_bar:1, other:1)
-  void UpdateFanouts(absl::string_view from_node, absl::string_view to_node);
-
-  // Add fanin to node `node_name`. If the node or fanin do not exist in the
-  // graph, nothing will be modified in the graph. If fanin is a control
-  // dependency, existing control dependencies will be checked first before
-  // adding. Otherwise fanin will be added after existing non control dependency
-  // inputs.
+  //   3. foo3(other:2, ^new_bar)
   //
-  // This will return true iff the node is modified. If a control dependency
-  // already exists, the node will not be modified.
-  bool AddFanin(absl::string_view node_name, const TensorId& fanin);
+  // This will return true iff the nodes are modified.
+  bool UpdateFanouts(absl::string_view from_node, absl::string_view to_node);
 
-  // Remove fanin from node `node_name`. If the node or fanin do not exist in
-  // the graph, nothing will be modified in the graph. If there are multiple
-  // inputs that match the fanin, all of them will be removed.
-  //
-  // This will return true iff the node is modified. If no inputs match the
-  // fanin, the node will not be modified.
-  bool RemoveFanin(absl::string_view node_name, const TensorId& fanin);
-
-  // Remove all fanins from node `node_name`. Control dependencies will be
-  // retained if keep_controlling_fanins is true.
+  // Adds regular fanin `fanin` to node `node_name`. If the node or fanin do not
+  // exist in the graph, nothing will be modified in the graph. Otherwise fanin
+  // will be added after existing non control dependency fanins. Control
+  // dependencies will be deduped. To add control dependencies, use
+  // AddControllingFanin.
   //
   // This will return true iff the node is modified.
-  bool RemoveAllFanins(absl::string_view node_name,
-                       bool keep_controlling_fanins);
+  bool AddRegularFanin(absl::string_view node_name, const TensorId& fanin);
 
-  // Replace all fanins `from_fanin` with `to_fanin` in node `node_name`. If
-  // the fanins or node do not exist, nothing will be modified in the graph.
-  //
-  // This will return true iff the node is modified.
-  bool UpdateFanin(absl::string_view node_name, const TensorId& from_fanin,
-                   const TensorId& to_fanin);
-
-  // Removes redundant control fanins from node `node_name`.
-  //
-  // This will return true iff the node is modified.
-  // TODO(lyandy): Measure performance of deduping on every AddFanin compared to
-  // deduping once at the end.
-  bool DedupControllingFanins(absl::string_view node_name);
-
-  // Removes redundant control fanins from all nodes in the graph.
-  //
-  // This will return true iff the node is modified.
-  bool DedupControllingFanins();
-
-  // Adds a control dependency to the target node named `node_name`.
+  // Adds control dependency `fanin` to the target node named `node_name`. To
+  // add regular fanins, use AddRegularFanin.
   //
   // Case 1: If the fanin is not a Switch node, the control dependency is simply
   // added to the target node:
@@ -136,31 +108,77 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // This will return true iff the node is modified.
   bool AddControllingFanin(absl::string_view node_name, const TensorId& fanin);
 
+  // Removes regular fanin `fanin` from node `node_name`. If the node or fanin
+  // do not exist in the graph, nothing will be modified in the graph. If there
+  // are multiple inputs that match the fanin, all of them will be removed. To
+  // remove controlling fanins, use RemoveControllingFanin.
+  //
+  // This will return true iff the node is modified.
+  bool RemoveRegularFanin(absl::string_view node_name, const TensorId& fanin);
+
+  // Removes control dependency `fanin_node_name` from the target node named
+  // `node_name`. If the node or fanin do not exist in the graph, nothing will
+  // be modified in the graph. To remove regular fanins, use RemoveRegualrFanin.
+  //
+  // This will return true iff the node is modified.
+  bool RemoveControllingFanin(absl::string_view node_name,
+                              absl::string_view fanin_node_name);
+
+  // Removes all fanins from node `node_name`. Control dependencies will be
+  // retained if keep_controlling_fanins is true.
+  //
+  // This will return true iff the node is modified.
+  bool RemoveAllFanins(absl::string_view node_name,
+                       bool keep_controlling_fanins);
+
+  // Replaces all fanins `from_fanin` with `to_fanin` in node `node_name`. If
+  // the fanins or node do not exist, nothing will be modified in the graph.
+  // Control dependencies will be deduped.
+  //
+  // This will return true iff the node is modified.
+  bool UpdateFanin(absl::string_view node_name, const TensorId& from_fanin,
+                   const TensorId& to_fanin);
+
   // Deletes nodes from the graph.
   void DeleteNodes(const std::set<string>& nodes_to_delete);
 
  private:
+  // Adds fanouts for fanins of node to graph, while deduping control
+  // dependencies from existing control dependencies and regular fanins. Note,
+  // node inputs will be mutated if control dependencies can be deduped.
+  void AddAndDedupFanouts(NodeDef* node);
+
+  // Finds next output port smaller than fanin.port_id and update. The
+  // max_regular_output_port is only updated if fanin.port_id is the same as the
+  // current max_regular_output_port and if the fanouts set is empty. If there
+  // are no regular outputs, max_regular_output_port will be erased.
+  void UpdateMaxRegularOutputPortForRemovedFanin(
+      const OutputPort& fanin,
+      const absl::flat_hash_set<InputPort>& fanin_fanouts);
+
   // Updates all fanouts (input ports fetching output tensors) from `from_node`
   // to the `to_node`, including control dependencies.
   //
-  // Example: We have 2 nodes that use `bar` node output tensors as inputs:
-  //   1. foo1(bar:0, bar:1, other:0, ^bar)
+  // Example: We have 3 nodes that use `bar` node output tensors as inputs:
+  //   1. foo1(bar:0, bar:1, other:0)
   //   2. foo2(bar:1, other:1)
+  //   3. foo3(other:2, ^bar)
   //
   // After calling ForwardOutputs(bar, new_bar):
-  //   1. foo1(new_bar:0, new_bar:1, other:0, ^new_bar)
+  //   1. foo1(new_bar:0, new_bar:1, other:0)
   //   2. foo2(new_bar:1, other:1)
+  //   3. foo3(other:2, ^new_bar)
   //
   // IMPORTANT: If `from_node` or `to_node` is not in the underlying graph, the
   // behavior is undefined.
-  void UpdateFanouts(NodeDef* from_node, NodeDef* to_node);
+  bool UpdateFanoutsInternal(NodeDef* from_node, NodeDef* to_node);
 
   // Removes fanins of the deleted node from internal state. Control
   // dependencies are retained iff keep_controlling_fanins is true.
   void RemoveFaninsInternal(NodeDef* deleted_node,
                             bool keep_controlling_fanins);
 
-  // Add fanin to node. If fanin is a control dependency, existing control
+  // Adds fanin to node. If fanin is a control dependency, existing control
   // dependencies will be checked first before adding. Otherwise fanin will be
   // added after existing non control dependency inputs.
   //
@@ -168,7 +186,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // already exists, the node will not be modified.
   bool AddFaninInternal(NodeDef* node, const OutputPort& fanin);
 
-  // Add fanin to node. If the node or fanin do not exist in the graph, nothing
+  // Adds fanin to node. If the node or fanin do not exist in the graph, nothing
   // will be modified in the graph. If fanin is a control dependency, existing
   // control dependencies will be checked first before adding. Otherwise fanin
   // will be added after existing non control dependency inputs.
@@ -178,10 +196,22 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   bool AddFaninInternal(NodeDef* node, const TensorId& fanin);
 
   // Removes any fanin in node that matches to a fanin in fanins.
-  bool RemoveFanins(NodeDef* node, absl::Span<const TensorId> fanins);
+  //
+  // This will return true iff the node is modified.
+  bool RemoveRegularFaninInternal(NodeDef* node, const TensorId& fanin);
 
-  // Removes redundant control fanins from node.
-  bool DedupControllingFanins(NodeDef* node);
+  // Removes controlling fanin `fanin_node_name` from node if such controlling
+  // fanin exists.
+  //
+  // This will return true iff the node is modified.
+  bool RemoveControllingFaninInternal(NodeDef* node,
+                                      absl::string_view fanin_node_name);
+
+  // Removes controlling fanin `fanin_node` from node if such controlling fanin
+  // exists.
+  //
+  // This will return true iff the node is modified.
+  bool RemoveControllingFaninInternal(NodeDef* node, NodeDef* fanin_node);
 };
 
 }  // end namespace grappler

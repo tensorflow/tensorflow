@@ -927,6 +927,22 @@ LocalOp LocalComputationBuilder::TriangularSolve(const LocalOp& a,
                               conjugate_a);
 }
 
+LocalOp LocalComputationBuilder::Gather(
+    const LocalOp& input, const LocalOp& start_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    absl::Span<const int64> slice_sizes) {
+  return xla::Gather(input.op(), start_indices.op(), dimension_numbers,
+                     slice_sizes);
+}
+
+LocalOp LocalComputationBuilder::Scatter(
+    const LocalOp& input, const LocalOp& scatter_indices,
+    const LocalOp& updates, const LocalComputation& update_computation,
+    const ScatterDimensionNumbers& dimension_numbers) {
+  return xla::Scatter(input.op(), scatter_indices.op(), updates.op(),
+                      update_computation.computation(), dimension_numbers);
+}
+
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
     const LocalOp& operand) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,

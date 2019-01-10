@@ -281,8 +281,6 @@ def clone_model(model, input_tensors=None):
 
 
 # "Clone" a subclassed model by reseting all of the attributes.
-
-
 def _in_place_subclassed_model_reset(model):
   """Substitute for model cloning that works for subclassed models.
 
@@ -382,11 +380,30 @@ def _in_place_subclassed_model_reset(model):
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)
   model._original_attributes_cache = attributes_cache
-  # Reset built state
+  _reset_build_compile_trackers(model)
+  model._setattr_tracking = setattr_tracking
+
+
+def _reset_build_compile_trackers(model):
+  """Reset state trackers for model.
+
+  Note that we do not actually zero out attributes such as optimizer,
+  but instead rely on the expectation that all of the attrs will be
+  over-written on calling build/compile/etc. This is somewhat fragile,
+  insofar as we check elsewhere for the presence of these attributes as
+  evidence of having been built/compiled/etc. Pending a better way to do this,
+  we reset key attributes here to allow building and compiling.
+
+  Args:
+    model: the model that is being reset
+  """
+  # Reset build state
   model.built = False
   model.inputs = None
   model.outputs = None
-  model._setattr_tracking = setattr_tracking
+  # Reset compile state
+  model._is_compiled = False  # pylint:disable=protected-access
+  model.optimizer = None
 
 
 def in_place_subclassed_model_state_restoration(model):
@@ -418,9 +435,7 @@ def in_place_subclassed_model_state_restoration(model):
     model._setattr_tracking = setattr_tracking
   else:
     # Restore to the state of a never-called model.
-    model.built = False
-    model.inputs = None
-    model.outputs = None
+    _reset_build_compile_trackers(model)
 
 
 def clone_and_build_model(
@@ -462,7 +477,10 @@ def clone_and_build_model(
       - cloning a subclassed model with `in_place_reset` set to False.
       - compiling the clone when the original model has not been compiled.
   """
-  if compile_clone and not model.optimizer:
+  # Grab optimizer now, as we reset-in-place for subclassed models, but
+  # want to maintain access to the original optimizer.
+  orig_optimizer = model.optimizer
+  if compile_clone and not orig_optimizer:
     raise ValueError(
         'Error when cloning model: compile_clone was set to True, but the '
         'original model has not been compiled.')
@@ -498,14 +516,14 @@ def clone_and_build_model(
         input_tensors = input_tensors[0]
       clone._set_inputs(input_tensors)
 
-  if compile_clone and model.optimizer:
-    if isinstance(model.optimizer, optimizers.TFOptimizer):
+  if compile_clone:
+    if isinstance(orig_optimizer, optimizers.TFOptimizer):
       optimizer = optimizers.TFOptimizer(
-          model.optimizer.optimizer, optimizer_iterations)
+          orig_optimizer.optimizer, optimizer_iterations)
       K.track_tf_optimizer(optimizer)
     else:
-      optimizer_config = model.optimizer.get_config()
-      optimizer = model.optimizer.__class__.from_config(optimizer_config)
+      optimizer_config = orig_optimizer.get_config()
+      optimizer = orig_optimizer.__class__.from_config(optimizer_config)
       if optimizer_iterations is not None:
         optimizer.iterations = optimizer_iterations
 

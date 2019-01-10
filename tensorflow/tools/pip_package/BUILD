@@ -169,6 +169,7 @@ filegroup(
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
+        "@pasta//:LICENSE",
         "@pcre//:LICENCE",
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",

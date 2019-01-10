@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -192,9 +195,9 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape(XlaOp root) const {
 }
 
 void XlaBuilder::IsConstantVisitor(const int64 op_handle,
-                                   std::set<int64>* visited,
+                                   absl::flat_hash_set<int64>* visited,
                                    bool* is_constant) const {
-  if (visited->count(op_handle) != 0 || !*is_constant) {
+  if (visited->contains(op_handle) || !*is_constant) {
     return;
   }
 
@@ -244,6 +247,29 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
                                      int64 target_param_num,
                                      ShapeIndex target_param_index,
                                      int64 target_dim_num) {
+  bool param_exists = false;
+  for (HloInstructionProto& instr : instructions_) {
+    if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
+        instr.parameter_number() == target_param_num) {
+      param_exists = true;
+      Shape param_shape(instr.shape());
+      Shape* param_shape_ptr = &param_shape;
+      for (int64 index : target_param_index) {
+        param_shape_ptr = param_shape_ptr->mutable_tuple_shapes(index);
+      }
+      param_shape_ptr->set_dynamic_dimension(target_dim_num,
+                                             /*is_dynamic=*/true);
+      *instr.mutable_shape() = param_shape.ToProto();
+    }
+  }
+
+  if (!param_exists) {
+    return InvalidArgument(
+        "Asked to mark parameter %lld as dynamic sized parameter, but the "
+        "doesn't exists",
+        target_param_num);
+  }
+
   TF_RETURN_IF_ERROR(dynamic_parameter_binding_.Bind(
       DynamicParameterBinding::DynamicParameter{dynamic_size_param_num,
                                                 dynamic_size_param_index},
@@ -310,7 +336,10 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
     module->add_computations()->Swap(&e.second);
   }
   module->add_computations()->Swap(&entry);
-
+  if (!input_output_aliases_.empty()) {
+    TF_RETURN_IF_ERROR(
+        PopulateInputOutputAlias(module, program_shape, input_output_aliases_));
+  }
   *(module->mutable_dynamic_parameter_binding()) =
       dynamic_parameter_binding_.ToProto();
 
@@ -321,6 +350,35 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
   this->parameter_numbers_.clear();
 
   return std::move(computation);
+}
+
+/* static */ Status XlaBuilder::PopulateInputOutputAlias(
+    HloModuleProto* module, const ProgramShape& program_shape,
+    const std::vector<InputOutputAlias>& input_output_aliases) {
+  HloInputOutputAliasConfig config(program_shape.result());
+  for (auto& alias : input_output_aliases) {
+    // The HloInputOutputAliasConfig does not do parameter validation as it only
+    // carries the result shape. Maybe it should be constructed with a
+    // ProgramShape to allow full validation. We will still get an error when
+    // trying to compile the HLO module, but would be better to have validation
+    // at this stage.
+    if (alias.param_number >= program_shape.parameters_size()) {
+      return InvalidArgument("Invalid parameter number %ld (total %ld)",
+                             alias.param_number,
+                             program_shape.parameters_size());
+    }
+    const Shape& parameter_shape = program_shape.parameters(alias.param_number);
+    if (!ShapeUtil::IndexIsValid(parameter_shape, alias.param_index)) {
+      return InvalidArgument("Invalid parameter %ld index: %s",
+                             alias.param_number,
+                             alias.param_index.ToString().c_str());
+    }
+    TF_RETURN_IF_ERROR(config.SetUpAlias(
+        alias.output_index, alias.param_number, alias.param_index,
+        HloInputOutputAliasConfig::AliasKind::kUserAlias));
+  }
+  *module->mutable_input_output_alias() = config.ToProto();
+  return Status::OK();
 }
 
 StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
@@ -659,7 +717,7 @@ XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                         GetShape(start_indices));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferDynamicSliceShape(
-                            operand_shape, start_indices_shape, slice_sizes));
+                            operand_shape, {start_indices_shape}, slice_sizes));
     *instr.mutable_shape() = shape.ToProto();
 
     for (int64 size : slice_sizes) {
@@ -668,6 +726,34 @@ XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
 
     return AddInstruction(std::move(instr), HloOpcode::kDynamicSlice,
                           {operand, start_indices});
+  });
+}
+
+XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand,
+                               absl::Span<const XlaOp> start_indices,
+                               absl::Span<const int64> slice_sizes) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    std::vector<const Shape*> start_indices_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& start_indices_shapes,
+                        GetOperandShapes(start_indices));
+    absl::c_transform(start_indices_shapes,
+                      std::back_inserter(start_indices_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferDynamicSliceShape(
+                            operand_shape, start_indices_shapes, slice_sizes));
+    *instr.mutable_shape() = shape.ToProto();
+
+    for (int64 size : slice_sizes) {
+      instr.add_dynamic_slice_sizes(size);
+    }
+
+    std::vector<XlaOp> operands = {operand};
+    operands.insert(operands.end(), start_indices.begin(), start_indices.end());
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicSlice, operands);
   });
 }
 
@@ -680,13 +766,38 @@ XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
     TF_ASSIGN_OR_RETURN(const Shape& update_shape, GetShape(update));
     TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
                         GetShape(start_indices));
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferDynamicUpdateSliceShape(
-                            operand_shape, update_shape, start_indices_shape));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape, ShapeInference::InferDynamicUpdateSliceShape(
+                         operand_shape, update_shape, {start_indices_shape}));
     *instr.mutable_shape() = shape.ToProto();
 
     return AddInstruction(std::move(instr), HloOpcode::kDynamicUpdateSlice,
                           {operand, update, start_indices});
+  });
+}
+
+XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                                     absl::Span<const XlaOp> start_indices) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& update_shape, GetShape(update));
+    std::vector<const Shape*> start_indices_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& start_indices_shapes,
+                        GetOperandShapes(start_indices));
+    absl::c_transform(start_indices_shapes,
+                      std::back_inserter(start_indices_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferDynamicUpdateSliceShape(
+                            operand_shape, update_shape, start_indices_shapes));
+    *instr.mutable_shape() = shape.ToProto();
+
+    std::vector<XlaOp> operands = {operand, update};
+    operands.insert(operands.end(), start_indices.begin(), start_indices.end());
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicUpdateSlice,
+                          operands);
   });
 }
 
@@ -2383,7 +2494,7 @@ StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
   TF_RETURN_IF_ERROR(LookUpInstruction(operand).status());
 
   bool is_constant = true;
-  std::set<int64> visited;
+  absl::flat_hash_set<int64> visited;
   IsConstantVisitor(operand.handle(), &visited, &is_constant);
   return is_constant;
 }
@@ -2717,9 +2828,18 @@ XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                    absl::Span<const int64> slice_sizes) {
   return operand.builder()->DynamicSlice(operand, start_indices, slice_sizes);
 }
+XlaOp DynamicSlice(const XlaOp& operand, absl::Span<const XlaOp> start_indices,
+                   absl::Span<const int64> slice_sizes) {
+  return operand.builder()->DynamicSlice(operand, start_indices, slice_sizes);
+}
 
 XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                          const XlaOp& start_indices) {
+  return operand.builder()->DynamicUpdateSlice(operand, update, start_indices);
+}
+
+XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                         absl::Span<const XlaOp> start_indices) {
   return operand.builder()->DynamicUpdateSlice(operand, update, start_indices);
 }
 

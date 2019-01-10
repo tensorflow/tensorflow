@@ -34,7 +34,6 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -519,100 +518,11 @@ def get_batch_dimension(iterator):
   return dims[0] if dims else None
 
 
-def get_cpu_device(distribution_strategy):
-  """Returns the CPU device of the TPU host or the default CPU device string.
-
-  Args:
-    distribution_strategy: The DistributionStrategy used to compile the model.
-
-  Returns:
-    A device string which is the TPU host's CPU device in case of
-    TPUDistributionStrategy or the default CPU device string in all other
-    cases.
-
-  Raises:
-    NotImplementedError: We currently don't support copying numpy data to
-    multiple hosts in the case of Cloud TPU pods.
-  """
-  if is_tpu_strategy(distribution_strategy):
-    if distribution_strategy.extended.num_hosts > 1:
-      raise NotImplementedError('TPUDistributionStrategy does not '
-                                'support numpy inputs when running on Cloud'
-                                'TPU pods.')
-    return distribution_strategy.extended.get_host_cpu_device(0)
-  else:
-    # For all strategies except TPUDistributionStrategy
-    # TODO(anjalisridhar): We may need to modify this when we add support for
-    # multi-worker strategy.
-    return '/CPU:0'
-
-
-def get_var_for_numpy(distribution_strategy, x):
-  if isinstance(x, list):
-    var_x = tuple([_get_var_for_numpy(distribution_strategy, single_input)
-                   for single_input in x])
-  else:
-    var_x = _get_var_for_numpy(distribution_strategy, x)
-  return var_x
-
-
-def _get_var_for_numpy(distribution_strategy, input_array):
-  """Creates a variable and assigns the value of the numpy array to it.
-
-  Args:
-    distribution_strategy: The DistributionStrategy used to compile the model.
-    input_array: The input numpy array whose value will be assigned to the
-      variable we create.
-
-  Returns:
-    The variable to which we will copy the value of the input numpy array.
-
-  """
-  with ops.device(get_cpu_device(distribution_strategy)):
-    # Create and initialize a variable on the CPU device. This is the CPU
-    # device of the host in the case of TPUDistributionStrategy.
-    input_var = variables.VariableV1(array_ops.zeros(input_array.shape,
-                                                     input_array.dtype),
-                                     trainable=False, use_resource=True)
-  K.get_session().run(input_var.initializer)
-
-  # Create a placeholder for the numpy array input slices. We copy the value
-  # of the input numpy array to the variable in slices of size 64 MB to avoid
-  # running into memory issues or RPC message limits.
-  start_placeholder = array_ops.placeholder(dtypes.int64, ())
-  end_placeholder = array_ops.placeholder(dtypes.int64, ())
-  slice_placeholder = array_ops.placeholder(input_var.dtype)
-  assign_slice_op = input_var[start_placeholder:end_placeholder].assign(
-      slice_placeholder)
-
-  # If each batch element is > 64 MB, then we copy each batch element
-  # individually. Otherwise, the slices will be < 128 MB. There might be padding
-  # which might mean that the slices are 128 MB even if the size of the
-  # tensor allocated is less than 128 MB.
-  # This formula gives slices with size:
-  # ceil(64 MB / byte size per batch element) bytes.
-  # Using ceil() guarantees we get a number >= 1.
-
-  # Calculate the size of each batch element.
-  byte_size_per_batch_element = np.prod(input_array.shape[1:]) * \
-                                input_var.dtype.size
-
-  # Calculate number of elements we want to copy per slice.
-  batch_size_per_slice = int(np.ceil((64 << 20) / byte_size_per_batch_element))
-
-  # Copy slices of the above size starting at 0, except the last slice will be
-  # smaller.
-  start = 0
-  limit = input_array.shape[0]
-  while start < limit:
-    end = min(start + batch_size_per_slice, limit)
-    K.get_session().run(assign_slice_op, feed_dict={
-        start_placeholder: start,
-        end_placeholder: end,
-        slice_placeholder: input_array[start:end]})
-    start = end
-
-  return input_var
+def list_to_tuple(maybe_list):
+  """Datasets treat lists specially, so switch them to tuples."""
+  if isinstance(maybe_list, list):
+    return tuple(maybe_list)
+  return maybe_list
 
 
 def _get_input_from_iterator(iterator, model):
@@ -671,6 +581,12 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 
 def _custom_compile_for_predict(model):
   """Custom compile for TPU predict mode."""
+  if not model.built:
+    # Model is not compilable because it does not know its number of inputs
+    # and outputs, nor their shapes and names. We will compile after the first
+    # time the model gets called on training data.
+    return
+  model._is_compiled = True
   model.total_loss = None
   model._fit_function = None
   model._eval_function = None

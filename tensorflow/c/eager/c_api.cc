@@ -774,7 +774,7 @@ void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
   if (!status->status.ok()) return;
   tensorflow::mutex_lock ml(*ctx->context.MetadataMu());
   status->status = MessageToBuffer(*ctx->context.RunMetadataProto(), buf);
-  ctx->context.RunMetadataProto()->Clear();
+  ctx->context.ClearRunMetadata();
 }
 
 namespace {

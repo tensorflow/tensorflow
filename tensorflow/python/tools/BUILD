@@ -38,7 +38,20 @@ py_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/contrib/saved_model:reader"],
+)
+
+py_test(
+    name = "saved_model_utils_test",
+    size = "small",
+    srcs = ["saved_model_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    visibility = ["//visibility:private"],
+    deps = [
+        ":saved_model_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/saved_model",
+    ],
 )
 
 py_library(
@@ -250,7 +263,6 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":saved_model_utils",
-        "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
     ],

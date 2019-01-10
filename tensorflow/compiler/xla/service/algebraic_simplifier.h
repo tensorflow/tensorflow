@@ -75,12 +75,24 @@ class AlgebraicSimplifierOptions {
     return enable_permutation_sort_replacement_;
   }
 
+  // If enable_window_reduce_replacement is true, the kReduceWindow instruction
+  // can be optimized by replacement with simpler operations.
+  void set_enable_window_reduce_to_reduce_replacement(
+      bool enable_window_reduce_to_reduce_replacement) {
+    enable_window_reduce_to_reduce_replacement_ =
+        enable_window_reduce_to_reduce_replacement;
+  }
+  bool enable_window_reduce_to_reduce_replacement() const {
+    return enable_window_reduce_to_reduce_replacement_;
+  }
+
  private:
   ValidBitcastCallback valid_bitcast_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
   bool enable_conv_simplification_{true};
   bool enable_permutation_sort_replacement_{false};
+  bool enable_window_reduce_to_reduce_replacement_{true};
 };
 
 // A pass which performs algebraic simplifications.

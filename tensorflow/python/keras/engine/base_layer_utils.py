@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import nest
 
@@ -55,7 +56,6 @@ def make_variable(name,
                   shape=None,
                   dtype=dtypes.float32,
                   initializer=None,
-                  partition_info=None,
                   trainable=None,
                   caching_device=None,
                   validate_shape=True,
@@ -76,14 +76,12 @@ def make_variable(name,
   rid of this temporary solution.
 
   TODO(fchollet): remove this method when no longer needed.
-  TODO(fchollet): handle `partitioner` argument.
 
   Arguments:
     name: Variable name.
     shape: Variable shape.
     dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
     initializer: Initializer instance (callable).
-    partition_info: Not handled at this time.
     trainable: Whether the variable should be part of the layer's
       "trainable_variables" (e.g. variables, biases)
       or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
@@ -123,8 +121,9 @@ def make_variable(name,
       # Instantiate initializer if provided initializer is a type object.
       if isinstance(initializer, type(init_ops.Initializer)):
         initializer = initializer(dtype=dtype)
-      init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-          shape, dtype=dtype, partition_info=partition_info)
+      elif isinstance(initializer, type(init_ops_v2.Initializer)):
+        initializer = initializer()
+      init_val = lambda: initializer(shape, dtype=dtype)
       variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True

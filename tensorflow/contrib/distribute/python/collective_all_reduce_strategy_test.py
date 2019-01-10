@@ -192,6 +192,7 @@ class CollectiveAllReduceStrategyTestBase(
       image = random_ops.random_uniform([2, 28, 28])
       label = random_ops.random_uniform([2, 1], maxval=10, dtype=dtypes.int32)
       logits = model(image, training=True)
+      # TODO(yuefengz): make loss a callable for eager mode.
       loss = losses.sparse_softmax_cross_entropy(labels=label, logits=logits)
       optimizer = adam.AdamOptimizer(learning_rate=1e-4)
       train_op = optimizer.minimize(loss,
@@ -397,28 +398,38 @@ class DistributedCollectiveAllReduceStrategyTestWithChief(
         self._test_complex_model, self._cluster_spec, num_gpus=num_gpus)
 
 
-class LocalCollectiveAllReduceStrategy(CollectiveAllReduceStrategyTestBase,
-                                       strategy_test_lib.DistributionTestBase,
-                                       parameterized.TestCase):
+class LocalCollectiveAllReduceStrategy(
+    CollectiveAllReduceStrategyTestBase,
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase,
+    parameterized.TestCase):
 
-  def testMinimizeLossGraph(self, num_gpus=2):
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph', 'eager'], num_gpus=[2, 4], required_gpus=2))
+  def testMinimizeLoss(self, num_gpus):
     # Collective ops doesn't support strategy with one device.
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    self._test_minimize_loss_graph(None, None, num_gpus)
+    if context.executing_eagerly():
+      strategy, _, _ = self._get_test_object(None, None, num_gpus)
+      self._test_minimize_loss_eager(strategy)
+    else:
+      self._test_minimize_loss_graph(None, None, num_gpus)
 
-  def testComplexModel(self, num_gpus=2):
-    # Collective ops doesn't support strategy with one device.
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[2, 4], required_gpus=2))
+  def testComplexModel(self, num_gpus):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     self._test_complex_model(None, None, num_gpus)
 
-  def testMakeInputFnIterator(self, num_gpus=2):
-    # Collective ops doesn't support strategy with one device.
-    if context.num_gpus() < num_gpus:
-      self.skipTest('Not enough GPUs')
-    dataset_fn = lambda: dataset_ops.Dataset.range(10)
-    expected_values = [[i, i+1] for i in range(0, 10, 2)]
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], required_gpus=2))
+  def testMakeInputFnIterator(self):
+    num_gpus = 2
+    dataset_fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)
+    expected_values = [range(i, i + num_gpus) for i in range(0, 10, num_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
         dataset_fn,
@@ -427,6 +438,49 @@ class LocalCollectiveAllReduceStrategy(CollectiveAllReduceStrategyTestBase,
         expected_input_pipeline_id=0)
     self._test_input_fn_iterator(None, None, num_gpus,
                                  input_fn, expected_values)
+
+  def testAllReduceSum(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_sum(distribution)
+
+  def testAllReduceSumGradients(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_sum_gradients(distribution)
+
+  def testAllReduceSumGradientTape(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_sum_gradient_tape(distribution)
+
+  def testAllReduceMean(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_mean(distribution)
+
+  def testAllReduceMeanGradients(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_mean_gradients(distribution)
+
+  def testAllReduceMeanGradientTape(self):
+    if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
+    with self.cached_session(config=config, target=target):
+      self._test_all_reduce_mean_gradient_tape(distribution)
+
+  def testNumpyIterator(self):
+    num_gpus = 2
+    if context.num_gpus() < num_gpus:
+      self.skipTest('Not enough GPUs')
+    strategy, _, _ = self._get_test_object(None, None, num_gpus)
+    self._test_numpy_iterator(strategy)
 
 
 if __name__ == '__main__':

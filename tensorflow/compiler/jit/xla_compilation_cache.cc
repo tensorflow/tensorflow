@@ -38,6 +38,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr int64 XlaCompilationCache::kDefaultCompilationThreshold;
+
 XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
                                          DeviceType device_type)
     : client_(client), device_type_(std::move(device_type)) {}
@@ -60,7 +62,7 @@ XlaCompilationCache::~XlaCompilationCache() {
   // about?
 }
 
-string XlaCompilationCache::DebugString() {
+string XlaCompilationCache::DebugString() const {
   return "XLA JIT compilation cache";
 }
 

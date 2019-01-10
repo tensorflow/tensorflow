@@ -276,7 +276,22 @@ class XlaBuilder {
                            int64 target_param_num,
                            ShapeIndex target_param_index, int64 target_dim_num);
 
+  // Adds a new input/output alias. Since the input/ouput shape information are
+  // not available until the computation is built, and eventual error in the
+  // arguments of this API will be detected only at computation Build() time.
+  void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
+                  const ShapeIndex& param_index) {
+    input_output_aliases_.push_back({output_index, param_number, param_index});
+  }
+
  private:
+  // Describes an input/output alias as inserted by the SetUpAlias() API.
+  struct InputOutputAlias {
+    ShapeIndex output_index;
+    int64 param_number;
+    ShapeIndex param_index;
+  };
+
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id);
 
@@ -344,11 +359,18 @@ class XlaBuilder {
   XlaOp SliceInDim(const XlaOp& operand, int64 start_index, int64 limit_index,
                    int64 stride, int64 dimno);
 
+  ABSL_DEPRECATED("Use span-of-indices form instead")
   XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                      absl::Span<const int64> slice_sizes);
+  XlaOp DynamicSlice(const XlaOp& operand,
+                     absl::Span<const XlaOp> start_indices,
+                     absl::Span<const int64> slice_sizes);
 
+  ABSL_DEPRECATED("Use span-of-indices form instead")
   XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                            const XlaOp& start_indices);
+  XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                           absl::Span<const XlaOp> start_indices);
 
   XlaOp ConcatInDim(absl::Span<const XlaOp> operands, int64 dimension);
 
@@ -712,7 +734,8 @@ class XlaBuilder {
   // operation such as `RngNormal` or `Infeed`. The visitor walks the
   // computation starting at a given operation and sets is_constant to false iff
   // a parameter or stateful operation is encountered.
-  void IsConstantVisitor(const int64 op_handle, std::set<int64>* visited,
+  void IsConstantVisitor(const int64 op_handle,
+                         absl::flat_hash_set<int64>* visited,
                          bool* is_constant) const;
 
   // Checks bounds for convolution parameters.
@@ -729,6 +752,12 @@ class XlaBuilder {
                               absl::Span<const int64> rhs_dilation) const;
 
   int64 GetNextId() { return ++next_id_; }
+
+  // Populates the module with the input/output alias information stored within
+  // the input_output_aliases vector.
+  static Status PopulateInputOutputAlias(
+      HloModuleProto* module, const ProgramShape& program_shape,
+      const std::vector<InputOutputAlias>& input_output_aliases);
 
   string name_;  // Name to use for the built computation.
 
@@ -748,6 +777,9 @@ class XlaBuilder {
 
   // Dynamic parameter configuration of this computation.
   DynamicParameterBinding dynamic_parameter_binding_;
+
+  // Holds the input/output alias information populated by the SetUpAlias() API.
+  std::vector<InputOutputAlias> input_output_aliases_;
 
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
@@ -850,9 +882,14 @@ class XlaBuilder {
 
   friend XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                             absl::Span<const int64> slice_sizes);
+  friend XlaOp DynamicSlice(const XlaOp& operand,
+                            absl::Span<const XlaOp> start_indices,
+                            absl::Span<const int64> slice_sizes);
 
   friend XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                                   const XlaOp& start_indices);
+  friend XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                                  absl::Span<const XlaOp> start_indices);
 
   friend XlaOp ConcatInDim(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands, int64 dimension);
@@ -1294,10 +1331,15 @@ XlaOp SliceInDim(const XlaOp& operand, int64 start_index, int64 limit_index,
 // The size of the slice in each dimension is passed in 'slice_sizes',
 // which specify the end point of exclusive slice intervals in each
 // dimension [start, start + size).
-// The shape of 'start_indices' must be rank == 1, with dimension size
-// equal to the rank of the 'operand'.
+// The shape of each element of 'start_indices' must be scalar, with the span
+// size equal to the rank of the 'operand'. All elements of 'start_indices' must
+// have the same shape.
 // Slice index calculations are computed modulo input dimension sizes to
 // prevent dynamic start indices from generating out-of-bound array accesses.
+XlaOp DynamicSlice(const XlaOp& operand, absl::Span<const XlaOp> start_indices,
+                   absl::Span<const int64> slice_sizes);
+
+ABSL_DEPRECATED("Use span-of-indices form instead")
 XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                    absl::Span<const int64> slice_sizes);
 
@@ -1313,10 +1355,15 @@ XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
 //   [4 5 6]  => DynamicUpdateslice(data, update, start)   => [4 10 11]
 //   [7 8 9]                                                  [7 8  9 ]
 //
-// The shape of 'start_indices' must be rank == 1, with dimension size
-// equal to the rank of the 'operand'.
+// The shape of each element of 'start_indices' must be scalar, with the span
+// size equal to the rank of the 'operand'. All elements of 'start_indices' must
+// have the same shape.
 // Slice index calculations are computed modulo update dimension sizes to
 // prevent dynamic start indices from generating out-of-bound array accesses.
+XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                         absl::Span<const XlaOp> start_indices);
+
+ABSL_DEPRECATED("Use span-of-indices form instead")
 XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                          const XlaOp& start_indices);
 

@@ -5474,6 +5474,9 @@ def disable_eager_execution():
   projects from TensorFlow 1.x to 2.x.
   """
   context.default_execution_mode = context.GRAPH_MODE
+  c = context.context_safe()
+  if c is not None:
+    c._eager_context.is_eager = False  # pylint: disable=protected-access
 
 
 def enable_eager_execution_internal(config=None,
@@ -6026,7 +6029,15 @@ class name_scope(object):  # pylint: disable=invalid-name
       name: The name argument that is passed to the op function.
       default_name: The default name to use if the `name` argument is `None`.
       values: The list of `Tensor` arguments that are passed to the op function.
+
+    Raises:
+      TypeError: if `default_name` is passed in but not a string.
     """
+    if not (default_name is None or isinstance(default_name, six.string_types)):
+      raise TypeError(
+          "`default_name` type (%s) is not a string type. You likely meant to "
+          "pass this into the `values` kwarg."
+          % type(default_name))
     self._name = default_name if name is None else name
     self._default_name = default_name
     self._values = values

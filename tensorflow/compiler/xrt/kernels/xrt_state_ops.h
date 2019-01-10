@@ -453,17 +453,17 @@ class XRTReleaseAllocationOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReleaseAllocationOp::Compute";
 
-    const Tensor& allocation_handle = ctx->input(0);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(allocation_handle.shape()),
-                errors::Internal("handle input should be an int64 scalar"));
-    int64 key = allocation_handle.scalar<int64>()();
-
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
-    OP_REQUIRES_OK(ctx, XRTTupleAllocation::DeleteFromResourceManager(rm, key));
-
-    VLOG(2) << "Released allocation handle " << key;
+    const Tensor& allocation_handle = ctx->input(0);
+    auto flat_keys = allocation_handle.flat<int64>();
+    for (int64 i = 0; i < flat_keys.size(); ++i) {
+      int64 key = flat_keys(i);
+      OP_REQUIRES_OK(ctx,
+                     XRTTupleAllocation::DeleteFromResourceManager(rm, key));
+      VLOG(2) << "Released allocation handle " << key;
+    }
   }
 };
 

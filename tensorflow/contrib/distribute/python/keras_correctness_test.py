@@ -34,6 +34,8 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.training import gradient_descent
 
 _RANDOM_SEED = 1337
+_EVAL_STEPS = 20
+_GLOBAL_BATCH_SIZE = 64
 
 # Note: Please make sure the tests in this file are also covered in
 # keras_backward_compat_test for features that are supported with both APIs.
@@ -61,12 +63,23 @@ def all_strategy_combinations_with_graph_mode():
 
 
 def strategy_and_input_combinations():
+  def cnn_model_with_batch_norm(**kwargs):
+    return _create_cnn_model(with_batch_norm=True, **kwargs)
+
   return (
       combinations.times(
           combinations.combine(distribution=all_strategies),
           combinations.combine(mode=['graph', 'eager'],
                                use_numpy=[True, False],
-                               use_validation_data=[True, False])))
+                               use_validation_data=[True, False]),
+          combinations.combine(model_with_data=[
+              ModelWithData('dnn', _create_dnn_model, _dnn_training_data),
+              ModelWithData('cnn', _create_cnn_model, _cnn_training_data),
+              ModelWithData('cnn_batch_norm',
+                            cnn_model_with_batch_norm,
+                            _cnn_training_data,
+                            with_batch_norm=True),
+          ])))
 
 
 class MaybeDistributionScope(object):
@@ -87,7 +100,35 @@ class MaybeDistributionScope(object):
       self._scope = None
 
 
-def _create_dnn_model(weights=None, distribution=None, compile_model=True):
+class ModelWithData(object):
+  """An object giving a good name in combinations.
+
+  The model_fn must take two arguments: initial_weights and distribution.
+  """
+
+  def __init__(self, name, model_fn, data_fn, with_batch_norm=False):
+    self.name = name
+    self.model_fn = model_fn
+    self.data_fn = data_fn
+    self.with_batch_norm = with_batch_norm
+
+  def __repr__(self):
+    return self.name
+
+
+def _dnn_training_data():
+  # TODO(xiejw): Change this back to 10000, once we support final partial
+  # batch.
+  num_samples = 9984
+  x_train = np.random.rand(num_samples, 1)
+  y_train = 3 * x_train
+  x_train = x_train.astype('float32')
+  y_train = y_train.astype('float32')
+  x_predict = [[1.], [2.], [3.], [4.]]
+  return x_train, y_train, x_predict
+
+
+def _create_dnn_model(initial_weights=None, distribution=None):
   with MaybeDistributionScope(distribution):
     # We add few non-linear layers to make it non-trivial.
     model = keras.Sequential()
@@ -96,15 +137,58 @@ def _create_dnn_model(weights=None, distribution=None, compile_model=True):
     model.add(keras.layers.Dense(10, activation='relu'))
     model.add(keras.layers.Dense(1))
 
-    if weights:
-      model.set_weights(weights)
+    if initial_weights:
+      model.set_weights(initial_weights)
 
-    if compile_model:
-      model.compile(
-          loss=keras.losses.mean_squared_error,
-          optimizer=gradient_descent_keras.SGD(0.5),
-          metrics=['mse'])
+    model.compile(
+        loss=keras.losses.mean_squared_error,
+        optimizer=gradient_descent_keras.SGD(0.5),
+        metrics=['mse'])
     return model
+
+
+def _cnn_training_data(count=_GLOBAL_BATCH_SIZE * _EVAL_STEPS,
+                       shape=(28, 28, 3), num_classes=10):
+  centers = np.random.randn(num_classes, *shape)
+
+  features = []
+  labels = []
+  for _ in range(count):
+    label = np.random.randint(0, num_classes, size=1)[0]
+    offset = np.random.normal(loc=0, scale=0.1, size=np.prod(shape))
+    offset = offset.reshape(shape)
+    labels.append(label)
+    features.append(centers[label] + offset)
+
+  x_train = np.asarray(features, dtype=np.float32)
+  y_train = np.asarray(labels, dtype=np.float32).reshape((count, 1))
+  x_predict = x_train
+  return x_train, y_train, x_predict
+
+
+def _create_cnn_model(initial_weights=None, distribution=None,
+                      with_batch_norm=False):
+  with MaybeDistributionScope(distribution):
+    image = keras.layers.Input(shape=(28, 28, 3), name='image')
+    c1 = keras.layers.Conv2D(
+        name='conv1', filters=16, kernel_size=(3, 3), strides=(4, 4))(
+            image)
+    if with_batch_norm:
+      c1 = keras.layers.BatchNormalization(name='bn1')(c1)
+    c1 = keras.layers.MaxPooling2D(pool_size=(2, 2))(c1)
+    logits = keras.layers.Dense(
+        10, activation='softmax', name='pred')(
+            keras.layers.Flatten()(c1))
+    model = keras.Model(inputs=[image], outputs=[logits])
+
+    if initial_weights:
+      model.set_weights(initial_weights)
+
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.1),
+        loss='sparse_categorical_crossentropy',
+        metrics=['sparse_categorical_accuracy'])
+  return model
 
 
 def batch_wrapper(dataset, batch_size, distribution, repeat=None):
@@ -133,7 +217,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
                                 with_distribution, x_train, y_train, x_predict):
   """Generates the inputs for correctness check when enable Keras with DS."""
   training_epochs = 2
-  global_batch_size = 64
+  global_batch_size = _GLOBAL_BATCH_SIZE
   batch_size = get_batch_size(global_batch_size, with_distribution)
 
   if use_numpy:
@@ -158,6 +242,11 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
         'x': np.array(x_predict, dtype=np.float32),
     }
   else:
+    if len(x_train) < _GLOBAL_BATCH_SIZE * _EVAL_STEPS:
+      # Currently, we cannot detech the size of a dataset. So, the eval steps is
+      # hard coded.
+      raise ValueError('x_train must have at least '
+                       '_GLOBAL_BATCH_SIZE * _EVAL_STEPS samples')
     # For dataset inputs, we do not pass batch_size to
     # keras.fit/evaluate/predict. The batch size is part of the dataset.
     train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
@@ -183,7 +272,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
           'batch_size': None,
           'x': x,
           'y': None,
-          'steps': 20,
+          'steps': _EVAL_STEPS,
       }
 
     predict_batch_size = get_batch_size(len(x_predict), with_distribution)
@@ -199,8 +288,8 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
 
 
 def fit_eval_and_predict(
-    initial_weights, input_fn, distribution=None):
-  model = _create_dnn_model(initial_weights, distribution)
+    initial_weights, input_fn, model_fn, distribution=None):
+  model = model_fn(initial_weights=initial_weights, distribution=distribution)
   training_inputs, eval_inputs, predict_inputs = input_fn(distribution)
 
   result = {}
@@ -351,7 +440,8 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       self.assertEqual(outs[2], 0.)
 
   @combinations.generate(strategy_and_input_combinations())
-  def test_correctness(self, distribution, use_numpy, use_validation_data):
+  def test_correctness(self, distribution, use_numpy, use_validation_data,
+                       model_with_data):
     if self._should_skip_tpu_with_eager(distribution):
       self.skipTest('TPUStrategy does not support eager mode now.')
 
@@ -366,21 +456,15 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       np.random.seed(_RANDOM_SEED)
       random_seed.set_random_seed(_RANDOM_SEED)
 
+      model_fn, data_fn = model_with_data.model_fn, model_with_data.data_fn
       # Train, eval, and predict datasets are created with the same input numpy
       # arrays.
-      # TODO(xiejw): Change this back to 10000, once we support final partial
-      # batch.
-      num_samples = 9984
-      x_train = np.random.rand(num_samples, 1)
-      y_train = 3 * x_train
-      x_train = x_train.astype('float32')
-      y_train = y_train.astype('float32')
-      x_predict = [[1.], [2.], [3.], [4.]]
+      x_train, y_train, x_predict = data_fn()
 
       # The model is built once and the initial weights are saved.
       # This is used to initialize the model for both the distribution and
       # non-distribution run.
-      model = _create_dnn_model(compile_model=False)
+      model = model_fn()
       initial_weights = model.get_weights()
 
       def input_fn(dist):
@@ -388,11 +472,22 @@ class TestDistributionStrategyCorrectness(test.TestCase,
             use_numpy, use_validation_data, dist, x_train, y_train, x_predict)
 
       results_with_ds = fit_eval_and_predict(
-          initial_weights, input_fn=input_fn, distribution=distribution)
+          initial_weights, input_fn=input_fn, model_fn=model_fn,
+          distribution=distribution)
       results_without_ds = fit_eval_and_predict(
-          initial_weights, input_fn=input_fn, distribution=None)
-      compare_results(results_with_ds, results_without_ds, distribution,
-                      testcase=self)
+          initial_weights, input_fn=input_fn, model_fn=model_fn,
+          distribution=None)
+
+      # First, special case, for multi-replica distributed training, batch norm
+      # is not aggregated globally. So it is expected to have different weights.
+      if (model_with_data.with_batch_norm and
+          distribution.num_replicas_in_sync > 1):
+        with self.assertRaises(AssertionError):
+          compare_results(results_with_ds, results_without_ds, distribution,
+                          testcase=self)
+      else:
+        compare_results(results_with_ds, results_without_ds, distribution,
+                        testcase=self)
 
   @combinations.generate(all_strategy_combinations_with_graph_mode())
   def test_dynamic_lr(self, distribution):
@@ -403,13 +498,9 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       np.random.seed(_RANDOM_SEED)
       random_seed.set_random_seed(_RANDOM_SEED)
 
-      # TODO(xiejw): Change this back to 10000, once we support final partial
-      # batch.
-      num_samples = 9984
-      x_train = np.random.rand(num_samples, 1).astype('float32')
-      y_train = 3 * x_train
+      x_train, y_train, _ = _dnn_training_data()
 
-      model = _create_dnn_model(compile_model=False)
+      model = _create_dnn_model()
       initial_weights = model.get_weights()
 
       update_freq = None
@@ -439,9 +530,11 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         return training_inputs, eval_inputs, predict_inputs
 
       results_with_ds = fit_eval_and_predict(
-          initial_weights, input_fn=input_fn, distribution=distribution)
+          initial_weights, input_fn=input_fn, model_fn=_create_dnn_model,
+          distribution=distribution)
       results_without_ds = fit_eval_and_predict(
-          initial_weights, input_fn=input_fn, distribution=None)
+          initial_weights, input_fn=input_fn, model_fn=_create_dnn_model,
+          distribution=None)
       compare_results(results_with_ds, results_without_ds, distribution,
                       testcase=self)
 

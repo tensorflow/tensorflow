@@ -1171,24 +1171,39 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<tensorflow::int64>> dynamic_slice_sizes;
       attrs["dynamic_slice_sizes"] = {
           /*required=*/true, AttrTy::kBracedInt64List, &dynamic_slice_sizes};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      LocTy loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
+      if (operands.empty()) {
+        return Error(loc, "Expected at least one operand.");
+      }
+      if (!(operands.size() == 2 && operands[1]->shape().rank() == 1) &&
+          operands.size() != 1 + operands[0]->shape().rank()) {
+        return Error(loc, "Wrong number of operands.");
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateDynamicSlice(
-          shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
+          shape, /*operand=*/operands[0],
+          /*start_indices=*/absl::MakeSpan(operands).subspan(1),
           *dynamic_slice_sizes));
       break;
     }
     case HloOpcode::kDynamicUpdateSlice: {
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      LocTy loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
+      }
+      if (operands.size() < 2) {
+        return Error(loc, "Expected at least two operands.");
+      }
+      if (!(operands.size() == 3 && operands[2]->shape().rank() == 1) &&
+          operands.size() != 2 + operands[0]->shape().rank()) {
+        return Error(loc, "Wrong number of operands.");
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
               shape, /*operand=*/operands[0], /*update=*/operands[1],
-              /*start_indices=*/operands[2]));
+              /*start_indices=*/absl::MakeSpan(operands).subspan(2)));
       break;
     }
     case HloOpcode::kTranspose: {
@@ -2731,7 +2746,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
   }
 
   auto is_unique = [](string str) -> bool {
-    std::sort(str.begin(), str.end());
+    absl::c_sort(str);
     return std::unique(str.begin(), str.end()) == str.end();
   };
 

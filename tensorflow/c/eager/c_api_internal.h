@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
+#include "tensorflow/core/common_runtime/eager/profiler.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -98,6 +99,13 @@ struct TFE_Op {
       : operation(&ctx->context, op, is_function, t) {}
 
   tensorflow::EagerOperation operation;
+};
+
+struct TFE_Profiler {
+  TFE_Profiler(TFE_Context* ctx)
+      : profiler(tensorflow::EagerProfiler::Create(&ctx->context)) {}
+
+  std::unique_ptr<tensorflow::EagerProfiler> profiler;
 };
 
 namespace tensorflow {

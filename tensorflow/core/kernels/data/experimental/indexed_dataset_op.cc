@@ -106,7 +106,7 @@ class MaterializedDatasetResource : public ResourceBase {
       const std::vector<PartialTensorShape>& output_shapes)
       : output_dtypes_(output_dtypes), output_shapes_(output_shapes) {}
 
-  string DebugString() override {
+  string DebugString() const override {
     return "Materialized IndexedDataset resource";
   }
 

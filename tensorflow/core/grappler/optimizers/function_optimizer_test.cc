@@ -660,7 +660,7 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_IdentityFunc) {
   test::ExpectTensorEqual<float>(expected[0], optimized[0]);
 }
 
-TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_NoInlineFunc) {
+TEST_F(FunctionOptimizerTest, InlineSymbolicGradientNoInlineFunc) {
   FunctionOptimizer optimizer(RewriterConfig::ON);
 
   FunctionDef func = FunctionDefHelper::Define(

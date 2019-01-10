@@ -19,13 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 import ast
-import collections
 import os
 import re
 import shutil
 import sys
 import tempfile
 import traceback
+
+import pasta
+import six
 
 # Some regular expressions we will need for parsing
 FIND_OPEN = re.compile(r"^\s*(\[).*$")
@@ -44,170 +46,174 @@ class APIChangeSpec(object):
     notifications)
   * `function_reorders`: maps functions whose argument order has changed to the
     list of arguments in the new order
-  * `function_handle`: maps function names to custom handlers for the function
   * `function_warnings`: maps full names of functions to warnings that will be
     printed out if the function is used. (e.g. tf.nn.convolution())
-  * `unrestricted_function_warnings`: maps names of functions to warnings that
-    will be printed out when the function is used (e.g. foo.convolution()).
-  * `function_keyword_additions`: maps function names to a map of arg->value
-    names that should be passed to the function.
+  * `function_transformers`: maps function names to custom handlers
 
   For an example, see `TFAPIChangeSpec`.
   """
 
 
-class _FileEditTuple(
-    collections.namedtuple("_FileEditTuple",
-                           ["comment", "line", "start", "old", "new"])):
-  """Each edit that is recorded by a _FileEditRecorder.
-
-  Fields:
-    comment: A description of the edit and why it was made.
-    line: The line number in the file where the edit occurs (1-indexed).
-    start: The column number in the file where the edit occurs (0-indexed).
-    old: text string to remove (this must match what was in file).
-    new: text string to add in place of `old`.
-  """
-
-  __slots__ = ()
-
-
-class _FileEditRecorder(object):
-  """Record changes that need to be done to the file."""
-
-  def __init__(self, filename):
-    # all edits are lists of chars
-    self._filename = filename
-
-    self._line_to_edit = collections.defaultdict(list)
-    self._errors = []
-
-  def process(self, text):
-    """Process a list of strings, each corresponding to the recorded changes.
-
-    Args:
-      text: A list of lines of text (assumed to contain newlines)
-    Returns:
-      A tuple of the modified text and a textual description of what is done.
-    Raises:
-      ValueError: if substitution source location does not have expected text.
-    """
-
-    change_report = ""
-
-    # Iterate of each line
-    for line, edits in self._line_to_edit.items():
-      offset = 0
-      # sort by column so that edits are processed in order in order to make
-      # indexing adjustments cumulative for changes that change the string
-      # length
-      edits.sort(key=lambda x: x.start)
-
-      # Extract each line to a list of characters, because mutable lists
-      # are editable, unlike immutable strings.
-      char_array = list(text[line - 1])
-
-      # Record a description of the change
-      change_report += "%r Line %d\n" % (self._filename, line)
-      change_report += "-" * 80 + "\n\n"
-      for e in edits:
-        change_report += "%s\n" % e.comment
-      change_report += "\n    Old: %s" % (text[line - 1])
-
-      # Make underscore buffers for underlining where in the line the edit was
-      change_list = [" "] * len(text[line - 1])
-      change_list_new = [" "] * len(text[line - 1])
-
-      # Iterate for each edit
-      for e in edits:
-        # Create effective start, end by accounting for change in length due
-        # to previous edits
-        start_eff = e.start + offset
-        end_eff = start_eff + len(e.old)
-
-        # Make sure the edit is changing what it should be changing
-        old_actual = "".join(char_array[start_eff:end_eff])
-        if old_actual != e.old:
-          raise ValueError("Expected text %r but got %r" %
-                           ("".join(e.old), "".join(old_actual)))
-        # Make the edit
-        char_array[start_eff:end_eff] = list(e.new)
-
-        # Create the underline highlighting of the before and after
-        change_list[e.start:e.start + len(e.old)] = "~" * len(e.old)
-        change_list_new[start_eff:end_eff] = "~" * len(e.new)
-
-        # Keep track of how to generate effective ranges
-        offset += len(e.new) - len(e.old)
-
-      # Finish the report comment
-      change_report += "         %s\n" % "".join(change_list)
-      text[line - 1] = "".join(char_array)
-      change_report += "    New: %s" % (text[line - 1])
-      change_report += "         %s\n\n" % "".join(change_list_new)
-    return "".join(text), change_report, self._errors
-
-  def add(self, comment, line, start, old, new, error=None):
-    """Add a new change that is needed.
-
-    Args:
-      comment: A description of what was changed
-      line: Line number (1 indexed)
-      start: Column offset (0 indexed)
-      old: old text
-      new: new text
-      error: this "edit" is something that cannot be fixed automatically
-    Returns:
-      None
-    """
-
-    self._line_to_edit[line].append(
-        _FileEditTuple(comment, line, start, old, new))
-    if error:
-      self._errors.append("%s:%d: %s" % (self._filename, line, error))
-
-
-class _ASTCallVisitor(ast.NodeVisitor):
+class _PastaEditVisitor(ast.NodeVisitor):
   """AST Visitor that processes function calls.
 
   Updates function calls from old API version to new API version using a given
   change spec.
   """
 
-  def __init__(self, filename, lines, api_change_spec):
-    self._filename = filename
-    self._file_edit = _FileEditRecorder(filename)
-    self._lines = lines
+  def __init__(self, api_change_spec):
     self._api_change_spec = api_change_spec
+    self._log = []   # Holds 3-tuples: line, col, msg.
+    self._errors = []  # Same structure as _log.
+    self._stack = []  # Allow easy access to parents.
 
-  def process(self, lines):
-    return self._file_edit.process(lines)
+  # Overridden to maintain a stack of nodes to allow for parent access
+  def visit(self, node):
+    self._stack.append(node)
+    super(_PastaEditVisitor, self).visit(node)
+    self._stack.pop()
 
-  def generic_visit(self, node):
-    ast.NodeVisitor.generic_visit(self, node)
+  @property
+  def errors(self):
+    return self._errors
 
-  def _rename_functions(self, node, full_name):
-    symbol_renames = self._api_change_spec.symbol_renames
-    try:
-      new_name = symbol_renames[full_name]
-      self._file_edit.add("Renamed function %r to %r" % (full_name, new_name),
-                          node.lineno, node.col_offset, full_name, new_name)
-    except KeyError:
-      pass
+  @property
+  def log(self):
+    return self._log
 
-  def _print_warning_for_function(self, node, full_name):
+  def _format_log(self, log):
+    text = ""
+    for log_entry in log:
+      text += "Line %d:%d: %s\n" % log_entry
+    return text
+
+  def log_text(self):
+    return self._format_log(self.log)
+
+  def add_log(self, lineno, col, msg):
+    self._log.append((lineno, col, msg))
+    print("Line %d:%d: %s" % (lineno, col, msg))
+
+  def add_error(self, lineno, col, msg):
+    # All errors are also added to the regular log.
+    self.add_log(lineno, col, msg)
+    self._errors.append((lineno, col, msg))
+
+  def add_logs(self, logs):
+    """Record a log and print it.
+
+    The log should be a tuple (lineno, col_offset, msg), which will be printed
+    and then recorded. It is part of the log available in the self.log property.
+
+    Args:
+      logs: The log to add. Must be a tuple (lineno, col_offset, msg).
+    """
+    self._log.extend(logs)
+    for log in logs:
+      print("Line %d:%d: %s" % log)
+
+  def add_errors(self, errors):
+    """Record an error and print it.
+
+    The error must be a tuple (lineno, col_offset, msg), which will be printed
+    and then recorded as both a log and an error. It is therefore part of the
+    log available in the self.log as well as the self.errors property.
+
+    Args:
+      errors: The log to add. Must be a tuple (lineno, col_offset, msg).
+    """
+    self.add_logs(errors)
+    self._errors.extend(errors)
+
+  def _get_applicable_entries(self, transformer_field, full_name, name):
+    """Get all list entries indexed by name that apply to full_name or name."""
+    # Transformers are indexed to full name, name, or no name
+    # as a performance optimization.
+    function_transformers = getattr(self._api_change_spec,
+                                    transformer_field, {})
+
+    glob_name = "*." + name if name else None
+    transformers = []
+    if full_name in function_transformers:
+      transformers.append(function_transformers[full_name])
+    if glob_name in function_transformers:
+      transformers.append(function_transformers[glob_name])
+    if "*" in function_transformers:
+      transformers.append(function_transformers["*"])
+    return transformers
+
+  def _get_applicable_dict(self, transformer_field, full_name, name):
+    """Get all dict entries indexed by name that apply to full_name or name."""
+    # Transformers are indexed to full name, name, or no name
+    # as a performance optimization.
+    function_transformers = getattr(self._api_change_spec,
+                                    transformer_field, {})
+
+    glob_name = "*." + name if name else None
+    transformers = function_transformers.get("*", {}).copy()
+    transformers.update(function_transformers.get(glob_name, {}))
+    transformers.update(function_transformers.get(full_name, {}))
+    return transformers
+
+  def _get_full_name(self, node):
+    """Traverse an Attribute node to generate a full name, e.g., "tf.foo.bar".
+
+    This is the inverse of _full_name_node.
+
+    Args:
+      node: A Node of type Attribute.
+
+    Returns:
+      a '.'-delimited full-name or None if node was not Attribute or Name.
+      i.e. `foo()+b).bar` returns None, while `a.b.c` would return "a.b.c".
+    """
+    curr = node
+    items = []
+    while not isinstance(curr, ast.Name):
+      if not isinstance(curr, ast.Attribute):
+        return None
+      items.append(curr.attr)
+      curr = curr.value
+    items.append(curr.id)
+    return ".".join(reversed(items))
+
+  def _full_name_node(self, name, ctx=ast.Load()):
+    """Make an Attribute or Name node for name.
+
+    Translate a qualified name into nested Attribute nodes (and a Name node).
+
+    Args:
+      name: The name to translate to a node.
+      ctx: What context this name is used in. Defaults to Load()
+
+    Returns:
+      A Name or Attribute node.
+    """
+    names = name.split(".")
+    names.reverse()
+    node = ast.Name(id=names.pop(), ctx=ast.Load())
+    while names:
+      node = ast.Attribute(value=node, attr=names.pop(), ctx=ast.Load())
+
+    # Change outermost ctx to the one given to us (inner ones should be Load).
+    node.ctx = ctx
+    return node
+
+  def _maybe_add_warning(self, node, full_name):
+    """Adds an error to be printed about full_name at node."""
     function_warnings = self._api_change_spec.function_warnings
-    try:
+    if full_name in function_warnings:
       warning_message = function_warnings[full_name]
       warning_message = warning_message.replace("<function name>", full_name)
-      self._file_edit.add(warning_message,
-                          node.lineno, node.col_offset, full_name, full_name,
-                          error="%s requires manual check." % full_name)
-    except KeyError:
-      pass
+      self.add_error(node.lineno, node.col_offset,
+                     "%s requires manual check: %s." % (full_name,
+                                                        warning_message))
+      return True
+    else:
+      return False
 
-  def _print_warning_for_function_unrestricted(self, node):
-    """Print a warning when specific functions are called.
+  def _maybe_add_call_warning(self, node, full_name, name):
+    """Print a warning when specific functions are called with selected args.
 
     The function _print_warning_for_function matches the full name of the called
     function, e.g., tf.foo.bar(). This function matches the function name that
@@ -216,92 +222,118 @@ class _ASTCallVisitor(ast.NodeVisitor):
 
     Args:
       node: ast.Call object
+      full_name: The precomputed full name of the callable, if one exists, None
+        otherwise.
+      name: The precomputed name of the callable, if one exists, None otherwise.
+
+    Returns:
+      Whether an error was recorded.
     """
-    function_warnings = getattr(
-        self._api_change_spec, "unrestricted_function_warnings", {})
+    # Only look for *.-warnings here, the other will be handled by the Attribute
+    # visitor. Also, do not warn for bare functions, only if the call func is
+    # an attribute.
+    warned = False
     if isinstance(node.func, ast.Attribute):
-      function_name = node.func.attr
-      try:
-        warning_message = function_warnings[function_name]
-        self._file_edit.add(warning_message,
-                            node.lineno, node.col_offset, "", "",
-                            error="%s requires manual check." % function_name)
-      except KeyError:
-        pass
+      warned = self._maybe_add_warning(node, "*." + name)
 
-  def _get_attribute_full_path(self, node):
-    """Traverse an attribute to generate a full name e.g. tf.foo.bar.
+    # All arg warnings are handled here, since only we have the args
+    arg_warnings = self._get_applicable_dict("function_arg_warnings",
+                                             full_name, name)
 
-    Args:
-      node: A Node of type Attribute.
+    used_args = [kw.arg for kw in node.keywords]
+    for (kwarg, arg), warning in arg_warnings.items():
+      if kwarg in used_args or len(node.args) > arg:
+        warned = True
+        warning_message = warning.replace("<function name>", full_name or name)
+        self.add_error(node.lineno, node.col_offset,
+                       "%s called with %s argument requires manual check: %s." %
+                       (full_name or name, kwarg, warning_message))
 
-    Returns:
-      a '.'-delimited full-name or None if the tree was not a simple form.
-      i.e. `foo()+b).bar` returns None, while `a.b.c` would return "a.b.c".
-    """
-    curr = node
-    items = []
-    while not isinstance(curr, ast.Name):
-      if not isinstance(curr, ast.Attribute):
-        return None, None
-      items.append(curr.attr)
-      curr = curr.value
-    items.append(curr.id)
-    return ".".join(reversed(items)), items[0]
+    return warned
 
-  def _find_true_position(self, node):
-    """Return correct line number and column offset for a given node.
+  def _maybe_rename(self, parent, node, full_name):
+    """Replace node (Attribute or Name) with a node representing full_name."""
+    new_name = self._api_change_spec.symbol_renames.get(full_name, None)
+    if new_name:
+      self.add_log(node.lineno, node.col_offset,
+                   "Renamed %r to %r" % (full_name, new_name))
+      new_node = self._full_name_node(new_name, node.ctx)
+      ast.copy_location(new_node, node)
+      pasta.ast_utils.replace_child(parent, node, new_node)
+      return True
+    else:
+      return False
 
-    This is necessary mainly because ListComp's location reporting reports
-    the next token after the list comprehension list opening.
-
-    Returns:
-      lineno, offset for the given node
-
-    Args:
-      node: Node for which we wish to know the lineno and col_offset
-    """
-    if isinstance(node, ast.ListComp):
-      # Strangely, ast.ListComp returns the col_offset of the first token
-      # after the '[' token which appears to be a bug. Workaround by
-      # explicitly finding the real start of the list comprehension.
-      line = node.lineno
-      col = node.col_offset
-      # loop over lines
-      while 1:
-        # Reverse the text to and regular expression search for whitespace
-        text = self._lines[line - 1]
-        reversed_preceding_text = text[:col][::-1]
-        # First find if a [ can be found with only whitespace between it and
-        # col.
-        m = FIND_OPEN.match(reversed_preceding_text)
-        if m:
-          new_col_offset = col - m.start(1) - 1
-          return line, new_col_offset
+  def _maybe_change_to_function_call(self, parent, node, full_name):
+    """Wraps node (typically, an Attribute or Expr) in a Call."""
+    if full_name in self._api_change_spec.change_to_function:
+      if not isinstance(parent, ast.Call):
+        # ast.Call's constructor is really picky about how many arguments it
+        # wants, and also, it changed between Py2 and Py3.
+        if six.PY2:
+          new_node = ast.Call(node, [], [], None, None)
         else:
-          if (reversed_preceding_text == "" or
-              reversed_preceding_text.isspace()):
-            line = line - 1
-            prev_line = self._lines[line - 1]
-            # TODO(aselle):
-            # this is poor comment detection, but it is good enough for
-            # cases where the comment does not contain string literal starting/
-            # ending characters. If ast gave us start and end locations of the
-            # ast nodes rather than just start, we could use string literal
-            # node ranges to filter out spurious #'s that appear in string
-            # literals.
-            comment_start = prev_line.find("#")
-            if comment_start == -1:
-              col = len(prev_line) - 1
-            elif FIND_STRING_CHARS.search(prev_line[comment_start:]) is None:
-              col = comment_start
-            else:
-              return None, None
-          else:
-            return None, None
-    # Most other nodes return proper locations (with notably does not), but
-    # it is not possible to use that in an argument.
-    return node.lineno, node.col_offset
+          new_node = ast.Call(node, [], [])
+        pasta.ast_utils.replace_child(parent, node, new_node)
+        ast.copy_location(new_node, node)
+        self.add_log(node.lineno, node.col_offset,
+                     "Changed %r to a function call" % full_name)
+        return True
+    return False
+
+  def _maybe_add_arg_names(self, node, full_name):
+    """Make args into keyword args if function called full_name requires it."""
+    function_reorders = self._api_change_spec.function_reorders
+
+    if full_name in function_reorders:
+      reordered = function_reorders[full_name]
+      new_keywords = []
+      for idx, arg in enumerate(node.args):
+        keyword_arg = reordered[idx]
+        new_keywords.append(ast.keyword(arg=keyword_arg, value=arg))
+
+      if new_keywords:
+        self.add_log(node.lineno, node.col_offset,
+                     "Added keywords to args of function %r" % full_name)
+        node.args = []
+        node.keywords = new_keywords + (node.keywords or [])
+        return True
+    return False
+
+  def _maybe_modify_args(self, node, full_name, name):
+    """Rename keyword args if the function called full_name requires it."""
+    renamed_keywords = self._get_applicable_dict("function_keyword_renames",
+                                                 full_name, name)
+
+    if not renamed_keywords:
+      return False
+
+    modified = False
+    new_keywords = []
+    for keyword in node.keywords:
+      argkey = keyword.arg
+      if argkey in renamed_keywords:
+        modified = True
+        if renamed_keywords[argkey] is None:
+          lineno = getattr(keyword, "lineno", node.lineno)
+          col_offset = getattr(keyword, "col_offset", node.col_offset)
+          self.add_log(lineno, col_offset,
+                       "Removed argument %s for function %s" % (
+                           argkey, full_name or name))
+        else:
+          keyword.arg = renamed_keywords[argkey]
+          lineno = getattr(keyword, "lineno", node.lineno)
+          col_offset = getattr(keyword, "col_offset", node.col_offset)
+          self.add_log(lineno, col_offset,
+                       "Renamed keyword argument for %s from %s to %s" % (
+                           full_name, argkey, renamed_keywords[argkey]))
+          new_keywords.append(keyword)
+      else:
+        new_keywords.append(keyword)
+
+    if modified:
+      node.keywords = new_keywords
+    return modified
 
   def visit_Call(self, node):  # pylint: disable=invalid-name
     """Handle visiting a call node in the AST.
@@ -309,104 +341,74 @@ class _ASTCallVisitor(ast.NodeVisitor):
     Args:
       node: Current Node
     """
-    self._print_warning_for_function_unrestricted(node)
+    assert self._stack[-1] is node
 
-    # Find a simple attribute name path e.g. "tf.foo.bar"
-    full_name, name = self._get_attribute_full_path(node.func)
-
-    # Make sure the func is marked as being part of a call
-    node.func.is_function_for_call = True
-
+    # Get the name for this call, so we can index stuff with it.
+    full_name = self._get_full_name(node.func)
     if full_name:
-      # Call special handlers
-      function_handles = self._api_change_spec.function_handle
-      glob_name = "*.{}".format(name)
-      if glob_name in function_handles:
-        function_handles[glob_name](self._file_edit, node, self._lines)
-      if full_name in function_handles:
-        function_handles[full_name](self._file_edit, node, self._lines)
+      name = full_name.split(".")[-1]
+    elif isinstance(node.func, ast.Name):
+      name = node.func.id
+    elif isinstance(node.func, ast.Attribute):
+      name = node.func.attr
+    else:
+      name = None
 
-      # Examine any non-keyword argument and make it into a keyword argument
-      # if reordering required.
-      function_reorders = self._api_change_spec.function_reorders
-      function_keyword_renames = (
-          self._api_change_spec.function_keyword_renames)
+    # Call standard transformers for this node.
+    # Make sure warnings come first, since args or names triggering warnings
+    # may be removed by the other transformations.
+    self._maybe_add_call_warning(node, full_name, name)
+    # Make all args into kwargs
+    self._maybe_add_arg_names(node, full_name)
+    # Argument name changes or deletions
+    self._maybe_modify_args(node, full_name, name)
 
-      if full_name in function_reorders:
-        reordered = function_reorders[full_name]
-        for idx, arg in enumerate(node.args):
-          lineno, col_offset = self._find_true_position(arg)
-          if lineno is None or col_offset is None:
-            self._file_edit.add(
-                "Failed to add keyword %r to reordered function %r" %
-                (reordered[idx], full_name),
-                arg.lineno,
-                arg.col_offset,
-                "",
-                "",
-                error="A necessary keyword argument failed to be inserted.")
-          else:
-            keyword_arg = reordered[idx]
-            if (full_name in function_keyword_renames and
-                keyword_arg in function_keyword_renames[full_name]):
-              keyword_arg = function_keyword_renames[full_name][keyword_arg]
-            self._file_edit.add("Added keyword %r to reordered function %r" %
-                                (reordered[idx], full_name), lineno, col_offset,
-                                "", keyword_arg + "=")
+    # Call transformers. These have the ability to modify the node, and if they
+    # do, will return the new node they created (or the same node if they just
+    # changed it). The are given the parent, but we will take care of
+    # integrating their changes into the parent if they return a new node.
+    #
+    # These are matched on the old name, since renaming is performed by the
+    # Attribute visitor, which happens later.
+    transformers = self._get_applicable_entries("function_transformers",
+                                                full_name, name)
 
-      # Examine each keyword argument and convert it to the final renamed form
-      renamed_keywords = ({} if full_name not in function_keyword_renames else
-                          function_keyword_renames[full_name])
-      for keyword in node.keywords:
-        argkey = keyword.arg
-        argval = keyword.value
+    parent = self._stack[-2]
 
-        if argkey in renamed_keywords:
-          argval_lineno, argval_col_offset = self._find_true_position(argval)
-          if argval_lineno is not None and argval_col_offset is not None:
-            # TODO(aselle): We should scan backward to find the start of the
-            # keyword key. Unfortunately ast does not give you the location of
-            # keyword keys, so we are forced to infer it from the keyword arg
-            # value.
-            key_start = argval_col_offset - len(argkey) - 1
-            key_end = key_start + len(argkey) + 1
-            if (self._lines[argval_lineno - 1][key_start:key_end] == argkey +
-                "="):
-              self._file_edit.add("Renamed keyword argument from %r to %r" %
-                                  (argkey,
-                                   renamed_keywords[argkey]), argval_lineno,
-                                  argval_col_offset - len(argkey) - 1,
-                                  argkey + "=", renamed_keywords[argkey] + "=")
-              continue
-          self._file_edit.add(
-              "Failed to rename keyword argument from %r to %r" %
-              (argkey, renamed_keywords[argkey]),
-              argval.lineno,
-              argval.col_offset - len(argkey) - 1,
-              "",
-              "",
-              error="Failed to find keyword lexographically. Fix manually.")
+    for transformer in transformers:
+      logs = []
+      errors = []
+      new_node = transformer(parent, node, full_name, name, logs, errors)
+      self.add_logs(logs)
+      self.add_errors(errors)
+      if new_node:
+        if new_node is not node:
+          pasta.ast_utils.replace_child(parent, node, new_node)
+          node = new_node
+          self._stack[-1] = node
 
-    ast.NodeVisitor.generic_visit(self, node)
+    self.generic_visit(node)
 
   def visit_Attribute(self, node):  # pylint: disable=invalid-name
-    """Handle bare Attributes i.e. [tf.foo, tf.bar].
+    """Handle bare Attributes i.e. [tf.foo, tf.bar]."""
+    assert self._stack[-1] is node
 
-    Args:
-      node: Node that is of type ast.Attribute
-    """
-    full_name, _ = self._get_attribute_full_path(node)
+    full_name = self._get_full_name(node)
     if full_name:
-      # Make sure the warning comes first, otherwise the name may have changed
-      self._print_warning_for_function(node, full_name)
-      self._rename_functions(node, full_name)
-    if full_name in self._api_change_spec.change_to_function:
-      if not hasattr(node, "is_function_for_call"):
-        new_text = full_name + "()"
-        self._file_edit.add("Changed %r to %r" % (full_name, new_text),
-                            node.lineno, node.col_offset, full_name, new_text)
+      parent = self._stack[-2]
 
-    ast.NodeVisitor.generic_visit(self, node)
+      # Make sure the warning comes first, otherwise the name may have changed
+      self._maybe_add_warning(node, full_name)
+
+      # Once we did a modification, node is invalid and not worth inspecting
+      # further. Also, we only perform modifications for simple nodes, so
+      # There'd be no point in descending further.
+      if self._maybe_rename(parent, node, full_name):
+        return
+      if self._maybe_change_to_function_call(parent, node, full_name):
+        return
+
+    self.generic_visit(node)
 
 
 class ASTCodeUpgrader(object):
@@ -429,16 +431,42 @@ class ASTCodeUpgrader(object):
     """
 
     # Write to a temporary file, just in case we are doing an implace modify.
+    # pylint: disable=g-backslash-continuation
     with open(in_filename, "r") as in_file, \
         tempfile.NamedTemporaryFile("w", delete=False) as temp_file:
       ret = self.process_opened_file(in_filename, in_file, out_filename,
                                      temp_file)
+    # pylint: enable=g-backslash-continuation
 
     shutil.move(temp_file.name, out_filename)
     return ret
 
-  # Broad exceptions are required here because ast throws whatever it wants.
-  # pylint: disable=broad-except
+  def _format_errors(self, errors, in_filename):
+    return ["%s:%d:%d: %s" % ((in_filename,) + error) for error in errors]
+
+  def update_string_pasta(self, text, in_filename):
+    """Updates a file using pasta."""
+    try:
+      t = pasta.parse(text)
+    except (SyntaxError, ValueError, TypeError):
+      log = "Failed to parse.\n\n" + traceback.format_exc()
+      return 0, "", log, []
+
+    visitor = _PastaEditVisitor(self._api_change_spec)
+    visitor.visit(t)
+
+    errors = self._format_errors(visitor.errors, in_filename)
+    return 1, pasta.dump(t), visitor.log_text(), errors
+
+  def _format_log(self, log, in_filename, out_filename):
+    text = "-" * 80 + "\n"
+    text += "Processing file %r\n outputting to %r\n" % (in_filename,
+                                                         out_filename)
+    text += "-" * 80 + "\n\n"
+    text += log
+    text += "-" * 80 + "\n\n"
+    return text
+
   def process_opened_file(self, in_filename, in_file, out_filename, out_file):
     """Process the given python file for incompatible changes.
 
@@ -453,33 +481,19 @@ class ASTCodeUpgrader(object):
     Returns:
       A tuple representing number of files processed, log of actions, errors
     """
-    process_errors = []
-    text = "-" * 80 + "\n"
-    text += "Processing file %r\n outputting to %r\n" % (in_filename,
-                                                         out_filename)
-    text += "-" * 80 + "\n\n"
-
-    parsed_ast = None
     lines = in_file.readlines()
-    try:
-      parsed_ast = ast.parse("".join(lines))
-    except Exception:
-      text += "Failed to parse %r\n\n" % in_filename
-      text += traceback.format_exc()
-    if parsed_ast:
-      visitor = _ASTCallVisitor(in_filename, lines, self._api_change_spec)
-      visitor.visit(parsed_ast)
-      out_text, new_text, process_errors = visitor.process(lines)
-      text += new_text
-      if out_file:
-        out_file.write(out_text)
-    text += "\n"
-    return 1, text, process_errors
+    processed_file, new_file_content, log, process_errors = (
+        self.update_string_pasta("".join(lines), in_filename))
 
-  # pylint: enable=broad-except
+    if out_file and processed_file:
+      out_file.write(new_file_content)
+
+    return (processed_file,
+            self._format_log(log, in_filename, out_filename),
+            process_errors)
 
   def process_tree(self, root_directory, output_root_directory,
-                   copy_other_files):
+                   copy_other_files, in_place):
     """Processes upgrades on an entire tree of python files in place.
 
     Note that only Python files. If you have custom code in other languages,
@@ -489,10 +503,19 @@ class ASTCodeUpgrader(object):
       root_directory: Directory to walk and process.
       output_root_directory: Directory to use as base.
       copy_other_files: Copy files that are not touched by this converter.
+      in_place: Allow the conversion of an entire directory in place.
 
     Returns:
       A tuple of files processed, the report string ofr all files, and errors
     """
+
+    if output_root_directory == root_directory:
+      if in_place:
+        return self.process_tree_inplace(root_directory)
+      else:
+        print("In order to copy a directory in place the `--inplace` input "
+              "arg must be set to `True`.")
+        sys.exit(1)
 
     # make sure output directory doesn't exist
     if output_root_directory and os.path.exists(output_root_directory):
@@ -549,4 +572,27 @@ class ASTCodeUpgrader(object):
       if not os.path.isdir(output_directory):
         os.makedirs(output_directory)
       shutil.copy(input_path, output_path)
+    return file_count, report, tree_errors
+
+  def process_tree_inplace(self, root_directory):
+    """Process a directory of python files in place."""
+    files_to_process = []
+    for dir_name, _, file_list in os.walk(root_directory):
+      py_files = [os.path.join(dir_name,
+                               f) for f in file_list if f.endswith(".py")]
+      files_to_process += py_files
+
+    file_count = 0
+    tree_errors = []
+    report = ""
+    report += ("=" * 80) + "\n"
+    report += "Input tree: %r\n" % root_directory
+    report += ("=" * 80) + "\n"
+
+    for path in files_to_process:
+      file_count += 1
+      _, l_report, l_errors = self.process_file(path, path)
+      tree_errors += l_errors
+      report += l_report
+
     return file_count, report, tree_errors

@@ -33,7 +33,7 @@ class OptimizationOptions(options.OptionsBase):
   ```python
   options = tf.data.Options()
   options.experimental_optimization.map_vectorization = True
-  options.apply_default_optimizations = False
+  options.experimental_optimization.apply_default_optimizations = False
   dataset = dataset.with_options(options)
   ```
   """

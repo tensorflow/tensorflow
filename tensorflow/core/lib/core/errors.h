@@ -150,6 +150,10 @@ string FormatColocationNodeForError(const T& names) {
       });
 }
 
+inline string FormatFunctionForError(const string& name) {
+  return strings::StrCat("{{function_node ", name, "}}");
+}
+
 // The CanonicalCode() for non-errors.
 using ::tensorflow::error::OK;
 

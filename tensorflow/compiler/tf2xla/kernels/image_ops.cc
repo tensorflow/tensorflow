@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -351,24 +352,26 @@ struct SuppressBodyFn {
     auto num_outputs_so_far = values[1];
     auto iou_mask = values[2];
     auto included_iou = values[3];
-    auto zero_r1 = xla::ConstantR1<int32>(builder, {0});
+    auto zero = xla::ConstantR0<int32>(builder, 0);
     // Determine if current elem is active using a slice.
-    auto row_idx_r1 = xla::Reshape(row_idx, {1});
-    auto active_elem = xla::DynamicSlice(included_iou, row_idx_r1, {1});
+    // TODO(b/118437727): The only reason we need an explicit vector is because
+    // some old GCCs can't deduce the right type for MakeConstSpan, and
+    // providing a single-value initializer list directly uses the wrong
+    // overload. Delete this once the deprecated overload is gone.
+    std::vector<xla::XlaOp> row_idx_vector = {row_idx};
+    auto active_elem = xla::DynamicSlice(included_iou, row_idx_vector, {1});
     active_elem = xla::Reshape(active_elem, {});
     // Increment output count iff current elem is not suppressed.
     num_outputs_so_far = xla::Select(
         active_elem, num_outputs_so_far + xla::ConstantR0<int32>(builder, 1),
         num_outputs_so_far);
     // Slice out the row_idx.
-    auto starts = xla::ConcatInDim(builder, {row_idx_r1, zero_r1}, 0);
-    auto row_iou = xla::DynamicSlice(iou_mask, starts, {1, num_boxes});
+    auto row_iou = xla::DynamicSlice(iou_mask, {row_idx, zero}, {1, num_boxes});
     // Remove the diagonal from consideration. An elem cannot suppress
     // itself.
-    auto update_starts = xla::ConcatInDim(builder, {zero_r1, row_idx_r1}, 0);
     row_iou = xla::DynamicUpdateSlice(
         row_iou, xla::ConstantR2FromArray2D<bool>(builder, {{false}}),
-        update_starts);
+        {zero, row_idx});
     // Create a suppression by inverting polarity.
     row_iou = xla::Reshape(row_iou, {num_boxes});
     auto supp_mask = xla::Not(row_iou);

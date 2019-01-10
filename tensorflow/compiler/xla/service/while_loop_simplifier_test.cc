@@ -407,13 +407,12 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   // The original while instruction is still left in the module as a dead
   // instruction, find a while instruction with a different name as the new
   // while instruction.
+  const auto& instrs = m->entry_computation()->instructions();
   HloInstruction* new_while_op =
-      *std::find_if(m->entry_computation()->instructions().begin(),
-                    m->entry_computation()->instructions().end(),
-                    [&](const HloInstruction* instr) {
-                      return (instr->opcode() == HloOpcode::kWhile &&
-                              instr->name() != "while");
-                    });
+      *absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+        return (instr->opcode() == HloOpcode::kWhile &&
+                instr->name() != "while");
+      });
 
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   EXPECT_TRUE(

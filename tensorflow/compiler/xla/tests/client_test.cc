@@ -109,7 +109,10 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
                                      /*minor_to_major=*/{1, 0})));
 }
 
-XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
+// Disabled for interpreter since ExecuteAsyncOnStream is not implemented on
+// interpreter backend.
+XLA_TEST_F(ClientTest,
+           DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(ExecuteParallel))) {
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 

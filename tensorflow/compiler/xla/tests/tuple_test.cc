@@ -176,8 +176,9 @@ XLA_TEST_F(TupleTest, AddTupleElements) {
       {2.f, 4.f, 6.f},  // row 0
       {5.f, 7.f, 9.f},  // row 1
   });
-  ASSERT_TRUE(ShapeUtil::ShapeIs(vector_shape, F32, {3}));
-  ASSERT_TRUE(ShapeUtil::ShapeIs(matrix_shape, F32, {/*y=*/2, /*x=*/3}));
+  ASSERT_TRUE(ShapeUtil::Equal(vector_shape, ShapeUtil::MakeShape(F32, {3})));
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_shape,
+                               ShapeUtil::MakeShape(F32, {/*y=*/2, /*x=*/3})));
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 

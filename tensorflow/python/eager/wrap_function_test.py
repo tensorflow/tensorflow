@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -90,10 +91,92 @@ class WrapFunctionTest(test.TestCase):
 
     f_wrapped = wrap_function.wrap_function(f, [])
     self.assertAllEqual(6.0, f_wrapped())
+
+    # Test pruning directly on the inputs
+    pruned = f_wrapped.prune(
+        feeds=f_wrapped.inputs,
+        fetches=f_wrapped.graph.get_tensor_by_name('fetch:0'))
+    self.assertAllEqual(6.0, pruned())
+
+    # Test pruning with no inputs
     pruned = f_wrapped.prune(
         feeds=(),
         fetches=f_wrapped.graph.get_tensor_by_name('fetch:0'))
     self.assertAllEqual(6.0, pruned())
+
+  def testCollectionsIsolation(self):
+
+    v1 = variables.Variable(2.)
+    v2_holder = []
+    def f():
+      v2 = variables.Variable(3.)
+      v2_holder.append(v2)
+      ops.add_to_collection(ops.GraphKeys.LOSSES, v2 * constant_op.constant(3.))
+      return array_ops.identity(v1 * v2 * constant_op.constant(1.), 'fetch')
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    self.assertAllEqual(6.0, f_wrapped())
+    self.assertEqual(
+        len(f_wrapped.graph.get_collection(ops.GraphKeys.LOSSES)), 1)
+    f_var_collection = f_wrapped.graph.get_collection(
+        ops.GraphKeys.TRAINABLE_VARIABLES)
+    self.assertEqual(len(f_var_collection), 1)
+    self.assertIs(f_var_collection[0], v2_holder[0])
+
+    v3_holder = []
+    def g():
+      v3 = variables.Variable(4.)
+      v3_holder.append(v3)
+      ops.add_to_collection(ops.GraphKeys.LOSSES, v3 * constant_op.constant(3.))
+      return array_ops.identity(v1 * v3 * constant_op.constant(1.), 'fetch')
+
+    g_wrapped = wrap_function.wrap_function(g, [])
+    self.assertAllEqual(8.0, g_wrapped())
+    self.assertEqual(
+        len(g_wrapped.graph.get_collection(ops.GraphKeys.LOSSES)), 1)
+    g_var_collection = g_wrapped.graph.get_collection(
+        ops.GraphKeys.TRAINABLE_VARIABLES)
+    self.assertEqual(len(g_var_collection), 1)
+    self.assertIs(g_var_collection[0], v3_holder[0])
+
+    # Both have only one value, and their values aren't equal. So no sharing.
+    self.assertNotEqual(g_wrapped.graph.get_collection(ops.GraphKeys.LOSSES),
+                        f_wrapped.graph.get_collection(ops.GraphKeys.LOSSES))
+
+  def testGradientsOfPrune(self):
+
+    v1 = variables.Variable(2.)
+    v2_holder = []
+
+    def f(z):
+      v2 = variables.Variable(3.)
+      v2_holder.append(v2)
+      return array_ops.identity(v1 * v2 * z, 'fetch')
+
+    f_wrapped = wrap_function.wrap_function(
+        f, [tensor_spec.TensorSpec((), dtype=dtypes.float32)])
+
+    x = constant_op.constant(1.)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      out = f_wrapped(x)
+    grads = tape.gradient(out, [x, v1, v2_holder[0]])
+
+    self.assertAllEqual(6.0, out)
+    self.assertAllEqual([6.0, 3.0, 2.0], grads)
+
+    pruned = f_wrapped.prune(
+        feeds=f_wrapped.inputs,
+        fetches=f_wrapped.graph.get_tensor_by_name('fetch:0'))
+
+    x = constant_op.constant(1.)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      out = pruned(x)
+    grads = tape.gradient(out, [x, v1, v2_holder[0]])
+
+    self.assertAllEqual(6.0, out)
+    self.assertAllEqual([6.0, 3.0, 2.0], grads)
 
   def testPruneOperations(self):
 
