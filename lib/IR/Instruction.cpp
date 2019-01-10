@@ -432,11 +432,23 @@ void OperationInst::setSuccessor(Block *block, unsigned index) {
 void OperationInst::eraseOperand(unsigned index) {
   assert(index < getNumOperands());
   auto Operands = getInstOperands();
-  // Shift all operands down by 1.
-  std::rotate(&Operands[index], &Operands[index + 1],
-              &Operands[numOperands - 1]);
   --numOperands;
-  Operands[getNumOperands()].~InstOperand();
+
+  // Shift all operands down by 1 if the operand to remove is not at the end.
+  if (index != numOperands)
+    std::rotate(&Operands[index], &Operands[index + 1], &Operands[numOperands]);
+  Operands[numOperands].~InstOperand();
+}
+
+auto OperationInst::getNonSuccessorOperands() const
+    -> llvm::iterator_range<const_operand_iterator> {
+  return {const_operand_iterator(this, 0),
+          const_operand_iterator(this, getSuccessorOperandIndex(0))};
+}
+auto OperationInst::getNonSuccessorOperands()
+    -> llvm::iterator_range<operand_iterator> {
+  return {operand_iterator(this, 0),
+          operand_iterator(this, getSuccessorOperandIndex(0))};
 }
 
 auto OperationInst::getSuccessorOperands(unsigned index) const

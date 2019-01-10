@@ -238,9 +238,22 @@ public:
     return const_cast<OperationInst *>(this)->getBlockOperands();
   }
 
+  /// Return the operands of this operation that are *not* successor arguments.
+  llvm::iterator_range<const_operand_iterator> getNonSuccessorOperands() const;
+  llvm::iterator_range<operand_iterator> getNonSuccessorOperands();
+
   llvm::iterator_range<const_operand_iterator>
   getSuccessorOperands(unsigned index) const;
   llvm::iterator_range<operand_iterator> getSuccessorOperands(unsigned index);
+
+  Value *getSuccessorOperand(unsigned succIndex, unsigned opIndex) {
+    assert(opIndex < getNumSuccessorOperands(succIndex));
+    return getOperand(getSuccessorOperandIndex(succIndex) + opIndex);
+  }
+  const Value *getSuccessorOperand(unsigned succIndex, unsigned index) const {
+    return const_cast<OperationInst *>(this)->getSuccessorOperand(succIndex,
+                                                                  index);
+  }
 
   unsigned getNumSuccessors() const { return numSuccs; }
   unsigned getNumSuccessorOperands(unsigned index) const {

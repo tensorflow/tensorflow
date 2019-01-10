@@ -138,6 +138,9 @@ public:
   Block *getOwner() { return owner; }
   const Block *getOwner() const { return owner; }
 
+  /// Returns the number of this argument.
+  unsigned getArgNumber() const;
+
 private:
   friend class Block; // For access to private constructor.
   BlockArgument(Type type, Block *owner)

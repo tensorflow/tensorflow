@@ -19,6 +19,21 @@
 #include "mlir/IR/Builders.h"
 using namespace mlir;
 
+//===----------------------------------------------------------------------===//
+// BlockArgument
+//===----------------------------------------------------------------------===//
+
+/// Returns the number of this argument.
+unsigned BlockArgument::getArgNumber() const {
+  // Arguments are not stored in place, so we have to find it within the list.
+  auto argList = getOwner()->getArguments();
+  return std::distance(argList.begin(), llvm::find(argList, this));
+}
+
+//===----------------------------------------------------------------------===//
+// Block
+//===----------------------------------------------------------------------===//
+
 Block::~Block() {
   clear();
 
