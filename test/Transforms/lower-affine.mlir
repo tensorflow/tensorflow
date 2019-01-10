@@ -576,3 +576,75 @@ func @args_ret_affine_apply(index, index) -> (index, index) {
   %11 = affine_apply #map1 ()[%1]
   return %00, %11 : index, index
 }
+
+//===---------------------------------------------------------------------===//
+// Test lowering of Euclidean (floor) division, ceil division and modulo
+// operation used in affine expressions.  In addition to testing the
+// instruction-level output, check that the obtained results are correct by
+// applying constant folding transformation after affine lowering.
+//===---------------------------------------------------------------------===//
+
+#mapmod = (i) -> (i mod 42)
+
+// --------------------------------------------------------------------------//
+// IMPORTANT NOTE: if you change this test, also change the @lowered_affine_mod
+// test in the "constant-fold.mlir" test to reflect the expected output of
+// affine_apply lowering.
+// --------------------------------------------------------------------------//
+// CHECK-LABEL: func @affine_apply_mod
+func @affine_apply_mod(%arg0 : index) -> (index) {
+// CHECK-NEXT: %c42 = constant 42 : index
+// CHECK-NEXT: %0 = remis %arg0, %c42 : index
+// CHECK-NEXT: %c0 = constant 0 : index
+// CHECK-NEXT: %1 = cmpi "slt", %0, %c0 : index
+// CHECK-NEXT: %2 = addi %0, %c42 : index
+// CHECK-NEXT: %3 = select %1, %2, %0 : index
+  %0 = affine_apply #mapmod (%arg0)
+  return %0 : index
+}
+
+#mapfloordiv = (i) -> (i floordiv 42)
+
+// --------------------------------------------------------------------------//
+// IMPORTANT NOTE: if you change this test, also change the @lowered_affine_mod
+// test in the "constant-fold.mlir" test to reflect the expected output of
+// affine_apply lowering.
+// --------------------------------------------------------------------------//
+// CHECK-LABEL: func @affine_apply_floordiv
+func @affine_apply_floordiv(%arg0 : index) -> (index) {
+// CHECK-NEXT: %c42 = constant 42 : index
+// CHECK-NEXT: %c0 = constant 0 : index
+// CHECK-NEXT: %c-1 = constant -1 : index
+// CHECK-NEXT: %0 = cmpi "slt", %arg0, %c0 : index
+// CHECK-NEXT: %1 = subi %c-1, %arg0 : index
+// CHECK-NEXT: %2 = select %0, %1, %arg0 : index
+// CHECK-NEXT: %3 = divis %2, %c42 : index
+// CHECK-NEXT: %4 = subi %c-1, %3 : index
+// CHECK-NEXT: %5 = select %0, %4, %3 : index
+  %0 = affine_apply #mapfloordiv (%arg0)
+  return %0 : index
+}
+
+#mapceildiv = (i) -> (i ceildiv 42)
+
+// --------------------------------------------------------------------------//
+// IMPORTANT NOTE: if you change this test, also change the @lowered_affine_mod
+// test in the "constant-fold.mlir" test to reflect the expected output of
+// affine_apply lowering.
+// --------------------------------------------------------------------------//
+// CHECK-LABEL: func @affine_apply_ceildiv
+func @affine_apply_ceildiv(%arg0 : index) -> (index) {
+// CHECK-NEXT:  %c42 = constant 42 : index
+// CHECK-NEXT:  %c0 = constant 0 : index
+// CHECK-NEXT:  %c1 = constant 1 : index
+// CHECK-NEXT:  %0 = cmpi "sle", %arg0, %c0 : index
+// CHECK-NEXT:  %1 = subi %c0, %arg0 : index
+// CHECK-NEXT:  %2 = subi %arg0, %c1 : index
+// CHECK-NEXT:  %3 = select %0, %1, %2 : index
+// CHECK-NEXT:  %4 = divis %3, %c42 : index
+// CHECK-NEXT:  %5 = subi %c0, %4 : index
+// CHECK-NEXT:  %6 = addi %4, %c1 : index
+// CHECK-NEXT:  %7 = select %0, %5, %6 : index
+  %0 = affine_apply #mapceildiv (%arg0)
+  return %0 : index
+}

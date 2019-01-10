@@ -61,22 +61,126 @@ public:
     return buildBinaryExpr<MulIOp>(expr);
   }
 
-  // TODO(zinenko): implement when the standard operators are made available.
-  Value *visitModExpr(AffineBinaryOpExpr) {
-    builder.getContext()->emitError(loc, "unsupported binary operator: mod");
-    return nullptr;
+  // Euclidean modulo operation: negative RHS is not allowed.
+  // Remainder of the euclidean integer division is always non-negative.
+  //
+  // Implemented as
+  //
+  //     a mod b =
+  //         let remainder = srem a, b;
+  //             negative = a < 0 in
+  //         select negative, remainder + b, remainder.
+  Value *visitModExpr(AffineBinaryOpExpr expr) {
+    auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
+    if (!rhsConst) {
+      builder.getContext()->emitError(
+          loc,
+          "semi-affine expressions (modulo by non-const) are not supported");
+      return nullptr;
+    }
+    if (rhsConst.getValue() <= 0) {
+      builder.getContext()->emitError(
+          loc, "modulo by non-positive value is not supported");
+      return nullptr;
+    }
+
+    auto lhs = visit(expr.getLHS());
+    auto rhs = visit(expr.getRHS());
+    assert(lhs && rhs && "unexpected affine expr lowering failure");
+
+    Value *remainder = builder.create<RemISOp>(loc, lhs, rhs);
+    Value *zeroCst = builder.create<ConstantIndexOp>(loc, 0);
+    Value *isRemainderNegative =
+        builder.create<CmpIOp>(loc, CmpIPredicate::SLT, remainder, zeroCst);
+    Value *correctedRemainder = builder.create<AddIOp>(loc, remainder, rhs);
+    Value *result = builder.create<SelectOp>(loc, isRemainderNegative,
+                                             correctedRemainder, remainder);
+    return result;
   }
 
-  Value *visitFloorDivExpr(AffineBinaryOpExpr) {
-    builder.getContext()->emitError(loc,
-                                    "unsupported binary operator: floor_div");
-    return nullptr;
+  // Floor division operation (rounds towards negative infinity).
+  //
+  // For positive divisors, it can be implemented without branching and with a
+  // single division instruction as
+  //
+  //        a floordiv b =
+  //            let negative = a < 0 in
+  //            let absolute = negative ? -a - 1 : a in
+  //            let quotient = absolute / b in
+  //                negative ? -quotient - 1 : quotient
+  Value *visitFloorDivExpr(AffineBinaryOpExpr expr) {
+    auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
+    if (!rhsConst) {
+      builder.getContext()->emitError(
+          loc,
+          "semi-affine expressions (division by non-const) are not supported");
+      return nullptr;
+    }
+    if (rhsConst.getValue() <= 0) {
+      builder.getContext()->emitError(
+          loc, "division by non-positive value is not supported");
+      return nullptr;
+    }
+
+    auto lhs = visit(expr.getLHS());
+    auto rhs = visit(expr.getRHS());
+    assert(lhs && rhs && "unexpected affine expr lowering failure");
+
+    Value *zeroCst = builder.create<ConstantIndexOp>(loc, 0);
+    Value *noneCst = builder.create<ConstantIndexOp>(loc, -1);
+    Value *negative =
+        builder.create<CmpIOp>(loc, CmpIPredicate::SLT, lhs, zeroCst);
+    Value *negatedDecremented = builder.create<SubIOp>(loc, noneCst, lhs);
+    Value *dividend =
+        builder.create<SelectOp>(loc, negative, negatedDecremented, lhs);
+    Value *quotient = builder.create<DivISOp>(loc, dividend, rhs);
+    Value *correctedQuotient = builder.create<SubIOp>(loc, noneCst, quotient);
+    Value *result =
+        builder.create<SelectOp>(loc, negative, correctedQuotient, quotient);
+    return result;
   }
 
-  Value *visitCeilDivExpr(AffineBinaryOpExpr) {
-    builder.getContext()->emitError(loc,
-                                    "unsupported binary operator: ceil_div");
-    return nullptr;
+  // Ceiling division operation (rounds towards positive infinity).
+  //
+  // For positive divisors, it can be implemented without branching and with a
+  // single division instruction as
+  //
+  //     a ceildiv b =
+  //         let negative = a <= 0 in
+  //         let absolute = negative ? -a : a - 1 in
+  //         let quotient = absolute / b in
+  //             negative ? -quotient : quotient + 1
+  Value *visitCeilDivExpr(AffineBinaryOpExpr expr) {
+    auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
+    if (!rhsConst) {
+      builder.getContext()->emitError(
+          loc,
+          "semi-affine expressions (division by non-const) are not supported");
+      return nullptr;
+    }
+    if (rhsConst.getValue() <= 0) {
+      builder.getContext()->emitError(
+          loc, "division by non-positive value is not supported");
+      return nullptr;
+    }
+    auto lhs = visit(expr.getLHS());
+    auto rhs = visit(expr.getRHS());
+    assert(lhs && rhs && "unexpected affine expr lowering failure");
+
+    Value *zeroCst = builder.create<ConstantIndexOp>(loc, 0);
+    Value *oneCst = builder.create<ConstantIndexOp>(loc, 1);
+    Value *nonPositive =
+        builder.create<CmpIOp>(loc, CmpIPredicate::SLE, lhs, zeroCst);
+    Value *negated = builder.create<SubIOp>(loc, zeroCst, lhs);
+    Value *decremented = builder.create<SubIOp>(loc, lhs, oneCst);
+    Value *dividend =
+        builder.create<SelectOp>(loc, nonPositive, negated, decremented);
+    Value *quotient = builder.create<DivISOp>(loc, dividend, rhs);
+    Value *negatedQuotient = builder.create<SubIOp>(loc, zeroCst, quotient);
+    Value *incrementedQuotient = builder.create<AddIOp>(loc, quotient, oneCst);
+    Value *result = builder.create<SelectOp>(loc, nonPositive, negatedQuotient,
+                                             incrementedQuotient);
+    return result;
   }
 
   Value *visitConstantExpr(AffineConstantExpr expr) {
