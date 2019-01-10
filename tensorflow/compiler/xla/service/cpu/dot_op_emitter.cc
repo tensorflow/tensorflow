@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
-#include "tensorflow/compiler/xla/service/cpu/dot_op_emitter_internal.h"
 
 #include <memory>
 #include <vector>
@@ -43,16 +42,62 @@ namespace xla {
 using llvm_ir::SetToFirstInsertPoint;
 
 namespace cpu {
-
-using internal::DotImplementationStrategy;
-using internal::DotInfo;
-using internal::GetDotImplementationStrategy;
-
 namespace {
 // Returns true if we should call into multi-threaded Eigen routines.
 bool ShouldUseMultiThreadedEigen(const HloModuleConfig& config) {
   return config.debug_options().xla_cpu_multi_thread_eigen();
 }
+
+// Represents a dot operation.  We use this in lieu of an `HloInstruction`
+// because we want to be able to create this for the "inner" dot operation in a
+// batch dot, for which there is no separate HLO instruction.
+struct DotInfo {
+  Shape lhs_shape;
+  Shape rhs_shape;
+  Shape result_shape;
+  DotDimensionNumbers dim_nums;
+
+  explicit DotInfo(const HloInstruction& instr) {
+    CHECK_EQ(instr.opcode(), HloOpcode::kDot);
+    lhs_shape = instr.operand(0)->shape();
+    rhs_shape = instr.operand(1)->shape();
+    result_shape = instr.shape();
+    dim_nums = instr.dot_dimension_numbers();
+  }
+};
+
+// Dictates how a dot operation is implemented.
+enum class DotImplementationStrategy {
+  // The dot operation is lowered into LLVM IR that implements a naive nested
+  // loop that computes the result one element at a time.  This is our
+  // "fallback"; we don't really want this to kick in for any non-trival dot
+  // operation.
+  kNaiveLlvmIr,
+
+  // The dot operation is lowered into LLVM IR that implements a tiled
+  // Matrix*Vector operation.  This strategy also allows fusing in a bias add
+  // into the dot.  The matrix can be row major or column major, both are
+  // supported.
+  kTiledLlvmIrGemv,
+
+  // The dot operation is lowered into LLVM IR that implemetns a tiled
+  // Matrix*Matrix operation.  No fusions are supported.  The two inputs
+  // and the output have to be row major.
+  kTiledLlvmIrGemm,
+
+  // The dot operation is lowered into a call into an Eigen routine.  No fusions
+  // are supported today.  The two inputs and the output have to be row major.
+  // However, we do allow transposing either the LHS or the RHS as part of the
+  // GEMM -- we expose this flexibility as flexibility in the contraction
+  // dimensions, but we can also see this as flexibility in the input layouts.
+  kEigen,
+};
+
+// Returns the implementation strategy for a dot with the configuration
+// `dot_info`.
+DotImplementationStrategy GetDotImplementationStrategy(
+    const HloModuleConfig& config, const DotInfo& dot_info,
+    const TargetMachineFeatures& target_machine_features);
 
 // Helper class for emitting LLVM IR to perform the dot operation.
 class DotOpEmitter {
@@ -190,9 +235,8 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
   }
 
   int64 size_bytes = m * n * ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-  b_->CreateMemSet(
-      target, b_->getInt8(0), size_bytes,
-      target_machine_features_.minimum_alignment_for_allocation(size_bytes));
+  b_->CreateMemSet(target, b_->getInt8(0), /*Size=*/size_bytes,
+                   /*Align=*/1);
 
   int64 max_target_vector_width =
       target_machine_features_.vector_register_num_elements(
@@ -696,40 +740,34 @@ absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
   return {};
 }
 
-namespace internal {
 namespace {
 // Return whether the given shape is rank 2.
 bool IsRank2(const Shape& shape) { return shape.rank() == 2; }
 
+bool IsSimpleLayout(const Layout& layout) {
+  return layout.tiles().empty() && layout.format() == DENSE;
+}
+
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
 // are valid for the operation.
-bool AreAlignedGemmShapes(
-    const Shape& lhs_shape, const Shape& rhs_shape, const Shape& output_shape,
-    const TargetMachineFeatures& target_machine_features) {
-  // The inputs and the output must
-  // 1) be matrices with no padding, and
-  // 2) have an allowed element type.
-  PrimitiveType output_primitive_type = output_shape.element_type();
-  if (!(output_primitive_type == F64 || output_primitive_type == F32 ||
-        output_primitive_type == F16)) {
-    return false;
+bool AreGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
+                   const Shape& output_shape,
+                   const TargetMachineFeatures& target_machine_features) {
+  CHECK(!lhs_shape.has_layout() || IsSimpleLayout(lhs_shape.layout()))
+      << lhs_shape.DebugString();
+  CHECK(!rhs_shape.has_layout() || IsSimpleLayout(rhs_shape.layout()))
+      << rhs_shape.DebugString();
+  CHECK(!output_shape.has_layout() || IsSimpleLayout(output_shape.layout()))
+      << output_shape.DebugString();
+
+  switch (output_shape.element_type()) {
+    case F64:
+    case F32:
+    case F16:
+      return IsRank2(lhs_shape) && IsRank2(rhs_shape) && IsRank2(output_shape);
+    default:
+      return false;
   }
-
-  if (!(IsRank2(lhs_shape) && IsRank2(rhs_shape) && IsRank2(output_shape))) {
-    return false;
-  }
-
-  auto is_aligned = [&](const Shape& shape) {
-    return GetMinimumAlignmentForArray(shape, target_machine_features) >=
-           TargetMachineFeatures::kEigenExpectedTensorAlignment;
-  };
-
-  if (!is_aligned(lhs_shape) || !is_aligned(rhs_shape) ||
-      !is_aligned(output_shape)) {
-    return false;
-  }
-
-  return true;
 }
 
 bool IsAlignedGemm(const DotInfo& dot_info,
@@ -739,8 +777,8 @@ bool IsAlignedGemm(const DotInfo& dot_info,
     return false;
   }
 
-  return AreAlignedGemmShapes(dot_info.lhs_shape, dot_info.rhs_shape,
-                              dot_info.result_shape, target_machine_features);
+  return AreGemmShapes(dot_info.lhs_shape, dot_info.rhs_shape,
+                       dot_info.result_shape, target_machine_features);
 }
 
 bool CanEmitTiledLlvmIrGemm(
@@ -781,7 +819,6 @@ bool CanEmitTiledLlvmIrGemm(
 
   return true;
 }
-}  // namespace
 
 DotImplementationStrategy GetDotImplementationStrategy(
     const HloModuleConfig& config, const DotInfo& dot_info,
@@ -806,7 +843,7 @@ DotImplementationStrategy GetDotImplementationStrategy(
 
   return DotImplementationStrategy::kNaiveLlvmIr;
 }
-}  // namespace internal
+}  // namespace
 
 bool DotImplementationCanHandleTranspose(
     const HloInstruction& dot_instr,
