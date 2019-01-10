@@ -426,7 +426,8 @@ class LocalCollectiveAllReduceStrategy(
 
   @combinations.generate(
       combinations.combine(mode=['graph', 'eager'], required_gpus=2))
-  def testMakeInputFnIterator(self, num_gpus=2):
+  def testMakeInputFnIterator(self):
+    num_gpus = 2
     dataset_fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)
     expected_values = [range(i, i + num_gpus) for i in range(0, 10, num_gpus)]
 
