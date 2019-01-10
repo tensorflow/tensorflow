@@ -3484,9 +3484,9 @@ tf_cc_test(
     srcs = ["sort_simplifier_test.cc"],
     deps = [
         ":hlo_matchers",
-        ":sort_simplifier",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
+        ":sort_simplifier",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
