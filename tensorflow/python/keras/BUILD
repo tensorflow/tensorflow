@@ -482,13 +482,14 @@ cuda_py_test(
 
 tf_py_test(
     name = "pooling_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/pooling_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 8,
 )
 
 tf_py_test(
