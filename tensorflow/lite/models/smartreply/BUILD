@@ -58,7 +58,6 @@ tf_cc_test(
         "//tensorflow/lite/models:testdata/smartreply_samples.tsv",
         "@tflite_smartreply//:smartreply.tflite",
     ],
-    tags = ["no_oss"],
     deps = [
         ":predictor_lib",
         "//tensorflow/core:test",
