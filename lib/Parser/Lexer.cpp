@@ -62,8 +62,6 @@ Token Lexer::emitError(const char *loc, const Twine &message) {
 }
 
 Token Lexer::lexToken() {
-  const char *tokStart = curPtr;
-
   // Ignore whitespace.
   while (curPtr) {
     switch (*curPtr) {
@@ -76,10 +74,10 @@ Token Lexer::lexToken() {
     default:
       break;
     }
-    tokStart = curPtr;
     break;
   }
 
+  const char *tokStart = curPtr;
   switch (*curPtr++) {
   default:
     // Handle bare identifiers.
