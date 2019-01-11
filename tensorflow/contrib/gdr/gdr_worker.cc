@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/gdr/gdr_worker.h"
 
+#include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -29,10 +30,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/protobuf/transport_options.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
@@ -141,6 +145,43 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
         } else {
           //  !s.ok()
           done(status);
+        }
+      });
+}
+
+void GdrWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                             RecvBufResponse* response, StatusCallback done) {
+  // This is an RDMA enabled implementation augmenting grpc.
+  Status s = recv_tensor_recent_request_ids_.TrackUnique(
+      request->request_id(), "RecvBuf (GdrWorker)", *request);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+  CollectiveExecutor::Handle ce_handle(
+      env_->collective_executor_mgr->FindOrCreate(request->step_id()), true);
+  CollectiveRemoteAccess* rma = ce_handle.get()->remote_access();
+  rma->buf_rendezvous()->ConsumeBuf(
+      request->buf_rendezvous_key(),
+      [this, request, response, done](const Status& status,
+                                      BufRendezvous::Hook* hook) {
+        Status s = status;
+        if (s.ok()) {
+          if (!DMAHelper::CanUseDMA(hook->prod_value)) {
+            s = errors::Internal("Tensor value for key ",
+                                 request->buf_rendezvous_key(),
+                                 " is not of a type supported by RecvBuf");
+          }
+        }
+        if (s.ok()) {
+          remote_memory_manager_->TransportOptionsFromTensor(
+              response->mutable_transport_options(), *hook->prod_value,
+              hook->prod_dev, hook->prod_ctx, hook->prod_attr.on_host(),
+              [this, response, done, hook](const Status& s) {
+                response->set_send_start_micros(env_->env->NowMicros());
+                done(s);
+                BufRendezvous::DoneWithHook(hook);
+              });
         }
       });
 }
