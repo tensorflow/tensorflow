@@ -106,6 +106,31 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   # Override to change the documentation to reflect the different handling of
   # global vs. local batch size between core and contrib.
+  def make_dataset_iterator(self, dataset):  # pylint: disable=useless-super-delegation
+    """Makes an iterator for input provided via `dataset`.
+
+    NOTE: The batch size of the `dataset` argument is treated differently for
+    this contrib version of `MirroredStrategy`.
+
+    Data from the given dataset will be distributed evenly across all the
+    compute replicas. We will assume that the input dataset is batched by the
+    per-replica batch size.
+
+    The user could also use `make_input_fn_iterator` if they want to
+    customize which input is fed to which replica/worker etc.
+
+    Args:
+      dataset: `tf.data.Dataset` that will be distributed evenly across all
+        replicas.
+
+    Returns:
+      An `tf.distribute.InputIterator` which returns inputs for each step of the
+      computation.  User should call `initialize` on the returned iterator.
+    """
+    return super(MirroredStrategy, self).make_dataset_iterator(dataset)
+
+  # Override to change the documentation to reflect the different handling of
+  # global vs. local batch size between core and contrib.
   def experimental_make_numpy_iterator(  # pylint: disable=useless-super-delegation
       self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
     """Makes an iterator for input provided via a nest of numpy arrays.
@@ -180,4 +205,5 @@ class MirroredExtended(CoreMirroredExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """The contrib version of Mirrored strategy uses per-replica batch size."""
     return False

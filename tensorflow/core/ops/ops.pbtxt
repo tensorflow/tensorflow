@@ -5417,6 +5417,14 @@ op {
     name: "subdiv_offsets"
     type: "list(int)"
   }
+  attr {
+    name: "wait_for"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
   is_stateful: true
 }
 op {
@@ -15071,6 +15079,44 @@ op {
   is_stateful: true
 }
 op {
+  name: "KMC2ChainInitialization"
+  input_arg {
+    name: "distances"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "index"
+    type: DT_INT64
+  }
+}
+op {
+  name: "KmeansPlusPlusInitialization"
+  input_arg {
+    name: "points"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_to_sample"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_retries_per_sample"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "samples"
+    type: DT_FLOAT
+  }
+}
+op {
   name: "L2Loss"
   input_arg {
     name: "t"
@@ -18959,6 +19005,29 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "NearestNeighbors"
+  input_arg {
+    name: "points"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "centers"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "k"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "nearest_center_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "nearest_center_distances"
+    type: DT_FLOAT
+  }
 }
 op {
   name: "Neg"

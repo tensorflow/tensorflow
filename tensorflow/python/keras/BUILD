@@ -61,13 +61,11 @@ py_library(
         ":engine",
         ":layers",
         ":pil_for_keras",
-        "@keras_applications_archive//:keras_applications",
+        ":saving",
         "//tensorflow/python:training",
         "//tensorflow/python/keras/optimizer_v2",
-        # TODO(kathywu): move saving into engine after resolving circular
-        # dependencies between Keras and SavedModel
-        "//tensorflow/python/keras/saving",
         "//tensorflow/python/saved_model",
+        "@keras_applications_archive//:keras_applications",
     ],
 )
 
@@ -152,11 +150,34 @@ py_library(
         ":losses",
         ":optimizers",
         ":regularizers",
+        ":saving",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/training/checkpointable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "saving",
+    srcs = [
+        "saving/__init__.py",
+        "saving/hdf5_format.py",
+        "saving/model_config.py",
+        "saving/saved_model.py",
+        "saving/saving_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+        ":optimizers",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:mode_keys",
+        "//tensorflow/python:saver",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model/model_utils",
     ],
 )
 
@@ -248,6 +269,7 @@ py_library(
 py_library(
     name = "engine_utils",
     srcs = [
+        "utils/conv_utils.py",
         "utils/data_utils.py",
         "utils/io_utils.py",
         "utils/losses_utils.py",
@@ -276,7 +298,6 @@ py_library(
         "layers/recurrent.py",
         "layers/serialization.py",
         "layers/wrappers.py",
-        "utils/conv_utils.py",
         "utils/generic_utils.py",
         "utils/layer_utils.py",
         "utils/tf_utils.py",
@@ -395,7 +416,7 @@ tf_py_test(
 
 tf_py_test(
     name = "metrics_functional_test",
-    size = "medium",
+    size = "small",
     srcs = ["metrics_functional_test.py"],
     additional_deps = [
         ":keras",
@@ -408,6 +429,19 @@ tf_py_test(
     name = "metrics_test",
     size = "medium",
     srcs = ["metrics_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+)
+
+tf_py_test(
+    name = "metrics_confusion_matrix_test",
+    size = "medium",
+    srcs = ["metrics_confusion_matrix_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -482,13 +516,14 @@ cuda_py_test(
 
 tf_py_test(
     name = "pooling_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/pooling_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 8,
 )
 
 tf_py_test(
@@ -987,9 +1022,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "saving_test",
+    name = "hdf5_format_test",
     size = "medium",
-    srcs = ["engine/saving_test.py"],
+    srcs = ["saving/hdf5_format_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -1042,6 +1077,35 @@ tf_py_test(
     name = "keras_parameterized_test",
     size = "small",
     srcs = ["keras_parameterized_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "saved_model_test",
+    size = "medium",
+    srcs = ["saving/saved_model_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_oss",  # TODO(b/119349471): Re-enable
+        "no_windows",
+    ],
+)
+
+tf_py_test(
+    name = "saving_utils_test",
+    size = "medium",
+    srcs = ["saving/saving_utils_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",

@@ -121,6 +121,7 @@ java_test(
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
         "src/testdata/quantized.bin",
+        "src/testdata/string.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
     ],

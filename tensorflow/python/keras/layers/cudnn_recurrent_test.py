@@ -467,7 +467,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
 
     def assert_not_compatible(src, dest, message):
       with self.assertRaises(ValueError) as ex:
-        keras.engine.saving.preprocess_weights_for_loading(
+        keras.saving.preprocess_weights_for_loading(
             dest,
             get_layer_weights(src))
       self.assertIn(message, str(ex.exception))

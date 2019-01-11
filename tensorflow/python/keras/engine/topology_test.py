@@ -920,6 +920,16 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       yaml_str = model.to_yaml()
       keras.models.model_from_yaml(yaml_str)
 
+  def test_subclassed_error_if_init_not_called(self):
+
+    class MyNetwork(network_lib.Network):
+
+      def __init__(self):
+        self._foo = [keras.layers.Dense(10), keras.layers.Dense(10)]
+
+    with self.assertRaisesRegexp(RuntimeError, 'forgot to call'):
+      MyNetwork()
+
 
 class DeferredModeTest(test.TestCase):
 

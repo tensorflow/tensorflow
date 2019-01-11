@@ -111,6 +111,14 @@ TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
                                         const TF_Tensor* tensor,
                                         TF_Status* status);
 
+// Returns the expected output data type of the ith output. If i < 0 or
+// i >= TF_NumOutputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
+    TF_OpKernelContext* ctx, int i);
+
+// Returns the step ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

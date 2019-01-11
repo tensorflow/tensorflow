@@ -392,7 +392,7 @@ class NearestNeighborsOp : public OpKernel {
       for (; start < limit; ++start) {
         const int64 start_row = num_points * start / num_units;
         const int64 limit_row = num_points * (start + 1) / num_units;
-        CHECK_LE(limit_row, num_points);
+        DCHECK_LE(limit_row, num_points);
         const int64 num_rows = limit_row - start_row;
         auto points_shard = points.middleRows(start_row, num_rows);
         const Eigen::VectorXf points_half_squared_norm =
@@ -430,7 +430,7 @@ class NearestNeighborsOp : public OpKernel {
       const Eigen::Ref<const Eigen::VectorXf>& centers_half_squared_norm,
       const Eigen::Ref<MatrixXi64RowMajor>& nearest_center_indices,
       const Eigen::Ref<MatrixXfRowMajor>& nearest_center_distances) {
-    CHECK_LE(k, centers.rows());
+    DCHECK_LE(k, centers.rows());
     if (centers.rows() <= kNearestNeighborsCentersMaxBlockSize) {
       FindKNearestCentersOneBlock(k, points, points_half_squared_norm, centers,
                                   centers_half_squared_norm,
@@ -451,7 +451,7 @@ class NearestNeighborsOp : public OpKernel {
       const Eigen::Ref<const Eigen::VectorXf>& centers_half_squared_norm,
       Eigen::Ref<MatrixXi64RowMajor> nearest_center_indices,
       Eigen::Ref<MatrixXfRowMajor> nearest_center_distances) {
-    CHECK_LE(k, centers.rows());
+    DCHECK_LE(k, centers.rows());
     const int64 num_points = points.rows();
     const MatrixXfRowMajor inner_product = points * centers.transpose();
     // Find nearest neighbors.
@@ -500,8 +500,8 @@ class NearestNeighborsOp : public OpKernel {
       Eigen::Ref<MatrixXfRowMajor> nearest_center_distances) {
     const int64 num_points = points.rows();
     const int64 num_centers = centers.rows();
-    CHECK_LE(k, num_centers);
-    CHECK_GT(num_centers, kNearestNeighborsCentersMaxBlockSize);
+    DCHECK_LE(k, num_centers);
+    DCHECK_GT(num_centers, kNearestNeighborsCentersMaxBlockSize);
     // Store nearest neighbors with first block of centers directly into the
     // output matrices.
     int64 out_k = std::min(k, kNearestNeighborsCentersMaxBlockSize);

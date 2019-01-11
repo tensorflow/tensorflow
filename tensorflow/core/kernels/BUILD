@@ -153,6 +153,33 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "clustering_ops",
+    prefix = "clustering_ops",
+    deps = [
+        "//tensorflow/core:clustering_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "clustering_ops_test",
+    srcs = ["clustering_ops_test.cc"],
+    deps = [
+        ":clustering_ops",
+        "//tensorflow/core:clustering_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
     name = "collective_ops",
     prefix = "collective_ops",
     deps = [
@@ -4487,7 +4514,10 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         ":bounds_check",
         "//third_party/eigen3",
-    ],
+    ] + if_cuda([
+        ":reduction_ops",
+        "@cub_archive//:cub",
+    ]),
 )
 
 tf_kernel_library(
@@ -4979,11 +5009,14 @@ tf_kernel_library(
         ":random_op",
         ":random_ops",
         ":stateless_random_ops",
+        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
-    ],
+    ] + if_cuda([
+        ":reduction_ops",
+        "@cub_archive//:cub",
+    ]),
 )
 
 tf_cuda_cc_test(
