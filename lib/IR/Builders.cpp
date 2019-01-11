@@ -182,6 +182,32 @@ ElementsAttr Builder::getOpaqueElementsAttr(VectorOrTensorType type,
   return OpaqueElementsAttr::get(type, bytes);
 }
 
+Attribute Builder::getZeroAttr(Type type) {
+  switch (type.getKind()) {
+  case StandardTypes::F32:
+    return getF32FloatAttr(0);
+  case StandardTypes::F64:
+    return getF64FloatAttr(0);
+  case StandardTypes::Integer: {
+    auto width = type.cast<IntegerType>().getWidth();
+    if (width == 1)
+      return getBoolAttr(false);
+    return getIntegerAttr(type, APInt(width, 0));
+  }
+  case StandardTypes::Vector:
+  case StandardTypes::RankedTensor: {
+    auto vtType = type.cast<VectorOrTensorType>();
+    auto element = getZeroAttr(vtType.getElementType());
+    if (!element)
+      return {};
+    return getSplatElementsAttr(vtType, element);
+  }
+  default:
+    break;
+  }
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // Affine Expressions, Affine Maps, and Integet Sets.
 //===----------------------------------------------------------------------===//

@@ -74,6 +74,38 @@ struct MemRefCastFolder : public RewritePattern {
     rewriter.updatedRootInPlace(op);
   }
 };
+
+/// Performs the const folding `calculation` on the two attributes in `operands`
+/// and returns the result if possible.
+template <class AttrElementT,
+          class ElementValueT = typename AttrElementT::ValueType,
+          class CalculationT =
+              std::function<ElementValueT(ElementValueT, ElementValueT)>>
+Attribute constFoldBinaryOp(ArrayRef<Attribute> operands,
+                            const CalculationT &calculation) {
+  assert(operands.size() == 2 && "binary op takes two operands");
+
+  if (auto lhs = operands[0].dyn_cast_or_null<AttrElementT>()) {
+    auto rhs = operands[1].dyn_cast_or_null<AttrElementT>();
+    if (!rhs || lhs.getType() != rhs.getType())
+      return {};
+
+    return AttrElementT::get(lhs.getType(),
+                             calculation(lhs.getValue(), rhs.getValue()));
+  } else if (auto lhs = operands[0].dyn_cast_or_null<SplatElementsAttr>()) {
+    auto rhs = operands[1].dyn_cast_or_null<SplatElementsAttr>();
+    if (!rhs || lhs.getType() != rhs.getType())
+      return {};
+
+    auto elementResult = constFoldBinaryOp<AttrElementT>(
+        {lhs.getValue(), rhs.getValue()}, calculation);
+    if (!elementResult)
+      return {};
+
+    return SplatElementsAttr::get(lhs.getType(), elementResult);
+  }
+  return {};
+}
 } // end anonymous namespace.
 
 //===----------------------------------------------------------------------===//
@@ -82,15 +114,8 @@ struct MemRefCastFolder : public RewritePattern {
 
 Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
                                MLIRContext *context) const {
-  assert(operands.size() == 2 && "addf takes two operands");
-
-  if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
-    if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
-      if (lhs.getType() == rhs.getType())
-        return FloatAttr::get(lhs.getType(), lhs.getValue() + rhs.getValue());
-  }
-
-  return nullptr;
+  return constFoldBinaryOp<FloatAttr>(
+      operands, [](APFloat a, APFloat b) { return a + b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -99,15 +124,8 @@ Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
 
 Attribute AddIOp::constantFold(ArrayRef<Attribute> operands,
                                MLIRContext *context) const {
-  assert(operands.size() == 2 && "addi takes two operands");
-
-  if (auto lhs = operands[0].dyn_cast_or_null<IntegerAttr>()) {
-    if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
-      if (lhs.getType() == rhs.getType())
-        return IntegerAttr::get(lhs.getType(), lhs.getValue() + rhs.getValue());
-  }
-
-  return nullptr;
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a + b; });
 }
 
 namespace {
@@ -1146,15 +1164,8 @@ bool MemRefCastOp::verify() const {
 
 Attribute MulFOp::constantFold(ArrayRef<Attribute> operands,
                                MLIRContext *context) const {
-  assert(operands.size() == 2 && "mulf takes two operands");
-
-  if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
-    if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
-      if (lhs.getType() == rhs.getType())
-        return FloatAttr::get(lhs.getType(), lhs.getValue() * rhs.getValue());
-  }
-
-  return nullptr;
+  return constFoldBinaryOp<FloatAttr>(
+      operands, [](APFloat a, APFloat b) { return a * b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1163,28 +1174,33 @@ Attribute MulFOp::constantFold(ArrayRef<Attribute> operands,
 
 Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
                                MLIRContext *context) const {
-  assert(operands.size() == 2 && "muli takes two operands");
-
-  if (auto lhs = operands[0].dyn_cast_or_null<IntegerAttr>()) {
-    // 0*x == 0
-    if (lhs.getValue() == 0)
-      return lhs;
-
-    if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
-      // TODO: Handle the overflow case.
-      if (lhs.getType() == rhs.getType())
-        return IntegerAttr::get(lhs.getType(), lhs.getValue() * rhs.getValue());
-  }
-
-  // x*0 == 0
-  if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
-    if (rhs.getValue() == 0)
-      return rhs;
-
-  return nullptr;
+  // TODO: Handle the overflow case.
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a * b; });
 }
 
 namespace {
+/// muli(x, 0) -> 0
+///
+struct SimplifyMulX0 : public RewritePattern {
+  SimplifyMulX0(MLIRContext *context)
+      : RewritePattern(MulIOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult match(OperationInst *op) const override {
+    auto muli = op->cast<MulIOp>();
+
+    if (matchPattern(muli->getOperand(1), m_Zero()))
+      return matchSuccess();
+
+    return matchFailure();
+  }
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
+    auto type = op->getOperand(0)->getType();
+    auto zeroAttr = rewriter.getZeroAttr(type);
+    rewriter.replaceOpWithNewOp<ConstantOp>(op, zeroAttr, type);
+  }
+};
+
 /// muli(x, 1) -> x
 ///
 struct SimplifyMulX1 : public RewritePattern {
@@ -1207,6 +1223,7 @@ struct SimplifyMulX1 : public RewritePattern {
 
 void MulIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
+  results.push_back(std::make_unique<SimplifyMulX0>(context));
   results.push_back(std::make_unique<SimplifyMulX1>(context));
 }
 
@@ -1417,15 +1434,8 @@ void StoreOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 Attribute SubFOp::constantFold(ArrayRef<Attribute> operands,
                                MLIRContext *context) const {
-  assert(operands.size() == 2 && "subf takes two operands");
-
-  if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
-    if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
-      if (lhs.getType() == rhs.getType())
-        return FloatAttr::get(lhs.getType(), lhs.getValue() - rhs.getValue());
-  }
-
-  return nullptr;
+  return constFoldBinaryOp<FloatAttr>(
+      operands, [](APFloat a, APFloat b) { return a - b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1434,15 +1444,8 @@ Attribute SubFOp::constantFold(ArrayRef<Attribute> operands,
 
 Attribute SubIOp::constantFold(ArrayRef<Attribute> operands,
                                MLIRContext *context) const {
-  assert(operands.size() == 2 && "subi takes two operands");
-
-  if (auto lhs = operands[0].dyn_cast_or_null<IntegerAttr>()) {
-    if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
-      if (lhs.getType() == rhs.getType())
-        return IntegerAttr::get(lhs.getType(), lhs.getValue() - rhs.getValue());
-  }
-
-  return nullptr;
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a - b; });
 }
 
 namespace {

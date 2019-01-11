@@ -269,7 +269,7 @@ public:
 class TypeAttr : public Attribute {
 public:
   using ImplType = detail::TypeAttributeStorage;
-  using ValueType = Type *;
+  using ValueType = Type;
 
   TypeAttr() = default;
   /* implicit */ TypeAttr(Attribute::ImplType *ptr);

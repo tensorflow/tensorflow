@@ -78,6 +78,39 @@ func @addi_zero_tensor(%arg0: tensor<4 x 5 x i32>) -> tensor<4 x 5 x i32> {
   return %y: tensor<4 x 5 x i32>
 }
 
+// CHECK-LABEL: func @muli_zero
+func @muli_zero(%arg0: i32) -> i32 {
+  // CHECK-NEXT: %c0_i32 = constant 0 : i32
+  %c0_i32 = constant 0 : i32
+
+  %y = muli %c0_i32, %arg0 : i32
+
+  // CHECK-NEXT: return %c0_i32
+  return %y: i32
+}
+
+// CHECK-LABEL: func @muli_zero_vector
+func @muli_zero_vector(%arg0: vector<4 x i32>) -> vector<4 x i32> {
+  // CHECK-NEXT: %cst = constant splat<vector<4xi32>, 0> : vector<4xi32>
+  %cst = constant splat<vector<4 x i32>, 0> : vector<4 x i32>
+
+  %y = muli %cst, %arg0 : vector<4 x i32>
+
+  // CHECK-NEXT: return %cst
+  return %y: vector<4 x i32>
+}
+
+// CHECK-LABEL: func @muli_zero_tensor
+func @muli_zero_tensor(%arg0: tensor<4 x 5 x i32>) -> tensor<4 x 5 x i32> {
+  // CHECK-NEXT: %cst = constant splat<tensor<4x5xi32>, 0> : tensor<4x5xi32>
+  %cst = constant splat<tensor<4 x 5 x i32>, 0> : tensor<4 x 5 x i32>
+
+  %y = muli %arg0, %cst : tensor<4 x 5 x i32>
+
+  // CHECK-NEXT: return %cst
+  return %y: tensor<4 x 5 x i32>
+}
+
 // CHECK-LABEL: func @muli_one
 func @muli_one(%arg0: i32) -> i32 {
   // CHECK-NEXT: return %arg0
