@@ -25,6 +25,7 @@ import copy
 import numpy as np
 import six
 
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -106,6 +107,8 @@ class MetricsAggregator(Aggregator):
     self.results[1:] = batch_outs[1:]
 
   def finalize(self):
+    if not self.results:
+      raise ValueError('Empty training data.')
     self.results[0] /= self.num_samples_or_steps
 
 
@@ -952,13 +955,12 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   # TODO(fchollet): allow datasets with steps=None if cardinality is known.
-  is_x_dataset = isinstance(input_data, (iterator_ops.Iterator,
-                                         iterator_ops.EagerIterator,
-                                         dataset_ops.DatasetV2))
-  if (input_data is None or is_x_dataset or has_symbolic_tensors(input_data) or
+  is_x_iterator = isinstance(input_data, (iterator_ops.Iterator,
+                                          iterator_ops.EagerIterator))
+  if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
-      input_type_str = 'a Dataset' if is_x_dataset else 'data tensors'
+      input_type_str = 'a Dataset iterator' if is_x_iterator else 'data tensors'
       raise ValueError('When using {input_type} as input to a model, you should'
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
@@ -1208,8 +1210,6 @@ def is_dataset_or_iterator(data):
 def extract_tensors_from_dataset(dataset):
   """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
 
-  Works only for graph mode.
-
   Arguments:
     dataset: Dataset instance.
 
@@ -1217,7 +1217,9 @@ def extract_tensors_from_dataset(dataset):
     Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
   """
   iterator = dataset_ops.make_initializable_iterator(dataset)
-  K.get_session().run(iterator.initializer)
+  init_op = iterator.initializer
+  if not context.executing_eagerly():
+    K.get_session().run(init_op)
   inputs, targets, sample_weight = unpack_iterator_input(iterator)
   return inputs, targets, sample_weight
 
@@ -1254,6 +1256,51 @@ def unpack_iterator_input(iterator):
     y = None
     weights = None
   return x, y, weights
+
+
+def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
+  """Infers steps_per_epoch needed to loop through a dataset.
+
+  Arguments:
+      dataset: Input data of type tf.data.Dataset.
+      steps: Number of steps to draw from the dataset (may be None if unknown).
+      epochs: Number of times to iterate over the dataset.
+      steps_name: The string name of the steps argument, either `steps`,
+        `validation_steps`, or `steps_per_epoch`. Only used for error message
+        formatting.
+
+  Returns:
+    Integer or `None`. Inferred number of steps to loop through the dataset.
+    `None` is returned if the size of the dataset is unknown and `steps` was
+    not specified.
+
+  Raises:
+    ValueError: In case of invalid argument values.
+  """
+  assert isinstance(dataset, dataset_ops.DatasetV2)
+  size = K.get_value(cardinality.cardinality(dataset))
+  if size == cardinality.INFINITE and steps is None:
+    raise ValueError('When passing an infinitely repeating dataset, you '
+                     'must specify the `%s` argument.' % (steps_name,))
+  if size != cardinality.UNKNOWN:
+    if steps is not None and steps * epochs > size:
+      if epochs > 1:
+        raise ValueError('The dataset you passed contains %s batches, but you '
+                         'passed `epochs=%s` and `%s=%s`, which is a total of '
+                         '%s steps. We cannot draw that many steps from this '
+                         'dataset. We suggest to set `%s=%s`.' %
+                         (size, epochs, steps_name, steps, steps * epochs,
+                          steps_name, size // epochs))
+      else:
+        raise ValueError('The dataset you passed contains %s batches, but you '
+                         'passed `%s=%s`. We cannot draw that many steps from '
+                         'this dataset. We suggest to set `%s=%s`.' %
+                         (size, steps_name, steps, steps_name, size))
+  if steps is None:
+    if size >= 0:
+      return size
+    return None
+  return steps
 
 
 class ModelInputs(object):

@@ -525,6 +525,15 @@ def list_to_tuple(maybe_list):
   return maybe_list
 
 
+def get_iterator(dataset, distribution_strategy):
+  with distribution_strategy.scope():
+    iterator = distribution_strategy.make_dataset_iterator(dataset)
+    init_op = iterator.initialize()
+    if not context.executing_eagerly():
+      K.get_session().run(init_op)
+  return iterator
+
+
 def _get_input_from_iterator(iterator, model):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = iterator.get_next()
@@ -541,8 +550,6 @@ def _get_input_from_iterator(iterator, model):
     x, y, sample_weights = next_element
 
   # Validate that all the elements in x and y are of the same type and shape.
-  # We can then pass the first element of x and y to `_standardize_weights`
-  # below and be confident of the output.
   validate_distributed_dataset_inputs(
       model._distribution_strategy, x, y, sample_weights)
   return x, y, sample_weights

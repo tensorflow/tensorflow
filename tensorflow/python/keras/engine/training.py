@@ -896,7 +896,8 @@ class Model(Network):
           validation_steps=validation_steps,
           workers=0,
           shuffle=shuffle,
-          initial_epoch=initial_epoch)
+          initial_epoch=initial_epoch,
+          steps_name='steps_per_epoch')
     else:
       return training_arrays.fit_loop(
           self,
@@ -913,7 +914,8 @@ class Model(Network):
           shuffle=shuffle,
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps)
+          validation_steps=validation_steps,
+          steps_name='steps_per_epoch')
 
   def evaluate(self,
                x=None,
@@ -1500,7 +1502,8 @@ class Model(Network):
         workers=workers,
         use_multiprocessing=use_multiprocessing,
         shuffle=shuffle,
-        initial_epoch=initial_epoch)
+        initial_epoch=initial_epoch,
+        steps_name='steps_per_epoch')
 
   def evaluate_generator(self,
                          generator,
@@ -2136,7 +2139,7 @@ class Model(Network):
       shuffle: Boolean whether to shuffle the training data before each epoch.
 
     Returns:
-      Iterator for reading the dataset `x`.
+      Dataset instance.
 
     Raises:
       ValueError: In case of invalid user-provided data.
@@ -2167,7 +2170,8 @@ class Model(Network):
     else:
       session = K.get_session()
 
-    with self._distribution_strategy.scope():
+    strategy = self._distribution_strategy
+    with strategy.scope():
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray):
         x = distributed_training_utils.list_to_tuple(x)
@@ -2190,20 +2194,20 @@ class Model(Network):
           shuffle_buffer = 1024
         else:
           shuffle_buffer = None
-        iterator = self._distribution_strategy.experimental_make_numpy_iterator(
-            in_tuple, batch_size, num_epochs=None, shuffle=shuffle_buffer,
-            session=session)
+        ds = strategy.extended.experimental_make_numpy_dataset(in_tuple,
+                                                               session=session)
+        if shuffle_buffer:
+          ds = ds.shuffle(shuffle_buffer)
+        ds = ds.repeat()
+        # We need to use the drop_remainder argument to get a known static
+        # input shape which is required for TPUs.
+        drop_remainder = strategy.extended.experimental_require_static_shapes
+        x = ds.batch(batch_size, drop_remainder=drop_remainder)
       else:
         assert isinstance(x, dataset_ops.DatasetV2)
         training_utils.validate_dataset_input(x, y, sample_weight,
                                               validation_split)
-        iterator = self._distribution_strategy.make_dataset_iterator(x)
-
-      init_op = iterator.initialize()
-      if not context.executing_eagerly():
-        K.get_session().run(init_op)
-
-    return iterator
+    return x
 
   def _standardize_user_data(self,
                              x,
@@ -2276,7 +2280,7 @@ class Model(Network):
       ValueError: In case of invalid user-provided data.
       RuntimeError: If the model was never compiled.
     """
-    if isinstance(x, (dataset_ops.DatasetV2, dataset_ops.DatasetV1)):
+    if isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
       # Graph mode dataset. We'll pass the dataset as-is (unless
       # `extract_tensors_from_dataset` is True, in which case we extract
       # the tensors from the dataset and we output them.
@@ -2313,7 +2317,7 @@ class Model(Network):
       # If input data is a dataset iterator in graph mode or if it is an eager
       # iterator and only one batch of samples is required, we fetch the data
       # tensors from the iterator and then standardize them.
-      if isinstance(x, (dataset_ops.DatasetV2, dataset_ops.DatasetV1)):
+      if isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
         x_input, y_input, _ = training_utils.extract_tensors_from_dataset(x)
       else:
         x_input = x
@@ -2433,7 +2437,7 @@ class Model(Network):
       feed_input_shapes = self._feed_input_shapes
 
     # Standardize the inputs.
-    if not isinstance(x, (dataset_ops.DatasetV2, dataset_ops.DatasetV1)):
+    if not isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
       # TODO(fchollet): run static checks with dataset output shape(s).
       x = training_utils.standardize_input_data(
           x,
@@ -2514,8 +2518,8 @@ class Model(Network):
                          str(x[0].shape[0]) + ' samples')
 
     # If dictionary inputs were provided, we return a dictionary as well.
-    if dict_inputs and not isinstance(x, (dataset_ops.DatasetV2,
-                                          dataset_ops.DatasetV1)):
+    if dict_inputs and not isinstance(x, (dataset_ops.DatasetV1,
+                                          dataset_ops.DatasetV2)):
       x = dict(zip(feed_input_names, x))
     return x, y, sample_weights
 
