@@ -29,6 +29,7 @@
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
 #include "mlir/Pass.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/PassNameParser.h"
 #include "mlir/TensorFlow/ControlFlowOps.h"
 #include "mlir/TensorFlow/Passes.h"
@@ -70,20 +71,6 @@ static cl::opt<bool>
 static std::vector<const mlir::PassInfo *> *passList;
 
 enum OptResult { OptSuccess, OptFailure };
-
-/// Open the specified output file and return it, exiting if there is any I/O or
-/// other errors.
-static std::unique_ptr<ToolOutputFile> getOutputStream() {
-  std::error_code error;
-  auto result =
-      llvm::make_unique<ToolOutputFile>(outputFilename, error, sys::fs::F_None);
-  if (error) {
-    llvm::errs() << error.message() << '\n';
-    exit(1);
-  }
-
-  return result;
-}
 
 /// Given a MemoryBuffer along with a line and column within it, return the
 /// location being referenced.
@@ -150,8 +137,14 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       return OptFailure;
   }
 
+  std::string errorMessage;
+  auto output = openOutputFile(outputFilename, &errorMessage);
+  if (!output) {
+    llvm::errs() << errorMessage << "\n";
+    exit(1);
+  }
+
   // Print the output.
-  auto output = getOutputStream();
   module->print(output->os());
   output->keep();
   return OptSuccess;
@@ -381,17 +374,17 @@ int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
   // Set up the input file.
-  auto fileOrErr = MemoryBuffer::getFileOrSTDIN(inputFilename);
-  if (std::error_code error = fileOrErr.getError()) {
-    llvm::errs() << argv[0] << ": could not open input file '" << inputFilename
-                 << "': " << error.message() << "\n";
-    return 1;
+  std::string errorMessage;
+  auto file = openInputFile(inputFilename, &errorMessage);
+  if (!file) {
+    llvm::errs() << errorMessage << "\n";
+    return OptFailure;
   }
 
   // The split-input-file mode is a very specific mode that slices the file
   // up into small pieces and checks each independently.
   if (splitInputFile)
-    return splitAndProcessFile(std::move(*fileOrErr));
+    return splitAndProcessFile(std::move(file));
 
-  return processFile(std::move(*fileOrErr));
+  return processFile(std::move(file));
 }

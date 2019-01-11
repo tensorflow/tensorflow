@@ -45,15 +45,15 @@ static llvm::cl::opt<std::string>
 
 static Module *parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
   // Set up the input file.
-  auto fileOrErr = llvm::MemoryBuffer::getFileOrSTDIN(inputFilename);
-  if (std::error_code error = fileOrErr.getError()) {
-    llvm::errs() << "Could not open input file '" << inputFilename
-                 << "': " << error.message();
+  std::string errorMessage;
+  auto file = openInputFile(inputFilename, &errorMessage);
+  if (!file) {
+    llvm::errs() << errorMessage << "\n";
     return nullptr;
   }
 
   llvm::SourceMgr sourceMgr;
-  sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
+  sourceMgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
   return parseSourceFile(sourceMgr, context);
 }
 

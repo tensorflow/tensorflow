@@ -22,14 +22,28 @@
 #ifndef MLIR_SUPPORT_FILEUTILITIES_H_
 #define MLIR_SUPPORT_FILEUTILITIES_H_
 
-#include "mlir/Support/LLVM.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include <memory>
+#include <string>
+
+namespace llvm {
+class MemoryBuffer;
+class ToolOutputFile;
+class StringRef;
+} // namespace llvm
 
 namespace mlir {
 
-/// Open the file specified by its name for writing.
-std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef outputFilename);
+/// Open the file specified by its name for reading. Write the error message to
+/// `errorMessage` if errors occur and `errorMessage` is not nullptr.
+std::unique_ptr<llvm::MemoryBuffer>
+openInputFile(llvm::StringRef inputFilename,
+              std::string *errorMessage = nullptr);
+
+/// Open the file specified by its name for writing. Write the error message to
+/// `errorMessage` if errors occur and `errorMessage` is not nullptr.
+std::unique_ptr<llvm::ToolOutputFile>
+openOutputFile(llvm::StringRef outputFilename,
+               std::string *errorMessage = nullptr);
 
 } // namespace mlir
 
