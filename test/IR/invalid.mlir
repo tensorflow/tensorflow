@@ -857,3 +857,9 @@ func @complex_loops() {
 func @mi() {
   // expected-error @+1 {{expected '[' or scalar constant inside tensor literal}}
   "fooi64"(){bar: sparse<vector<1xi64>,[,[,1]
+
+// -----
+
+func @invalid_tensor_literal() {
+  // expected-error @+1 {{expected '[' in tensor literal list}}
+  "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]],  -2.0]>} : () -> ()

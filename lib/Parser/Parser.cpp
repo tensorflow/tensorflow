@@ -673,7 +673,11 @@ public:
   TensorLiteralParser(Parser &p, Type eltTy)
       : p(p), eltTy(eltTy), currBitPos(0) {}
 
-  ParseResult parse() { return parseList(shape); }
+  ParseResult parse() {
+    if (p.getToken().isNot(Token::l_square))
+      return p.emitError("expected '[' in tensor literal list");
+    return parseList(shape);
+  }
 
   ArrayRef<char> getValues() const {
     return {reinterpret_cast<const char *>(storage.data()), storage.size() * 8};
