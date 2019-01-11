@@ -1237,7 +1237,17 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
   }}, layout_r4_dim0major_);
+  auto s16 = LiteralUtil::CreateR4WithLayout<int16>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
   auto s32 = LiteralUtil::CreateR4WithLayout<int32>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
+  auto u16 = LiteralUtil::CreateR4WithLayout<uint16>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
@@ -1301,6 +1311,12 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   // clang-format on
   Literal conv;
 
+  conv = s8.Convert(U16).ConsumeValueOrDie();
+  EXPECT_EQ(conv, u16);
+
+  conv = s8.Convert(S16).ConsumeValueOrDie();
+  EXPECT_EQ(conv, s16);
+
   conv = s8.Convert(U32).ConsumeValueOrDie();
   EXPECT_EQ(conv, u32);
 
@@ -1352,10 +1368,14 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   conv = f16.Convert(C64).ConsumeValueOrDie();
   EXPECT_EQ(conv, c64);
 
+  conv = s32.Convert(S16).ConsumeValueOrDie();
+  EXPECT_EQ(conv, s16);
+
+  conv = s32.Convert(U16).ConsumeValueOrDie();
+  EXPECT_EQ(conv, u16);
+
   EXPECT_EQ(s32.Convert(TUPLE).status().code(),
             tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(s32.Convert(S16).status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(s32.Convert(U16).status().code(), tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64.Convert(F32).status().code(), tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64.Convert(S32).status().code(), tensorflow::error::UNIMPLEMENTED);
 }

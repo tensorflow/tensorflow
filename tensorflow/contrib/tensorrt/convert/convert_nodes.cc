@@ -3792,8 +3792,7 @@ tensorflow::Status ConvertGraphDefToEngine(
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
-    const std::set<string>& subgraph_node_names,
-    const std::vector<int>& subgraph_node_ids,  // In topological order
+    const std::vector<const Node*>& subgraph_nodes,  // In topological order
     std::vector<EngineConnection>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope) {
   std::set<string> marker_nodes;
@@ -3869,11 +3868,10 @@ tensorflow::Status ConvertSegmentToGraphDef(
 
   std::unordered_map<int, int> old_to_new_id_map;
   // Copy internal nodes to new graphdef
-  string local_scope = graph->FindNodeId(*subgraph_node_ids.begin())->name();
-  for (const auto node_id : subgraph_node_ids) {
-    const auto node = graph->FindNodeId(node_id);
+  string local_scope = subgraph_nodes.front()->name();
+  for (const Node* node : subgraph_nodes) {
     local_scope = GetCommonNameScope(local_scope, node->name());
-    old_to_new_id_map[node_id] = segment_def->node_size();
+    old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
     snode->CopyFrom(node->def());
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
@@ -3891,6 +3889,11 @@ tensorflow::Status ConvertSegmentToGraphDef(
             << placeholder_name;
     snode->set_input(connection.inside_port, placeholder_name);
   }
+  std::set<string> subgraph_node_names;
+  for (const Node* node : subgraph_nodes) {
+    subgraph_node_names.insert(node->name());
+  }
+
   // Remove control inputs that are not inside the segment.
   for (int i = 0; i < segment_def->node_size(); ++i) {
     auto snode = segment_def->mutable_node(i);

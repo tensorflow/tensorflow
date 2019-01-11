@@ -98,12 +98,6 @@ class TRTEngineOp : public AsyncOpKernel {
   // GraphDef representation of the segment.
   GraphDef segment_graph_;
 
-  // Lookup table for temporary staging areas of input tensors for calibration.
-  std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
-
-  // Temporary staging areas for calibration inputs.
-  std::vector<PersistentTensor> dev_tensors_;
-
   // Engine Precision mode.
   int precision_mode_;
 

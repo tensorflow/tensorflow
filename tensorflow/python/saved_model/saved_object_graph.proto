@@ -96,7 +96,11 @@ message SavedMonomorphicFunction {
   repeated int32 bound_inputs = 2;
   // Input in canonicalized form that was received to create this concrete
   // function.
-  StructuredValue canonicalized_input = 3;
+  StructuredValue canonicalized_input_signature = 3;
+  // Output that was the return value of this function after replacing all
+  // Tensors with TensorSpecs. This can be an arbitrary nested function and will
+  // be used to reconstruct the full structure from pure tensors.
+  StructuredValue output_signature = 4;
 }
 
 // Represents a Variable that is initialized by loading the contents from the

@@ -25,16 +25,15 @@ import copy
 import numpy as np
 import six
 
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
@@ -108,6 +107,8 @@ class MetricsAggregator(Aggregator):
     self.results[1:] = batch_outs[1:]
 
   def finalize(self):
+    if not self.results:
+      raise ValueError('Empty training data.')
     self.results[0] /= self.num_samples_or_steps
 
 
@@ -954,13 +955,12 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   # TODO(fchollet): allow datasets with steps=None if cardinality is known.
-  is_x_dataset = isinstance(input_data, (iterator_ops.Iterator,
-                                         iterator_ops.EagerIterator,
-                                         dataset_ops.DatasetV2))
-  if (input_data is None or is_x_dataset or has_symbolic_tensors(input_data) or
+  is_x_iterator = isinstance(input_data, (iterator_ops.Iterator,
+                                          iterator_ops.EagerIterator))
+  if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
-      input_type_str = 'a Dataset' if is_x_dataset else 'data tensors'
+      input_type_str = 'a Dataset iterator' if is_x_iterator else 'data tensors'
       raise ValueError('When using {input_type} as input to a model, you should'
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
@@ -1210,8 +1210,6 @@ def is_dataset_or_iterator(data):
 def extract_tensors_from_dataset(dataset):
   """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
 
-  Works only for graph mode.
-
   Arguments:
     dataset: Dataset instance.
 
@@ -1219,7 +1217,9 @@ def extract_tensors_from_dataset(dataset):
     Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
   """
   iterator = dataset_ops.make_initializable_iterator(dataset)
-  K.get_session().run(iterator.initializer)
+  init_op = iterator.initializer
+  if not context.executing_eagerly():
+    K.get_session().run(init_op)
   inputs, targets, sample_weight = unpack_iterator_input(iterator)
   return inputs, targets, sample_weight
 
@@ -1256,6 +1256,51 @@ def unpack_iterator_input(iterator):
     y = None
     weights = None
   return x, y, weights
+
+
+def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
+  """Infers steps_per_epoch needed to loop through a dataset.
+
+  Arguments:
+      dataset: Input data of type tf.data.Dataset.
+      steps: Number of steps to draw from the dataset (may be None if unknown).
+      epochs: Number of times to iterate over the dataset.
+      steps_name: The string name of the steps argument, either `steps`,
+        `validation_steps`, or `steps_per_epoch`. Only used for error message
+        formatting.
+
+  Returns:
+    Integer or `None`. Inferred number of steps to loop through the dataset.
+    `None` is returned if the size of the dataset is unknown and `steps` was
+    not specified.
+
+  Raises:
+    ValueError: In case of invalid argument values.
+  """
+  assert isinstance(dataset, dataset_ops.DatasetV2)
+  size = K.get_value(cardinality.cardinality(dataset))
+  if size == cardinality.INFINITE and steps is None:
+    raise ValueError('When passing an infinitely repeating dataset, you '
+                     'must specify the `%s` argument.' % (steps_name,))
+  if size != cardinality.UNKNOWN:
+    if steps is not None and steps * epochs > size:
+      if epochs > 1:
+        raise ValueError('The dataset you passed contains %s batches, but you '
+                         'passed `epochs=%s` and `%s=%s`, which is a total of '
+                         '%s steps. We cannot draw that many steps from this '
+                         'dataset. We suggest to set `%s=%s`.' %
+                         (size, epochs, steps_name, steps, steps * epochs,
+                          steps_name, size // epochs))
+      else:
+        raise ValueError('The dataset you passed contains %s batches, but you '
+                         'passed `%s=%s`. We cannot draw that many steps from '
+                         'this dataset. We suggest to set `%s=%s`.' %
+                         (size, steps_name, steps, steps_name, size))
+  if steps is None:
+    if size >= 0:
+      return size
+    return None
+  return steps
 
 
 class ModelInputs(object):
@@ -1385,60 +1430,6 @@ def get_static_batch_size(layer):
 
 def generic_output_names(outputs_list):
   return ['output_%d' % (i + 1) for i in range(len(outputs_list))]
-
-
-def trace_model_call(model, input_signature=None):
-  """Trace the model call to create a tf.function for exporting a Keras model.
-
-  Args:
-    model: A Keras model.
-    input_signature: optional, a list of tf.TensorSpec objects specifying the
-      inputs to the model.
-
-  Returns:
-    A tf.function wrapping the model's call function with input signatures set.
-
-  Raises:
-    ValueError: if input signature cannot be inferred from the model.
-  """
-  if input_signature is None:
-    if isinstance(model.call, def_function.PolymorphicFunction):
-      input_signature = model.call.input_signature
-
-  if input_signature is None:
-    try:
-      inputs = model.inputs
-      input_names = model.input_names
-    except AttributeError:
-      raise ValueError(
-          'Model {} cannot be saved because the input shapes have not been '
-          'set. Usually, input shapes are automatically determined from calling'
-          ' .fit() or .predict(). To manually set the shapes, call '
-          'model._set_inputs(inputs).'.format(model))
-    input_specs = []
-    for input_tensor, input_name in zip(inputs, input_names):
-      input_specs.append(tensor_spec.TensorSpec(
-          shape=input_tensor.shape, dtype=input_tensor.dtype,
-          name=input_name))
-    # The input signature of the call function is a list with one element, since
-    # all tensor inputs must be passed in as the first argument.
-    input_signature = [input_specs] if len(input_specs) > 1 else input_specs
-
-  # TODO(mdan): Should the model's call be autographed by default?
-  @def_function.function(input_signature=input_signature, autograph=False)
-  def _wrapped_model(*args):
-    """A concrete tf.function that wraps the model's call function."""
-    # When given a single input, Keras models will call the model on the tensor
-    # rather than a list consisting of the single tensor.
-    inputs = args[0] if len(input_signature) == 1 else list(args)
-    outputs_list = nest.flatten(model(inputs=inputs))
-    try:
-      output_names = model.output_names
-    except AttributeError:
-      output_names = generic_output_names(outputs_list)
-    return {name: output for name, output in zip(output_names, outputs_list)}
-
-  return _wrapped_model
 
 
 def set_run_eagerly_for_dict_structure(model, x):

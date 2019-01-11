@@ -334,13 +334,12 @@ struct EdgePtrCompare {
 tensorflow::Status GetEngineInfo(
     const tensorflow::Graph* g,
     const tensorflow::grappler::GraphProperties& graph_properties,
-    const std::set<string>& segment_nodes,
+    const std::set<const Node*>& segment_nodes,
     const std::unordered_map<string, tensorflow::Node*>& node_map,
     const std::vector<tensorflow::Node*>& reverse_topo_order,
     EngineInfo* info) {
-  std::vector<int> subgraph_node_ids;  // Topologically sorted node ids.
-  std::set<string> subgraph_node_names = segment_nodes;
-  std::set<int> added_const_node_ids;  // Used to prevent double insertion.
+  std::vector<const Node*> subgraph_nodes;  // Topologically sorted nodes.
+  std::set<const Node*> added_const_nodes;  // Used to prevent double insertion.
   std::set<string> segment_devices;
 
   // Map from src_node_name+port to the unique port numbers of the TRT op, where
@@ -352,9 +351,8 @@ tensorflow::Status GetEngineInfo(
   std::unordered_map<string, int> input_to_engine_port, output_to_engine_port;
   for (auto it = reverse_topo_order.rbegin(); it != reverse_topo_order.rend();
        ++it) {
-    const auto& node_name = (*it)->name();
-    if (segment_nodes.count(node_name) == 0) continue;
-    auto node = *it;
+    const Node* node = *it;
+    if (segment_nodes.count(node) == 0) continue;
     auto node_device = node->requested_device();
     if (!node_device.empty()) {
       // If device is CPU, treat as if no device was assigned. Don't add CPU to
@@ -379,8 +377,11 @@ tensorflow::Status GetEngineInfo(
                 << " neither have requested device nor assigned device";
       }
     }
+    subgraph_nodes.push_back(node);
+
     const int node_id = node->id();
-    subgraph_node_ids.push_back(node_id);
+    const string& node_name = node->name();
+
     // Create input connections. Sort edges first to make determnistic since
     // in_edges is a set of pointers.
     std::vector<const tensorflow::Edge*> in_edges(node->in_edges().begin(),
@@ -388,7 +389,7 @@ tensorflow::Status GetEngineInfo(
     std::sort(in_edges.begin(), in_edges.end(), EdgePtrCompare());
     for (const auto edge : in_edges) {
       auto input_node = edge->src();
-      if (input_node->IsSource() || segment_nodes.count(input_node->name())) {
+      if (input_node->IsSource() || segment_nodes.count(input_node)) {
         continue;
       }
       if (edge->IsControlEdge()) {
@@ -405,12 +406,11 @@ tensorflow::Status GetEngineInfo(
         //
         // Note that the segmenter already ensure that the constant data input
         // is valid and suppported by the engine.
-        if (!added_const_node_ids.insert(input_node->id()).second) {
+        if (!added_const_nodes.insert(input_node).second) {
           // Already added before.
           continue;
         }
         VLOG(1) << "Adding const node " << input_node->name();
-        QCHECK(subgraph_node_names.insert(input_node->name()).second);
         // Since we already add (duplicate) the const input node to the segment
         // graphdef, it's now not a data dependency any more, but to make the
         // dependency correct we still add a control dependency.
@@ -441,7 +441,7 @@ tensorflow::Status GetEngineInfo(
     std::sort(out_edges.begin(), out_edges.end(), EdgePtrCompare());
     for (const auto edge : out_edges) {
       auto output_node = edge->dst();
-      if (output_node->IsSink() || segment_nodes.count(output_node->name())) {
+      if (output_node->IsSink() || segment_nodes.count(output_node)) {
         continue;
       }
       if (edge->IsControlEdge()) {
@@ -469,12 +469,11 @@ tensorflow::Status GetEngineInfo(
   }  // For each segment node in topological order.
 
   // Construct the const nodes first.
-  subgraph_node_ids.insert(subgraph_node_ids.begin(),
-                           added_const_node_ids.begin(),
-                           added_const_node_ids.end());
+  subgraph_nodes.insert(subgraph_nodes.begin(), added_const_nodes.begin(),
+                        added_const_nodes.end());
   TF_RETURN_IF_ERROR(ConvertSegmentToGraphDef(
-      g, graph_properties, subgraph_node_names, subgraph_node_ids,
-      &info->connections, &info->segment_graph_def, &info->engine_name));
+      g, graph_properties, subgraph_nodes, &info->connections,
+      &info->segment_graph_def, &info->engine_name));
   // TODO(sami): This should not happen once segmenter is updated.
   if (segment_devices.size() == 1) {
     info->device = *segment_devices.begin();
@@ -1046,26 +1045,30 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     cudaSetDevice(cuda_device_id);
     auto status = CreateTRTNode(engine_segments, i, params.max_batch_size,
                                 &graph, alloc.get(), &engine_nodes);
-    // If status is ok, we successfully added the node to the graph and can
-    // remove segment ops. Otherwise graph is not modified.
+
     string msg = StrCat("TensorRT node ", engine.engine_name,
                         " added for segment ", i, " consisting of ",
                         converted_segments.at(i).first.size(), " nodes");
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
-      for (auto node_name : converted_segments.at(i).first) {
-        graph.RemoveNode(node_map.at(node_name));
-      }
     } else {
       // Graph is not modified.
       LOG(WARNING) << msg << " failed: " << status << ". Fallback to TF...";
     }
     if (VLOG_IS_ON(1)) {
       msg = "Segment consists of nodes: ";
-      for (const string& node_name : converted_segments.at(i).first) {
-        StrAppend(&msg, node_name, ", ");
+      for (const Node* node : converted_segments.at(i).first) {
+        StrAppend(&msg, node->name(), ", ");
       }
       VLOG(1) << msg;
+    }
+
+    // If status is ok, we successfully added the node to the graph and can
+    // remove segment ops. Otherwise graph is not modified.
+    if (status.ok()) {
+      for (const Node* node : converted_segments.at(i).first) {
+        graph.RemoveNode(const_cast<Node*>(node));
+      }
     }
   }
   cudaSetDevice(old_cuda_device);
