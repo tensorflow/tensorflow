@@ -112,6 +112,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
+            "//tensorflow/core:device_tracer",
         ],
     }),
 )

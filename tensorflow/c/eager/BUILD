@@ -8,6 +8,15 @@ load(
     "tf_cuda_library",
     "tfe_xla_copts",
 )
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_device_tracer_test_flags",
+    "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 tf_cuda_library(
     name = "c_api",
@@ -211,11 +220,10 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_experimental_test.cc",
     ],
-    extra_copts = tfe_xla_copts(),
-    tags = [
-        "guitar",
-        "multi_gpu",
-    ],
+    args =
+        ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
         ":c_api_experimental",
         ":c_api_test_util",
