@@ -29,9 +29,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/example/example.pb.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #endif
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -63,6 +65,12 @@ enum ContextDevicePlacementPolicy {
   // Default placement policy which silently copies int32 tensors but not other
   // dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
+};
+
+class RunMetadataListener {
+ public:
+  virtual ~RunMetadataListener() {}
+  virtual void BeforeClearRunMetadata() = 0;
 };
 
 class EagerContext {
@@ -148,10 +156,15 @@ class EagerContext {
   bool LogMemory() { return log_memory_; }
 
   Rendezvous* GetRendezvous() { return rendezvous_; }
+  CollectiveExecutorMgrInterface* collective_executor_mgr() {
+    return (collective_executor_mgr_ != nullptr)
+               ? collective_executor_mgr_.get()
+               : unowned_collective_executor_mgr_;
+  }
   std::unique_ptr<CollectiveExecutor::Handle> GetCollectiveExecutorHandle() {
     return std::unique_ptr<CollectiveExecutor::Handle>(
         new CollectiveExecutor::Handle(
-            collective_executor_mgr_->FindOrCreate(0), true /*inherit_ref*/));
+            collective_executor_mgr()->FindOrCreate(0), true /*inherit_ref*/));
   }
 
   const tensorflow::DeviceMgr* local_device_mgr() const {
@@ -166,10 +179,15 @@ class EagerContext {
   void ReleaseDeviceMgr() { local_device_manager_.release(); }
 
   // TODO(apassos) clean up RunMetadata storage.
-  mutex* MetadataMu() { return &metadata_mu_; }
-  bool ShouldStoreMetadata() { return should_store_metadata_.load(); }
+  mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
+  bool ShouldStoreMetadata() LOCKS_EXCLUDED(metadata_mu_);
   void SetShouldStoreMetadata(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
+  void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
+
+  Status RegisterRunMetadataListener(RunMetadataListener* listener)
+      LOCKS_EXCLUDED(metadata_mu_);
+  void ClearRunMetadataListener() LOCKS_EXCLUDED(metadata_mu_);
 
   void StartStep();
   void EndStep();
@@ -204,6 +222,10 @@ class EagerContext {
     return active_remote_contexts_.find(context_id) !=
            active_remote_contexts_.end();
   }
+
+  Status StoreCollectiveOpsServer(
+      std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
+      CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 #endif
 
   // If true, then tensors should be shipped across processes via the
@@ -259,6 +281,7 @@ class EagerContext {
   std::atomic<bool> should_store_metadata_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
+  RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;
   GraphCollector graph_collector_;
   const bool log_device_placement_;
   // EagerExecutor for async execution.
@@ -280,6 +303,7 @@ class EagerContext {
   Env* const env_;
 
   std::unique_ptr<CollectiveExecutorMgrInterface> collective_executor_mgr_;
+  CollectiveExecutorMgrInterface* unowned_collective_executor_mgr_ = nullptr;
 
 #ifndef __ANDROID__
   void CloseRemoteContexts();

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -68,11 +69,13 @@ class IrEmitterUnnested : public IrEmitter {
     explicit KernelCodegenInfo(llvm_ir::KernelMappingScheme* mapping_scheme)
         : mapping_scheme_(mapping_scheme),
           tiled_param_info_(nullptr),
-          lane_id_(nullptr) {}
+          lane_id_(nullptr),
+          index_ty_(nullptr) {}
+    virtual ~KernelCodegenInfo() {}
 
     void SetLaneId(llvm::Value* v) { lane_id_ = v; }
+    void SetIndexType(llvm::Type* t) { index_ty_ = t; }
     void SetTiledParamInfo(llvm_ir::TiledParameterInfo* tiled_param_info) {
-      CHECK_EQ(tiled_param_info_, nullptr);
       tiled_param_info_ = tiled_param_info;
     }
 
@@ -83,11 +86,13 @@ class IrEmitterUnnested : public IrEmitter {
     llvm_ir::TiledParameterInfo* GetTiledParameterInfo() const {
       return tiled_param_info_;
     }
+    llvm::Type* GetIndexType() const { return index_ty_; }
 
-   private:
+   protected:
     llvm_ir::KernelMappingScheme* mapping_scheme_;
     llvm_ir::TiledParameterInfo* tiled_param_info_;
     llvm::Value* lane_id_;
+    llvm::Type* index_ty_;
   };
 
   // A function object to prepare for the code generation for a tile block.
@@ -103,10 +108,12 @@ class IrEmitterUnnested : public IrEmitter {
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
   // kernel_info: Other information to support the kernel code generation.
+  // x_iter_num: When a thread process N elements in the X dimension, x_iter_num
+  //             has a value of 0..N-1 to identify the element being process.
   using TileElementGenerator = std::function<void(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
-      llvm::Value* x_loc)>;
+      llvm::Value* x_loc, int64 x_iter_num)>;
 
   // KernelCodeGenerator records the code generator objects that generate code
   // for tile elements or tile block prologue/epilogue.
@@ -170,7 +177,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
 
   Status EmitTargetElementLoop(
@@ -200,82 +207,23 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
-      const HloInstruction* reduce, const llvm_ir::IrArray::Index& index,
+      const HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index,
       absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
-  // EmitColumnReduction and EmitRowReduction emit code for column and row
-  // reduction of a matrix and/or 3D tensor. Row and column reduction have
-  // different memory access pattern, so for performance their implementations
-  // are significantly different.
+  // Generates code for reduction to contiguous dimensions.
   //
-  // Emits code that reduces a matrix of shape [height x width] to a vector of
-  // [width]. Other parameters have the same meaning as those of
-  // `EmitReductionToVector`. Note that input shape might not be
-  // [height x width], but can be bitcast to [height x width] with "height"
-  // being the major dimension.
-  Status EmitColumnReduction(
-      KernelThunk* kernel_thunk, int64 height, int64 width,
-      HloInstruction* reduce, const Shape& input_shape,
-      absl::Span<const llvm_ir::ElementGenerator> input_gens,
-      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
-      absl::Span<HloComputation* const> reducers,
-      absl::Span<const ShapeIndex> reduce_output_shapes,
-      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
-          extra_output_gens);
+  // Prerequisite: `IsReductionToVector(*unnested_hlo)`
+  Status EmitReductionToVector(HloInstruction* unnested_hlo);
 
-  // Emits code that reduces a 3D tensor of shape [depth x height x width] to a
-  // vector of shape [height]. Other parameters have the same meaning as those
-  // of `EmitReductionToVector`. Note that input shape might not be
-  // [depth x height x width], but can be bitcast to [depth x height x width]
-  // with "depth" being the most major dimension.
-  Status EmitRowReduction(
-      KernelThunk* kernel_thunk, int64 depth, int64 height, int64 width,
-      HloInstruction* reduce, const Shape& input_shape,
-      absl::Span<const llvm_ir::ElementGenerator> input_gens,
-      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
-      absl::Span<HloComputation* const> reducers,
-      absl::Span<const ShapeIndex> reduce_output_shapes,
-      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
-          extra_output_gens);
-
-  // Emits code that reduces a tensor of arbitrary rank to a scalar.
-  Status EmitReductionToScalar(
-      KernelThunk* kernel_thunk, HloInstruction* reduce,
-      const Shape& input_shape,
-      absl::Span<const llvm_ir::ElementGenerator> input_gens,
-      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
-      absl::Span<HloComputation* const> reducers,
-      absl::Span<const ShapeIndex> reduce_output_shapes,
-      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
-          extra_output_gens);
-
-  // Figures out whether `reduce` is a row or column reduction, and which
-  // dimensions to reduce, and calls either `EmitRowReduction` or
-  // `EmitColumnReduction` as appropriate. `input_shape` is the shape of the
-  // input array, which is the operand of the Reduce instruction if unfused or
-  // of the Fusion instruction if fused. `input_gen` and `init_value_gen`
-  // generate elements of the input and the initial value. Other parameters mean
-  // the same as for `HandleReduce`.
-  //
-  // Multiple reduces can be emitted in the same loop, assuming they have the
-  // same input and output shapes, and the same reduce dimensions.
-  //
-  // extra_output_gens can contain extra generators for intermediate outputs.
-  // These must have the same shape as the reduce input as they are computed
-  // when the reduce inputs are being read.
-  //
-  // Prerequisite: `IsReductionToVector(*reduce)`
-  Status EmitReductionToVector(
-      KernelThunk* kernel_thunk, HloInstruction* reduce,
-      const Shape& input_shape,
-      absl::Span<const llvm_ir::ElementGenerator> input_gens,
-      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
-      absl::Span<const int64> dimensions_to_reduce,
-      absl::Span<HloComputation* const> reducers,
-      absl::Span<const ShapeIndex> reduce_output_shapes,
-      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
-          extra_output_gens);
+  // Computes the KernelMappingScheme for the reduce HLO and indicates whether
+  // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
+  // and first_reduce are the same instruction. For a kInput fusion,
+  // unnested_hlo is the fusion instruction while first_reduce is the first
+  // reduce op.
+  std::tuple<llvm_ir::KernelMappingScheme, bool>
+  ComputeMappingSchemeAndReductionKind(const HloInstruction* unnested_hlo,
+                                       const HloInstruction* first_reduce);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from
@@ -300,20 +248,45 @@ class IrEmitterUnnested : public IrEmitter {
                               const KernelCodeGenerator& kernel_generator,
                               KernelCodegenInfo* kernel_info);
   void EmitBlock(const TileGenerator& emit_one_tile,
-                 const KernelCodegenInfo* kernel_info,
-                 KernelSupportLibrary& ksl, llvm::Type* index_ty);
+                 KernelCodegenInfo* kernel_info, KernelSupportLibrary* ksl,
+                 llvm::Type* index_ty);
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
   void EmitTileElementForCopy(HloInstruction* hlo,
                               const llvm_ir::IrArray::Index& index,
                               const KernelCodegenInfo* kernel_info,
-                              llvm::Value* y_loc, llvm::Value* x_loc);
+                              llvm::Value* y_loc, llvm::Value* x_loc,
+                              int64 x_iter_num);
   // Emits code to process a tensor element in a tile for the given kLoop fusion
   // HLO containing parameters that are 0-2-1 transpose of its outputs.
   void EmitTileElementForFusion(HloInstruction* hlo,
                                 const llvm_ir::IrArray::Index& index,
                                 const KernelCodegenInfo* kernel_info,
-                                llvm::Value* y_loc, llvm::Value* x_loc);
+                                llvm::Value* y_loc, llvm::Value* x_loc,
+                                int64 x_iter_num);
+  // Emits code to process a tensor element in a tile for the given input hlo
+  // that is either a unnested kReduce or a kInput fusion.
+  void EmitTileElementForReduction(HloInstruction* unnested_hlo,
+                                   const llvm_ir::IrArray::Index& index,
+                                   const KernelCodegenInfo* kernel_info,
+                                   llvm::Value* y_loc, llvm::Value* x_loc,
+                                   int64 x_iter_num);
+  // Prepares for the code generation for a tile block of a reduction kernel.
+  void EmitPrologueForReduction(HloInstruction* unnested_hlo,
+                                KernelCodegenInfo* kernel_info);
+  void EmitPrologueForOneReduction(HloInstruction* unnested_hlo,
+                                   HloInstruction* reduce_inst, int reduce_idx,
+                                   KernelCodegenInfo* kernel_info,
+                                   GpuElementalIrEmitter* elemental_emitter,
+                                   ShapeIndex output_shape_index);
+  // Wraps up the code generation for a tile block of a reduction kernel.
+  void EmitEpilogueForReduction(HloInstruction* unnested_hlo,
+                                KernelCodegenInfo* kernel_info);
+  // For each reducer, emits the shuffle-down loop to accumulate the partial
+  // result to the global result.
+  void EmitFullWarpShuffleDownLoopForAllReduces(
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<llvm::AllocaInst* const> partial_result_addresses);
 
   // Generates the IrArray for each input of an hlo and returns a vector that
   // constains such IrArrays.

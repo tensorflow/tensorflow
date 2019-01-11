@@ -259,8 +259,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     add = f32[4,3]{1,0} add(p0, p0)
     abs1 = f32[4,3]{1,0} abs(add)
     log = f32[4,3]{1,0} log(abs1)
-    token = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token), channel_id=0
+    token0 = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token0), channel_id=0
     abs2 = f32[4,3]{1,0} abs(log)
     ROOT root = f32[4,3]{1,0} subtract(abs2, add)
   })")
@@ -290,8 +290,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     p0 = f32[4,3]{1,0} parameter(0)
     add1 = f32[4,3]{1,0} add(p0, p0)
     log = f32[4,3]{1,0} log(p0)
-    token = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token), channel_id=0
+    token0 = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token0), channel_id=0
     add2 = f32[4,3]{1,0} add(log, add1)
     ROOT root = f32[4,3]{1,0} subtract(add1, add2)
   })")
@@ -324,8 +324,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     add1 = f32[4,3]{1,0} add(p0, p0)
     add2 = f32[4,3]{1,0} add(add1, add1)
     log = f32[4,3]{1,0} log(add2)
-    token = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token), channel_id=0
+    token0 = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token0), channel_id=0
     sub1 = f32[4,3]{1,0} subtract(log, add2)
     sub2 = f32[4,3]{1,0} subtract(add2, add1)
     ROOT root = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub1, sub2)

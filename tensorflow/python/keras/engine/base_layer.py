@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
+import itertools
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -28,7 +29,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
@@ -45,15 +45,16 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
-@tf_export('keras.layers.Layer')
+@keras_export('keras.layers.Layer')
 class Layer(checkpointable.CheckpointableBase):
   """Base layer class.
 
@@ -82,6 +83,12 @@ class Layer(checkpointable.CheckpointableBase):
     name: String name of the layer.
     dtype: Default dtype of the layer's weights (default of `None` means use the
       type of the first input).
+    dynamic: Set this to `True` if your layer should only be run eagerly, and
+      should not be used to generate a static computation graph.
+      This would be the case for a Tree-RNN or a recursive network,
+      for example, or generally for any layer that manipulates tensors
+      using Python control flow. If `False`, we assume that the layer can
+      safely be used to generate a static computation graph.
 
   Read-only properties:
     name: The name of the layer (string).
@@ -102,7 +109,8 @@ class Layer(checkpointable.CheckpointableBase):
   """
 
   @checkpointable.no_automatic_dependency_tracking
-  def __init__(self, trainable=True, name=None, dtype=None, **kwargs):
+  def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
+               **kwargs):
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -135,8 +143,10 @@ class Layer(checkpointable.CheckpointableBase):
 
     self._init_set_name(name)
     self._activity_regularizer = kwargs.pop('activity_regularizer', None)
-    self._trainable_weights = []
-    self._non_trainable_weights = []
+    if not hasattr(self, '_trainable_weights'):
+      self._trainable_weights = []
+    if not hasattr(self, '_non_trainable_weights'):
+      self._non_trainable_weights = []
     self._updates = []
     # A list of zero-argument lambdas which return Tensors, used for variable
     # regularizers.
@@ -164,6 +174,8 @@ class Layer(checkpointable.CheckpointableBase):
                                    hasattr(self, 'compute_mask'))
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
+    if not hasattr(self, '_layers'):
+      self._layers = []  # Dependencies tracked via attribute assignment.
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -177,7 +189,7 @@ class Layer(checkpointable.CheckpointableBase):
       self._expects_training_arg = False
 
     # Whether the `call` method can be used to build a TF graph without issues.
-    self._call_is_graph_friendly = True
+    self._dynamic = dynamic
 
     # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
@@ -509,7 +521,6 @@ class Layer(checkpointable.CheckpointableBase):
     # mode when all inputs can be traced back to `keras.Input()` (when building
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
-    executing_eagerly = context.executing_eagerly()
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
@@ -517,15 +528,12 @@ class Layer(checkpointable.CheckpointableBase):
                         self._compute_previous_mask):
       previous_mask = base_layer_utils.collect_previous_mask(inputs)
       if not hasattr(self, '_call_fn_args'):
-        self._call_fn_args = self._no_dependency(
-            function_utils.fn_args(self.call))
+        self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly pass
         # to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
-
-    input_shapes = None
 
     with ops.name_scope(self._name_scope()):
       if not self.built:
@@ -543,30 +551,28 @@ class Layer(checkpointable.CheckpointableBase):
             self.input_spec, inputs, self.name)
         graph = backend.get_graph()
         with graph.as_default():
-          if not executing_eagerly:
-            # In graph mode, failure to build the layer's graph
-            # implies a user-side bug. We don't catch exceptions.
-            outputs = self.call(inputs, *args, **kwargs)
-          else:
+          if not self.dynamic:
             try:
               outputs = self.call(inputs, *args, **kwargs)
-            except Exception:  # pylint: disable=broad-except
-              # Any issue during graph-building means we will later run the
-              # model in eager mode, whether the issue was related to
-              # graph mode or not. This provides a nice debugging experience.
-              self._call_is_graph_friendly = False
-              # We will use static shape inference to return symbolic tensors
-              # matching the specifications of the layer outputs.
-              # Since we have set `self._call_is_graph_friendly = False`,
-              # we will never attempt to run the underlying TF graph (which is
-              # disconnected).
-              # TODO(fchollet): consider py_func as an alternative, which
-              # would enable us to run the underlying graph if needed.
-              input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-              output_shapes = self.compute_output_shape(input_shapes)
-              outputs = nest.map_structure(
-                  lambda shape: backend.placeholder(shape, dtype=self.dtype),
-                  output_shapes)
+            except TypeError as e:
+              messages = ['`tf.Tensor` as a Python `bool` is not allowed',
+                          'Tensor objects are only iterable when eager']
+              for msg in messages:
+                if msg in str(e):
+                  raise TypeError('You are attempting to use Python control '
+                                  'flow in a layer that was not declared to be '
+                                  'dynamic. Pass `dynamic=True` to the class '
+                                  'constructor.\nEncountered error:\n"""\n' +
+                                  str(e) + '\n"""')
+              raise e
+          else:
+            # We will use static shape inference to return symbolic tensors
+            # matching the specifications of the layer outputs.
+            # Since `self.dynamic` is True, we will never attempt to
+            # run the underlying TF graph (which is disconnected).
+            # TODO(fchollet): consider py_func as an alternative, which
+            # would enable us to run the underlying graph if needed.
+            outputs = self._symbolic_call(inputs)
 
           if outputs is None:
             raise ValueError('A layer\'s `call` method should return a '
@@ -580,7 +586,9 @@ class Layer(checkpointable.CheckpointableBase):
           if hasattr(self, '_set_inputs') and not self.inputs:
             # Subclassed network: explicitly set metadata normally set by
             # a call to self._set_inputs().
-            # This is not relevant in eager execution.
+            # TODO(b/120997007): This should be done in Eager as well, but
+            # causes garbage collection issues because of the placeholders
+            # created on the default Keras graph.
             self._set_inputs(inputs, outputs)
       else:
         # Eager execution on data tensors.
@@ -606,6 +614,10 @@ class Layer(checkpointable.CheckpointableBase):
     return self._name
 
   @property
+  def dynamic(self):
+    return self._dynamic
+
+  @property
   def activity_regularizer(self):
     """Optional regularizer function for the output of this layer."""
     return self._activity_regularizer
@@ -613,18 +625,24 @@ class Layer(checkpointable.CheckpointableBase):
   @activity_regularizer.setter
   def activity_regularizer(self, regularizer):
     """Optional regularizer function for the output of this layer."""
-    self._activity_regularizer = self._no_dependency(regularizer)
+    self._activity_regularizer = regularizer
 
   @property
   def trainable_weights(self):
-    return self._trainable_weights if self.trainable else []
+    if self.trainable:
+      nested = self._gather_children_attribute('trainable_weights')
+      return self._trainable_weights + nested
+    else:
+      return []
 
   @property
   def non_trainable_weights(self):
     if self.trainable:
-      return self._non_trainable_weights
+      nested = self._gather_children_attribute('non_trainable_weights')
+      return self._non_trainable_weights + nested
     else:
-      return self._trainable_weights + self._non_trainable_weights
+      nested = self._gather_children_attribute('weights')
+      return self._trainable_weights + self._non_trainable_weights + nested
 
   @property
   def weights(self):
@@ -639,7 +657,7 @@ class Layer(checkpointable.CheckpointableBase):
   def updates(self):
     if not self.trainable and not self.stateful:
       return []
-    return self._updates
+    return self._updates + self._gather_children_attribute('updates')
 
   @property
   def losses(self):
@@ -661,7 +679,7 @@ class Layer(checkpointable.CheckpointableBase):
       loss_tensor = regularizer()
       if loss_tensor is not None:
         collected_losses.append(loss_tensor)
-    return collected_losses
+    return collected_losses + self._gather_children_attribute('losses')
 
   @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
@@ -1109,14 +1127,7 @@ class Layer(checkpointable.CheckpointableBase):
     all_input_shapes = set(
         [str(node.input_shapes) for node in self._inbound_nodes])
     if len(all_input_shapes) == 1:
-      input_shapes = self._inbound_nodes[0].input_shapes
-      if len(input_shapes) == 1:
-        return tuple(tensor_shape.TensorShape(input_shapes[0]).as_list())
-      else:
-        return [
-            tuple(tensor_shape.TensorShape(shape).as_list())
-            for shape in input_shapes
-        ]
+      return self._inbound_nodes[0].input_shapes
     else:
       raise AttributeError('The layer "' + str(self.name) +
                            ' has multiple inbound nodes, '
@@ -1167,14 +1178,7 @@ class Layer(checkpointable.CheckpointableBase):
     all_output_shapes = set(
         [str(node.output_shapes) for node in self._inbound_nodes])
     if len(all_output_shapes) == 1:
-      output_shapes = self._inbound_nodes[0].output_shapes
-      if len(output_shapes) == 1:
-        return tuple(tensor_shape.TensorShape(output_shapes[0]).as_list())
-      else:
-        return [
-            tuple(tensor_shape.TensorShape(shape).as_list())
-            for shape in output_shapes
-        ]
+      return self._inbound_nodes[0].output_shapes
     else:
       raise AttributeError('The layer "%s"'
                            ' has multiple inbound nodes, '
@@ -1385,16 +1389,14 @@ class Layer(checkpointable.CheckpointableBase):
     # If the layer returns tensors from its inputs, unmodified,
     # we copy them to avoid loss of tensor metadata.
     output_ls = nest.flatten(outputs)
+    inputs_ls = nest.flatten(inputs)
     output_ls_copy = []
     for x in output_ls:
-      if x in nest.flatten(inputs):
+      if x in inputs_ls:
         with ops.name_scope(self.name):
           x = array_ops.identity(x)
       output_ls_copy.append(x)
-    if len(output_ls_copy) == 1:
-      outputs = output_ls_copy[0]
-    else:
-      outputs = output_ls_copy
+    outputs = nest.pack_sequence_as(outputs, output_ls_copy)
 
     inputs, kwargs = self._inputs_from_call_args(
         call_args=(inputs,) + args, call_kwargs=kwargs)
@@ -1488,19 +1490,12 @@ class Layer(checkpointable.CheckpointableBase):
         arguments: dictionary of keyword arguments that were passed to the
             `call` method of the layer at the call that created the node.
     """
-    input_tensors = nest.flatten(input_tensors)
-    output_tensors = nest.flatten(output_tensors)
-
-    # Collect input tensor(s) coordinates.
-    inbound_layers = []
-    node_indices = []
-    tensor_indices = []
-    for x in input_tensors:
-      assert hasattr(x, '_keras_history')
-      inbound_layer, node_index, tensor_index = x._keras_history  # pylint: disable=protected-access
-      inbound_layers.append(inbound_layer)
-      node_indices.append(node_index)
-      tensor_indices.append(tensor_index)
+    inbound_layers = nest.map_structure(lambda t: t._keras_history[0],
+                                        input_tensors)
+    node_indices = nest.map_structure(lambda t: t._keras_history[1],
+                                      input_tensors)
+    tensor_indices = nest.map_structure(lambda t: t._keras_history[2],
+                                        input_tensors)
 
     # Create node, add it to inbound nodes.
     Node(
@@ -1513,13 +1508,15 @@ class Layer(checkpointable.CheckpointableBase):
         arguments=arguments)
 
     # Update tensor history metadata.
-    for i in range(len(output_tensors)):
-      # The metadata attribute consists of 1) a layer instance
-      # 2) a node index for the layer, 3) a tensor index for the node.
-      # The allows layer reuse (multiple nodes per layer) and multi-output
-      # or multi-input layers (e.g. a layer can return multiple tensors,
-      # and each can be sent to a different layer).
-      output_tensors[i]._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
+    # The metadata attribute consists of
+    # 1) a layer instance
+    # 2) a node index for the layer
+    # 3) a tensor index for the node.
+    # The allows layer reuse (multiple nodes per layer) and multi-output
+    # or multi-input layers (e.g. a layer can return multiple tensors,
+    # and each can be sent to a different layer).
+    for i, tensor in enumerate(nest.flatten(output_tensors)):
+      tensor._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
 
   def _get_node_attribute_at_index(self, node_index, attr, attr_name):
     """Private utility to retrieves an attribute (e.g. inputs) from a node.
@@ -1552,27 +1549,10 @@ class Layer(checkpointable.CheckpointableBase):
                        str(node_index) + ', but the layer has only ' +
                        str(len(self._inbound_nodes)) + ' inbound nodes.')
     values = getattr(self._inbound_nodes[node_index], attr)
-    if len(values) == 1:
+    if isinstance(values, list) and len(values) == 1:
       return values[0]
     else:
       return values
-
-  @property
-  def _static_graph_friendly(self):
-    """Whether the layer can be called to create a static graph.
-
-    Because of nesting, there are two components to being "graph-friendly":
-      1) all inner layers are graph-friendly
-      2) the way they are composed is graph-friendly.
-    We denote the latter as "_call_is_graph_friendly", and define
-    "_static_graph_friendly" as being the combination of
-    "_call_is_graph_friendly" and "all inner layers are _static_graph_friendly".
-    For atomic layers (no inner layers), this is just "_call_is_graph_friendly".
-
-    Returns:
-      Boolean.
-    """
-    return self._call_is_graph_friendly
 
   def _maybe_build(self, inputs):
     # Check input assumptions set before layer building, e.g. input rank.
@@ -1590,6 +1570,63 @@ class Layer(checkpointable.CheckpointableBase):
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
       self.build(input_shapes)
+
+  def _symbolic_call(self, inputs):
+    input_shapes = nest.map_structure(lambda x: x.shape, inputs)
+    output_shapes = self.compute_output_shape(input_shapes)
+    return nest.map_structure(
+        lambda shape: backend.placeholder(shape, dtype=self.dtype),
+        output_shapes)
+
+  def __setattr__(self, name, value):
+    if (not getattr(self, '_setattr_tracking', True) or
+        getattr(self, '_is_graph_network', False)):
+      super(Layer, self).__setattr__(name, value)
+      return
+
+    # Append value to self._layers if relevant
+    if (isinstance(value, Layer) or
+        checkpointable_layer_utils.has_weights(value)):
+      # Initialize `_layers` here in case `__init__` has not yet been called.
+      if not hasattr(self, '_layers'):
+        self._layers = []
+      # We need to check object identity to avoid de-duplicating empty
+      # container types which compare equal.
+      if not any((layer is value for layer in self._layers)):
+        self._layers.append(value)
+        if hasattr(value, '_use_resource_variables'):
+          # Legacy layers (V1 tf.layers) must always use
+          # resource variables.
+          value._use_resource_variables = True
+
+    # Append value to list of trainable / non-trainable weights if relevant
+    if isinstance(value, tf_variables.Variable):
+      # Users may add extra weights/variables
+      # simply by assigning them to attributes (invalid for graph networks)
+      if not hasattr(self, '_trainable_weights'):
+        self._trainable_weights = []
+      if not hasattr(self, '_non_trainable_weights'):
+        self._non_trainable_weights = []
+      if value not in self._trainable_weights + self._non_trainable_weights:
+        if value.trainable:
+          self._trainable_weights.append(value)
+        else:
+          self._non_trainable_weights.append(value)
+    super(Layer, self).__setattr__(name, value)
+
+  def _gather_children_attribute(self, attribute):
+    assert attribute in {'weights', 'trainable_weights',
+                         'non_trainable_weights', 'updates', 'losses'}
+    if hasattr(self, '_layers'):
+      return list(itertools.chain.from_iterable(
+          getattr(layer, attribute) for layer in self._layers))
+    return []
+
+  # This is a hack so that the is_layer (within
+  # training/checkpointable/layer_utils.py) check doesn't get the weights attr.
+  # TODO(b/110718070): Remove when fixed.
+  def _is_layer(self):
+    return True
 
 
 class Node(object):
@@ -1639,12 +1676,13 @@ class Node(object):
                input_tensors,
                output_tensors,
                arguments=None):
-    # Layer instance (NOT a list).
-    if isinstance(outbound_layer, list):
-      raise ValueError(
-          '`outbound_layer` should be a layer instance, not a list.')
-    # this is the layer that takes a list of input tensors
-    # and turns them into a list of output tensors.
+    # Layer instance (NOT a sequence)
+    if isinstance(outbound_layer, (list, tuple, dict)):
+      raise ValueError('`outbound_layer` should be a layer instance, '
+                       'not a list, tuple, or, dict.')
+
+    # this is the layer that takes a nested structure of input tensors
+    # and turns them into a nested structure of output tensors.
     # the current node will be added to
     # the inbound_nodes of outbound_layer.
     self.outbound_layer = outbound_layer
@@ -1654,33 +1692,33 @@ class Node(object):
     # and for each layer, which node and which
     # tensor output of each node.
 
-    # List of layer instances.
+    # Nested structure of layer instances.
     self.inbound_layers = inbound_layers
-    # List of integers, 1:1 mapping with inbound_layers.
+    # Nested structure of integers, 1:1 mapping with inbound_layers.
     self.node_indices = node_indices
-    # List of integers, 1:1 mapping with inbound_layers.
+    # Nested of integers, 1:1 mapping with inbound_layers.
     self.tensor_indices = tensor_indices
 
     # Following 2 properties:
     # tensor inputs and outputs of outbound_layer.
 
-    # List of tensors. 1:1 mapping with inbound_layers.
+    # Nested structure of tensors. 1:1 mapping with inbound_layers.
     self.input_tensors = input_tensors
-    # List of tensors, created by outbound_layer.call().
+    # Nested structure of tensors, created by outbound_layer.call().
     self.output_tensors = output_tensors
 
     # Following 2 properties: input and output shapes.
 
-    # List of shape tuples, shapes of input_tensors.
-    self.input_shapes = [backend.int_shape(x) for x in input_tensors]
-    # List of shape tuples, shapes of output_tensors.
-    self.output_shapes = [backend.int_shape(x) for x in output_tensors]
+    # Nested structure of shape tuples, shapes of input_tensors.
+    self.input_shapes = nest.map_structure(backend.int_shape, input_tensors)
+    # Nested structure of shape tuples, shapes of output_tensors.
+    self.output_shapes = nest.map_structure(backend.int_shape, output_tensors)
 
     # Optional keyword arguments to layer's `call`.
     self.arguments = arguments
 
     # Add nodes to all layers involved.
-    for layer in inbound_layers:
+    for layer in nest.flatten(inbound_layers):
       if layer is not None:
         # For compatibility with external Keras, we use the deprecated
         # accessor here.
@@ -1689,13 +1727,19 @@ class Node(object):
     # accessor here.
     outbound_layer.inbound_nodes.append(self)
 
+  def iterate_inbound(self):
+    """Returns a list of tuples representing the inbound data.
+
+    Returns:
+      List of tuples like: (inbound_layer, node_index, tensor_index, tensor).
+    """
+    return zip(
+        nest.flatten(self.inbound_layers), nest.flatten(self.node_indices),
+        nest.flatten(self.tensor_indices), nest.flatten(self.input_tensors))
+
   def get_config(self):
-    inbound_names = []
-    for layer in self.inbound_layers:
-      if layer:
-        inbound_names.append(layer.name)
-      else:
-        inbound_names.append(None)
+    inbound_names = nest.map_structure(
+        lambda layer: layer.name if layer else None, self.inbound_layers)
     return {
         'outbound_layer': self.outbound_layer.name,
         'inbound_layers': inbound_names,

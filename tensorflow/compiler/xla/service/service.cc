@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
@@ -113,6 +114,16 @@ int ServiceOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
 }
 
+ServiceOptions& ServiceOptions::set_allowed_devices(
+    const absl::optional<std::set<int>>& allowed_devices) {
+  allowed_devices_ = allowed_devices;
+  return *this;
+}
+
+const absl::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
+  return allowed_devices_;
+}
+
 /* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
     se::Platform* platform) {
   ServiceOptions default_options;
@@ -129,6 +140,7 @@ int ServiceOptions::intra_op_parallelism_threads() const {
   }
   BackendOptions backend_options;
   backend_options.set_platform(platform);
+  backend_options.set_allowed_devices(options.allowed_devices());
   TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
 
   std::unique_ptr<Service> service(
@@ -150,17 +162,13 @@ Service::Service(const ServiceOptions& options,
     LOG(INFO) << StrFormat(
         "XLA service %p executing computations on platform %s. Devices:", this,
         execute_backend_->platform()->Name());
+    auto stream_executors = execute_backend_->stream_executors();
     for (int i = 0; i < execute_backend_->device_count(); ++i) {
-      if (execute_backend_->device_ordinal_supported(i)) {
-        se::StreamExecutor* executor =
-            execute_backend_->stream_executor(i).ValueOrDie();
-        const auto& description = executor->GetDeviceDescription();
-        LOG(INFO) << StrFormat("  StreamExecutor device (%d): %s, %s", i,
-                               description.name(),
-                               description.platform_version());
-      } else {
-        LOG(INFO) << StrFormat("  StreamExecutor device (%d) not supported", i);
-      }
+      se::StreamExecutor* executor = stream_executors.at(i);
+      const auto& description = executor->GetDeviceDescription();
+      LOG(INFO) << StrFormat("  StreamExecutor device (%d): %s, %s", i,
+                             description.name(),
+                             description.platform_version());
     }
   } else {
     VLOG(1) << "XLA compile-only service constructed";
@@ -545,9 +553,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
-    run_options.emplace_back(
-        options, backend->StreamBorrower(),
-        /*xla_intra_op_thread_pool=*/backend->eigen_intra_op_thread_pool());
+    run_options.emplace_back(options, backend->StreamBorrower());
   }
 
   if (options_.number_of_replicas() == 1) {
@@ -1078,9 +1084,11 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
 
   ProgramShape program_shape(arg->computation().host_program_shape());
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
+  absl::optional<Layout> output_layout;
   if (arg->has_output_layout()) {
+    output_layout = Layout::CreateFromProto(arg->output_layout());
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
-        arg->output_layout(), program_shape.result()));
+        *output_layout, program_shape.result()));
   }
 
   HloModuleConfig config(program_shape);
@@ -1088,16 +1096,19 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       CreateModuleFromProto(arg->computation(), config));
 
+  TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
+                      DynamicDimensionInference::Run(module.get()));
+
   HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate<Literal>(
-                                               *module, /*arg_literals=*/{}));
+  evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
+  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
 
   // Since the result layout is non-effective to the Evaluator results, explicit
   // relayout here.
   //
   // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
-  if (arg->has_output_layout()) {
-    result_literal = result_literal.Relayout(arg->output_layout());
+  if (output_layout.has_value()) {
+    result_literal = result_literal.Relayout(*output_layout);
   }
   *result->mutable_literal() = result_literal.ToProto();
 

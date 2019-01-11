@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -33,7 +34,7 @@ bool IsAllowed(char character) {
 }  // namespace
 
 NameUniquer::NameUniquer(const string& separator) {
-  CHECK(std::all_of(separator.begin(), separator.end(), IsAllowed))
+  CHECK(absl::c_all_of(separator, IsAllowed))
       << "separator should comprises allowed characters only";
   separator_ = separator;
 }
@@ -42,6 +43,7 @@ NameUniquer::NameUniquer(const string& separator) {
   if (name.empty()) {
     return "";
   }
+
   string result = name;
   char c = static_cast<unsigned char>(result[0]);
   if (!isalpha(c) && c != '_') {
@@ -51,6 +53,13 @@ NameUniquer::NameUniquer(const string& separator) {
     if (!IsAllowed(result[i])) {
       result[i] = '_';
     }
+  }
+
+  // HLO primitive type names (with the exception of 'tuple') are keywords in
+  // the HLO text representation and cannot be names, so append an underscore if
+  // the name is a primitive type.
+  if (primitive_util::IsPrimitiveTypeName(result) && result != "tuple") {
+    result += "_";
   }
   return result;
 }

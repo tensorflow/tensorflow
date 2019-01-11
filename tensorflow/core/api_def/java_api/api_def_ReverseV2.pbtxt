@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ReverseV2"
+  endpoint {
+    name: "Reverse"
+  }
+}

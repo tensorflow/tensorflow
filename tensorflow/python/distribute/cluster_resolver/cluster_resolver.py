@@ -22,6 +22,8 @@ import abc
 
 import six
 
+from tensorflow.python.client import session
+from tensorflow.python.framework import ops
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
@@ -30,6 +32,14 @@ def format_master_url(master, rpc_layer=None):
     return '%s://%s' % (rpc_layer, master)
   else:
     return master
+
+
+def get_accelerator_devices(master, config_proto):
+  # TODO(frankchn): Add support for eager mode as well as graph mode.
+  with ops.Graph().as_default():
+    with session.Session(master, config=config_proto) as s:
+      devices = s.list_devices()
+  return devices
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -91,7 +101,6 @@ class ClusterResolver(object):
     """
     raise NotImplementedError()
 
-  @abc.abstractmethod
   def num_accelerators(self,
                        task_type=None,
                        task_index=None,
@@ -119,7 +128,9 @@ class ClusterResolver(object):
       config_proto: (Optional) Configuration for starting a new session to
         query how many accelerator cores it has.
     """
-    raise NotImplementedError()
+    master = self.master(task_type, task_index)
+    devices = get_accelerator_devices(master, config_proto)
+    return sum(1 for d in devices if d.device_type == accelerator_type)
 
   @abc.abstractproperty
   def environment(self):

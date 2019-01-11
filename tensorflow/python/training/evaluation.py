@@ -253,7 +253,7 @@ def _evaluate_once(checkpoint_path,
       if isinstance(h, (_StopAfterNEvalsHook, _MultiStepStopAfterNEvalsHook)):
         h._set_evals_completed_tensor(eval_step_value)  # pylint: disable=protected-access
 
-  logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
+  logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%dT%H:%M:%SZ',
                                                          time.gmtime()))
 
   # Prepare the session creator.

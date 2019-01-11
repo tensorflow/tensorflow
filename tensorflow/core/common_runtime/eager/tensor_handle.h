@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -101,6 +100,8 @@ class TensorHandle : public core::RefCounted {
   }
 
   Status Tensor(const tensorflow::Tensor** t);
+
+  Status TensorValue(tensorflow::TensorValue* t);
 
   tensorflow::Device* device() const { return device_; }
 

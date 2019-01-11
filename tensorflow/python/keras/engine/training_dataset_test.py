@@ -23,9 +23,9 @@ import logging
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
@@ -90,37 +90,14 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
                 epochs=1, steps_per_epoch=2, verbose=0)
 
     with self.assertRaisesRegexp(
-        ValueError, 'you should specify the `steps_per_epoch` argument'):
+        ValueError, 'the `steps_per_epoch` argument'):
       model.fit(iterator, epochs=1, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.evaluate(iterator, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.predict(iterator, verbose=0)
-
-  @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
-  def test_get_next_op_created_once(self):
-    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
-    loss = 'mse'
-    metrics = ['mae']
-    model.compile(optimizer, loss, metrics=metrics,
-                  run_eagerly=testing_utils.should_run_eagerly())
-
-    inputs = np.zeros((10, 3), np.float32)
-    targets = np.zeros((10, 4), np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.repeat(100)
-    dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-
-    model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
-    # Finalize graph to make sure we are not appending another iterator
-    # get_next op in the graph.
-    ops.get_default_graph().finalize()
-    model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -172,9 +149,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     # Call fit with validation data
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
               validation_data=dataset, validation_steps=2)
-    # Finalize the graph to make sure new ops aren't added when calling on the
-    # same dataset
-    ops.get_default_graph().finalize()
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
               validation_data=dataset, validation_steps=2)
 
@@ -191,7 +165,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     inputs = np.zeros((10, 3), np.float32)
     targets = np.zeros((10, 4), np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.repeat(100)
+    dataset = dataset.repeat()  # Infinite dataset.
     dataset = dataset.batch(10)
 
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
@@ -223,19 +197,34 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
           sample_weight=sample_weight)
 
     # Test invalid usage
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.fit(dataset, batch_size=10, epochs=1, steps_per_epoch=2,
+                verbose=0)
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.predict(dataset, batch_size=10, steps=2, verbose=0)
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.evaluate(dataset, batch_size=10, steps=2, verbose=0)
+
     with self.assertRaisesRegexp(ValueError,
                                  'you should not specify a target'):
       model.fit(dataset, dataset,
                 epochs=1, steps_per_epoch=2, verbose=0)
 
+    # With an infinite dataset, `steps_per_epoch`/`steps` argument is required.
     with self.assertRaisesRegexp(
-        ValueError, 'you should specify the `steps_per_epoch` argument'):
+        ValueError, 'the `steps_per_epoch` argument'):
       model.fit(dataset, epochs=1, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.evaluate(dataset, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.predict(dataset, verbose=0)
 
   @keras_parameterized.run_with_all_model_types
@@ -278,6 +267,34 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_dataset_fit_correctness(self):
+
+    class SumLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.w = self.add_weight('w', ())
+
+      def call(self, inputs):
+        return keras.backend.sum(inputs) + self.w * 0
+
+    model = keras.Sequential([SumLayer(input_shape=(2,))])
+    model.compile(RMSPropOptimizer(learning_rate=0.001),
+                  loss='mae',
+                  run_eagerly=testing_utils.should_run_eagerly())
+
+    inputs = np.zeros((40, 2), dtype=np.float32)
+    inputs[10:20, :] = 2
+    inputs[20:30, :] = 1
+    inputs[30:, :] = 4
+    targets = np.zeros((40, 1), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.batch(10)
+    history = model.fit(dataset,
+                        epochs=2, steps_per_epoch=2, verbose=1, shuffle=False)
+    self.assertListEqual(history.history['loss'],
+                         [inputs[:20].sum() / 2, inputs[20:].sum() / 2])
+
   @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
     with self.cached_session():
@@ -306,6 +323,46 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
       with self.assertRaisesRegexp(ValueError,
                                    r'expected (.*?) to have shape \(3,\)'):
         model.train_on_batch(dataset)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_finite_dataset_known_cardinality_no_steps_arg(self):
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    model.compile(optimizer, 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+
+    inputs = np.zeros((100, 3), dtype=np.float32)
+    targets = np.random.randint(0, 4, size=100, dtype=np.int32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.batch(10)
+
+    history = model.fit(dataset, epochs=2, verbose=1)
+    self.assertEqual(len(history.history['loss']), 2)
+    model.evaluate(dataset)
+    out = model.predict(dataset)
+    self.assertEqual(out.shape[0], 100)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_finite_dataset_unknown_cardinality_no_steps_arg(self):
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    model.compile(optimizer, 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+
+    inputs = np.zeros((100, 3), dtype=np.float32)
+    targets = np.random.randint(0, 4, size=100, dtype=np.int32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.filter(lambda x, y: True).batch(10)
+    self.assertEqual(keras.backend.get_value(cardinality.cardinality(dataset)),
+                     cardinality.UNKNOWN)
+
+    history = model.fit(dataset, epochs=2, verbose=1)
+    self.assertEqual(len(history.history['loss']), 2)
+    model.evaluate(dataset)
+    out = model.predict(dataset)
+    self.assertEqual(out.shape[0], 100)
 
 
 class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):

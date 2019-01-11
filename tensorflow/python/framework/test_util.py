@@ -67,16 +67,14 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import script_ops
-from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -375,7 +373,7 @@ def skip_if(condition):
       else:
         skip = condition
       if not skip:
-        fn(*args, **kwargs)
+        return fn(*args, **kwargs)
 
     return wrapper
 
@@ -409,42 +407,12 @@ def enable_control_flow_v2(fn):
   """
 
   def wrapper(*args, **kwargs):
-    enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
-    enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
-    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-    control_flow_ops.ENABLE_COND_V2 = True
-    control_flow_ops.ENABLE_WHILE_V2 = True
-    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
+    enable_control_flow_v2_old = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
     try:
-      fn(*args, **kwargs)
+      return fn(*args, **kwargs)
     finally:
-      control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
-      control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
-
-  return wrapper
-
-
-def enable_tensor_array_v2(fn):
-  """Decorator for enabling _GraphTensorArrayV2 on a test.
-
-  Note this enables _GraphTensorArrayV2 after running the test class's
-  setup/teardown methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  def wrapper(*args, **kwargs):
-    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
-    try:
-      fn(*args, **kwargs)
-    finally:
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
+      control_flow_util.ENABLE_CONTROL_FLOW_V2 = enable_control_flow_v2_old
 
   return wrapper
 
@@ -493,7 +461,7 @@ def with_control_flow_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
+  if control_flow_util.ENABLE_CONTROL_FLOW_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
@@ -626,9 +594,9 @@ def assert_no_new_tensors(f):
       ops.get_default_graph()._graph_key = outside_graph_key
       if outside_executed_eagerly:
         with context.eager_mode():
-          f(self, **kwargs)
+          result = f(self, **kwargs)
       else:
-        f(self, **kwargs)
+        result = f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
     context.context()._clear_caches()  # pylint: disable=protected-access
@@ -642,6 +610,7 @@ def assert_no_new_tensors(f):
           len(tensors_after),
           str(tensors_after),
       )))
+    return result
 
   return decorator
 
@@ -766,14 +735,14 @@ def assert_no_garbage_created(f):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
     # Force-load `distribution_strategy_context` to prevent GC at
     # test time when using eager. Remove once b/117329403 is resolved.
-    tape.distribution_strategy_context.get_distribution_strategy()
+    tape.distribution_strategy_context.get_strategy()
 
     gc.disable()
     previous_debug_flags = gc.get_debug()
     gc.set_debug(gc.DEBUG_SAVEALL)
     gc.collect()
     previous_garbage = len(gc.garbage)
-    f(self, **kwargs)
+    result = f(self, **kwargs)
     gc.collect()
     new_garbage = len(gc.garbage)
     if new_garbage > previous_garbage:
@@ -818,6 +787,7 @@ def assert_no_garbage_created(f):
     # not hold on to every object in other tests.
     gc.set_debug(previous_debug_flags)
     gc.enable()
+    return result
 
   return decorator
 
@@ -938,6 +908,10 @@ def run_in_graph_and_eager_modes(func=None,
   eager execution enabled as it does when constructing a TensorFlow graph and
   executing the `z` tensor in a session.
 
+  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
+  `run_in_graph_and_eager_modes` are available decorators for different
+  v1/v2/eager/graph combinations.
+
 
   Args:
     func: function to be annotated. If `func` is None, this method returns a
@@ -1054,23 +1028,29 @@ def also_run_as_tf_function(f):
   """
 
   def decorated(*args, **kwds):
+    def bound_f():
+      f(*args, **kwds)
     with context.eager_mode():
       # Running in eager mode
-      f(*args, **kwds)
-
-      defun_f = def_function.function(f)
-      defun_f(*args, **kwds)
+      bound_f()
+      # Running as TF function
+      # TODO(b/121143941): Remove the autograph override.
+      def_function.function(bound_f, autograph=False)()
 
   return decorated
 
 
-def run_deprecated_v1(func=None):
+def deprecated_graph_mode_only(func=None):
   """Execute the decorated test in graph mode.
 
-  This function returns a decorator intended to be applied to tests that have
-  not been updated to a style that is compatible with both TensorFlow 1.x and
-  2.x. When this decorated is applied, the test body will be run in
-  an environment where API calls construct graphs instead of executing eagerly.
+  This function returns a decorator intended to be applied to tests that are not
+  compatible with eager mode. When this decorator is applied, the test body will
+  be run in an environment where API calls construct graphs instead of executing
+  eagerly.
+
+  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
+  `run_in_graph_and_eager_modes` are available decorators for different
+  v1/v2/eager/graph combinations.
 
   Args:
     func: function to be annotated. If `func` is None, this method returns a
@@ -1082,14 +1062,23 @@ def run_deprecated_v1(func=None):
 
   def decorator(f):
     if tf_inspect.isclass(f):
-      raise ValueError("`run_deprecated_v1` only supports test methods.")
+      setup = f.__dict__.get("setUp")
+      if setup is not None:
+        setattr(f, "setUp", decorator(setup))
+
+      for name, value in f.__dict__.copy().items():
+        if (callable(value) and
+            name.startswith(unittest.TestLoader.testMethodPrefix)):
+          setattr(f, name, decorator(value))
+
+      return f
 
     def decorated(self, *args, **kwargs):
       if tf2.enabled():
         with context.graph_mode():
-          f(self, *args, **kwargs)
+          return f(self, *args, **kwargs)
       else:
-        f(self, *args, **kwargs)
+        return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1099,11 +1088,18 @@ def run_deprecated_v1(func=None):
   return decorator
 
 
+run_deprecated_v1 = deprecated_graph_mode_only
+
+
 def run_v1_only(reason, func=None):
   """Execute the decorated test only if running in v1 mode.
 
   This function is intended to be applied to tests that exercise v1 only
   functionality. If the test is run in v2 mode it will simply be skipped.
+
+  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
+  `run_in_graph_and_eager_modes` are available decorators for different
+  v1/v2/eager/graph combinations.
 
   Args:
     reason: string giving a reason for limiting the test to v1 only.
@@ -1132,7 +1128,7 @@ def run_v1_only(reason, func=None):
       if tf2.enabled():
         self.skipTest(reason)
 
-      f(self, *args, **kwargs)
+      return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1147,6 +1143,10 @@ def run_v2_only(func=None):
 
   This function is intended to be applied to tests that exercise v2 only
   functionality. If the test is run in v1 mode it will simply be skipped.
+
+  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
+  `run_in_graph_and_eager_modes` are available decorators for different
+  v1/v2/eager/graph combinations.
 
   Args:
     func: function to be annotated. If `func` is None, this method returns a
@@ -1165,7 +1165,7 @@ def run_v2_only(func=None):
       if not tf2.enabled():
         self.skipTest("Test is only comptaible in v2")
 
-      f(self, *args, **kwargs)
+      return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1198,7 +1198,7 @@ def run_gpu_only(func=None):
       if not is_gpu_available():
         self.skipTest("Test requires GPU")
 
-      f(self, *args, **kwargs)
+      return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1231,7 +1231,7 @@ def run_cuda_only(func=None):
       if not is_gpu_available(cuda_only=True):
         self.skipTest("Test requires CUDA GPU")
 
-      f(self, *args, **kwargs)
+      return f(self, *args, **kwargs)
 
     return decorated
 
@@ -1897,7 +1897,7 @@ class TensorFlowTestCase(googletest.TestCase):
     # If a is a tensor then convert it to ndarray
     if isinstance(a, ops.Tensor):
       if isinstance(a, ops._EagerTensorBase):
-        return a.numpy()
+        a = a.numpy()
       else:
         a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
@@ -2620,42 +2620,3 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
-
-
-def dismantle_func_graph(func_graph):
-  """Removes reference cycles in `func_graph` FuncGraph.
-
-  Helpful for making sure the garbage collector doesn't need to run when
-  the FuncGraph goes out of scope, e.g. in tests using defun with
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
-
-  Args:
-    func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable
-      after this function.
-  """
-  # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
-  # Clearing captures using clear() leaves some cycles around.
-  while func_graph.captures:
-    func_graph.captures.popitem()
-  memory.dismantle_ordered_dict(func_graph.captures)
-  ops.dismantle_graph(func_graph)
-
-
-def dismantle_polymorphic_function(func):
-  """Removes reference cycles in PolymorphicFunction `func`.
-
-  Helpful for making sure the garbage collector doesn't need to run when
-  PolymorphicFunction goes out of scope, e.g. in tests using defun with
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
-
-  Args:
-    func: A `PolymorphicFunction` object to destroy. `func` is unusable
-      after this function.
-  """
-  # TODO(b/115366440): Delete this method when a custom OrderedDict is added
-  cache = func._function_cache  # pylint: disable=protected-access
-  for concrete_func in cache.values():
-    dismantle_func_graph(concrete_func.graph)
-  while cache:
-    cache.popitem()
-  memory.dismantle_ordered_dict(cache)

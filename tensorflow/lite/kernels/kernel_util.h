@@ -104,6 +104,9 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
 void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
                                    TfLiteTensor* output, int32_t* act_min,
                                    int32_t* act_max);
+void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
+                                  TfLiteTensor* output, int32_t* act_min,
+                                  int32_t* act_max);
 // Calculates the useful range of an activation layer given its activation
 // tensor.a
 template <typename T>

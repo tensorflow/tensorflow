@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -58,22 +59,15 @@ struct DupRecvKey {
   int src_output_slot;       // Edge's src node output slot
   GraphDef* dst_graph;       // Edge's dst node is in this subgraph
   bool recv_output_on_host;  // The output of recv is on host
-};
 
-struct DupRecvKeyHash {
-  size_t operator()(const DupRecvKey& k) const {
-    size_t h = Hash64(reinterpret_cast<const char*>(&k.src_node_id),
-                      sizeof(k.src_node_id), k.src_output_slot);
-    h = Hash64(reinterpret_cast<const char*>(&k.dst_graph), sizeof(k.dst_graph),
-               h);
-    h = Hash64(reinterpret_cast<const char*>(&k.recv_output_on_host),
-               sizeof(k.recv_output_on_host), h);
-    return h;
+  template <typename H>
+  friend H AbslHashValue(H h, const DupRecvKey& c) {
+    return H::combine(std::move(h), c.src_node_id, c.src_output_slot,
+                      reinterpret_cast<std::uintptr_t>(c.dst_graph),
+                      c.recv_output_on_host);
   }
-};
 
-struct DupRecvKeyEq {
-  bool operator()(const DupRecvKey& x, const DupRecvKey& y) const {
+  friend bool operator==(const DupRecvKey& x, const DupRecvKey& y) {
     return (x.src_node_id == y.src_node_id) &&
            (x.src_output_slot == y.src_output_slot) &&
            (x.dst_graph == y.dst_graph) &&
@@ -88,19 +82,26 @@ struct RecvInfo {
   int64 start_time;
 };
 
-typedef std::unordered_map<DupRecvKey, RecvInfo, DupRecvKeyHash, DupRecvKeyEq>
-    DupRecvTable;
+typedef absl::flat_hash_map<DupRecvKey, RecvInfo> DupRecvTable;
 
-struct PairIntHash {
- public:
-  std::size_t operator()(const std::pair<int, int>& x) const {
-    return std::hash<int>()(x.first) ^ std::hash<int>()(x.second);
-  }
-};
 // A map used to store memory types for the inputs/outputs of every node.
 // The key is a pair of ints consisting of a node id and input/output index.
-typedef std::unordered_map<std::pair<int, int>, MemoryType, PairIntHash>
-    MemoryTypeMap;
+// TODO(power): migrate back to std::pair when absl::Hash is fixed for MSVC.
+struct NodePort {
+  int node_id;
+  int index;
+
+  friend bool operator==(const NodePort& x, const NodePort& y) {
+    return x.node_id == y.node_id && x.index == y.index;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const NodePort& c) {
+    return H::combine(std::move(h), c.node_id, c.index);
+  }
+};
+
+typedef absl::flat_hash_map<NodePort, MemoryType> MemoryTypeMap;
 
 // We collect the following information about the graph before performing
 // graph partitioning.
@@ -209,7 +210,8 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
   // NOTE(yuanbyu): Only cast for cross-device send/recv.
   if (dtype != cast_dtype && !NeedSameDeviceSendRecv(edge, g_info)) {
     const string cast_op = (host_memory) ? "_HostCast" : "Cast";
-    NodeDefBuilder cast_builder(opts.new_name(src->name()), cast_op);
+    NodeDefBuilder cast_builder(opts.new_name(src->name()), cast_op,
+                                NodeDebugInfo(*src));
     cast_builder.Device(src->assigned_device_name()).Input(send_from);
     if (opts.scheduling_for_recvs) {
       cast_builder.Attr("_start_time", start_time);
@@ -233,7 +235,8 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
 
   // Add the send node.
   const string send_op = (host_memory) ? "_HostSend" : "_Send";
-  NodeDefBuilder send_builder(opts.new_name(src->name()), send_op);
+  NodeDefBuilder send_builder(opts.new_name(src->name()), send_op,
+                              NodeDebugInfo(*src));
   SetSendRecvAttrs(opts, edge, &send_builder);
   send_builder.Device(src->assigned_device_name()).Input(send_from);
   if (opts.scheduling_for_recvs) {
@@ -268,7 +271,8 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
 
   // Add the recv node.
   const string recv_op = (host_memory) ? "_HostRecv" : "_Recv";
-  NodeDefBuilder recv_builder(opts.new_name(src->name()), recv_op);
+  NodeDefBuilder recv_builder(opts.new_name(src->name()), recv_op,
+                              NodeDebugInfo(*src));
   SetSendRecvAttrs(opts, edge, &recv_builder);
   recv_builder.Device(dst->assigned_device_name())
       .Attr("tensor_type", cast_dtype);
@@ -280,7 +284,8 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
   // Add the cast node (from cast_dtype to dtype) or an Identity node.
   if (dtype != cast_dtype) {
     const string cast_op = (host_memory) ? "_HostCast" : "Cast";
-    NodeDefBuilder cast_builder(opts.new_name(src->name()), cast_op);
+    NodeDefBuilder cast_builder(opts.new_name(src->name()), cast_op,
+                                NodeDebugInfo(*src));
     cast_builder.Attr("DstT", dtype);
     cast_builder.Device(dst->assigned_device_name())
         .Input(recv->name(), 0, cast_dtype);
@@ -290,7 +295,8 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
     return cast;
   } else if (edge->IsControlEdge()) {
     // An Identity is only needed for control edges.
-    NodeDefBuilder id_builder(opts.new_name(src->name()), "Identity");
+    NodeDefBuilder id_builder(opts.new_name(src->name()), "Identity",
+                              NodeDebugInfo(*src));
     id_builder.Device(dst->assigned_device_name())
         .Input(recv->name(), 0, cast_dtype);
     NodeDef* id = gdef->add_node();
@@ -559,10 +565,10 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
 
     int node_id = node->id();
     info->device_types[node_id] = DeviceType(parsed.type);
-    for (size_t i = 0; i < input_memory_types.size(); ++i) {
+    for (int i = 0; i < input_memory_types.size(); ++i) {
       info->input_types[{node_id, i}] = input_memory_types[i];
     }
-    for (size_t i = 0; i < output_memory_types.size(); ++i) {
+    for (int i = 0; i < output_memory_types.size(); ++i) {
       info->output_types[{node_id, i}] = output_memory_types[i];
     }
   }
@@ -982,6 +988,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     GraphDef* dst_graph = &(*partitions)[dstp];
     NodeDef* dst_def = dst_graph->add_node();
     *dst_def = dst->def();
+    MergeDebugInfo(NodeDebugInfo(dst->def()), dst_def);
     dst_def->set_device(dst->assigned_device_name());
     dst_def->clear_input();  // Inputs are filled below
     if (opts.need_to_record_start_times) {

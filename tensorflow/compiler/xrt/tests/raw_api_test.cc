@@ -96,14 +96,21 @@ xla::LiteralProto FloatMatrix(
   return array.ToProto();
 }
 
+xla::Literal ReadOutputLiteral(const std::vector<Tensor>& outputs, size_t idx) {
+  xla::LiteralProto response;
+  CHECK(response.ParseFromString(outputs[idx].scalar<string>()()));
+  return xla::Literal::CreateFromProto(response).ValueOrDie();
+}
+
 bool CompareLiteralProtos(const xla::LiteralProto& a,
                           const xla::LiteralProto& b) {
   auto l_a = xla::Literal::CreateFromProto(a).ValueOrDie();
   auto l_b = xla::Literal::CreateFromProto(b).ValueOrDie();
   bool equal = l_a == l_b;
   if (!equal) {
-    LOG(INFO) << "LiteralProtos don't match: " << a.DebugString()
-              << " != " << b.DebugString();
+    LOG(INFO) << "LiteralProtos don't match:\n"
+              << a.DebugString() << "\n!=\n"
+              << b.DebugString();
   }
   return equal;
 }
@@ -113,8 +120,19 @@ bool CompareLiteralToLiteralProto(const xla::Literal& a,
   auto l_b = xla::Literal::CreateFromProto(b).ValueOrDie();
   bool equal = a == l_b;
   if (!equal) {
-    LOG(INFO) << "Literal and LiteralProto don't match "
-              << a.ToProto().DebugString() << " != " << b.DebugString();
+    LOG(INFO) << "Literal and LiteralProto don't match:\n"
+              << a.ToProto().DebugString() << "\n!=\n"
+              << b.DebugString();
+  }
+  return equal;
+}
+
+bool CompareLiterals(const xla::Literal& a, const xla::Literal& b) {
+  bool equal = a == b;
+  if (!equal) {
+    LOG(INFO) << "Literals don't match:\n"
+              << a.ToProto().DebugString() << "\n!=\n"
+              << b.ToProto().DebugString();
   }
   return equal;
 }
@@ -217,7 +235,6 @@ xla::ProgramShape XlaCompiledProgramShape(
 
 TEST(RawApiTest, AllocAndRewrite) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() =
       xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
 
@@ -259,15 +276,138 @@ TEST(RawApiTest, AllocAndRewrite) {
   EXPECT_TRUE(new_response.ParseFromString(outputs[0].scalar<string>()()));
   EXPECT_TRUE(CompareLiteralProtos(new_literal, new_response));
 
-  auto release =
-      ops::XRTReleaseAllocationHandle(root, Input(allocation_handle));
+  Tensor release_tensor(DT_INT64, TensorShape({1}));
+  release_tensor.flat<int64>()(0) = allocation_handle;
+
+  auto release = ops::XRTReleaseAllocationHandle(root, release_tensor);
   TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
                            &outputs));
 }
 
+TEST(RawApiTest, AllocReleaseMany) {
+  xrt::XLAAllocation alloc1;
+  *alloc1.mutable_value() =
+      xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
+  xrt::XLAAllocation alloc2;
+  *alloc2.mutable_value() =
+      xla::LiteralUtil::CreateR2({{6, 7}, {4, 5}}).ToProto();
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto value1 =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc1.SerializeAsString());
+  auto value2 =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc2.SerializeAsString());
+  auto handle1 = ops::XRTAllocate(root, value1);
+  auto handle2 = ops::XRTAllocate(root, value2);
+  TF_ASSERT_OK(root.status());
+
+  tensorflow::ClientSession session(root);
+  std::vector<tensorflow::Tensor> outputs;
+  TF_EXPECT_OK(session.Run({handle1, handle2}, &outputs));
+  EXPECT_EQ(outputs.size(), 2);
+
+  int64 allocation_handle1 = outputs[0].scalar<int64>()();
+  int64 allocation_handle2 = outputs[1].scalar<int64>()();
+
+  Tensor release_tensor(DT_INT64, TensorShape({2}));
+  release_tensor.flat<int64>()(0) = allocation_handle1;
+  release_tensor.flat<int64>()(1) = allocation_handle2;
+
+  auto release = ops::XRTReleaseAllocationHandle(root, release_tensor);
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
+                           &outputs));
+}
+
+TEST(RawApiTest, CompileAndReleaseMany) {
+  xrt::XLAComputation c1;
+  auto config1 = c1.mutable_config();
+  auto shapes1 = config1->mutable_program_shape();
+  *shapes1->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes1->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes1->mutable_result() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  StoreComputationSnapshot(AddAndScale(), c1.mutable_hlo_snapshot());
+
+  xrt::XLAComputation c2;
+  auto config2 = c2.mutable_config();
+  auto shapes2 = config2->mutable_program_shape();
+  *shapes2->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes2->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes2->mutable_result() =
+      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::F32, {2})})
+          .ToProto();
+  StoreComputationSnapshot(AddAndTuple(), c2.mutable_hlo_snapshot());
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(true);
+  e.set_release_compilation_handle(false);
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto computation1 =
+      ops::Const(root.WithDevice("/device:CPU:0"), c1.SerializeAsString());
+  auto c_handle1 = ops::XRTCompile(root, computation1);
+  auto computation2 =
+      ops::Const(root.WithDevice("/device:CPU:0"), c2.SerializeAsString());
+  auto c_handle2 = ops::XRTCompile(root, computation2);
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({c_handle1.handle, c_handle2.handle}, &outputs));
+  EXPECT_EQ(outputs.size(), 2);
+
+  int64 compilation_handle1 = outputs[0].scalar<int64>()();
+  int64 compilation_handle2 = outputs[1].scalar<int64>()();
+
+  Tensor release_tensor(DT_INT64, TensorShape({2}));
+  release_tensor.flat<int64>()(0) = compilation_handle1;
+  release_tensor.flat<int64>()(1) = compilation_handle2;
+
+  auto release = ops::XRTReleaseCompilationHandle(root, release_tensor);
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
+                           &outputs));
+}
+
+TEST(RawApiTest, AllocAndClearAll) {
+  xrt::XLAAllocation alloc;
+  *alloc.mutable_value() =
+      xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto value =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc.SerializeAsString());
+  auto handle = ops::XRTAllocate(root, value);
+  TF_ASSERT_OK(root.status());
+
+  tensorflow::ClientSession session(root);
+  std::vector<tensorflow::Tensor> outputs;
+  TF_EXPECT_OK(session.Run({handle}, &outputs));
+  EXPECT_EQ(outputs.size(), 1);
+
+  int64 allocation_handle = outputs[0].scalar<int64>()();
+
+  auto clear_all = ops::XRTReleaseAllAllocations(root);
+
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {},
+                           {clear_all}, &outputs));
+  EXPECT_EQ(outputs.size(), 0);
+
+  auto read_after_clear = ops::XRTReadLiteral(root, Input(allocation_handle));
+  EXPECT_EQ(session.Run({read_after_clear}, &outputs).code(),
+            tensorflow::error::Code::NOT_FOUND);
+}
+
 TEST(RawApiTest, ReadAndWriteState) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = TwoElementTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -292,7 +432,6 @@ TEST(RawApiTest, ReadAndWriteState) {
 
 TEST(RawApiTest, ReadAndWriteStateAutoFree) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = TwoElementTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -313,7 +452,6 @@ TEST(RawApiTest, ReadAndWriteStateAutoFree) {
 
 TEST(RawApiTest, SubBuffer) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = NestedTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -354,10 +492,8 @@ TEST(RawApiTest, SubBuffer) {
 
 TEST(RawApiTest, MakeTuple) {
   xrt::XLAAllocation alloc_0;
-  alloc_0.set_device_ordinal(0);
   *alloc_0.mutable_value() = TwoElementTuple();
   xrt::XLAAllocation alloc_1;
-  alloc_1.set_device_ordinal(0);
   *alloc_1.mutable_value() = ScalarLiteral();
 
   // The trivial tuple that just forwards its input and releases it.
@@ -428,10 +564,8 @@ TEST(RawApiTest, MakeTuple) {
 
 TEST(RawApiTest, CompileAndExecute) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -483,10 +617,8 @@ TEST(RawApiTest, CompileAndExecute) {
 
 TEST(RawApiTest, CompileAndExecuteWithArgumentVector) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -606,10 +738,8 @@ TEST(RawApiTest, DotGeneralWithLayoutTest) {
   auto layout = xla::LayoutUtil::MakeLayout({0, 1});
 
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatMatrix({{1.0f, 2.0f}, {3.0f, 4.0f}}, layout);
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatMatrix({{8.0f}, {5.0f}}, layout);
 
   xrt::XLAComputation c;
@@ -692,10 +822,8 @@ TEST(RawApiTest, CompileAndExecuteZeroArg) {
 
 TEST(RawApiTest, CompileAndExecuteReturnTuple) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -745,11 +873,9 @@ TEST(RawApiTest, CompileAndExecuteReturnTuple) {
 
 TEST(RawApiTest, CompileAndExecuteReturnExplodedTuple) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = xla::LiteralUtil::CreateR0<float>(12.0f).ToProto();
 
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = xla::LiteralUtil::CreateR0<float>(3.0f).ToProto();
 
   xrt::XLAComputation c;
@@ -831,12 +957,111 @@ TEST(RawApiTest, LeakCompilationReference) {
   TF_EXPECT_OK(session.Run({c_handle.handle}, &outputs));
 }
 
+TEST(RawApiTest, CompileAndExecuteWithReusedBuffers) {
+  xla::Shape element_shape = xla::ShapeUtil::MakeShape(xla::F32, {2});
+  xla::Shape shape =
+      xla::ShapeUtil::MakeTupleShape({element_shape, element_shape});
+  xla::Shape return_shape = xla::ShapeUtil::MakeTupleShape(
+      {element_shape, element_shape, element_shape, element_shape});
+  xla::XlaBuilder builder("ReuseBuffer");
+  auto param = xla::Parameter(&builder, 0, shape, "param");
+  auto p0 = xla::GetTupleElement(param, 0);
+  auto p1 = xla::GetTupleElement(param, 1);
+  auto add = xla::Add(p0, p1);
+  auto sub = xla::Sub(p0, p1);
+  xla::Tuple(&builder, {add, sub, p0, p1});
+
+  // Flip the tuple literals in the input handle.
+  builder.SetUpAlias({1}, 0, {0});
+  builder.SetUpAlias({0}, 0, {1});
+
+  auto computation = builder.Build().ValueOrDie();
+
+  auto literal0 = xla::LiteralUtil::CreateR1<float>({1.0f, 2.0f});
+  auto literal1 = xla::LiteralUtil::CreateR1<float>({5.0f, 9.0f});
+  auto literal = xla::LiteralUtil::MakeTuple({&literal0, &literal1});
+
+  xrt::XLAAllocation param_alloc;
+  *param_alloc.mutable_value() = literal.ToProto();
+
+  xrt::XLAComputation c;
+  auto config = c.mutable_config();
+  auto shapes = config->mutable_program_shape();
+  *shapes->add_parameters() = shape.ToProto();
+  *shapes->mutable_result() = return_shape.ToProto();
+  StoreComputationSnapshot(computation, c.mutable_hlo_snapshot());
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(false);
+  e.set_release_compilation_handle(true);
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  ClientSession session(root);
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto c_data =
+      ops::Const(root.WithDevice("/device:CPU:0"), c.SerializeAsString());
+  auto c_handle = ops::XRTCompile(root, c_data);
+  auto param_value = ops::Const(root.WithDevice("/device:CPU:0"),
+                                param_alloc.SerializeAsString());
+  auto param_handle = ops::XRTAllocate(root, param_value);
+  TF_ASSERT_OK(root.status());
+
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({param_handle}, &outputs));
+
+  int64 alloc_handle = outputs[0].scalar<int64>()();
+
+  // Note that we release the result handle immediately, but since we aliased
+  // the output buffers onto the input allocation ones (held in alloc_handle),
+  // we can fetch the result from there.
+  auto result =
+      ops::XRTExecute(root, c_handle.handle, e_config, {Input(alloc_handle)});
+  auto read_back = ops::XRTReadLiteral(root, result);
+  auto release = ops::XRTReleaseAllocationHandle(
+      root.WithControlDependencies(read_back), result);
+  TF_ASSERT_OK(root.status());
+
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {read_back},
+                           {release}, &outputs));
+
+  xla::Literal exec_literal = ReadOutputLiteral(outputs, 0);
+  auto exec_literal_parts = exec_literal.DecomposeTuple();
+  ASSERT_EQ(exec_literal_parts.size(), 4);
+
+  EXPECT_TRUE(CompareLiterals(exec_literal_parts[2], literal0));
+  EXPECT_TRUE(CompareLiterals(exec_literal_parts[3], literal1));
+
+  // Now we read back the original input handle values, which at this point
+  // should contain the result of the XLA computation.
+  auto read_handle = ops::XRTReadLiteral(root, Input(alloc_handle));
+  TF_ASSERT_OK(root.status());
+  auto release_handle = ops::XRTReleaseAllocationHandle(
+      root.WithControlDependencies(read_handle), Input(alloc_handle));
+  TF_ASSERT_OK(root.status());
+
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {read_handle},
+                           {release_handle}, &outputs));
+
+  xla::Literal return_literal = ReadOutputLiteral(outputs, 0);
+
+  auto expected_literal0 = xla::LiteralUtil::CreateR1<float>({6.0f, 11.0f});
+  auto expected_literal1 = xla::LiteralUtil::CreateR1<float>({-4.0f, -7.0f});
+  // The first element of the computation returned tuple would be the add
+  // (expected_literal0), but since we flipped the buffers, the sub
+  // (expected_literal1) should come first.
+  auto expected_literal =
+      xla::LiteralUtil::MakeTuple({&expected_literal1, &expected_literal0});
+
+  EXPECT_TRUE(CompareLiterals(return_literal, expected_literal));
+}
+
 TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = xla::LiteralUtil::CreateR0<int64>(11031965).ToProto();
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = xla::LiteralUtil::CreateR0<int64>(4091934).ToProto();
 
   xrt::XLAComputation c;
@@ -850,6 +1075,7 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   xrt::XRTExecutionConfig e;
   e.set_release_input_handles(true);
   e.set_release_compilation_handle(true);
+  e.set_return_exploded_tuple(true);
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
   auto e_config =

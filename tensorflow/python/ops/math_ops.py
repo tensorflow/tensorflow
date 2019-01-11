@@ -49,6 +49,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
+nextafter = gen_math_ops.next_after
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
@@ -812,7 +813,8 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
         return func(x, y, name=name)
       elif not isinstance(y, sparse_tensor.SparseTensor):
         try:
-          y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+          y = ops.convert_to_tensor_v2(y, dtype_hint=x.dtype.base_dtype,
+                                       name="y")
         except TypeError:
           # If the RHS is not a tensor, it might be a tensor aware object
           # that can implement the operator with knowledge of itself
@@ -1465,7 +1467,7 @@ def count_nonzero_v2(input,  # pylint: disable=redefined-builtin
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU
-            to_int64(gen_math_ops.not_equal(input, zero)),
+            cast(gen_math_ops.not_equal(input, zero), dtypes.int64),
             axis=axis,
             keepdims=keepdims),
         dtype=dtype)
@@ -2640,6 +2642,8 @@ def _as_indexed_slices_list(inputs, optimize=True):
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
+  Converts `IndexedSlices` objects into dense tensors prior to adding.
+
   Args:
     inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape
       and type.
@@ -2662,7 +2666,7 @@ def add_n(inputs, name=None):
 
   if len(inputs) == 1:
     if isinstance(inputs[0], ops.IndexedSlices):
-      values = inputs[0].values
+      values = ops.convert_to_tensor(inputs[0])
     else:
       values = inputs[0]
     if name:

@@ -157,7 +157,8 @@ enum class OperatorType : uint8 {
   kResizeNearestNeighbor,
   kLeakyRelu,
   kAbs,
-  kMirrorPad
+  kMirrorPad,
+  kUnique
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -376,7 +377,7 @@ struct Operator {
   // Output activation arrays. Same comments as for inputs apply here too.
   std::vector<string> outputs;
 
-  // If true, the array has more outputs than are listed in the 'outputs'
+  // If true, the operator has more outputs than are listed in the 'outputs'
   // member. These need to be resolved by some graph transformation.
   // This flag is only here to indicate that an operator should not be
   // discarded as unused, even if from its 'outputs' member alone it
@@ -1953,6 +1954,17 @@ struct MirrorPadOperator : Operator {
   MirrorPadMode mode;
 };
 
+// Unique Operator:
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Unique
+struct UniqueOperator : Operator {
+  UniqueOperator() : Operator(OperatorType::kUnique) {}
+  ArrayDataType idx_out_type = ArrayDataType::kInt32;
+};
+
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
 // of the "transient_data" workspace buffer passed to inference functions, is to
 // be used for the transient array at hand. The 'start' and 'end' values are
@@ -2207,6 +2219,16 @@ class Model {
   // The Operator's refer to these Array's by their name strings, not by their
   // addresses. See Operator::inputs, Operator::outputs.
   std::unordered_map<string, std::unique_ptr<Array>> arrays;
+};
+
+// OperatorSignature contains the information required to making versioning
+// decisions.
+struct OperatorSignature {
+  // The operator.
+  const Operator* op;
+
+  // The model in which the operator resides.
+  const Model* model;
 };
 }  // namespace toco
 

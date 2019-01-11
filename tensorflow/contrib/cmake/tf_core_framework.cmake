@@ -302,8 +302,8 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*.h"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*.h"
     "${tensorflow_source_dir}/public/*.h"
 )
 
@@ -317,14 +317,14 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*test*.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/loader.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/vacuum.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*test*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/loader.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/vacuum.cc"
 )
 
 # TODO(jart): Why doesn't this work?
 # set_source_files_properties(
-#     ${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/snapfn.cc
+#     ${tensorflow_source_dir}/tensorflow/core/lib/db/snapfn.cc
 #     PROPERTIES COMPILE_FLAGS -DSQLITE_OMIT_LOAD_EXTENSION)
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})

@@ -106,12 +106,14 @@ class SpaceToBatchNDOpDynamicModel : public SpaceToBatchNDOpModel {
   }
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(SpaceToBatchNDOpTest, InvalidShapeTest) {
   EXPECT_DEATH(
       SpaceToBatchNDOpConstModel({TensorType_FLOAT32, {1, 3, 3, 1}}, {2, 2},
                                  {0, 0, 0, 0}, {TensorType_FLOAT32}),
       "Cannot allocate tensors");
 }
+#endif
 
 TEST(SpaceToBatchNDOpTest, SimpleConstTest) {
   SpaceToBatchNDOpConstModel m({TensorType_FLOAT32, {1, 4, 4, 1}}, {2, 2},
@@ -220,6 +222,7 @@ class QuantizedSpaceToBatchNDOpTest : public ::testing::Test {
   }
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST_F(QuantizedSpaceToBatchNDOpTest, ZeroNotInQuantizationRange) {
   // The test_util and actual quantization code currently ensure that the range
   // must include zero, but if that ever changes, this test will catch it.
@@ -228,6 +231,7 @@ TEST_F(QuantizedSpaceToBatchNDOpTest, ZeroNotInQuantizationRange) {
                    {0, 0, 1, 1, 1, 1, 0, 0}, {TensorType_UINT8, {}, 1.0, 2.0}),
                ".*Check failed: f_min <= 0.*");
 }
+#endif
 
 TEST_F(QuantizedSpaceToBatchNDOpTest, SimplePaddingConstTest) {
   SpaceToBatchNDOpConstModel m({TensorType_UINT8, {1, 5, 2, 1}, -1.0, 1.0},

@@ -51,10 +51,11 @@ def deserialize(config, custom_objects=None):
           of custom (non-Keras) objects to class/functions
 
   Returns:
-      Layer instance (may be Model, Sequential, Layer...)
+      Layer instance (may be Model, Sequential, Network, Layer...)
   """
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
   globs = globals()  # All layers.
+  globs['Network'] = models.Network
   globs['Model'] = models.Model
   globs['Sequential'] = models.Sequential
   return deserialize_keras_object(

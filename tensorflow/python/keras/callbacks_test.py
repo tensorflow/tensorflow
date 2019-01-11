@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import csv
 import os
 import re
@@ -30,9 +31,9 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -55,6 +56,142 @@ NUM_CLASSES = 2
 INPUT_DIM = 3
 NUM_HIDDEN = 5
 BATCH_SIZE = 5
+
+
+class Counter(keras.callbacks.Callback):
+  """Counts the number of times each callback method was run.
+
+  Attributes:
+    method_counts: dict. Contains the counts of time  each callback method was
+      run.
+  """
+
+  def __init__(self):
+    self.method_counts = collections.defaultdict(int)
+    methods_to_count = [
+        'on_batch_begin', 'on_batch_end', 'on_epoch_begin', 'on_epoch_end',
+        'on_predict_batch_begin', 'on_predict_batch_end', 'on_predict_begin',
+        'on_predict_end', 'on_test_batch_begin', 'on_test_batch_end',
+        'on_test_begin', 'on_test_end', 'on_train_batch_begin',
+        'on_train_batch_end', 'on_train_begin', 'on_train_end'
+    ]
+    for method_name in methods_to_count:
+      setattr(self, method_name,
+              self.wrap_with_counts(method_name, getattr(self, method_name)))
+
+  def wrap_with_counts(self, method_name, method):
+
+    def _call_and_count(*args, **kwargs):
+      self.method_counts[method_name] += 1
+      return method(*args, **kwargs)
+
+    return _call_and_count
+
+
+@keras_parameterized.run_with_all_model_types
+@keras_parameterized.run_all_keras_modes
+class CallbackCountsTest(keras_parameterized.TestCase):
+
+  def _check_counts(self, counter, expected_counts):
+    """Checks that the counts registered by `counter` are those expected."""
+    for method_name, expected_count in expected_counts.items():
+      self.assertEqual(
+          counter.method_counts[method_name],
+          expected_count,
+          msg='For method {}: expected {}, got: {}'.format(
+              method_name, expected_count, counter.method_counts[method_name]))
+
+  def _get_model(self):
+    layers = [
+        keras.layers.Dense(10, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model.compile(
+        adam.AdamOptimizer(0.001),
+        'binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
+  def test_callback_hooks_are_called_in_fit(self):
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    val_x, val_y = np.ones((4, 10)), np.ones((4, 1))
+
+    model = self._get_model()
+    counter = Counter()
+    model.fit(
+        x,
+        y,
+        validation_data=(val_x, val_y),
+        batch_size=2,
+        epochs=5,
+        callbacks=[counter])
+
+    self._check_counts(
+        counter, {
+            'on_batch_begin': 25,
+            'on_batch_end': 25,
+            'on_epoch_begin': 5,
+            'on_epoch_end': 5,
+            'on_predict_batch_begin': 0,
+            'on_predict_batch_end': 0,
+            'on_predict_begin': 0,
+            'on_predict_end': 0,
+            'on_test_batch_begin': 10,
+            'on_test_batch_end': 10,
+            'on_test_begin': 5,
+            'on_test_end': 5,
+            'on_train_batch_begin': 25,
+            'on_train_batch_end': 25,
+            'on_train_begin': 1,
+            'on_train_end': 1
+        })
+
+  def test_callback_hooks_are_called_in_evaluate(self):
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+
+    model = self._get_model()
+    counter = Counter()
+    model.evaluate(x, y, batch_size=2, callbacks=[counter])
+    self._check_counts(
+        counter, {
+            'on_test_batch_begin': 5,
+            'on_test_batch_end': 5,
+            'on_test_begin': 1,
+            'on_test_end': 1
+        })
+
+  def test_callback_hooks_are_called_in_predict(self):
+    x = np.ones((10, 10))
+
+    model = self._get_model()
+    counter = Counter()
+    model.predict(x, batch_size=2, callbacks=[counter])
+    self._check_counts(
+        counter, {
+            'on_predict_batch_begin': 5,
+            'on_predict_batch_end': 5,
+            'on_predict_begin': 1,
+            'on_predict_end': 1
+        })
+
+  def test_callback_list_methods(self):
+    counter = Counter()
+    callback_list = keras.callbacks.CallbackList([counter])
+
+    batch = 0
+    callback_list.on_test_batch_begin(batch)
+    callback_list.on_test_batch_end(batch)
+    callback_list.on_predict_batch_begin(batch)
+    callback_list.on_predict_batch_end(batch)
+
+    self._check_counts(
+        counter, {
+            'on_test_batch_begin': 1,
+            'on_test_batch_end': 1,
+            'on_predict_batch_begin': 1,
+            'on_predict_batch_end': 1
+        })
 
 
 class KerasCallbacksTest(test.TestCase):
@@ -403,7 +540,6 @@ class KerasCallbacksTest(test.TestCase):
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
 
-  @test_util.run_v1_only('b/120545219')
   def test_ReduceLROnPlateau(self):
     with self.cached_session():
       np.random.seed(1337)
@@ -675,7 +811,7 @@ class KerasCallbacksTest(test.TestCase):
       self.assertEqual(len(loss), 1)
       self.assertEqual(loss[0], np.inf)
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_deprecated_v1
   def test_TensorBoard(self):
     np.random.seed(1337)
 
@@ -779,7 +915,7 @@ class KerasCallbacksTest(test.TestCase):
           data_generator(True), len(x_train), epochs=2, callbacks=cbks)
       assert os.path.exists(temp_dir)
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_deprecated_v1
   def test_TensorBoard_multi_input_output(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -851,7 +987,7 @@ class KerasCallbacksTest(test.TestCase):
                           callbacks=callbacks_factory(histogram_freq=1))
       assert os.path.isdir(filepath)
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_deprecated_v1
   def test_Tensorboard_histogram_summaries_in_test_function(self):
 
     class FileWriterStub(object):
@@ -929,7 +1065,7 @@ class KerasCallbacksTest(test.TestCase):
 
       self.assertAllEqual(tsb.writer.steps_seen, [0, 1, 2, 3, 4, 5])
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_deprecated_v1
   def test_Tensorboard_histogram_summaries_with_generator(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -1260,47 +1396,6 @@ class KerasCallbacksTest(test.TestCase):
             callbacks=cbks,
             epochs=1)
 
-  @test_util.run_deprecated_v1
-  def test_fit_generator_with_callback(self):
-
-    class TestCallback(keras.callbacks.Callback):
-
-      def set_model(self, model):
-        # Check the model operations for the optimizer operations that
-        # the _make_train_function adds under a named scope for the
-        # optimizer. This ensurs the full model is populated before the
-        # set_model callback is called.
-        optimizer_name_scope = 'training/' + model.optimizer.__class__.__name__
-        graph_def = ops.get_default_graph().as_graph_def()
-        for node in graph_def.node:
-          if node.name.startswith(optimizer_name_scope):
-            return
-        raise RuntimeError('The optimizer operations are not present in the '
-                           'model graph when the Callback.set_model function '
-                           'is called')
-    np.random.seed(1337)
-
-    def generator():
-      x = np.random.randn(10, 100).astype(np.float32)
-      y = np.random.randn(10, 10).astype(np.float32)
-      while True:
-        yield x, y
-
-    with self.cached_session():
-      model = testing_utils.get_small_sequential_mlp(
-          num_hidden=10, num_classes=10, input_dim=100)
-      model.compile(
-          loss='categorical_crossentropy',
-          optimizer='sgd',
-          metrics=['accuracy'])
-      model.fit_generator(
-          generator(),
-          steps_per_epoch=2,
-          epochs=1,
-          validation_data=generator(),
-          validation_steps=2,
-          callbacks=[TestCallback()],
-          verbose=0)
 
 if __name__ == '__main__':
   test.main()

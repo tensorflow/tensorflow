@@ -118,7 +118,12 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   std::vector<std::unique_ptr<GlobalData>> global_data_arguments;
   std::vector<const ShapedBuffer*> argument_ptrs;
   if (opts.use_fake_data) {
-    global_data_arguments = MakeFakeArgumentsOrDie(computation, client);
+    // Run fake computations with debug options ignoring XLA_FLAGS.  Users very
+    // likely want XLA_FLAGS only to apply to the "real" computation being run,
+    // not to the fake computations we use for generating arguments.
+    auto debug_opts = DefaultDebugOptionsIgnoringFlags();
+    global_data_arguments =
+        MakeFakeArgumentsOrDie(computation, client, &debug_opts);
     for (const auto& data : global_data_arguments) {
       argument_ptrs.push_back(
           client->GlobalDataToShapedBuffer(data->handle(), /*device_ordinal=*/0)
@@ -140,8 +145,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   bool provide_infeed = false;
   Shape infeed_shape;
   if (!opts.fake_infeed_shape.empty()) {
-    StatusOr<Shape> shape_status =
-        ShapeUtil::ParseShapeString(opts.fake_infeed_shape);
+    StatusOr<Shape> shape_status = ParseShape(opts.fake_infeed_shape);
     TF_CHECK_OK(shape_status.status());
     infeed_shape = std::move(shape_status).ValueOrDie();
     provide_infeed = true;
@@ -153,7 +157,9 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
               << "--generate_fake_infeed only works if the model has 0 or 1 "
                  "infeed ops, but this one has >= 2.";
           provide_infeed = true;
-          infeed_shape = Shape(instruction.shape());
+          // The kInfeed instruction should have a shape (buffer, token).  We
+          // want to infeed just `buffer`.
+          infeed_shape = Shape(instruction.shape()).tuple_shapes(0);
           LOG(INFO) << "Generating fake infeed shape for inferred shape: "
                     << ShapeUtil::HumanString(infeed_shape);
         }

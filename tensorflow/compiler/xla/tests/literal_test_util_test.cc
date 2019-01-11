@@ -89,11 +89,11 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
     Literal literal =
         Literal::CreateFromProto(literal_proto).ConsumeValueOrDie();
     if (result.find("expected") != string::npos) {
-      EXPECT_EQ("2", literal.ToString());
+      EXPECT_EQ("f32[] 2", literal.ToString());
     } else if (result.find("actual") != string::npos) {
-      EXPECT_EQ("4", literal.ToString());
+      EXPECT_EQ("f32[] 4", literal.ToString());
     } else if (result.find("mismatches") != string::npos) {
-      EXPECT_EQ("true", literal.ToString());
+      EXPECT_EQ("pred[] true", literal.ToString());
     } else {
       FAIL() << "unknown file in temporary directory: " << result;
     }
@@ -105,9 +105,9 @@ TEST(LiteralTestUtilTest, NotEqualHasValuesInMessage) {
   auto actual = LiteralUtil::CreateR1<int32>({4, 5, 6});
   ::testing::AssertionResult result = LiteralTestUtil::Equal(expected, actual);
   EXPECT_THAT(result.message(),
-              ::testing::HasSubstr("Expected literal:\n{1, 2, 3}"));
+              ::testing::HasSubstr("Expected literal:\ns32[3] {1, 2, 3}"));
   EXPECT_THAT(result.message(),
-              ::testing::HasSubstr("Actual literal:\n{4, 5, 6}"));
+              ::testing::HasSubstr("Actual literal:\ns32[3] {4, 5, 6}"));
 }
 
 TEST(LiteralTestUtilTest, NearComparatorR1) {

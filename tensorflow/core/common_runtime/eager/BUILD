@@ -61,6 +61,10 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
+            "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
+            "//tensorflow/core/distributed_runtime:device_resolver_distributed",
+            "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
+            "//tensorflow/core/distributed_runtime:worker_cache",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/distributed_runtime:worker_session",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
@@ -82,6 +86,34 @@ tf_cuda_library(
         ":context",
         ":tensor_handle",
     ],
+)
+
+tf_cuda_library(
+    name = "profiler",
+    srcs = [
+        "profiler.cc",
+    ],
+    hdrs = [
+        "profiler.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/cc/profiler",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:session_options",
+        ],
+    }),
 )
 
 tf_cuda_library(

@@ -239,8 +239,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _GetConfigProto(self, run_params, graph_state):
     """Get config proto based on specific settings."""
+    conversion_params = self.GetConversionParams(run_params)
     if graph_state != GraphState.ORIGINAL and run_params.use_optimizer:
-      conversion_params = self.GetConversionParams(run_params)
       rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
           conversion_params.rewriter_config, conversion_params.max_batch_size,
           conversion_params.max_workspace_size_bytes,
@@ -254,6 +254,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_cfg)
     else:
       graph_options = config_pb2.GraphOptions()
+      if conversion_params.rewriter_config is not None:
+        graph_options.rewrite_options.CopyFrom(
+            conversion_params.rewriter_config)
 
     config = config_pb2.ConfigProto(
         gpu_options=self._GetGPUOptions(), graph_options=graph_options)
@@ -321,16 +324,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     return self._RunGraph(
         run_params, gdef, input_data, config, GraphState.CALIBRATE, num_runs=5)
 
-  def _GetTrtGraphDef(self, run_params, gdef):
+  def _GetTrtGraphDef(self, run_params, graph_state, gdef):
     """Return trt converted graphdef."""
     params = self._GetParamsCached()
     conversion_params = self.GetConversionParams(run_params)
     logging.info(conversion_params)
 
-    config_for_trt = config_pb2.ConfigProto(gpu_options=self._GetGPUOptions())
-    if conversion_params.rewriter_config is not None:
-      config_for_trt.graph_options.rewrite_options.CopyFrom(
-          conversion_params.rewriter_config)
+    config_for_trt = self._GetConfigProto(run_params, graph_state)
     return trt_convert.create_inference_graph(
         input_graph_def=gdef,
         outputs=params.input_names + params.output_names,
@@ -506,7 +506,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         result = self._RunCalibration(run_params, input_gdef, input_data,
                                       calib_config)
       else:
-        calib_gdef = self._GetTrtGraphDef(run_params, input_gdef)
+        calib_gdef = self._GetTrtGraphDef(run_params, GraphState.CALIBRATE,
+                                          input_gdef)
         self._VerifyGraphDef(run_params, calib_gdef, GraphState.CALIBRATE)
         result = self._RunCalibration(run_params, calib_gdef, input_data,
                                       calib_config)
@@ -527,7 +528,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     logging.info("Running final inference graph, config:\n%s",
                  str(infer_config))
     if not run_params.use_optimizer:
-      infer_gdef = self._GetTrtGraphDef(run_params, infer_gdef)
+      infer_gdef = self._GetTrtGraphDef(run_params, GraphState.INFERENCE,
+                                        infer_gdef)
       self._VerifyGraphDef(run_params, infer_gdef, GraphState.INFERENCE)
 
     result = self._RunGraph(run_params, infer_gdef, input_data, infer_config,

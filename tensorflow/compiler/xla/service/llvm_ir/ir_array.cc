@@ -61,7 +61,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
 
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       llvm::IRBuilder<>* b)
-    : multidim_(ShapeUtil::Rank(shape)),
+    : multidim_(shape.rank()),
       linear_(linear),
       layout_(shape.layout()),
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
@@ -117,10 +117,10 @@ IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
     ++depth;
   }
 
-  if (!ShapeUtil::IsArray(*shape_) || ShapeUtil::IsScalar(*shape_)) {
+  if (!shape_->IsArray() || ShapeUtil::IsScalar(*shape_)) {
     DCHECK(depth == 1 || depth == 0) << depth;
   } else {
-    DCHECK_EQ(depth, ShapeUtil::Rank(*shape_)) << shape.ShortDebugString();
+    DCHECK_EQ(depth, shape_->rank()) << shape.ShortDebugString();
   }
 }
 
@@ -137,12 +137,12 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
     llvm::IRBuilder<>* builder) const {
   const auto& target_index = *this;
-  CHECK_EQ(target_index.size(), ShapeUtil::Rank(output_shape));
+  CHECK_EQ(target_index.size(), output_shape.rank());
   std::vector<std::pair<int64, int64>> common_factors =
       CommonFactors(AsInt64Slice(input_shape.dimensions()),
                     AsInt64Slice(output_shape.dimensions()));
   std::vector<llvm::Value*> source_multidim_index(
-      ShapeUtil::Rank(input_shape), llvm::UndefValue::get(index_type_));
+      input_shape.rank(), llvm::UndefValue::get(index_type_));
   // We compute the source indices in each common factor from only the target
   // indices in the same common factor.
   for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
@@ -257,7 +257,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64> dimension_mapping,
     llvm::IRBuilder<>* builder) const {
-  int64 rank = ShapeUtil::Rank(operand_shape);
+  int64 rank = operand_shape.rank();
   std::vector<llvm::Value*> source_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     source_index[i] = multidim_[dimension_mapping[i]];
@@ -271,7 +271,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
   // The other dimensions can be masked out with a div and a mod operation.
   std::vector<int64> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
-  int64 output_rank = ShapeUtil::Rank(shape);
+  int64 output_rank = shape.rank();
   // The minimum physical dimension that is broadcasted.
   int64 min_broadcasted_dimension = output_rank;
   // The maximum physical dimension that is broadcasted.
@@ -348,7 +348,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     // over higher-rank arrays.
     return base_ptr_;
   }
-  CHECK_EQ(index.size(), ShapeUtil::Rank(*shape_));
+  CHECK_EQ(index.size(), shape_->rank());
 
   if (index.LinearValidOnShape(*shape_)) {
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();

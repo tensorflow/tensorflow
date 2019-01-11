@@ -62,7 +62,7 @@ Literal ConvertType(LiteralSlice literal) {
   ShapeUtil::ForEachSubshape(
       literal.shape(),
       [&](const Shape& subshape, const ShapeIndex& shape_index) {
-        if (ShapeUtil::IsArray(subshape)) {
+        if (subshape.IsArray()) {
           if (subshape.element_type() ==
               primitive_util::NativeToPrimitiveType<FromNativeT>()) {
             auto src = literal.data<FromNativeT>(shape_index);
@@ -106,12 +106,16 @@ Literal ConvertType(LiteralSlice literal) {
   switch (primitive_type) {
     case U8:
       return LiteralUtil::CreateR0<uint8>(0);
+    case U16:
+      return LiteralUtil::CreateR0<uint16>(0);
     case U32:
       return LiteralUtil::CreateR0<uint32>(0);
     case U64:
       return LiteralUtil::CreateR0<uint64>(0);
     case S8:
       return LiteralUtil::CreateR0<int8>(0);
+    case S16:
+      return LiteralUtil::CreateR0<int16>(0);
     case S32:
       return LiteralUtil::CreateR0<int32>(0);
     case S64:
@@ -128,9 +132,6 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<complex64>(0);
     case PRED:
       return LiteralUtil::CreateR0<bool>(false);
-    case S16:
-    case U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 0";
     case OPAQUE:
@@ -355,7 +356,7 @@ Literal ConvertType(LiteralSlice literal) {
 
 /* static */ Literal LiteralUtil::GetFirstScalarLiteral(
     const LiteralSlice& literal) {
-  CHECK(ShapeUtil::IsArray(literal.shape()));
+  CHECK(literal.shape().IsArray());
   CHECK_GT(ShapeUtil::ElementsIn(literal.shape()), 0);
   switch (literal.shape().element_type()) {
     case PRED:

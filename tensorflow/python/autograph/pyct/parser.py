@@ -117,7 +117,7 @@ def parse_expression(src):
   """
   node = parse_str(src)
   assert isinstance(node, gast.Module)
-  if len(node.body) != 1 and not isinstance(node.body[0], gast.Expr):
+  if len(node.body) != 1 or not isinstance(node.body[0], gast.Expr):
     raise ValueError(
         'Expected a single expression, found instead %s' % node.body)
   return node.body[0].value

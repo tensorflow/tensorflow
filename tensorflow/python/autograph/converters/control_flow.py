@@ -49,7 +49,13 @@ class ControlFlowTransformer(converter.Base):
 
   def _create_cond_branch(self, body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
-    if len(returns) == 1:
+    if not returns:
+      # TODO(b/110167197): Replace with a plain return.
+      template = """
+        return 1
+      """
+      return_stmt = templates.replace(template)
+    elif len(returns) == 1:
       template = """
         return retval
       """
@@ -220,7 +226,7 @@ class ControlFlowTransformer(converter.Base):
       # branch functions will return a dummy value that ensures cond
       # actually has some return value as well.
       cond_results = None
-      # TODO(mdan): This doesn't belong here; it's specific to the operator.
+      # TODO(mdan): Replace with None once side_effect_guards is retired.
       returned_from_body = (templates.replace_as_expression(
           'ag__.match_staging_level(1, cond_var_name)',
           cond_var_name=cond_var_name),)
@@ -278,14 +284,6 @@ class ControlFlowTransformer(converter.Base):
           ' these symbols before the loop'.format(
               self._fmt_symbols(live_defs_in_loop)))
 
-    if not loop_state:
-      # TODO(mdan): Implement this properly.
-      # We need to check whether any variable created inside the body scope
-      # is used before being modified outside the scope. This should be done
-      # during activity analysis, and in general should cover the case where
-      # variables may not be initialized.
-      raise ValueError('cannot convert loop: no outputs')
-
     return loop_state, reserved_symbols
 
   def _state_constructs(self, loop_state, reserved_symbols):
@@ -337,26 +335,44 @@ class ControlFlowTransformer(converter.Base):
     node_body = ast_util.rename_symbols(node.body, ssf_map)
     test = ast_util.rename_symbols(node.test, ssf_map)
 
-    template = """
-      def test_name(state_ssf):
-        return test
-      def body_name(state_ssf):
-        body
-        return state_ssf,
-      state_ast_tuple = ag__.while_stmt(
-          test_name, body_name, (state,), (extra_deps,))
-    """
-    node = templates.replace(
-        template,
-        state=loop_state,
-        state_ssf=state_ssf,
-        state_ast_tuple=state_ast_tuple,
-        test_name=self.ctx.namer.new_symbol('loop_test', reserved_symbols),
-        test=test,
-        body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
-        body=node_body,
-        extra_deps=tuple(s.ast() for s in cond_closure),
-    )
+    if loop_state:
+      template = """
+        def test_name(state_ssf):
+          return test
+        def body_name(state_ssf):
+          body
+          return state_ssf,
+        state_ast_tuple = ag__.while_stmt(
+            test_name, body_name, (state,), (extra_deps,))
+      """
+      node = templates.replace(
+          template,
+          state=loop_state,
+          state_ssf=state_ssf,
+          state_ast_tuple=state_ast_tuple,
+          test_name=self.ctx.namer.new_symbol('loop_test', reserved_symbols),
+          test=test,
+          body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
+          body=node_body,
+          extra_deps=tuple(s.ast() for s in cond_closure),
+      )
+    else:
+      template = """
+        def test_name():
+          return test
+        def body_name():
+          body
+          return ()
+        ag__.while_stmt(test_name, body_name, (), (extra_deps,))
+      """
+      node = templates.replace(
+          template,
+          test_name=self.ctx.namer.new_symbol('loop_test', reserved_symbols),
+          test=test,
+          body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
+          body=node_body,
+          extra_deps=tuple(s.ast() for s in cond_closure),
+      )
 
     return node
 
@@ -373,29 +389,50 @@ class ControlFlowTransformer(converter.Base):
     else:
       extra_test = parser.parse_expression('True')
 
-    template = """
-      def extra_test_name(state_ssf):
-        return extra_test_expr
-      def body_name(loop_vars, state_ssf):
-        # Workaround for PEP-3113
-        iterate = loop_vars
-        body
-        return state_ssf,
-      state_ast_tuple = ag__.for_stmt(
-          iter_, extra_test_name, body_name, (state,))
-    """
-    node = templates.replace(
-        template,
-        state=loop_state,
-        state_ssf=state_ssf,
-        state_ast_tuple=state_ast_tuple,
-        iter_=node.iter,
-        iterate=node.target,
-        extra_test_name=self.ctx.namer.new_symbol('extra_test',
-                                                  reserved_symbols),
-        extra_test_expr=extra_test,
-        body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
-        body=node_body)
+    if loop_state:
+      template = """
+        def extra_test_name(state_ssf):
+          return extra_test_expr
+        def body_name(loop_vars, state_ssf):
+          # Workaround for PEP-3113
+          iterate = loop_vars
+          body
+          return state_ssf,
+        state_ast_tuple = ag__.for_stmt(
+            iter_, extra_test_name, body_name, (state,))
+      """
+      node = templates.replace(
+          template,
+          state=loop_state,
+          state_ssf=state_ssf,
+          state_ast_tuple=state_ast_tuple,
+          iter_=node.iter,
+          iterate=node.target,
+          extra_test_name=self.ctx.namer.new_symbol('extra_test',
+                                                    reserved_symbols),
+          extra_test_expr=extra_test,
+          body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
+          body=node_body)
+    else:
+      template = """
+        def extra_test_name():
+          return extra_test_expr
+        def body_name(loop_vars):
+          # Workaround for PEP-3113
+          iterate = loop_vars
+          body
+          return ()
+        ag__.for_stmt(iter_, extra_test_name, body_name, ())
+      """
+      node = templates.replace(
+          template,
+          iter_=node.iter,
+          iterate=node.target,
+          extra_test_name=self.ctx.namer.new_symbol('extra_test',
+                                                    reserved_symbols),
+          extra_test_expr=extra_test,
+          body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
+          body=node_body)
 
     return node
 

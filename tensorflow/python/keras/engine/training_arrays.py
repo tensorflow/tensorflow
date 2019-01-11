@@ -23,103 +23,22 @@ import functools
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.engine import training_distributed
+from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
 except ImportError:
   issparse = None
-
-
-def _get_model_feed(model, mode):
-  if mode == 'predict':
-    feed = model._feed_inputs
-  else:
-    feed = (
-        model._feed_inputs + model._feed_targets + model._feed_sample_weights)
-  return feed
-
-
-def _validate_arguments(steps_per_epoch, validation_steps, kwargs):
-  for k in kwargs:
-    if k != 'steps':
-      raise ValueError('Invalid argument passed: {}'.format(k))
-
-  # Validate inputs when in training mode.
-  if validation_steps and steps_per_epoch is None:
-    raise ValueError('Can only use `validation_steps` '
-                     'when doing step-wise '
-                     'training, i.e. `steps_per_epoch` '
-                     'must be set.')
-
-
-def _print_train_info(inputs, val_inputs, steps_per_epoch, verbose):
-  if (val_inputs and steps_per_epoch is None and verbose and inputs and
-      hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
-    print('Train on %d samples, validate on %d samples' %
-          (inputs[0].shape[0], val_inputs[0].shape[0]))
-
-
-def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
-  """Returns total number of samples (when training in batch mode) or steps."""
-  if steps_per_epoch:
-    return steps_per_epoch
-  return training_utils.check_num_samples(ins, batch_size, steps_per_epoch,
-                                          'steps_per_epoch')
-
-
-def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
-  """Prepare feed values to the model execution function.
-
-  Arguments:
-    model: Model to prepare feed values for.
-    inputs: List or dict of model inputs.
-    targets: Optional list of model targets.
-    sample_weights: Optional list of sample weight arrays.
-    mode: One of 'train'/'test'/'predict'.
-
-  Returns:
-    Feed values for the model in the given mode.
-  """
-  if model._distribution_strategy:
-    def get_distributed_inputs():
-      return training_distributed._prepare_feed_values(
-          model, inputs, targets, sample_weights, mode)
-
-    # In the eager case, we want to call the input method per step, so return
-    # a lambda from here that can be called. Note that this is applicable only
-    # in Distribution Strategy case as it follows the same code path for both
-    # eager and graph modes.
-    # TODO(priyag,omalleyt): Either we should move the training DS with
-    # EagerIterator to use training_generator code path, or figure out how to
-    # set a symbolic Iterator out of a Dataset when in eager mode.
-    if context.executing_eagerly():
-      return get_distributed_inputs
-    else:
-      return get_distributed_inputs()
-
-  inputs = training_utils.ModelInputs(inputs).as_list()
-  targets = targets or []
-  sample_weights = sample_weights or []
-  ins = inputs + targets + sample_weights
-  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
-    ins += [True]
-  return ins
-
-
-def _make_execution_function(model, mode):
-  """Makes function to run one step of model execution."""
-  if model._distribution_strategy:
-    return training_distributed._make_execution_function(model, mode)
-  return model._make_execution_function(mode)
 
 
 def model_iteration(model,
@@ -137,22 +56,23 @@ def model_iteration(model,
                     initial_epoch=0,
                     steps_per_epoch=None,
                     validation_steps=None,
-                    mode='train',
+                    mode=ModeKeys.TRAIN,
                     validation_in_fit=False,
+                    steps_name='steps',
                     **kwargs):
-  """Loop function for arrays of data with modes 'train'/'test'/'predict'.
+  """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
 
   Arguments:
       model: Keras Model instance.
-      inputs: Either a list of arrays or a dictionary.
-      targets: List of target arrays.
+      inputs: Either a list or dictionary of arrays, or a dataset instance.
+      targets: List/dictionary of input arrays.
       sample_weights: Optional list of sample weight arrays.
       batch_size: Integer batch size or None if unknown.
       epochs: Number of times to iterate over the data
       verbose: Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
-      val_inputs: List of input arrays.
-      val_targets: List of target arrays.
+      val_inputs: Either a list or dictionary of arrays, or a dataset instance.
+      val_targets: List/dictionary of target arrays.
       val_sample_weights: Optional list of sample weight arrays.
       shuffle: Whether to shuffle the data at the beginning of each epoch
         concatenation of list the display names of the outputs of `f` and the
@@ -164,26 +84,47 @@ def model_iteration(model,
         the default value of `None`.
       validation_steps: Number of steps to run validation for (only if doing
         validation from data tensors). Ignored with the default value of `None`.
-      mode: One of 'train'/'test'/'predict'.
-      validation_in_fit: if true, then this method is invoked from within
-        training iteration (for validation). In this case, do not copy weights
-        when using a tf.distribute.Strategy.
+      mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
+      validation_in_fit: DEPRECATED: if true, then this method is invoked from
+        within training iteration (for validation). In this case, do not copy
+        weights when using a tf.distribute.Strategy. The input is deprecated as
+        it is not required if the user creates a distributed model under the
+        distribution strategy scope rather than passing it to compile.
+      steps_name: The string name of the steps argument, either `steps`,
+        `validation_steps`, or `steps_per_epoch`. Only used for error message
+        formatting.
       **kwargs: Additional arguments for backwards compatibility.
 
   Returns:
-      - In 'train' mode: `History` object.
-      - In 'test' mode: Evaluation metrics.
-      - In 'predict' mode: Outputs of the Model called on inputs.
+      - In TRAIN mode: `History` object.
+      - In TEST mode: Evaluation metrics.
+      - In PREDICT mode: Outputs of the Model called on inputs.
 
   Raises:
       ValueError: in case of invalid arguments.
   """
   # Backwards compatibility.
   if 'steps' in kwargs:
-    steps_per_epoch = kwargs['steps']
+    steps_per_epoch = kwargs.pop('steps')
+  if kwargs:
+    raise TypeError('Unknown arguments: %s' % (kwargs,))
 
-  _validate_arguments(steps_per_epoch, validation_steps, kwargs)
-  if mode == 'train':
+  # In case we were passed a dataset, we extract symbolic tensors from it.
+  reset_dataset_after_each_epoch = False
+  original_dataset = None
+  is_dataset = isinstance(inputs,
+                          (dataset_ops.DatasetV1, dataset_ops.DatasetV2))
+  # TODO(fchollet): consider moving `steps_per_epoch` inference to
+  # _standardize_user_data and set reset_dataset_after_each_epoch as an
+  # attribute on the dataset instance.
+  if is_dataset:
+    original_dataset = inputs
+    if steps_per_epoch is None:
+      reset_dataset_after_each_epoch = True
+      steps_per_epoch = training_utils.infer_steps_for_dataset(
+          inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
+
+  if mode == ModeKeys.TRAIN:
     _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
 
   # Enter DistributionStrategy scope.
@@ -193,13 +134,20 @@ def model_iteration(model,
 
   # Get step function and loop type.
   f = _make_execution_function(model, mode)
-  use_steps = steps_per_epoch is not None
+  use_steps = is_dataset or steps_per_epoch is not None
   do_validation = val_inputs is not None
+
+  # Convert Eager Tensors to NumPy arrays to support batching/shuffling.
+  inputs, targets, sample_weights = training_utils. \
+      convert_eager_tensors_to_numpy((inputs, targets, sample_weights))
 
   # Prepare input data.
   ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)
-  num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
-                                                   steps_per_epoch)
+  if not is_dataset:
+    num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
+                                                     steps_per_epoch)
+  else:
+    num_samples_or_steps = steps_per_epoch
 
   # Configure callbacks.
   count_mode = 'steps' if use_steps else 'samples'
@@ -227,16 +175,16 @@ def model_iteration(model,
         indices_for_conversion_to_dense.append(i)
 
   # Select aggregation method.
-  if mode == 'predict':
+  if mode == ModeKeys.PREDICT:
     aggregator = training_utils.OutputsAggregator(use_steps,
                                                   num_samples_or_steps)
   else:
     aggregator = training_utils.MetricsAggregator(use_steps,
                                                   num_samples_or_steps)
 
-  if model._distribution_strategy and not validation_in_fit:
-    training_distributed._copy_weights_to_distributed_model(
-        model, model._grouped_model)
+  if model._compile_distribution and not validation_in_fit:
+    distributed_training_utils._copy_weights_to_distributed_model(
+        model, model._distributed_model)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -249,12 +197,21 @@ def model_iteration(model,
     # Setup work for each epoch
     epoch_logs = {}
     model.reset_metrics()
-    callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
+    if mode == ModeKeys.TRAIN:
+      callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
 
     if use_steps:
       # Step-wise loop.
-      for step in range(steps_per_epoch):
+      if steps_per_epoch is None:
+        # Loop over dataset until `OutOfRangeError` is raised.
+        target_steps = np.inf
+      else:
+        # Loop over dataset for the specified number of steps.
+        target_steps = steps_per_epoch
+
+      step = 0
+      while step < target_steps:
         batch_logs = {'batch': step, 'size': 1}
         callbacks._call_batch_hook(mode, 'begin', step, batch_logs)
         progbar.on_batch_begin(step, batch_logs)
@@ -265,18 +222,31 @@ def model_iteration(model,
           actual_inputs = ins() if callable(ins) else ins
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
-          logging.warning('Your dataset iterator ran out of data; '
-                          'interrupting training. Make sure that your dataset '
-                          'can generate at least `steps_per_epoch * epochs` '
-                          'batches (in this case, %d batches). You may need to'
-                          'use the repeat() function when building your '
-                          'dataset.' % steps_per_epoch * epochs)
+          if original_dataset is None:
+            # We ran out of batches while the user passed an iterator (legacy).
+            logging.warning(
+                'Your dataset iterator ran out of data; '
+                'interrupting training. Make sure that your iterator '
+                'can generate at least `%s * epochs` '
+                'batches (in this case, %d batches). You may need to'
+                'use the repeat() function when building your '
+                'dataset.' % (steps_name, steps_per_epoch * epochs))
+            callbacks.model.stop_training = True
+          else:
+            # The dataset passed by the user ran out of batches.
+            # Now we know the cardinality of the dataset.
+            if step > 0:
+              steps_per_epoch = step
+              aggregator.num_samples_or_steps = steps_per_epoch
+              progbar.params['steps'] = steps_per_epoch
+              progbar.progbar.target = steps_per_epoch
           break
+
         if not isinstance(batch_outs, list):
           batch_outs = [batch_outs]
 
         if model._distribution_strategy:
-          batch_outs = training_distributed._per_device_aggregate_batch(
+          batch_outs = distributed_training_utils._per_device_aggregate_batch(
               batch_outs, model, mode)
 
         # Aggregate results.
@@ -285,9 +255,10 @@ def model_iteration(model,
         aggregator.aggregate(batch_outs)
 
         # Callbacks batch end.
-        batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+        batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
         callbacks._call_batch_hook(mode, 'end', step, batch_logs)
         progbar.on_batch_end(step, batch_logs)
+        step += 1
 
         if callbacks.model.stop_training:
           break
@@ -336,7 +307,7 @@ def model_iteration(model,
         aggregator.aggregate(batch_outs, batch_start, batch_end)
 
         # Callbacks batch end.
-        batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+        batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
         callbacks._call_batch_hook(mode, 'end', batch_index, batch_logs)
         progbar.on_batch_end(batch_index, batch_logs)
 
@@ -345,7 +316,7 @@ def model_iteration(model,
 
     aggregator.finalize()
     results = aggregator.results
-    epoch_logs.update(training_utils.make_logs(model, results, mode))
+    epoch_logs = cbks.make_logs(model, epoch_logs, results, mode)
     if len(results) == 1:
       results = results[0]
 
@@ -360,31 +331,120 @@ def model_iteration(model,
           steps_per_epoch=validation_steps,
           callbacks=callbacks,
           verbose=0,
-          mode='test',
-          validation_in_fit=True)
+          mode=ModeKeys.TEST,
+          validation_in_fit=True,
+          steps_name='validation_steps')
       if not isinstance(val_results, list):
         val_results = [val_results]
-      epoch_logs.update(
-          training_utils.make_logs(model, val_results, mode, prefix='val_'))
+      epoch_logs = cbks.make_logs(
+          model, epoch_logs, val_results, mode, prefix='val_')
 
-    callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
+    if mode == ModeKeys.TRAIN:
+      # Epochs only apply to `fit`.
+      callbacks.on_epoch_end(epoch, epoch_logs)
     progbar.on_epoch_end(epoch, epoch_logs)
+
+    # Recreate dataset iterator for the next epoch.
+    if reset_dataset_after_each_epoch and epoch < epochs - 1:
+      ins = _prepare_feed_values(model, original_dataset, None, None, mode)
+
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:
-    # TODO(priyag, psv): Copy back metrics to the original model as well?
-    if not validation_in_fit:
-      training_distributed._copy_weights_to_original_model(
-          model, model._grouped_model, mode)
-
+    if model._compile_distribution and not validation_in_fit:
+      # TODO(priyag, psv): Copy back metrics to the original model as well?
+      distributed_training_utils._copy_weights_to_original_model(
+          model, model._distributed_model, mode)
     scope.__exit__(None, None, None)
 
-  if mode == 'train':
+  if mode == ModeKeys.TRAIN:
     return model.history
   return results
 
 
+def _get_model_feed(model, mode):
+  if mode == ModeKeys.PREDICT:
+    feed = model._feed_inputs
+  else:
+    feed = (
+        model._feed_inputs + model._feed_targets + model._feed_sample_weights)
+  return feed
+
+
+def _print_train_info(inputs, val_inputs, steps_per_epoch, verbose):
+  if (val_inputs and steps_per_epoch is None and verbose and inputs and
+      hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
+    print('Train on %d samples, validate on %d samples' %
+          (inputs[0].shape[0], val_inputs[0].shape[0]))
+
+
+def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
+  """Returns total number of samples (when training in batch mode) or steps."""
+  if steps_per_epoch:
+    return steps_per_epoch
+  return training_utils.check_num_samples(ins, batch_size, steps_per_epoch,
+                                          'steps_per_epoch')
+
+
+def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
+  """Prepare feed values to the model execution function.
+
+  Arguments:
+    model: Model to prepare feed values for.
+    inputs: List or dict of model inputs.
+    targets: Optional list of model targets.
+    sample_weights: Optional list of sample weight arrays.
+    mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
+
+  Returns:
+    Feed values for the model in the given mode.
+  """
+  if model._distribution_strategy:
+    if isinstance(inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+      inputs = distributed_training_utils.get_iterator(
+          inputs, model._distribution_strategy)
+
+    def get_distributed_inputs():
+      return distributed_training_utils._prepare_feed_values(
+          model, inputs, targets, sample_weights, mode)
+
+    # In the eager case, we want to call the input method per step, so return
+    # a lambda from here that can be called. Note that this is applicable only
+    # in Distribution Strategy case as it follows the same code path for both
+    # eager and graph modes.
+    # TODO(priyag,omalleyt): Either we should move the training DS with
+    # EagerIterator to use training_generator code path, or figure out how to
+    # set a symbolic Iterator out of a Dataset when in eager mode.
+    if context.executing_eagerly():
+      return get_distributed_inputs
+    else:
+      return get_distributed_inputs()
+
+  if isinstance(inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    inputs, targets, sample_weights = model._standardize_user_data(
+        inputs,
+        extract_tensors_from_dataset=True)
+
+  inputs = training_utils.ModelInputs(inputs).as_list()
+  targets = targets or []
+  sample_weights = sample_weights or []
+  ins = inputs + targets + sample_weights
+  if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
+                                               int):
+    ins += [True]  # Add learning phase value.
+  return ins
+
+
+def _make_execution_function(model, mode):
+  """Makes function to run one step of model execution."""
+  if model._distribution_strategy:
+    return distributed_training_utils._make_execution_function(model, mode)
+  return model._make_execution_function(mode)
+
+
 # For backwards compatibility for internal users of these loops.
-fit_loop = functools.partial(model_iteration, mode='train')
-test_loop = functools.partial(model_iteration, mode='test', shuffle=False)
-predict_loop = functools.partial(model_iteration, mode='predict', shuffle=False)
+fit_loop = functools.partial(model_iteration, mode=ModeKeys.TRAIN)
+test_loop = functools.partial(
+    model_iteration, mode=ModeKeys.TEST, shuffle=False)
+predict_loop = functools.partial(
+    model_iteration, mode=ModeKeys.PREDICT, shuffle=False)

@@ -615,6 +615,9 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertEqual(while_op.type, "While")
       orig_num_inputs = len(while_op.inputs)
 
+      # Make sure we can handle the while op having a control input.
+      while_op._add_control_input(constant_op.constant(0).op)
+
       new_input1 = constant_op.constant(1.0)
       new_input2 = constant_op.constant(True)
 
@@ -2049,6 +2052,9 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope(None, default_scope_name, [a, b]) as scope:
       self.assertEqual("%s/" % default_scope_name, scope)
       self.assertEqual(g0, ops.get_default_graph())
+    with self.assertRaises(TypeError):
+      with ops.name_scope(scope_name, [a, b]):
+        pass
 
   def _testGraphElements(self, graph_elements):
     scope_name = "my_scope"

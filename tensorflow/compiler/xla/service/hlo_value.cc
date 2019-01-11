@@ -46,7 +46,7 @@ const Shape& HloPosition::shape() const {
 
 string HloPosition::ToString() const {
   string index_str =
-      ShapeUtil::IsTuple(instruction->shape()) ? (" " + index.ToString()) : "";
+      instruction->shape().IsTuple() ? (" " + index.ToString()) : "";
   return StrCat(instruction->name(), index_str);
 }
 
@@ -56,10 +56,9 @@ std::ostream& operator<<(std::ostream& out, const HloPosition& position) {
 }
 
 string HloUse::ToString() const {
-  string index_str =
-      ShapeUtil::IsTuple(instruction->operand(operand_number)->shape())
-          ? (" " + operand_index.ToString())
-          : "";
+  string index_str = instruction->operand(operand_number)->shape().IsTuple()
+                         ? (" " + operand_index.ToString())
+                         : "";
   return StrCat(instruction->name(), ", operand ", operand_number, index_str);
 }
 
@@ -88,7 +87,7 @@ bool HloValue::operator!=(const HloValue& other) const {
 }
 
 string HloValue::ToShortString() const {
-  string index_str = ShapeUtil::IsTuple(defining_instruction()->shape())
+  string index_str = defining_instruction()->shape().IsTuple()
                          ? defining_index().ToString()
                          : "";
   return StrCat(id(), " ", is_phi_ ? "PHI " : "",
@@ -210,7 +209,7 @@ std::ostream& operator<<(std::ostream& out, const HloValue& value) {
 }
 
 void HloValueSet::SortAndUniquifyValues() {
-  std::sort(values_.begin(), values_.end(), HloValue::IdLessThan);
+  absl::c_sort(values_, HloValue::IdLessThan);
   values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
                 values_.end());
 }

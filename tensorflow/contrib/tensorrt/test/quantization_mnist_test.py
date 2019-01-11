@@ -144,7 +144,10 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
           outputs=[OUTPUT_NODE_NAME],
           max_batch_size=max_batch_size,
           precision_mode='INT8',
-          max_workspace_size_bytes=4096 << 19,
+          # There is a 2GB GPU memory limit for each test, so we set
+          # max_workspace_size_bytes to 256MB to leave enough room for TF
+          # runtime to allocate GPU memory.
+          max_workspace_size_bytes=1 << 28,
           minimum_segment_size=2,
           use_calibration=False,
       )
@@ -191,7 +194,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
               batch_size=batch_size,
               num_parallel_calls=8))
       dataset = dataset.repeat(count=1)
-      iterator = data.make_one_shot_iterator(dataset)
+      iterator = dataset.make_one_shot_iterator()
       features, labels = iterator.get_next()
       return features, labels
 
@@ -205,7 +208,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
               batch_size=batch_size,
               num_parallel_calls=8))
       dataset = dataset.repeat(count=num_epochs)
-      iterator = data.make_one_shot_iterator(dataset)
+      iterator = dataset.make_one_shot_iterator()
       features, labels = iterator.get_next()
       return features, labels
 

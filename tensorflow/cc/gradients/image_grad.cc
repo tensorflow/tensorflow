@@ -69,6 +69,23 @@ Status ResizeBicubicGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ResizeBicubic", ResizeBicubicGradHelper);
 
+Status ScaleAndTranslateGradHelper(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  string kernel_type;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "kernel_type", &kernel_type));
+  grad_outputs->push_back(internal::ScaleAndTranslateGrad(
+      scope, grad_inputs[0], op.input(0), op.input(2), op.input(3),
+      internal::ScaleAndTranslateGrad::KernelType(kernel_type)));
+
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("ScaleAndTranslate", ScaleAndTranslateGradHelper);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 58
+// Next ID: 59
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -81,6 +81,8 @@ message HloInstructionProto {
   // the input feature dimension and output feature dimension. If not specified,
   // it will use a default value of 1.
   int64 feature_group_count = 50;
+
+  int64 batch_group_count = 58;
 
   // Describes the [begin, end) index range and stride for slices.
   message SliceDimensions {
@@ -166,7 +168,7 @@ message HloInstructionProto {
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
   int64 all_reduce_id = 45;
-  string cross_replica_sum_barrier = 46;
+  string all_reduce_barrier = 46;
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone
@@ -227,6 +229,18 @@ message HloScheduleProto {
 }
 
 message HloInputOutputAliasProto {
+  enum Kind {
+    // Define a UNDEFINED_ALIAS equal to zero to get around the default-0 proto3
+    // behavior and missing has_*() APIs.
+    UNDEFINED_ALIAS = 0;
+    // An alias setup by the user as must alias. A use setting USER_ALIAS is
+    // expecting the designed output to be dropped over the given input
+    // parameter number+index.
+    USER_ALIAS = 1;
+    // An alias setup by the compiler as part of its optimizations.
+    SYSTEM_ALIAS = 2;
+  }
+
   // The following proto describes a pair of aliased an input
   // (described by parameter number and a ShapeIndex of the parameter)
   // and an output (described by a ShapeIndex of the root
@@ -247,6 +261,8 @@ message HloInputOutputAliasProto {
     int64 parameter_number = 2;
     // ShapeIndex of the parameter instruction.
     repeated int64 parameter_shape_index = 3;
+    // The kind of alias to be setup.
+    Kind kind = 4;
   }
 
   repeated AliasEntryProto entries = 1;

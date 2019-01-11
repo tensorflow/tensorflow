@@ -117,10 +117,70 @@ XlaOp Any(XlaOp predicates) {
     XlaComputation logical_or = CreateScalarOrComputation(PRED, builder);
     TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
                         builder->GetShape(predicates));
-    std::vector<int64> all_dimensions(ShapeUtil::Rank(predicates_shape));
+    std::vector<int64> all_dimensions(predicates_shape.rank());
     std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
     return Reduce(predicates, f, logical_or, all_dimensions);
   });
+}
+
+namespace {
+
+XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
+  XlaBuilder* builder = input.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+    XlaOp init_value;
+    XlaComputation reducer;
+    if (is_min) {
+      init_value = MaxValue(builder, input_shape.element_type());
+      reducer = CreateScalarMinComputation(input_shape.element_type(), builder);
+    } else {
+      init_value = MinValue(builder, input_shape.element_type());
+      reducer = CreateScalarMaxComputation(input_shape.element_type(), builder);
+    }
+
+    XlaOp input_max = Reduce(input, init_value, reducer,
+                             /*dimensions_to_reduce=*/{axis});
+    std::vector<int64> broadcast_dims(input_shape.rank() - 1);
+    std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
+    std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
+    // Compute a mask that has 1s for elements equal to the maximum.
+    XlaOp partial_mask =
+        ConvertElementType(Eq(input, input_max, broadcast_dims), output_type);
+
+    // In order to make identity elements for a bitwise And, we:
+    //   Left shift the 1 to the leftmost bit, yielding 0x10...0
+    //   Arithmetic right shift the 1 back to the rightmost bit, yielding
+    //   0xFF...F
+    int32 bits_in_type =
+        ShapeUtil::ByteSizeOfPrimitiveType(output_type) * 8 - 1;
+    XlaOp shift_amount = ConstantR0WithType(builder, output_type, bits_in_type);
+    XlaOp full_mask = ShiftRightArithmetic(
+        ShiftLeft(partial_mask, shift_amount), shift_amount);
+
+    // And with the vector [0, 1, 2, ...] to convert each 0xFF...F into its
+    // index.
+
+    const int64 axis_size = ShapeUtil::GetDimension(input_shape, axis);
+    XlaOp iota = Iota(builder, output_type, axis_size);
+    XlaOp product = And(full_mask, iota, /*broadcast_dimensions=*/{axis});
+
+    // If there are multiple maximum elements, choose the one with the highest
+    // index.
+    return Reduce(product, MinValue(builder, output_type),
+                  CreateScalarMaxComputation(output_type, builder),
+                  /*dimensions_to_reduce=*/{axis});
+  });
+}
+
+}  // namespace
+
+XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis) {
+  return ArgMinMax(input, output_type, axis, /*is_min=*/false);
+}
+
+XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis) {
+  return ArgMinMax(input, output_type, axis, /*is_min=*/true);
 }
 
 }  // namespace xla

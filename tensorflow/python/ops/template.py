@@ -387,8 +387,11 @@ class Template(checkpointable.CheckpointableBase):
     """Returns the variable scope name created by this Template."""
     if self._variable_scope:
       name = self._variable_scope.name
-      # To prevent partial matches on the scope_name, we add '/' at the end.
-      return name if name[-1] == "/" else name + "/"
+      if not name or name[-1] == "/":
+        return name
+      else:
+        # To prevent partial matches on the scope_name, we add '/' at the end.
+        return name + "/"
 
   @property
   def variables(self):
@@ -645,29 +648,6 @@ class EagerTemplate(Template):
         self._template_store.set_variable_scope_name(vs.name)
         with self._template_store.as_default():
           return self._call_func(args, kwargs)
-
-  @property
-  def name(self):
-    """Returns the name given to this Template."""
-    return self._name
-
-  @property
-  def func(self):
-    """Returns the func given to this Template."""
-    return self._func
-
-  @property
-  def variable_scope(self):
-    """Returns the variable scope object created by this Template."""
-    return self._variable_scope
-
-  @property
-  def variable_scope_name(self):
-    """Returns the variable scope name created by this Template."""
-    if self._variable_scope:
-      name = self._variable_scope.name
-      # To prevent partial matches on the scope_name, we add '/' at the end.
-      return name if name[-1] == "/" else name + "/"
 
   @property
   def variables(self):

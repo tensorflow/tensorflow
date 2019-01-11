@@ -2129,7 +2129,6 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   auto expanddims =
       ops::ExpandDims(s.WithOpName("my_expanddims"), input, weights);
   const NodeDef& node_def = expanddims.operation.node()->def();
-
   {
     // Input is weights, should fail.
     Reset();
@@ -2346,6 +2345,513 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
                        &output_data);
     EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertStridedSlice) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_strided_slice", "StridedSlice", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "StridedSlice expects 4 inputs, at my_strided_slice");
+  }
+
+  // Get nodedef for StridedSlice layer.
+  auto get_strided_slice_nodedef =
+      [](int begin_mask = 0, int end_mask = 0, int ellipsis_mask = 0,
+         int new_axis_mask = 0, int shrink_axis_mask = 0) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);
+    auto end = ops::Placeholder(s.WithOpName("end"), DT_INT32);
+    auto strides = ops::Placeholder(s.WithOpName("strides"), DT_INT32);
+    ops::StridedSlice::Attrs attrs = ops::StridedSlice::Attrs()
+                                         .BeginMask(begin_mask)
+                                         .EndMask(end_mask)
+                                         .EllipsisMask(ellipsis_mask)
+                                         .NewAxisMask(new_axis_mask)
+                                         .ShrinkAxisMask(shrink_axis_mask);
+    auto strided_slice = ops::StridedSlice(s.WithOpName("my_strided_slice"),
+                                           input, begin, end, strides, attrs);
+    return strided_slice.operation.node()->def();
+  };
+
+  {
+    // Input is weights, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestWeights<int32>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "StridedSlice is only implemented for tensors, at my_strided_slice");
+  }
+  {
+    // Begin, end, strides are tensors, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("begin", {4});
+    AddTestTensor("end", {4});
+    AddTestTensor("strides", {4});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "StridedSlice expects weights for begin, end, and strides, at "
+        "my_strided_slice");
+  }
+  {
+    // Non-zero ellipsis_mask, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef(
+        /*begin_mask=*/0, /*end_mask=*/0, /*ellipsis_mask=*/2,
+        /*new_axis_mask=*/0, /*shrink_axis_mask=*/0);
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "ellipsis_mask is not supported for StridedSlice, at "
+        "my_strided_slice");
+  }
+  {
+    // Modify batch dim, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {0, 1, 2, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "StridedSlice can't modify batch dim, at my_strided_slice");
+  }
+  {
+    // Stride is not 1, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 2, -1, 3});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "StridedSlice is only implemented for stride of "
+                               "1, at my_strided_slice");
+  }
+  {
+    // Begin out of bounds, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {1, 2, 3, 4});
+    AddTestWeights<int32>("end", {4}, {0, 1, 2, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "begin value of 2 for StridedSlice is invalid, must be in the range "
+        "[-dim_size(i), dim_size(i)], at my_strided_slice");
+  }
+  {
+    // End out of bounds, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {1, 2, 3, 4});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "end value of 2 for StridedSlice is invalid, must be in the range "
+        "[-dim_size(i), dim_size(i)], at my_strided_slice");
+  }
+  {
+    // Size of sliced dim is negative, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 2, 0});
+    AddTestWeights<int32>("end", {4}, {1, 1, 0, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "New size of sliced dimension is negative, at my_strided_slice");
+  }
+
+  struct TestParams {
+    TestParams(const std::vector<int>& input_dims,
+               const std::vector<int>& expected_output_dims,
+               const std::vector<int>& begin, const std::vector<int>& end,
+               const std::vector<int>& begin_mask,
+               const std::vector<int>& end_mask,
+               const std::vector<int>& expected_output)
+        : input_dims(input_dims),
+          expected_output_dims(expected_output_dims),
+          begin(begin),
+          end(end),
+          expected_output(expected_output) {
+      // Masks are provided in terms of vectors for readability. Convert them to
+      // binary here.
+      this->begin_mask = 0;
+      for (int i = 0; i < begin_mask.size(); i++) {
+        if (begin_mask[i]) this->begin_mask |= (1 << i);
+      }
+      this->end_mask = 0;
+      for (int i = 0; i < end_mask.size(); i++) {
+        if (end_mask[i]) this->end_mask |= (1 << i);
+      }
+    }
+
+    std::vector<int> input_dims;
+    std::vector<int> expected_output_dims;
+    std::vector<int> begin;
+    std::vector<int> end;
+    int begin_mask;
+    int end_mask;
+    std::vector<int> expected_output;
+  };
+
+  // Ok.
+  const int kStridedSliceOKCases = 18;
+  TestParams ok_params[kStridedSliceOKCases] = {
+      // 2D Crop.
+      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
+                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 0, 1, 2},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 0, 0},
+                 /*expected_output=*/{1, 2}},
+      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
+                 /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 0, 0, 0},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 1},
+                 /*expected_output=*/{5, 6}},
+      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
+                 /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 1, 2, 3},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 0, 0},
+                 /*expected_output=*/{5, 6}},
+      // 2D Crop, with transpose.
+      TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 2, 1},
+                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 2, 1},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 0, 0},
+                 /*expected_output=*/{1, 2}},
+      TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 2, 1},
+                 /*begin=*/{0, 1, 1, 0}, /*end=*/{0, 2, 3, 1},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 0, 0},
+                 /*expected_output=*/{5, 6}},
+      TestParams{/*input_dims=*/{2, 1, 3}, /*expected_output_dims=*/{1, 1, 2},
+                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 1, 2},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 0, 0},
+                 /*expected_output=*/{1, 2}},
+      TestParams{/*input_dims=*/{2, 1, 3}, /*expected_output_dims=*/{1, 1, 2},
+                 /*begin=*/{0, 1, 0, 1}, /*end=*/{0, 2, 1, 3},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 0, 0},
+                 /*expected_output=*/{5, 6}},
+      // 2D Crop, with reshape.
+      TestParams{/*input_dims=*/{2, 3}, /*expected_output_dims=*/{1, 2},
+                 /*begin=*/{0, 0, 0}, /*end=*/{0, 1, 2},
+                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 0, 0},
+                 /*expected_output=*/{1, 2}},
+      TestParams{/*input_dims=*/{2, 3}, /*expected_output_dims=*/{1, 2},
+                 /*begin=*/{0, 1, 1}, /*end=*/{0, 0, 0},
+                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 1, 1},
+                 /*expected_output=*/{5, 6}},
+      // 1D Crop.
+      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 2, 2},
+                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 0, 0, 2},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 0},
+                 /*expected_output=*/{1, 2, 4, 5}},
+      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 3},
+                 /*begin=*/{0, 0, 1, 0}, /*end=*/{0, 0, 0, 0},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 1},
+                 /*expected_output=*/{4, 5, 6}},
+      // 1D Crop, with transpose.
+      TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 3, 1},
+                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 0, 0},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 1, 1},
+                 /*expected_output=*/{1, 2, 3}},
+      TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 3, 1},
+                 /*begin=*/{0, 1, 0, 0}, /*end=*/{0, 0, 0, 0},
+                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 1},
+                 /*expected_output=*/{4, 5, 6}},
+      // 1D Crop, with reshape.
+      TestParams{/*input_dims=*/{6}, /*expected_output_dims=*/{3},
+                 /*begin=*/{0, 0}, /*end=*/{0, 3},
+                 /*begin_mask=*/{0, 0}, /*end_mask=*/{1, 0},
+                 /*expected_output=*/{1, 2, 3}},
+      TestParams{/*input_dims=*/{1, 6}, /*expected_output_dims=*/{1, 3},
+                 /*begin=*/{0, 0, 2}, /*end=*/{0, 0, 5},
+                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 1, 0},
+                 /*expected_output=*/{3, 4, 5}},
+      TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{3, 1},
+                 /*begin=*/{0, 2, 0}, /*end=*/{0, 5, 0},
+                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 0, 1},
+                 /*expected_output=*/{3, 4, 5}},
+      // Negative axis.
+      TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{3, 1},
+                 /*begin=*/{0, -6, 0}, /*end=*/{0, -3, 0},
+                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 0, 1},
+                 /*expected_output=*/{1, 2, 3}},
+      TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{5, 1},
+                 /*begin=*/{0, 0, 0}, /*end=*/{0, -1, 0},
+                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 0, 1},
+                 /*expected_output=*/{1, 2, 3, 4, 5}},
+  };
+
+  for (int i = 0; i < kStridedSliceOKCases; i++) {
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef(ok_params[i].begin_mask,
+                                                 ok_params[i].end_mask);
+    AddTestTensor("input", ok_params[i].input_dims);
+    AddTestWeights<int32>("begin",
+                          {static_cast<int>(ok_params[i].begin.size())},
+                          ok_params[i].begin);
+    AddTestWeights<int32>("end", {static_cast<int>(ok_params[i].end.size())},
+                          ok_params[i].end);
+    std::vector<int> strides(ok_params[i].input_dims.size(), 1);
+    AddTestWeights<int32>("strides", {static_cast<int>(strides.size())},
+                          strides);
+    RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_strided_slice", &output));
+    std::vector<float> output_data(ok_params[i].expected_output.size());
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_strided_slice",
+                       &output_data);
+    EXPECT_THAT(output_data, ElementsAreArray(ok_params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertConv2D) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_conv2d", "Conv2D", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Two inputs are expected for Conv2D, at my_conv2d");
+  }
+
+  // Get nodedef for Conv2D layer.
+  auto get_conv2d_nodedef =
+      [](std::vector<int> strides = {1, 1, 1, 1}, string padding = "SAME",
+         string data_format = "NCHW",
+         std::vector<int> dilations = {1, 1, 1, 1}) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
+    ops::Conv2D::Attrs attrs =
+        ops::Conv2D::Attrs().DataFormat(data_format).Dilations(dilations);
+    auto conv2d = ops::Conv2D(s.WithOpName("my_conv2d"), input, filter, strides,
+                              padding, attrs);
+    return conv2d.operation.node()->def();
+  };
+
+  {
+    // Input is weights, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Conv2D is only implemented for tensors, not weights, at my_conv2d");
+  }
+  {
+    // Filter is tensor, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("weights", {3, 3, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Kernel for Conv2D must be constant weights, at my_conv2d");
+  }
+  {
+    // Filter is not 4D, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Conv2D expects kernel of dimension 4, at my_conv2d");
+  }
+  {
+    // Dilations is not 4D, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NCHW", {1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Convolution dilations field must specify 4 dimensions, at my_conv2d");
+  }
+  {
+    // Dilation value is not 1 for channel, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NCHW", {1, 2, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Dilation rate must be 1 for batch and channel "
+                               "dimensions, at my_conv2d");
+  }
+  {
+    // Dilation value is not 1 for channel (NHWC), should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NHWC", {1, 1, 1, 2});
+    AddTestTensor("input", {2, 3, 1});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Dilation rate must be 1 for batch and channel "
+                               "dimensions, at my_conv2d");
+  }
+  {
+    // Strides is not 4D, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1}, "SAME", "NCHW", {1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Convolution strides field must specify 4 dimensions, at my_conv2d");
+  }
+  {
+    // Stride value is not 1 for channel, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 2, 1, 1}, "SAME", "NCHW", {1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Stride must be 1 for batch and channel dimensions, at my_conv2d");
+  }
+
+  struct TestParams {
+    TestParams(const std::vector<int>& input_dims,
+               const std::vector<float>& input,
+               const std::vector<int>& filter_dims,
+               const std::vector<float>& filter,
+               const std::vector<int>& strides, const string& padding,
+               const string& data_format, const std::vector<int>& dilations,
+               const std::vector<int>& expected_output_dims,
+               const std::vector<float>& expected_output)
+        : input_dims(input_dims),
+          input(input),
+          filter_dims(filter_dims),
+          filter(filter),
+          strides(strides),
+          padding(padding),
+          data_format(data_format),
+          dilations(dilations),
+          expected_output_dims(expected_output_dims),
+          expected_output(expected_output) {}
+
+    std::vector<int> input_dims;
+    std::vector<float> input;
+    std::vector<int> filter_dims;
+    std::vector<float> filter;
+    std::vector<int> strides;
+    string padding;
+    string data_format;
+    std::vector<int> dilations;
+    std::vector<int> expected_output_dims;
+    std::vector<float> expected_output;
+  };
+
+  // Ok.
+  const int kConv2DOKCases = 6;
+  TestParams ok_params[kConv2DOKCases] = {
+      // Basic
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 2},
+                 /*expected_output=*/{1, 1, 0, 1}},
+      // SAME padding (Asymmetric)
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 3},
+                 /*expected_output=*/{1, 1, -2, 0, 1, -4}},
+      // SAME padding (Symmetric)
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 3, 1, 1},
+                 /*filter=*/{-1, 0, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 3},
+                 /*expected_output=*/{1, 2, -1, 3, 1, -3}},
+      // NHWC
+      TestParams{/*input_dims=*/{2, 3, 1},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{2, 2, 1},
+                 /*expected_output=*/{1, 1, 0, 1}},
+      // Dilated
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 2},
+                 /*expected_output_dims=*/{1, 2, 1},
+                 /*expected_output=*/{2, 1}},
+      // Strided
+      TestParams{/*input_dims=*/{1, 2, 4},
+                 /*input=*/{0, 1, 2, 2, 3, 4, 4, 7},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 2},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 2},
+                 /*expected_output=*/{1, 0, 1, 3}},
+  };
+
+  for (int i = 0; i < kConv2DOKCases; i++) {
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef(ok_params[i].strides, ok_params[i].padding,
+                           ok_params[i].data_format, ok_params[i].dilations);
+    AddTestTensor("input", ok_params[i].input_dims);
+    AddTestWeights<float>("weights", ok_params[i].filter_dims,
+                          ok_params[i].filter);
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_conv2d", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+    std::vector<float> output_data(ok_params[i].expected_output.size());
+    BuildAndRun<float>({{"input", ok_params[i].input}}, "my_conv2d",
+                       &output_data);
+    EXPECT_THAT(output_data, ElementsAreArray(ok_params[i].expected_output));
   }
 }
 

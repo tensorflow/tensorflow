@@ -71,9 +71,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     int64 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
 
     bool drop_remainder;
     OP_REQUIRES_OK(ctx,
@@ -209,7 +210,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -252,7 +259,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                                             params.dataset->batch_size_)) {
         std::vector<string> components =
             str_util::Split(params.prefix, "::", str_util::SkipEmpty());
-        prefix_end_ = components.back();
+        key_prefix_ = components.back();
       }
 
       ~Iterator() override {
@@ -268,9 +275,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        if (num_parallel_calls_->value == kAutoTune) {
+        if (num_parallel_calls_->value == model::kAutoTune) {
           num_parallel_calls_->value = ctx->runner_threadpool_size();
-          num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -391,8 +397,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         const auto& stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator) {
           stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::active_parallel_calls"),
-              static_cast<float>(num_calls_));
+              strings::StrCat(key_prefix_, "::thread_utilization"),
+              static_cast<float>(num_calls_) /
+                  static_cast<float>(num_parallel_calls_->value));
         }
         cond_var_->notify_all();
       }
@@ -631,18 +638,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               num_calls_++;
             }
           }
-          const std::shared_ptr<StatsAggregator>& stats_aggregator =
-              ctx->stats_aggregator();
+          const auto& stats_aggregator = ctx->stats_aggregator();
           if (stats_aggregator) {
             mutex_lock l(*mu_);
-            // TODO(shivaniagrawal): add `parallel_calls_utilization` in the
-            // monitoring code or as histogram at fixed time intervals.
             stats_aggregator->AddScalar(
-                strings::StrCat(prefix_end_, "::active_parallel_calls"),
-                static_cast<float>(num_calls_));
-            stats_aggregator->AddScalar(
-                strings::StrCat(prefix_end_, "::num_parallel_calls"),
-                static_cast<float>(num_parallel_calls_->value));
+                strings::StrCat(key_prefix_, "::thread_utilization"),
+                static_cast<float>(num_calls_) /
+                    static_cast<float>(num_parallel_calls_->value));
           }
           for (const auto& call : new_calls) {
             CallFunction(ctx, call.first, call.second);
@@ -797,7 +799,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       int64 waiting_ GUARDED_BY(*mu_) = 0;
       // Identifies the maximum number of batch results to store.
       int64 max_batch_results_ GUARDED_BY(*mu_);
-      string prefix_end_;
+      string key_prefix_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
