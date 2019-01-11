@@ -3,6 +3,7 @@ syntax = "proto3";
 import "tensorflow/core/protobuf/checkpointable_object_graph.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/versions.proto";
 import "tensorflow/python/saved_model/struct.proto";
 
 option cc_enable_arenas = true;
@@ -62,7 +63,12 @@ message SavedObject {
 //
 // This object cannot be evaluated as a tensor, and therefore cannot be bound
 // to an input of a function.
-message SavedUserObject {}
+message SavedUserObject {
+  // Corresponds to a registration of the type to use in the loading program.
+  string identifier = 1;
+  // Version information from the producer of this SavedUserObject.
+  VersionDef version = 2;
+}
 
 // A SavedAsset represents a file in a SavedModel.
 //
