@@ -2744,10 +2744,12 @@ class SRUCell(rnn_cell_impl.LayerRNNCell):
     name: (optional) String, the name of the layer. Layers with the same name
       will share weights, but to avoid mistakes we require reuse=True in such
       cases.
+    **kwargs: Additional keyword arguments.
   """
 
-  def __init__(self, num_units, activation=None, reuse=None, name=None):
-    super(SRUCell, self).__init__(_reuse=reuse, name=name)
+  def __init__(self, num_units, activation=None, reuse=None, name=None,
+               **kwargs):
+    super(SRUCell, self).__init__(_reuse=reuse, name=name, **kwargs)
     self._num_units = num_units
     self._activation = activation or math_ops.tanh
 
@@ -2777,7 +2779,7 @@ class SRUCell(rnn_cell_impl.LayerRNNCell):
     self._bias = self.add_variable(
         rnn_cell_impl._BIAS_VARIABLE_NAME,  # pylint: disable=protected-access
         shape=[2 * self._num_units],
-        initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
+        initializer=init_ops.zeros_initializer)
 
     self._built = True
 
