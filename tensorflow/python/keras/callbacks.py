@@ -688,15 +688,14 @@ class ProgbarLogger(Callback):
     if self.verbose:
       if self.epochs > 1:
         print('Epoch %d/%d' % (epoch + 1, self.epochs))
-      self.progbar = Progbar(
-          target=self.target,
-          verbose=self.verbose,
-          stateful_metrics=self.stateful_metrics,
-          unit_name='step' if self.use_steps else 'sample')
+    self.progbar = Progbar(
+        target=self.target,
+        verbose=self.verbose,
+        stateful_metrics=self.stateful_metrics,
+        unit_name='step' if self.use_steps else 'sample')
 
   def on_batch_begin(self, batch, logs=None):
-    if self.seen < self.target:
-      self.log_values = []
+    self.log_values = []
 
   def on_batch_end(self, batch, logs=None):
     logs = logs or {}
@@ -715,7 +714,7 @@ class ProgbarLogger(Callback):
 
     # Skip progbar update for the last batch;
     # will be handled by on_epoch_end.
-    if self.verbose and self.seen < self.target:
+    if self.verbose and (self.target is None or self.seen < self.target):
       self.progbar.update(self.seen, self.log_values)
 
   def on_epoch_end(self, epoch, logs=None):
