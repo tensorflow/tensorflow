@@ -657,7 +657,11 @@ cuda_py_test(
 py_library(
     name = "keras_correctness_test_lib",
     testonly = 1,
-    srcs = ["keras_correctness_test.py"],
+    srcs = [
+        "keras_correctness_test_base.py",
+        "keras_dnn_correctness_test.py",
+        "keras_image_model_correctness_test.py",
+    ],
     deps = [
         ":combinations",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
@@ -673,14 +677,34 @@ py_library(
 )
 
 cuda_py_test(
-    name = "keras_correctness_test",
-    srcs = ["keras_correctness_test.py"],
+    name = "keras_dnn_correctness_test",
+    size = "medium",
+    srcs = ["keras_dnn_correctness_test.py"],
     additional_deps = [
         ":keras_correctness_test_lib",
     ],
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 19,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_image_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_image_model_correctness_test.py"],
+    additional_deps = [
+        ":keras_correctness_test_lib",
+    ],
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
