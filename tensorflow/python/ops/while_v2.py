@@ -115,15 +115,15 @@ def while_loop(cond,
             loop_counter < maximum_iterations,
             cond(*_pack_sequence_as(orig_loop_vars, args)))
 
-    # NOTE(skyewm): we set read_only_collections=False for compatibility with
-    # TPUEstimator.
+    # NOTE(skyewm): we set collections to the outer graph's collections for
+    # compatibility with TPUEstimator.
     cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name,
         wrapped_cond,
         loop_vars, {},
         signature=_build_signature(loop_vars, shape_invariants),
-        func_graph=util.WhileCondFuncGraph(cond_name,
-                                           read_only_collections=False),
+        func_graph=util.WhileCondFuncGraph(
+            cond_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
 
     # Add external_captures of cond to the list of loop vars.
@@ -174,8 +174,8 @@ def while_loop(cond,
         wrapped_body,
         loop_vars, {},
         signature=_build_signature(loop_vars, shape_invariants),
-        func_graph=util.WhileBodyFuncGraph(body_name,
-                                           read_only_collections=False),
+        func_graph=util.WhileBodyFuncGraph(
+            body_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,

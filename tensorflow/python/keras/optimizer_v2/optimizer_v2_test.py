@@ -507,7 +507,7 @@ class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
       ('adadelta', 'adadelta', True), ('adagrad', 'adagrad', True),
       ('adam', 'adam', True), ('adamax', 'adamax', True),
       ('nadam', 'nadam', True), ('momentum', 'momentum', True),
-      ('sgd', 'sgd', False))
+      ('rmsprop', 'rmsprop', True), ('sgd', 'sgd', False))
   def testOptimizersCompatibility(self, opt_str, test_weights):
     np.random.seed(1331)
     with self.cached_session():

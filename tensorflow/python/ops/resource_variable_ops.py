@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import functools
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
@@ -504,7 +505,6 @@ class ResourceVariable(variables.VariableV1):
       # all in graph mode.
       self._handle_deleter = EagerResourceDeleter(
           handle=self._handle, handle_device=self._handle.device)
-    self._cached_shape_as_list = None
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
@@ -562,7 +562,6 @@ class ResourceVariable(variables.VariableV1):
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._constraint = None
-    self._cached_shape_as_list = None
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -597,7 +596,8 @@ class ResourceVariable(variables.VariableV1):
         trainable=self._trainable,
         constraint=self._constraint,
         dtype=self._dtype,
-        name=self._shared_name + "_copy")
+        name=self._shared_name + "_copy",
+        distribute_strategy=self.distribute_strategy)
     memo[self._unique_id] = copied_variable
     return copied_variable
 
@@ -632,12 +632,9 @@ class ResourceVariable(variables.VariableV1):
     return self._distribute_strategy
 
   def _shape_as_list(self):
-    if self._cached_shape_as_list:
-      return self._cached_shape_as_list
     if self.shape.ndims is None:
       return None
-    self._cached_shape_as_list = [dim.value for dim in self.shape.dims]
-    return self._cached_shape_as_list
+    return [dim.value for dim in self.shape.dims]
 
   def _shape_tuple(self):
     shape = self._shape_as_list()
@@ -943,7 +940,15 @@ class ResourceVariable(variables.VariableV1):
     return assign_op
 
   def __reduce__(self):
-    return (ResourceVariable, (self.numpy(),))
+    # The implementation mirrors that of __deepcopy__.
+    return functools.partial(
+        ResourceVariable,
+        initial_value=self.numpy(),
+        trainable=self.trainable,
+        name=self._shared_name,
+        dtype=self.dtype,
+        constraint=self.constraint,
+        distribute_strategy=self.distribute_strategy), ()
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.

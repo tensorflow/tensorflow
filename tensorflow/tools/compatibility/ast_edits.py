@@ -213,7 +213,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
       return False
 
   def _maybe_add_call_warning(self, node, full_name, name):
-    """Print a warning when specific functions are called.
+    """Print a warning when specific functions are called with selected args.
 
     The function _print_warning_for_function matches the full name of the called
     function, e.g., tf.foo.bar(). This function matches the function name that
@@ -241,13 +241,13 @@ class _PastaEditVisitor(ast.NodeVisitor):
                                              full_name, name)
 
     used_args = [kw.arg for kw in node.keywords]
-    for arg, warning in arg_warnings.items():
-      if arg in used_args:
+    for (kwarg, arg), warning in arg_warnings.items():
+      if kwarg in used_args or len(node.args) > arg:
         warned = True
         warning_message = warning.replace("<function name>", full_name or name)
         self.add_error(node.lineno, node.col_offset,
                        "%s called with %s argument requires manual check: %s." %
-                       (full_name or name, arg, warning_message))
+                       (full_name or name, kwarg, warning_message))
 
     return warned
 

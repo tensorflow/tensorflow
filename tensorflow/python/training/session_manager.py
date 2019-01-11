@@ -182,13 +182,16 @@ class SessionManager(object):
         set.
     """
     self._target = master
+
+    # This is required to so that we initialize the TPU device before
+    # restoring from checkpoint since we'll be placing variables on the device
+    # and TPUInitialize wipes out the memory of the device.
+    strategy = distribution_strategy_context.get_distribution_strategy()
+    if strategy and hasattr(strategy.extended,
+                            "_experimental_initialize_system"):
+      strategy.extended._experimental_initialize_system()  # pylint: disable=protected-access
+
     sess = session.Session(self._target, graph=self._graph, config=config)
-    # TODO(jhseu): Delete once tpu.initialize_system() goes away.
-    initialize_ops = (
-        distribution_strategy_context.get_distribution_strategy().initialize()
-    )
-    if initialize_ops:
-      sess.run(initialize_ops)
     if checkpoint_dir and checkpoint_filename_with_path:
       raise ValueError("Can not provide both checkpoint_dir and "
                        "checkpoint_filename_with_path.")

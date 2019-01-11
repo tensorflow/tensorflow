@@ -217,4 +217,5 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 2,
 )

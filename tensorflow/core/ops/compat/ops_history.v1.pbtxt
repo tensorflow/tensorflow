@@ -13632,6 +13632,88 @@ op {
   }
 }
 op {
+  name: "Conv2D"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+  }
+  attr {
+    name: "use_cudnn_on_gpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+}
+op {
   name: "Conv2DBackpropFilter"
   input_arg {
     name: "input"
@@ -13848,6 +13930,92 @@ op {
   }
 }
 op {
+  name: "Conv2DBackpropFilter"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter_sizes"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+  }
+  attr {
+    name: "use_cudnn_on_gpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+}
+op {
   name: "Conv2DBackpropInput"
   input_arg {
     name: "input_sizes"
@@ -14034,6 +14202,92 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+}
+op {
+  name: "Conv2DBackpropInput"
+  input_arg {
+    name: "input_sizes"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+  }
+  attr {
+    name: "use_cudnn_on_gpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }

@@ -51,6 +51,7 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -344,6 +345,85 @@ class Mean(Metric):
 
   def result(self):
     return math_ops.div_no_nan(self.total, self.count)
+
+
+class MeanRelativeError(Mean):
+  """Computes the mean relative error by normalizing with the given values.
+
+  This metric creates two local variables, `total` and `count` that are used to
+  compute the mean relative absolute error. This average is weighted by
+  `sample_weight`, and it is ultimately returned as `mean_relative_error`:
+  an idempotent operation that simply divides `total` by `count`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.MeanRelativeError(normalizer=[1, 3, 2, 3])
+  m.update_state([1, 3, 2, 3], [2, 4, 6, 8])
+
+  # metric = mean(|y_pred - y_true| / normalizer)
+  #        = mean([1, 1, 4, 5] / [1, 3, 2, 3]) = mean([1, 1/3, 2, 5/3])
+  #        = 5/4 = 1.25
+  print('Final result: ', m.result().numpy())  # Final result: 1.25
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+    'sgd',
+    loss='mse',
+    metrics=[tf.keras.metrics.MeanRelativeError(normalizer=[1, 3])])
+  ```
+  """
+
+  def __init__(self, normalizer, name=None, dtype=None):
+    """Creates a `MeanRelativeError` instance.
+
+    Args:
+      normalizer: The normalizer values with same shape as predictions.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(MeanRelativeError, self).__init__(name=name, dtype=dtype)
+    normalizer = math_ops.cast(normalizer, self._dtype)
+    self.normalizer = normalizer
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates metric statistics.
+
+    Args:
+      y_true: The ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional weighting of each example. Defaults to 1. Can be a
+        `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
+        be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
+    """
+    y_true = math_ops.cast(y_true, self._dtype)
+    y_pred = math_ops.cast(y_pred, self._dtype)
+    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
+        y_pred, y_true, sample_weight)
+
+    y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
+        y_pred, self.normalizer)
+    y_pred.shape.assert_is_compatible_with(y_pred.shape)
+    relative_errors = math_ops.div_no_nan(
+        math_ops.abs(y_true - y_pred), self.normalizer)
+
+    return super(MeanRelativeError, self).update_state(
+        relative_errors, sample_weight=sample_weight)
+
+  def get_config(self):
+    config = {'normalizer': self.normalizer}
+    base_config = super(MeanRelativeError, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 class MeanMetricWrapper(Mean):

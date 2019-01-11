@@ -13,10 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/timer.h"
+#if GOOGLE_CUDA
 
-int32_t TimeInMilliseconds() {
-  static int current_time = 0;
-  current_time += 100;
-  return current_time;
+#include "tensorflow/core/common_runtime/gpu/gpu_device_kernel_check.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+
+namespace {
+__global__ void test_kernel(float* val) {
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    (*val) = 12345.;
+  }
 }
+}  // namespace
+
+namespace tensorflow {
+
+void run_test_kernel(float* val, cudaStream_t cu_stream) {
+  test_kernel<<<1, 1, 0, cu_stream>>>(val);
+}
+
+}  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA

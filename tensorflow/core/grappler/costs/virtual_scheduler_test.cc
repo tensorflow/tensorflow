@@ -30,8 +30,11 @@ namespace grappler {
 // Class for testing virtual scheduler.
 class TestVirtualScheduler : public VirtualScheduler {
  public:
-  TestVirtualScheduler(const bool use_static_shapes, Cluster* cluster)
-      : VirtualScheduler(use_static_shapes, cluster, &ready_node_manager_) {
+  TestVirtualScheduler(const bool use_static_shapes,
+                       const bool use_aggressive_shape_inference,
+                       Cluster* cluster)
+      : VirtualScheduler(use_static_shapes, use_aggressive_shape_inference,
+                         cluster, &ready_node_manager_) {
     enable_mem_usage_tracking();
   }
 
@@ -68,7 +71,8 @@ class VirtualSchedulerTest : public ::testing::Test {
     devices[kCPU1] = cpu_device;
     cluster_ = absl::make_unique<VirtualCluster>(devices);
     scheduler_ = absl::make_unique<TestVirtualScheduler>(
-        /* use_static_shapes = */ true, cluster_.get());
+        /*use_static_shapes=*/true,
+        /*use_aggressive_shape_inference=*/true, cluster_.get());
   }
 
   NodeDef node1_, node2_, node3_, node4_, node5_, node6_;

@@ -1477,6 +1477,18 @@ class ComputationBuilder(object):
     return self._client.TriangularSolve(
         a, b, left_side, lower, transpose_a, conjugate_a)
 
+  def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
+    """Enqueues a Gather operation onto the computation."""
+    return self._client.Gather(a, start_indices, dimension_numbers,
+                               slice_sizes)
+
+  def Scatter(self, a, scatter_indices, updates, update_computation,
+              dimension_numbers):
+    """Enqueues a Scatter operation onto the computation."""
+    return self._client.Scatter(
+        a, scatter_indices, updates, update_computation.computation,
+        dimension_numbers,)
+
 
 def _forward_methods_to_local_builder():
   """Forward remaining ComputationBuilder methods to the C API.
