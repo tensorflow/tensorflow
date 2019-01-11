@@ -170,6 +170,7 @@ REGISTER_OP("While")
     .Attr("cond: func")
     .Attr("body: func")
     .Attr("output_shapes: list(shape) = []")
+    .Attr("parallel_iterations: int = 10")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
