@@ -18,6 +18,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif
 
