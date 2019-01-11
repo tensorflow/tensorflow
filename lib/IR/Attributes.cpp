@@ -64,11 +64,11 @@ Attribute Attribute::remapFunctionAttrs(
   return ArrayAttr::get(remappedElts, context);
 }
 
-BoolAttr::BoolAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// BoolAttr
 
 bool BoolAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
-IntegerAttr::IntegerAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// IntegerAttr
 
 APInt IntegerAttr::getValue() const {
   return static_cast<ImplType *>(attr)->getValue();
@@ -80,7 +80,7 @@ Type IntegerAttr::getType() const {
   return static_cast<ImplType *>(attr)->type;
 }
 
-FloatAttr::FloatAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// FloatAttr
 
 APFloat FloatAttr::getValue() const {
   return static_cast<ImplType *>(attr)->getValue();
@@ -99,35 +99,35 @@ double FloatAttr::getValueAsDouble() const {
   return value.convertToDouble();
 }
 
-StringAttr::StringAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// StringAttr
 
 StringRef StringAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-ArrayAttr::ArrayAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// ArrayAttr
 
 ArrayRef<Attribute> ArrayAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-AffineMapAttr::AffineMapAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// AffineMapAttr
 
 AffineMap AffineMapAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-IntegerSetAttr::IntegerSetAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// IntegerSetAttr
 
 IntegerSet IntegerSetAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-TypeAttr::TypeAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// TypeAttr
 
 Type TypeAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
-FunctionAttr::FunctionAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// FunctionAttr
 
 Function *FunctionAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
@@ -135,21 +135,19 @@ Function *FunctionAttr::getValue() const {
 
 FunctionType FunctionAttr::getType() const { return getValue()->getType(); }
 
-ElementsAttr::ElementsAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+/// ElementsAttr
 
 VectorOrTensorType ElementsAttr::getType() const {
   return static_cast<ImplType *>(attr)->type;
 }
 
-SplatElementsAttr::SplatElementsAttr(Attribute::ImplType *ptr)
-    : ElementsAttr(ptr) {}
+/// SplatElementsAttr
 
 Attribute SplatElementsAttr::getValue() const {
   return static_cast<ImplType *>(attr)->elt;
 }
 
-DenseElementsAttr::DenseElementsAttr(Attribute::ImplType *ptr)
-    : ElementsAttr(ptr) {}
+/// DenseElementsAttr
 
 void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   switch (getKind()) {
@@ -209,8 +207,7 @@ uint64_t DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
   return dst;
 }
 
-DenseIntElementsAttr::DenseIntElementsAttr(Attribute::ImplType *ptr)
-    : DenseElementsAttr(ptr) {}
+/// DenseIntElementsAttr
 
 void DenseIntElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   auto bitsWidth = static_cast<ImplType *>(attr)->bitsWidth;
@@ -236,8 +233,7 @@ void DenseIntElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   }
 }
 
-DenseFPElementsAttr::DenseFPElementsAttr(Attribute::ImplType *ptr)
-    : DenseElementsAttr(ptr) {}
+/// DenseFPElementsAttr
 
 // Construct a FloatAttr wrapping a float value of `elementType` type from its
 // bit representation.  The APFloat stored in the attribute will have the
@@ -274,15 +270,13 @@ void DenseFPElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   }
 }
 
-OpaqueElementsAttr::OpaqueElementsAttr(Attribute::ImplType *ptr)
-    : ElementsAttr(ptr) {}
+/// OpaqueElementsAttr
 
 StringRef OpaqueElementsAttr::getValue() const {
   return static_cast<ImplType *>(attr)->bytes;
 }
 
-SparseElementsAttr::SparseElementsAttr(Attribute::ImplType *ptr)
-    : ElementsAttr(ptr) {}
+/// SparseElementsAttr
 
 DenseIntElementsAttr SparseElementsAttr::getIndices() const {
   return static_cast<ImplType *>(attr)->indices;

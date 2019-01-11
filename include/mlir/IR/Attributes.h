@@ -136,11 +136,9 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
 
 class BoolAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::BoolAttributeStorage;
   using ValueType = bool;
-
-  BoolAttr() = default;
-  /* implicit */ BoolAttr(Attribute::ImplType *ptr);
 
   static BoolAttr get(bool value, MLIRContext *context);
 
@@ -152,11 +150,9 @@ public:
 
 class IntegerAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::IntegerAttributeStorage;
   using ValueType = APInt;
-
-  IntegerAttr() = default;
-  /* implicit */ IntegerAttr(Attribute::ImplType *ptr);
 
   static IntegerAttr get(Type type, int64_t value);
   static IntegerAttr get(Type type, const APInt &value);
@@ -171,13 +167,11 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Integer; }
 };
 
-class FloatAttr final : public Attribute {
+class FloatAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::FloatAttributeStorage;
   using ValueType = APFloat;
-
-  FloatAttr() = default;
-  /* implicit */ FloatAttr(Attribute::ImplType *ptr);
 
   static FloatAttr get(Type type, double value);
   static FloatAttr get(Type type, const APFloat &value);
@@ -196,11 +190,9 @@ public:
 
 class StringAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::StringAttributeStorage;
   using ValueType = StringRef;
-
-  StringAttr() = default;
-  /* implicit */ StringAttr(Attribute::ImplType *ptr);
 
   static StringAttr get(StringRef bytes, MLIRContext *context);
 
@@ -214,11 +206,9 @@ public:
 /// type homogenous given that attributes don't, in general, carry types.
 class ArrayAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::ArrayAttributeStorage;
   using ValueType = ArrayRef<Attribute>;
-
-  ArrayAttr() = default;
-  /* implicit */ ArrayAttr(Attribute::ImplType *ptr);
 
   static ArrayAttr get(ArrayRef<Attribute> value, MLIRContext *context);
 
@@ -236,11 +226,9 @@ public:
 
 class AffineMapAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::AffineMapAttributeStorage;
   using ValueType = AffineMap;
-
-  AffineMapAttr() = default;
-  /* implicit */ AffineMapAttr(Attribute::ImplType *ptr);
 
   static AffineMapAttr get(AffineMap value);
 
@@ -252,11 +240,9 @@ public:
 
 class IntegerSetAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::IntegerSetAttributeStorage;
   using ValueType = IntegerSet;
-
-  IntegerSetAttr() = default;
-  /* implicit */ IntegerSetAttr(Attribute::ImplType *ptr);
 
   static IntegerSetAttr get(IntegerSet value);
 
@@ -268,11 +254,9 @@ public:
 
 class TypeAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::TypeAttributeStorage;
   using ValueType = Type;
-
-  TypeAttr() = default;
-  /* implicit */ TypeAttr(Attribute::ImplType *ptr);
 
   static TypeAttr get(Type type, MLIRContext *context);
 
@@ -291,11 +275,9 @@ public:
 /// remain in MLIRContext.
 class FunctionAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   using ImplType = detail::FunctionAttributeStorage;
   using ValueType = Function *;
-
-  FunctionAttr() = default;
-  /* implicit */ FunctionAttr(Attribute::ImplType *ptr);
 
   static FunctionAttr get(const Function *value, MLIRContext *context);
 
@@ -314,9 +296,8 @@ public:
 /// A base attribute represents a reference to a vector or tensor constant.
 class ElementsAttr : public Attribute {
 public:
+  using Attribute::Attribute;
   typedef detail::ElementsAttributeStorage ImplType;
-  ElementsAttr() = default;
-  /* implicit */ ElementsAttr(Attribute::ImplType *ptr);
 
   VectorOrTensorType getType() const;
 
@@ -331,11 +312,9 @@ public:
 /// meaning all of the elements have the same value.
 class SplatElementsAttr : public ElementsAttr {
 public:
+  using ElementsAttr::ElementsAttr;
   using ImplType = detail::SplatElementsAttributeStorage;
   using ValueType = Attribute;
-
-  SplatElementsAttr() = default;
-  /* implicit */ SplatElementsAttr(Attribute::ImplType *ptr);
 
   static SplatElementsAttr get(VectorOrTensorType type, Attribute elt);
   Attribute getValue() const;
@@ -350,10 +329,8 @@ public:
 /// than 64.
 class DenseElementsAttr : public ElementsAttr {
 public:
+  using ElementsAttr::ElementsAttr;
   using ImplType = detail::DenseElementsAttributeStorage;
-
-  DenseElementsAttr() = default;
-  /* implicit */ DenseElementsAttr(Attribute::ImplType *ptr);
 
   /// It assumes the elements in the input array have been truncated to the bits
   /// width specified by the element type (note all float type are 64 bits).
@@ -391,10 +368,8 @@ public:
 /// object.
 class DenseIntElementsAttr : public DenseElementsAttr {
 public:
+  using DenseElementsAttr::DenseElementsAttr;
   using ImplType = detail::DenseIntElementsAttributeStorage;
-
-  DenseIntElementsAttr() = default;
-  /* implicit */ DenseIntElementsAttr(Attribute::ImplType *ptr);
 
   // TODO: returns APInts instead of IntegerAttr.
   void getValues(SmallVectorImpl<Attribute> &values) const;
@@ -409,10 +384,8 @@ public:
 /// object. Each element is stored as a double.
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
+  using DenseElementsAttr::DenseElementsAttr;
   using ImplType = detail::DenseFPElementsAttributeStorage;
-
-  DenseFPElementsAttr() = default;
-  /* implicit */ DenseFPElementsAttr(Attribute::ImplType *ptr);
 
   // TODO: returns APFPs instead of FloatAttr.
   void getValues(SmallVectorImpl<Attribute> &values) const;
@@ -428,11 +401,9 @@ public:
 /// doesn't need to interpret.
 class OpaqueElementsAttr : public ElementsAttr {
 public:
+  using ElementsAttr::ElementsAttr;
   using ImplType = detail::OpaqueElementsAttributeStorage;
   using ValueType = StringRef;
-
-  OpaqueElementsAttr() = default;
-  /* implicit */ OpaqueElementsAttr(Attribute::ImplType *ptr);
 
   static OpaqueElementsAttr get(VectorOrTensorType type, StringRef bytes);
 
@@ -459,10 +430,8 @@ public:
 ///  [0, 0, 0, 0]].
 class SparseElementsAttr : public ElementsAttr {
 public:
+  using ElementsAttr::ElementsAttr;
   using ImplType = detail::SparseElementsAttributeStorage;
-
-  SparseElementsAttr() = default;
-  /* implicit */ SparseElementsAttr(Attribute::ImplType *ptr);
 
   static SparseElementsAttr get(VectorOrTensorType type,
                                 DenseIntElementsAttr indices,
