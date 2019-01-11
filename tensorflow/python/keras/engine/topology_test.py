@@ -1174,35 +1174,6 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
       self.assertAllClose(mask_outputs_val[1], np.any(model_input, axis=-1))
 
 
-class GraphUtilsTest(test.TestCase):
-
-  @test_util.run_deprecated_v1
-  def testGetReachableFromInputs(self):
-
-    with self.cached_session():
-      pl_1 = array_ops.placeholder(shape=None, dtype='float32')
-      pl_2 = array_ops.placeholder(shape=None, dtype='float32')
-      pl_3 = array_ops.placeholder(shape=None, dtype='float32')
-      x_1 = pl_1 + pl_2
-      x_2 = pl_2 * 2
-      x_3 = pl_3 + 1
-      x_4 = x_1 + x_2
-      x_5 = x_3 * pl_1
-
-      self.assertEqual(
-          keras.utils.tf_utils.get_reachable_from_inputs([pl_1]),
-          {pl_1, x_1, x_4, x_5, x_1.op, x_4.op, x_5.op})
-      self.assertEqual(
-          keras.utils.tf_utils.get_reachable_from_inputs([pl_1, pl_2]),
-          {pl_1, pl_2, x_1, x_2, x_4, x_5, x_1.op, x_2.op, x_4.op, x_5.op})
-      self.assertEqual(
-          keras.utils.tf_utils.get_reachable_from_inputs([pl_3]),
-          {pl_3, x_3, x_5, x_3.op, x_5.op})
-      self.assertEqual(
-          keras.utils.tf_utils.get_reachable_from_inputs([x_3]),
-          {x_3, x_5, x_5.op})
-
-
 @test_util.run_all_in_graph_and_eager_modes
 class NestedNetworkTest(test.TestCase):
 
