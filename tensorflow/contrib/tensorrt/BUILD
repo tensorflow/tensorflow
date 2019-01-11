@@ -97,6 +97,7 @@ cc_library(
         ":trt_plugins",
         ":trt_resources",
         ":utils",
+        "@com_google_absl//absl/memory",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
