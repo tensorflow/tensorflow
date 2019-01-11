@@ -640,7 +640,7 @@ tf_py_test(
 
 tf_py_test(
     name = "gru_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/gru_test.py"],
     additional_deps = [
         ":keras",
@@ -648,7 +648,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 4,
     tags = ["notsan"],  # http://b/62136390
 )
 
