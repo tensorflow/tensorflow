@@ -122,7 +122,7 @@ def create_slot(primary, val, name, colocate_with_primary=True):
   with variable_scope.variable_scope(None, prefix + "/" + name):
     if colocate_with_primary:
       distribution_strategy = distribution_strategy_context.get_strategy()
-      with distribution_strategy.colocate_vars_with(primary):
+      with distribution_strategy.extended.colocate_vars_with(primary):
         return _create_slot_var(primary, val, "", validate_shape, None, None)
     else:
       return _create_slot_var(primary, val, "", validate_shape, None, None)
@@ -159,7 +159,7 @@ def create_slot_with_initializer(primary, initializer, shape, dtype, name,
   with variable_scope.variable_scope(None, prefix + "/" + name):
     if colocate_with_primary:
       distribution_strategy = distribution_strategy_context.get_strategy()
-      with distribution_strategy.colocate_vars_with(primary):
+      with distribution_strategy.extended.colocate_vars_with(primary):
         return _create_slot_var(primary, initializer, "", validate_shape, shape,
                                 dtype)
     else:

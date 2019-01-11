@@ -392,16 +392,16 @@ class BatchNormalizationV2(Layer):
               aggregation=tf_variables.VariableAggregation.MEAN)
           return var
 
-        with distribution_strategy_context.get_distribution_strategy(
-        ).colocate_vars_with(self.moving_mean):
+        with distribution_strategy_context.get_strategy(
+        ).extended.colocate_vars_with(self.moving_mean):
           self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
           self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
         # We initialize renorm_stddev to 0, and maintain the (0-initialized)
         # renorm_stddev_weight. This allows us to (1) mix the average
         # stddev with the minibatch stddev early in training, and (2) compute
         # the unbiased average stddev by dividing renorm_stddev by the weight.
-        with distribution_strategy_context.get_distribution_strategy(
-        ).colocate_vars_with(self.moving_variance):
+        with distribution_strategy_context.get_strategy(
+        ).extended.colocate_vars_with(self.moving_variance):
           self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
           self.renorm_stddev_weight = _renorm_variable('renorm_stddev_weight',
                                                        ())
