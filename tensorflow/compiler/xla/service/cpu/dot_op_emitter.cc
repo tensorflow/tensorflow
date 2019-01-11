@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/cpu/tiled_dot_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -56,6 +58,8 @@ struct DotInfo {
   Shape rhs_shape;
   Shape result_shape;
   DotDimensionNumbers dim_nums;
+
+  DotInfo() = default;
 
   explicit DotInfo(const HloInstruction& instr) {
     CHECK_EQ(instr.opcode(), HloOpcode::kDot);
@@ -843,6 +847,163 @@ DotImplementationStrategy GetDotImplementationStrategy(
 
   return DotImplementationStrategy::kNaiveLlvmIr;
 }
+
+Status EmitNonBatchDotOperation(
+    DotInfo dot_info, string hlo_name, const llvm_ir::IrArray& target_array,
+    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
+    const llvm_ir::IrArray* addend_array,
+    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    const HloModuleConfig& hlo_module_config,
+    const TargetMachineFeatures& target_machine_features) {
+  PrimitiveType type = target_array.GetShape().element_type();
+  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
+  DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
+                           target_array, lhs_array, rhs_array, addend_array,
+                           executable_run_options_value, b, hlo_module_config,
+                           target_machine_features);
+  return dot_emitter.Emit();
+}
+
+Shape DropFirstDim(const Shape& shape) {
+  absl::Span<int64 const> array_shape_dims(shape.dimensions());
+  array_shape_dims.remove_prefix(1);
+  return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
+                                                  array_shape_dims);
+}
+
+Shape CollapseFirstNDims(const Shape& shape, int64 n) {
+  absl::Span<int64 const> input_shape_dims(shape.dimensions());
+  int64 prefix_dim =
+      std::accumulate(input_shape_dims.begin(), input_shape_dims.begin() + n,
+                      1ll, std::multiplies<int64>());
+  DimensionVector result_dims;
+  result_dims.push_back(prefix_dim);
+  std::copy(input_shape_dims.begin() + n, input_shape_dims.end(),
+            std::back_inserter(result_dims));
+  return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
+                                                  result_dims);
+}
+
+llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilder<>* b,
+                                    const llvm_ir::IrArray& array, int64 n) {
+  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
+  const Shape& shape = array.GetShape();
+  CHECK(shape.has_layout() &&
+        LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
+  CHECK_GE(shape.dimensions_size(), n);
+  Shape new_shape = CollapseFirstNDims(shape, n);
+  llvm::Value* new_value = b->CreateBitCast(
+      array.GetBasePointer(),
+      llvm_ir::ShapeToIrType(new_shape, module)->getPointerTo());
+  return llvm_ir::IrArray(new_value, std::move(new_shape));
+}
+
+Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
+  // Checks some invariants that do not hold in general, but DotDecomposer
+  // should have established for us.  This is just a debugging aid.
+  TF_RET_CHECK(dim_numbers.lhs_contracting_dimensions_size() == 1);
+  std::vector<int64> batch_dim_numbers(dim_numbers.lhs_batch_dimensions_size());
+  absl::c_iota(batch_dim_numbers, 0);
+  TF_RET_CHECK(
+      absl::c_equal(batch_dim_numbers, dim_numbers.lhs_batch_dimensions()));
+  TF_RET_CHECK(
+      absl::c_equal(batch_dim_numbers, dim_numbers.rhs_batch_dimensions()));
+  return Status::OK();
+}
+
+// Slice out the inner array at batch index `batch_index` from `outer_array`.
+llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
+                                    llvm::Value* batch_index,
+                                    llvm::IRBuilder<>* b) {
+  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
+
+  Shape inner_shape = DropFirstDim(outer_array.GetShape());
+  llvm_ir::IrArray::Index slice_index(b->getInt64Ty());
+  slice_index.push_back(batch_index);
+  slice_index.InsertAt(
+      /*index=*/1, outer_array.GetShape().dimensions_size() - 1,
+      b->getInt64(0));
+  llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
+  llvm::Type* slice_ptr_type =
+      llvm_ir::ShapeToIrType(inner_shape, module)->getPointerTo();
+  return llvm_ir::IrArray(b->CreateBitCast(slice_ptr, slice_ptr_type),
+                          std::move(inner_shape));
+}
+
+Status EmitBatchDotOperation(
+    const HloInstruction& dot, const llvm_ir::IrArray& target_array,
+    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
+    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    const HloModuleConfig& hlo_module_config,
+    const TargetMachineFeatures& target_machine_features) {
+  TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot.dot_dimension_numbers()));
+
+  // Lower a batch dot into a sequence of non-batch dot operations.
+
+  int64 num_batch_dims =
+      dot.dot_dimension_numbers().lhs_batch_dimensions_size();
+
+  // First reshape the inputs to make sure we only have one batch dimension.
+  // This is a no-op bitcast because the operands have to be in row-major layout
+  // (enforced in CpuLayoutAssignment), and the batch dimensions are the leading
+  // dimensions (established by DotDecomposer and checked by
+  // ValidateDotDimensionNumbers above).
+  llvm_ir::IrArray lhs_array_reshaped =
+      CollapseFirstNDims(b, lhs_array, num_batch_dims);
+  llvm_ir::IrArray rhs_array_reshaped =
+      CollapseFirstNDims(b, rhs_array, num_batch_dims);
+  llvm_ir::IrArray target_array_reshaped =
+      CollapseFirstNDims(b, target_array, num_batch_dims);
+
+  int64 batch_count = lhs_array_reshaped.GetShape().dimensions(0);
+
+  KernelSupportLibrary ksl(b);
+
+  return ksl.ForWithStatus(
+      "bdot", /*start=*/0, /*end=*/batch_count, /*step=*/1,
+      [&](llvm::Value* indvar) {
+        DotDimensionNumbers adjusted_dim_numbers = dot.dot_dimension_numbers();
+        adjusted_dim_numbers.clear_lhs_batch_dimensions();
+        adjusted_dim_numbers.clear_rhs_batch_dimensions();
+
+        // Create a DotInfo representing the "inner" non-batch dot operation.
+        DotInfo dot_info;
+        dot_info.lhs_shape = DropFirstDim(lhs_array_reshaped.GetShape());
+        dot_info.rhs_shape = DropFirstDim(rhs_array_reshaped.GetShape());
+        dot_info.result_shape = DropFirstDim(target_array_reshaped.GetShape());
+        dot_info.dim_nums = dot.dot_dimension_numbers();
+        dot_info.dim_nums.clear_lhs_batch_dimensions();
+        dot_info.dim_nums.clear_rhs_batch_dimensions();
+
+        dot_info.dim_nums.set_lhs_contracting_dimensions(
+            0,
+            dot_info.dim_nums.lhs_contracting_dimensions(0) - num_batch_dims);
+        dot_info.dim_nums.set_rhs_contracting_dimensions(
+            0,
+            dot_info.dim_nums.rhs_contracting_dimensions(0) - num_batch_dims);
+
+        llvm_ir::IrArray lhs_slice =
+            SliceOutInnerArray(lhs_array_reshaped, /*batch_index=*/indvar, b);
+        llvm_ir::IrArray rhs_slice =
+            SliceOutInnerArray(rhs_array_reshaped, /*batch_index=*/indvar, b);
+        llvm_ir::IrArray target_slice = SliceOutInnerArray(
+            target_array_reshaped, /*batch_index=*/indvar, b);
+
+        // Emit the inner non-batch dot operation.
+        return EmitNonBatchDotOperation(
+            dot_info, dot.name(), target_slice, lhs_slice, rhs_slice, nullptr,
+            executable_run_options_value, b, hlo_module_config,
+            target_machine_features);
+      });
+}
+
+bool IsBatchDot(const HloInstruction& instr) {
+  if (auto* dot_instr = DynCast<HloDotInstruction>(&instr)) {
+    return dot_instr->dot_dimension_numbers().lhs_batch_dimensions_size() > 0;
+  }
+
+  return false;
+}
 }  // namespace
 
 bool DotImplementationCanHandleTranspose(
@@ -884,13 +1045,17 @@ Status EmitDotOperation(const HloInstruction& dot,
   // enclosing computation.
   CHECK(dot.parent()->root_instruction()->outer_dimension_partitions().empty());
 
-  PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
-  DotOpEmitter dot_emitter(DotInfo(dot), dot.name(), target_array, lhs_array,
-                           rhs_array, addend_array,
-                           executable_run_options_value, b, hlo_module_config,
-                           target_machine_features);
-  return dot_emitter.Emit();
+  if (IsBatchDot(dot)) {
+    TF_RET_CHECK(addend_array == nullptr);
+    return EmitBatchDotOperation(dot, target_array, lhs_array, rhs_array,
+                                 executable_run_options_value, b,
+                                 hlo_module_config, target_machine_features);
+  }
+
+  return EmitNonBatchDotOperation(DotInfo(dot), dot.name(), target_array,
+                                  lhs_array, rhs_array, addend_array,
+                                  executable_run_options_value, b,
+                                  hlo_module_config, target_machine_features);
 }
 }  // namespace cpu
 }  // namespace xla

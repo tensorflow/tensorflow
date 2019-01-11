@@ -944,10 +944,6 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
       /*supported_types=*/{F16, F32, F64, C64}));
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  if (dnums.lhs_batch_dimensions_size() > 0 ||
-      dnums.rhs_batch_dimensions_size() > 0) {
-    return Unimplemented("Dot with batch dimensions not implemented.");
-  }
 
   if (dnums.lhs_contracting_dimensions_size() != 1) {
     // This is disallowed by ShapeInference today.
