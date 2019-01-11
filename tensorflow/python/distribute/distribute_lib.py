@@ -505,42 +505,6 @@ class DistributionStrategy(object):
     """DEPRECATED: use extended.broadcast_to() instead."""
     return self._extended.broadcast_to(tensor, destinations)
 
-  @doc_controls.do_not_generate_docs  # Use experimental_initialize() instead.
-  def initialize(self):
-    """DEPRECATED: Use `experimental_initialize()` instead."""
-    return self._extended._initialize()  # pylint: disable=protected-access
-
-  def experimental_initialize(self):
-    """Any initialization to be done before running any computations.
-
-    In eager mode, it executes any initialization as a side effect.
-    In graph mode, it creates the initialization ops and returns them.
-
-    For example, TPU initialize_system ops.
-
-    Returns:
-      A list of ops to execute.
-    """
-    return self._extended._initialize()  # pylint: disable=protected-access
-
-  @doc_controls.do_not_generate_docs  # Use experimental_finalize() instead.
-  def finalize(self):
-    """DEPRECATED: Use `experimental_finalize()` instead."""
-    return self._extended._finalize()  # pylint: disable=protected-access
-
-  def experimental_finalize(self):
-    """Any final actions to be done at the end of all computations.
-
-    In eager mode, it executes any finalize actions as a side effect.
-    In graph mode, it creates the finalize ops and returns them.
-
-    For example, TPU shutdown ops.
-
-    Returns:
-      A list of ops to execute.
-    """
-    return self._extended._finalize()  # pylint: disable=protected-access
-
   @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
   def run_steps_on_dataset(self, fn, iterator, iterations=1,
                            initial_loop_values=None):
@@ -1170,12 +1134,6 @@ class DistributionStrategyExtended(object):
 
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
-
-  def _initialize(self):
-    return []
-
-  def _finalize(self):
-    return []
 
   def experimental_run_steps_on_iterator(self, fn, iterator, iterations=1,
                                          initial_loop_values=None):
