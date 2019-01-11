@@ -5869,6 +5869,8 @@ py_library(
     deps = [
         ":framework_for_generated_wrappers",
         ":nccl_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
