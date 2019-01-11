@@ -730,17 +730,6 @@ class ResourceVariable(variables.VariableV1):
     return gen_state_ops.resource_count_up_to(self.handle, limit=limit,
                                               T=self.dtype)
 
-  def _set_save_slice_info(self, save_slice_info):
-    """Sets the slice info for this `ResourceVariable`.
-
-    Args:
-      save_slice_info: A `Variable.SaveSliceInfo` object.
-    """
-    self._save_slice_info = save_slice_info
-
-  def _get_save_slice_info(self):
-    return self._save_slice_info
-
   def _read_variable_op(self):
     if self.trainable:
       tape.variable_accessed(self)
