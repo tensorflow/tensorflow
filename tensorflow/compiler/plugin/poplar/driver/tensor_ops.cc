@@ -288,10 +288,12 @@ StatusOr<poplar::program::Program> CreateWideConstant(
 
   const HloInstruction* root =
       inst->fused_instructions_computation()->root_instruction();
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
-      out, AddConstantTensor(graph, std::make_pair(inst, 0), inst->shape(),
-                             root->operand(0)->literal(), res, tensor_map));
+      poplar::Tensor out,
+      AddConstantTensor(graph, std::make_pair(root->operand(0), 0),
+                        root->operand(0)->shape(), root->operand(0)->literal(),
+                        res, tensor_map));
+  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;

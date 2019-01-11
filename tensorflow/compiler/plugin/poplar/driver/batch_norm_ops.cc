@@ -78,6 +78,7 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
   // Special case - zero sized array
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     poplar::Tensor out = graph.addConstant(operand.elementType(), {1}, 0);
+    graph.setTileMapping(out, 0);
     TF_ASSIGN_OR_RETURN(out,
                         BroadcastTensor(out, inst->operand(0)->shape(), {}));
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
@@ -123,13 +124,16 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
   // Special case - zero sized array
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     poplar::Tensor out = graph.addConstant(operand.elementType(), {1}, 0);
+    graph.setTileMapping(out, 0);
     TF_ASSIGN_OR_RETURN(out,
                         BroadcastTensor(out, inst->operand(0)->shape(), {}));
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
     poplar::Tensor mean = graph.addConstant(operand.elementType(), {1}, NAN);
+    graph.setTileMapping(mean, 0);
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, mean));
     poplar::Tensor variance =
         graph.addConstant(operand.elementType(), {1}, NAN);
+    graph.setTileMapping(variance, 0);
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, variance));
     return seq;
   }
@@ -183,15 +187,18 @@ StatusOr<poplar::program::Program> CreateBatchNormGrad(
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     poplar::Tensor operand_grad =
         graph.addConstant(operand.elementType(), {1}, 0);
+    graph.setTileMapping(operand_grad, 0);
     TF_ASSIGN_OR_RETURN(
         operand_grad,
         BroadcastTensor(operand_grad, inst->operand(0)->shape(), {}));
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, operand_grad));
     poplar::Tensor scale_grad =
         graph.addConstant(operand.elementType(), {1}, 0);
+    graph.setTileMapping(scale_grad, 0);
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, scale_grad));
     poplar::Tensor offset_grad =
         graph.addConstant(operand.elementType(), {1}, 0);
+    graph.setTileMapping(offset_grad, 0);
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, offset_grad));
     return seq;
   }
