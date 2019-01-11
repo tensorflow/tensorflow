@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
@@ -284,16 +285,14 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 
   const int num_batch = ctx->input(0).shape().dim_size(0);
-  auto& engine_ctx_pair = GetEngine(smallest_engine, ctx);
-  auto& trt_engine_ptr = engine_ctx_pair.first;
-  if (!trt_engine_ptr) {
+  EngineContext* engine_context = GetEngine(smallest_engine, ctx);
+  if (!engine_context->cuda_engine) {
     LOG(WARNING) << "Engine retrieval for batch size " << num_batch
                  << " failed. Running native segment for " << name();
     ExecuteNativeSegment(ctx, helper);
     return;
   }
-  const bool retry = ExecuteTrtEngine(ctx, num_batch, trt_engine_ptr.get(),
-                                      engine_ctx_pair.second.get());
+  const bool retry = ExecuteTrtEngine(ctx, num_batch, engine_context);
   if (retry) {
     LOG(WARNING) << "Failed to execute engine, "
                  << "retrying with native segment for " << name();
@@ -302,18 +301,17 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 }
 
-bool TRTEngineOp::ExecuteTrtEngine(
-    OpKernelContext* ctx, const int num_batch,
-    nvinfer1::ICudaEngine* trt_engine_ptr,
-    nvinfer1::IExecutionContext* trt_execution_context_ptr) {
+bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx, const int num_batch,
+                                   EngineContext* engine_context) {
+  auto& cuda_engine = engine_context->cuda_engine;
+
   VLOG(1) << "Executing TRT engine: " << name();
   const bool kRetry = true;
   const int num_binding = ctx->num_inputs() + ctx->num_outputs();
   std::vector<void*> buffers(num_binding);
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string input_name = StrCat(kInputPHName, i);
-    const int binding_index =
-        trt_engine_ptr->getBindingIndex(input_name.c_str());
+    const int binding_index = cuda_engine->getBindingIndex(input_name.c_str());
     if (binding_index == -1) {
       LOG(ERROR) << "Input node not found, at " << input_name;
       return kRetry;
@@ -326,7 +324,7 @@ bool TRTEngineOp::ExecuteTrtEngine(
                  << " vs " << input_shape.dim_size(0);
       return kRetry;
     }
-    auto dtype = trt_engine_ptr->getBindingDataType(binding_index);
+    auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
         buffers[binding_index] = (void*)(input_tensor.flat<float>().data());
@@ -349,13 +347,12 @@ bool TRTEngineOp::ExecuteTrtEngine(
   for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
     const string output_name = StrCat(kOutputPHName, i);
-    const int binding_index =
-        trt_engine_ptr->getBindingIndex(output_name.c_str());
+    const int binding_index = cuda_engine->getBindingIndex(output_name.c_str());
     Tensor* output_tensor = nullptr;
 
     TensorShape output_shape;
     if (binding_index != -1) {
-      auto dims = trt_engine_ptr->getBindingDimensions(binding_index);
+      auto dims = cuda_engine->getBindingDimensions(binding_index);
       std::vector<int> trt_shape(dims.nbDims + 1);
       trt_shape[0] = num_batch;
       for (int j = 0; j < dims.nbDims; j++) trt_shape[j + 1] = dims.d[j];
@@ -377,7 +374,7 @@ bool TRTEngineOp::ExecuteTrtEngine(
       // TODO(aaroey): ideally we should retry, fix this.
       return !kRetry;
     }
-    auto dtype = trt_engine_ptr->getBindingDataType(binding_index);
+    auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
         buffers[binding_index] =
@@ -405,9 +402,12 @@ bool TRTEngineOp::ExecuteTrtEngine(
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
 
+  // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
+  // for it.
+  tensorflow::mutex_lock lock(engine_context->mu);
   // TODO(jie): trt enqueue does not return error
-  auto ret = trt_execution_context_ptr->enqueue(num_batch, &buffers[0], *stream,
-                                                nullptr);
+  auto ret = engine_context->execution_context->enqueue(num_batch, &buffers[0],
+                                                        *stream, nullptr);
   if (!ret) {
     LOG(WARNING) << "Failed to enqueue batch for TRT engine: " << name();
     return kRetry;
@@ -421,8 +421,8 @@ TRTEngineOp::~TRTEngineOp() {
   // We need to manually destroy the engine and execution context before
   // the allocator is destructed.
   for (auto& eng : engine_map_) {
-    eng.second.first.reset();
-    eng.second.second.reset();
+    eng.second->cuda_engine.reset();
+    eng.second->execution_context.reset();
   }
   allocator_.reset();
 }
@@ -440,11 +440,9 @@ nvinfer1::IGpuAllocator* TRTEngineOp::GetAllocator(OpKernelContext* ctx) {
   return allocator_.get();
 }
 
-TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
+TRTEngineOp::EngineContext* TRTEngineOp::GetEngine(int batch_size,
                                                    OpKernelContext* ctx) {
-  static EngineCtxPair null_pair = {
-      TrtUniquePtrType<nvinfer1::ICudaEngine>(nullptr),
-      TrtUniquePtrType<nvinfer1::IExecutionContext>(nullptr)};
+  static EngineContext empty_context;
   // TODO(sami): This method needs to be re-written to use resource manager and
   // with LRU mechanism option.
   tensorflow::mutex_lock lock(engine_mutex_);
@@ -452,14 +450,14 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
   if (static_engine_) {
     if (engine_map_.size()) {
       if (engine_map_.begin()->first >= batch_size) {
-        return engine_map_.begin()->second;
+        return engine_map_.begin()->second.get();
       }
-      return null_pair;
+      return &empty_context;
     }
     TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
     auto allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
-      return null_pair;
+      return &empty_context;
     }
     infer->setGpuAllocator(allocator);
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
@@ -468,16 +466,16 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
                                      PluginFactoryTensorRT::GetInstance()));
     auto raw_static_engine = static_engine.get();
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
-    engine_map_[max_batch_size] = {
+    engine_map_[max_batch_size] = absl::make_unique<EngineContext>(
         std::move(static_engine),
         TrtUniquePtrType<nvinfer1::IExecutionContext>(
-            raw_static_engine->createExecutionContext())};
+            raw_static_engine->createExecutionContext()));
     // Runtime is safe to delete after engine creation
     serialized_segment_.clear();
     if (max_batch_size < batch_size) {
-      return null_pair;
+      return &empty_context;
     }
-    return engine_map_.at(max_batch_size);
+    return engine_map_.at(max_batch_size).get();
   }  // static_engine_
 
   // Handle the dynamic engine case.
@@ -487,7 +485,7 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     nvinfer1::IGpuAllocator* allocator = nullptr;
     allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
-      return null_pair;
+      return &empty_context;
     }
     std::vector<tensorflow::PartialTensorShape> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -508,18 +506,19 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
         // This means it fail to build the engine even when the network is built
         // successfully, probably due to internal issues. In this case we don't
         // retry in the future.
-        engine_map_[batch_size] = {nullptr, nullptr};
+        engine_map_[batch_size] = absl::make_unique<EngineContext>();
       }
       LOG(WARNING) << "Engine creation for batch size " << batch_size
                    << " failed " << status;
-      return null_pair;
+      return &empty_context;
     }
     VLOG(1) << "Conversion is done";
     TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
         engine->createExecutionContext());
-    engine_map_[batch_size] = {std::move(engine), std::move(exec_context)};
+    engine_map_[batch_size] = absl::make_unique<EngineContext>(
+        std::move(engine), std::move(exec_context));
   }
-  return engine_map_.at(batch_size);
+  return engine_map_.at(batch_size).get();
 }
 
 tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
