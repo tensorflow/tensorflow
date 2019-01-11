@@ -130,6 +130,8 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<double>(0);
     case C64:
       return LiteralUtil::CreateR0<complex64>(0);
+    case C128:
+      return LiteralUtil::CreateR0<complex128>(0);
     case PRED:
       return LiteralUtil::CreateR0<bool>(false);
     case TUPLE:
@@ -165,6 +167,8 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<double>(1);
     case C64:
       return LiteralUtil::CreateR0<complex64>(1);
+    case C128:
+      return LiteralUtil::CreateR0<complex128>(1);
     case PRED:
       return LiteralUtil::CreateR0<bool>(true);
     case S16:
@@ -201,6 +205,8 @@ Literal ConvertType(LiteralSlice literal) {
           -std::numeric_limits<double>::infinity());
     case C64:
       LOG(FATAL) << "C64 element type has no minimum value";
+    case C128:
+      LOG(FATAL) << "C128 element type has no minimum value";
     case PRED:
       return LiteralUtil::CreateR0<bool>(false);
     case S16:
@@ -345,6 +351,10 @@ Literal ConvertType(LiteralSlice literal) {
         new_literal.Set<complex64>(to_multi_index,
                                    literal.Get<complex64>(from_multi_index));
         break;
+      case C128:
+        new_literal.Set<complex128>(to_multi_index,
+                                    literal.Get<complex128>(from_multi_index));
+        break;
       default:
         LOG(FATAL) << "Unhandled primitive element type: "
                    << PrimitiveType_Name(literal.shape().element_type());
@@ -393,6 +403,10 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<int64>(literal.GetFirstElement<int64>());
     case U64:
       return LiteralUtil::CreateR0<uint64>(literal.GetFirstElement<uint64>());
+
+    case C128:
+      return LiteralUtil::CreateR0<complex128>(
+          literal.GetFirstElement<complex128>());
     default:
       LOG(FATAL) << "Unhandled primitive type "
                  << literal.shape().element_type();

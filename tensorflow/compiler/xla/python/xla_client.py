@@ -199,6 +199,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F32: np.dtype('float32'),
     xla_data_pb2.F64: np.dtype('float64'),
     xla_data_pb2.C64: np.dtype('complex64'),
+    xla_data_pb2.C128: np.dtype('complex128'),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 

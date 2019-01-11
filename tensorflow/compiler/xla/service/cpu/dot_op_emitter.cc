@@ -856,7 +856,8 @@ Status EmitNonBatchDotOperation(
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
+  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type ||
+               C128 == type);
   DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
                            target_array, lhs_array, rhs_array, addend_array,
                            executable_run_options_value, b, hlo_module_config,

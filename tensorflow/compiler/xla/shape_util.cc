@@ -378,6 +378,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case U32:
     case U64:
     case C64:
+    case C128:
     case TUPLE:
     case OPAQUE:
     case TOKEN:
@@ -639,6 +640,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       return sizeof(double);
     case C64:
       return sizeof(complex64);
+    case C128:
+      return sizeof(complex128);
     case TOKEN:
       // Tokens require no space.
       return 0;

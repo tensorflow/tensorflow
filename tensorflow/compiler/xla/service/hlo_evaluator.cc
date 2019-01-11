@@ -136,6 +136,37 @@ StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
   return std::move(result);
 }
 
+template <>
+StatusOr<Literal> Compare<complex128>(const Shape& shape, HloOpcode opcode,
+                                      LiteralSlice lhs_literal,
+                                      LiteralSlice rhs_literal) {
+  std::function<bool(complex128, complex128)> compare_op;
+  switch (opcode) {
+    case HloOpcode::kEq:
+      compare_op = [](complex128 lhs_el, complex128 rhs_el) {
+        return lhs_el == rhs_el;
+      };
+      break;
+    case HloOpcode::kNe:
+      compare_op = [](complex128 lhs_el, complex128 rhs_el) {
+        return lhs_el != rhs_el;
+      };
+      break;
+    default:
+      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
+                 << HloOpcodeString(opcode);
+  }
+
+  Literal result(shape);
+  TF_RETURN_IF_ERROR(
+      result.Populate<bool>([&](absl::Span<const int64> multi_index) {
+        return compare_op(lhs_literal.Get<complex128>(multi_index),
+                          rhs_literal.Get<complex128>(multi_index));
+      }));
+
+  return std::move(result);
+}
+
 }  // namespace
 
 // Note that unsupported types by the typed visitor does not necessarily imply
@@ -170,6 +201,8 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
       absl::make_unique<HloEvaluatorTypedVisitor<double>>(this);
   typed_visitors_[C64] =
       absl::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
+  typed_visitors_[C128] =
+      absl::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
 
   // Most of the evaluator computations we use don't support BF16 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with BF16, we set all
@@ -500,6 +533,13 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
       TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
       break;
     }
+    case C128: {
+      auto result_or = ElementWiseUnaryOpImpl<float, complex128>(
+          real, [](complex128 elem_operand) { return std::real(elem_operand); },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+      break;
+    }
     case F16: {
       auto result_or = ElementWiseUnaryOpImpl<Eigen::half, Eigen::half>(
           real, [](Eigen::half elem_operand) { return elem_operand; },
@@ -530,11 +570,29 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
 }
 
 Status HloEvaluator::HandleImag(HloInstruction* imag) {
-  auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
-      imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
-      GetEvaluatedLiteralFor(imag->operand(0)));
+  auto operand = imag->operand(0);
+  switch (operand->shape().element_type()) {
+    case C64: {
+      auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
+          imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
 
-  TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case C128: {
+      auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
+          imag, [](complex128 elem_operand) { return std::imag(elem_operand); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    default:
+      LOG(FATAL) << "HandleImag: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(operand->shape().element_type());
+  }
+
   return Status::OK();
 }
 
@@ -544,11 +602,27 @@ Status HloEvaluator::HandleComplex(HloInstruction* complex) {
   TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
 
   Literal result(complex->shape());
-  TF_RETURN_IF_ERROR(
-      result.Populate<complex64>([&](absl::Span<const int64> multi_index) {
-        return std::complex<float>(real.Get<float>(multi_index),
-                                   imag.Get<float>(multi_index));
-      }));
+  switch (complex->shape().element_type()) {
+    case C64: {
+      TF_RETURN_IF_ERROR(
+          result.Populate<complex64>([&](absl::Span<const int64> multi_index) {
+            return std::complex<float>(real.Get<float>(multi_index),
+                                       imag.Get<float>(multi_index));
+          }));
+      break;
+    }
+    case C128: {
+      TF_RETURN_IF_ERROR(
+          result.Populate<complex128>([&](absl::Span<const int64> multi_index) {
+            return std::complex<float>(real.Get<double>(multi_index),
+                                       imag.Get<double>(multi_index));
+          }));
+      break;
+    }
+    default:
+      LOG(FATAL) << "HandleComplex: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(complex->shape().element_type());
+  }
 
   evaluated_[complex] = std::move(result);
   return Status::OK();
@@ -646,6 +720,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
                           Compare<complex64>(compare->shape(), opcode,
                                              lhs_literal, rhs_literal));
+    } break;
+    case C128: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<complex128>(compare->shape(), opcode,
+                                              lhs_literal, rhs_literal));
     } break;
     default:
       LOG(FATAL) << "HandleCompare: unknown primitive type: "

@@ -906,6 +906,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                                                         broadcast_dimensions));
       if (lhs.element_type() == F32 && rhs.element_type() == F32) {
         return ShapeUtil::ChangeElementType(shape, C64);
+      } else if (lhs.element_type() == F64 && rhs.element_type() == F64) {
+        return ShapeUtil::ChangeElementType(shape, C128);
       } else {
         return Unimplemented("Complex component type is not implemented.");
       }
@@ -1733,7 +1735,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     case FFT:
     case IFFT:
       if (in.element_type() != C64) {
-        return InvalidArgument("%s requires C64 input type, found %s.",
+        return InvalidArgument("%s requires complex input type, found %s.",
                                FftType_Name(fft_type),
                                PrimitiveType_Name(in.element_type()));
       }
