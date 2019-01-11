@@ -40,6 +40,7 @@ from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
@@ -1702,7 +1703,7 @@ class Model(Network):
 
   @property
   def _default_save_signature(self):
-    return training_utils.trace_model_call(self)
+    return saving_utils.trace_model_call(self)
 
   def _set_sample_weight_attributes(self, sample_weight_mode,
                                     skip_target_weighing_indices):
