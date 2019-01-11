@@ -20,12 +20,80 @@ from __future__ import print_function
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+
+
+class ConstantValueTest(test.TestCase):
+
+  def test_pred_boolean(self):
+    with ops.Graph().as_default():
+      x = tf_utils.smart_cond(True,
+                              lambda: constant_op.constant(5),
+                              lambda: constant_op.constant(32))
+      self.assertEqual(tf_utils.constant_value(x), 5)
+
+      x = tf_utils.smart_cond(False,
+                              lambda: constant_op.constant(5),
+                              lambda: constant_op.constant(32))
+      self.assertEqual(tf_utils.constant_value(x), 32)
+
+  def test_pred_integer(self):
+    with ops.Graph().as_default():
+      x = tf_utils.smart_cond(1,
+                              lambda: constant_op.constant(5),
+                              lambda: constant_op.constant(32))
+      self.assertEqual(tf_utils.constant_value(x), 5)
+
+      x = tf_utils.smart_cond(0,
+                              lambda: constant_op.constant(5),
+                              lambda: constant_op.constant(32))
+      self.assertEqual(tf_utils.constant_value(x), 32)
+
+  def test_pred_unknown(self):
+    with ops.Graph().as_default():
+      pred = array_ops.placeholder_with_default(True, shape=())
+      x = tf_utils.smart_cond(pred,
+                              lambda: constant_op.constant(1),
+                              lambda: constant_op.constant(2))
+      self.assertIsNone(tf_utils.constant_value(x))
+
+  def test_pred_type_error(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(TypeError):
+        tf_utils.constant_value(5)
+
+
+class GetReachableFromInputsTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def test_get_reachable_from_inputs(self):
+
+    with self.cached_session():
+      pl_1 = array_ops.placeholder(shape=None, dtype='float32')
+      pl_2 = array_ops.placeholder(shape=None, dtype='float32')
+      pl_3 = array_ops.placeholder(shape=None, dtype='float32')
+      x_1 = pl_1 + pl_2
+      x_2 = pl_2 * 2
+      x_3 = pl_3 + 1
+      x_4 = x_1 + x_2
+      x_5 = x_3 * pl_1
+
+      self.assertEqual(tf_utils.get_reachable_from_inputs([pl_1]),
+                       {pl_1, x_1, x_4, x_5, x_1.op, x_4.op, x_5.op})
+      self.assertEqual(tf_utils.get_reachable_from_inputs([pl_1, pl_2]),
+                       {pl_1, pl_2, x_1, x_2, x_4, x_5, x_1.op, x_2.op,
+                        x_4.op, x_5.op})
+      self.assertEqual(tf_utils.get_reachable_from_inputs([pl_3]),
+                       {pl_3, x_3, x_5, x_3.op, x_5.op})
+      self.assertEqual(tf_utils.get_reachable_from_inputs([x_3]),
+                       {x_3, x_5, x_5.op})
 
 
 @test_util.run_all_in_graph_and_eager_modes
