@@ -621,6 +621,10 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
   function->setCallingConv(llvm::CallingConv::C);
   function->addFnAttr("no-frame-pointer-elim", "false");
 
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  function->setHasUWTable();
+
   if (enable_fast_math) {
     function->addFnAttr("unsafe-fp-math", "true");
     function->addFnAttr("no-infs-fp-math", "true");
