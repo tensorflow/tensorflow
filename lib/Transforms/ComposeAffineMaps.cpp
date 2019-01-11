@@ -21,6 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/AffineAnalysis.h"
+#include "mlir/Analysis/MLFunctionMatcher.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -31,6 +33,7 @@
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -41,15 +44,12 @@ namespace {
 // also AffineApplyOps. After forward subtituting its results, AffineApplyOps
 // with no remaining uses are collected and erased after the walk.
 // TODO(andydavis) Remove this when Chris adds instruction combiner pass.
-struct ComposeAffineMaps : public FunctionPass, InstWalker<ComposeAffineMaps> {
-  std::vector<OperationInst *> affineApplyOpsToErase;
-
+struct ComposeAffineMaps : public FunctionPass {
   explicit ComposeAffineMaps() : FunctionPass(&ComposeAffineMaps::passID) {}
-  using InstListType = llvm::iplist<Instruction>;
-  void walk(InstListType::iterator Start, InstListType::iterator End);
-  void visitOperationInst(OperationInst *inst);
   PassResult runOnFunction(Function *f) override;
-  using InstWalker<ComposeAffineMaps>::walk;
+
+  // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
+  MLFunctionMatcherContext MLContext;
 
   static char passID;
 };
@@ -62,37 +62,40 @@ FunctionPass *mlir::createComposeAffineMapsPass() {
   return new ComposeAffineMaps();
 }
 
-void ComposeAffineMaps::walk(InstListType::iterator Start,
-                             InstListType::iterator End) {
-  while (Start != End) {
-    walk(&(*Start));
-    // Increment iterator after walk as visit function can mutate inst list
-    // ahead of 'Start'.
-    ++Start;
-  }
-}
-
-void ComposeAffineMaps::visitOperationInst(OperationInst *opInst) {
-  if (auto affineApplyOp = opInst->dyn_cast<AffineApplyOp>()) {
-    forwardSubstitute(affineApplyOp);
-    bool allUsesEmpty = true;
-    for (auto *result : affineApplyOp->getInstruction()->getResults()) {
-      if (!result->use_empty()) {
-        allUsesEmpty = false;
-        break;
-      }
-    }
-    if (allUsesEmpty) {
-      affineApplyOpsToErase.push_back(opInst);
-    }
-  }
+static bool affineApplyOp(const Instruction &inst) {
+  const auto &opInst = cast<OperationInst>(inst);
+  return opInst.isa<AffineApplyOp>();
 }
 
 PassResult ComposeAffineMaps::runOnFunction(Function *f) {
-  affineApplyOpsToErase.clear();
-  walk(f);
-  for (auto *opInst : affineApplyOpsToErase) {
-    opInst->erase();
+  using matcher::Op;
+
+  auto pattern = Op(affineApplyOp);
+  auto apps = pattern.match(f);
+  for (auto m : apps) {
+    auto app = cast<OperationInst>(m.first)->cast<AffineApplyOp>();
+    SmallVector<Value *, 8> operands(app->getOperands().begin(),
+                                     app->getOperands().end());
+    FuncBuilder b(m.first);
+    auto newApp = makeComposedAffineApply(&b, app->getLoc(),
+                                          app->getAffineMap(), operands);
+    unsigned idx = 0;
+    for (auto *v : app->getResults()) {
+      v->replaceAllUsesWith(newApp->getResult(idx++));
+    }
+  }
+  {
+    auto pattern = Op(affineApplyOp);
+    auto apps = pattern.match(f);
+    std::reverse(apps.begin(), apps.end());
+    for (auto m : apps) {
+      auto app = cast<OperationInst>(m.first)->cast<AffineApplyOp>();
+      bool hasNonEmptyUse = llvm::any_of(
+          app->getResults(), [](Value *r) { return !r->use_empty(); });
+      if (!hasNonEmptyUse) {
+        m.first->erase();
+      }
+    }
   }
   return success();
 }

@@ -25,6 +25,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -210,29 +211,40 @@ void mlir::canonicalizeMapAndOperands(
       usedSyms[symExpr.getPosition()] = true;
   });
 
-  // If any dims or syms are unused, remove them.
-  if (usedDims.all() && usedSyms.all())
-    return;
-
   auto *context = map.getContext();
 
   SmallVector<Value *, 8> resultOperands;
   resultOperands.reserve(operands.size());
 
+  llvm::SmallDenseMap<Value *, AffineExpr, 8> seenDims;
   SmallVector<AffineExpr, 8> dimRemapping(map.getNumDims());
   unsigned nextDim = 0;
   for (unsigned i = 0, e = map.getNumDims(); i != e; ++i) {
     if (usedDims[i]) {
-      dimRemapping[i] = getAffineDimExpr(nextDim++, context);
-      resultOperands.push_back(operands[i]);
+      auto it = seenDims.find(operands[i]);
+      if (it == seenDims.end()) {
+        dimRemapping[i] = getAffineDimExpr(nextDim++, context);
+        resultOperands.push_back(operands[i]);
+        seenDims.insert(std::make_pair(operands[i], dimRemapping[i]));
+      } else {
+        dimRemapping[i] = it->second;
+      }
     }
   }
+  llvm::SmallDenseMap<Value *, AffineExpr, 8> seenSymbols;
   SmallVector<AffineExpr, 8> symRemapping(map.getNumSymbols());
   unsigned nextSym = 0;
   for (unsigned i = 0, e = map.getNumSymbols(); i != e; ++i) {
     if (usedSyms[i]) {
-      symRemapping[i] = getAffineSymbolExpr(nextSym++, context);
-      resultOperands.push_back(operands[i + map.getNumDims()]);
+      auto it = seenSymbols.find(operands[i + map.getNumDims()]);
+      if (it == seenSymbols.end()) {
+        symRemapping[i] = getAffineSymbolExpr(nextSym++, context);
+        resultOperands.push_back(operands[i + map.getNumDims()]);
+        seenSymbols.insert(
+            std::make_pair(operands[i + map.getNumDims()], symRemapping[i]));
+      } else {
+        symRemapping[i] = it->second;
+      }
     }
   }
   map = map.replaceDimsAndSymbols(dimRemapping, symRemapping, nextDim, nextSym);

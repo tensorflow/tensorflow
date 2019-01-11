@@ -1,5 +1,11 @@
 // RUN: mlir-opt %s -canonicalize | FileCheck %s
 
+// CHECK-DAG: [[D0M1:#map.*]] = (d0) -> (d0 - 1)
+// CHECK-DAG: [[D0MD1:#map.*]] = (d0, d1) -> (d0 - d1)
+// CHECK-DAG: [[D0PD0:#map.*]] = (d0) -> (d0 + d0)
+// CHECK-DAG: [[D0P2:#map.*]] = (d0) -> (d0 + 2)
+// CHECK-DAG: [[DEDUPMAP:#map.*]] = (d0)[s0, s1] -> (d0 - d0 + s0 + s1 + s0 + s1 - 1)
+
 // CHECK-LABEL: func @test_subi_zero
 func @test_subi_zero(%arg0: i32) -> i32 {
   // CHECK-NEXT: %c0_i32 = constant 0 : i32
@@ -202,20 +208,19 @@ func @simplify_affine_apply(%arg0: memref<index>, %arg1: index, %arg2: index) {
   // Only uses d1, not d0.
   %0 = affine_apply (d0, d1) -> (d1 - 1) (%arg1, %arg2)
   store %0, %arg0[] : memref<index>
-  // CHECK: [[X:%[0-9]+]] = affine_apply {{#map.*}}(%arg2)
+  // CHECK: [[X:%[0-9]+]] = affine_apply [[D0M1]](%arg2)
   // CHECK-NEXT: store [[X]], %arg0
 
   // TODO: Constant fold one index into affine_apply
   %c42 = constant 42 : index
   %2 = affine_apply (d0, d1) -> (d0 - d1) (%arg1, %c42)
   store %2, %arg0[] : memref<index>
-  // CHECK: [[X:%[0-9]+]] = affine_apply {{#map.*}}(%arg1, %c42)
+  // CHECK: [[X:%[0-9]+]] = affine_apply [[D0MD1]](%arg1, %c42)
   // CHECK-NEXT: store [[X]], %arg0
 
-  // TODO: Replace multiple uses of the same ssa value with a canonical one.
   %3 = affine_apply (d0, d1) -> (d0 + d1) (%arg1, %arg1)
   store %3, %arg0[] : memref<index>
-  // CHECK: [[X:%[0-9]+]] = affine_apply {{#map.*}}(%arg1, %arg1)
+  // CHECK: [[X:%[0-9]+]] = affine_apply [[D0PD0]](%arg1)
   // CHECK-NEXT: store [[X]], %arg0
 
   // TODO: Compose affine maps.
@@ -223,9 +228,15 @@ func @simplify_affine_apply(%arg0: memref<index>, %arg1: index, %arg2: index) {
   %x1 = affine_apply (d0) -> (d0+2) (%x0)
   store %x1, %arg0[] : memref<index>
 
-  // CHECK: [[X:%[0-9]+]] = affine_apply {{#map.*}}(%arg1)
-  // CHECK-NEXT: [[Y:%[0-9]+]] = affine_apply {{#map.*}}([[X]])
+  // CHECK: [[X:%[0-9]+]] = affine_apply [[D0M1]](%arg1)
+  // CHECK-NEXT: [[Y:%[0-9]+]] = affine_apply [[D0P2]]([[X]])
   // CHECK-NEXT: store [[Y]], %arg0
+
+  // Drop redundant exprs and symbols.
+  %dedup = affine_apply (d0, d1) [s0, s1, s2, s3] -> (d0 - d1 - 1 + s0 + s1 + s2 + s3) (%arg1, %arg1)[%arg2, %arg1, %arg2, %arg1]
+  store %dedup, %arg0[] : memref<index>
+  // CHECK: [[DEDUP:%.+]] = affine_apply [[DEDUPMAP]](%arg1)[%arg2, %arg1]
+  // CHECK-NEXT: store [[DEDUP]], %arg0
 
   return
 }

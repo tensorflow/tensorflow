@@ -1,14 +1,11 @@
 // RUN: mlir-opt %s -vectorizer-test -normalize-maps |  FileCheck %s
 
-// CHECK-DAG: #[[ZERO:[a-zA-Z0-9]+]] = (d0) -> (0)
+// CHECK-DAG: #[[ZERO:[a-zA-Z0-9]+]] = () -> (0)
 // CHECK-DAG: #[[ID1:[a-zA-Z0-9]+]] = (d0) -> (d0)
 // CHECK-DAG: #[[D0TIMES2:[a-zA-Z0-9]+]] = (d0) -> (d0 * 2)
 // CHECK-DAG: #[[D0PLUSD1:[a-zA-Z0-9]+]] = (d0, d1) -> (d0 + d1)
 // CHECK-DAG: #[[MINSD0PLUSD1:[a-zA-Z0-9]+]] = (d0, d1) -> (d0 * -1 + d1)
 // CHECK-DAG: #[[D0MINUSD1:[a-zA-Z0-9]+]] = (d0, d1) -> (d0 - d1)
-// CHECK-DAG: #[[D0D1D2TOD0:[a-zA-Z0-9]+]] = (d0, d1, d2) -> (d0)
-// CHECK-DAG: #[[D0D1D2TOD1:[a-zA-Z0-9]+]] = (d0, d1, d2) -> (d1)
-// CHECK-DAG: #[[D0D1D2TOD2:[a-zA-Z0-9]+]] = (d0, d1, d2) -> (d2)
 
 // CHECK-LABEL: func @simple()
 func @simple() {
@@ -21,7 +18,7 @@ func @simple() {
   // CHECK-NEXT: for %i0 = 0 to 7
   // CHECK-NEXT:   {{.*}} affine_apply #[[ID1]](%i0)
   // CHECK-NEXT:   {{.*}} affine_apply #[[D0TIMES2]](%i0)
-  // CHECK-NEXT:   {{.*}} affine_apply #[[ZERO]](%i0)
+  // CHECK-NEXT:   {{.*}} affine_apply #[[ZERO]]()
 
   for %i1 = 0 to 7 {
     for %i2 = 0 to 42 {
@@ -53,9 +50,9 @@ func @simple() {
   // CHECK:      for %i3 = 0 to 16
   // CHECK-NEXT:   for %i4 = 0 to 47 step 2
   // CHECK-NEXT:     for %i5 = 0 to 78 step 16
-  // CHECK-NEXT:       {{.*}} affine_apply #[[D0D1D2TOD0]](%i3, %i4, %i5)
-  // CHECK-NEXT:       {{.*}} affine_apply #[[D0D1D2TOD1]](%i3, %i4, %i5)
-  // CHECK-NEXT:       {{.*}} affine_apply #[[D0D1D2TOD2]](%i3, %i4, %i5)
+  // CHECK-NEXT:       {{.*}} affine_apply #[[ID1]](%i3)
+  // CHECK-NEXT:       {{.*}} affine_apply #[[ID1]](%i4)
+  // CHECK-NEXT:       {{.*}} affine_apply #[[ID1]](%i5)
 
   return
 }

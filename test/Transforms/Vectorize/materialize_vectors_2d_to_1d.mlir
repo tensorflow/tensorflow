@@ -1,11 +1,11 @@
 // RUN: mlir-opt %s -vectorize -virtual-vector-size 3 -virtual-vector-size 16 --test-fastest-varying=1 --test-fastest-varying=0 -materialize-vectors -vector-size=8 | FileCheck %s
 
 // vector<3x16xf32> -> vector<8xf32>
-// CHECK-DAG: [[D0D1TOD0:#.*]] = (d0, d1) -> (d0)
+// CHECK-DAG: [[ID1:#.*]] = (d0) -> (d0)
 // CHECK-DAG: [[D0D1TOD1:#.*]] = (d0, d1) -> (d1)
-// CHECK-DAG: [[D0D1TOD1P8:#.*]] = (d0, d1) -> (d1 + 8)
-// CHECK-DAG: [[D0D1TOD0P1:#.*]] = (d0, d1) -> (d0 + 1)
-// CHECK-DAG: [[D0D1TOD0P2:#.*]] = (d0, d1) -> (d0 + 2)
+// CHECK-DAG: [[D0P8:#.*]] = (d0) -> (d0 + 8)
+// CHECK-DAG: [[D0P1:#.*]] = (d0) -> (d0 + 1)
+// CHECK-DAG: [[D0P2:#.*]] = (d0) -> (d0 + 2)
 
 // CHECK-LABEL: func @vector_add_2d
 func @vector_add_2d(%M : index, %N : index) -> f32 {
@@ -23,23 +23,23 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     {{.*}} = constant splat<vector<8xf32>, 1.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     {{.*}} = constant splat<vector<8xf32>, 1.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     {{.*}} = constant splat<vector<8xf32>, 1.000000e+00> : vector<8xf32>
-  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[D0D1TOD0]](%i0, %i1)
-  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[D0D1TOD1]](%i0, %i1)
+  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[ID1]](%i0)
+  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[ID1]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[D0D1TOD0]](%i0, %i1)
-  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0D1TOD1P8]](%i0, %i1)
+  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[ID1]](%i0)
+  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0P8]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL20:%.*]] = affine_apply [[D0D1TOD0P1]](%i0, %i1)
-  // CHECK-NEXT:     [[VAL21:%.*]] = affine_apply [[D0D1TOD1]](%i0, %i1)
+  // CHECK-NEXT:     [[VAL20:%.*]] = affine_apply [[D0P1]](%i0)
+  // CHECK-NEXT:     [[VAL21:%.*]] = affine_apply [[ID1]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL20]], [[VAL21]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL30:%.*]] = affine_apply [[D0D1TOD0P1]](%i0, %i1)
-  // CHECK-NEXT:     [[VAL31:%.*]] = affine_apply [[D0D1TOD1P8]](%i0, %i1)
+  // CHECK-NEXT:     [[VAL30:%.*]] = affine_apply [[D0P1]](%i0)
+  // CHECK-NEXT:     [[VAL31:%.*]] = affine_apply [[D0P8]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL30]], [[VAL31]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL40:%.*]] = affine_apply [[D0D1TOD0P2]](%i0, %i1)
-  // CHECK-NEXT:     [[VAL41:%.*]] = affine_apply [[D0D1TOD1]](%i0, %i1)
+  // CHECK-NEXT:     [[VAL40:%.*]] = affine_apply [[D0P2]](%i0)
+  // CHECK-NEXT:     [[VAL41:%.*]] = affine_apply [[ID1]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL40]], [[VAL41]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL50:%.*]] = affine_apply [[D0D1TOD0P2]](%i0, %i1)
-  // CHECK-NEXT:     [[VAL51:%.*]] = affine_apply [[D0D1TOD1P8]](%i0, %i1)
+  // CHECK-NEXT:     [[VAL50:%.*]] = affine_apply [[D0P2]](%i0)
+  // CHECK-NEXT:     [[VAL51:%.*]] = affine_apply [[D0P8]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL50]], [[VAL51]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
   for %i0 = 0 to %M {
     for %i1 = 0 to %N {

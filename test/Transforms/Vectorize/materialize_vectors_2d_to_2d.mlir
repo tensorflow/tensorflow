@@ -1,10 +1,9 @@
 // RUN: mlir-opt %s -vectorize -virtual-vector-size 3 -virtual-vector-size 32 --test-fastest-varying=1 --test-fastest-varying=0 -materialize-vectors -vector-size=3 -vector-size=16 | FileCheck %s 
 
 // vector<3x32xf32> -> vector<3x16xf32>
-// CHECK-DAG: [[D0D1TOD0:#.*]] = (d0, d1) -> (d0)
-// CHECK-DAG: [[D0D1TOD1:#.*]] = (d0, d1) -> (d1)
-// CHECK-DAG: [[D0D1TOD0D1:#.*]] = (d0, d1) -> (d0, d1)
-// CHECK-DAG: [[D0D1TOD1P16:#.*]] = (d0, d1) -> (d1 + 16)
+// CHECK-DAG: [[ID1:#.*]] = (d0) -> (d0)
+// CHECK-DAG: [[ID2:#.*]] = (d0, d1) -> (d0, d1)
+// CHECK-DAG: [[D0P16:#.*]] = (d0) -> (d0 + 16)
 
 // CHECK-LABEL: func @vector_add_2d
 func @vector_add_2d(%M : index, %N : index) -> f32 {
@@ -18,12 +17,12 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:   for %i1 = 0 to %arg1 step 32 {
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 1.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 1.000000e+00> : vector<3x16xf32>
-  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[D0D1TOD0]](%i0, %i1)
-  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[D0D1TOD1]](%i0, %i1)
-  // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[D0D1TOD0D1]]} : vector<3x16xf32>
-  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[D0D1TOD0]](%i0, %i1)
-  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0D1TOD1P16]](%i0, %i1)
-  // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[D0D1TOD0D1]]} : vector<3x16xf32>
+  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[ID1]](%i0)
+  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[ID1]](%i1)
+  // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[ID2]]} : vector<3x16xf32>
+  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[ID1]](%i0)
+  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0P16]](%i1)
+  // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[ID2]]} : vector<3x16xf32>
   //
   for %i0 = 0 to %M {
     for %i1 = 0 to %N {
@@ -36,12 +35,12 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:   for %i3 = 0 to %arg1 step 32 {
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 2.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 2.000000e+00> : vector<3x16xf32>
-  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[D0D1TOD0]](%i2, %i3)
-  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[D0D1TOD1]](%i2, %i3)
-  // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[D0D1TOD0D1]]} : vector<3x16xf32>
-  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[D0D1TOD0]](%i2, %i3)
-  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0D1TOD1P16]](%i2, %i3)
-  // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[D0D1TOD0D1]]} : vector<3x16xf32>
+  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[ID1]](%i2)
+  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[ID1]](%i3)
+  // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[ID2]]} : vector<3x16xf32>
+  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[ID1]](%i2)
+  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0P16]](%i3)
+  // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[ID2]]} : vector<3x16xf32>
   //
   for %i2 = 0 to %M {
     for %i3 = 0 to %N {

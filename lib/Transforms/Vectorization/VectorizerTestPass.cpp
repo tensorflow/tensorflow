@@ -258,8 +258,7 @@ void VectorizerTestPass::testNormalizeMaps(Function *f) {
       SmallVector<Value *, 8> operands =
           functional::map([](ValueTy v) { return static_cast<Value *>(v); },
                           app->getOperands().begin(), app->getOperands().end());
-      makeNormalizedAffineApply(&b, app->getLoc(), app->getAffineMap(),
-                                operands);
+      makeComposedAffineApply(&b, app->getLoc(), app->getAffineMap(), operands);
     }
   }
   // We should now be able to erase everything in reverse order in this test.

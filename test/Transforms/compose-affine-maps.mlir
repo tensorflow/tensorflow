@@ -10,7 +10,7 @@
 // CHECK: [[MAP4:#map[0-9]+]] = (d0)[s0] -> (d0 - s0, d0 - s0)
 // CHECK: [[MAP5:#map[0-9]+]] = (d0)[s0] -> (d0 - s0, d0 + 1)
 // CHECK: [[MAP6:#map[0-9]+]] = (d0)[s0] -> (d0 + 1, d0 - s0)
-// CHECK: [[MAP7:#map[0-9]+]] = (d0)[s0, s1] -> (d0 + s1, d0 - s0)
+// CHECK: [[MAP7:#map[0-9]+]] = (d0)[s0, s1] -> (d0 + s0, d0 - s1)
 
 // Affine map for test case: compose_affine_maps_d2_tile
 // CHECK: [[MAP8:#map[0-9]+]] = (d0, d1, d2, d3)[s0, s1] -> ((d0 ceildiv s0) * s0 + d2 mod s0, (d1 ceildiv s1) * s1 + d3 mod s1)
@@ -18,14 +18,14 @@
 // Affine maps for test case: compose_affine_maps_dependent_loads
 // CHECK: [[MAP9:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0 + s0, d1 - s1)
 // CHECK: [[MAP10:#map[0-9]+]] = (d0, d1)[s0] -> (d0 + s0, d1 * s0)
-// CHECK: [[MAP11:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d1 - s1, d0 + s0)
-// CHECK: [[MAP12:#map[0-9]+]] = (d0, d1)[s0, s1] -> ((d1 - s0) * s1, (d0 + s1) ceildiv s0)
+// CHECK: [[MAP11:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d1 - s0, d0 + s1)
+// CHECK: [[MAP12:#map[0-9]+]] = (d0, d1)[s0, s1] -> ((d1 - s1) * s1, (d0 + s1) ceildiv s0)
 
 // Affine maps for test case: compose_affine_maps_diamond_dependency
-// CHECK: [[MAP13:#map[0-9]+]] = (d0) -> ((d0 + 6) ceildiv 8, ((d0 - 1) * 4) floordiv 3)
+// CHECK: [[MAP13:#map[0-9]+]] = (d0) -> ((d0 + 6) ceildiv 8, (d0 * 4 - 4) floordiv 3)
 
 // Affine maps for test case: arg_used_as_dim_and_symbol
-// CHECK: [[MAP14:#map[0-9]+]] = (d0, d1, d2, d3)[s0, s1] -> (d2, d3 + s0 + s1 - (d0 + d1))
+// CHECK: [[MAP14:#map[0-9]+]] = (d0, d1, d2, d3)[s0, s1] -> (d2, d0 * -1 - d1 + d3 + s0 + s1)
 
 // CHECK-LABEL: func @compose_affine_maps_1dto2d_no_symbols() {
 func @compose_affine_maps_1dto2d_no_symbols() {
@@ -95,7 +95,7 @@ func @compose_affine_maps_1dto2d_with_symbols() {
     %c5 = constant 5 : index
     %x2 = affine_apply (d0)[s0] -> (d0 + s0) (%i0)[%c5]
     %y3 = affine_apply (d0, d1) -> (d0, d1) (%x2, %x0)
-    // CHECK: [[I3:%[0-9]+]] = affine_apply [[MAP7]](%i0)[%c4, %c5]
+    // CHECK: [[I3:%[0-9]+]] = affine_apply [[MAP7]](%i0)[%c5, %c4]
     // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I3]]#0, [[I3]]#1{{\]}}
     %v3 = load %0[%y3#0, %y3#1] : memref<4x4xf32> 
   }
@@ -160,7 +160,7 @@ func @compose_affine_maps_dependent_loads() {
 
         // Swizzle %i0, %i1
         %y2 = affine_apply (d0, d1) -> (d0, d1) (%x0#1, %x0#0)
-        // CHECK-NEXT: [[I2:%[0-9]+]] = affine_apply [[MAP11]](%i0, %i1)[%c3, %c7]
+        // CHECK-NEXT: [[I2:%[0-9]+]] = affine_apply [[MAP11]](%i0, %i1)[%c7, %c3]
 	// CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I2]]#0, [[I2]]#1{{\]}}	
         %v2 = load %0[%y2#0, %y2#1] : memref<16x32xf32> 
 
@@ -168,7 +168,7 @@ func @compose_affine_maps_dependent_loads() {
 	%x1 = affine_apply (d0, d1)[s0, s1] -> (d0 * s1, d1 ceildiv s0)
 	  (%x0#1, %x0#0)[%c7, %c3]
 
-        // CHECK-NEXT: [[I3:%[0-9]+]] = affine_apply [[MAP12]](%i0, %i1)[%c7, %c3]
+        // CHECK-NEXT: [[I3:%[0-9]+]] = affine_apply [[MAP12]](%i0, %i1)[%c3, %c7]
 	// CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I3]]#0, [[I3]]#1{{\]}}
         %v3 = load %0[%x1#0, %x1#1] : memref<16x32xf32> 
 
