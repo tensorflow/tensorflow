@@ -614,11 +614,11 @@ if [[ "${DO_DOCKER}" == "1" ]]; then
 fi
 
 # Set a disk usage trap.
-function finish {
+function debug_disk_usage {
     echo "Finished script... disk usage report in ${TMP_DIR}"
     du -k -d 2 ${TMP_DIR} | sort -n -r
 }
-trap finish EXIT
+# trap debug_disk_usage EXIT
 
 chmod +x ${TMP_SCRIPT}
 
@@ -655,6 +655,8 @@ echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
 "(Elapsed time: $((END_TIME - START_TIME)) s)"
 
+# Dump disk usage
+debug_disk_usage
 
 # Clean up temporary directory if it exists
 if [[ ! -z "${TMP_DIR}" ]]; then
