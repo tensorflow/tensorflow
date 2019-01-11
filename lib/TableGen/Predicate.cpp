@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/TableGen/Predicate.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Error.h"
@@ -42,15 +43,29 @@ const llvm::ListInit *tblgen::PredCNF::getConditions() const {
   return def->getValueAsListInit("conditions");
 }
 
-std::string tblgen::PredCNF::createTypeMatcherTemplate() const {
+std::string
+tblgen::PredCNF::createTypeMatcherTemplate(PredCNF predsKnownToHold) const {
   const auto *conjunctiveList = getConditions();
   if (!conjunctiveList)
     return "true";
+
+  // Create a set of all the disjunctive conditions that hold. This is taking
+  // advantage of uniquieing of lists to discard based on the pointer
+  // below. This is not perfect but this will also be moved to FSM matching in
+  // future and gets rid of trivial redundant checking.
+  llvm::SmallSetVector<const llvm::Init *, 4> existingConditions;
+  auto existingList = predsKnownToHold.getConditions();
+  if (existingList) {
+    for (auto disjunctiveInit : *existingList)
+      existingConditions.insert(disjunctiveInit);
+  }
 
   std::string outString;
   llvm::raw_string_ostream ss(outString);
   bool firstDisjunctive = true;
   for (auto disjunctiveInit : *conjunctiveList) {
+    if (existingConditions.count(disjunctiveInit) != 0)
+      continue;
     ss << (firstDisjunctive ? "(" : " && (");
     firstDisjunctive = false;
     bool firstConjunctive = true;
@@ -63,6 +78,8 @@ std::string tblgen::PredCNF::createTypeMatcherTemplate() const {
     }
     ss << ")";
   }
+  if (firstDisjunctive)
+    return "true";
   ss.flush();
   return outString;
 }

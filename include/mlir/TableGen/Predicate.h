@@ -60,7 +60,7 @@ public:
 
   // Returns the template string to construct the matcher corresponding to this
   // predicate CNF. The string uses '{0}' to represent the type.
-  std::string createTypeMatcherTemplate() const;
+  std::string createTypeMatcherTemplate(PredCNF predsKnownToHold) const;
 
 private:
   // The TableGen definition of this predicate CNF. nullptr means an empty

@@ -175,10 +175,10 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
                           "type argument required for operand");
 
         auto pred = tblgen::Type(defInit).getPredicate();
-
+        auto opPred = tblgen::Type(operand->defInit).getPredicate();
         os.indent(indent)
             << "if (!("
-            << formatv(pred.createTypeMatcherTemplate().c_str(),
+            << formatv(pred.createTypeMatcherTemplate(opPred).c_str(),
                        formatv("op{0}->getOperand({1})->getType()", depth, i))
             << ")) return matchFailure();\n";
       }

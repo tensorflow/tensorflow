@@ -163,5 +163,6 @@ bool tblgen::Operator::Operand::hasMatcher() const {
 }
 
 std::string tblgen::Operator::Operand::createTypeMatcherTemplate() const {
-  return tblgen::Type(defInit).getPredicate().createTypeMatcherTemplate();
+  return tblgen::Type(defInit).getPredicate().createTypeMatcherTemplate(
+      PredCNF());
 }
