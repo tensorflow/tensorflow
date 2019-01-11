@@ -31,6 +31,7 @@ from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
@@ -91,6 +92,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
     self._initialize_local(local_devices)
+    # TODO(yuefengz): remove num_gpus_per_worker from CollectiveAllReduce.
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
         num_gpus_per_worker=num_gpus_per_worker,
@@ -166,16 +168,17 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       device_map = colocate_with.device_map
       logical_device = colocate_with.logical_device
-    group_size = device_map.num_replicas_in_graph * self._num_workers
-    group_key = self._collective_keys.get_group_key(self.worker_devices)
 
     def _real_mirrored_creator(devices, *args, **kwargs):
       """Creates one MirroredVariable on the current worker."""
-      value_list = []
       unique_var_name = ops.get_default_graph().unique_name(
           kwargs["name"], mark_as_used=False).rstrip("/")
+      # pylint: disable=protected-access
       collective_instance_key = self._collective_keys.get_instance_key(
           key_id=unique_var_name)
+      # Only the first device participles in the broadcast of initial values.
+      group_key = self._collective_keys.get_group_key([devices[0]])
+      group_size = self._num_workers
       if "initial_value" not in kwargs:
         raise ValueError("Initial value must be specified.")
       initial_value = kwargs["initial_value"]
@@ -184,9 +187,33 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       else:
         initial_value_fn = lambda: initial_value
 
+      value_list = []
       for i, d in enumerate(devices):
-        with ops.device(d):
-          if i > 0:
+        with ops.init_scope(), ops.device(d):
+          if i == 0:
+            # The initial value fn makes sure variables all initialized to
+            # same values. The first device of the chief worker will send their
+            # variable values to other workers.
+            def _overridden_initial_value_fn(device=d, index=i):  # pylint: disable=g-missing-docstring
+              with ops.device(device):
+                initial_value = initial_value_fn()
+                assert not callable(initial_value)
+                initial_value = ops.convert_to_tensor(initial_value)
+
+                assert index == 0, index
+                if self._num_workers > 1:
+                  if self._is_chief:
+                    bcast_send = collective_ops.broadcast_send(
+                        initial_value, initial_value.shape, initial_value.dtype,
+                        group_size, group_key, collective_instance_key)
+                    with ops.control_dependencies([bcast_send]):
+                      return array_ops.identity(initial_value)
+                  else:
+                    return collective_ops.broadcast_recv(
+                        initial_value.shape, initial_value.dtype, group_size,
+                        group_key, collective_instance_key)
+                return initial_value
+          else:
             # Give replicas meaningful distinct names:
             var0name = value_list[0].name.split(":")[0]
             # We append a / to variable names created on replicas with id > 0 to
@@ -194,30 +221,22 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
 
-          # The initial value fn makes sure variables all initialized to
-          # same values. The first device of the chief worker will send their
-          # variable values to other devices and other workers.
-          def _overridden_initial_value_fn(device=d, index=i):  # pylint: disable=g-missing-docstring
-            with ops.device(device):
-              initial_value = initial_value_fn()
-              assert not callable(initial_value)
-              initial_value = ops.convert_to_tensor(initial_value)
-
-              if self._is_chief and index == 0:
-                bcast_send = collective_ops.broadcast_send(
-                    initial_value, initial_value.shape, initial_value.dtype,
-                    group_size, group_key, collective_instance_key)
-                with ops.control_dependencies([bcast_send]):
-                  return array_ops.identity(initial_value)
-              else:
-                return collective_ops.broadcast_recv(
-                    initial_value.shape, initial_value.dtype, group_size,
-                    group_key, collective_instance_key)
+            # Variables on non-first replica get initial values from the
+            # variables created on the first device of each worker.
+            def _overridden_initial_value_fn(device=d, index=i):
+              assert index > 0
+              with ops.device(device):
+                if context.executing_eagerly():
+                  return array_ops.identity(value_list[0].value())
+                else:
+                  return array_ops.identity(value_list[0].initial_value)
 
           kwargs["initial_value"] = _overridden_initial_value_fn
-
           with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
-            v = next_creator(*args, **kwargs)
+            # Don't record operations (e.g. other variable reads) during
+            # variable creation.
+            with tape.stop_recording():
+              v = next_creator(*args, **kwargs)
 
           if i == 0:
             actual_var_name = v.name.split(":")[0]
@@ -353,4 +372,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
+
+    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
+    batching.
+
+    Returns:
+      Boolean.
+    """
     return True

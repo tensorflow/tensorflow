@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -202,7 +203,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             thread_pool_(new thread::ThreadPool(
                 Env::Default(), ThreadOptions(),
                 "data_parallel_interleave_worker_pool",
-                dataset()->cycle_length_ /* num_threads */,
+                port::NumSchedulableCPUs() /* num_threads */,
                 false /* low_latency_hint */)) {
         std::vector<string> components =
             str_util::Split(params.prefix, "::", str_util::SkipEmpty());
@@ -262,7 +263,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeAsyncInterleaveManyNode(
             std::move(args),
             {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                  /*max=*/dataset()->cycle_length_)});
+                                  /*max=*/port::NumSchedulableCPUs())});
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
@@ -574,8 +575,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         RecordStart(ctx.get());
         auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
         auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
+          // TODO(jsimsa): Autotune the buffer size.
           return num_calls_ >= num_parallel_calls_->value ||
-                 future_elements_.size() >= dataset()->cycle_length_;
+                 future_elements_.size() >= 2 * dataset()->cycle_length_;
         };
         while (true) {
           mutex_lock l(*mu_);

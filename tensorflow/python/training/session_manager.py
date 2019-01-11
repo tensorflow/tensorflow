@@ -186,7 +186,7 @@ class SessionManager(object):
     # This is required to so that we initialize the TPU device before
     # restoring from checkpoint since we'll be placing variables on the device
     # and TPUInitialize wipes out the memory of the device.
-    strategy = distribution_strategy_context.get_distribution_strategy()
+    strategy = distribution_strategy_context.get_strategy()
     if strategy and hasattr(strategy.extended,
                             "_experimental_initialize_system"):
       strategy.extended._experimental_initialize_system()  # pylint: disable=protected-access

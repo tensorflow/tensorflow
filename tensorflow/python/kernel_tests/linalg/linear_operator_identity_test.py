@@ -265,9 +265,14 @@ class LinearOperatorIdentityTest(
         is_positive_definite=True,
         is_self_adjoint=True,
     )
-    self.assertTrue(isinstance(
-        operator.cholesky(),
-        linalg_lib.LinearOperatorIdentity))
+    self.assertIsInstance(
+        operator.cholesky(), linalg_lib.LinearOperatorIdentity)
+
+  def test_identity_inverse_type(self):
+    operator = linalg_lib.LinearOperatorIdentity(
+        num_rows=2, is_non_singular=True)
+    self.assertIsInstance(
+        operator.inverse(), linalg_lib.LinearOperatorIdentity)
 
 
 class LinearOperatorScaledIdentityTest(
@@ -491,10 +496,19 @@ class LinearOperatorScaledIdentityTest(
         is_positive_definite=True,
         is_self_adjoint=True,
     )
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator.cholesky(),
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
 
+  def test_scaled_identity_inverse_type(self):
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2,
+        multiplier=3.,
+        is_non_singular=True,
+    )
+    self.assertIsInstance(
+        operator.inverse(),
+        linalg_lib.LinearOperatorScaledIdentity)
 
 if __name__ == "__main__":
   test.main()

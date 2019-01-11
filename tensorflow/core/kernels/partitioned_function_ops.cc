@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -213,10 +214,14 @@ class PartitionedCallOp : public AsyncOpKernel {
     run_opts.rendezvous = rendez;
 
     std::vector<Tensor>* rets = new std::vector<Tensor>;
+    const string& func_name = func_.name();
     lib->Run(run_opts, handle, inputs, rets,
-             [rets, rendez, done, ctx](const Status& status) {
+             [rets, rendez, done, ctx, func_name](const Status& status) {
                if (!status.ok()) {
-                 ctx->SetStatus(status);
+                 const string function_and_msg =
+                     strings::StrCat(errors::FormatFunctionForError(func_name),
+                                     " ", status.error_message());
+                 ctx->SetStatus(Status(status.code(), function_and_msg));
                } else {
                  for (int i = 0; i < rets->size(); ++i) {
                    ctx->set_output(i, (*rets)[i]);

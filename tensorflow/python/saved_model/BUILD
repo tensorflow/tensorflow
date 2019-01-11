@@ -71,7 +71,7 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:training",
+        "//tensorflow/python:saver",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],

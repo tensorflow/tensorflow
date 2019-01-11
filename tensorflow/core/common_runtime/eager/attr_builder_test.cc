@@ -67,5 +67,18 @@ TEST(AttrTypeMap, Lookup) {
   EXPECT_NE(is_list, 0);
 }
 
+TEST(AttrTypeMap, CacheKey) {
+  AttrBuilder a("op_name");
+  a.NumInputs(2);
+  a.Set("T", TF_FLOAT);
+  tensorflow::Fprint128 cache_key = a.CacheKey("cpu:0");
+
+  ASSERT_FALSE(cache_key == a.CacheKey("cpu:1"));
+  ASSERT_TRUE(cache_key == a.CacheKey("cpu:0"));
+
+  a.Set("x", 1.0);
+  ASSERT_FALSE(cache_key == a.CacheKey("cpu:0"));
+}
+
 }  // namespace
 }  // namespace tensorflow

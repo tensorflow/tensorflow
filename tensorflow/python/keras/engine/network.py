@@ -37,8 +37,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -69,8 +69,64 @@ except ImportError:
 class Network(base_layer.Layer):
   """A `Network` is a composition of layers.
 
-  It is the topological form of a "model". A `Model`
+  `Network` is the topological form of a "model". A `Model`
   is simply a `Network` with added training routines.
+
+  Two types of `Networks` exist: Graph Networks and Subclass Networks. Graph
+  networks are used in the Keras Functional and Sequential APIs. Subclassed
+  networks are used when a user subclasses the `Model` class. In general,
+  more Keras features are supported with Graph Networks than with Subclassed
+  Networks, specifically:
+
+  - Model cloning (`keras.models.clone`)
+  - Serialization (`model.get_config()/from_config`, `model.to_json()/to_yaml()`
+  - Whole-model saving (`model.save()`)
+
+  A Graph Network can be instantiated by passing two arguments to `__init__`.
+  The first argument is the `keras.Input` Tensors that represent the inputs
+  to the Network. The second argument specifies the output Tensors that
+  represent the outputs of this Network. Both arguments can be a nested
+  structure of Tensors.
+
+  Example:
+
+  ```
+  inputs = {'x1': keras.Input(shape=(10,)), 'x2': keras.Input(shape=(1,))}
+  t = keras.layers.Dense(1, activation='relu')(inputs['x1'])
+  outputs = keras.layers.Add()([t, inputs['x2'])
+  network = Network(inputs, outputs)
+  ```
+
+  A Graph Network constructed using the Functional API can also include raw
+  TensorFlow functions, with the exception of functions that create Variables
+  or assign ops.
+
+  Example:
+
+  ```
+  inputs = keras.Input(shape=(10,))
+  x = keras.layers.Dense(1)(inputs)
+  outputs = tf.nn.relu(x)
+  network = Network(inputs, outputs)
+  ```
+
+  Subclassed Networks can be instantiated via `name` and (optional) `dynamic`
+  keyword arguments. Subclassed Networks keep track of their Layers, and their
+  `call` method can be overridden. Subclassed Networks are typically created
+  indirectly, by subclassing the `Model` class.
+
+  Example:
+
+  ```
+  class MyModel(keras.Model):
+    def __init__(self):
+      super(MyModel, self).__init__(name='my_model', dynamic=False)
+
+      self.layer1 = keras.layers.Dense(10, activation='relu')
+
+    def call(self, inputs):
+      return self.layer1(inputs)
+  ```
   """
 
   def __init__(self, *args, **kwargs):  # pylint: disable=super-init-not-called
@@ -174,6 +230,10 @@ class Network(base_layer.Layer):
     self._nested_inputs = inputs
     self.inputs = nest.flatten(inputs)
     self.outputs = nest.flatten(outputs)
+
+    if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
+      base_layer_utils.create_keras_history(self._nested_outputs)
+
     self._validate_graph_inputs_and_outputs()
 
     self._base_init(name=name)
@@ -335,9 +395,11 @@ class Network(base_layer.Layer):
     if not getattr(self, '_setattr_tracking', True):
       super(Network, self).__setattr__(name, value)
       return
-    if (isinstance(value, (base_layer.Layer,
-                           data_structures.CheckpointableDataStructure))
-        or checkpointable_layer_utils.has_weights(value)):
+
+    if all(
+        isinstance(v, (base_layer.Layer,
+                       data_structures.CheckpointableDataStructure)) or
+        checkpointable_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._is_graph_network
       except AttributeError:
@@ -1364,7 +1426,7 @@ class Network(base_layer.Layer):
         return
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
-        saving.save_weights_to_hdf5_group(f, self.layers)
+        hdf5_format.save_weights_to_hdf5_group(f, self.layers)
     else:
       if context.executing_eagerly():
         session = None
@@ -1464,9 +1526,9 @@ class Network(base_layer.Layer):
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
       if by_name:
-        saving.load_weights_from_hdf5_group_by_name(f, self.layers)
+        hdf5_format.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
-        saving.load_weights_from_hdf5_group(f, self.layers)
+        hdf5_format.load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
     """Util shared between different serialization methods.

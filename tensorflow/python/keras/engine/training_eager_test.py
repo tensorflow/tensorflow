@@ -156,7 +156,7 @@ class TrainingTest(keras_parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat(10).batch(5)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     validation_dataset = dataset_ops.Dataset.from_tensor_slices(
-        (x, y)).repeat(10).batch(5)
+        (x, y)).repeat().batch(5)  # Infinite dataset.
     validation_iterator = dataset_ops.make_one_shot_iterator(validation_dataset)
 
     with self.assertRaisesRegexp(
@@ -169,6 +169,7 @@ class TrainingTest(keras_parameterized.TestCase):
           ValueError, r'provide either `batch_size` or `validation_steps`'):
         model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
                   validation_data=(x, y))
+    # Step argument is required for infinite datasets.
     with self.assertRaisesRegexp(ValueError,
                                  'specify the `validation_steps` argument.'):
       model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,

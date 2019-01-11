@@ -360,6 +360,7 @@ HloModule foobar
 
 ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   %p = bf16[] parameter(0)
+  %constant.bf16 = bf16[] constant(1)
 
   %all-reduce.ar.1 = bf16[]
       all-reduce(%p),
@@ -377,7 +378,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
       sharding={maximal device=0}
 
   %all-reduce.ar.2 = bf16[]
-      all-reduce(%p),
+      all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.bf16,
@@ -407,7 +408,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Convert(op::Parameter())),
-                        op::AllReduce(op::Convert(op::Parameter()))));
+                        op::AllReduce(op::Convert(op::Constant()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();

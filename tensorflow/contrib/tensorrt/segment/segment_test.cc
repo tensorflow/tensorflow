@@ -75,7 +75,10 @@ class SegmentTest : public ::testing::Test {
                        const std::vector<std::set<string>>& expected_segments) {
     EXPECT_EQ(expected_segments.size(), segments.size());
     for (int i = 0; i < segments.size(); ++i) {
-      const auto& segment_node_names = segments[i].first;
+      std::set<string> segment_node_names;
+      for (const Node* node : segments[i].first) {
+        segment_node_names.insert(node->name());
+      }
       const auto& expected = expected_segments[i];
       for (const auto& name : expected) {
         EXPECT_TRUE(segment_node_names.count(name))

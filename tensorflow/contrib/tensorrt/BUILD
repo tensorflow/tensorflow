@@ -502,6 +502,7 @@ cuda_py_tests(
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
         "test/topk_test.py",
+        "test/unary_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],
@@ -512,25 +513,6 @@ cuda_py_tests(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_windows",
-        "nomac",
-    ],
-)
-
-cuda_py_tests(
-    name = "tf_trt_integration_test_no_oss",
-    srcs = [
-        "test/unary_test.py",
-    ],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_oss",  # TODO(b/117274186): re-enable in OSS after crash fixed
-        "no_pip",  # TODO(b/117274186): re-enable in OSS after crash fixed
         "no_windows",
         "nomac",
     ],

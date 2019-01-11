@@ -3403,11 +3403,101 @@ std::tuple<int64, int64, int64> GetReductionToVectorDimensions(
   return std::make_tuple(num_reduced_major, num_kept, num_reduced_minor);
 }
 
+// Returns true if all the transitive users of hlo before hitting users in
+// use_chain_endings are elementwise operations.
+bool AreUsersElementwise(const HloInstruction* hlo,
+                         const ConstHloInstructionSet& use_chain_endings) {
+  return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
+    return use_chain_endings.count(user) ||
+           (user->IsElementwise() &&
+            AreUsersElementwise(user, use_chain_endings));
+  });
+}
+
+// Returns the number of fusion inputs that have the same dimension as the
+// given shape, and involve in only elementwise operations.
+int64 NumInputsInvolveInOnlyElementwiseOps(
+    const HloInstruction* unnested_hlo, const Shape& op_shape,
+    const ConstHloInstructionSet& use_chain_endings) {
+  return absl::c_count_if(
+      unnested_hlo->fused_parameters(), [&](const HloInstruction* parameter) {
+        const Shape& parameter_shape = parameter->shape();
+        return ShapeUtil::SameDimensions(op_shape, parameter_shape) &&
+               AreUsersElementwise(parameter, use_chain_endings);
+      });
+}
+
+// Returns the number of fusion inputs that have more elements than the given
+// shape.
+int64 NumInputsWithMoreElementsThan(const HloInstruction* unnested_hlo,
+                                    const Shape& shape) {
+  int64 num_elements = ShapeUtil::ElementsIn(shape);
+  return absl::c_count_if(
+      unnested_hlo->fused_parameters(), [&](const HloInstruction* parameter) {
+        return ShapeUtil::ElementsIn(parameter->shape()) > num_elements;
+      });
+}
+
+// The benefit of unrolling a kInput fusion that is a column reduction comes
+// from the vectorization of non-reduction fusion outputs and fusion inputs.
+// On the other hand, unrolling can also introduce factors that can cause
+// the kernel to run slower. This routine uses a simple heuristic to estimate
+// the benefit as well as the overhead of unrolling in order to decide whether
+// unrolling is beneficial for the given kInput fusion.
+bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
+                                          const Shape& input_shape,
+                                          int64 num_kept) {
+  // TODO(b/122468062): Need further investigate to see whether we can
+  // remove the constraint on IsPowerOfTwo.
+  if (!IsPowerOfTwo(static_cast<uint64>(num_kept))) {
+    return false;
+  }
+
+  if (unnested_hlo->opcode() == HloOpcode::kReduce) {
+    return true;
+  }
+
+  CHECK_EQ(unnested_hlo->opcode(), HloOpcode::kFusion);
+  int64 can_be_vectorized = 0;
+  int64 cannot_be_vectorized = 0;
+  const HloInstruction* fused_root = unnested_hlo->fused_expression_root();
+  ConstHloInstructionSet use_chain_endings;
+  if (fused_root->opcode() == HloOpcode::kReduce) {
+    use_chain_endings.insert(fused_root);
+    // Atomic.add of the reduction result can't be vectorized.
+    cannot_be_vectorized++;
+  } else {
+    CHECK_EQ(fused_root->opcode(), HloOpcode::kTuple);
+    for (const HloInstruction* instr : fused_root->operands()) {
+      if (instr->opcode() == HloOpcode::kReduce) {
+        // Atomic.add of the reduction result can't be vectorized.
+        cannot_be_vectorized++;
+      } else {
+        // Write of the non-reduction result can be vectorized.
+        can_be_vectorized++;
+      }
+      use_chain_endings.insert(instr);
+    }
+  }
+  // Fusion inputs that have the same dimension as the reduce input and
+  // only involve in elementwise operations can be vectorized.
+  can_be_vectorized += NumInputsInvolveInOnlyElementwiseOps(
+      unnested_hlo, input_shape, use_chain_endings);
+  // Fusion inputs with more elements than the reduce op input must participate
+  // in non-elementwise operations and we assume that they are not vectorizable
+  // for the purpose of estimating the benefit of unrolling. If the kernel is
+  // unrolled even with such an assumption,  and the accesses to those inputs
+  // turn out to be vectorizable, the compiler will still vectorize them.
+  cannot_be_vectorized +=
+      NumInputsWithMoreElementsThan(unnested_hlo, input_shape);
+  return can_be_vectorized >= cannot_be_vectorized;
+}
+
 }  // namespace
 
 std::tuple<KernelMappingScheme, bool>
 IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
-    const HloInstruction* first_reduce) {
+    const HloInstruction* unnested_hlo, const HloInstruction* first_reduce) {
   int64 depth = 1;
   int64 height = 1;
   int64 width = 1;
@@ -3437,15 +3527,6 @@ IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
     height = num_reduced_major;
     width = num_kept;
     is_row_reduction = false;
-    // Assume unrolling is beneficial only when we can vectorize the loads
-    // of small data types.
-    auto is_unrolling_beneficial = [&] {
-      // TODO(b/122468062): Need further investigate to see whether we can
-      // remove the constraint on IsPowerOfTwo.
-      return IsPowerOfTwo(static_cast<uint64>(num_kept)) &&
-             primitive_util::BitWidth(
-                 first_reduce->operand(0)->shape().element_type()) <= 16;
-    };
     // Column reduction without transpose doesn't require communication among
     // threads processing elements in the same tile. The current implementation
     // only support the use of one hardware thread block to process one block of
@@ -3454,7 +3535,8 @@ IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
     // num_threads_x and tile_size_x to allow a bigger hardware thread block.
     int64 hw_threads_per_block_limit =
         ThreadsPerBlockLimit(ir_emitter_context_->device_description());
-    if (is_unrolling_beneficial()) {
+    if (IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
+                                             num_kept)) {
       tile_size_x = std::min(2 * hw_threads_per_block_limit, num_kept);
       num_threads_x = tile_size_x / 2;
       dilated_x = false;
@@ -3539,7 +3621,7 @@ Status IrEmitterUnnested::EmitReductionToVector(HloInstruction* unnested_hlo) {
   bool is_row_reduction;
   llvm_ir::KernelMappingScheme mapping_scheme;
   std::tie(mapping_scheme, is_row_reduction) =
-      ComputeMappingSchemeAndReductionKind(first_reduce);
+      ComputeMappingSchemeAndReductionKind(unnested_hlo, first_reduce);
   ReductionCodegenInfo reduction_info(&mapping_scheme, is_row_reduction);
   KernelCodeGenerator kernel_generator(
       /*tile_element_generator=*/

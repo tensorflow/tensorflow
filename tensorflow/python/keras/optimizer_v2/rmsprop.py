@@ -29,7 +29,7 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export("keras.optimizers.RMSprop", v1=[])
+@keras_export("keras.optimizers.RMSprop")
 class RMSprop(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the RMSprop algorithm.
 

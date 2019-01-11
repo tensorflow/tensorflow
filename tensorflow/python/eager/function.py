@@ -41,6 +41,8 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import error_interpolation
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -129,6 +131,46 @@ def _parse_func_attrs(attributes):
       raise ValueError("Unsupported attribute type for %s with type %s" %
                        (key, type(value)))
   return attrs
+
+
+class _InterpolateFunctionError(object):
+  """Context Manager that interpolates the exception from 'top_level_func'."""
+
+  def __init__(self, top_level_func):
+    self._func = top_level_func
+
+  def __enter__(self):
+    pass
+
+  def __exit__(self, typ, exc, tb):
+    if not exc or not isinstance(exc, errors.OpError):
+      return False
+    message = compat.as_text(exc.message)
+    _, tags = error_interpolation.parse_message(message)
+    g = None
+    func_stack = []
+    # pylint: disable=protected-access
+    for t in tags:
+      if t.type == "function_node":
+        if t.name == compat.as_str(self._func.name):
+          g = self._func._graph
+        elif g:
+          next_func = g._get_function(t.name)
+          if next_func is not None and isinstance(next_func,
+                                                  _EagerDefinedFunction):
+            g = next_func._graph
+        if g:
+          func_stack.append(g.name)
+        else:
+          func_stack.append("<unknown>")
+    # pylint: enable=protected-access
+    if g:
+      message = error_interpolation.interpolate(message, g)
+      message += "\n\nFunction call stack:\n"
+      message += " -> ".join(func_stack)
+      message += "\n"
+      exc._message = message  # pylint: disable=protected-access
+    return False
 
 
 def _forward_name(n):
@@ -279,13 +321,14 @@ class _EagerDefinedFunction(object):
             "Arguments and signature arguments do not match: %s %s " %
             (len(args), len(list(self.signature.input_arg))))
       function_call_options = ctx.get_function_call_options()
-      outputs = functional_ops.partitioned_call(
-          args=args,
-          f=self,
-          tout=self._output_types,
-          executing_eagerly=executing_eagerly,
-          config=function_call_options.config_proto_serialized,
-          executor_type=function_call_options.executor_type)
+      with _InterpolateFunctionError(self):
+        outputs = functional_ops.partitioned_call(
+            args=args,
+            f=self,
+            tout=self._output_types,
+            executing_eagerly=executing_eagerly,
+            config=function_call_options.config_proto_serialized,
+            executor_type=function_call_options.executor_type)
 
     if executing_eagerly:
       return outputs
@@ -401,8 +444,8 @@ class Function(object):
     """
     return self._call_flat(
         (t for t in nest.flatten((args, kwargs))
-         if isinstance(
-             t, (ops.Tensor, resource_variable_ops.ResourceVariable))))
+         if isinstance(t, (ops.Tensor,
+                           resource_variable_ops.ResourceVariable))))
 
   def _call_flat(self, args):
     """Executes the wrapped function.
@@ -517,8 +560,13 @@ class Function(object):
 
   @property
   def outputs(self):
-    """Returns tensors in `self.graph` corresponding to return values."""
+    """Returns tensors in `self.graph` corresponding to returned tensors."""
     return self._func_graph.outputs
+
+  @property
+  def structured_outputs(self):
+    """Returns outputs in `self.graph` as returned by the original function."""
+    return self._func_graph.structured_outputs
 
   @property
   def captured_inputs(self):
@@ -771,17 +819,30 @@ class UnknownArgument(object):
   pass
 
 
-def _encode_arg_for_serialization(arg):
-  """A representation for this argument, for serializing signatures."""
-  if isinstance(arg, ops.Tensor):
-    return tensor_spec.TensorSpec(arg.shape, arg.dtype)
-  if isinstance(arg, int):
-    return arg
-  if isinstance(arg, float):
-    return arg
-  if isinstance(arg, bool):
-    return arg
-  return UnknownArgument()
+def convert_structure_to_signature(structure):
+  """Convert a potentially nested structure to a signature.
+
+  Args:
+    structure: Structure to convert.
+
+  Returns:
+    Identical structure that has TensorSpec objects instead of Tensors and
+    UknownArgument instead of any unsupported types.
+  """
+
+  def encode_arg(arg, name=None):
+    """A representation for this argument, for converting into signatures."""
+    if isinstance(arg, ops.Tensor):
+      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+    if isinstance(arg, (int, float, bool)):
+      return arg
+    return UnknownArgument()
+
+  # We are using the flattened paths to name the TensorSpecs. We need an
+  # explicit name for them downstream.
+  flattened_with_paths = nest.flatten_with_joined_string_paths(structure)
+  mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
+  return nest.pack_sequence_as(structure, mapped)
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -1262,8 +1323,7 @@ class PolymorphicFunction(object):
         if self._input_signature:
           python_call_signature = self._input_signature
         else:
-          python_call_signature = tuple(
-              _encode_arg_for_serialization(arg) for arg in args)
+          python_call_signature = tuple(convert_structure_to_signature(args))
         # pylint: disable=protected-access
         # Save information about non-Tensor arguments with the concrete
         # function. Used to serialize PolymorphicFunctions.

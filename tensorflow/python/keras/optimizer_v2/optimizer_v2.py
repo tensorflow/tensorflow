@@ -69,7 +69,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 @six.add_metaclass(abc.ABCMeta)
-@keras_export("keras.optimizers.Optimizer", v1=[])
+@keras_export("keras.optimizers.Optimizer")
 class OptimizerV2(checkpointable.CheckpointableBase):
   """Updated base class for optimizers.
 
@@ -290,8 +290,7 @@ class OptimizerV2(checkpointable.CheckpointableBase):
   @staticmethod
   def _scale_loss(loss_value):
     if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = \
-        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= (1. / num_replicas)
     return loss_value
@@ -349,7 +348,7 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     """
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
-    if distribute_ctx.has_distribution_strategy():
+    if distribute_ctx.has_strategy():
       reduced_grads = merge_grads(grads_and_vars)
       grads_and_vars = zip(reduced_grads, var_list)
 
@@ -900,8 +899,7 @@ def _var_key(var):
   """
 
   # pylint: disable=protected-access
-  if distribute_ctx.has_distribution_strategy() and hasattr(
-      var, "_primary_var"):
+  if distribute_ctx.has_strategy() and hasattr(var, "_primary_var"):
     var = var._primary_var
   if hasattr(var, "op"):
     return var._shared_name
