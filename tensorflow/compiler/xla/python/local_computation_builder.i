@@ -794,8 +794,6 @@ tensorflow::ImportNumpy();
   }
   dimension_numbers.set_kernel_input_feature_dimension(value);
 
-  PyObject* o;
-
   if (!HandleRepeatedInt64Attribute(
         $input, "input_spatial_dimensions",
         dimension_numbers.mutable_input_spatial_dimensions())) {
