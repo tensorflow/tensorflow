@@ -182,7 +182,7 @@ XRTTupleAllocation::~XRTTupleAllocation() {
 }
 
 /*static*/ Status XRTTupleAllocation::CreateAndTransfer(
-    const xla::Literal& literal, xla::Backend* backend, int device_ordinal,
+    const xla::LiteralBase& literal, xla::Backend* backend, int device_ordinal,
     XRTTupleAllocation** allocation) {
   auto transfer_manager = backend->transfer_manager();
   auto allocator = backend->memory_allocator();
