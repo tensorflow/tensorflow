@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -37,7 +38,8 @@ class TopKTest(trt_test.TfTrtIntegrationTestBase):
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      values, indices = nn_ops.top_k(x, k)
+      k_tensor = constant_op.constant(k, dtype=tf.int32, name="Const")
+      values, indices = nn_ops.top_k(x, k_tensor, name="TopK")
       values = array_ops.identity(values, name='output_values')
       indices = array_ops.identity(indices, name='output_indices')
     return trt_test.TfTrtIntegrationTestParams(
@@ -49,7 +51,7 @@ class TopKTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return {"TRTEngineOp_0" : ["Const", "TopK"]}
 
 
 if __name__ == "__main__":
