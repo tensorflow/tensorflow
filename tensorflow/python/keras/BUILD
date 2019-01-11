@@ -487,9 +487,9 @@ tf_py_test(
     shard_count = 2,
 )
 
-tf_py_test(
+cuda_py_test(
     name = "convolutional_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/convolutional_test.py"],
     additional_deps = [
         ":keras",
@@ -497,7 +497,19 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 11,
+    shard_count = 8,
+)
+
+cuda_py_test(
+    name = "convolutional_transpose_test",
+    size = "medium",
+    srcs = ["layers/convolutional_transpose_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 cuda_py_test(
@@ -657,6 +669,18 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+)
+
+cuda_py_test(
+    name = "separable_convolutional_test",
+    size = "medium",
+    srcs = ["layers/separable_convolutional_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 cuda_py_test(
