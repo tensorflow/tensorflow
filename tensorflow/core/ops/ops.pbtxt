@@ -38987,6 +38987,13 @@ op {
       }
     }
   }
+  attr {
+    name: "parallel_iterations"
+    type: "int"
+    default_value {
+      i: 10
+    }
+  }
   is_stateful: true
 }
 op {
