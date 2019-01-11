@@ -41,6 +41,12 @@ def _inverse_linear_operator(linop):
 
 
 @linear_operator_algebra.RegisterInverse(
+    linear_operator_inversion.LinearOperatorInversion)
+def _inverse_inverse_linear_operator(linop_inversion):
+  return linop_inversion.operator
+
+
+@linear_operator_algebra.RegisterInverse(
     linear_operator_diag.LinearOperatorDiag)
 def _inverse_diag(diag_operator):
   return linear_operator_diag.LinearOperatorDiag(
@@ -72,7 +78,7 @@ def _inverse_scaled_identity(identity_operator):
 @linear_operator_algebra.RegisterInverse(
     linear_operator_block_diag.LinearOperatorBlockDiag)
 def _inverse_block_diag(block_diag_operator):
-    # We take the inverse of each block on the diagonal.
+  # We take the inverse of each block on the diagonal.
   return linear_operator_block_diag.LinearOperatorBlockDiag(
       operators=[
           operator.inverse() for operator in block_diag_operator.operators],
@@ -85,8 +91,8 @@ def _inverse_block_diag(block_diag_operator):
 @linear_operator_algebra.RegisterInverse(
     linear_operator_kronecker.LinearOperatorKronecker)
 def _inverse_kronecker(kronecker_operator):
-    # Inverse decomposition of a Kronecker product is the Kronecker product
-    # of inverse decompositions.
+  # Inverse decomposition of a Kronecker product is the Kronecker product
+  # of inverse decompositions.
   return linear_operator_kronecker.LinearOperatorKronecker(
       operators=[
           operator.inverse() for operator in kronecker_operator.operators],
