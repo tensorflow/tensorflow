@@ -54,6 +54,8 @@ int PrimitiveTypeToNumpyType(PrimitiveType primitive_type) {
       return NPY_FLOAT64;
     case C64:
       return NPY_COMPLEX64;
+    case C128:
+      return NPY_COMPLEX128;
     case TUPLE:
       return NPY_OBJECT;
     default:
@@ -89,6 +91,8 @@ PrimitiveType NumpyTypeToPrimitiveType(int np_type) {
       return F64;
     case NPY_COMPLEX64:
       return C64;
+    case NPY_COMPLEX128:
+      return C128;
     case NPY_OBJECT:
       return TUPLE;
     default:
@@ -111,6 +115,7 @@ bool NumpyTypeIsValid(int np_type) {
     case NPY_FLOAT32:
     case NPY_FLOAT64:
     case NPY_COMPLEX64:
+    case NPY_COMPLEX128:
     case NPY_OBJECT:
       return true;
     default:
@@ -430,6 +435,9 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
     case NPY_COMPLEX64:
       CopyNumpyArrayToLiteral<complex64>(py_array, literal);
       break;
+    case NPY_COMPLEX128:
+      CopyNumpyArrayToLiteral<complex128>(py_array, literal);
+      break;
     default:
       return InvalidArgument(
           "No XLA literal container for Numpy type number: %d", np_type);
@@ -469,6 +477,9 @@ void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
       break;
     case NPY_COMPLEX64:
       CopyLiteralToNumpyArray<complex64>(literal, py_array);
+      break;
+    case NPY_COMPLEX128:
+      CopyLiteralToNumpyArray<complex128>(literal, py_array);
       break;
     default:
       LOG(FATAL) << "No XLA literal container for Numpy type" << np_type;

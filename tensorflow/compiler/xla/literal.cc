@@ -29,10 +29,12 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -411,6 +413,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src) {
       COPY_ELEMENTS(F32, float);
       COPY_ELEMENTS(F64, double);
       COPY_ELEMENTS(C64, complex64);
+      COPY_ELEMENTS(C128, complex128);
       COPY_ELEMENTS(PRED, bool);
 #undef COPY_ELEMENTS
       default:
@@ -548,6 +551,9 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
     case C64:
       return CopySliceFromInternal<complex64>(src_literal, src_base, dest_base,
                                               copy_size);
+    case C128:
+      return CopySliceFromInternal<complex128>(src_literal, src_base, dest_base,
+                                               copy_size);
     case PRED:
       return CopySliceFromInternal<bool>(src_literal, src_base, dest_base,
                                          copy_size);
@@ -766,6 +772,8 @@ Literal LiteralBase::Slice(absl::Span<const int64> start_indices,
       return SliceInternal<double>(result_shape, start_indices);
     case C64:
       return SliceInternal<complex64>(result_shape, start_indices);
+    case C128:
+      return SliceInternal<complex128>(result_shape, start_indices);
     default:
       LOG(FATAL) << "not yet implemented: "
                  << PrimitiveType_Name(result_shape.element_type());
@@ -812,6 +820,10 @@ string LiteralBase::GetAsString(absl::Span<const int64> multi_index,
       return StrCat(Get<double>(multi_index, shape_index));
     case C64: {
       complex64 c = Get<complex64>(multi_index, shape_index);
+      return StrCat("(", c.real(), ", ", c.imag(), ")");
+    }
+    case C128: {
+      complex128 c = Get<complex128>(multi_index, shape_index);
       return StrCat("(", c.real(), ", ", c.imag(), ")");
     }
     default:
@@ -866,6 +878,11 @@ string LiteralBase::GetSparseElementAsString(
     case C64: {
       complex64 c =
           GetSparseElement<complex64>(sparse_element_number, shape_index);
+      return StrCat("(", c.real(), ", ", c.imag(), ")");
+    }
+    case C128: {
+      complex128 c =
+          GetSparseElement<complex128>(sparse_element_number, shape_index);
       return StrCat("(", c.real(), ", ", c.imag(), ")");
     }
     default:
@@ -995,6 +1012,9 @@ void LiteralBase::Piece::SortSparseElements() {
       break;
     case C64:
       SortSparseElementsInternal<complex64>();
+      break;
+    case C128:
+      SortSparseElementsInternal<complex128>();
       break;
     case F16:
       SortSparseElementsInternal<half>();
@@ -1230,7 +1250,24 @@ Literal ConvertBetweenNativeTypesWithConverter(const LiteralBase& src_literal,
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-Literal ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
+typename std::enable_if<(std::is_same<NativeSrcT, Eigen::half>::value) &&
+                            (std::is_same<NativeDestT, complex64>::value ||
+                             std::is_same<NativeDestT, complex128>::value),
+                        Literal>::type
+ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
+  auto converter = [](NativeSrcT src) {
+    return NativeDestT(static_cast<typename NativeDestT::value_type>(src));
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<(!std::is_same<NativeSrcT, Eigen::half>::value) ||
+                            (!std::is_same<NativeDestT, complex64>::value &&
+                             !std::is_same<NativeDestT, complex128>::value),
+                        Literal>::type
+ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) { return static_cast<NativeDestT>(src); };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
       src_literal, converter);
@@ -1272,22 +1309,6 @@ typename std::enable_if<(sizeof(NativeSrcT) != sizeof(NativeDestT)),
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   LOG(FATAL) << "Invalid bitcast between types of different sizes.";
-}
-
-template <PrimitiveType primitive_src_type>
-Literal ConvertToC64(const LiteralBase& src_literal) {
-  CHECK(src_literal.shape().IsArray());
-  Literal result_literal(
-      ShapeUtil::ChangeElementType(src_literal.shape(), C64));
-  using NativeSrcT =
-      typename primitive_util::PrimitiveTypeToNative<primitive_src_type>::type;
-  absl::Span<const NativeSrcT> src_data = src_literal.data<NativeSrcT>();
-  absl::Span<complex64> dest_data = result_literal.data<complex64>();
-  int64 num_elements = src_literal.element_count();
-  for (int64 i = 0; i < num_elements; ++i) {
-    dest_data[i] = complex64(static_cast<float>(src_data[i]), 0);
-  }
-  return result_literal;
 }
 
 template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>
@@ -1332,10 +1353,15 @@ StatusOr<Literal> ConvertIfDestTypeMatches(const LiteralBase& src_literal,
     CONVERT_IF_TYPES_MATCH(BF16)
 #undef CONVERT_IF_TYPES_MATCH
     case C64:
-      if (!bitcast) {
-        return ConvertToC64<primitive_src_type>(src_literal);
+      if (bitcast) {
+        break;
       }
-      break;
+      return ConvertIfTypesMatch<primitive_src_type, C64>(src_literal, false);
+    case C128:
+      if (bitcast) {
+        break;
+      }
+      return ConvertIfTypesMatch<primitive_src_type, C128>(src_literal, false);
     // Other types are not yet supported.
     default:
       break;
@@ -1485,6 +1511,8 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
       return EqualElementsInternal<bfloat16>(other, &multi_index);
     case C64:
       return EqualElementsInternal<complex64>(other, &multi_index);
+    case C128:
+      return EqualElementsInternal<complex128>(other, &multi_index);
     default:
       LOG(FATAL) << "Unimplemented: LiteralBase::Piece::EqualElements for type "
                  << PrimitiveType_Name(subshape().element_type());
@@ -1628,6 +1656,9 @@ bool LiteralBase::IsAllComplex(complex64 value) const {
     case C64:
       return AllElementsEqualValue<complex64>(root_piece().data<complex64>(),
                                               value);
+    case C128:
+      return AllElementsEqualValue<complex128>(root_piece().data<complex128>(),
+                                               value);
     default:
       return false;
   }
@@ -1707,6 +1738,11 @@ bool LiteralBase::IsAllFirst() const {
               auto data = piece.data<uint64>();
               return AllElementsEqualValue<uint64>(data, data[0]);
             }
+
+            case C128: {
+              auto data = piece.data<complex128>();
+              return AllElementsEqualValue<complex128>(data, data[0]);
+            }
             default:
               return false;
           }
@@ -1756,6 +1792,8 @@ bool LiteralBase::IsR1Iota() const {
         return Get<bfloat16>({idx}) == static_cast<bfloat16>(idx);
       case C64:
         return Get<complex64>({idx}) == complex64(idx, 0.0f);
+      case C128:
+        return Get<complex128>({idx}) == complex128(idx, 0.0f);
       case PRED:
         return Get<bool>({idx}) == idx;
       // token, opaque, tuple, etc. are all not iota.
@@ -1799,6 +1837,8 @@ bool LiteralBase::IsZero(absl::Span<const int64> indices) const {
       return Get<double>(indices) == 0.0;
     case C64:
       return Get<complex64>(indices) == complex64(0.0f, 0.0f);
+    case C128:
+      return Get<complex128>(indices) == complex128(0.0f, 0.0f);
     case F16:
       return Get<half>(indices) == static_cast<half>(0.0f);
     case BF16:
@@ -1884,6 +1924,12 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       for (complex64 value : data<complex64>()) {
         proto->add_c64s(value.real());
         proto->add_c64s(value.imag());
+      }
+      break;
+    case C128:
+      for (complex128 value : data<complex128>()) {
+        proto->add_c128s(value.real());
+        proto->add_c128s(value.imag());
       }
       break;
     case TUPLE:
@@ -2018,7 +2064,17 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       for (int64 i = 0; i < complex_data.size(); ++i) {
         complex_data[i] = complex64{proto.c64s(i * 2), proto.c64s(i * 2 + 1)};
       }
-    } break;
+      break;
+    }
+    case C128: {
+      auto complex_data = data<complex128>();
+      TF_RET_CHECK(proto.c128s_size() == complex_data.size() * 2);
+      for (int64 i = 0; i < complex_data.size(); ++i) {
+        complex_data[i] =
+            complex128{proto.c128s(i * 2), proto.c128s(i * 2 + 1)};
+      }
+      break;
+    }
     case TUPLE:
       return InvalidArgument("Should not be called on tuple shapes: %s",
                              ShapeUtil::HumanString(subshape()));

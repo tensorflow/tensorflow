@@ -553,6 +553,17 @@ ENTRY %Transpose.v2 () -> s32[1,2,3] {
 
 )"
 },
+{
+"TransposeC128",
+R"(HloModule TransposeC128_module
+
+ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
+  %input = c128[1,2,3]{2,1,0} parameter(0)
+  ROOT %transpose = c128[1,2,3]{2,1,0} transpose(c128[1,2,3]{2,1,0} %input), dimensions={0,1,2}
+}
+
+)"
+},
 // Dynamic slice
 {
 "DynamicSlice",
