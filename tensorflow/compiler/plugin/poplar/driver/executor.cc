@@ -32,6 +32,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "google/protobuf/util/message_differencer.h"
 
@@ -120,6 +122,20 @@ se::host::HostStream* AsPoplarStream(se::Stream* stream) {
   return dynamic_cast<se::host::HostStream*>(stream->implementation());
 }
 
+cpu::runtime::XfeedManager* GetXfeedManager(int device_ordinal) {
+  static auto* managers =
+      new absl::flat_hash_map<int, cpu::runtime::XfeedManager*>();
+  static absl::Mutex* mutex = new absl::Mutex();
+
+  absl::MutexLock lock(mutex);
+  auto it = managers->find(device_ordinal);
+  if (it == managers->end()) {
+    it = managers->emplace(device_ordinal, new cpu::runtime::XfeedManager())
+             .first;
+  }
+  return it->second;
+}
+
 PoplarExecutor::TensorControl::TensorControl(size_t size_) {
   size = size_;
   ref_count = 1;
@@ -166,6 +182,29 @@ void PoplarExecutor::Deallocate(se::DeviceMemoryBase* mem) {
       if (tc->ref_count > 0) {
         tc->ref_count--;
       }
+    }
+  }
+}
+
+void PoplarExecutor::ConnectInfeedToStreamCallback(
+    const std::vector<const HloInstruction*>& infeed_instructions) {
+  // Buffer is already placed into xfeed manager by client->TransferToInfeed
+  for (int i = 0; i < infeed_instructions.size(); ++i) {
+    const auto& instr = infeed_instructions[i];
+    if (instr->infeed_config() == "dequeue") {
+      current_engine_->connectStreamToCallback(
+          infeed_instructions[i]->name(), [&](void* dest) {
+            auto* xfeed_manager = GetXfeedManager(ordinal_);
+            auto* xfeed_buffer =
+                xfeed_manager->infeed()->BlockingDequeueBuffer();
+
+            const void* src = xfeed_buffer->data();
+            auto N = xfeed_buffer->length();
+            std::memcpy(dest, src, N);
+
+            xfeed_manager->infeed()->ReleaseCurrentBuffer(
+                xfeed_buffer->length(), xfeed_buffer->data(), Shape{});
+          });
     }
   }
 }
@@ -1161,6 +1200,8 @@ void PoplarExecutor::AboutToFreeEngine(poplar::Engine* engine) {
   }
 }
 
+const int PoplarExecutor::device_ordinal() const { return ordinal_; }
+
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,
     xla::poplarplugin::PoplarExecutable& executable,
@@ -1245,6 +1286,11 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         // Connect the streams to and from the device
         ConnectStreamedVariablesHostToDevice();
         ConnectStreamedVariablesDeviceToHost();
+
+        const auto& infeed_instructions = executable.InfeedInstructions();
+        if (!infeed_instructions.empty()) {
+          ConnectInfeedToStreamCallback(infeed_instructions);
+        }
 
         // Run the main engine
         current_engine_->run(PoplarProgramType::MAIN_SEQUENCE);

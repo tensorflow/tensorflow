@@ -44,6 +44,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
+#include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
+
 #include <list>
 #include <mutex>
 
@@ -70,8 +72,11 @@ enum PoplarProgramType {
 
 class PoplarExecutable;
 
+std::string GetInfeedCopyHandle(int64 parameter, int64 index);
 std::string GetInputCopyHandle(int64 parameter, int64 index);
 std::string GetOutputCopyHandle(int64 output_index, int64 flat_tensor_index);
+
+cpu::runtime::XfeedManager* GetXfeedManager(int device_ordinal);
 
 typedef std::vector<char> (*ConversionFn)(const void*, int64, int64);
 
@@ -311,6 +316,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   void AboutToFreeEngine(poplar::Engine* engine);
 
+  const int device_ordinal() const;
+
  private:
   struct TensorControl {
     size_t size = 0;
@@ -461,6 +468,11 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   static void* PreProcessBuffer(InputDef& id);
   // Convers the data into the right host format
   static void PostProcessBuffer(TensorControl* tc);
+
+  // Connect buffers provided by infeed transfer manager to Poplar
+  // HostToDevice FIFO
+  void ConnectInfeedToStreamCallback(
+      const std::vector<const HloInstruction*>& infeed_instructions);
 
   void DeferredDeallocation();
 

@@ -45,6 +45,8 @@ struct CompilerAnnotations {
   InplaceUtil::InplaceInstructions inplace_instructions;
 
   std::map<const HloComputation*, const HloInstruction*> fusion_map;
+
+  std::vector<const HloInstruction*> infeed_instructions;
 };
 
 }  // namespace poplarplugin

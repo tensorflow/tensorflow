@@ -32,7 +32,8 @@ PoplarExecutable::PoplarExecutable(
     const InputOutputAliasingMap& input_output_aliasing_map,
     const bool is_constant_graph,
     std::vector<std::vector<Literal>> literal_output, const bool is_remap_graph,
-    std::vector<uint64> remaped_output)
+    std::vector<uint64> remaped_output,
+    std::vector<const HloInstruction*>&& infeed_instructions)
     : Executable(std::move(hlo_module), std::move(profile_printer),
                  std::move(profile_index_map)),
       poplar_engine_(std::move(engine)),
@@ -41,7 +42,8 @@ PoplarExecutable::PoplarExecutable(
       is_constant_graph_(is_constant_graph),
       remaped_output_(std::move(remaped_output)),
       is_remap_graph_(is_remap_graph),
-      execution_count_(0) {}
+      execution_count_(0),
+      infeed_instructions_(std::move(infeed_instructions)) {}
 
 PoplarExecutable::~PoplarExecutable() {
   if (poplar_engine_.get() != nullptr) {
