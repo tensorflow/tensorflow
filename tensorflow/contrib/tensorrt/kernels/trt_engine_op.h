@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -51,6 +52,21 @@ class TRTEngineOp : public AsyncOpKernel {
   ~TRTEngineOp();
 
  private:
+  // TODO(samikama): context should go to a resource manager!
+  struct EngineContext {
+    EngineContext() {}  // Creates an empty context.
+    EngineContext(
+        TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
+        TrtUniquePtrType<nvinfer1::IExecutionContext>&& input_execution_context)
+        : cuda_engine(std::move(input_cuda_engine)),
+          execution_context(std::move(input_execution_context)) {}
+
+    mutex mu;
+    TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
+    TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context
+        GUARDED_BY(mu);
+  };
+
   // Execute calibration
   void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
 
@@ -63,18 +79,13 @@ class TRTEngineOp : public AsyncOpKernel {
   // Execute the tensorrt engine. Returns whether we need to retry by running
   // the native segment.
   bool ExecuteTrtEngine(OpKernelContext* ctx, const int num_batch,
-                        nvinfer1::ICudaEngine* trt_engine_ptr,
-                        nvinfer1::IExecutionContext* trt_execution_context_ptr);
+                        EngineContext* engine_context);
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
                                       TRTCalibrationResource** cr);
 
-  // TODO(samikama): context should go to a resource manager!
-  typedef std::pair<TrtUniquePtrType<nvinfer1::ICudaEngine>,
-                    TrtUniquePtrType<nvinfer1::IExecutionContext>>
-      EngineCtxPair;
-  EngineCtxPair& GetEngine(int batch_size, OpKernelContext* ctx);
+  EngineContext* GetEngine(int batch_size, OpKernelContext* ctx);
 
   // Return engine batch closest to input batch.
   int GetEngineBatch(OpKernelContext* ctx);
@@ -82,7 +93,7 @@ class TRTEngineOp : public AsyncOpKernel {
   nvinfer1::IGpuAllocator* GetAllocator(OpKernelContext* ctx);
 
   // map to keep engines and their execution context for given batch size.
-  std::unordered_map<int, EngineCtxPair> engine_map_;
+  std::unordered_map<int, std::unique_ptr<EngineContext>> engine_map_;
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
 
