@@ -356,7 +356,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   HloComputation* entry = module->entry_computation();
 
-  if (poplarExecutor->CompilerReportingEnabled()) {
+  if (poplarExecutor->IpuTraceEventsEnabled()) {
     poplarExecutor->AddCompileBeginEventRecord(
         module->name(), SerializeComputationToGraphDef(*entry));
   }
@@ -439,10 +439,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
   }
 
-  if (poplarExecutor->CompilerReportingEnabled()) {
+  if (poplarExecutor->IpuTraceEventsEnabled()) {
     std::stringstream stream;
 
-    if (engine != nullptr) {
+    if (poplarExecutor->CompilerReportingEnabled() && engine != nullptr) {
       try {
         auto& opts = poplarExecutor->GetReportFlags();
 

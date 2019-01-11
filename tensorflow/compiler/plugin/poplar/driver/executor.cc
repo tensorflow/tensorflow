@@ -1030,7 +1030,8 @@ Status PoplarExecutor::MoveDeviceToHost() {
       current_engine_->run(PoplarProgramType::DEVICE_TO_HOST);
     }
 
-    if (current_config_.profiling().enable_io_trace()) {
+    if (current_config_.profiling().enable_ipu_trace_events() &&
+        current_config_.profiling().enable_io_trace()) {
       AddDeviceToHostEventRecord(json_msg);
     }
 
@@ -1086,7 +1087,8 @@ Status PoplarExecutor::MoveHostToDevice() {
 
     current_engine_->run(PoplarProgramType::HOST_TO_DEVICE);
 
-    if (current_config_.profiling().enable_io_trace()) {
+    if (current_config_.profiling().enable_ipu_trace_events() &&
+        current_config_.profiling().enable_io_trace()) {
       AddHostToDeviceEventRecord(json_msg);
     }
 
@@ -1209,7 +1211,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         try {
           engine->load(poplar_device_);
 
-          if (current_config_.profiling().enable_io_trace()) {
+          if (current_config_.profiling().enable_ipu_trace_events() &&
+              current_config_.profiling().enable_io_trace()) {
             AddLoadEngineEventRecord(executable.module().name());
           }
 
@@ -1255,20 +1258,20 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       try {
-        if (current_config_.profiling().enable_execution_trace() > 0) {
-          auto& opts = GetReportFlags();
-
+        if (current_config_.profiling().enable_ipu_trace_events()) {
           std::stringstream report_stream;
           std::stringstream trace_stream;
-          if (executable.ExecutionCount() == 0) {
-            auto rep = current_engine_->getExecutionReport(opts);
-            if (CompilerReportingTextFormat()) {
-              rep.printSummary(report_stream);
-            } else {
-              rep.serialize(report_stream, poplar::SerializationFormat::JSON);
-            }
+          if (current_config_.profiling().enable_execution_trace() > 0) {
+            if (executable.ExecutionCount() == 0) {
+              auto rep = current_engine_->getExecutionReport(GetReportFlags());
+              if (CompilerReportingTextFormat()) {
+                rep.printSummary(report_stream);
+              } else {
+                rep.serialize(report_stream, poplar::SerializationFormat::JSON);
+              }
 
-            current_engine_->reportIntervals(trace_stream);
+              current_engine_->reportIntervals(trace_stream);
+            }
           }
 
           AddExecuteEventRecord(executable.module().name(), report_stream.str(),

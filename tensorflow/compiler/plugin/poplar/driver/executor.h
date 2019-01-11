@@ -152,7 +152,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   bool HostCallback(se::Stream* stream,
                     std::function<void()> callback) override;
-  bool HostCallback(se::Stream *stream,
+  bool HostCallback(se::Stream* stream,
                     std::function<Status()> callback) override;
 
   Status AllocateEvent(se::Event* event) override {
@@ -245,6 +245,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   const poplar::OptionFlags& GetOptionsFlags() const { return option_flags_; }
 
   const poplar::OptionFlags& GetReportFlags() const { return report_options_; }
+
+  bool IpuTraceEventsEnabled() const {
+    return current_config_.profiling().enable_ipu_trace_events();
+  }
 
   bool CompilerReportingEnabled() const {
     return current_config_.profiling().enable_compilation_trace();

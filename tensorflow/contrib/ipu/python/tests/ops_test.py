@@ -82,6 +82,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       cfg = ipu.utils.auto_select_ipus(cfg, [4, 4])
       cfg = ipu.utils.select_ipus(cfg, [4, 4])
 
+    with self.assertRaises(Exception):
+      cfg = ipu.utils.create_ipu_config(profiling=True, enable_ipu_events=True)
+
   def testEventFetchAndStringDecode(self):
     with ops.device("/device:IPU:0"):
       a = array_ops.placeholder(np.float32, [1], name="a")

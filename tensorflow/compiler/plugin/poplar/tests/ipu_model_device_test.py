@@ -73,6 +73,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
     opts = config_pb2.IPUOptions()
     opts.ipu_model_config.enable_ipu_model = True
+    opts.profiling.enable_ipu_trace_events = True
     opts.profiling.enable_compilation_trace = True
     opts.profiling.enable_io_trace = False
     opts.profiling.enable_execution_trace = True
@@ -103,6 +104,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
     opts = config_pb2.IPUOptions()
     opts.ipu_model_config.enable_ipu_model = True
+    opts.profiling.enable_ipu_trace_events = True
     opts.profiling.enable_compilation_trace = True
     opts.profiling.enable_io_trace = False
     opts.profiling.enable_execution_trace = True
@@ -129,6 +131,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
     opts = config_pb2.IPUOptions()
     opts.ipu_model_config.enable_ipu_model = True
+    opts.profiling.enable_ipu_trace_events = True
     opts.profiling.enable_compilation_trace = True
     opts.profiling.enable_io_trace = False
     opts.profiling.enable_execution_trace = True
@@ -193,7 +196,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       sess.run(out, fd)
 
       rep = sess.run(report, fd)
-      evts = tu.extract_all_events(rep)
+      evts = tu.extract_all_execute_events(rep)
       self.assertEqual(len(evts), 5) # execute x 5
 
       for i, e in enumerate(evts):
@@ -214,7 +217,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       sess.run(out, fd)
 
       rep = sess.run(report, fd)
-      evts = tu.extract_all_events(rep)
+      evts = tu.extract_all_execute_events(rep)
       self.assertEqual(len(evts), 5) # execute x 5
 
       for i, e in enumerate(evts):
@@ -235,7 +238,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       sess.run(out, fd)
 
       rep = sess.run(report, fd)
-      evts = tu.extract_all_events(rep)
+      evts = tu.extract_all_execute_events(rep)
       self.assertEqual(len(evts), 5) # execute x 5
 
       for e in evts:
@@ -275,6 +278,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     opts = config_pb2.IPUOptions()
+    opts.profiling.enable_ipu_trace_events = True
     opts.profiling.enable_compilation_trace = True
     opts.profiling.enable_io_trace = False
     opts.profiling.enable_execution_trace = True
@@ -288,6 +292,35 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         self.assertTrue(False)
     except errors.InvalidArgumentError:
       pass
+
+
+  def testIpuEventsWithoutPoplarReporting(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [2, 2], name="a")
+      pb = array_ops.placeholder(np.float32, [2, 2], name="b")
+      out = math_ops.add(pa, pb)
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(enable_ipu_events=True, compilation_trace=False,
+                        io_trace=False, execution_trace=False) as sess:
+      fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
+      sess.run(report, fd)
+
+      sess.run(out, fd)
+
+      rep = sess.run(report, fd)
+      evts = tu.extract_all_events(rep)
+      self.assertEqual(len(evts), 3) # compile begin, compile end, execute
+
+      for e in evts:
+        if e.type == IpuTraceEvent.COMPILE_END:
+          self.assertTrue(len(e.compile_end.compilation_report) == 0)
+        if e.type == IpuTraceEvent.EXECUTE:
+          self.assertTrue(len(e.execute.execution_report) == 0)
+
+      sess.close()
 
 if __name__ == "__main__":
   googletest.main()

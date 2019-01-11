@@ -25,8 +25,11 @@ import re
 @contextlib.contextmanager
 def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
                 report_every_nth_execution=0, text_report=True, sharded=False,
-                compile_ipu_code=False):
+                compile_ipu_code=False, enable_ipu_events=False):
   opts = config_pb2.IPUOptions()
+  opts.profiling.enable_ipu_trace_events = (compilation_trace or io_trace or
+                                            execution_trace or
+                                            enable_ipu_events)
   opts.profiling.enable_compilation_trace = compilation_trace
   opts.profiling.enable_io_trace = io_trace
   opts.profiling.enable_execution_trace = execution_trace
@@ -170,6 +173,14 @@ def extract_all_events(events):
   for e in events:
     evt = IpuTraceEvent.FromString(e)
     result += [evt]
+  return result
+
+def extract_all_execute_events(events):
+  result = []
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    if evt.type == IpuTraceEvent.EXECUTE:
+      result += [evt]
   return result
 
 def extract_all_io_events(events):

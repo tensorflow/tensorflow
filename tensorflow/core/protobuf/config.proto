@@ -198,6 +198,9 @@ message IPUOptions {
 
     // Options for controlling profile report generation
     repeated PoplarOptionFlag options = 6;
+
+    // Enable IPU trace events - indpendently of poplar reporting
+    bool enable_ipu_trace_events = 7;
   };
   Profiling profiling = 2;
 
