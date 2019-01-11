@@ -23,6 +23,7 @@ import threading
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.platform import gfile
 
 _profiler = None
 _profiler_lock = threading.Lock()
@@ -67,3 +68,26 @@ def stop():
     pywrap_tensorflow.TFE_DeleteProfiler(_profiler)
     _profiler = None
   return result
+
+
+class Profiler(object):
+  """Context-manager eager profiler api.
+
+  Example usage:
+  ```python
+  with Profiler("/path/to/save/result"):
+    # do some work
+  ```
+  """
+
+  def __init__(self, filename):
+    self._filename = filename
+
+  def __enter__(self):
+    start()
+
+  def __exit__(self, typ, value, tb):
+    result = stop()
+    with gfile.Open(self._filename, 'wb') as f:
+      f.write(result)
+
