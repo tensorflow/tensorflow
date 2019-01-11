@@ -851,3 +851,9 @@ func @complex_loops() {
   for %i1 = 1 to 100 {
   // expected-error @+1 {{expected '"' in string literal}}
   "opaqueIntTensor"(){bar: opaque<tensor<2x1x4xi32>, "0x686]>} : () -> ()
+
+// -----
+
+func @mi() {
+  // expected-error @+1 {{expected '[' or scalar constant inside tensor literal}}
+  "fooi64"(){bar: sparse<vector<1xi64>,[,[,1]

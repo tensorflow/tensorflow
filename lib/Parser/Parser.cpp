@@ -1102,6 +1102,8 @@ Attribute Parser::parseAttribute(Type type) {
       auto valuesEltType = type.getElementType();
       auto values =
           parseDenseElementsAttr(valuesEltType, type.isa<VectorType>());
+      if (!values)
+        return nullptr;
 
       /// Sanity check.
       auto indicesType = indices.getType();
