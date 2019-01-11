@@ -168,21 +168,6 @@ TEST(MutableGraphViewTest, AddAndUpdateFanoutsWithoutSelfLoops) {
   EXPECT_EQ(new_bar_fanouts.count(MutableGraphView::InputPort(foo_2, -1)), 1);
 }
 
-GraphDef SimpleMutateFaninGraph() {
-  // Actual node.op() is not important in this test.
-  GraphDef graph_def = test::function::GDef(
-      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {}),
-       NDef("c", "NotImportant", {}, {}), NDef("d", "NotImportant", {}, {}),
-       NDef("foo_1", "NotImportant", {"a"}),
-       NDef("foo_2", "NotImportant", {"b", "^a", "^c"}),
-       NDef("foo_3", "NotImportant", {"b", "a:1", "a:1"}),
-       NDef("foo_4", "NotImportant", {"a", "b:2", "b:2", "^c", "^d"}),
-       NDef("foo_5", "NotImportant", {}),
-       NDef("foo_6", "NotImportant", {"^a", "^b"})},
-      /*funcs=*/{});
-  return graph_def;
-}
-
 void CompareNodeInputs(const MutableGraphView& graph, const NodeDef* expected,
                        NodeDef* actual) {
   ASSERT_EQ(actual->input_size(), expected->input_size());
@@ -201,6 +186,94 @@ void CompareNodeInputs(const MutableGraphView& graph, const NodeDef* expected,
     EXPECT_EQ(graph.GetFanin(input_port).contains(output_port), true);
     EXPECT_EQ(graph.GetFanout(output_port).contains(input_port), true);
   }
+}
+
+TEST(MutableGraphViewTest, UpdateFanoutsToSwitchWithControlFromSwitch) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "Switch", {}, {}),
+       NDef("c", "NotImportant", {}, {}), NDef("d", "NotImportant", {}, {}),
+       NDef("e", "NotImportant", {"c", "b", "^a", "^d"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_FALSE(graph.UpdateFanouts("a", "b"));
+  EXPECT_FALSE(graph.UpdateFanouts("d", "b"));
+
+  EXPECT_EQ(graph.graph()->node_size(), 5);
+
+  NodeDef expected = NDef("", "", {}, {});
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  CompareNodeInputs(graph, &expected, a);
+
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  CompareNodeInputs(graph, &expected, b);
+
+  NodeDef* c = graph.GetNode("c");
+  ASSERT_NE(c, nullptr);
+  CompareNodeInputs(graph, &expected, c);
+
+  NodeDef* d = graph.GetNode("d");
+  ASSERT_NE(d, nullptr);
+  CompareNodeInputs(graph, &expected, d);
+
+  NodeDef* e = graph.GetNode("e");
+  ASSERT_NE(e, nullptr);
+  expected = NDef("", "", {"c", "b", "^a", "^d"});
+  CompareNodeInputs(graph, &expected, e);
+}
+
+TEST(MutableGraphViewTest, UpdateFanoutsToSwitchWithNoControlFromSwitch) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "Switch", {}, {}),
+       NDef("c", "NotImportant", {}, {}), NDef("d", "NotImportant", {}, {}),
+       NDef("e", "NotImportant", {"c", "b", "^a", "^d"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_TRUE(graph.UpdateFanouts("c", "b"));
+
+  EXPECT_EQ(graph.graph()->node_size(), 5);
+
+  NodeDef expected = NDef("", "", {}, {});
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  CompareNodeInputs(graph, &expected, a);
+
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  CompareNodeInputs(graph, &expected, b);
+
+  NodeDef* c = graph.GetNode("c");
+  ASSERT_NE(c, nullptr);
+  CompareNodeInputs(graph, &expected, c);
+
+  NodeDef* d = graph.GetNode("d");
+  ASSERT_NE(d, nullptr);
+  CompareNodeInputs(graph, &expected, d);
+
+  NodeDef* e = graph.GetNode("e");
+  ASSERT_NE(e, nullptr);
+  expected = NDef("", "", {"b", "b", "^a", "^d"});
+  CompareNodeInputs(graph, &expected, e);
+}
+
+GraphDef SimpleMutateFaninGraph() {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {}),
+       NDef("c", "NotImportant", {}, {}), NDef("d", "NotImportant", {}, {}),
+       NDef("foo_1", "NotImportant", {"a"}),
+       NDef("foo_2", "NotImportant", {"b", "^a", "^c"}),
+       NDef("foo_3", "NotImportant", {"b", "a:1", "a:1"}),
+       NDef("foo_4", "NotImportant", {"a", "b:2", "b:2", "^c", "^d"}),
+       NDef("foo_5", "NotImportant", {}),
+       NDef("foo_6", "NotImportant", {"^a", "^b"})},
+      /*funcs=*/{});
+  return graph_def;
 }
 
 void TestAddRegularFanin(absl::string_view node_name,
@@ -525,23 +598,53 @@ TEST(MutableGraphViewTest, UpdateFanin) {
                   /*modified=*/false, /*expected_node=*/nullptr);
 }
 
-TEST(MutableGraphViewTest, DedupControllingFaninsOnGraphInit) {
-  // Actual node.op() is not important in this test.
+void TestUpdateFaninFromFaninToNodeAsSwitchControl(const TensorId& fanin) {
+  string tensor_id_str = TensorIdToString(fanin);
   GraphDef graph_def = test::function::GDef(
-      {
-          NDef("a", "NotImportant", {}, {}),
-          NDef("b", "NotImportant", {}, {}),
-          NDef("c", "Switch", {}, {}),
-          NDef("d", "Identity", {"c:1"}),
-          NDef("foo_1", "IdentityN", {"a", "b:1", "^b"}),
-          NDef("foo_2", "IdentityN", {"a", "^b", "^b"}),
-          NDef("foo_3", "IdentityN", {"a", "b:1", "^b", "^b"}),
-          NDef("foo_4", "IdentityN", {"a:2", "b:1", "^b", "^b", "^a", "^a"}),
-          NDef("foo_5", "NotImportant", {"a:2", "b:1", "^b", "^b", "^a", "^a"}),
-          NDef("foo_6", "Identity", {"d", "^d"}),
-          NDef("foo_7", "NotImportant",
-               {"a:3", "b:2", "d", "^d", "^d", "^a", "^b", "^a", "^b"}),
-      },
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "Switch", {}, {}),
+       NDef("c", "NotImportant", {tensor_id_str})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_FALSE(graph.UpdateFanin("c", fanin, {"b", Graph::kControlSlot}));
+
+  EXPECT_EQ(graph.graph()->node_size(), 3);
+
+  NodeDef expected;
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  expected = NDef("", "", {});
+  CompareNodeInputs(graph, &expected, a);
+
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  CompareNodeInputs(graph, &expected, b);
+
+  NodeDef* c = graph.GetNode("c");
+  ASSERT_NE(c, nullptr);
+  expected = NDef("", "", {tensor_id_str});
+  CompareNodeInputs(graph, &expected, c);
+}
+
+TEST(MutableGraphViewTest, UpdateFaninToNodeAsSwitchControl) {
+  TestUpdateFaninFromFaninToNodeAsSwitchControl({"a", 0});
+  TestUpdateFaninFromFaninToNodeAsSwitchControl({"a", 1});
+  TestUpdateFaninFromFaninToNodeAsSwitchControl({"a", Graph::kControlSlot});
+}
+
+TEST(MutableGraphViewTest, DedupControllingFaninsOnGraphInit) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {}),
+       NDef("c", "Switch", {}, {}), NDef("d", "Identity", {"c:1"}),
+       NDef("foo_1", "IdentityN", {"a", "b:1", "^b"}),
+       NDef("foo_2", "IdentityN", {"a", "^b", "^b"}),
+       NDef("foo_3", "IdentityN", {"a", "b:1", "^b", "^b"}),
+       NDef("foo_4", "IdentityN", {"a:2", "b:1", "^b", "^b", "^a", "^a"}),
+       NDef("foo_5", "NotImportant", {"a:2", "b:1", "^b", "^b", "^a", "^a"}),
+       NDef("foo_6", "Identity", {"d", "^d"}),
+       NDef("foo_7", "NotImportant",
+            {"a:3", "b:2", "d", "^d", "^d", "^a", "^b", "^a", "^b"})},
       /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
@@ -939,12 +1042,9 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithExistingAddedIdentity) {
 TEST(MutableGraphViewTest, RemoveControllingFaninMissing) {
   // Actual node.op() is not important in this test.
   GraphDef graph_def = test::function::GDef(
-      {
-          NDef("a", "NotImportant", {}, {}),
-          NDef("b", "NotImportant", {}, {}),
-          NDef("c", "NotImportant", {}, {}),
-          NDef("d", "NotImportant", {"^a", "^b"}),
-      },
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {}),
+       NDef("c", "NotImportant", {}, {}),
+       NDef("d", "NotImportant", {"^a", "^b"})},
       /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
@@ -961,12 +1061,9 @@ TEST(MutableGraphViewTest, RemoveControllingFaninMissing) {
 TEST(MutableGraphViewTest, RemoveControllingFaninExisting) {
   // Actual node.op() is not important in this test.
   GraphDef graph_def = test::function::GDef(
-      {
-          NDef("a", "NotImportant", {}, {}),
-          NDef("b", "NotImportant", {}, {}),
-          NDef("c", "NotImportant", {}, {}),
-          NDef("d", "NotImportant", {"^a", "^b", "^c"}),
-      },
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {}),
+       NDef("c", "NotImportant", {}, {}),
+       NDef("d", "NotImportant", {"^a", "^b", "^c"})},
       /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);

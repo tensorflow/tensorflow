@@ -195,17 +195,10 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // already exists, the node will not be modified.
   bool AddFaninInternal(NodeDef* node, const TensorId& fanin);
 
-  // Removes any fanin in node that matches to a fanin in fanins.
+  // Removes all instances of regular fanin `fanin` from node `node`.
   //
   // This will return true iff the node is modified.
-  bool RemoveRegularFaninInternal(NodeDef* node, const TensorId& fanin);
-
-  // Removes controlling fanin `fanin_node_name` from node if such controlling
-  // fanin exists.
-  //
-  // This will return true iff the node is modified.
-  bool RemoveControllingFaninInternal(NodeDef* node,
-                                      absl::string_view fanin_node_name);
+  bool RemoveRegularFaninInternal(NodeDef* node, const OutputPort& fanin);
 
   // Removes controlling fanin `fanin_node` from node if such controlling fanin
   // exists.

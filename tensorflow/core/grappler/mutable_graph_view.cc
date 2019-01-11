@@ -185,6 +185,9 @@ NodeDef* MutableGraphView::AddNode(NodeDef&& node) {
 
 bool MutableGraphView::UpdateFanouts(absl::string_view from_node,
                                      absl::string_view to_node) {
+  if (from_node == to_node) {
+    return false;
+  }
   NodeDef* from_node_ptr = GetNode(from_node);
   NodeDef* to_node_ptr = GetNode(to_node);
   if (from_node_ptr && to_node_ptr) {
@@ -218,6 +221,35 @@ bool MutableGraphView::UpdateFanoutsInternal(NodeDef* from_node,
     fanouts()[output_port].erase(input_port);
   };
 
+  bool modified = false;
+
+  // For the control fanouts we do not know the input index in a NodeDef,
+  // so we have to traverse all control inputs.
+
+  auto control_fanouts =
+      GetFanout(GraphView::OutputPort(from_node, Graph::kControlSlot));
+
+  bool to_node_is_switch = IsSwitch(*to_node);
+  for (const InputPort& control_port : control_fanouts) {
+    // Node can't be control dependency of itself.
+    if (control_port.node == to_node) continue;
+
+    // Can't add Switch node as a control dependency.
+    if (to_node_is_switch) {
+      // This will only be printed to the log if we are trying to add a Switch
+      // as a control dependency, which if allowed will make the graph invalid.
+      LOG(WARNING) << absl::Substitute(
+          "Can't update fanouts from '$0' to '$1', to node is being added as a "
+          "control dependency when it is a Switch.",
+          from_node, to_node);
+      return false;
+    }
+
+    NodeDef* node = control_port.node;
+    modified |= RemoveControllingFaninInternal(node, from_node);
+    modified |= AddFaninInternal(node, {to_node, Graph::kControlSlot});
+  }
+
   // First we update regular fanouts. For the regular fanouts
   // `input_port:port_id` is the input index in NodeDef.
 
@@ -228,7 +260,6 @@ bool MutableGraphView::UpdateFanoutsInternal(NodeDef* from_node,
   // input to some other node.
   int keep_max_regular_output_port = -1;
 
-  bool modified = false;
   for (const Edge& edge : regular_edges) {
     const OutputPort output_port = edge.src;
     const InputPort input_port = edge.dst;
@@ -257,22 +288,6 @@ bool MutableGraphView::UpdateFanoutsInternal(NodeDef* from_node,
       RemoveControllingFaninInternal(input_port.node, to_node);
     }
     modified = true;
-  }
-
-  // For the control fanouts we do not know the input index in a NodeDef,
-  // so we have to traverse all control inputs.
-
-  auto control_fanouts =
-      GetFanout(GraphView::OutputPort(from_node, Graph::kControlSlot));
-
-  for (const InputPort& control_port : control_fanouts) {
-    // Node can't be control dependency of itself.
-    if (control_port.node == to_node) continue;
-
-    NodeDef* node = control_port.node;
-    modified |= RemoveControllingFaninInternal(node, from_node);
-    // TODO(lyandy): Handle Switch control dependencies.
-    modified |= AddFaninInternal(node, {to_node, Graph::kControlSlot});
   }
 
   // Because we update all regular fanouts of `from_node`, we can just copy
@@ -371,7 +386,7 @@ bool MutableGraphView::AddControllingFanin(absl::string_view node_name,
     return AddFaninInternal(node, {fanin_node, Graph::kControlSlot});
   } else {
     if (IsTensorIdControlling(fanin)) {
-      // Cannot add a Switch node control dependency.
+      // Can't add a Switch node control dependency.
       return false;
     }
     // We can't anchor control dependencies directly on the switch node: unlike
@@ -410,11 +425,10 @@ bool MutableGraphView::AddControllingFanin(absl::string_view node_name,
 }
 
 bool MutableGraphView::RemoveRegularFaninInternal(NodeDef* node,
-                                                  const TensorId& fanin) {
-  auto remove_input = [this, node](const TensorId& tensor_id, int port,
-                                   bool update_max_port) {
-    OutputPort fanin_port(nodes()[tensor_id.node()], tensor_id.index());
-    InputPort input(node, port);
+                                                  const OutputPort& fanin) {
+  auto remove_input = [this, node](const OutputPort& fanin_port,
+                                   int node_input_port, bool update_max_port) {
+    InputPort input(node, node_input_port);
 
     absl::flat_hash_set<InputPort>* fanouts_set = &fanouts()[fanin_port];
     fanouts_set->erase(input);
@@ -434,12 +448,14 @@ bool MutableGraphView::RemoveRegularFaninInternal(NodeDef* node,
     if (IsTensorIdControlling(tensor_id)) {
       break;
     }
-    if (tensor_id == fanin) {
-      remove_input(tensor_id, i, /*update_max_port=*/true);
+    if (tensor_id.node() == fanin.node->name() &&
+        tensor_id.index() == fanin.port_id) {
+      remove_input(fanin, i, /*update_max_port=*/true);
       modified = true;
     } else if (modified) {
       // Regular inputs will need to have their ports updated.
-      auto fanouts_set = remove_input(tensor_id, i, /*update_max_port=*/false);
+      OutputPort fanin_port(nodes()[tensor_id.node()], tensor_id.index());
+      auto fanouts_set = remove_input(fanin_port, i, /*update_max_port=*/false);
       fanouts_set->insert({node, curr_pos});
       // Shift inputs to be retained.
       mutable_inputs->SwapElements(i, curr_pos++);
@@ -466,7 +482,11 @@ bool MutableGraphView::RemoveRegularFanin(absl::string_view node_name,
   if (node == nullptr) {
     return false;
   }
-  return RemoveRegularFaninInternal(node, fanin);
+  NodeDef* fanin_node = GetNode(fanin.node());
+  if (fanin_node == nullptr) {
+    return false;
+  }
+  return RemoveRegularFaninInternal(node, {fanin_node, fanin.index()});
 }
 
 bool MutableGraphView::RemoveControllingFaninInternal(NodeDef* node,
@@ -487,22 +507,17 @@ bool MutableGraphView::RemoveControllingFaninInternal(NodeDef* node,
   return false;
 }
 
-bool MutableGraphView::RemoveControllingFaninInternal(
-    NodeDef* node, absl::string_view fanin_node_name) {
-  NodeDef* fanin = GetNode(fanin_node_name);
-  if (fanin == nullptr) {
-    return false;
-  }
-  return RemoveControllingFaninInternal(node, fanin);
-}
-
 bool MutableGraphView::RemoveControllingFanin(
     absl::string_view node_name, absl::string_view fanin_node_name) {
   NodeDef* node = GetNode(node_name);
   if (node == nullptr) {
     return false;
   }
-  return RemoveControllingFaninInternal(node, fanin_node_name);
+  NodeDef* fanin = GetNode(fanin_node_name);
+  if (fanin == nullptr) {
+    return false;
+  }
+  return RemoveControllingFaninInternal(node, fanin);
 }
 
 bool MutableGraphView::RemoveAllFanins(absl::string_view node_name,
@@ -540,30 +555,36 @@ bool MutableGraphView::UpdateFanin(absl::string_view node_name,
     return false;
   }
 
-  // When replacing a non control dependency fanin with a control dependency, or
-  // vice versa, remove and add, so ports can be updated properly in fanout(s).
-  bool from_fanin_is_control = IsTensorIdControlling(from_fanin);
-  if (from_fanin_is_control || IsTensorIdControlling(to_fanin)) {
-    bool modified = false;
-    if (from_fanin_is_control) {
-      modified |= RemoveControllingFaninInternal(node, from_fanin.node());
-    } else {
-      modified |= RemoveRegularFaninInternal(node, from_fanin);
-    }
-    if (modified) {
-      AddFaninInternal(node, to_fanin);
-    }
-
-    return modified;
-  }
-
-  // In place mutation, requires no shifting of ports.
   NodeDef* from_fanin_node = GetNode(from_fanin.node());
   NodeDef* to_fanin_node = GetNode(to_fanin.node());
   if (from_fanin_node == nullptr || to_fanin_node == nullptr) {
     return false;
   }
 
+  // When replacing a non control dependency fanin with a control dependency, or
+  // vice versa, remove and add, so ports can be updated properly in fanout(s).
+  bool from_fanin_is_control = IsTensorIdControlling(from_fanin);
+  bool to_fanin_is_control = IsTensorIdControlling(to_fanin);
+  if (to_fanin_is_control && IsSwitch(*to_fanin_node)) {
+    // Can't add Switch node as a control dependency.
+    return false;
+  }
+  if (from_fanin_is_control || to_fanin_is_control) {
+    bool modified = false;
+    if (from_fanin_is_control) {
+      modified |= RemoveControllingFaninInternal(node, from_fanin_node);
+    } else {
+      modified |= RemoveRegularFaninInternal(
+          node, {from_fanin_node, from_fanin.index()});
+    }
+    if (modified) {
+      AddFaninInternal(node, {to_fanin_node, to_fanin.index()});
+    }
+
+    return modified;
+  }
+
+  // In place mutation, requires no shifting of ports.
   string to_fanin_string = TensorIdToString(to_fanin);
   int num_inputs = node->input_size();
   bool modified = false;
