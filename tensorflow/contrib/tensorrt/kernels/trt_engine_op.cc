@@ -175,11 +175,13 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   lib->Run(opts, native_func_, inputs, outputs,
            [this, ctx, outputs, helper](const tensorflow::Status& s) {
              tensorflow::core::ScopedUnref sc(helper);
-             VLOG(1) << "Native Segment completed";
              if (!s.ok()) {
+               LOG(ERROR) << "Failed to execute native segment " << this->name()
+                          << ": " << s;
                ctx->SetStatus(s);
                return;
              }
+             VLOG(1) << "Native Segment completed";
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
              }
@@ -219,7 +221,8 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
       return;
     }
     // Check the allocated buffer is sufficient for input
-    const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
+    const auto device_tensor =
+        calib_res->device_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     input_data.emplace(StrCat(kInputPHName, i), data_address);
   }
@@ -536,7 +539,7 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
   const int batch_size = ctx->input(0).dim_size(0);
   const int num_inputs = ctx->num_inputs();
   std::vector<tensorflow::PartialTensorShape> shapes;
-  dev_tensors_.resize(num_inputs);
+  cres->device_tensors_.resize(num_inputs);
   VLOG(1) << " Constructing calibrator";
   for (int i = 0; i < num_inputs; i++) {
     // allocate workspace on device for inputs
@@ -544,19 +547,19 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
     shapes.emplace_back(t.shape());
     Tensor* device_tensor;
     TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-        t.dtype(), t.shape(), &dev_tensors_.at(i), &device_tensor));
+        t.dtype(), t.shape(), &cres->device_tensors_.at(i), &device_tensor));
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     void* device_address = GetTensorAddress(device_tensor);
     if (device_address == nullptr) {
       return tensorflow::errors::InvalidArgument(
           "Unsupported data type encountered in input ", i);
     }
-    device_buffers_.emplace(
+    cres->device_buffers_.emplace(
         StrCat(kInputPHName, i),
         std::pair<void*, size_t>(device_address, device_tensor->TotalBytes()));
   }
   cres->calibrator_.reset(
-      new TRTInt8Calibrator(device_buffers_, batch_size, name()));
+      new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
   const string label(name());
   auto segment_graph = &segment_graph_;
   const int platform_gpu_id =
