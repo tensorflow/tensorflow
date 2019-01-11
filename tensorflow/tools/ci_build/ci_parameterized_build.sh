@@ -613,6 +613,13 @@ if [[ "${DO_DOCKER}" == "1" ]]; then
   fi
 fi
 
+# Set a disk usage trap.
+function finish {
+    echo "Finished script... disk usage report in ${TMP_DIR}"
+    du -k -d 2 ${TMP_DIR} | sort -n -r
+}
+trap finish EXIT
+
 chmod +x ${TMP_SCRIPT}
 
 # Map TF_BUILD container types to containers we actually have.
