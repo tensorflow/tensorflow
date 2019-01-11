@@ -560,8 +560,13 @@ class Function(object):
 
   @property
   def outputs(self):
-    """Returns tensors in `self.graph` corresponding to return values."""
+    """Returns tensors in `self.graph` corresponding to returned tensors."""
     return self._func_graph.outputs
+
+  @property
+  def structured_outputs(self):
+    """Returns outputs in `self.graph` as returned by the original function."""
+    return self._func_graph.structured_outputs
 
   @property
   def captured_inputs(self):
@@ -814,8 +819,16 @@ class UnknownArgument(object):
   pass
 
 
-def _convert_inputs_to_signature(inputs):
-  """Convert a list of potentially nested inputs to a signature."""
+def convert_structure_to_signature(structure):
+  """Convert a potentially nested structure to a signature.
+
+  Args:
+    structure: Structure to convert.
+
+  Returns:
+    Identical structure that has TensorSpec objects instead of Tensors and
+    UknownArgument instead of any unsupported types.
+  """
 
   def encode_arg(arg, name=None):
     """A representation for this argument, for converting into signatures."""
@@ -827,9 +840,9 @@ def _convert_inputs_to_signature(inputs):
 
   # We are using the flattened paths to name the TensorSpecs. We need an
   # explicit name for them downstream.
-  flattened_with_paths = nest.flatten_with_joined_string_paths(inputs)
+  flattened_with_paths = nest.flatten_with_joined_string_paths(structure)
   mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
-  return nest.pack_sequence_as(inputs, mapped)
+  return nest.pack_sequence_as(structure, mapped)
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -1310,7 +1323,7 @@ class PolymorphicFunction(object):
         if self._input_signature:
           python_call_signature = self._input_signature
         else:
-          python_call_signature = tuple(_convert_inputs_to_signature(args))
+          python_call_signature = tuple(convert_structure_to_signature(args))
         # pylint: disable=protected-access
         # Save information about non-Tensor arguments with the concrete
         # function. Used to serialize PolymorphicFunctions.

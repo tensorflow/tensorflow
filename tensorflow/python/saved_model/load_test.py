@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import tempfile
 
@@ -217,6 +218,35 @@ class LoadTest(test.TestCase):
 
     self.assertEqual(31, imported.f(input1).numpy())
     self.assertEqual(32, imported.f(input3).numpy())
+
+  def test_structured_output(self):
+
+    # Use fields with non-alphabetical order
+    named_tuple_type = collections.namedtuple("NamedTupleHello", ["b", "a"])
+
+    def func(input1, input2):
+      named_tuple = named_tuple_type(a=input1 + input2, b=input1 * input2)
+      return [named_tuple, input2, {"x": 0.5}]
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(func)
+
+    result = root.f(constant_op.constant(2), constant_op.constant(3))
+
+    self.assertEqual(5, result[0].a.numpy())
+    self.assertEqual(6, result[0].b.numpy())
+    self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
+    self.assertEqual(3, result[1].numpy())
+    self.assertEqual(0.5, result[2]["x"].numpy())
+
+    imported = self.cycle(root)
+
+    result = imported.f(constant_op.constant(2), constant_op.constant(5))
+    self.assertEqual(7, result[0].a.numpy())
+    self.assertEqual(10, result[0].b.numpy())
+    self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
+    self.assertEqual(5, result[1].numpy())
+    self.assertEqual(0.5, result[2]["x"].numpy())
 
   def test_positional_arguments(self):
     def func(x, training=False, abc=7.1, defg=7.7):

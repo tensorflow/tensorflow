@@ -90,8 +90,7 @@ def recreate_polymorphic_function(
     for monomorphic_function in saved_polymorphic_function.monomorphic_function:
       function_obj = functions[monomorphic_function.concrete_function]
       canonicalized_original_inputs = coder.decode_proto(
-          monomorphic_function.canonicalized_input)
-
+          monomorphic_function.canonicalized_input_signature)
       try:
         can_args, can_kwargs = function_spec.canonicalize_function_inputs(
             *args, **kwargs)
@@ -108,10 +107,7 @@ def recreate_polymorphic_function(
                             canonicalized_original_inputs):
         flattened_inputs = nest.flatten(can_args)
         filtered_inputs = [t for t in flattened_inputs if _is_tensor(t)]
-        flattened_outputs = function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
-        # TODO(vbardiovsky): Rebuild output structure.
-        single_output, = flattened_outputs
-        return single_output
+        return function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
 
     raise AssertionError(
         "Could not find matching function to call for arguments: %s" % (args,))
