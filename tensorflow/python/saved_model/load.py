@@ -54,14 +54,14 @@ class _Loader(object):
     seen_concrete_functions = set()
     for object_proto in self._proto.nodes:
       if object_proto.WhichOneof("kind") == "function":
-        for monomorphic_function in object_proto.function.monomorphic_function:
-          name = monomorphic_function.concrete_function
+        for concrete_function in object_proto.function.concrete_function:
+          name = concrete_function.name
           bound_inputs = [
               self._get_tensor_from_node(node_id)
-              for node_id in monomorphic_function.bound_inputs]
+              for node_id in concrete_function.bound_inputs]
           bound_variables = [
               self._nodes[node_id]
-              for node_id in monomorphic_function.bound_inputs
+              for node_id in concrete_function.bound_inputs
               if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
           ]
           if name in seen_concrete_functions:

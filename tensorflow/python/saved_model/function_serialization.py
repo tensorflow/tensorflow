@@ -25,9 +25,9 @@ from tensorflow.python.saved_model import saved_object_graph_pb2
 
 
 def serialize_function(function, node_ids):
-  """Build a SavedPolymorphicFunction proto."""
+  """Build a SavedFunction proto."""
   coder = nested_structure_coder.StructureCoder()
-  proto = saved_object_graph_pb2.SavedPolymorphicFunction()
+  proto = saved_object_graph_pb2.SavedFunction()
 
   proto.function_spec_tuple.CopyFrom(
       coder.encode_structure(function.function_spec.as_tuple()))  # pylint: disable=protected-access
@@ -43,8 +43,8 @@ def serialize_function(function, node_ids):
           "captures tensor %s which is unsupported or not reachable from root.",
           concrete_function.name, capture)
       continue
-    function_proto = proto.monomorphic_function.add()
-    function_proto.concrete_function = concrete_function.name
+    function_proto = proto.concrete_function.add()
+    function_proto.name = concrete_function.name
     function_proto.canonicalized_input.CopyFrom(
         coder.encode_structure(signature))
     function_proto.bound_inputs.extend(bound_inputs)
