@@ -150,22 +150,14 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   typed_visitors_[U8] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint8>>(this);
   typed_visitors_[U16] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
-        return Unimplemented(
-            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-            "U16.");
-      });
+      absl::make_unique<HloEvaluatorTypedVisitor<uint16>>(this);
   typed_visitors_[U32] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
   typed_visitors_[U64] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint64>>(this);
   typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
   typed_visitors_[S16] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
-        return Unimplemented(
-            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-            "S16.");
-      });
+      absl::make_unique<HloEvaluatorTypedVisitor<int16>>(this);
   typed_visitors_[S32] =
       absl::make_unique<HloEvaluatorTypedVisitor<int32>>(this);
   typed_visitors_[S64] =
@@ -595,8 +587,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<uint8>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case U16:
-      return Unimplemented("unhandled primitive type: U16.");
+    case U16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<uint16>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case U32: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
@@ -612,8 +607,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<int8>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case S16:
-      return Unimplemented("unhandled primitive type: S16.");
+    case S16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<int16>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case S32: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
