@@ -411,11 +411,11 @@ def _assign_on_device(device, variable, tensor):
 
 
 def _assert_strategy(strategy):
-  if not distribution_strategy_context.has_distribution_strategy():
+  if not distribution_strategy_context.has_strategy():
     raise RuntimeError(
         'Need to be inside "with strategy.scope()" for %s' %
         (strategy,))
-  current_strategy = distribution_strategy_context.get_distribution_strategy()
+  current_strategy = distribution_strategy_context.get_strategy()
   if current_strategy is not strategy:
     raise RuntimeError(
         "Mixing different tf.distribute.Strategy objects: %s is not %s" %

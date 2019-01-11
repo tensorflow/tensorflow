@@ -171,7 +171,7 @@ bool HandleStringAttribute(PyObject* o,
 
 bool HandleRepeatedInt64Attribute(
     PyObject* o, const char* attr_name,
-    tensorflow::protobuf::RepeatedField<int64>* field) {
+    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* field) {
   PyObject* seq = PyObject_GetAttrString(o, attr_name);
   if (!seq) {
     return false;

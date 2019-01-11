@@ -174,6 +174,7 @@ py_library(
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:profiler",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
@@ -1676,6 +1677,14 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//tensorflow/contrib/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "clustering_ops_gen",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:clustering_ops_op_lib",
     ],
 )
 
@@ -4117,6 +4126,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
@@ -5867,6 +5877,8 @@ py_library(
     deps = [
         ":framework_for_generated_wrappers",
         ":nccl_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 

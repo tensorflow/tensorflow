@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -817,6 +818,12 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
       }
       collective_graph_key = hash;
     }
+  }
+
+  // Make collective execution order deterministic if needed.
+  if (options.collective_order != GraphCollectiveOrder::kNone) {
+    TF_RETURN_IF_ERROR(
+        OrderCollectives(optimized_graph.get(), options.collective_order));
   }
 
   // Copy the extracted graph in order to make its node ids dense,

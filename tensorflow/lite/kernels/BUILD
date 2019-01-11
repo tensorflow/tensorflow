@@ -585,9 +585,6 @@ tf_cc_test(
     name = "bidirectional_sequence_rnn_test",
     size = "small",
     srcs = ["bidirectional_sequence_rnn_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:framework",

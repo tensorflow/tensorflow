@@ -130,12 +130,6 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return ["TRTEngineOp_0"]
 
-  def ShouldRunTest(self, run_params):
-    """Whether to run the test."""
-    # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
-    # mode, which is a bug. Re-enable this when trt library is fixed.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode)
-
 
 if __name__ == "__main__":
   test.main()

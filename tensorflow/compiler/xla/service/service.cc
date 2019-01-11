@@ -553,9 +553,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
-    run_options.emplace_back(
-        options, backend->StreamBorrower(),
-        /*xla_intra_op_thread_pool=*/backend->eigen_intra_op_thread_pool());
+    run_options.emplace_back(options, backend->StreamBorrower());
   }
 
   if (options_.number_of_replicas() == 1) {

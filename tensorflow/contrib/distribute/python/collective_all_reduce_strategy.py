@@ -372,4 +372,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
+
+    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
+    batching.
+
+    Returns:
+      Boolean.
+    """
     return True

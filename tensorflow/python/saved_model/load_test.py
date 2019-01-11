@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
+from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.checkpointable import tracking
@@ -311,6 +312,36 @@ class LoadTest(test.TestCase):
     self.assertTrue(callable(imported))
     x = constant_op.constant(1.0)
     self.assertAllEqual(imported(x).numpy(), 3.0)
+
+  def test_soft_matching(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)])
+    def func(x):
+      return 2 * x
+
+    root = tracking.Checkpointable()
+    root.f = func
+
+    self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
+    self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
+
+    self.assertEqual(
+        1, len(function_serialization.list_all_concrete_functions(root.f)))
+
+    imported = self.cycle(root)
+
+    with self.assertRaises(AssertionError):
+      # We cannot call the function with a constant of shape ().
+      self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+
+    # TODO(vbardiovsky): When classes are revived with input_signatures, we
+    # should also check that the calls below are not generating any more
+    # concrete functions.
+    self.assertAllEqual([2, 4, 6, 8],
+                        imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
+    self.assertAllEqual([2, 4, 6],
+                        imported.f(constant_op.constant([1, 2, 3])).numpy())
 
 
 if __name__ == "__main__":
