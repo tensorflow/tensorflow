@@ -55,10 +55,10 @@ def _inputs_compatible(args, stored_inputs):
 
 
 def recreate_function(saved_function, concrete_functions):
-  """Creates a `Function` from a `SavedPolymorphicFunction`.
+  """Creates a `Function` from a `SavedFunction`.
 
   Args:
-    saved_function: `SavedPolymorphicFunction` proto.
+    saved_function: `SavedFunction` proto.
     concrete_functions: map from function name to `ConcreteFunction`.
 
   Returns:
@@ -80,10 +80,10 @@ def recreate_function(saved_function, concrete_functions):
     """Calls a restored function."""
     # TODO(allenl): Functions saved with input_signatures should revive with
     # input_signatures.
-    for monomorphic_function in saved_function.monomorphic_function:
-      function_obj = concrete_functions[monomorphic_function.concrete_function]
+    for concrete_function in saved_function.concrete_function:
+      function_obj = concrete_functions[concrete_function.name]
       canonicalized_original_inputs = coder.decode_proto(
-          monomorphic_function.canonicalized_input)
+          concrete_function.canonicalized_input)
 
       try:
         can_args, can_kwargs = function_spec.canonicalize_function_inputs(
