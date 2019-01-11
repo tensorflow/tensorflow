@@ -2099,6 +2099,16 @@ class Stream {
     ok_ = false;
   }
 
+  // Checks the status and logs the error message, if any.
+  void CheckStatus(port::Status status) LOCKS_EXCLUDED(mu_) {
+    if (status.ok()) {
+      return;
+    }
+    LOG(ERROR) << status;
+    mutex_lock lock(mu_);
+    ok_ = false;
+  }
+
   void SetError() { CheckError(false /* = operation_retcode */); }
 
   void SetErrorAndLogNoDnnSupport() {
