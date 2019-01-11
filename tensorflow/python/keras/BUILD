@@ -333,9 +333,8 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:nn",
     ],
+    shard_count = 12,
     tags = ["notsan"],
 )
 
