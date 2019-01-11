@@ -814,17 +814,22 @@ class UnknownArgument(object):
   pass
 
 
-def _encode_arg_for_serialization(arg):
-  """A representation for this argument, for serializing signatures."""
-  if isinstance(arg, ops.Tensor):
-    return tensor_spec.TensorSpec(arg.shape, arg.dtype)
-  if isinstance(arg, int):
-    return arg
-  if isinstance(arg, float):
-    return arg
-  if isinstance(arg, bool):
-    return arg
-  return UnknownArgument()
+def _convert_inputs_to_signature(inputs):
+  """Convert a list of potentially nested inputs to a signature."""
+
+  def encode_arg(arg, name=None):
+    """A representation for this argument, for converting into signatures."""
+    if isinstance(arg, ops.Tensor):
+      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+    if isinstance(arg, (int, float, bool)):
+      return arg
+    return UnknownArgument()
+
+  # We are using the flattened paths to name the TensorSpecs. We need an
+  # explicit name for them downstream.
+  flattened_with_paths = nest.flatten_with_joined_string_paths(inputs)
+  mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
+  return nest.pack_sequence_as(inputs, mapped)
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -1305,8 +1310,7 @@ class PolymorphicFunction(object):
         if self._input_signature:
           python_call_signature = self._input_signature
         else:
-          python_call_signature = tuple(
-              _encode_arg_for_serialization(arg) for arg in args)
+          python_call_signature = tuple(_convert_inputs_to_signature(args))
         # pylint: disable=protected-access
         # Save information about non-Tensor arguments with the concrete
         # function. Used to serialize PolymorphicFunctions.

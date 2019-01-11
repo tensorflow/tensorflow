@@ -38,19 +38,25 @@ def _is_tensor(t):
 
 def _inputs_compatible(args, stored_inputs):
   """Checks whether function arguments are compatible with parameters."""
-  # TODO(vbardiovsky): The compatibility check should be about the signature,
-  # not the flattened version of it.
   if len(args) != len(stored_inputs):
     return False
-  for a, b in zip(args, stored_inputs):
-    if _is_tensor(a):
-      if not isinstance(b, tensor_spec.TensorSpec):
-        return False
-      if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
-        return False
-    else:
-      if a != b:
-        return False
+
+  for arg, stored_input in zip(args, stored_inputs):
+    if not function_lib.is_same_structure(arg, stored_input):
+      return False
+
+    flattened_arg = nest.flatten(arg)
+    flattened_stored_input = nest.flatten(stored_input)
+
+    for a, b in zip(flattened_arg, flattened_stored_input):
+      if _is_tensor(a):
+        if not isinstance(b, tensor_spec.TensorSpec):
+          return False
+        if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
+          return False
+      else:
+        if a != b:
+          return False
   return True
 
 
@@ -98,11 +104,10 @@ def recreate_polymorphic_function(
       except ValueError:
         continue
 
-      canonicalized_inputs = nest.flatten(can_args)
-
-      if _inputs_compatible(canonicalized_inputs,
+      if _inputs_compatible(can_args,
                             canonicalized_original_inputs):
-        filtered_inputs = [t for t in canonicalized_inputs if _is_tensor(t)]
+        flattened_inputs = nest.flatten(can_args)
+        filtered_inputs = [t for t in flattened_inputs if _is_tensor(t)]
         flattened_outputs = function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
         # TODO(vbardiovsky): Rebuild output structure.
         single_output, = flattened_outputs

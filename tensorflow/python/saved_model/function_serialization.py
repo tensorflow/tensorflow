@@ -22,6 +22,7 @@ from tensorflow.python.eager import function as defun_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
+from tensorflow.python.util import nest
 
 
 def serialize_polymorphic_function(polymorphic_function, node_ids):
@@ -67,7 +68,9 @@ def list_all_concrete_functions(polymorphic_function):
     polymorphic_function.get_concrete_function()
   concrete_functions = []
   for signature in polymorphic_function._cached_input_signatures:  # pylint: disable=protected-access
-    if any(isinstance(arg, defun_lib.UnknownArgument) for arg in signature):
+    flattened = nest.flatten(signature)
+    if any(isinstance(arg, defun_lib.UnknownArgument) for arg in flattened):
+      logging.info("Unsupported signature for serialization: %s.", signature)
       continue
     concrete_function = polymorphic_function.get_concrete_function(*signature)
     concrete_functions.append((signature, concrete_function))
