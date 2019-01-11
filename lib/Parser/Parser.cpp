@@ -1018,6 +1018,8 @@ Attribute Parser::parseAttribute(Type type) {
     auto type = parseVectorOrTensorType();
     if (!type)
       return nullptr;
+    if (getToken().getKind() != Token::string)
+      return (emitError("opaque string should start with '0x'"), nullptr);
     auto val = getToken().getStringValue();
     if (val.size() < 2 || val[0] != '0' || val[1] != 'x')
       return (emitError("opaque string should start with '0x'"), nullptr);

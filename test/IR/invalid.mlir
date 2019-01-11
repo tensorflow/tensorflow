@@ -843,3 +843,11 @@ func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined t
 
 !redef_alias = type i32
 !redef_alias = type i32 // expected-error {{redefinition of type alias id 'redef_alias'}}
+
+// -----
+
+// Check ill-formed opaque tensor.
+func @complex_loops() {
+  for %i1 = 1 to 100 {
+  // expected-error @+1 {{expected '"' in string literal}}
+  "opaqueIntTensor"(){bar: opaque<tensor<2x1x4xi32>, "0x686]>} : () -> ()
