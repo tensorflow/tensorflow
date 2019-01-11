@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
@@ -121,6 +122,12 @@ class BaseGPUDevice : public LocalDevice {
   se::StreamExecutor* executor_;  // not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
+  // Returns a Status corresponding to a cudaError_t. The CUDA error must have
+  // been obtained from a CUDA kernel launch used to check if the GPU is
+  // initialized properly.
+  virtual Status CudaErrorToStatus(cudaError_t cuda_error,
+                                   const se::Stream& stream);
+
  private:
   struct StreamGroup {
     se::Stream* compute = nullptr;
@@ -161,6 +168,10 @@ class BaseGPUDevice : public LocalDevice {
   Status MaybeCopyTensorToGPU(const AllocatorAttributes& alloc_attrs,
                               const Tensor& from, Tensor* to,
                               StatusCallback done);
+
+  // Checks that the GPU is capable of doing work, by running a test kernel on
+  // it.
+  Status CheckGPU();
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {

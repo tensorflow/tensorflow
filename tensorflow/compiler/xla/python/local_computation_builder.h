@@ -418,6 +418,15 @@ class LocalComputationBuilder {
   LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
                           bool lower, bool transpose_a, bool conjugate_a);
 
+  LocalOp Gather(const LocalOp& input, const LocalOp& start_indices,
+                 const GatherDimensionNumbers& dimension_numbers,
+                 absl::Span<const int64> slice_sizes);
+
+  LocalOp Scatter(const LocalOp& input, const LocalOp& scatter_indices,
+                  const LocalOp& updates,
+                  const LocalComputation& update_computation,
+                  const ScatterDimensionNumbers& dimension_numbers);
+
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 
 #define _FORWARD(method_name, return_sig, args_sig) \

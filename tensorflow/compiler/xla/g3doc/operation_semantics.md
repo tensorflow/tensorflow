@@ -944,21 +944,21 @@ dimension: [start, start + size). The shape of `start_indices` must be rank ==
 
 <b> `DynamicSlice(operand, start_indices, size_indices)` </b>
 
-| Arguments       | Type                | Semantics                           |
-| --------------- | ------------------- | ----------------------------------- |
-| `operand`       | `XlaOp`             | N dimensional array of type T       |
-| `start_indices` | `XlaOp`             | Rank 1 array of N integers          |
-:                 :                     : containing the starting indices of  :
-:                 :                     : the slice for each dimension. Value :
-:                 :                     : must be greater than or equal to    :
-:                 :                     : zero.                               :
-| `size_indices`  | `ArraySlice<int64>` | List of N integers containing the   |
-:                 :                     : slice size for each dimension. Each :
-:                 :                     : value must be strictly greater than :
-:                 :                     : zero, and start + size must be less :
-:                 :                     : than or equal to the size of the    :
-:                 :                     : dimension to avoid wrapping modulo  :
-:                 :                     : dimension size.                     :
+| Arguments       | Type                  | Semantics                          |
+| --------------- | --------------------- | ---------------------------------- |
+| `operand`       | `XlaOp`               | N dimensional array of type T      |
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
+| `size_indices`  | `ArraySlice<int64>`   | List of N integers containing the  |
+:                 :                       : slice size for each dimension.     :
+:                 :                       : Each value must be strictly        :
+:                 :                       : greater than zero, and start +     :
+:                 :                       : size must be less than or equal to :
+:                 :                       : the size of the dimension to avoid :
+:                 :                       : wrapping modulo dimension size.    :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
@@ -1009,19 +1009,22 @@ the rank of `operand`.
 
 <b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
 
-| Arguments       | Type    | Semantics                                        |
-| --------------- | ------- | ------------------------------------------------ |
-| `operand`       | `XlaOp` | N dimensional array of type T                    |
-| `update`        | `XlaOp` | N dimensional array of type T containing the     |
-:                 :         : slice update. Each dimension of update shape     :
-:                 :         : must be strictly greater than zero, and start +  :
-:                 :         : update must be less than or equal to the operand :
-:                 :         : size for each dimension to avoid generating      :
-:                 :         : out-of-bounds update indices.                    :
-| `start_indices` | `XlaOp` | Rank 1 array of N integers containing the        |
-:                 :         : starting indices of the slice for each           :
-:                 :         : dimension. Value must be greater than or equal   :
-:                 :         : to zero.                                         :
+| Arguments       | Type                  | Semantics                          |
+| --------------- | --------------------- | ---------------------------------- |
+| `operand`       | `XlaOp`               | N dimensional array of type T      |
+| `update`        | `XlaOp`               | N dimensional array of type T      |
+:                 :                       : containing the slice update. Each  :
+:                 :                       : dimension of update shape must be  :
+:                 :                       : strictly greater than zero, and    :
+:                 :                       : start + update must be less than   :
+:                 :                       : or equal to the operand size for   :
+:                 :                       : each dimension to avoid generating :
+:                 :                       : out-of-bounds update indices.      :
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:

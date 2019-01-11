@@ -28,6 +28,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+struct RunConvOptions {
+  // Nullable output-parameter pointer for profiling results.
+  se::dnn::ProfileResult* profile_result = nullptr;
+
+  // Use this algorithm, instead the one from the instrcution.
+  absl::optional<se::dnn::AlgorithmDesc> algo_override;
+};
+
 // This file contains low-level routines for running cudnn convolutions.
 
 // Calls into cudnn to run the specified convolution.
@@ -46,13 +54,13 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
                     se::DeviceMemoryBase result_buffer,
                     se::DeviceMemoryBase scratch_buf, se::Stream* stream,
-                    se::dnn::ProfileResult* profile_result = nullptr);
+                    RunConvOptions = {});
 
 Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
                     se::DeviceMemoryBase result_buffer,
                     se::ScratchAllocator* scratch_allocator, se::Stream* stream,
-                    se::dnn::ProfileResult* profile_result = nullptr);
+                    RunConvOptions = {});
 
 }  // namespace gpu
 }  // namespace xla

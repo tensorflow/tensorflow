@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -1147,5 +1148,38 @@ XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
 
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
+
+class DotOperationTextTest : public HloTestBase {};
+
+XLA_TEST_F(DotOperationTextTest, DotReorderedDotDims) {
+  absl::string_view hlo_string =
+      R"(
+HloModule ComplexDotMultipleNonContracting
+
+ENTRY %test {
+  %lhs = f32[7,17,10,13]{3,2,1,0} parameter(0)
+  %rhs = f32[7,9,10,13,6]{4,3,2,1,0} parameter(1)
+  ROOT %dot = f32[10,7,17,9,6]{4,3,2,1,0} dot(%lhs, %rhs), lhs_batch_dims={2,0}, rhs_batch_dims={2,0}, lhs_contracting_dims={3}, rhs_contracting_dims={3}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DotReorderedDotDimsAndMultipleContracting) {
+  absl::string_view hlo_string =
+      R"(
+HloModule ComplexDotMultipleNonContracting
+
+ENTRY %test {
+  %lhs = f32[7,5,17,10,13]{4,3,2,1,0} parameter(0)
+  %rhs = f32[7,9,10,13,6,5]{5,4,3,2,1,0} parameter(1)
+  ROOT %dot = f32[10,7,17,9,6]{4,3,2,1,0} dot(%lhs, %rhs), lhs_batch_dims={3,0}, rhs_batch_dims={2,0}, lhs_contracting_dims={1,4}, rhs_contracting_dims={5,3}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
+}
+
 }  // namespace
 }  // namespace xla

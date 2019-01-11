@@ -74,6 +74,24 @@ CacheKey = collections.namedtuple("CacheKey", [
 ])
 
 
+def is_same_structure(structure1,
+                      structure2,
+                      check_values=False):
+  """Check two structures for equality, optionally of types and of values."""
+  try:
+    nest.assert_same_structure(structure1, structure2)
+  except (ValueError, TypeError):
+    return False
+  if check_values:
+    flattened1 = nest.flatten(structure1)
+    flattened2 = nest.flatten(structure2)
+    # First check the types to avoid AttributeErrors.
+    if any(type(f1) != type(f2) for f1, f2 in zip(flattened1, flattened2)):
+      return False
+    return flattened1 == flattened2
+  return True
+
+
 def _parse_func_attrs(attributes):
   """Convert the keyword arguments into function_def attributes.
 
@@ -919,10 +937,7 @@ class FunctionSpec(object):
     else:
       assert not kwargs
       signature_relevant_inputs = inputs[:len(self.input_signature)]
-      try:
-        nest.assert_same_structure(self.input_signature,
-                                   signature_relevant_inputs)
-      except (ValueError, TypeError):
+      if not is_same_structure(self.input_signature, signature_relevant_inputs):
         raise ValueError("Structure of Python function inputs does not match "
                          "input_signature.")
       signature_inputs_flat = nest.flatten(signature_relevant_inputs)
@@ -1049,9 +1064,7 @@ class PolymorphicFunction(object):
                          "input_signature is provided.")
       if args:
         # If args are provided, they must match the input signature.
-        try:
-          nest.assert_same_structure(self._input_signature, args)
-        except (ValueError, TypeError):
+        if not is_same_structure(self._input_signature, args):
           raise ValueError("Structure of Python function inputs does not match "
                            "input_signature.")
         flat_inputs = nest.flatten(args)

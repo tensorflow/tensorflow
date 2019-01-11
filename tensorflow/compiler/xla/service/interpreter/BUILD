@@ -119,6 +119,8 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_headers_lib",
+        "//tensorflow/stream_executor/host:host_stream",
+        "//tensorflow/stream_executor/host:host_timer",
         "@com_google_absl//absl/types:span",
     ],
 )

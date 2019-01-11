@@ -180,12 +180,14 @@ class Conv(Layer):
       op_padding = 'valid'
     else:
       op_padding = self.padding
+    if not isinstance(op_padding, (list, tuple)):
+      op_padding = op_padding.upper()
     self._convolution_op = nn_ops.Convolution(
         input_shape,
         filter_shape=self.kernel.get_shape(),
         dilation_rate=self.dilation_rate,
         strides=self.strides,
-        padding=op_padding.upper(),
+        padding=op_padding,
         data_format=conv_utils.convert_data_format(self.data_format,
                                                    self.rank + 2))
     self.built = True

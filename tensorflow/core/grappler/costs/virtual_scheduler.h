@@ -260,16 +260,9 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
-  // TODO(pcma): Modify power_analyzer.cc to use new API's.
-  // DEPRECATED
-  VirtualScheduler(const GrapplerItem* grappler_item,
-                   const bool use_static_shapes, Cluster* cluster,
-                   ReadyNodeManager* ready_nodes);
-  // DEPRECATED
-  Status Init();
-
   // Does not take ownership of cluster or ready_nodes.
-  VirtualScheduler(bool use_static_shapes, Cluster* cluster,
+  VirtualScheduler(const bool use_static_shapes,
+                   const bool use_aggressive_shape_inference, Cluster* cluster,
                    ReadyNodeManager* ready_nodes);
   // Initializes the scheduler for the specific grappler item.
   // Should be called immediately after the c'tor or when the scheduler will be
@@ -367,6 +360,7 @@ class VirtualScheduler {
   bool use_static_shapes_;
   bool initialized_;
   bool track_mem_usage_snapshot_;
+  const bool use_aggressive_shape_inference_;
 
   // Whether the input graph includes Switch nodes annotated with output slots
   // information.

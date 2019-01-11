@@ -21,6 +21,38 @@ HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32
 TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
+# Look for platform or target-specific implementation files to replace reference
+# implementations with, given a tag. These are expected to occur in subfolders
+# of a directory where a reference implementation exists, and have the same
+# interface and header file. For example,
+# tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.cc
+# defines a module for supplying audio data, but since no platform or OS can be
+# presumed, it just always returns zeroes for its samples. The MacOS-specific
+# tensorflow/lite/experimental/micro/examples/micro_speech/osx/audio_provider.cc
+# has an implementation that relies on CoreAudio, and there are equivalent
+# versions for other operating systems. 
+# All lists of source files are put through this substitution process with the
+# tags of their target OS and architecture, so that implementations can be added
+# by simply placing them in the file tree, with no changes to the build files
+# needed.
+# One confusing thing about this implementation is that we're using wildcard to
+# act as a 'does file exist?' function, rather than expanding an expression.
+# Wildcard will return an empty string if given a plain file path with no actual
+# wildcards, if the file doesn't exist, so taking the first word of the list
+# between that and the reference path will pick the specialized one if it's
+# available.
+substitute_specialized_implementation = \
+  $(firstword $(wildcard $(dir $(1))$(2)/$(notdir $(1))) $(wildcard $(1)))
+substitute_specialized_implementations = \
+  $(foreach source,$(1),$(call substitute_specialized_implementation,$(source),$(2)))
+# Here we're first looking for specialized implementations in ref_dir/$(TARGET)
+# and then ref_dir/$(TARGET_ARCH), before falling back to ref_dir's
+# implementation.
+# The argument to this function should be a list of space-separated file paths,
+# with any wildcards already expanded.
+specialize = \
+  $(call substitute_specialized_implementations,$(call substitute_specialized_implementations,$(1),$(TARGET)),$(TARGET_ARCH))
+
 INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/../../../../../ \
@@ -67,6 +99,7 @@ tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/kernels/kernel_util.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
+MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
@@ -115,7 +148,7 @@ $(OBJDIR)%.o: %.S
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
-all: $(MICROLITE_LIB_PATH) $(MICRO_SPEECH_TEST_BINARY) $(PREPROCESSOR_TEST_BINARY)
+all: $(MICROLITE_LIB_PATH)
 
 microlite: $(MICROLITE_LIB_PATH)
 

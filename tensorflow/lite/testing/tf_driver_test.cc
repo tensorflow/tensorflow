@@ -93,7 +93,7 @@ TEST(TfDriverTest, SimpleTest) {
                    {"1,8,8,3", "1,8,8,3", "1,8,8,3", "1,8,8,3"}, {"x", "y"}));
 
   runner->LoadModel(
-      "third_party/tensorflow/lite/testdata/multi_add.pb");
+      "tensorflow/lite/testdata/multi_add.pb");
   EXPECT_TRUE(runner->IsValid()) << runner->GetErrorMessage();
 
   ASSERT_THAT(runner->GetInputs(), ElementsAre(0, 1, 2, 3));

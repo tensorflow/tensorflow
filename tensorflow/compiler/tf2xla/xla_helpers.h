@@ -53,16 +53,6 @@ class XlaHelpers {
                                absl::Span<const int64> shape,
                                xla::Literal* output);
 
-  // Returns the argmax of `input` along `axis`. `output_type` is the type to
-  // use for the output.
-  static xla::XlaOp ArgMax(xla::XlaOp input, xla::PrimitiveType output_type,
-                           int axis);
-
-  // Returns the argmin of `input` along `axis`. `output_type` is the type to
-  // use for the output.
-  static xla::XlaOp ArgMin(xla::XlaOp input, xla::PrimitiveType output_type,
-                           int axis);
-
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
   // axis. `indices_shape` is the shape of `indices`. `on_value` and
