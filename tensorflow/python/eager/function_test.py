@@ -1729,8 +1729,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     graph_function = foo.get_concrete_function(constant_op.constant(1.0))
-    with self.assertRaisesRegexp(ValueError, 'All inputs to `Function`s must '
-                                 'be Tensors;.*'):
+    with self.assertRaisesRegexp(
+        ValueError, 'All inputs to `ConcreteFunction`s must be Tensors;.*'):
       graph_function('Not a Tensor.')
 
   def testSwapImplementationWithGrapplerPlugin(self):
