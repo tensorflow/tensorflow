@@ -47,8 +47,12 @@ def serialize_polymorphic_function(polymorphic_function, node_ids):
       continue
     function_proto = proto.monomorphic_function.add()
     function_proto.concrete_function = concrete_function.name
-    function_proto.canonicalized_input.CopyFrom(
+    function_proto.canonicalized_input_signature.CopyFrom(
         coder.encode_structure(signature))
+    structured_outputs = defun_lib.convert_structure_to_signature(
+        concrete_function.structured_outputs)
+    function_proto.output_signature.CopyFrom(
+        coder.encode_structure(structured_outputs))
     function_proto.bound_inputs.extend(bound_inputs)
   return proto
 

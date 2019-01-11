@@ -27,6 +27,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training.checkpointable import tracking
@@ -45,12 +46,13 @@ class _Loader(object):
     self._functions = function_deserialization.load_function_def_library(
         meta_graph.graph_def.library)
     self._load_all()
-    self._bind_function_captures()
+    self._setup_concrete_functions()
     self._restore_checkpoint()
 
-  def _bind_function_captures(self):
-    """Setup captured tensors in restored concrete functions."""
+  def _setup_concrete_functions(self):
+    """Setup captured tensors and output structure in restored functions."""
     seen_functions = set()
+    coder = nested_structure_coder.StructureCoder()
     for object_proto in self._proto.nodes:
       if object_proto.WhichOneof("kind") == "function":
         for monomorphic_function in object_proto.function.monomorphic_function:
@@ -64,17 +66,32 @@ class _Loader(object):
               if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
           ]
           if name in seen_functions:
-            if self._functions[name]._captured_inputs != bound_inputs:  # pylint: disable=protected-access
-              raise NotImplementedError(
-                  "Function %s is used more than once with different "
-                  "captured inputs." % name)
+            raise RuntimeError(
+                "Monomorphic function with a duplicate name: %s." % name)
           else:
             seen_functions.add(name)
             # TODO(andresp): This is only injecting the captured inputs into the
             # concrete function, note that we did not modify the FuncGraph
             # itself.
-            self._functions[name]._captured_inputs = bound_inputs  # pylint: disable=protected-access
-            self._functions[name]._func_graph.variables = bound_variables  # pylint: disable=protected-access
+            function = self._functions[name]
+            function._captured_inputs = bound_inputs  # pylint: disable=protected-access
+            function._func_graph.variables = bound_variables  # pylint: disable=protected-access
+            # By setting the structured_outputs directly, we can rely on this
+            # function_lib.Function object to perform the output repacking
+            # logic. The only limitation of that logic is that it only works
+            # with output that is convertible to Tensors and the conversion
+            # always happens. For example tf.TensorShape([2, 3]) will be
+            # converted to Tensor representing [2, 3].
+            original_outputs = coder.decode_proto(
+                monomorphic_function.output_signature)
+            # The original_outputs here had Tensors converted to TensorSpecs, so
+            # the restored function's structured_outputs field will not be
+            # exactly the same. Fortunately the repacking logic cares only about
+            # the structure.
+            # TODO(vbardiovsky): Should we just replicate the structures, with
+            # Nones instead of real objects? Decide when we start solving
+            # idempotency.
+            function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
     obj = self._nodes[node_id]
