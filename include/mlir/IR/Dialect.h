@@ -25,6 +25,8 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
+class AffineMap;
+class IntegerSet;
 class Type;
 
 using DialectConstantFoldHook = std::function<bool(
@@ -63,7 +65,18 @@ public:
   /// characters.
   DialectTypePrinterHook typePrintHook = nullptr;
 
-  // TODO: Hook to return the list of named types that are known.
+  /// Registered hooks for getting identifier aliases for symbols. The
+  /// identifier is used in place of the symbol when printing textual IR.
+  ///
+  /// Hook for defining AffineMap aliases.
+  virtual void getAffineMapAliases(
+      SmallVectorImpl<std::pair<StringRef, AffineMap>> &aliases) {}
+  /// Hook for defining IntegerSet aliases.
+  virtual void getIntegerSetAliases(
+      SmallVectorImpl<std::pair<StringRef, IntegerSet>> &aliases) {}
+  /// Hook for defining Type aliases.
+  virtual void
+  getTypeAliases(SmallVectorImpl<std::pair<StringRef, Type>> &aliases) {}
 
   virtual ~Dialect();
 
