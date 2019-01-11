@@ -17,6 +17,7 @@ package org.tensorflow.op.core;
 
 import static org.junit.Assert.assertEquals;
 
+import java.util.ArrayList;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -37,6 +38,22 @@ public final class GeneratedOperationsTest {
       Operand<Integer> x = ops.math().add(ops.constant(1), ops.constant(2));
       try (Tensor<Integer> result = sess.runner().fetch(x).run().get(0).expect(Integer.class)) {
         assertEquals(3, result.intValue());
+      }
+    }
+  }
+
+  @Test
+  public void testListInputTensorOutput() {
+    try (Graph g = new Graph();
+        Session sess = new Session(g)) {
+      Ops ops = Ops.create(g);
+      ArrayList<Operand<Integer>> inputs = new ArrayList<Operand<Integer>>();
+      inputs.add(ops.constant(1));
+      inputs.add(ops.constant(2));
+      inputs.add(ops.constant(3));
+      Operand<Integer> x = ops.math().addN(inputs);
+      try (Tensor<Integer> result = sess.runner().fetch(x).run().get(0).expect(Integer.class)) {
+        assertEquals(6, result.intValue());
       }
     }
   }
