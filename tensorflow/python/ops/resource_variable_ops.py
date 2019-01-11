@@ -219,7 +219,7 @@ class ResourceVariable(variables.VariableV1):
                initial_value=None,
                trainable=True,
                collections=None,
-               validate_shape=True,
+               validate_shape=True,  # pylint: disable=unused-argument
                caching_device=None,
                name=None,
                dtype=None,
@@ -231,8 +231,7 @@ class ResourceVariable(variables.VariableV1):
 
     Args:
       initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
-        which is the initial value for the Variable. The initial value must have
-        a shape specified unless `validate_shape` is set to False. Can also be a
+        which is the initial value for the Variable. Can also be a
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
          to a shape before being used here.)
@@ -292,7 +291,6 @@ class ResourceVariable(variables.VariableV1):
           initial_value=initial_value,
           trainable=trainable,
           collections=collections,
-          validate_shape=validate_shape,
           caching_device=caching_device,
           name=name,
           dtype=dtype,
@@ -307,12 +305,10 @@ class ResourceVariable(variables.VariableV1):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  # pylint: disable=unused-argument
   def _init_from_args(self,
                       initial_value=None,
                       trainable=True,
                       collections=None,
-                      validate_shape=True,
                       caching_device=None,
                       name=None,
                       dtype=None,
