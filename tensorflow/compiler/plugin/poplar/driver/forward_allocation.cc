@@ -86,13 +86,12 @@ static absl::optional<HloInstruction*> reduce_to_one_with_no_dependencies(
   // TODO consider whether it is worth extending this so that if we have few
   // targets with no dependency between we still allocate it with some layout
   // and add a control dependency.
-  absl::flat_hash_set<HloInstruction*> result_no_deps;
-  std::set_difference(
-      result.begin(), result.end(), has_dependency.begin(),
-      has_dependency.end(),
-      std::inserter(result_no_deps, std::begin(result_no_deps)));
-  return result_no_deps.size() == 1
-             ? absl::optional<HloInstruction*>(*std::begin(result_no_deps))
+  for (auto dep : has_dependency) {
+    result.erase(dep);
+  }
+
+  return result.size() == 1
+             ? absl::optional<HloInstruction*>(*std::begin(result))
              : absl::nullopt;
 }
 
@@ -123,8 +122,9 @@ static bool IsPrefixPathOk(const std::vector<HloInstruction*>& path) {
 // For valid paths, either returns the GTE index for the last node or 0.
 static absl::optional<int64> IsSuffixPathOk(
     const std::vector<HloInstruction*>& path) {
-  const auto is_node_ok_on_path = [](
-      HloInstruction* inst, const unsigned path_idx, const unsigned path_size) {
+  const auto is_node_ok_on_path = [](HloInstruction* inst,
+                                     const unsigned path_idx,
+                                     const unsigned path_size) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
       return true;
@@ -246,7 +246,6 @@ StatusOr<bool> ForwardAllocation::Run(
       const auto is_valid_target = [&](HloInstruction* a) {
         return alloc_dependencies.contains(a) && IsLayoutSensitiveTarget(a);
       };
-
       const auto optional_target = reduce_to_one_with_no_dependencies(
           edges.second, reachability_map.get(), is_valid_target);
       if (!optional_target) {
