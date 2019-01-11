@@ -64,6 +64,22 @@ Token Lexer::emitError(const char *loc, const Twine &message) {
 Token Lexer::lexToken() {
   const char *tokStart = curPtr;
 
+  // Ignore whitespace.
+  while (curPtr) {
+    switch (*curPtr) {
+    case ' ':
+    case '\t':
+    case '\n':
+    case '\r':
+      ++curPtr;
+      continue;
+    default:
+      break;
+    }
+    tokStart = curPtr;
+    break;
+  }
+
   switch (*curPtr++) {
   default:
     // Handle bare identifiers.
@@ -84,13 +100,6 @@ Token Lexer::lexToken() {
       return formToken(Token::eof, tokStart);
 
     LLVM_FALLTHROUGH;
-  case ' ':
-  case '\t':
-  case '\n':
-  case '\r':
-    // Ignore whitespace.
-    return lexToken();
-
   case ':': return formToken(Token::colon, tokStart);
   case ',': return formToken(Token::comma, tokStart);
   case '(': return formToken(Token::l_paren, tokStart);
