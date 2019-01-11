@@ -16,7 +16,7 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #include "cuda/include/cuda.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
-#include "tensorflow/stream_executor/dso_loader.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #endif  // GOOGLE_CUDA
 

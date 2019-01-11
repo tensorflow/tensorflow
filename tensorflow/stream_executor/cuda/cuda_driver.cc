@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
-#include "tensorflow/stream_executor/dso_loader.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
@@ -140,6 +141,7 @@ namespace dynload {
   __macro(cuModuleLoadFatBinary)                        \
   __macro(cuModuleUnload)                               \
   __macro(cuOccupancyMaxActiveBlocksPerMultiprocessor)  \
+  __macro(cuOccupancyMaxPotentialBlockSize)             \
   __macro(cuPointerGetAttribute)                        \
   __macro(cuStreamAddCallback)                          \
   __macro(cuStreamCreate)                               \
@@ -1668,6 +1670,37 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
     LOG(FATAL) << "failed to query current context: " << ToString(result);
   }
   return current;
+}
+
+/* static */ int CUDADriver::CalculateOccupancy(
+    const DeviceDescription &device_description, uint64 registers_per_thread,
+    uint64 shared_memory_per_block, const ThreadDim &thread_dims,
+    CUfunction func) {
+  int suggested_blocks = 0;
+  int suggested_threads = 0;
+  CUresult err = dynload::cuOccupancyMaxPotentialBlockSize(
+      &suggested_blocks, &suggested_threads, func, nullptr,
+      shared_memory_per_block, 0);
+  CHECK_EQ(err, CUDA_SUCCESS);
+  return suggested_blocks;
+}
+
+/* static */ int CUDADriver::CompareOccupancy(
+    int *initial_blocks, const DeviceDescription &device_description,
+    uint64 registers_per_thread, uint64 shared_memory_per_block,
+    const ThreadDim &thread_dims, CUfunction func) {
+  int suggested_blocks = 0;
+  int suggested_threads = 0;
+  CUresult err = dynload::cuOccupancyMaxPotentialBlockSize(
+      &suggested_blocks, &suggested_threads, func, nullptr,
+      shared_memory_per_block, 0);
+  CHECK_EQ(err, CUDA_SUCCESS);
+  if (suggested_blocks > *initial_blocks) {
+    *initial_blocks = suggested_blocks;
+    return suggested_threads;
+  } else {
+    return 0;
+  }
 }
 
 }  // namespace cuda

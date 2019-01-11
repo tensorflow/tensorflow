@@ -84,6 +84,7 @@ cc_library(
         "//tensorflow/stream_executor:device_options",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
     ] + tf_additional_cuda_driver_deps(),
 )
 

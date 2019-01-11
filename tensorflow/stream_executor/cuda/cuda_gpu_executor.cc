@@ -473,56 +473,18 @@ void CUDAExecutor::VlogOccupancyInfo(const KernelBase &kernel,
   const CUDAKernel *cuda_kernel = AsCUDAKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsCUDAFunctionValue();
 
-  int blocks_per_sm = CalculateOccupancy(device_description, regs_per_thread,
-                                         smem_per_block, thread_dims, cufunc);
+  int blocks_per_sm = CUDADriver::CalculateOccupancy(device_description, regs_per_thread,
+                                                     smem_per_block, thread_dims, cufunc);
   VLOG(2) << "Resident blocks per SM is " << blocks_per_sm;
 
   int suggested_threads =
-      CompareOccupancy(&blocks_per_sm, device_description, regs_per_thread,
-                       smem_per_block, thread_dims, cufunc);
+      CUDADriver::CompareOccupancy(&blocks_per_sm, device_description, regs_per_thread,
+                                   smem_per_block, thread_dims, cufunc);
   if (suggested_threads != 0) {
     VLOG(2) << "The cuda occupancy calculator recommends using "
             << suggested_threads
             << " threads per block to achieve an occupancy of " << blocks_per_sm
             << " blocks per SM.";
-  }
-}
-
-// Compute and return maximum blocks per core (occupancy) based on the
-// device description, some kernel characteristics and the number of threads per
-// block.  If unable to compute occupancy, zero is returned.
-int CUDAExecutor::CalculateOccupancy(
-    const DeviceDescription &device_description, uint64 registers_per_thread,
-    uint64 shared_memory_per_block, const ThreadDim &thread_dims,
-    CUfunction func) {
-  int suggested_blocks = 0;
-  int suggested_threads = 0;
-  CUresult err = cuOccupancyMaxPotentialBlockSize(
-      &suggested_blocks, &suggested_threads, func, nullptr,
-      shared_memory_per_block, 0);
-  CHECK_EQ(err, CUDA_SUCCESS);
-  return suggested_blocks;
-}
-
-// Compute and return the suggested thread count to achieve ideal occupancy.
-// If the provided thread dimensions match this number, zero is returned.
-int CUDAExecutor::CompareOccupancy(int *initial_blocks,
-                                   const DeviceDescription &device_description,
-                                   uint64 registers_per_thread,
-                                   uint64 shared_memory_per_block,
-                                   const ThreadDim &thread_dims,
-                                   CUfunction func) {
-  int suggested_blocks = 0;
-  int suggested_threads = 0;
-  CUresult err = cuOccupancyMaxPotentialBlockSize(
-      &suggested_blocks, &suggested_threads, func, nullptr,
-      shared_memory_per_block, 0);
-  CHECK_EQ(err, CUDA_SUCCESS);
-  if (suggested_blocks > *initial_blocks) {
-    *initial_blocks = suggested_blocks;
-    return suggested_threads;
-  } else {
-    return 0;
   }
 }
 

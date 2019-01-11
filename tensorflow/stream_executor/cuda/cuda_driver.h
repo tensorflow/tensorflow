@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/device_description.h"
 #include "cuda/include/cuda.h"
 
 namespace stream_executor {
@@ -467,6 +468,21 @@ class CUDADriver {
   static port::StatusOr<int> GetMaxOccupiedBlocksPerCore(
       CudaContext* context, CUfunction kernel, int threads_per_block,
       size_t dynamic_shared_memory_bytes);
+
+  // Compute and return maximum blocks per core (occupancy) based on the
+  // device description, some kernel characteristics and the number of threads per
+  // block.  If unable to compute occupancy, zero is returned.
+  static int CalculateOccupancy(
+      const DeviceDescription &device_description, uint64 registers_per_thread,
+      uint64 shared_memory_per_block, const ThreadDim &thread_dims,
+      CUfunction func);
+
+  // Compute and return the suggested thread count to achieve ideal occupancy.
+  // If the provided thread dimensions match this number, zero is returned.
+  static int CompareOccupancy(
+      int *initial_blocks, const DeviceDescription &device_description,
+      uint64 registers_per_thread, uint64 shared_memory_per_block,
+      const ThreadDim &thread_dims, CUfunction func);
 
   // Returns the current context set in CUDA. This is done by calling the cuda
   // driver (e.g., this value is not our cached view of the current context).
