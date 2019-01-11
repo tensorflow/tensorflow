@@ -19,10 +19,12 @@ from __future__ import print_function
 
 import collections
 import copy
+import operator
 
 import six
 
 from tensorflow.python.ops import variables
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.checkpointable import base
 from tensorflow.python.training.checkpointable import layer_utils
 
@@ -727,3 +729,13 @@ class _DictWrapper(Mapping, collections.MutableMapping):
   def update(self, *args, **kwargs):
     for key, value in dict(*args, **kwargs).items():
       self[key] = value
+
+revived_types.register_revived_type(
+    "checkpointable_dict_wrapper",
+    lambda obj: isinstance(obj, _DictWrapper),
+    versions=[revived_types.VersionedTypeRegistration(
+        object_factory=lambda _: _DictWrapper({}),
+        version=1,
+        min_producer_version=1,
+        min_consumer_version=1,
+        setter=operator.setitem)])
