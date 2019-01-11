@@ -88,7 +88,7 @@ class XRTTupleAllocation : public ResourceBase {
   // Allocates new device memory buffers sufficient to store literal, transfers
   // literal to that memory, and returns a XRTTupleAllocation handle to the
   // allocated buffers.
-  static Status CreateAndTransfer(const xla::Literal& literal,
+  static Status CreateAndTransfer(const xla::LiteralBase& literal,
                                   xla::Backend* backend, int device_ordinal,
                                   XRTTupleAllocation** allocation);
 
