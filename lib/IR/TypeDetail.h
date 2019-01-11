@@ -242,8 +242,7 @@ struct MemRefTypeStorage : public TypeStorage {
     shape = allocator.copyInto(shape);
 
     // Copy the affine map composition into the bump pointer.
-    affineMapComposition =
-        allocator.copyInto(ArrayRef<AffineMap>(affineMapComposition));
+    affineMapComposition = allocator.copyInto(affineMapComposition);
 
     // Initialize the memory using placement new.
     return new (result) MemRefTypeStorage(
