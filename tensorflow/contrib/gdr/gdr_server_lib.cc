@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/contrib/gdr/gdr_server_lib.h"
 
 #include "grpc/support/alloc.h"
+#include "tensorflow/contrib/gdr/gdr_collective_executor_mgr.h"
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
 #include "tensorflow/contrib/gdr/gdr_rendezvous_mgr.h"
 #include "tensorflow/contrib/gdr/gdr_worker.h"
-
-#include "grpc/support/alloc.h"
+#include "tensorflow/core/common_runtime/collective_rma_local.h"
+#include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
+#include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 
 namespace tensorflow {
 
@@ -57,10 +59,32 @@ Status GdrServer::Init() {
     return std::unique_ptr<GdrWorker>(
         new GdrWorker(env, config, remote_memory_manager_.get()));
   };
+  CollectiveMgrCreationFunction collective_mgr_func = [this](
+      const ConfigProto& config, const WorkerEnv* env,
+      WorkerCacheInterface* worker_cache) {
 
+    string unused;
+    string default_worker_name;
+    DeviceNameUtils::SplitDeviceName(env->device_mgr->ListDevices()[0]->name(),
+                                     &default_worker_name, &unused);
+
+    std::unique_ptr<DeviceResolverDistributed> dev_resolver(
+        new DeviceResolverDistributed(env->device_mgr, worker_cache,
+                                      default_worker_name));
+    std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
+        new CollectiveParamResolverDistributed(config, env->device_mgr,
+                                               dev_resolver.get(), worker_cache,
+                                               default_worker_name));
+    return new GdrCollectiveExecutorMgr(
+        config, env->device_mgr, std::move(dev_resolver),
+        std::move(param_resolver), worker_cache, default_worker_name,
+        remote_memory_manager_.get());
+
+  };
   TF_RETURN_IF_ERROR(remote_memory_manager_->Init());
 
-  return GrpcServer::Init(nullptr, rendezvous_mgr_func, nullptr, worker_func);
+  return GrpcServer::Init(nullptr, rendezvous_mgr_func, collective_mgr_func,
+                          worker_func);
 }
 
 Status GdrServer::Start() {
