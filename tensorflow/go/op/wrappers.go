@@ -4526,12 +4526,26 @@ func CollectiveBcastSend(scope *Scope, input tf.Output, group_size int64, group_
 	return op.Output(0)
 }
 
+// CollectiveReduceAttr is an optional argument to CollectiveReduce.
+type CollectiveReduceAttr func(optionalAttr)
+
+// CollectiveReduceWaitFor sets the optional wait_for attribute to value.
+// If not specified, defaults to <>
+func CollectiveReduceWaitFor(value []int64) CollectiveReduceAttr {
+	return func(m optionalAttr) {
+		m["wait_for"] = value
+	}
+}
+
 // Mutually reduces multiple tensors of identical type and shape.
-func CollectiveReduce(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, merge_op string, final_op string, subdiv_offsets []int64) (data tf.Output) {
+func CollectiveReduce(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, merge_op string, final_op string, subdiv_offsets []int64, optional ...CollectiveReduceAttr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"group_size": group_size, "group_key": group_key, "instance_key": instance_key, "merge_op": merge_op, "final_op": final_op, "subdiv_offsets": subdiv_offsets}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "CollectiveReduce",
 		Input: []tf.Input{
@@ -6846,6 +6860,35 @@ func Div(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Selects the k nearest centers for each point.
+//
+// Rows of points are assumed to be input points. Rows of centers are assumed to be
+// the list of candidate centers. For each point, the k centers that have least L2
+// distance to it are computed.
+//
+// Arguments:
+//	points: Matrix of shape (n, d). Rows are assumed to be input points.
+//	centers: Matrix of shape (m, d). Rows are assumed to be centers.
+//	k: Number of nearest centers to return for each point. If k is larger than m, then
+// only m centers are returned.
+//
+// Returns Matrix of shape (n, min(m, k)). Each row contains the indices of the centers
+// closest to the corresponding point, ordered by increasing distance.Matrix of shape (n, min(m, k)). Each row contains the squared L2 distance to the
+// corresponding center in nearest_center_indices.
+func NearestNeighbors(scope *Scope, points tf.Output, centers tf.Output, k tf.Output) (nearest_center_indices tf.Output, nearest_center_distances tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "NearestNeighbors",
+		Input: []tf.Input{
+			points, centers, k,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Returns x * y element-wise.
 //
 // *NOTE*: `Multiply` supports broadcasting. More about broadcasting
@@ -7644,6 +7687,33 @@ func TensorSliceDataset(scope *Scope, components []tf.Output, output_shapes []tf
 			tf.OutputList(components),
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the index of a data point that should be added to the seed set.
+//
+// Entries in distances are assumed to be squared distances of candidate points to
+// the already sampled centers in the seed set. The op constructs one Markov chain
+// of the k-MC^2 algorithm and returns the index of one candidate point to be added
+// as an additional cluster center.
+//
+// Arguments:
+//	distances: Vector with squared distances to the closest previously sampled cluster center
+// for each candidate point.
+//	seed: Scalar. Seed for initializing the random number generator.
+//
+// Returns Scalar with the index of the sampled point.
+func KMC2ChainInitialization(scope *Scope, distances tf.Output, seed tf.Output) (index tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "KMC2ChainInitialization",
+		Input: []tf.Input{
+			distances, seed,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -10402,6 +10472,37 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 		Type: "BiasAddV1",
 		Input: []tf.Input{
 			value, bias,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Selects num_to_sample rows of input using the KMeans++ criterion.
+//
+// Rows of points are assumed to be input points. One row is selected at random.
+// Subsequent rows are sampled with probability proportional to the squared L2
+// distance from the nearest row selected thus far till num_to_sample rows have
+// been sampled.
+//
+// Arguments:
+//	points: Matrix of shape (n, d). Rows are assumed to be input points.
+//	num_to_sample: Scalar. The number of rows to sample. This value must not be larger than n.
+//	seed: Scalar. Seed for initializing the random number generator.
+//	num_retries_per_sample: Scalar. For each row that is sampled, this parameter
+// specifies the number of additional points to draw from the current
+// distribution before selecting the best. If a negative value is specified, a
+// heuristic is used to sample O(log(num_to_sample)) additional points.
+//
+// Returns Matrix of shape (num_to_sample, d). The sampled rows.
+func KmeansPlusPlusInitialization(scope *Scope, points tf.Output, num_to_sample tf.Output, seed tf.Output, num_retries_per_sample tf.Output) (samples tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "KmeansPlusPlusInitialization",
+		Input: []tf.Input{
+			points, num_to_sample, seed, num_retries_per_sample,
 		},
 	}
 	op := scope.AddOperation(opspec)
