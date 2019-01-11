@@ -69,7 +69,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 @six.add_metaclass(abc.ABCMeta)
-@keras_export("keras.optimizers.Optimizer", v1=[])
+@keras_export("keras.optimizers.Optimizer")
 class OptimizerV2(checkpointable.CheckpointableBase):
   """Updated base class for optimizers.
 

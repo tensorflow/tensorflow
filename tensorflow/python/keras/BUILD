@@ -398,7 +398,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = ["notsan"],
 )
 
