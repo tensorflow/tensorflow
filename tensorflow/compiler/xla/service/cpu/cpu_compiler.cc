@@ -258,7 +258,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // pass.
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<BatchDotSimplification>();
-  pipeline.AddPass<DotDecomposer>();
+  pipeline.AddPass<DotDecomposer>(/*decompose_batch_dot=*/false);
   auto cost_model = [](HloInstruction* conv) {
     // We need a cost model for CPUs. Currently, do nothing.
     return false;
