@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/profiler.h"
 #include "tensorflow/cc/profiler/profiler.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/platform/device_tracer.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -37,18 +41,28 @@ Status EagerProfiler::Status() {
 }
 
 Status EagerProfiler::SerializeToString(string* content) {
-  {
-    mutex_lock l(mutex_);
-    if (!status_.ok()) return status_;
+  mutex_lock l(mutex_);
+  if (!status_.ok()) return status_;
+  Stop();
+
+  // Get profiling data from device tracer
+  if (device_tracer_ != nullptr) {
+    std::unique_ptr<StepStatsCollector> step_stats_collector(
+        new StepStatsCollector(run_metadata_.mutable_step_stats()));
+    tensorflow::Status s = device_tracer_->Collect(step_stats_collector.get());
+    if (!s.ok()) {
+      device_tracer_.reset(nullptr);
+      LOG(WARNING) << "Failed to collect data from device tracer. "
+                   << s.error_message();
+    }
+    step_stats_collector->Finalize();
   }
-  RunMetadata metadata;
-  GetMergetRunMetadata(&metadata);
 
   // TODO(fishx): update tfprof to use a lighter representation instead of
   // GraphDef.
   GraphDef graph;
   std::unique_ptr<tfprof::Profiler> tfprof(new tfprof::Profiler(graph));
-  tfprof->AddStep(0, metadata);
+  tfprof->AddStep(0, run_metadata_);
   return tfprof->SerializeToString(content);
 }
 
@@ -57,21 +71,43 @@ EagerProfiler::EagerProfiler(EagerContext* const context) : context_(context) {
 
   status_ = context_->RegisterRunMetadataListener(this);
   if (!status_.ok()) {
-    LOG(INFO) << "Eager Profiler failed to start. Another profiler is running.";
+    context_ = nullptr;
+    LOG(WARNING)
+        << "Eager Profiler failed to start. Another profiler is running.";
     return;
+  }
+
+  // TODO(fishx): Allow user disable device tracer.
+  device_tracer_ = CreateDeviceTracer();
+  if (!device_tracer_) {
+    LOG(WARNING) << "Continue profiling without device tracer. "
+                 << "Failed to create device tracer.";
+    return;
+  }
+  class Status s = device_tracer_->Start();
+  if (!s.ok()) {
+    device_tracer_.reset(nullptr);
+    LOG(WARNING) << "Continue profiling without device tracer. "
+                 << s.error_message();
   }
 }
 
-EagerProfiler::~EagerProfiler() {
-  context_->ClearRunMetadataListener();
-  LOG(INFO) << "Eager Profiler ended with status:" << status_;
-}
+EagerProfiler::~EagerProfiler() { Stop(); }
 
-void EagerProfiler::GetMergetRunMetadata(RunMetadata* metadata) {
-  mutex_lock ml(*context_->MetadataMu());
-  mutex_lock l(mutex_);
-  *metadata = run_metadata_;
-  metadata->MergeFrom(*context_->RunMetadataProto());
+void EagerProfiler::Stop() {
+  if (context_ != nullptr) {
+    context_->ClearRunMetadataListener();
+    run_metadata_.MergeFrom(*context_->RunMetadataProto());
+    context_ = nullptr;
+    if (device_tracer_ != nullptr) {
+      tensorflow::Status s = device_tracer_->Stop();
+      if (!s.ok()) {
+        device_tracer_.reset(nullptr);
+        LOG(WARNING) << "Failed to stop device tracer. " << s.error_message();
+      }
+    }
+    LOG(INFO) << "Eager Profiler ended with status:" << status_;
+  }
 }
 
 }  // namespace tensorflow
