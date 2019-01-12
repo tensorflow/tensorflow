@@ -3774,12 +3774,16 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
   HloComputation::Builder builder(TestName());
 
   Shape shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  std::vector<HloInstruction*> params;
+  for (int i = 0; i < 3; ++i) {
+    params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
+        i + 1, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+  }
   builder.AddInstruction(HloInstruction::CreateDynamicSlice(
       shape,
       builder.AddInstruction(
           HloInstruction::CreateParameter(0, shape, "slice_from")),
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
+      params,
       /*slice_sizes=*/{10, 100, 1000}));
 
   auto computation = m->AddEntryComputation(builder.Build());
@@ -3798,28 +3802,35 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
   Shape full_shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
   Shape slice_shape = ShapeUtil::MakeShape(F32, {10, 1, 1000});
 
+  std::vector<HloInstruction*> slice_indices, update_indices;
+  for (int i = 0; i < 3; ++i) {
+    slice_indices.push_back(
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            i + 1, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+    update_indices.push_back(
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            i + 5, ShapeUtil::MakeShape(U32, {}), "update_indices")));
+  }
   HloInstruction* slice =
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
           slice_shape,
           builder.AddInstruction(
               HloInstruction::CreateParameter(0, full_shape, "slice_from")),
-          builder.AddInstruction(HloInstruction::CreateParameter(
-              1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
+          slice_indices,
           /*slice_sizes=*/{10, 1, 1000}));
 
   builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       slice_shape,
       builder.AddInstruction(
-          HloInstruction::CreateParameter(2, slice_shape, "to_update")),
-      slice,
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
+          HloInstruction::CreateParameter(4, slice_shape, "to_update")),
+      slice, update_indices));
 
   auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
-              GmockMatch(m::DynamicSlice(m::Parameter(), m::Parameter())));
+              GmockMatch(m::DynamicSlice(m::Parameter(), m::Parameter(),
+                                         m::Parameter(), m::Parameter())));
 }
 
 // Test that two consecutive broadcasts can be merged to one.
@@ -4480,9 +4491,10 @@ TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
   HloInstruction* const update = builder.AddInstruction(
       HloInstruction::CreateParameter(1, update_shape, "update"));
   HloInstruction* const start_indices = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int>({0})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>({})));
   builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      dslice_shape, operand, update, start_indices));
+      dslice_shape, operand, update,
+      std::initializer_list<HloInstruction*>({start_indices})));
   const HloComputation* const computation =
       m->AddEntryComputation(builder.Build());
 

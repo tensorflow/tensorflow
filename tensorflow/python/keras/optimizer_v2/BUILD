@@ -177,11 +177,7 @@ py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
-        "manual",
-        "no_gpu",
-        "no_oss",
         "no_windows",
-        "notap",
     ],
     deps = [
         ":optimizer_v2",
@@ -217,4 +213,5 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 2,
 )

@@ -817,6 +817,9 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
       continue;
     }
 
+// TODO(penporn):
+// Remove this once TF-MKL supports _FusedConv2D with these operations.
+#ifndef INTEL_MKL
     // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
     if (FindConv2DWithSqueezeAndBias(ctx, &node,
                                      &conv2d_with_squeeze_and_bias)) {
@@ -839,6 +842,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
                          &invalidated_nodes);
       continue;
     }
+#endif  // !INTEL_MKL
 
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && IsFusedBatchNormCandidate(node)) {

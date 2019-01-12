@@ -94,6 +94,7 @@ cc_library(
         ":target_machine_features",
         "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/tf2xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
         "//tensorflow/compiler/xla/service:scatter_expander",
@@ -241,6 +242,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor/host:host_stream",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -382,7 +384,9 @@ cc_library(
 cc_library(
     name = "dot_op_emitter",
     srcs = ["dot_op_emitter.cc"],
-    hdrs = ["dot_op_emitter.h"],
+    hdrs = [
+        "dot_op_emitter.h",
+    ],
     deps = [
         ":cpu_options",
         ":cpu_runtime",
@@ -396,6 +400,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
@@ -1025,7 +1030,6 @@ tf_cc_test(
     size = "small",
     srcs = ["cpu_eigen_tensor_alignment_test.cc"],
     deps = [
-        ":dot_op_emitter",
         ":ir_emission_utils",
         ":target_machine_features_fake",
         "//tensorflow/compiler/xla:test",

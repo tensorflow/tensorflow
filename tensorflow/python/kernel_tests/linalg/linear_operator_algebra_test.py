@@ -30,6 +30,8 @@ _CHOLESKY_DECOMPS = linear_operator_algebra._CHOLESKY_DECOMPS
 _MATMUL = linear_operator_algebra._MATMUL
 _registered_cholesky = linear_operator_algebra._registered_cholesky
 _registered_matmul = linear_operator_algebra._registered_matmul
+_INVERSES = linear_operator_algebra._INVERSES
+_registered_inverse = linear_operator_algebra._registered_inverse
 # pylint: enable=protected-access
 
 
@@ -127,6 +129,52 @@ class MatmulTest(test.TestCase):
   def testExactMatmulRegistrationsAllMatch(self):
     for (k, v) in _MATMUL.items():
       self.assertEqual(v, _registered_matmul(k[0], k[1]))
+
+
+class InverseTest(test.TestCase):
+
+  def testRegistration(self):
+
+    class CustomLinOp(linear_operator.LinearOperator):
+
+      def _matmul(self, a):
+        pass
+
+      def _shape(self):
+        return tensor_shape.TensorShape([1, 1])
+
+      def _shape_tensor(self):
+        pass
+
+    # Register Inverse to a lambda that spits out the name parameter
+    @linear_operator_algebra.RegisterInverse(CustomLinOp)
+    def _inverse(a):  # pylint: disable=unused-argument,unused-variable
+      return "OK"
+
+    with self.assertRaisesRegexp(ValueError, "singular"):
+      CustomLinOp(dtype=None, is_non_singular=False).inverse()
+
+    self.assertEqual("OK", CustomLinOp(
+        dtype=None, is_non_singular=True).inverse())
+
+  def testRegistrationFailures(self):
+
+    class CustomLinOp(linear_operator.LinearOperator):
+      pass
+
+    with self.assertRaisesRegexp(TypeError, "must be callable"):
+      linear_operator_algebra.RegisterInverse(CustomLinOp)("blah")
+
+    # First registration is OK
+    linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
+
+    # Second registration fails
+    with self.assertRaisesRegexp(ValueError, "has already been registered"):
+      linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
+
+  def testExactRegistrationsAllMatch(self):
+    for (k, v) in _INVERSES.items():
+      self.assertEqual(v, _registered_inverse(k[0]))
 
 
 if __name__ == "__main__":

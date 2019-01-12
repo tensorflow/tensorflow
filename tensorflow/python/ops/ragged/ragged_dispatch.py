@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
@@ -282,6 +283,7 @@ _UNARY_ELEMENTWISE_OPS = [
     array_ops.zeros_like,
     array_ops.zeros_like_v2,
     clip_ops.clip_by_value,
+    gen_bitwise_ops.invert,
     math_ops.abs,
     math_ops.acos,
     math_ops.acosh,
@@ -348,6 +350,11 @@ _UNARY_LIST_ELEMENTWISE_OPS = [
 ]
 
 _BINARY_ELEMENTWISE_OPS = [
+    gen_bitwise_ops.bitwise_and,
+    gen_bitwise_ops.bitwise_or,
+    gen_bitwise_ops.bitwise_xor,
+    gen_bitwise_ops.left_shift,
+    gen_bitwise_ops.right_shift,
     math_ops.add,
     math_ops.atan2,
     math_ops.complex,

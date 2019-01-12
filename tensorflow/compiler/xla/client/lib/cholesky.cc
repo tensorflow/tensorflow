@@ -68,29 +68,26 @@ XlaOp CholeskyUnblocked(XlaOp a, PrecisionConfig::Precision precision) {
     auto body_fn =
         [&](XlaOp i, absl::Span<const XlaOp> loop_vars,
             XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
-      Shape col_shape;
-      Shape row_shape;
-      for (int64 d : major_dims) {
-        row_shape.add_dimensions(d);
-        col_shape.add_dimensions(d);
-      }
-      row_shape.add_dimensions(1);
-      row_shape.add_dimensions(n);
-      row_shape.set_element_type(a_shape.element_type());
-      auto mask_zeros_row = Zeros(body_builder, row_shape);
+      std::vector<int64> row_shape_dims(major_dims.begin(), major_dims.end());
+      std::vector<int64> col_shape_dims(major_dims.begin(), major_dims.end());
+      row_shape_dims.push_back(1);
+      row_shape_dims.push_back(n);
+      auto mask_zeros_row =
+          Zeros(body_builder,
+                ShapeUtil::MakeShape(a_shape.element_type(), row_shape_dims));
 
-      col_shape.add_dimensions(n);
-      col_shape.add_dimensions(1);
-      col_shape.set_element_type(a_shape.element_type());
-      auto mask_zeros_col = Zeros(body_builder, col_shape);
+      col_shape_dims.push_back(n);
+      col_shape_dims.push_back(1);
+      auto mask_zeros_col =
+          Zeros(body_builder,
+                ShapeUtil::MakeShape(a_shape.element_type(), col_shape_dims));
 
-      std::vector<int32> mask_vector(n);
-      std::iota(mask_vector.begin(), mask_vector.end(), 0);
-      auto mask_range = ConstantR1<int32>(body_builder, mask_vector);
       auto mask_range_row =
-          Broadcast(Reshape(mask_range, {0}, {1, n}), major_dims);
+          Iota(body_builder, ShapeUtil::MakeShape(S32, row_shape_dims),
+               /*iota_dimension=*/n_dims - 1);
       auto mask_range_col =
-          Broadcast(Reshape(mask_range, {0}, {n, 1}), major_dims);
+          Iota(body_builder, ShapeUtil::MakeShape(S32, col_shape_dims),
+               /*iota_dimension=*/n_dims - 2);
       auto body_a = loop_vars[0];
       auto body_l = loop_vars[1];
 

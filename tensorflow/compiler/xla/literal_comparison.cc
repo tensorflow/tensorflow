@@ -90,6 +90,12 @@ bool CompareEqual<complex64>(complex64 lhs, complex64 rhs,
   return CompareEqual<float>(lhs.real(), rhs.real(), multi_index) &&
          CompareEqual<float>(lhs.imag(), rhs.imag(), multi_index);
 }
+template <>
+bool CompareEqual<complex128>(complex128 lhs, complex128 rhs,
+                              absl::Span<const int64> multi_index) {
+  return CompareEqual<double>(lhs.real(), rhs.real(), multi_index) &&
+         CompareEqual<double>(lhs.imag(), rhs.imag(), multi_index);
+}
 
 template <typename NativeT, typename UnsignedT>
 Status MakeBitwiseErrorStatus(NativeT lhs, NativeT rhs,
@@ -139,6 +145,14 @@ template <>
 Status MakeErrorStatus(complex64 lhs, complex64 rhs,
                        absl::Span<const int64> multi_index) {
   if (!CompareEqual<float>(lhs.real(), rhs.real(), multi_index)) {
+    return MakeErrorStatus(lhs.real(), rhs.real(), multi_index);
+  }
+  return MakeErrorStatus(lhs.imag(), rhs.imag(), multi_index);
+}
+template <>
+Status MakeErrorStatus(complex128 lhs, complex128 rhs,
+                       absl::Span<const int64> multi_index) {
+  if (!CompareEqual<double>(lhs.real(), rhs.real(), multi_index)) {
     return MakeErrorStatus(lhs.real(), rhs.real(), multi_index);
   }
   return MakeErrorStatus(lhs.imag(), rhs.imag(), multi_index);
@@ -198,13 +212,6 @@ bool NanMismatch(NativeT expected, NativeT actual, bool relaxed_nans) {
 }
 
 template <>
-bool NanMismatch<complex64>(complex64 expected, complex64 actual,
-                            bool relaxed_nans) {
-  return NanMismatch<float>(expected.real(), actual.real(), relaxed_nans) ||
-         NanMismatch<float>(expected.imag(), actual.imag(), relaxed_nans);
-}
-
-template <>
 bool NanMismatch<half>(half expected, half actual, bool relaxed_nans) {
   return NanMismatch<float>(static_cast<float>(expected),
                             static_cast<float>(actual), relaxed_nans);
@@ -229,6 +236,11 @@ string FpValueToString(NativeT value) {
 
 template <>
 string FpValueToString<complex64>(complex64 value) {
+  return absl::StrFormat("%8.4g + %8.4fi", value.real(), value.imag());
+}
+
+template <>
+string FpValueToString<complex128>(complex128 value) {
   return absl::StrFormat("%8.4g + %8.4fi", value.real(), value.imag());
 }
 
@@ -434,7 +446,7 @@ class NearComparator {
     mismatches_.data<bool>()[linear_index] = true;
   }
 
-  // For complex64 types, we compare real and imaginary parts individually.
+  // For complex types, we compare real and imaginary parts individually.
   void CompareValues(complex64 expected, complex64 actual, int64 linear_index) {
     bool mismatch = false;
     CompareValues<float>(expected.real(), actual.real(), linear_index);
@@ -445,6 +457,29 @@ class NearComparator {
       num_mismatches_--;
     }
     CompareValues<float>(expected.imag(), actual.imag(), linear_index);
+    if (mismatches_.data<bool>()[linear_index] == true) {
+      mismatch = true;
+      // Delay the mismatch count increase for imag part, instead increase
+      // mismatch by 1 for the entire complex number.
+      num_mismatches_--;
+    }
+    if (mismatch == true) {
+      num_mismatches_++;
+    }
+    mismatches_.data<bool>()[linear_index] = mismatch;
+  }
+
+  void CompareValues(complex128 expected, complex128 actual,
+                     int64 linear_index) {
+    bool mismatch = false;
+    CompareValues<double>(expected.real(), actual.real(), linear_index);
+    if (mismatches_.data<bool>()[linear_index] == true) {
+      mismatch = true;
+      // Delay the mismatch count increase for real part, instead increase
+      // mismatch by 1 for the entire complex number.
+      num_mismatches_--;
+    }
+    CompareValues<double>(expected.imag(), actual.imag(), linear_index);
     if (mismatches_.data<bool>()[linear_index] == true) {
       mismatch = true;
       // Delay the mismatch count increase for imag part, instead increase
@@ -665,6 +700,9 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual) {
     case C64:
       result = Equal<complex64>(expected, actual, index, 0);
       break;
+    case C128:
+      result = Equal<complex128>(expected, actual, index, 0);
+      break;
     case TUPLE: {
       for (int i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
         result.Update(EqualHelper(LiteralSlice(expected, {i}),
@@ -747,6 +785,10 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case C64:
         return NearComparator<complex64>::Compare(
+            expected, actual, error, detailed_message, miscompare_callback);
+        break;
+      case C128:
+        return NearComparator<complex128>::Compare(
             expected, actual, error, detailed_message, miscompare_callback);
         break;
       default:

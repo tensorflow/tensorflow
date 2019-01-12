@@ -148,7 +148,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return Status::OK();
   }
 
-  string DebugString() override { return "SummaryFileWriter"; }
+  string DebugString() const override { return "SummaryFileWriter"; }
 
  private:
   double GetWallTime() {

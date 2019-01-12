@@ -39,8 +39,6 @@ following new APIs:
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import ast
-import pasta
 import six
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
@@ -416,27 +414,6 @@ class TestAstEdits(test_util.TensorFlowTestCase):
     for text in false_alarms:
       (_, report, _), _ = self._upgrade(FooWarningSpec(), text)
       self.assertNotIn("not good", report)
-
-
-class ManualEditsTest(test_util.TensorFlowTestCase):
-
-  def disabled_test_arg_order(self):
-    """Tests that generated arg order is sane."""
-    text = "f(a)"
-    t = pasta.parse(text)
-    node = pasta.ast_utils.find_nodes_by_type(t, (ast.Call,))[0]
-    arg = ast.keyword(arg="b", value=ast.Num(n=0))
-    node.keywords.append(arg)
-
-    # This is only needed in Python3, and I think it's a bug (but maybe in ast).
-    arg.value.lineno = 0
-    arg.value.col_offset = 0
-
-    # pasta.dump should never put kwargs before args, even if the col_offset is
-    # messed up.
-    # This fails if run with python3, but works find for python2.
-    # In python3, the dump yields "f(b=0, a)".
-    self.assertEqual(pasta.dump(t), "f(a, b=0)")
 
 
 if __name__ == "__main__":

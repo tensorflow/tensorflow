@@ -79,8 +79,8 @@ class BitcastOp : public XlaOpKernel {
     if (src_dtype_ == dst_dtype_) {
       output = input;
     } else {
-      // The only complex type in XLA is C64, so error out if the bitcast has a
-      // complex source or destination type and the bitcast is not trivial.
+      // Error out if the bitcast has a complex source or destination type and
+      // the bitcast is not trivial.
       OP_REQUIRES(ctx,
                   !xla::primitive_util::IsComplexType(src_type_) &&
                       !xla::primitive_util::IsComplexType(dst_type_),

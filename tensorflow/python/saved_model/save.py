@@ -22,6 +22,7 @@ import collections
 import functools
 import os
 
+from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.eager import context
@@ -38,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -222,7 +224,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
 
 
 def _tensor_dict_to_tensorinfo(tensor_dict):
-  return {key: utils_impl.build_tensor_info(value)
+  return {key: utils_impl.build_tensor_info_internal(value)
           for key, value in tensor_dict.items()}
 
 
@@ -610,13 +612,21 @@ def _write_object_proto(obj, proto, asset_file_def_index, node_ids):
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
     proto.variable.SetInParent()
+    proto.variable.trainable = obj.trainable
     proto.variable.dtype = obj.dtype.as_datatype_enum
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
   elif isinstance(obj, def_function.PolymorphicFunction):
     proto.function.CopyFrom(
         function_serialization.serialize_polymorphic_function(obj, node_ids))
   else:
-    proto.user_object.SetInParent()
+    registered_type_proto = revived_types.serialize(obj)
+    if registered_type_proto is None:
+      # Fallback for types with no matching registration
+      registered_type_proto = saved_object_graph_pb2.SavedUserObject(
+          identifier="_generic_user_object",
+          version=versions_pb2.VersionDef(
+              producer=1, min_consumer=1, bad_consumers=[]))
+    proto.user_object.CopyFrom(registered_type_proto)
 
 
 @tf_export("saved_model.save", v1=["saved_model.experimental.save"])

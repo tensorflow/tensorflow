@@ -53,9 +53,10 @@ using NodeOut = NodeBuilder::NodeOut;
 class LowerWhileHelper {
  public:
   static Status Run(Node* while_op, const string& cond_fn_name,
-                    const string& body_fn_name, Graph* graph,
-                    const FunctionLibraryDefinition& flib) {
-    LowerWhileHelper helper(while_op, cond_fn_name, body_fn_name, graph, flib);
+                    const string& body_fn_name, int parallel_iterations,
+                    Graph* graph, const FunctionLibraryDefinition& flib) {
+    LowerWhileHelper helper(while_op, cond_fn_name, body_fn_name,
+                            parallel_iterations, graph, flib);
     return helper.RunInternal();
   }
 
@@ -64,8 +65,8 @@ class LowerWhileHelper {
   // and body functions named `cond_fn_name` and `body_fn_name` respectively in
   // the given graph.
   LowerWhileHelper(Node* while_op, const string& cond_fn_name,
-                   const string& body_fn_name, Graph* graph,
-                   const FunctionLibraryDefinition& flib);
+                   const string& body_fn_name, int parallel_iterations,
+                   Graph* graph, const FunctionLibraryDefinition& flib);
 
   Status RunInternal();
 
@@ -132,6 +133,8 @@ class LowerWhileHelper {
   const FunctionLibraryDefinition& flib_;
   // Name of the `while_op_`.
   string name_;
+  // Max number of parallel_iterations for the while loop.
+  const int parallel_iterations_;
 
   NodeDebugInfo debug_info_;
   NodeBuilder cond_call_builder_;
@@ -147,12 +150,14 @@ class LowerWhileHelper {
 };
 
 LowerWhileHelper::LowerWhileHelper(Node* while_op, const string& cond_fn_name,
-                                   const string& body_fn_name, Graph* graph,
+                                   const string& body_fn_name,
+                                   int parallel_iterations, Graph* graph,
                                    const FunctionLibraryDefinition& flib)
     : while_op_(while_op),
       graph_(graph),
       flib_(flib),
       name_(while_op->name()),
+      parallel_iterations_(parallel_iterations),
       debug_info_(*while_op_),
       cond_call_builder_(NewName("cond"), cond_fn_name, graph->op_registry(),
                          &debug_info_),
@@ -194,6 +199,7 @@ Status LowerWhileHelper::CreateEnterNodes() {
                                    graph_->op_registry(), &debug_info_)
                            .Input(NodeOut(edge->src(), edge->src_output()))
                            .Attr("frame_name", name_)
+                           .Attr("parallel_iterations", parallel_iterations_)
                            .Finalize(graph_, &enter_node));
     enter_nodes_[edge->dst_input()] = enter_node;
   }
@@ -392,9 +398,15 @@ Status RewriteWhileNode(Node* n, Graph* g,
   if (body_attr == nullptr) {
     return errors::InvalidArgument("While body function missing");
   }
+  const AttrValue* parallel_iterations_attr =
+      n->attrs().Find("parallel_iterations");
+  if (parallel_iterations_attr == nullptr) {
+    return errors::InvalidArgument("parallel_iterations attr missing");
+  }
 
-  TF_RETURN_IF_ERROR(LowerWhileHelper::Run(n, cond_attr->func().name(),
-                                           body_attr->func().name(), g, flib));
+  TF_RETURN_IF_ERROR(LowerWhileHelper::Run(
+      n, cond_attr->func().name(), body_attr->func().name(),
+      parallel_iterations_attr->i(), g, flib));
   g->RemoveNode(n);
 
   return Status::OK();
