@@ -199,6 +199,7 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """Global and per-replica batching are equivalent for OneDeviceStrategy."""
     return True
 
 

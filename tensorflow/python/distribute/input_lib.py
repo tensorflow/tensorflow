@@ -689,7 +689,7 @@ class MultiStepContext(object):
       if reduce_op is None:
         self._last_step_outputs[name] = output
       else:
-        distribution = distribution_strategy_context.get_distribution_strategy()
+        distribution = distribution_strategy_context.get_strategy()
         self._last_step_outputs[name] = distribution.reduce(reduce_op, output)
     else:
       assert reduce_op is not None

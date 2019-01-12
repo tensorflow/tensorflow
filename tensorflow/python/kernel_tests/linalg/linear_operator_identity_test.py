@@ -463,7 +463,7 @@ class LinearOperatorScaledIdentityTest(
         is_positive_definite=False, is_non_singular=True)
     self.assertFalse(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
-    self.assertTrue(operator.is_self_adjoint is None)
+    self.assertTrue(operator.is_self_adjoint)  # Auto-set due to real multiplier
 
   def test_identity_matmul(self):
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
@@ -509,6 +509,7 @@ class LinearOperatorScaledIdentityTest(
     self.assertIsInstance(
         operator.inverse(),
         linalg_lib.LinearOperatorScaledIdentity)
+
 
 if __name__ == "__main__":
   test.main()

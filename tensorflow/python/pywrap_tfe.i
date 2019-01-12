@@ -77,6 +77,7 @@ limitations under the License.
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
 %}
 
 %typemap(in) (const void* proto) {
@@ -233,6 +234,7 @@ limitations under the License.
 
 %include "tensorflow/python/eager/pywrap_tfe.h"
 %include "tensorflow/c/c_api_experimental.h"
+%include "tensorflow/c/eager/c_api_experimental.h"
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;

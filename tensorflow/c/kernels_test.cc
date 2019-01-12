@@ -41,6 +41,9 @@ static void* MyCreateFunc(TF_OpKernelConstruction* ctx) {
 static void MyComputeFunc(void* kernel, TF_OpKernelContext* ctx) {
   struct MyCustomKernel* s = static_cast<struct MyCustomKernel*>(kernel);
   s->compute_called = true;
+  if (ctx != nullptr) {
+    EXPECT_EQ(43, TF_StepId(ctx));
+  }
 }
 
 static void MyDeleteFunc(void* kernel) {
@@ -155,6 +158,8 @@ TEST(TestKernel, TestInputAndOutputCount) {
     TF_SetOutput(ctx, 24, input, s);
     EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
 
+    EXPECT_EQ(TF_UINT8, TF_ExpectedOutputDataType(ctx, 0));
+
     TF_DeleteStatus(s);
     if (input != nullptr) {
       TF_DeleteTensor(input);
@@ -175,6 +180,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
     OpKernelContext::Params p;
     DummyDevice dummy_device(nullptr, false);
     p.device = &dummy_device;
+    p.step_id = 43;
 
     Tensor t(tensorflow::uint8(123));
 

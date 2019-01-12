@@ -919,8 +919,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
-  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {1, 6});
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto dynamic_slice = DynamicSlice(lhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
@@ -946,8 +947,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
-  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {6, 1});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(rhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
@@ -975,8 +977,9 @@ XLA_TEST_F(DotOperationTest,
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
-  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {6, 1});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(lhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
@@ -1002,8 +1005,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSReverseMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
-  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {1, 6});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(rhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
@@ -1034,8 +1038,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSRows) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
-  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {6, 1});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(lhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
@@ -1066,8 +1071,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSRows) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
-  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {6, 1});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(rhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
@@ -1090,8 +1096,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSCols) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
-  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {1, 6});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(lhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
@@ -1114,8 +1121,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSCols) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
-  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {1, 6});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(rhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);

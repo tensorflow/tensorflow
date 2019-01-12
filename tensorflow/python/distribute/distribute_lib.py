@@ -210,12 +210,14 @@ class _SameScopeAgainContext(object):
 # TODO(yuefengz): add more replication modes.
 @tf_export("distribute.InputReplicationMode")
 class InputReplicationMode(enum.Enum):
-  """Replication mode for input function."""
+  """Replication mode for input function.
 
-  # The input function will be called on each worker independently, creating as
-  # many input pipelines as number of workers. Replicas will dequeue from the
-  # local Dataset on their worker. Distribution Strategy doesn't manage any
-  # state sharing between such separate input pipelines.
+  * `PER_WORKER`: The input function will be called on each worker
+    independently, creating as many input pipelines as number of workers.
+    Replicas will dequeue from the local Dataset on their worker.
+    `tf.distribute.Strategy` doesn't manage any state sharing between such
+    separate input pipelines.
+  """
   PER_WORKER = "PER_WORKER"
 
 
@@ -353,7 +355,8 @@ class DistributionStrategy(object):
     ```
 
     Args:
-      dataset_fn: A function that returns a `tf.data.Dataset`.
+      dataset_fn: A function that returns a `tf.data.Dataset` with per-replica
+        batching.
 
     Returns:
       A `PerReplicaDataset` that will produce data for each replica.
@@ -390,28 +393,36 @@ class DistributionStrategy(object):
     """Returns an iterator split across replicas created from an input function.
 
     The `input_fn` should take an `tf.distribute.InputContext` object where
-    information about input sharding can be accessed:
+    information about batching and input sharding can be accessed:
 
     ```
     def input_fn(input_context):
-      d = tf.data.Dataset.from_tensors([[1.]]).repeat()
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
       return d.shard(input_context.num_input_pipelines,
                      input_context.input_pipeline_id)
     with strategy.scope():
-      iterator = strategy.make_input_fn_iterator(
-          input_fn)
-      replica_results = strategy.extended.call_for_each_replica(
-          replica_fn, iterator.get_next())
+      iterator = strategy.make_input_fn_iterator(input_fn)
+      replica_results = strategy.experimental_run(replica_fn, iterator)
     ```
 
+    The `tf.data.Dataset` returned by `input_fn` should have a per-replica
+    batch size, which may be computed using
+    `input_context.get_per_replica_batch_size`.
+
     Args:
-      input_fn: A function that returns a `tf.data.Dataset`. This function is
-        expected to take an `tf.distribute.InputContext` object.
+      input_fn: A function taking a `tf.distribute.InputContext` object and
+        returning a `tf.data.Dataset`.
       replication_mode: an enum value of `tf.distribute.InputReplicationMode`.
-        Only `PER_WORKER` is supported currently.
+        Only `PER_WORKER` is supported currently, which means there will be
+        a single call to `input_fn` per worker. Replicas will dequeue from the
+        local `tf.data.Dataset` on their worker.
 
     Returns:
-      An iterator object that can be initialized and fetched next element.
+      An iterator object that should first be `.initialize()`-ed. It may then
+      either be passed to `strategy.experimental_run()` or you can
+      `iterator.get_next()` to get the next value to pass to
+      `strategy.extended.call_for_each_replica()`.
     """
     if replication_mode != InputReplicationMode.PER_WORKER:
       raise ValueError(
@@ -493,42 +504,6 @@ class DistributionStrategy(object):
   def broadcast(self, tensor, destinations=None):
     """DEPRECATED: use extended.broadcast_to() instead."""
     return self._extended.broadcast_to(tensor, destinations)
-
-  @doc_controls.do_not_generate_docs  # Use experimental_initialize() instead.
-  def initialize(self):
-    """DEPRECATED: Use `experimental_initialize()` instead."""
-    return self._extended._initialize()  # pylint: disable=protected-access
-
-  def experimental_initialize(self):
-    """Any initialization to be done before running any computations.
-
-    In eager mode, it executes any initialization as a side effect.
-    In graph mode, it creates the initialization ops and returns them.
-
-    For example, TPU initialize_system ops.
-
-    Returns:
-      A list of ops to execute.
-    """
-    return self._extended._initialize()  # pylint: disable=protected-access
-
-  @doc_controls.do_not_generate_docs  # Use experimental_finalize() instead.
-  def finalize(self):
-    """DEPRECATED: Use `experimental_finalize()` instead."""
-    return self._extended._finalize()  # pylint: disable=protected-access
-
-  def experimental_finalize(self):
-    """Any final actions to be done at the end of all computations.
-
-    In eager mode, it executes any finalize actions as a side effect.
-    In graph mode, it creates the finalize ops and returns them.
-
-    For example, TPU shutdown ops.
-
-    Returns:
-      A list of ops to execute.
-    """
-    return self._extended._finalize()  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
   def run_steps_on_dataset(self, fn, iterator, iterations=1,
@@ -1159,12 +1134,6 @@ class DistributionStrategyExtended(object):
 
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
-
-  def _initialize(self):
-    return []
-
-  def _finalize(self):
-    return []
 
   def experimental_run_steps_on_iterator(self, fn, iterator, iterations=1,
                                          initial_loop_values=None):
@@ -1813,6 +1782,7 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """Global and per-replica batching are equivalent for this strategy."""
     return True
 
 

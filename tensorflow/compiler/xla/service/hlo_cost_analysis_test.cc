@@ -529,7 +529,8 @@ TEST_F(HloCostAnalysisTest, DynamicSlice) {
   // Test the analysis on a slice.
   XlaBuilder builder("dynamic-slice");
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
-  DynamicSlice(x, ConstantR1<int32>(&builder, {1}), {1});
+  DynamicSlice(x, absl::Span<const XlaOp>({ConstantR0<int32>(&builder, 1)}),
+               {1});
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
@@ -545,7 +546,7 @@ TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
   XlaBuilder builder("dynamic-update-slice");
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
   DynamicUpdateSlice(x, ConstantR1<float>(&builder, {1.0}),
-                     ConstantR1<int32>(&builder, {1}));
+                     absl::Span<const XlaOp>({ConstantR0<int32>(&builder, 1)}));
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.

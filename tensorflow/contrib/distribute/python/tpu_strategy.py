@@ -295,7 +295,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
-
     return input_lib.DatasetIterator(dataset, self._input_workers,
                                      self._num_replicas_in_sync)
 
@@ -667,6 +666,14 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
+
+    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
+    batching.
+
+    Returns:
+      Boolean.
+    """
     return True
 
 

@@ -105,6 +105,8 @@ std::map<string, string> kBrokenTests = {
 
     // Strided Slice chooses the wrong dimension.
     {R"(^\/strided_slice_buggy)", "119786029"},
+
+    {R"(^\/conv2d_transpose_filter_shape=\[1,4,8,3\])", "122735908"},
 };
 
 // Allows test data to be unarchived into a temporary directory and makes

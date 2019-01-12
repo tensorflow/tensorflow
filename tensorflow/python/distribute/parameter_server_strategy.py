@@ -78,9 +78,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   variables.
 
   2) It is also not recommended to open a colocation scope (i.e. calling
-  `tf.colocate_with`) under the strategy's scope. For colocating variables,
-  use `distribution.colocate_vars_with` instead. Colocation of ops will possibly
-  create conflicts of device assignment.
+  `tf.colocate_with`) under the strategy's scope. For colocating variables, use
+  `strategy.extended.colocate_vars_with` instead. Colocation of ops will
+  possibly create conflicts of device assignment.
   """
 
   def __init__(self):
@@ -536,4 +536,12 @@ class ParameterServerStrategyExtended(
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
+
+    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
+    batching.
+
+    Returns:
+      Boolean.
+    """
     return True

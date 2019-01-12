@@ -99,7 +99,7 @@ class StandardSingleLossStep(StandardInputStep):
         gradients_fn = backprop.implicit_grad(self._loss_fn)
         gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
 
-        grads_and_vars = self.distribution.call_for_each_replica(
+        grads_and_vars = self.distribution.extended.call_for_each_replica(
             gradients_fn, args=(ctx, inputs))
         # If threads use layers, then we need to run the first step
         # sequentially, so that layers.build() is not executed in parallel.
@@ -109,6 +109,6 @@ class StandardSingleLossStep(StandardInputStep):
             self.distribution, grads_and_vars)
 
       # TODO(priyag): Return the outputs, context, etc as well.
-      ctx = self.distribution.run_steps_on_dataset(
+      ctx = self.distribution.extended.experimental_run_steps_on_iterator(
           step_fn, self._iterator, self._iterations_per_step)
       return ctx.run_op

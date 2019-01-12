@@ -20,12 +20,14 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #if GOOGLE_CUDA
@@ -61,6 +63,12 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
         << " Thread     = " << hex << thr_.get() << dec << endl;
     return oss.str();
   }
+
+  // Lookup table for temporary staging areas of input tensors for calibration.
+  std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
+
+  // Temporary staging areas for calibration inputs.
+  std::vector<PersistentTensor> device_tensors_;
 
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;

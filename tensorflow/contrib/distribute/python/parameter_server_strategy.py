@@ -70,9 +70,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   variables.
 
   3) It is also not recommended to open a colocation scope (i.e. calling
-  `tf.colocate_with`) under the strategy's scope. For colocating variables,
-  use `distribution.colocate_vars_with` instead. Colocation of ops will possibly
-  create conflicts of device assignment.
+  `tf.colocate_with`) under the strategy's scope. For colocating variables, use
+  `strategy.extended.colocate_vars_with` instead. Colocation of ops will
+  possibly create conflicts of device assignment.
   """
 
   def __init__(self, num_gpus_per_worker=0):
@@ -88,6 +88,31 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     """
     super(ParameterServerStrategy, self).__init__(
         ParameterServerExtended(self, num_gpus_per_worker))
+
+  # Override to change the documentation to reflect the different handling of
+  # global vs. local batch size between core and contrib.
+  def make_dataset_iterator(self, dataset):  # pylint: disable=useless-super-delegation
+    """Makes an iterator for input provided via `dataset`.
+
+    NOTE: The batch size of the `dataset` argument is treated differently for
+    this contrib version of `ParameterServerStrategy`.
+
+    Data from the given dataset will be distributed evenly across all the
+    compute replicas. We will assume that the input dataset is batched by the
+    per-replica batch size.
+
+    The user could also use `make_input_fn_iterator` if they want to
+    customize which input is fed to which replica/worker etc.
+
+    Args:
+      dataset: `tf.data.Dataset` that will be distributed evenly across all
+        replicas.
+
+    Returns:
+      An `tf.distribute.InputIterator` which returns inputs for each step of the
+      computation.  User should call `initialize` on the returned iterator.
+    """
+    return super(ParameterServerStrategy, self).make_dataset_iterator(dataset)
 
   # Override to change the documentation to reflect the different handling of
   # global vs. local batch size between core and contrib.
@@ -143,4 +168,5 @@ class ParameterServerExtended(CoreParameterServerExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """The contrib version of PS strategy uses per-replica batch size."""
     return False

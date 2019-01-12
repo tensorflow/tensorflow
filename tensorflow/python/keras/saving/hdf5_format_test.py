@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #,============================================================================
-"""Tests for model saving."""
+"""Tests for model saving in the HDF5 format."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,8 +31,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
@@ -174,17 +174,17 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     ]
     for layer, weights, input_shape in cases:
       layer.build(input_shape)
-      _ = keras.engine.saving.preprocess_weights_for_loading(
+      _ = hdf5_format.preprocess_weights_for_loading(
           layer, weights, original_keras_version='1')
 
     model = keras.models.Sequential([keras.layers.Dense(2, input_dim=2)])
-    _ = keras.engine.saving.preprocess_weights_for_loading(
+    _ = hdf5_format.preprocess_weights_for_loading(
         model, model.weights, original_keras_version='1')
 
     x = keras.Input((2,))
     y = keras.layers.Dense(2)(x)
     model = keras.models.Model(x, y)
-    _ = keras.engine.saving.preprocess_weights_for_loading(
+    _ = hdf5_format.preprocess_weights_for_loading(
         model, model.weights, original_keras_version='1')
 
   @parameterized.named_parameters(
@@ -215,7 +215,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       layer = layer_class(**layer_args)
       layer.build(input_shape=layer_args.get('input_shape'))
       weights1 = layer.get_weights()
-      weights2 = keras.engine.saving.preprocess_weights_for_loading(
+      weights2 = hdf5_format.preprocess_weights_for_loading(
           layer, weights1)
       _ = [
           self.assertAllClose(x, y, rtol=1e-05)
@@ -274,7 +274,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
-      saving.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
+      hdf5_format.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
 
       f_model = h5py.File(h5_path, 'r')
       model = keras.models.Sequential()
@@ -288,7 +288,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                  r'Layer #0 \(named \"d1\"\) expects 1 '
                                  r'weight\(s\), but the saved weights have 2 '
                                  r'element\(s\)\.'):
-      saving.load_weights_from_hdf5_group_by_name(f_model, model.layers)
+      hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
   @test_util.run_deprecated_v1
   def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
@@ -312,7 +312,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
-      saving.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
+      hdf5_format.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
 
       f_model = h5py.File(h5_path, 'r')
       model = keras.models.Sequential()
@@ -328,7 +328,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    r'shape=\(3, 10\) dtype=float32> has '
                                    r'shape \(3, 10\), but the saved weight has '
                                    r'shape \(3, 5\)\.'):
-        saving.load_weights_from_hdf5_group_by_name(f_model, model.layers)
+        hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
 
 class TestWholeModelSaving(test.TestCase):

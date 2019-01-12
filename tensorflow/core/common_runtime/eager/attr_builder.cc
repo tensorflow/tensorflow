@@ -42,7 +42,7 @@ const uint32 kIsList = 1U << 31;
 AttrTypeMap* DefaultFunctionAttrTypeMap() {
   AttrTypeMap* map = new AttrTypeMap();
   (*map)["executor_type"] = TF_ATTR_STRING;
-  (*map)["config"] = TF_ATTR_STRING;
+  (*map)["config_proto"] = TF_ATTR_STRING;
   return map;
 }
 
