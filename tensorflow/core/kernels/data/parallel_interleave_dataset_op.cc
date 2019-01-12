@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -120,7 +119,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return MakeUnique<ParallelInterleaveIterator>(
+      return absl::make_unique<ParallelInterleaveIterator>(
           ParallelInterleaveIterator::Params{
               this, strings::StrCat(prefix, "::ParallelInterleaveV2")},
           sloppy_);
@@ -200,7 +199,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
                 params.dataset->num_parallel_calls_, mu_, cond_var_)),
             sloppy_(sloppy),
             current_elements_(params.dataset->cycle_length_),
-            thread_pool_(new thread::ThreadPool(
+            thread_pool_(absl::make_unique<thread::ThreadPool>(
                 Env::Default(), ThreadOptions(),
                 "data_parallel_interleave_worker_pool",
                 port::NumSchedulableCPUs() /* num_threads */,
@@ -513,15 +512,16 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         if (!current_elements_manager_) {
           auto new_ctx = std::make_shared<IteratorContext>(*ctx);
           current_elements_manager_ =
-              WrapUnique<Thread>(ctx->env()->StartThread(
+              absl::WrapUnique<Thread>(ctx->env()->StartThread(
                   {}, "tf_data_parallel_interleave_current",
                   [this, new_ctx]() { CurrentElementsManager(new_ctx); }));
         }
         if (!future_elements_manager_) {
           auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-          future_elements_manager_ = WrapUnique<Thread>(ctx->env()->StartThread(
-              {}, "tf_data_parallel_interleave_future",
-              [this, new_ctx]() { FutureElementsManager(new_ctx); }));
+          future_elements_manager_ =
+              absl::WrapUnique<Thread>(ctx->env()->StartThread(
+                  {}, "tf_data_parallel_interleave_future",
+                  [this, new_ctx]() { FutureElementsManager(new_ctx); }));
         }
       }
 
