@@ -120,8 +120,8 @@ StatusOr<poplin::ConvParams> GetConvolutionParameters(
 static const HloInstruction* FindConvolutionOp(
     const HloInstruction* root, const CompilerAnnotations& annotations) {
   const HloInstruction* inst = root;
-  while (inst->opcode() == HloOpcode::kCall) {
-    inst = annotations.fusion_map.at(inst->to_apply());
+  while (inst->opcode() == HloOpcode::kFusion) {
+    inst = annotations.fusion_map.at(inst->fused_instructions_computation());
   }
   return inst;
 }
@@ -242,9 +242,8 @@ poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
     chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
 
     // OI... ->(GO)(GI)...
-    out = out.reshapePartial(0, 2,
-                             {chan_div[0], out.dim(0) / chan_div[0],
-                              chan_div[1], out.dim(1) / chan_div[1]});
+    out = out.reshapePartial(0, 2, {chan_div[0], out.dim(0) / chan_div[0],
+                                    chan_div[1], out.dim(1) / chan_div[1]});
 
     // (GO)(GI)... -> (GG)OI...
     out = out.dimShufflePartial({2}, {1});
@@ -391,7 +390,8 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
   const HloInstruction* conv = FindConvolutionOp(inst, res.annotations);
 
   poplar::program::Sequence prog;
@@ -459,7 +459,8 @@ StatusOr<poplar::program::Program> ConvBiasApply(CompilerResources& res,
 
   poplar::program::Sequence prog;
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
 
   // Find the biases
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,

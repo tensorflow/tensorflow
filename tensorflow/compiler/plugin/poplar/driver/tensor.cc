@@ -42,7 +42,7 @@ limitations under the License.
 
 #include <poplar/Engine.hpp>
 #include <poplar/OptionFlags.hpp>
-#include <popnn/BatchNorm.hpp>
+#include <poplin/Norms.hpp>
 #include <poputil/TileMapping.hpp>
 
 #include <functional>
@@ -480,7 +480,7 @@ static StatusOr<poplar::Tensor> AddBatchNormScale(poplar::Graph& graph,
   poplar::Tensor acts = outputs[layout_output_idx];
   auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
 
-  return popnn::bn::createBatchNormGamma(graph, pair.first);
+  return poplin::createNormGamma(graph, pair.first);
 }
 
 static StatusOr<poplar::Tensor> AddBatchNormOffset(
@@ -500,7 +500,7 @@ static StatusOr<poplar::Tensor> AddBatchNormOffset(
   poplar::Tensor acts = outputs[layout_output_idx];
   auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
 
-  return popnn::bn::createBatchNormBeta(graph, pair.first);
+  return poplin::createNormBeta(graph, pair.first);
 }
 
 static StatusOr<poplar::Tensor> AddElementwiseBinary(
@@ -529,8 +529,13 @@ static StatusOr<poplar::Tensor> PathTransform(
     auto& inst = *i;
     switch (inst->opcode()) {
       case HloOpcode::kTranspose: {
-        std::vector<unsigned> permutation(
-            convert_array<std::vector<unsigned>>(inst->dimensions()));
+        auto optional_permutation =
+            convert_array<std::vector<unsigned>>(inst->dimensions());
+        if (!optional_permutation) {
+          return xla::FailedPrecondition(
+              "PathTransform - cannot cast permutation.");
+        }
+        std::vector<unsigned> permutation = *optional_permutation;
         std::vector<unsigned> shuffle(permutation.size());
         for (int d = 0; d < permutation.size(); d++) {
           shuffle[permutation[d]] = d;
@@ -652,10 +657,10 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         }
         break;
       }
-      case HloOpcode::kCall: {
-        const HloComputation* comp = tgt->to_apply();
-        if (IsPopOpsCall(comp)) {
-          if (IsPopOpsCall(comp, "depthwise_conv")) {
+      case HloOpcode::kFusion: {
+        const HloComputation* comp = tgt->fused_instructions_computation();
+        if (IsPopOpsFusion(comp)) {
+          if (IsPopOpsFusion(comp, "depthwise_conv")) {
             const HloInstruction* conv_inst = comp->root_instruction();
             switch (target->second.input_index) {
               case 0: {
@@ -675,17 +680,17 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                     "invalid operand for tensor allocation on %s",
                     src.first->name().c_str());
             }
-          } else if (IsPopOpsCall(comp, "conv_biasadd")) {
+          } else if (IsPopOpsFusion(comp, "conv_biasadd")) {
             TF_ASSIGN_OR_RETURN(
                 out,
                 AddConvAddBiasTensor(graph, name, *optional_layout,
                                      *optional_layout_output_idx, tensor_map));
-          } else if (IsPopOpsCall(comp, "matmul_biasadd")) {
+          } else if (IsPopOpsFusion(comp, "matmul_biasadd")) {
             TF_ASSIGN_OR_RETURN(
                 out, AddMatMulAddBiasTensor(graph, name, *optional_layout,
                                             *optional_layout_output_idx,
                                             tensor_map));
-          } else if (IsPopOpsCall(comp, "scaled_inplace")) {
+          } else if (IsPopOpsFusion(comp, "scaled_inplace")) {
             TF_ASSIGN_OR_RETURN(
                 out,
                 AddElementwiseBinary(graph, name, *optional_layout,
@@ -747,6 +752,7 @@ static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
   } else {
     tensor = graph.addConstant(type, dim, data);
   }
+  graph.setTileMapping(tensor, 0);
 
   tensor = ConvertToDeviceLayout(shape, tensor);
 }
@@ -767,6 +773,7 @@ static void AddFp16ConstantTensor(poplar::Graph& graph,
   } else {
     tensor = graph.addConstantHalf(type, dim, (uint16_t*)data);
   }
+  graph.setTileMapping(tensor, 0);
 
   tensor = ConvertToDeviceLayout(shape, tensor);
 }
@@ -792,6 +799,7 @@ static void Add64BitConstantTensor(poplar::Graph& graph,
   } else {
     tensor = graph.addConstant(type, dim, data32);
   }
+  graph.setTileMapping(tensor, 0);
 }
 
 template <typename TYPE>
@@ -1008,8 +1016,13 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
     return in;
   }
 
-  tensorflow::BCast::Vec bcast_shape =
+  auto optional_bcast_shape =
       convert_array<tensorflow::BCast::Vec>(out.dimensions());
+  if (!optional_bcast_shape) {
+    return xla::FailedPrecondition(
+        "BroadcastTensor - cannot cast output shape.");
+  }
+  tensorflow::BCast::Vec bcast_shape = *optional_bcast_shape;
 
   tensorflow::BCast::Vec tensor_shape(ShapeUtil::Rank(out), 1);
   if (dimensions.size() > 0) {
@@ -1030,7 +1043,14 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
   }
 
   poplar::Tensor o = in;
-  o = in.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
+  auto optional_bcast_x_shape =
+      convert_array<std::vector<size_t>>(bcast.x_reshape());
+  if (!optional_bcast_x_shape) {
+    return xla::FailedPrecondition(
+        "BroadcastTensor - cannot cast broadcast shape.");
+  }
+  std::vector<size_t> bcast_x_shape = *optional_bcast_x_shape;
+  o = in.reshape(bcast_x_shape);
   o = TileTensor(bcast.x_bcast(), o);
   return o.reshape(PoplarShapeFromXlaShape(out));
 }

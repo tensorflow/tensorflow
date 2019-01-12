@@ -274,3 +274,5 @@ DotOperationTest_F16F32F64CF64.GeneralMatMulR2LhsR3Rhs POPLAR
 IotaR3PredTest POPLAR // iota PRED support
 
 ArrayElementwiseOpTest.ClampF32 POPLAR // NaN propagation
+
+DynamicUpdateSliceTest.R3ContiguousLarger POPLAR // Update slice is too big for dynamic slice

@@ -114,10 +114,16 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
         if (!input_shapes_match) {
           // if shapes don't match check that they can be broadcasted to the
           // same shape
-          tensorflow::BCast::Vec shape0 =
+          auto shape0_optional =
               convert_array<tensorflow::BCast::Vec>(in0->shape().dimensions());
-          tensorflow::BCast::Vec shape1 =
+          auto shape1_optional =
               convert_array<tensorflow::BCast::Vec>(in1->shape().dimensions());
+          if (!shape0_optional || !shape1_optional) {
+            return xla::FailedPrecondition(
+                "ExpressionOutliner - cannot cast input shape.");
+          }
+          tensorflow::BCast::Vec shape0 = *shape0_optional;
+          tensorflow::BCast::Vec shape1 = *shape1_optional;
 
           const bool valid_bcast = tensorflow::BCast(shape0, shape1).IsValid();
           if (!valid_bcast) {

@@ -160,8 +160,13 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor out = inputs[0][0];
-  std::vector<unsigned> permutation(
-      convert_array<std::vector<unsigned>>(inst->dimensions()));
+  auto optional_permutation =
+      convert_array<std::vector<unsigned>>(inst->dimensions());
+  if (!optional_permutation) {
+    return xla::FailedPrecondition(
+        "HandleTranspose - cannot cast permutation.");
+  }
+  std::vector<unsigned> permutation = *optional_permutation;
   out = out.dimShuffle(permutation);
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
@@ -175,10 +180,20 @@ Status FullVisitor::HandleSlice(HloInstruction* inst) {
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor out = inputs[0][0];
-  std::vector<std::size_t> begin(
-      convert_array<std::vector<std::size_t>>(inst->slice_starts()));
-  std::vector<std::size_t> end(
-      convert_array<std::vector<std::size_t>>(inst->slice_limits()));
+
+  auto optional_begin =
+      convert_array<std::vector<size_t>>(inst->slice_starts());
+  if (!optional_begin) {
+    return xla::FailedPrecondition("HandleSlice - cannot cast slice starts.");
+  }
+  std::vector<size_t> begin = *optional_begin;
+
+  auto optional_end = convert_array<std::vector<size_t>>(inst->slice_limits());
+  if (!optional_end) {
+    return xla::FailedPrecondition("HandleSlice - cannot cast slice limits.");
+  }
+  std::vector<size_t> end = *optional_end;
+
   std::vector<int64> strides(inst->slice_strides());
   bool simple(true);
   for (std::size_t s : strides) {
@@ -347,6 +362,15 @@ Status FullVisitor::Postprocess(HloInstruction* inst) {
             "Instruction %s has mismatched Poplar (%s) and XLA (%s) shapes",
             inst->name().c_str(), Join(outs[0].shape(), ",").c_str(),
             Join(inst->shape().dimensions(), ",").c_str());
+      }
+      TF_ASSIGN_OR_RETURN(poplar::Type expected_type,
+                          PoplarDataType(inst->shape()));
+      if (expected_type != outs[0].elementType()) {
+        return xla::InternalError(
+            "Instruction %s has mismatched Poplar (%s) and XLA (%s) type",
+            inst->name().c_str(),
+            expected_type.toString().cloneAsString().c_str(),
+            outs[0].elementType().toString().cloneAsString().c_str());
       }
     }
   }

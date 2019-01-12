@@ -79,7 +79,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'Copy_',
             'convolution/convolution.*/Conv_3x3x3',
-            'BiasAdd/call/addToChannel']
+            'BiasAdd/fusion/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def test3DConv8x8x8_WithBias(self):
@@ -113,7 +113,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'Copy_',
             'Conv3D/convolution.*/Conv_8x8x8_stride4x4x4',
-            'BiasAdd/call/addToChannel']
+            'BiasAdd/fusion/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def test3DConv1x1x1_WithBias(self):
@@ -147,7 +147,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'Copy_',
             'Conv3D/convolution.*/Conv_1x1',
-            'add/call/addToChannel']
+            'add/fusion/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def test3DConvBackpropInput(self):

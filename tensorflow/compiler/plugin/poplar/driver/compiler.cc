@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/commutative_instruction_reorder_operands.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/computation_flattener.h"
+#include "tensorflow/compiler/plugin/poplar/driver/constant_slice_folding.h"
 #include "tensorflow/compiler/plugin/poplar/driver/entry_visitor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
@@ -40,6 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_wide_const.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_computation_name_uniquify.h"
+#include "tensorflow/compiler/plugin/poplar/driver/not_supported_gather_expander.h"
+#include "tensorflow/compiler/plugin/poplar/driver/not_supported_scatter_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
@@ -54,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -65,7 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
-#include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
@@ -300,13 +302,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     HloPassPipeline pipeline("IPU");
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<HloComputationNameUniquify>();
-    pipeline.AddPass<GatherExpander>();
-    pipeline.AddPass<ScatterExpander>();
+    pipeline.AddPass<NotSupportedGatherExpander>();
+    pipeline.AddPass<NotSupportedScatterExpander>();
     pipeline.AddPass<DynamicIndexSplitter>();
     pipeline.AddPass<DotDecomposer>();
+    pipeline.AddPass<HloPassFix<ConstantSliceFolding>>();
     pipeline.AddPass<HloPassFix<FuseOpsEarly>>(resources.annotations);
     pipeline.AddPass<HloCSE>(false);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
+    pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<ReshapeMover>();
     pipeline.AddPass<MapInliner>();
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
@@ -327,6 +331,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       pass.AddPass<HloDCE>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
+      pass.AddPass<SortSimplifier>();
       pass.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
       pass.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
       pass.AddPass<FuseWideConst>(resources.annotations);
@@ -351,7 +356,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   HloComputation* entry = module->entry_computation();
 
-  if (poplarExecutor->CompilerReportingEnabled()) {
+  if (poplarExecutor->IpuTraceEventsEnabled()) {
     poplarExecutor->AddCompileBeginEventRecord(
         module->name(), SerializeComputationToGraphDef(*entry));
   }
@@ -434,10 +439,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
   }
 
-  if (poplarExecutor->CompilerReportingEnabled()) {
+  if (poplarExecutor->IpuTraceEventsEnabled()) {
     std::stringstream stream;
 
-    if (engine != nullptr) {
+    if (poplarExecutor->CompilerReportingEnabled() && engine != nullptr) {
       try {
         auto& opts = poplarExecutor->GetReportFlags();
 

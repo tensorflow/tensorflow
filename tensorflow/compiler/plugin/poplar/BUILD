@@ -55,6 +55,7 @@ cc_library(
         "driver/classification_predicates.cc",
         "driver/commutative_instruction_reorder_operands.cc",
         "driver/computation_flattener.cc",
+        "driver/constant_slice_folding.cc",
         "driver/convolution_classifier.cc",
         "driver/expression_outliner.cc",
         "driver/find_all_users.cc",
@@ -69,6 +70,8 @@ cc_library(
         "driver/inplace_util.cc",
         "driver/input_output_aliasing_map.cc",
         "driver/matcher_predicates.cc",
+        "driver/not_supported_gather_expander.cc",
+        "driver/not_supported_scatter_expander.cc",
         "driver/scheduler.cc",
         "driver/sharding_pass.cc",
         "driver/single_hlo_matcher.cc",
@@ -86,6 +89,7 @@ cc_library(
         "driver/commutative_instruction_reorder_operands.h",
         "driver/compiler_annotations.h",
         "driver/computation_flattener.h",
+        "driver/constant_slice_folding.h",
         "driver/convolution_classifier.h",
         "driver/expression_outliner.h",
         "driver/find_all_users.h",
@@ -101,6 +105,8 @@ cc_library(
         "driver/input_output_aliasing_map.h",
         "driver/matcher_predicates.h",
         "driver/meta_graph.h",
+        "driver/not_supported_gather_expander.h",
+        "driver/not_supported_scatter_expander.h",
         "driver/scheduler.h",
         "driver/sharding_pass.h",
         "driver/single_hlo_matcher.h",
@@ -116,6 +122,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:gather_expander",
+        "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla/service:while_loop_analysis",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -203,7 +211,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",
         "//tensorflow/compiler/xla/service:generic_transfer_manager",
-        "//tensorflow/compiler/xla/service:gather_expander",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
@@ -216,7 +223,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:reshape_mover",
-        "//tensorflow/compiler/xla/service:scatter_expander",
+        "//tensorflow/compiler/xla/service:sort_simplifier",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/service:while_loop_constant_sinking",
@@ -595,11 +602,42 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "constant_slice_folding_test",
+    srcs = ["tests/constant_slice_folding_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
     name = "find_all_users_test",
     srcs = ["tests/find_all_users_test.cc"],
     extra_copts = [
         "-fexceptions",
     ],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "not_supported_gather_expander_test",
+    srcs = ["tests/not_supported_gather_expander_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "not_supported_scatter_expander_test",
+    srcs = ["tests/not_supported_scatter_expander_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -1062,6 +1100,7 @@ test_suite(
         "conv_graph_caching_test",
         "scheduler_test",
         "sharding_pass_test",
+        "constant_slice_folding_test",
         "dynamic_slice_layout_test",
         "sort_op_test",
         "while_loop_to_repeat_simplify_test",
@@ -1071,6 +1110,8 @@ test_suite(
         "find_all_users_test",
         "hlo_computation_name_uniquify_test",
         "popops_custom_ops_test",
+        "not_supported_gather_expander_test",
+        "not_supported_scatter_expander_test",
     ],
 )
 

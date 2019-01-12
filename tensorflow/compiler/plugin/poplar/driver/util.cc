@@ -121,13 +121,16 @@ INITIALISE_FOR_ALL_NATIVE_VECTOR_TYPES(
 
 #undef INITIALISE_FOR_ALL_NATIVE_VECTOR_TYPES
 
-bool IsPopOpsCall(const xla::HloComputation* comp, const std::string& postfix) {
-  return tensorflow::str_util::StartsWith(comp->name(), "_pop_op_" + postfix);
+bool IsPopOpsFusion(const xla::HloComputation* comp,
+                    const std::string& postfix) {
+  return comp->IsFusionComputation() &&
+         tensorflow::str_util::StartsWith(comp->name(), "_pop_op_" + postfix);
 }
 
-bool IsPopOpsCall(const xla::HloInstruction* inst, const std::string& postfix) {
-  return inst->opcode() == xla::HloOpcode::kCall &&
-         IsPopOpsCall(inst->to_apply(), postfix);
+bool IsPopOpsFusion(const xla::HloInstruction* inst,
+                    const std::string& postfix) {
+  return inst->opcode() == xla::HloOpcode::kFusion &&
+         IsPopOpsFusion(inst->fused_instructions_computation(), postfix);
 }
 
 bool IsRepeatCall(const xla::HloComputation* comp) {

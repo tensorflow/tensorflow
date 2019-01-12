@@ -516,8 +516,8 @@ ENTRY c1 {
 
   EXPECT_TRUE(module0->entry_computation()->root_instruction() ==
               *inplace_instructions.begin());
-  EXPECT_TRUE(IsPopOpsCall(module0->entry_computation()->root_instruction(),
-                           "scaled_inplace"));
+  EXPECT_TRUE(IsPopOpsFusion(module0->entry_computation()->root_instruction(),
+                             "scaled_inplace"));
 }
 
 TEST_F(HloInplaceDependencyTest, InplaceInsideWhile) {

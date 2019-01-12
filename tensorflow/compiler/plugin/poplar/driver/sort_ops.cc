@@ -34,7 +34,7 @@ StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
     popops::sortInPlace(graph, to_sort, sort->dimensions(0), prog);
 
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, to_sort));
-  } else {
+  } else if (sort->operand_count() == 2) {
     CHECK_EQ(inputs.size(), 2);
     CHECK_EQ(inputs[0].size(), 1);
     CHECK_EQ(inputs[1].size(), 1);
@@ -46,6 +46,11 @@ StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, key));
 
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, value));
+  } else {
+    return xla::Unimplemented(
+        "Current Sort implementation only supports up to 2 operands, where as "
+        "%s has %d",
+        sort->name().c_str(), sort->operand_count());
   }
 
   return prog;

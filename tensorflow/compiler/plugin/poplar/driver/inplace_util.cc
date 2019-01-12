@@ -55,7 +55,7 @@ bool IsNotDependencyOfPeers(HloInstruction* inplace,
         // If there already wasn't a control dependency then insert it
         if (!reachability_map->IsReachable(peer, inplace)) {
           peer->AddControlDependencyTo(inplace);
-	  reachability_map->UpdateReachabilityThroughInstruction(inplace);
+          reachability_map->UpdateReachabilityThroughInstruction(inplace);
           added_dependencies.push_back(peer);
         }
       }
@@ -156,7 +156,6 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     // Inplace on all operands.
     case HloOpcode::kConcatenate:
     case HloOpcode::kConditional:
-    case HloOpcode::kFusion:
     case HloOpcode::kMap:
     case HloOpcode::kTuple:
     case HloOpcode::kSort: {
@@ -165,9 +164,9 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
       return absl::make_unique<InplaceHloInstructionDescription>(indexes);
     }
 
-    case HloOpcode::kCall: {
-      if (IsPopOpsCall(inst)) {
-        auto comp_name = inst->to_apply()->name();
+    case HloOpcode::kFusion: {
+      if (IsPopOpsFusion(inst)) {
+        auto comp_name = inst->fused_instructions_computation()->name();
         auto end = comp_name.find('.');
         std::string popops_name = comp_name.substr(8, end - 8);
 
@@ -178,7 +177,15 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
         } else {
           return absl::make_unique<NotInplaceHloInstructionDescription>();
         }
-      } else if (IsRepeatCall(inst)) {
+      } else {
+        // A non poplibs fusion is inplace on all operands.
+        OperandIndexes indexes(inst->operand_count());
+        std::iota(indexes.begin(), indexes.end(), 0);
+        return absl::make_unique<InplaceHloInstructionDescription>(indexes);
+      }
+    }
+    case HloOpcode::kCall: {
+      if (IsRepeatCall(inst)) {
         // TODO T4848
         return absl::make_unique<NotInplaceHloInstructionDescription>();
       } else {

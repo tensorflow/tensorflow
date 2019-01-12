@@ -86,14 +86,23 @@ static absl::optional<HloInstruction*> reduce_to_one_with_no_dependencies(
   // TODO consider whether it is worth extending this so that if we have few
   // targets with no dependency between we still allocate it with some layout
   // and add a control dependency.
-  absl::flat_hash_set<HloInstruction*> result_no_deps;
-  std::set_difference(
-      result.begin(), result.end(), has_dependency.begin(),
-      has_dependency.end(),
-      std::inserter(result_no_deps, std::begin(result_no_deps)));
-  return result_no_deps.size() == 1
-             ? absl::optional<HloInstruction*>(*std::begin(result_no_deps))
+  for (auto dep : has_dependency) {
+    result.erase(dep);
+  }
+
+  return result.size() == 1
+             ? absl::optional<HloInstruction*>(*std::begin(result))
              : absl::nullopt;
+}
+
+static bool output_and_all_operands_same_type(const HloInstruction* inst) {
+  const PrimitiveType& type = inst->shape().element_type();
+  for (auto* operand : inst->operands()) {
+    if (type != operand->shape().element_type()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // TODO - fix this.  it needs to take into account the indices of the path
@@ -103,12 +112,12 @@ static bool IsPrefixPathOk(const std::vector<HloInstruction*>& path) {
                                      const unsigned) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
-      return true;
+      return output_and_all_operands_same_type(inst);
     }
     switch (inst->opcode()) {
       case HloOpcode::kReshape:
       case HloOpcode::kTranspose:
-        return true;
+        return output_and_all_operands_same_type(inst);
       default:
         break;
     }
@@ -128,7 +137,7 @@ static absl::optional<int64> IsSuffixPathOk(
                                      const unsigned path_size) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
-      return true;
+      return output_and_all_operands_same_type(inst);
     }
     switch (inst->opcode()) {
       case HloOpcode::kGetTupleElement:
@@ -136,7 +145,7 @@ static absl::optional<int64> IsSuffixPathOk(
         return path_idx == (path_size - 1);
       case HloOpcode::kReshape:
       case HloOpcode::kTranspose:
-        return true;
+        return output_and_all_operands_same_type(inst);
       default:
         break;
     }
@@ -247,7 +256,6 @@ StatusOr<bool> ForwardAllocation::Run(
       const auto is_valid_target = [&](HloInstruction* a) {
         return alloc_dependencies.contains(a) && IsLayoutSensitiveTarget(a);
       };
-
       const auto optional_target = reduce_to_one_with_no_dependencies(
           edges.second, reachability_map.get(), is_valid_target);
       if (!optional_target) {
@@ -328,7 +336,7 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   }
 
   for (const auto& computation : module->computations()) {
-    if (IsPopOpsCall(computation) || IsRepeatCall(computation)) {
+    if (IsPopOpsFusion(computation) || IsRepeatCall(computation)) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(bool found_targets_in_computation,

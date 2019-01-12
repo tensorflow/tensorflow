@@ -53,8 +53,7 @@ HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
 
 // A set of sets of ops which are all associative together
 static std::set<std::set<HloOpcode>> associative_ops_sets = {
-    {HloOpcode::kMultiply},
-    {HloOpcode::kAdd},
+    {HloOpcode::kMultiply}, {HloOpcode::kAdd},
 };
 
 StatusOr<Trace> HloMatcher::FindNextMatchingOp(HloInstruction* user,
@@ -309,7 +308,7 @@ StatusOr<bool> HloMatcher::Run(HloModule* module) {
                                        module->computations().end());
 
     for (auto* comp : comps) {
-      if (!comp->IsFusionComputation() && !IsPopOpsCall(comp)) {
+      if (!comp->IsFusionComputation() && !IsPopOpsFusion(comp)) {
         MatchPatternStart(comp, comp->root_instruction());
       }
     }
@@ -420,32 +419,34 @@ OutlinedInfo HloMatcher::OutlineExpressionFromComputation(
   }
 
   // Creates a call to the nested computation.
-  HloComputation* nested_computation =
+  HloComputation* fusion_computation =
       module->AddEmbeddedComputation(builder.Build(FindOrDie(outlined, root)));
 
   // Ensure that all parameters are a dependency of the root
-  for (auto* param : nested_computation->parameter_instructions()) {
+  for (auto* param : fusion_computation->parameter_instructions()) {
     if (param->user_count() == 0) {
-      param->AddControlDependencyTo(nested_computation->root_instruction());
+      param->AddControlDependencyTo(fusion_computation->root_instruction());
     }
   }
 
-  HloInstruction* call = matched.computation->AddInstruction(
-      HloInstruction::CreateCall(root->shape(), arguments, nested_computation));
+  HloInstruction* fusion =
+      matched.computation->AddInstruction(HloInstruction::CreateFusion(
+          root->shape(), HloInstruction::FusionKind::kCustom, arguments,
+          fusion_computation));
 
-  nested_computation->SetFusionInstruction(call);
+  fusion_computation->SetFusionInstruction(fusion);
 
   auto* old = instructions_to_outline[metadata_index];
-  annotations_.fusion_map[nested_computation] = outlined.at(old);
+  annotations_.fusion_map[fusion_computation] = outlined.at(old);
 
-  call->set_metadata(old->metadata());
+  fusion->set_metadata(old->metadata());
   if (old->has_sharding()) {
-    call->set_sharding(old->sharding());
+    fusion->set_sharding(old->sharding());
   }
 
-  TF_CHECK_OK(root->ReplaceAllUsesWith(call));
+  TF_CHECK_OK(root->ReplaceAllUsesWith(fusion));
 
-  OutlinedInfo outlined_info = {call, {}};
+  OutlinedInfo outlined_info = {fusion, {}};
   // Add the removed instructions
   for (auto inst : instructions_to_outline) {
     if (inst->user_count() == 0) {

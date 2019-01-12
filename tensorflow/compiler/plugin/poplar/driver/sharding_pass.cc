@@ -37,7 +37,7 @@ static bool HaveSharding(HloComputation* comp) {
 
 static bool HaveSharding(HloModule* module) {
   for (auto* comp : module->computations()) {
-    if (IsPopOpsCall(comp)) {
+    if (IsPopOpsFusion(comp)) {
       continue;
     }
 
@@ -55,7 +55,7 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
   }
 
   for (auto* comp : module->computations()) {
-    if (IsPopOpsCall(comp)) {
+    if (IsPopOpsFusion(comp)) {
       continue;
     }
 
@@ -94,7 +94,7 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
   bool added = false;
 
   for (auto* comp : module->computations()) {
-    if (IsPopOpsCall(comp)) {
+    if (IsPopOpsFusion(comp)) {
       continue;
     }
 

@@ -24,14 +24,17 @@ import json
 import re
 import time
 
-def create_ipu_config(profiling=False, use_poplar_text_report=False,
+def create_ipu_config(profiling=False, enable_ipu_events=False,
+                      use_poplar_text_report=False,
                       report_every_nth_execution=0,
                       always_rearrange_copies_on_the_host=False,
                       disable_graph_convolution_caching=False):
   """Create an empty IPU session configuration structure.
 
   Args:
-    :param profiling: Enable compilation reports and execution profiles.
+    :param profiling: Enable compilation and execution reports,and IPU trace
+                      events.
+    :param enable_ipu_events: Enable IPU trace events without poplar reports.
     :param use_poplar_text_report: Enable the poplar textual report summary
     :param report_every_nth_execution: Only produce an execution report on
                                        every Nth execution.  0=One report
@@ -62,10 +65,15 @@ def create_ipu_config(profiling=False, use_poplar_text_report=False,
     :return: An empty IPUOptions configuration protobuf, suitable for using in
              the creation of the ConfigProto session options.
   """
+  if profiling and enable_ipu_events:
+    raise Exception(
+      "`profiling` and `enable_ipu_events` are mutually exclusive")
+
   opts = config_pb2.IPUOptions()
   opts.ipu_model_config.enable_ipu_model = True
   opts.ipu_model_config.compile_ipu_code = True
 
+  opts.profiling.enable_ipu_trace_events = profiling or enable_ipu_events
   opts.profiling.enable_compilation_trace = profiling
   opts.profiling.enable_io_trace = profiling
   opts.profiling.enable_execution_trace = profiling

@@ -30,9 +30,9 @@ namespace {
 
 // If this computation has only one caller, and the callsite is a kCall
 // operation, then merge with the calling computation.
-Status FlattenNode(const CallGraphNode &node) {
+Status FlattenNode(const CallGraphNode& node) {
   if (node.caller_callsites().size() == 1 &&
-      !IsPopOpsCall(node.computation())) {
+      !IsPopOpsFusion(node.computation())) {
     CallSite call_site = node.caller_callsites()[0];
     if (call_site.instruction()->opcode() == HloOpcode::kCall) {
       CallInliner::InlinedInstructionMap map;
@@ -44,7 +44,7 @@ Status FlattenNode(const CallGraphNode &node) {
 
 }  // namespace
 
-StatusOr<bool> ComputationFlattener::Run(HloModule *module) {
+StatusOr<bool> ComputationFlattener::Run(HloModule* module) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
   return true;

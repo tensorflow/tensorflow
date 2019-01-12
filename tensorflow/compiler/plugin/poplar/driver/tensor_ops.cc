@@ -1,6 +1,7 @@
 #include <algorithm>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -22,9 +23,58 @@
 
 namespace xla {
 namespace poplarplugin {
+namespace {
+bool AreAllDimensionsConstant(const HloDynamicIndexInstruction* inst) {
+  for (int64 i = inst->first_index_operand_number(); i < inst->operand_count();
+       i++) {
+    if (!IsScalarIntegerConstant(inst->operand(i))) {
+      return false;
+    }
+  }
+  return true;
+}
 
-StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
-    CompilerResources& res, const HloInstruction* inst,
+StatusOr<poplar::program::Program> ConstSliceUpdate(
+    CompilerResources& res, const HloDynamicIndexInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor input = inputs[0][0];
+
+  poplar::Tensor update;
+  TF_ASSIGN_OR_RETURN(update,
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
+
+  std::vector<std::size_t> begin;
+  for (int64 i = inst->first_index_operand_number(); i < inst->operand_count();
+       i++) {
+    TF_ASSIGN_OR_RETURN(int64 index, LiteralScalarToNativeType<int64>(
+                                         inst->operand(i)->literal()));
+    begin.push_back(index);
+  }
+
+  if (begin.size() != input.rank()) {
+    return xla::FailedPrecondition("Invalid slice start.");
+  }
+
+  std::vector<std::size_t> end = begin;
+  for (unsigned int i = 0; i < end.size(); i++) {
+    end[i] += update.dim(i);
+  }
+  poplar::Tensor slice = input.slice(begin, end);
+  seq.add(poplar::program::Copy(update, slice));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, input));
+
+  return seq;
+}
+
+StatusOr<poplar::program::Program> DynamicSliceUpdate(
+    CompilerResources& res, const HloDynamicIndexInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
@@ -44,8 +94,7 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
   TF_ASSIGN_OR_RETURN(indices,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
 
-  auto* dynamic_inst = Cast<HloDynamicUpdateSliceInstruction>(inst);
-  auto first_index = dynamic_inst->first_index_operand_number();
+  auto first_index = inst->first_index_operand_number();
 
   bool multiple_indices = (indices.rank() == 0);
 
@@ -55,9 +104,8 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
   for (unsigned d = 0; d < inst->shape().dimensions_size(); d++) {
     poplar::Tensor t;
     if (multiple_indices) {
-      TF_ASSIGN_OR_RETURN(t,
-                          FindInstructionInput(tensor_map, res, inst,
-                                               first_index + d, seq));
+      TF_ASSIGN_OR_RETURN(
+          t, FindInstructionInput(tensor_map, res, inst, first_index + d, seq));
       t = t.reshape({1});
     } else {
       t = indices.index({d}).reshape({1});
@@ -95,8 +143,45 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateDynamicSliceOp(
-    CompilerResources& res, const HloInstruction* inst,
+StatusOr<poplar::program::Program> ConstSlice(
+    CompilerResources& res, const HloDynamicIndexInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
+  poplar::program::Sequence seq;
+
+  poplar::Tensor input;
+  TF_ASSIGN_OR_RETURN(input,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
+
+  std::vector<std::size_t> begin;
+  for (int64 i = inst->first_index_operand_number(); i < inst->operand_count();
+       i++) {
+    TF_ASSIGN_OR_RETURN(int64 index, LiteralScalarToNativeType<int64>(
+                                         inst->operand(i)->literal()));
+    begin.push_back(index);
+  }
+
+  if (begin.size() != input.rank()) {
+    return xla::FailedPrecondition("Invalid slice start.");
+  }
+
+  std::vector<std::size_t> end = begin;
+  for (unsigned int i = 0; i < end.size(); i++) {
+    end[i] += output_shape.dimensions(i);
+  }
+
+  poplar::Tensor slice = input.slice(begin, end);
+  poplar::Tensor out = graph.clone(slice, GetDebugName(inst));
+
+  seq.add(poplar::program::Copy(slice, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
+}
+
+StatusOr<poplar::program::Program> DynamicSlice(
+    CompilerResources& res, const HloDynamicIndexInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
@@ -110,8 +195,7 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
   TF_ASSIGN_OR_RETURN(indices,
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
 
-  auto first_index =
-      Cast<HloDynamicSliceInstruction>(inst)->first_index_operand_number();
+  auto first_index = inst->first_index_operand_number();
 
   bool multiple_indices = (indices.rank() == 0);
 
@@ -122,9 +206,8 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
   for (unsigned d = 0; d < inst->shape().dimensions_size(); d++) {
     poplar::Tensor t;
     if (multiple_indices) {
-      TF_ASSIGN_OR_RETURN(t,
-                          FindInstructionInput(tensor_map, res, inst,
-                                               first_index + d, seq));
+      TF_ASSIGN_OR_RETURN(
+          t, FindInstructionInput(tensor_map, res, inst, first_index + d, seq));
       t = t.reshape({1});
     } else {
       t = indices.index({d}).reshape({1});
@@ -168,6 +251,33 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
 
   return seq;
 }
+}  // namespace
+
+StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  auto* dynamic_inst = Cast<HloDynamicIndexInstruction>(inst);
+  // See if we know the slice dimensions at the compile time.
+  if (AreAllDimensionsConstant(dynamic_inst)) {
+    VLOG(1) << "Processing " << inst->name() << " as a const slice update.";
+    return ConstSliceUpdate(res, dynamic_inst, output_shape, tensor_map);
+  } else {
+    return DynamicSliceUpdate(res, dynamic_inst, output_shape, tensor_map);
+  }
+}
+
+StatusOr<poplar::program::Program> CreateDynamicSliceOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  auto* dynamic_inst = Cast<HloDynamicIndexInstruction>(inst);
+  // See if we know the slice dimensions at the compile time.
+  if (AreAllDimensionsConstant(dynamic_inst)) {
+    VLOG(1) << "Processing " << inst->name() << " as a const slice.";
+    return ConstSlice(res, dynamic_inst, output_shape, tensor_map);
+  } else {
+    return DynamicSlice(res, dynamic_inst, output_shape, tensor_map);
+  }
+}
 
 StatusOr<poplar::program::Program> CreateWideConstant(
     CompilerResources& res, const HloInstruction* inst,
@@ -176,11 +286,14 @@ StatusOr<poplar::program::Program> CreateWideConstant(
 
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
-  poplar::Tensor out;
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
   TF_ASSIGN_OR_RETURN(
-      out, AddConstantTensor(graph, std::make_pair(inst, 0), inst->shape(),
-                             root->operand(0)->literal(), res, tensor_map));
+      poplar::Tensor out,
+      AddConstantTensor(graph, std::make_pair(root->operand(0), 0),
+                        root->operand(0)->shape(), root->operand(0)->literal(),
+                        res, tensor_map));
+  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;
@@ -194,7 +307,8 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(CompilerResources& res,
 
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
   const PaddingConfig& cfg(root->padding_config());
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));

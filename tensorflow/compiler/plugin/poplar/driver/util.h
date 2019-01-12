@@ -8,6 +8,7 @@
 
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -19,14 +20,31 @@ class Shape;
 class Literal;
 
 namespace poplarplugin {
+namespace {
+template <typename To, typename From>
+bool check_convert_ok(const To& to, const From& from) {
+  To from_converted = static_cast<To>(from);
+  From to_converted = static_cast<From>(to);
+  return from_converted == to && from == to_converted;
+}
+}
 
 template <typename To, typename From>
-To convert_array(const From& from) {
+absl::optional<To> convert_array(const From& from) {
   To out;
   for (const auto& e : from) {
     out.push_back(e);
+    if (!check_convert_ok(out.back(), e)) {
+      return absl::nullopt;
+    }
   }
   return out;
+};
+
+template <typename To, typename From>
+absl::optional<To> convert_scalar(const From& from) {
+  To to = static_cast<To>(from);
+  return check_convert_ok(to, from) ? absl::optional<To>(to) : absl::nullopt;
 };
 
 int64 CountShapes(const Shape& shape);
@@ -42,8 +60,10 @@ template <typename NativeT>
 StatusOr<std::vector<NativeT>> WideConstToNativeType(
     const xla::HloInstruction* wide_const);
 
-bool IsPopOpsCall(const xla::HloComputation*, const std::string& postfix = "");
-bool IsPopOpsCall(const xla::HloInstruction*, const std::string& postfix = "");
+bool IsPopOpsFusion(const xla::HloComputation*,
+                    const std::string& postfix = "");
+bool IsPopOpsFusion(const xla::HloInstruction*,
+                    const std::string& postfix = "");
 bool IsRepeatCall(const xla::HloComputation*);
 bool IsRepeatCall(const xla::HloInstruction*);
 // This functions assumes that IsRepeatCall(inst) is true

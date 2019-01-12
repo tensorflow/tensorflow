@@ -76,7 +76,7 @@ using ArgMap = std::multimap<const HloInstruction*, const HloInstruction*>;
 
 namespace {
 
-// Find the actual source of an input. Entry/Exit from tuples and kCall
+// Find the actual source of an input. Entry/Exit from tuples and kFusion
 // instructions are traced though.
 const HloInstruction* FindOperand(
     const HloInstruction* inst, const std::unique_ptr<CallGraph>& call_graph) {
@@ -139,15 +139,15 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
             operands[inst] = std::make_pair(0, 1);
             break;
           }
-          case HloOpcode::kCall: {
-            std::string name = inst->to_apply()->name();
-            if (IsPopOpsCall(inst, "depthwise_conv") ||
-                IsPopOpsCall(inst, "conv_with_reverse") ||
-                IsPopOpsCall(inst, "depthwise_filter")) {
+          case HloOpcode::kFusion: {
+            std::string name = inst->fused_instructions_computation()->name();
+            if (IsPopOpsFusion(inst, "depthwise_conv") ||
+                IsPopOpsFusion(inst, "conv_with_reverse") ||
+                IsPopOpsFusion(inst, "depthwise_filter")) {
               classification_[inst] = ConvClassificationType::INFERENCE;
               operands[inst] = std::make_pair(0, 1);
             }
-            if (IsPopOpsCall(inst, "conv_scaled_inplace")) {
+            if (IsPopOpsFusion(inst, "conv_scaled_inplace")) {
               classification_[inst] = ConvClassificationType::INFERENCE;
               operands[inst] = std::make_pair(1, 2);
             }

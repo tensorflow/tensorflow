@@ -280,7 +280,7 @@ subcomp {
   EXPECT_TRUE(users1.count(add) == 1);
 }
 
-// Into a kCall with a tuple argument
+// Into a kFusion with a tuple argument
 TEST_F(FindAddUsersTest, FindTargetsPoplibsCall) {
   std::string hlo_string = R"(
 HloModule top
@@ -295,7 +295,7 @@ subcomp {
   p0 = (f16[4], f16[4]) parameter(0)
   e0 = f16[4] get-tuple-element(p0), index=0
   e1 = f16[4] get-tuple-element(p0), index=1
-  ROOT ad1 = f16[4] call(e0, e1), to_apply=_pop_op_specialadd
+  ROOT ad1 = f16[4] fusion(e0, e1), kind=kCustom, calls=_pop_op_specialadd
 }
 
 %cluster_1  {

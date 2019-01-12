@@ -89,8 +89,8 @@ class FindAllocatingInstructions : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleCall(HloInstruction* inst) override {
-    if (IsPopOpsCall(inst, "wide_const")) {
+  Status HandleFusion(HloInstruction* inst) override {
+    if (IsPopOpsFusion(inst, "wide_const")) {
       allocating_instructions.push_back(std::make_pair(inst, 0));
     }
     return Status::OK();
@@ -163,7 +163,21 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
         }
         case HloOpcode::kCall: {
           HloComputation* comp = user->to_apply();
-          if (IsPopOpsCall(comp)) {
+          if (IsRepeatCall(comp)) {
+            if (op_index == 1) {
+              HloComputation* comp = GetRepeatBody(user);
+              HloInstruction* param = comp->parameter_instruction(0);
+              FindConsumers(src, param, index);
+            }
+          } else {
+            HloInstruction* param = comp->parameter_instruction(op_index);
+            FindConsumers(src, param, index);
+          }
+          break;
+        }
+        case HloOpcode::kFusion: {
+          HloComputation* comp = user->fused_instructions_computation();
+          if (IsPopOpsFusion(comp)) {
             auto end = comp->name().find('.');
             std::string name = comp->name().substr(8, end - 8);
             if (name == "depthwise_conv") {
@@ -174,15 +188,6 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
               }
               tensor_allocation_map.insert(std::make_pair(src, t));
             }
-          } else if (IsRepeatCall(comp)) {
-            if (op_index == 1) {
-              HloComputation* comp = GetRepeatBody(user);
-              HloInstruction* param = comp->parameter_instruction(0);
-              FindConsumers(src, param, index);
-            }
-          } else {
-            HloInstruction* param = comp->parameter_instruction(op_index);
-            FindConsumers(src, param, index);
           }
           break;
         }

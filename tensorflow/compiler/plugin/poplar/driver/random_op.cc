@@ -51,7 +51,8 @@ StatusOr<poplar::program::Program> RandomNormalScale(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
   const HloInstruction* mean1 = LookThroughBroadcast(root->operand(1));
   CHECK_EQ(mean1->opcode(), HloOpcode::kConstant);
   const HloInstruction* sd1 =
@@ -88,7 +89,8 @@ StatusOr<poplar::program::Program> RandomUniformScale(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
   const HloInstruction* shift = LookThroughBroadcast(root->operand(1));
   CHECK_EQ(shift->opcode(), HloOpcode::kConstant);
   const HloInstruction* scale =

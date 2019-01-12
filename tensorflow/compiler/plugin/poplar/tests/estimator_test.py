@@ -89,6 +89,7 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
 
     opts = config_pb2.IPUOptions()
     opts.ipu_model_config.enable_ipu_model = True
+    opts.profiling.enable_ipu_trace_events = True
     opts.profiling.enable_compilation_trace = True
     opts.profiling.enable_io_trace = False
     opts.profiling.enable_execution_trace = False

@@ -140,10 +140,11 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape = ShapeInference::InferConvolveShape(
-                         input_shape, weight_shape, /*feature_group_count=*/1,/*batch_group_count*/1,
-                         GetConv1Window(), GetConvDimensions())
-                         .ConsumeValueOrDie();
+  Shape conv_shape =
+      ShapeInference::InferConvolveShape(
+          input_shape, weight_shape, /*feature_group_count=*/1,
+          /*batch_group_count*/ 1, GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   /* Create convolution sub-computation */
   auto builder_sub = HloComputation::Builder(TestName());
@@ -153,8 +154,9 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv = builder_sub.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape, op0_sub, op1_sub, /*feature_group_count=*/1, /*batch_group_count*/1, GetConv1Window(),
-      GetConvDimensions(), DefaultPrecisionConfig(2)));
+      conv_shape, op0_sub, op1_sub, /*feature_group_count=*/1,
+      /*batch_group_count*/ 1, GetConv1Window(), GetConvDimensions(),
+      DefaultPrecisionConfig(2)));
 
   auto computation_sub = builder_sub.Build();
 
@@ -219,15 +221,17 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv1_shape = ShapeInference::InferConvolveShape(
-                          input_shape, weight_shape, /*feature_group_count=*/1,/*batch_group_count*/1, 
-                          GetConv1Window(), GetConvDimensions())
-                          .ConsumeValueOrDie();
+  Shape conv1_shape =
+      ShapeInference::InferConvolveShape(
+          input_shape, weight_shape, /*feature_group_count=*/1,
+          /*batch_group_count*/ 1, GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
-  Shape conv2_shape = ShapeInference::InferConvolveShape(
-                          input_shape, weight_shape, /*feature_group_count=*/1,/*batch_group_count*/1, 
-                          GetConv2Window(), GetConvDimensions())
-                          .ConsumeValueOrDie();
+  Shape conv2_shape =
+      ShapeInference::InferConvolveShape(
+          input_shape, weight_shape, /*feature_group_count=*/1,
+          /*batch_group_count*/ 1, GetConv2Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   /* Create convolution sub-computation 1 */
   auto builder_sub1 = HloComputation::Builder(TestName());
@@ -237,8 +241,9 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv1 = builder_sub1.AddInstruction(HloInstruction::CreateConvolve(
-      conv1_shape, op0_sub1, op1_sub1, /*feature_group_count=*/1, /*batch_group_count*/1,
-      GetConv1Window(), GetConvDimensions(), DefaultPrecisionConfig(2)));
+      conv1_shape, op0_sub1, op1_sub1, /*feature_group_count=*/1,
+      /*batch_group_count*/ 1, GetConv1Window(), GetConvDimensions(),
+      DefaultPrecisionConfig(2)));
 
   auto computation_sub1 = builder_sub1.Build();
 
@@ -250,8 +255,9 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv2 = builder_sub2.AddInstruction(HloInstruction::CreateConvolve(
-      conv2_shape, op0_sub2, op1_sub2, /*feature_group_count=*/1, /*batch_group_count*/1, 
-      GetConv2Window(), GetConvDimensions(), DefaultPrecisionConfig(2)));
+      conv2_shape, op0_sub2, op1_sub2, /*feature_group_count=*/1,
+      /*batch_group_count*/ 1, GetConv2Window(), GetConvDimensions(),
+      DefaultPrecisionConfig(2)));
 
   auto computation_sub2 = builder_sub2.Build();
 
@@ -336,15 +342,17 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv1_shape = ShapeInference::InferConvolveShape(
-                          input_shape, weight_shape, /*feature_group_count=*/1,/*batch_group_count*/1, 
-                          GetConv1Window(), GetConvDimensions())
-                          .ConsumeValueOrDie();
+  Shape conv1_shape =
+      ShapeInference::InferConvolveShape(
+          input_shape, weight_shape, /*feature_group_count=*/1,
+          /*batch_group_count*/ 1, GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
-  Shape conv2_shape = ShapeInference::InferConvolveShape(
-                          input_shape, weight_shape, /*feature_group_count=*/1,/*batch_group_count*/1, 
-                          GetConv2Window(), GetConvDimensions())
-                          .ConsumeValueOrDie();
+  Shape conv2_shape =
+      ShapeInference::InferConvolveShape(
+          input_shape, weight_shape, /*feature_group_count=*/1,
+          /*batch_group_count*/ 1, GetConv2Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   /* Create convolution sub-computation 1 */
   auto builder_sub1 = HloComputation::Builder(TestName());
@@ -354,8 +362,9 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv1 = builder_sub1.AddInstruction(HloInstruction::CreateConvolve(
-      conv1_shape, op0_sub1, op1_sub1, /*feature_group_count=*/1, /*batch_group_count*/1, 
-      GetConv1Window(), GetConvDimensions(), DefaultPrecisionConfig(2)));
+      conv1_shape, op0_sub1, op1_sub1, /*feature_group_count=*/1,
+      /*batch_group_count*/ 1, GetConv1Window(), GetConvDimensions(),
+      DefaultPrecisionConfig(2)));
 
   auto computation_sub1 = builder_sub1.Build();
 
@@ -367,8 +376,9 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv2 = builder_sub2.AddInstruction(HloInstruction::CreateConvolve(
-      conv2_shape, op0_sub2, op1_sub2, /*feature_group_count=*/1, /*batch_group_count*/1, 
-      GetConv2Window(), GetConvDimensions(), DefaultPrecisionConfig(2)));
+      conv2_shape, op0_sub2, op1_sub2, /*feature_group_count=*/1,
+      /*batch_group_count*/ 1, GetConv2Window(), GetConvDimensions(),
+      DefaultPrecisionConfig(2)));
 
   auto computation_sub2 = builder_sub2.Build();
 
@@ -888,10 +898,11 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
   Shape half_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 1});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape = ShapeInference::InferConvolveShape(
-                         input_shape, weight_shape, /*feature_group_count=*/1,/*batch_group_count*/1, 
-                         GetConv1Window(), GetConvDimensions())
-                         .ConsumeValueOrDie();
+  Shape conv_shape =
+      ShapeInference::InferConvolveShape(
+          input_shape, weight_shape, /*feature_group_count=*/1,
+          /*batch_group_count*/ 1, GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   /* Create sub-computation which contains an unacceptable op */
   auto builder_sub = HloComputation::Builder(TestName());
@@ -913,8 +924,9 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
       HloInstruction::CreateCall(input_shape, {op0}, computation_sub.get()));
   HloInstruction* conv =
       builder_main.AddInstruction(HloInstruction::CreateConvolve(
-          conv_shape, call, op1, /*feature_group_count=*/1,  /*batch_group_count*/1, GetConv1Window(),
-          GetConvDimensions(), DefaultPrecisionConfig(2)));
+          conv_shape, call, op1, /*feature_group_count=*/1,
+          /*batch_group_count*/ 1, GetConv1Window(), GetConvDimensions(),
+          DefaultPrecisionConfig(2)));
 
   builder_main.AddInstruction(HloInstruction::CreateTuple({conv}));
 
@@ -953,7 +965,7 @@ ENTRY c1 {
   p2 = f16[4] parameter(2)
 
   conv = f16[1,16,16,4] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
-  call = f16[1,16,16,64] call(conv, p2), to_apply=_pop_op_conv_biasadd
+  call = f16[1,16,16,64] fusion(conv, p2), kind=kCustom, calls=_pop_op_conv_biasadd
 
   ROOT t = (f16[1,16,16,4]) tuple(%call)
 }
@@ -1030,8 +1042,8 @@ ENTRY c1 {
   p3 = f16[4] parameter(3)
 
   conv = f16[1,16,16,4] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
-  call = f16[1,16,16,64] call(conv, p2), to_apply=_pop_op_conv_biasadd
-  call.1 = f16[1,16,16,64] call(call, p3), to_apply=_pop_op_conv_biasadd.1
+  call = f16[1,16,16,64] fusion(conv, p2), kind=kCustom, calls=_pop_op_conv_biasadd
+  call.1 = f16[1,16,16,64] fusion(call, p3), kind=kCustom, calls=_pop_op_conv_biasadd.1
 
   ROOT t = (f16[1,16,16,4]) tuple(call.1)
 }
@@ -1115,7 +1127,7 @@ ENTRY c1 {
   p2_r = f16[4] reshape(p2)
 
   conv = f16[1,16,16,4] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
-  call = f16[1,16,16,64] call(conv, p2_r), to_apply=_pop_op_conv_biasadd
+  call = f16[1,16,16,64] fusion(conv, p2_r), kind=kCustom, calls=_pop_op_conv_biasadd
 
   ROOT t = (f16[1,16,16,4]) tuple(call)
 }
@@ -1187,7 +1199,7 @@ HloModule top
    %arg1.12.1 = f32[2,2]{1,0} parameter(1)
    %dot.12.6 = f32[2,2]{1,0} dot(f32[2,2]{1,0} %arg0.12.0, f32[2,2]{1,0} %arg1.12.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
    %arg2.12.2 = f32[2] parameter(2), control-predecessors={%dot.12.6}
-   ROOT %call = f32[2,2]{1,0} call(f32[2,2]{1,0} %dot.12.6, %arg2.12.2), to_apply=%_pop_op_matmul_biasadd
+   ROOT %call = f32[2,2]{1,0} fusion(f32[2,2]{1,0} %dot.12.6, %arg2.12.2), kind=kCustom, calls=%_pop_op_matmul_biasadd
  }
 
 )";
@@ -1256,7 +1268,7 @@ HloModule top
    %dot.12.6 = f32[2,2] dot(%arg0.12.0, %arg1.12.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
    %arg2.12.2 = f32[1,2] parameter(2), control-predecessors={%dot.12.6}
    %p2_r = f32[2] reshape(%arg2.12.2)
-   ROOT %call = f32[2,2] call(%dot.12.6, %p2_r), to_apply=%_pop_op_matmul_biasadd
+   ROOT %call = f32[2,2] fusion(%dot.12.6, %p2_r), kind=kCustom, calls=%_pop_op_matmul_biasadd
  }
 
 )";
@@ -1502,13 +1514,13 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   %batch-norm-training.78.35 = (f32[1,4,4,2], f32[2], f32[2]) batch-norm-training(%convolution.78.33, %arg2.78.24, %arg3.78.25), epsilon=0.001, feature_index=3
   %get-tuple-element.78.36 = f32[1,4,4,2] get-tuple-element(%batch-norm-training.78.35), index=0
   %reduce.78.49 = f32[] reduce(%get-tuple-element.78.36, %constant.78.43), dimensions={0,1,2,3}, to_apply=%Sum-reduction48
-  %call.1 = f32[1,4,4,2] call(), to_apply=%_pop_op_wide_const
+  %call.1 = f32[1,4,4,2] fusion(), kind=kCustom, calls=%_pop_op_wide_const
   %get-tuple-element.78.38 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[2]) %batch-norm-training.78.35), index=1
   %get-tuple-element.78.39 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[2]) %batch-norm-training.78.35), index=2
   %batch-norm-grad.78.54 = (f32[1,4,4,2], f32[2], f32[2]) batch-norm-grad(%convolution.78.33, %arg2.78.24, %get-tuple-element.78.38, %get-tuple-element.78.39, %call.1), epsilon=0.001, feature_index=3
   %get-tuple-element.78.55 = f32[1,4,4,2] get-tuple-element(%batch-norm-grad.78.54), index=0
-  %call = f32[1,1,2,2] call(%arg1.78.23, %arg0.78.22, %get-tuple-element.78.55), to_apply=%_pop_op_conv_scaled_inplace
-  %call.2 = f32[2] call(), to_apply=%_pop_op_wide_const.1
+  %call = f32[1,1,2,2] fusion(%arg1.78.23, %arg0.78.22, %get-tuple-element.78.55), kind=kCustom, calls=%_pop_op_conv_scaled_inplace
+  %call.2 = f32[2] fusion(), kind=kCustom, calls=%_pop_op_wide_const.1
   %get-tuple-element.78.56 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[2]) %batch-norm-grad.78.54), index=1
   %multiply.78.65 = f32[2] multiply(%call.2, %get-tuple-element.78.56)
   %subtract.78.66 = f32[2] subtract(%arg2.78.24, %multiply.78.65)
@@ -1538,7 +1550,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   const auto* conv_grad_call =
       arg0->users()[0]->opcode() == HloOpcode::kConvolution ? arg0->users()[1]
                                                             : arg0->users()[0];
-  const auto* conv_grad_comp = conv_grad_call->to_apply();
+  const auto* conv_grad_comp = conv_grad_call->fused_instructions_computation();
   const auto* conv_grad_ip0 = conv_grad_comp->parameter_instruction(1);
   const auto* conv_grad_ip1 = conv_grad_comp->parameter_instruction(2);
   const auto* conv_grad = conv_grad_ip1->users()[0];
@@ -1780,7 +1792,7 @@ ENTRY c1 {
   p2_r = f16[4] reshape(p2)
 
   conv = f16[1,16,16,4] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
-  call = f16[1,16,16,64] call(conv, p2_r), to_apply=_pop_op_conv_biasadd
+  call = f16[1,16,16,64] fusion(conv, p2_r), kind=kCustom, calls=_pop_op_conv_biasadd
   p3 = f16[1,16,16,64] parameter(3)
   ROOT add = f16[1,16,16,64] add(p3, call)
 }
@@ -1851,6 +1863,89 @@ ENTRY c1 {
   EXPECT_EQ(t.forward_path.size(), 1);
   EXPECT_EQ(t.forward_path[0], call);
   EXPECT_EQ(t.backward_path.size(), 0);
+}
+
+TEST_F(AllocationFinderTest, ForwardAllocationDontLookThroughCasts) {
+  // Check the layout is not forwarded to the element wise op argument as it's
+  // casted.
+  std::string hlo = R"(
+HloModule top
+
+_pop_op_conv_biasadd {
+  %arg_0 = f16[1,16,16,4] parameter(0)
+  %arg_1 = f16[4] parameter(1)
+  bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
+  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+}
+
+ENTRY c1 {
+  p0 = f16[1,16,16,2] parameter(0)
+  p1 = f16[3,3,2,4] parameter(1)
+  p2 = f16[2,2] parameter(2)
+  p2_r = f16[4] reshape(p2)
+
+  conv = f16[1,16,16,4] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  call = f16[1,16,16,64] fusion(conv, p2_r), kind=kCustom, calls=_pop_op_conv_biasadd
+  p3 = f32[1,16,16,64] parameter(3)
+  p3.c = f16[1,16,16,64] convert(p3)
+  ROOT add = f16[1,16,16,64] add(p3.c, call)
+}
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
+  config.set_resource_input_count(3);
+  config.set_input_mapping({0, 1, 2, 3});
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* add = root;
+  const auto* call = add->operand(1);
+  const auto* conv = call->operand(0);
+  const auto* ip2_r = call->operand(1);
+  const auto* ip2 = ip2_r->operand(0);
+  const auto* ip1 = conv->operand(1);
+  const auto* ip0 = conv->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  unsigned num_succesful_runs = 0;
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    num_succesful_runs++;
+  }
+
+  // We expect this to be executed successfully 1 time.
+  EXPECT_TRUE(num_succesful_runs == 1);
+
+  // We have added one new entry for the bias add
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, call);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], ip2_r);
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationElementwiseGetsALayoutWithGTE) {
