@@ -271,7 +271,7 @@ static StatusOr<std::size_t> FindSeqDim(const xla::Shape& shape_xla,
 
   // If the desired shape is 1D, then no special work is required.
   // If the slice shape is the same as the input shape, this is just a copy
-  if (ShapeUtil::Rank(shape_xla) > 1 && shape != slice_shape && volume > 1 &&
+  if (shape_xla.rank() > 1 && shape != slice_shape && volume > 1 &&
       slice_volume > 1) {
     // Calculate the element-wise ratio between the slice the input rank
     std::vector<float> dimension_ratios(shape.size());
@@ -1024,7 +1024,7 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
   }
   tensorflow::BCast::Vec bcast_shape = *optional_bcast_shape;
 
-  tensorflow::BCast::Vec tensor_shape(ShapeUtil::Rank(out), 1);
+  tensorflow::BCast::Vec tensor_shape(out.rank(), 1);
   if (dimensions.size() > 0) {
     for (size_t d = 0; d < dimensions.size(); d++) {
       tensor_shape[dimensions[d]] = in.dim(d);
@@ -1057,7 +1057,7 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
 
 bool PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                                 const xla::Shape& shape) {
-  if (tensor.rank() != ShapeUtil::Rank(shape)) return false;
+  if (tensor.rank() != shape.rank()) return false;
   for (size_t d = 0; d < tensor.rank(); d++) {
     if (tensor.dim(d) != (unsigned)shape.dimensions(d)) return false;
   }

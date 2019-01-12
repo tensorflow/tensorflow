@@ -52,7 +52,7 @@ bool SubComputationVisitor::InputIsUsedInThisSubComputation(
   }
 
   // Non-tuples are considered always used
-  if (!ShapeUtil::IsTuple(inst->shape())) {
+  if (!inst->shape().IsTuple()) {
     return true;
   }
 

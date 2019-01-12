@@ -71,7 +71,7 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
     case HloOpcode::kShiftRightLogical:
     // Ternary
     case HloOpcode::kSelect:
-      return !ShapeUtil::IsTuple(inst->shape());
+      return !inst->shape().IsTuple();
     case HloOpcode::kClamp:
       return true;
     // Ops not supported in Expressions

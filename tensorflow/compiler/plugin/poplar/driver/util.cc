@@ -13,7 +13,7 @@ namespace poplarplugin {
 
 int64 CountShapes(const Shape& shape) {
   int64 n = 0;
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); i++) {
       n += CountShapes(ShapeUtil::GetTupleElementShape(shape, i));
     }
@@ -25,7 +25,7 @@ int64 CountShapes(const Shape& shape) {
 
 std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape) {
   std::vector<xla::Shape> out;
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); i++) {
       std::vector<xla::Shape> shapes =
           FlattenedXlaShape(ShapeUtil::GetTupleElementShape(shape, i));

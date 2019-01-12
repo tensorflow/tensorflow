@@ -32,7 +32,7 @@ StatusOr<bool> WideConstFinder::Run(HloModule* module) {
   for (auto* comp : comps) {
     if (!comp->IsFusionComputation()) {
       for (HloInstruction* inst : comp->instructions()) {
-        if (!ShapeUtil::IsToken(inst->shape())) {
+        if (!inst->shape().IsToken()) {
           if (inst->IsConstant() && ShapeUtil::ElementsIn(inst->shape()) > 1) {
             const Literal& literal = inst->literal();
             if (literal.IsAll(0)) {

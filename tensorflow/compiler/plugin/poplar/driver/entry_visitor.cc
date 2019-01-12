@@ -89,7 +89,7 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
   const auto& entry_outputs =
       resources_.annotations.input_output_aliasing_map.GetEntryOutputInfos();
 
-  const uint64 num_outputs = ShapeUtil::IsTuple(root->shape())
+  const uint64 num_outputs = root->shape().IsTuple()
                                  ? ShapeUtil::TupleElementCount(root->shape())
                                  : 1;
 
@@ -108,11 +108,10 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
         out_info.IsStreaming() ? sequence : device_to_host;
 
     // Flatten the tuple tensor (if required) and iterate over all of them
-    const auto sub_shape =
-        ShapeUtil::IsTuple(root->shape())
+    const auto sub_shape = root->shape().IsTuple()
             ? ShapeUtil::GetTupleElementShape(root->shape(), idx)
             : root->shape();
-    to_tensor_index += ShapeUtil::IsTuple(sub_shape)
+    to_tensor_index += sub_shape.IsTuple()
                            ? ShapeUtil::TupleElementCount(sub_shape)
                            : 1;
     // all_outputs_flat_tensor_index is the global index into all the flattened

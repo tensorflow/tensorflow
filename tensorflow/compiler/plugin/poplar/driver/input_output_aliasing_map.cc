@@ -47,7 +47,7 @@ InputOutputAliasingMap::InputOutputAliasingMap(const HloModule* module) {
    * to a _XlaRun input.
    */
   const auto& root = module->entry_computation()->root_instruction();
-  const uint64 num_outputs = ShapeUtil::IsTuple(root->shape())
+  const uint64 num_outputs = root->shape().IsTuple()
                                  ? ShapeUtil::TupleElementCount(root->shape())
                                  : 1;
 

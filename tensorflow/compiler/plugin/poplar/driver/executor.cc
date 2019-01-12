@@ -664,7 +664,7 @@ void PoplarExecutor::FlattenedDeviceMemoryList(
     InputPairList& list, const xla::Shape& shape, void* base,
     const InputOutputAliasingMap::InputInfo& input_info) {
   TensorControl* tc = static_cast<TensorControl*>(base);
-  if (xla::ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     void** ptrs = reinterpret_cast<void**>(tc->data);
     for (unsigned int t = 0; t < xla::ShapeUtil::TupleElementCount(shape);
          t++) {
@@ -708,7 +708,7 @@ void PoplarExecutor::FlattenedOutputDeviceMemoryList(
     OutputPairList& list, const xla::Shape& shape, void* base,
     const InputOutputAliasingMap::OutputInfo& output_info) {
   TensorControl* tc = static_cast<TensorControl*>(base);
-  if (xla::ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     void** ptrs = reinterpret_cast<void**>(tc->data);
     for (unsigned int t = 0; t < xla::ShapeUtil::TupleElementCount(shape);
          t++) {
@@ -731,7 +731,7 @@ void PoplarExecutor::UpdateOutputsHandleMap(
   std::vector<void*> outputs;
   std::vector<xla::Shape> shapes;
 
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     TensorControl* tc = static_cast<TensorControl*>(retbuf.opaque());
     void** ptrs = reinterpret_cast<void**>(tc->data);
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); i++) {
@@ -860,7 +860,7 @@ se::DeviceMemoryBase PoplarExecutor::HandleOutputBuffer(
     const PoplarExecutor::OutputAllocation& allocation_info,
     const xla::Shape& shape, const int64 output_index, int64& flat_tensor_index,
     const Args& args, const InputOutputAliasingMap::OutputInfo& output_info) {
-  if (!ShapeUtil::IsTuple(shape)) {
+  if (!shape.IsTuple()) {
     se::DeviceMemoryBase buf = allocation_info.GetAllocation(
         allocator, shape, output_index, flat_tensor_index, args, output_info,
         args_map_, ordinal_);
@@ -891,11 +891,11 @@ se::DeviceMemoryBase PoplarExecutor::GetOutputBuffer(
     const InputOutputAliasingMap& input_output_aliasing_map) {
   // Get all output shapes
   std::vector<xla::Shape> shapes;
-  const int64 size = ShapeUtil::IsTuple(shape)
+  const int64 size = shape.IsTuple()
                          ? xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*))
                          : xla::ShapeUtil::ByteSizeOf(shape);
 
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); i++) {
       shapes.push_back(ShapeUtil::GetTupleElementShape(shape, i));
     }
@@ -917,7 +917,7 @@ se::DeviceMemoryBase PoplarExecutor::GetOutputBuffer(
                            start_flat_tensor_index, args, output_info);
     ptrs.push_back(out.opaque());
   }
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     se::DeviceMemoryBase allocated =
         allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());

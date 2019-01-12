@@ -35,7 +35,7 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
 
   switch (inst->opcode()) {
     case HloOpcode::kParameter: {
-      if (ShapeUtil::IsTuple(inst->shape())) {
+      if (inst->shape().IsTuple()) {
         new_stack = stack;
         tuple_stack_modified = true;
         new_stack.push_back(-1);

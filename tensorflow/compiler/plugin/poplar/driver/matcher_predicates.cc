@@ -141,10 +141,10 @@ bool IsBiasReduce(const HloInstruction* inst) {
     return false;
   }
 
-  if (ShapeUtil::Rank(inst->shape()) != 1) return false;
+  if (inst->shape().rank() != 1) return false;
 
   const std::vector<int64>& dims(inst->dimensions());
-  if (dims.size() != ShapeUtil::Rank(inst->operand(0)->shape()) - 1) {
+  if (dims.size() != inst->operand(0)->shape().rank() - 1) {
     return false;
   }
   return true;
@@ -168,7 +168,7 @@ bool IsTrueParameter(const HloInstruction* inst) {
 }
 
 bool Is1DVector(const HloInstruction* inst) {
-  return ShapeUtil::Rank(inst->shape()) == 1;
+  return inst->shape().rank() == 1;
 }
 
 bool IsExpandingReshape(const HloInstruction* inst) {
@@ -252,13 +252,13 @@ bool IsBiasAdd(const HloInstruction* inst) {
   }
   const auto& op_shape = inst->operand(0)->shape();
   const auto& bias_shape = inst->operand(1)->shape();
-  if (ShapeUtil::Rank(op_shape) != ShapeUtil::Rank(bias_shape)) {
+  if (op_shape.rank() != bias_shape.rank()) {
     return false;
   }
 
   // Go through the bias shape, if the dimension size is 1, then the dimension
   // of the op doesn't matter, otherwise they have to match.
-  for (int64 i = 0; i < ShapeUtil::Rank(bias_shape); i++) {
+  for (int64 i = 0; i < bias_shape.rank(); i++) {
     int64 bias_dim = ShapeUtil::GetDimension(bias_shape, i);
     if (bias_dim != 1) {
       int64 op_dim = ShapeUtil::GetDimension(op_shape, i);

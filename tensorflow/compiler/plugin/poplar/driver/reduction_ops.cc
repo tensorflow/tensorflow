@@ -92,7 +92,7 @@ bool IsPoplibsPool(const HloInstruction* inst,
       return false;
   }
 
-  if (ShapeUtil::Rank(inst->shape()) != 4) {
+  if (inst->shape().rank() != 4) {
     return false;
   }
 
@@ -366,7 +366,7 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
     const Window& window(inst->window());
 
     // Find the number of windows in each dimension
-    std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));
+    std::vector<unsigned> window_count(output_shape.rank());
     for (int64 d = 0; d < window.dimensions().size(); d++) {
       std::size_t input_dim(to_reduce.dim(d));
       input_dim += window.dimensions(d).padding_low();
@@ -638,7 +638,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
   prog.add(poplar::program::Copy(identity_val, partial));
 
   // Find the number of windows in each dimension
-  std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));
+  std::vector<unsigned> window_count(output_shape.rank());
   for (int64 d = 0; d < window.dimensions().size(); d++) {
     std::size_t input_dim(operand.dim(d));
     input_dim += window.dimensions(d).padding_low();
