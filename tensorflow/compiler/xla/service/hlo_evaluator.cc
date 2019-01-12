@@ -258,14 +258,18 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   for (const auto& literal_ptr : arg_literals) {
     arg_literals_.push_back(&*literal_ptr);
   }
+
+  // Re-seed RNG, either from the configuration's seed or a monotonic
+  // per-evaluator seed (which prevents two evaluators from returning the same
+  // random sequence).
   if (computation.parent()->config().seed()) {
     seed_ = computation.parent()->config().seed();
   } else {
-    std::random_device rd;
-    seed_ = rd();
+    // Start global_seed at a (true) random value.
+    static std::atomic<uint64> global_seed{std::random_device()()};
+    seed_ = global_seed.fetch_add(1);
   }
-
-  engine_ = std::minstd_rand0(seed_);
+  engine_.seed(seed_);
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
   return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
