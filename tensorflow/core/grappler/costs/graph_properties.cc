@@ -1680,6 +1680,7 @@ Status GraphProperties::UpdateMerge(SymbolicShapeRefiner* shape_refiner,
   }
 
   ShapeHandle out;
+  const std::vector<ShapeAndType>* out_handle = nullptr;
   bool out_initialized = false;
   for (const GraphView::Edge fanin : shape_refiner->graph().GetFaninEdges(
            *node, /*include_controlling_edges=*/false)) {
@@ -1690,18 +1691,24 @@ Status GraphProperties::UpdateMerge(SymbolicShapeRefiner* shape_refiner,
       continue;
     }
     ShapeHandle input = src_ic->output(fanin.src.port_id);
-    CHECK_EQ(fanin.dst.node, node);
     ic->SetInput(fanin.dst.port_id, input);
+    auto* input_handle =
+        src_ic->output_handle_shapes_and_types(fanin.src.port_id);
+    if (input_handle)
+      ic->set_input_handle_shapes_and_types(fanin.dst.port_id, *input_handle);
     if (!out_initialized) {
       out_initialized = true;
       out = input;
+      out_handle = input_handle;
     } else {
+      // Note here only out, not out_handle, is modified.
       out = shape_refiner->OutputAsUnion(node, 0, input, out);
     }
   }
 
   if (*new_shapes || !shape_refiner->EquivalentShapes(out, ic->output(0))) {
     ic->set_output(0, out);
+    if (out_handle) ic->set_output_handle_shapes_and_types(0, *out_handle);
     *new_shapes = true;
   }
 
