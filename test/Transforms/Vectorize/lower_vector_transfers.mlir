@@ -11,9 +11,9 @@ func @materialize_read_1d() {
       %f1 = vector_transfer_read %A, %i0, %i1 {permutation_map: (d0, d1) -> (d0)} : (memref<7x42xf32>, index, index) -> vector<4xf32>
       %ip1 = affine_apply (d0) -> (d0 + 1) (%i1)
       %f2 = vector_transfer_read %A, %i0, %ip1 {permutation_map: (d0, d1) -> (d0)} : (memref<7x42xf32>, index, index) -> vector<4xf32>
-      %ip2 = affine_apply (d0) -> (d0 + 1) (%i1)
+      %ip2 = affine_apply (d0) -> (d0 + 2) (%i1)
       %f3 = vector_transfer_read %A, %i0, %ip2 {permutation_map: (d0, d1) -> (d0)} : (memref<7x42xf32>, index, index) -> vector<4xf32>
-      %ip3 = affine_apply (d0) -> (d0 + 1) (%i1)
+      %ip3 = affine_apply (d0) -> (d0 + 3) (%i1)
       %f4 = vector_transfer_read %A, %i0, %ip3 {permutation_map: (d0, d1) -> (d0)} : (memref<7x42xf32>, index, index) -> vector<4xf32>
       // Both accesses in the load must be clipped otherwise %i1 + 2 and %i1 + 3 will go out of bounds.
       // CHECK: {{.*}} = select
