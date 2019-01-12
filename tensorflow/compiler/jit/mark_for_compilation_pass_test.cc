@@ -151,7 +151,7 @@ TEST(XlaCompilationTest, CompilableCycles) {
   EXPECT_EQ(clusters["A"], clusters["C"]);
 }
 
-TEST(XlaCompilationTest, Complex128Unsupported) {
+TEST(XlaCompilationTest, StringUnsupported) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   GraphDef graphdef;
   {
@@ -159,10 +159,10 @@ TEST(XlaCompilationTest, Complex128Unsupported) {
     Node* a = ops::SourceOp(
         "Const", builder.opts()
                      .WithName("A")
-                     .WithAttr("dtype", DT_COMPLEX128)
-                     .WithAttr("value", Tensor(DT_COMPLEX128, TensorShape())));
-    Node* b = ops::UnaryOp("Neg", a, builder.opts().WithName("B"));
-    ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
+                     .WithAttr("dtype", DT_STRING)
+                     .WithAttr("value", Tensor(DT_STRING, TensorShape())));
+    Node* b = ops::UnaryOp("EncodeBase64", a, builder.opts().WithName("B"));
+    ops::BinaryOp("StringSplit", a, b, builder.opts().WithName("C"));
     TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
   }
 

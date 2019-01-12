@@ -261,7 +261,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     local_anchor = control_flow_ops.no_op()
     # Colocating local_step variable prevents it being placed on the PS.
     distribution_strategy = distribution_strategy_context.get_strategy()
-    with distribution_strategy.colocate_vars_with(local_anchor):
+    with distribution_strategy.extended.colocate_vars_with(local_anchor):
       self._local_step = variable_scope.variable(
           initial_value=0,
           trainable=False,

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/meta/type_traits.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -39,9 +40,8 @@ namespace xla {
 // Anyway this is relatively safe as-is because hlo_evaluator_typed_visitor.h is
 // a "private" header that's not exposed outside of hlo_evaluator.cc.
 template <typename T>
-using is_complex_t = std::is_same<T, complex64>;
-template <typename T>
-using is_complex64_t = std::is_same<T, complex64>;
+using is_complex_t =
+    absl::disjunction<std::is_same<T, complex64>, std::is_same<T, complex128>>;
 
 // It's UB to use std::sort with std::less<float>, because of NaNs. Define
 // "safe" less functions which are actually strict weak orders. -NaN and NaN
@@ -212,7 +212,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   template <
       typename NativeT,
-      typename std::enable_if<is_complex64_t<NativeT>::value>::type* = nullptr>
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
   Status HandleAbs(HloInstruction* abs) {
     const Literal& operand_literal =
         parent_->GetEvaluatedLiteralFor(abs->operand(0));
@@ -231,6 +231,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // specifying the ElementwiseT explicitly as C64 is needed below.
     if (abs->operand(0)->shape().element_type() == C64) {
       return HandleAbs<complex64>(abs);
+    } else if (abs->operand(0)->shape().element_type() == C128) {
+      return HandleAbs<complex128>(abs);
     }
     return HandleAbs<ElementwiseT>(abs);
   }
@@ -1614,6 +1616,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
       case C64: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<complex64>(map));
+        break;
+      }
+      case C128: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<complex128>(map));
         break;
       }
       default:
@@ -3040,6 +3046,7 @@ extern template class HloEvaluatorTypedVisitor<Eigen::half, float>;
 extern template class HloEvaluatorTypedVisitor<float>;
 extern template class HloEvaluatorTypedVisitor<double>;
 extern template class HloEvaluatorTypedVisitor<complex64>;
+extern template class HloEvaluatorTypedVisitor<complex128>;
 extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
 
 }  // namespace xla

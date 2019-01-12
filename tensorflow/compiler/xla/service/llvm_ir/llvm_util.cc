@@ -188,7 +188,16 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       }
       return cplx_t;
     }
-    // A Tuple contains an array of pointers. Use i8*.
+    case C128: {
+      auto cplx_t = module->getTypeByName("complex128");
+      if (cplx_t == nullptr) {
+        return llvm::StructType::create(
+            {llvm::Type::getDoubleTy(module->getContext()),
+             llvm::Type::getDoubleTy(module->getContext())},
+            "complex128", /*isPacked=*/true);
+      }
+      return cplx_t;
+    }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE:
@@ -620,6 +629,10 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
       llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
   function->setCallingConv(llvm::CallingConv::C);
   function->addFnAttr("no-frame-pointer-elim", "false");
+
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  function->setHasUWTable();
 
   if (enable_fast_math) {
     function->addFnAttr("unsafe-fp-math", "true");

@@ -52,6 +52,7 @@ from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -792,8 +793,11 @@ class _ConfusionMatrixConditionCount(Metric):
       Update op.
     """
     return metrics_utils.update_confusion_matrix_variables(
-        {self._confusion_matrix_cond: self.accumulator}, y_true, y_pred,
-        self.thresholds, sample_weight)
+        {self._confusion_matrix_cond: self.accumulator},
+        y_true,
+        y_pred,
+        thresholds=self.thresholds,
+        sample_weight=sample_weight)
 
   def result(self):
     if len(self.thresholds) == 1:
@@ -1029,6 +1033,15 @@ class Precision(Metric):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `top_k` is set, we'll calculate precision as how often on average a class
+  among the top-k classes with the highest predicted values of a batch entry is
+  correct and can be found in the label for that entry.
+
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold and/or in the
+  top-k highest predictions, and computing the fraction of them for which
+  `class_id` is indeed a correct label.
+
   Usage:
 
   ```python
@@ -1045,22 +1058,37 @@ class Precision(Metric):
   ```
   """
 
-  def __init__(self, thresholds=None, name=None, dtype=None):
+  def __init__(self,
+               thresholds=None,
+               top_k=None,
+               class_id=None,
+               name=None,
+               dtype=None):
     """Creates a `Precision` instance.
 
     Args:
-      thresholds: (Optional) Defaults to 0.5. A float value or a python
-        list/tuple of float threshold values in [0, 1]. A threshold is compared
-        with prediction values to determine the truth value of predictions
-        (i.e., above the threshold is `true`, below is `false`). One metric
-        value is generated for each threshold value.
+      thresholds: (Optional) A float value or a python list/tuple of float
+        threshold values in [0, 1]. A threshold is compared with prediction
+        values to determine the truth value of predictions (i.e., above the
+        threshold is `true`, below is `false`). One metric value is generated
+        for each threshold value. If neither thresholds nor top_k are set, the
+        default is to calculate precision with `thresholds=0.5`.
+      top_k: (Optional) Unset by default. An int value specifying the top-k
+        predictions to consider when calculating precision.
+      class_id: (Optional) Integer class ID for which we want binary metrics.
+        This must be in the half-open interval `[0, num_classes)`, where
+        `num_classes` is the last dimension of predictions.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
     super(Precision, self).__init__(name=name, dtype=dtype)
     self.init_thresholds = thresholds
+    self.top_k = top_k
+    self.class_id = class_id
+
+    default_threshold = 0.5 if top_k is None else metrics_utils.NEG_INF
     self.thresholds = metrics_utils.parse_init_thresholds(
-        thresholds, default_threshold=0.5)
+        thresholds, default_threshold=default_threshold)
     self.tp = self.add_weight(
         'true_positives',
         shape=(len(self.thresholds),),
@@ -1074,8 +1102,9 @@ class Precision(Metric):
     """Accumulates true positive and false positive statistics.
 
     Args:
-      y_true: The ground truth values.
-      y_pred: The predicted values.
+      y_true: The ground truth values, with the same dimensions as `y_pred`.
+        Will be cast to `bool`.
+      y_pred: The predicted values. Each element must be in the range `[0, 1]`.
       sample_weight: Optional weighting of each example. Defaults to 1. Can be a
         `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
         be broadcastable to `y_true`.
@@ -1083,10 +1112,17 @@ class Precision(Metric):
     Returns:
       Update op.
     """
-    return metrics_utils.update_confusion_matrix_variables({
-        metrics_utils.ConfusionMatrix.TRUE_POSITIVES: self.tp,
-        metrics_utils.ConfusionMatrix.FALSE_POSITIVES: self.fp
-    }, y_true, y_pred, self.thresholds, sample_weight)
+    return metrics_utils.update_confusion_matrix_variables(
+        {
+            metrics_utils.ConfusionMatrix.TRUE_POSITIVES: self.tp,
+            metrics_utils.ConfusionMatrix.FALSE_POSITIVES: self.fp
+        },
+        y_true,
+        y_pred,
+        thresholds=self.thresholds,
+        top_k=self.top_k,
+        class_id=self.class_id,
+        sample_weight=sample_weight)
 
   def result(self):
     result = math_ops.div_no_nan(self.tp, self.tp + self.fp)
@@ -1098,7 +1134,11 @@ class Precision(Metric):
       K.set_value(v, np.zeros((num_thresholds,)))
 
   def get_config(self):
-    config = {'thresholds': self.init_thresholds}
+    config = {
+        'thresholds': self.init_thresholds,
+        'top_k': self.top_k,
+        'class_id': self.class_id
+    }
     base_config = super(Precision, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1119,6 +1159,14 @@ class Recall(Metric):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `top_k` is set, recall will be computed as how often on average a class
+  among the labels of a batch entry is in the top-k predictions.
+
+  If `class_id` is specified, we calculate recall by considering only the
+  entries in the batch for which `class_id` is in the label, and computing the
+  fraction of them for which `class_id` is above the threshold and/or in the
+  top-k predictions.
+
   Usage:
 
   ```python
@@ -1135,22 +1183,37 @@ class Recall(Metric):
   ```
   """
 
-  def __init__(self, thresholds=None, name=None, dtype=None):
+  def __init__(self,
+               thresholds=None,
+               top_k=None,
+               class_id=None,
+               name=None,
+               dtype=None):
     """Creates a `Recall` instance.
 
     Args:
-      thresholds: (Optional) Defaults to 0.5. A float value or a python
-        list/tuple of float threshold values in [0, 1]. A threshold is compared
-        with prediction values to determine the truth value of predictions
-        (i.e., above the threshold is `true`, below is `false`). One metric
-        value is generated for each threshold value.
+      thresholds: (Optional) A float value or a python list/tuple of float
+        threshold values in [0, 1]. A threshold is compared with prediction
+        values to determine the truth value of predictions (i.e., above the
+        threshold is `true`, below is `false`). One metric value is generated
+        for each threshold value. If neither thresholds nor top_k are set, the
+        default is to calculate recall with `thresholds=0.5`.
+      top_k: (Optional) Unset by default. An int value specifying the top-k
+        predictions to consider when calculating recall.
+      class_id: (Optional) Integer class ID for which we want binary metrics.
+        This must be in the half-open interval `[0, num_classes)`, where
+        `num_classes` is the last dimension of predictions.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
     super(Recall, self).__init__(name=name, dtype=dtype)
     self.init_thresholds = thresholds
+    self.top_k = top_k
+    self.class_id = class_id
+
+    default_threshold = 0.5 if top_k is None else metrics_utils.NEG_INF
     self.thresholds = metrics_utils.parse_init_thresholds(
-        thresholds, default_threshold=0.5)
+        thresholds, default_threshold=default_threshold)
     self.tp = self.add_weight(
         'true_positives',
         shape=(len(self.thresholds),),
@@ -1164,8 +1227,9 @@ class Recall(Metric):
     """Accumulates true positive and false negative statistics.
 
     Args:
-      y_true: The ground truth values.
-      y_pred: The predicted values.
+      y_true: The ground truth values, with the same dimensions as `y_pred`.
+        Will be cast to `bool`.
+      y_pred: The predicted values. Each element must be in the range `[0, 1]`.
       sample_weight: Optional weighting of each example. Defaults to 1. Can be a
         `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
         be broadcastable to `y_true`.
@@ -1173,10 +1237,17 @@ class Recall(Metric):
     Returns:
       Update op.
     """
-    return metrics_utils.update_confusion_matrix_variables({
-        metrics_utils.ConfusionMatrix.TRUE_POSITIVES: self.tp,
-        metrics_utils.ConfusionMatrix.FALSE_NEGATIVES: self.fn
-    }, y_true, y_pred, self.thresholds, sample_weight)
+    return metrics_utils.update_confusion_matrix_variables(
+        {
+            metrics_utils.ConfusionMatrix.TRUE_POSITIVES: self.tp,
+            metrics_utils.ConfusionMatrix.FALSE_NEGATIVES: self.fn
+        },
+        y_true,
+        y_pred,
+        thresholds=self.thresholds,
+        top_k=self.top_k,
+        class_id=self.class_id,
+        sample_weight=sample_weight)
 
   def result(self):
     result = math_ops.div_no_nan(self.tp, self.tp + self.fn)
@@ -1188,7 +1259,11 @@ class Recall(Metric):
       K.set_value(v, np.zeros((num_thresholds,)))
 
   def get_config(self):
-    config = {'thresholds': self.init_thresholds}
+    config = {
+        'thresholds': self.init_thresholds,
+        'top_k': self.top_k,
+        'class_id': self.class_id
+    }
     base_config = super(Recall, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1244,12 +1319,17 @@ class SensitivitySpecificityBase(Metric):
     Returns:
       Update op.
     """
-    return metrics_utils.update_confusion_matrix_variables({
-        metrics_utils.ConfusionMatrix.TRUE_POSITIVES: self.tp,
-        metrics_utils.ConfusionMatrix.TRUE_NEGATIVES: self.tn,
-        metrics_utils.ConfusionMatrix.FALSE_POSITIVES: self.fp,
-        metrics_utils.ConfusionMatrix.FALSE_NEGATIVES: self.fn,
-    }, y_true, y_pred, self.thresholds, sample_weight)
+    return metrics_utils.update_confusion_matrix_variables(
+        {
+            metrics_utils.ConfusionMatrix.TRUE_POSITIVES: self.tp,
+            metrics_utils.ConfusionMatrix.TRUE_NEGATIVES: self.tn,
+            metrics_utils.ConfusionMatrix.FALSE_POSITIVES: self.fp,
+            metrics_utils.ConfusionMatrix.FALSE_NEGATIVES: self.fn,
+        },
+        y_true,
+        y_pred,
+        thresholds=self.thresholds,
+        sample_weight=sample_weight)
 
   def reset_states(self):
     num_thresholds = len(self.thresholds)

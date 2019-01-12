@@ -35,7 +35,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -977,7 +976,7 @@ def _get_model(compile_metrics):
   model.compile(
       loss='mae',
       metrics=compile_metrics,
-      optimizer=RMSPropOptimizer(learning_rate=0.001),
+      optimizer='rmsprop',
       run_eagerly=testing_utils.should_run_eagerly())
   return model
 

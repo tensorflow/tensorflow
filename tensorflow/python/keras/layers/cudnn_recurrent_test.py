@@ -31,7 +31,6 @@ from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 @keras_parameterized.run_all_keras_modes
@@ -408,8 +407,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
     model.add(
         keras.layers.Bidirectional(
             rnn(output_dim), merge_mode=mode, input_shape=(None, dim)))
-    model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.compile(loss='mse', optimizer='rmsprop')
     model.fit(x, y, epochs=1, batch_size=1)
 
     # test config
@@ -425,8 +423,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
             merge_mode=mode,
             input_shape=(None, dim)))
     model.add(keras.layers.Bidirectional(rnn(output_dim), merge_mode=mode))
-    model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.compile(loss='mse', optimizer=R'rmsprop')
     model.fit(x, y, epochs=1, batch_size=1)
 
     # test with functional API
@@ -435,8 +432,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
         rnn(output_dim), merge_mode=mode)(
             inputs)
     model = keras.Model(inputs, outputs)
-    model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.compile(loss='mse', optimizer=R'rmsprop')
     model.fit(x, y, epochs=1, batch_size=1)
 
     # Bidirectional and stateful
@@ -445,8 +441,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
         rnn(output_dim, stateful=True), merge_mode=mode)(
             inputs)
     model = keras.Model(inputs, outputs)
-    model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.compile(loss='mse', optimizer='rmsprop')
     model.fit(x, y, epochs=1, batch_size=1)
 
   @test_util.run_gpu_only

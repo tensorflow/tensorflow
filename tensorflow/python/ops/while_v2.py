@@ -57,6 +57,7 @@ def while_loop(cond,
                body,
                loop_vars,
                shape_invariants=None,
+               parallel_iterations=10,
                maximum_iterations=None,
                name=None,
                return_same_structure=True):
@@ -215,6 +216,7 @@ def while_loop(cond,
         util.create_new_tf_function(cond_graph),
         util.create_new_tf_function(body_graph),
         output_shapes=[t.shape for t in body_graph.outputs],
+        parallel_iterations=parallel_iterations,
         name=scope)
 
     _copy_handle_data(body_graph.outputs, outputs)
@@ -257,6 +259,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   maximum_iterations = op.get_attr(
       "_maximum_iterations") if _is_in_xla_context() else None
+  parallel_iterations = op.get_attr("parallel_iterations")
   assert not _is_in_xla_context() or maximum_iterations is not None
   maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
 
@@ -325,6 +328,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(cond_grad_graph),
       util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
+      parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
