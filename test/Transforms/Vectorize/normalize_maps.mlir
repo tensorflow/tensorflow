@@ -29,7 +29,7 @@ func @simple() {
       %24 = affine_apply (d0, d1) -> (-d0 + d1) (%20, %21)
     }
   }
-  // CHECK:      for %i1 = 0 to 7
+  //      CHECK: for %i1 = 0 to 7
   // CHECK-NEXT:   for %i2 = 0 to 42
   // CHECK-NEXT:     {{.*}} affine_apply #[[D0PLUSD1]](%i1, %i2)
   // CHECK-NEXT:     {{.*}} affine_apply #[[MINSD0PLUSD1]](%i1, %i2)

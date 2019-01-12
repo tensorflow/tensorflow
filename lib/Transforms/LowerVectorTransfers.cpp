@@ -228,6 +228,7 @@ VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
   int coalescingIndex = -1;
   auto clippedScalarAccessExprs = makeExprs(accesses);
   auto tmpAccessExprs = makeExprs(ivs);
+  llvm::DenseSet<unsigned> clipped;
   for (auto it : llvm::enumerate(permutationMap.getResults())) {
     if (auto affineExpr = it.value().template dyn_cast<AffineDimExpr>()) {
       auto pos = affineExpr.getPosition();
@@ -241,11 +242,32 @@ VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
         // then we record it.
         coalescingIndex = it.index();
       }
+      // Temporarily record already clipped accesses to avoid double clipping.
+      // TODO(ntv): remove when fully unrolled dimensions are clipped properly.
+      clipped.insert(pos);
     } else {
       // Sanity check.
       assert(it.value().template cast<AffineConstantExpr>().getValue() == 0 &&
              "Expected dim or 0 in permutationMap");
     }
+  }
+
+  // At this point, fully unrolled dimensions have not been clipped because they
+  // do not appear in the permutation map. As a consequence they may access out
+  // of bounds. We currently do not have enough information to determine which
+  // of those access dimensions have been fully unrolled.
+  // Clip one more time to ensure correctness for fully-unrolled dimensions.
+  // TODO(ntv): clip just what is needed once we pass the proper information.
+  // TODO(ntv): when we get there, also ensure we only clip when dimensions are
+  // not divisible (i.e. simple test that can be hoisted outside loop).
+  for (unsigned pos = 0; pos < clippedScalarAccessExprs.size(); ++pos) {
+    if (clipped.count(pos) > 0) {
+      continue;
+    }
+    auto i = clippedScalarAccessExprs[pos];
+    auto N = memRefSizes[pos];
+    clippedScalarAccessExprs[pos] =
+        select(i < zero, zero, select(i < N, i, N - one));
   }
 
   // Create the proper bindables for lbs, ubs and steps. Additionally, if we
