@@ -20,6 +20,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/EDSC/MLIREmitter.h"
 #include "mlir/EDSC/Types.h"
 #include "mlir/IR/Builders.h"
@@ -94,9 +95,8 @@ Value *add(FuncBuilder *builder, Location location, Value *a, Value *b) {
     auto d0 = getAffineDimExpr(0, context);
     auto d1 = getAffineDimExpr(1, context);
     auto map = AffineMap::get(2, 0, {d0 + d1}, {});
-    return builder
-        ->create<AffineApplyOp>(location, map, ArrayRef<Value *>{a, b})
-        ->getResult(0);
+    return makeSingleValueFromComposedAffineApply(builder, location, map,
+                                                  {a, b});
   } else if (isIntElement(*a)) {
     return builder->create<AddIOp>(location, a, b)->getResult();
   }
@@ -110,9 +110,8 @@ Value *sub(FuncBuilder *builder, Location location, Value *a, Value *b) {
     auto d0 = getAffineDimExpr(0, context);
     auto d1 = getAffineDimExpr(1, context);
     auto map = AffineMap::get(2, 0, {d0 - d1}, {});
-    return builder
-        ->create<AffineApplyOp>(location, map, ArrayRef<Value *>{a, b})
-        ->getResult(0);
+    return makeSingleValueFromComposedAffineApply(builder, location, map,
+                                                  {a, b});
   } else if (isIntElement(*a)) {
     return builder->create<SubIOp>(location, a, b)->getResult();
   }
