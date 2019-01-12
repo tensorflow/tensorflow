@@ -190,7 +190,7 @@ class ParameterServerStrategyTestBase(
                          '/job:worker/replica:0/task:0/%s' % last_part_device)
 
         # The colocate_vars_with can override the distribution's device.
-        with d.colocate_vars_with(x):
+        with d.extended.colocate_vars_with(x):
           y = variable_scope.get_variable(
               'y', initializer=20.0,
               aggregation=variable_scope.VariableAggregation.SUM)
@@ -344,7 +344,7 @@ class ParameterServerStrategyTestBase(
         self.assertEqual(e.device, device_util.canonicalize('/device:GPU:2'))
 
         # The colocate_vars_with can override the distribution's device.
-        with d.colocate_vars_with(x):
+        with d.extended.colocate_vars_with(x):
           y = variable_scope.get_variable(
               'y', initializer=20.0,
               aggregation=variable_scope.VariableAggregation.SUM)

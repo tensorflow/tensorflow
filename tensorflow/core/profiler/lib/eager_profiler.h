@@ -17,14 +17,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
 // A profiler which will start profiling when creating the object and will stop
-// when the object is destroyed. It will profile all operations run under the
-// given EagerContext.
+// when either the object is destroyed or SerializedToString is called. It will
+// profile all operations run under the given EagerContext.
 // Multiple instances of it can be created, but at most one of them will profile
 // for each EagerContext. Status() will return OK only for the instance that is
 // profiling.
@@ -51,11 +52,12 @@ class EagerProfiler : RunMetadataListener {
   EagerProfiler(const EagerProfiler&) = delete;
   EagerProfiler& operator=(const EagerProfiler&) = delete;
 
-  void GetMergetRunMetadata(RunMetadata* metadata) LOCKS_EXCLUDED(mutex_);
+  void Stop() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   RunMetadata run_metadata_ GUARDED_BY(mutex_);
   tensorflow::Status status_ GUARDED_BY(mutex_);
-  EagerContext* const context_;
+  std::unique_ptr<DeviceTracer> device_tracer_ GUARDED_BY(mutex_);
+  EagerContext* context_ GUARDED_BY(mutex_);
   mutex mutex_;
 };
 

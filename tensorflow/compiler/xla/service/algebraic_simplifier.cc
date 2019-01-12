@@ -877,6 +877,9 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       case C64:
         TF_RETURN_IF_ERROR(InvertConstant<complex64>(*b, &new_literal));
         break;
+      case C128:
+        TF_RETURN_IF_ERROR(InvertConstant<complex128>(*b, &new_literal));
+        break;
       default:
         return Status::OK();
     }

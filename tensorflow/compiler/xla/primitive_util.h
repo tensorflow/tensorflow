@@ -126,6 +126,11 @@ inline PrimitiveType NativeToPrimitiveType<complex64>() {
   return C64;
 }
 
+template <>
+inline PrimitiveType NativeToPrimitiveType<complex128>() {
+  return C128;
+}
+
 bool IsFloatingPointType(PrimitiveType type);
 
 bool IsComplexType(PrimitiveType type);
@@ -223,6 +228,11 @@ struct PrimitiveTypeToNative<BF16> {
 template <>
 struct PrimitiveTypeToNative<C64> {
   using type = complex64;
+};
+
+template <>
+struct PrimitiveTypeToNative<C128> {
+  using type = complex128;
 };
 
 // Returns the lower-case name of the given primitive type.

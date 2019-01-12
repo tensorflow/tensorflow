@@ -229,3 +229,101 @@ def have_all_keras_metadata(tensors):
 
 def generate_placeholders_from_shape(shape):
   return array_ops.placeholder(shape=shape, dtype=backend.floatx())
+
+
+def create_keras_history(tensors):
+  """Wraps TensorFlow Operations for compatibility with the Functional API.
+
+  This method checks to see if a Tensor in `tensors` is missing Keras metadata
+  and has its origin in a Keras `Input` Layer. If so, this method will replace
+  the raw TensorFlow Operations that created this tensor with
+  `TensorFlowOpLayer`
+  instances that create identical operations.
+
+  Any Tensors not originating from a Keras `Input` Layer will be treated as
+  constants when constructing `TensorFlowOpLayer` instances.
+
+  Arguments:
+    tensors: A structure of Tensors, some of which come from raw TensorFlow
+      operations and need to have Keras metadata assigned to them.
+  """
+
+  _create_keras_history_helper(tensors, set())
+
+
+def _create_keras_history_helper(tensors, processed_ops=None):
+  """Helper method for `create_keras_history`.
+
+  Arguments:
+    tensors: A structure of Tensors for which to create Keras metadata.
+    processed_ops: TensorFlow operations that have already been wrapped in
+      `TensorFlowOpLayer` instances.
+
+  Returns:
+    The updated set of TensorFlow Operations that have been wrapped
+    in `TensorFlowOpLayer` instances.
+  """
+  # Import of `base_layer` needed in order to create `TensorFlowOpLayer`.
+  # Cannot be imported at top because of circular dependencies.
+  # TODO(omalleyt): Resolve circular dependency.
+  from tensorflow.python.keras.engine import base_layer  # pylint: disable=g-import-not-at-top
+  tensor_list = nest.flatten(tensors)
+  for tensor in tensor_list:
+    if getattr(tensor, '_keras_history', None) is not None:
+      continue
+    op = tensor.op  # The Op that created this Tensor.
+    if op not in processed_ops:
+      # Recursively set `_keras_history`.
+      op_inputs = list(op.inputs)
+      constants = {}
+      layer_inputs = []
+      for i, op_input in enumerate(op_inputs):
+        if uses_keras_input_layers(op_input):
+          layer_inputs.append(op_input)
+        else:
+          # Treat any value not originating from a `keras.Input` as
+          # a constant (Variables currently have `Placeholder` op type
+          # when originating from an eager context
+          # so can't be supported.
+          constants[i] = backend.function([], [op_input])([])
+      processed_ops = _create_keras_history_helper(layer_inputs, processed_ops)
+      name = op.name
+      node_def = op.node_def.SerializeToString()
+      op_layer = base_layer.TensorFlowOpLayer(
+          node_def, constants=constants, name=name)
+      op_layer._add_inbound_node(  # pylint: disable=protected-access
+          layer_inputs, op.outputs)
+      processed_ops.update([op])
+  return processed_ops
+
+
+def uses_keras_input_layers(tensors):
+  """Checks if at least one Tensor in `tensors` originates from a Keras `Input`.
+
+  If so, the Functional API is being used.
+
+  Arguments:
+    tensors: An arbitrary nested structure of Tensors.
+
+  Returns:
+    Bool, whether at least one Tensor originates from a Keras `Input`.
+  """
+  checked_tensors = set()
+  input_tensors = nest.flatten(tensors)
+
+  while input_tensors:
+    if any(
+        getattr(tensor, '_keras_history', None) is not None
+        for tensor in input_tensors):
+      return True
+    checked_tensors.update(input_tensors)
+    new_input_tensors = set()
+    for tensor in input_tensors:
+      try:
+        new_input_tensors.update(tensor.op.inputs)
+      except AttributeError:
+        # In case `tensor` is a Variable created in an Eager
+        # context
+        pass
+    input_tensors = list(new_input_tensors - checked_tensors)
+  return False

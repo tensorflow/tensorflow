@@ -440,6 +440,8 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
     case OperatorType::kGather:
     case OperatorType::kTranspose:
     case OperatorType::kMean:
+    case OperatorType::kReduceMax:
+    case OperatorType::kReduceMin:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
     case OperatorType::kSum:
@@ -448,7 +450,7 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
       // in special circumstances like when computing expected value using
       // reduce_sum the input range and the output range matches. Hence the
       // below code would act as a fallback. If a fake_quant node is observed in
-      // the output that takes precendence over the hard coding logic below.
+      // the output that takes precedence over the hard coding logic below.
       changed = HardcodeMinMaxFromFirstInput(model, op);
       if (changed) {
         LOG(WARNING) << "Using the input range for output in reduce_sum op."

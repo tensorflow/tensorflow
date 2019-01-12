@@ -33,7 +33,6 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
@@ -42,7 +41,7 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_iterators_single_io(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     loss = 'mse'
     metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(optimizer, loss, metrics=metrics,
@@ -103,7 +102,7 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_iterators_running_out_of_data(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     loss = 'mse'
     metrics = ['mae']
     model.compile(optimizer, loss, metrics=metrics,
@@ -134,7 +133,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
       self.skipTest('b/120673224')
 
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     loss = 'mse'
     metrics = ['mae']
     model.compile(optimizer, loss, metrics=metrics,
@@ -156,7 +155,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_dataset(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     loss = 'mse'
     metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(optimizer, loss, metrics=metrics,
@@ -231,7 +230,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_dataset_with_sample_weights(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     loss = 'mse'
     metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(optimizer, loss, metrics=metrics,
@@ -253,7 +252,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_dataset_with_sparse_labels(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     for loss in ['sparse_categorical_crossentropy',
                  losses_impl.sparse_softmax_cross_entropy]:
       model.compile(optimizer, loss,
@@ -279,9 +278,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         return keras.backend.sum(inputs) + self.w * 0
 
     model = keras.Sequential([SumLayer(input_shape=(2,))])
-    model.compile(RMSPropOptimizer(learning_rate=0.001),
-                  loss='mae',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'rmsprop', loss='mae', run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((40, 2), dtype=np.float32)
     inputs[10:20, :] = 2
@@ -299,7 +297,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   def test_dataset_input_shape_validation(self):
     with self.cached_session():
       model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
-      model.compile(optimizer=RMSPropOptimizer(learning_rate=0.001), loss='mse')
+      model.compile(optimizer='rmsprop', loss='mse')
 
       # User forgets to batch the dataset
       inputs = np.zeros((10, 3))
@@ -328,7 +326,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_known_cardinality_no_steps_arg(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     model.compile(optimizer, 'mse',
                   run_eagerly=testing_utils.should_run_eagerly())
 
@@ -347,7 +345,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_unknown_cardinality_no_steps_arg(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     model.compile(optimizer, 'mse',
                   run_eagerly=testing_utils.should_run_eagerly())
 
@@ -381,7 +379,7 @@ class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):
     model.compile(
         loss='binary_crossentropy',
         metrics=['accuracy', metrics_module.BinaryAccuracy()],
-        optimizer=RMSPropOptimizer(learning_rate=0.001),
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
 
     np.random.seed(123)

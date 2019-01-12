@@ -30,12 +30,10 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training import rmsprop
 
 try:
   import yaml  # pylint:disable=g-import-not-at-top
@@ -860,7 +858,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     x = np.ones((100, 2))
     y = np.ones((100, 2))
     model.compile(
-        optimizer=gradient_descent.SGD(),
+        optimizer='sgd',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly())
     loss = model.train_on_batch(x, y)
@@ -909,7 +907,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     model.add(keras.layers.Dense(3))
     model.compile(
         loss='mse',
-        optimizer=gradient_descent.SGD(),
+        optimizer='sgd',
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly())
 
@@ -1161,7 +1159,7 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     x = keras.layers.wrappers.TimeDistributed(s)(x)
     model = keras.Model(inputs=inputs, outputs=x)
     model.compile(
-        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        optimizer='rmsprop',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly())
 

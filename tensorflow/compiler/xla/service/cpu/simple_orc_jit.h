@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Triple.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
@@ -99,6 +100,11 @@ class SimpleOrcJIT {
  private:
   llvm::JITSymbol ResolveRuntimeSymbol(const std::string& name);
 
+  void NotifyObjectFinalized(
+      const llvm::object::ObjectFile& object,
+      const llvm::RuntimeDyld::LoadedObjectInfo& object_info);
+  void NotifyObjectFreed(const llvm::object::ObjectFile& object);
+
   std::vector<VModuleKeyT> module_keys_;
   std::unique_ptr<llvm::TargetMachine> target_machine_;
   const Disassembler disassembler_;
@@ -107,6 +113,15 @@ class SimpleOrcJIT {
   std::shared_ptr<llvm::orc::SymbolResolver> symbol_resolver_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
+
+  // Non owning pointer to a JIT event listener that registers the JIT events
+  // with an attached GDB.
+  //
+  // Note: we get a pointer to this event listener using
+  // `createGDBRegistrationListener` which makes it look like we're supposed to
+  // free this, but the function is poorly named and really just returns a
+  // pointer to a static object.
+  llvm::JITEventListener* gdb_jit_event_listener_;
 };
 
 }  // namespace cpu

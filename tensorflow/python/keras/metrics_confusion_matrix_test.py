@@ -318,18 +318,23 @@ class TruePositivesTest(test.TestCase):
 class PrecisionTest(test.TestCase):
 
   def test_config(self):
-    p_obj = metrics.Precision(name='my_precision', thresholds=[0.4, 0.9])
+    p_obj = metrics.Precision(
+        name='my_precision', thresholds=[0.4, 0.9], top_k=15, class_id=12)
     self.assertEqual(p_obj.name, 'my_precision')
     self.assertEqual(len(p_obj.variables), 2)
     self.assertEqual([v.name for v in p_obj.variables],
                      ['true_positives:0', 'false_positives:0'])
     self.assertEqual(p_obj.thresholds, [0.4, 0.9])
+    self.assertEqual(p_obj.top_k, 15)
+    self.assertEqual(p_obj.class_id, 12)
 
     # Check save and restore config
     p_obj2 = metrics.Precision.from_config(p_obj.get_config())
     self.assertEqual(p_obj2.name, 'my_precision')
     self.assertEqual(len(p_obj2.variables), 2)
     self.assertEqual(p_obj2.thresholds, [0.4, 0.9])
+    self.assertEqual(p_obj2.top_k, 15)
+    self.assertEqual(p_obj2.class_id, 12)
 
   def test_value_is_idempotent(self):
     p_obj = metrics.Precision(thresholds=[0.3, 0.72])
@@ -431,23 +436,110 @@ class PrecisionTest(test.TestCase):
     self.assertArrayNear([expected_precision, 0], self.evaluate(p_obj.result()),
                          1e-3)
 
+  def test_unweighted_top_k(self):
+    p_obj = metrics.Precision(top_k=3)
+    y_pred = constant_op.constant([0.2, 0.1, 0.5, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(1. / 3, self.evaluate(result))
+
+  def test_weighted_top_k(self):
+    p_obj = metrics.Precision(top_k=3)
+    y_pred1 = constant_op.constant([0.2, 0.1, 0.4, 0, 0.2], shape=(1, 5))
+    y_true1 = constant_op.constant([0, 1, 1, 0, 1], shape=(1, 5))
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    self.evaluate(
+        p_obj(
+            y_true1,
+            y_pred1,
+            sample_weight=constant_op.constant([[1, 4, 2, 3, 5]])))
+
+    y_pred2 = constant_op.constant([0.2, 0.6, 0.4, 0.2, 0.2], shape=(1, 5))
+    y_true2 = constant_op.constant([1, 0, 1, 1, 1], shape=(1, 5))
+    result = p_obj(y_true2, y_pred2, sample_weight=constant_op.constant(3))
+
+    tp = (2 + 5) + (3 + 3)
+    predicted_positives = (1 + 2 + 5) + (3 + 3 + 3)
+    expected_precision = tp / predicted_positives
+    self.assertAlmostEqual(expected_precision, self.evaluate(result))
+
+  def test_unweighted_class_id(self):
+    p_obj = metrics.Precision(class_id=2)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+
+    y_pred = constant_op.constant([0.2, 0.1, 0.6, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.tp))
+    self.assertAlmostEqual(0, self.evaluate(p_obj.fp))
+
+    y_pred = constant_op.constant([0.2, 0.1, 0, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.tp))
+    self.assertAlmostEqual(0, self.evaluate(p_obj.fp))
+
+    y_pred = constant_op.constant([0.2, 0.1, 0.6, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 0, 0, 0], shape=(1, 5))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.tp))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.fp))
+
+  def test_unweighted_top_k_and_class_id(self):
+    p_obj = metrics.Precision(class_id=2, top_k=2)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+
+    y_pred = constant_op.constant([0.2, 0.6, 0.3, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.tp))
+    self.assertAlmostEqual(0, self.evaluate(p_obj.fp))
+
+    y_pred = constant_op.constant([1, 1, 0.9, 1, 1], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.tp))
+    self.assertAlmostEqual(0, self.evaluate(p_obj.fp))
+
+  def test_unweighted_top_k_and_threshold(self):
+    p_obj = metrics.Precision(thresholds=.7, top_k=2)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+
+    y_pred = constant_op.constant([0.2, 0.8, 0.6, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 1], shape=(1, 5))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.tp))
+    self.assertAlmostEqual(0, self.evaluate(p_obj.fp))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RecallTest(test.TestCase):
 
   def test_config(self):
-    r_obj = metrics.Recall(name='my_recall', thresholds=[0.4, 0.9])
+    r_obj = metrics.Recall(
+        name='my_recall', thresholds=[0.4, 0.9], top_k=15, class_id=12)
     self.assertEqual(r_obj.name, 'my_recall')
     self.assertEqual(len(r_obj.variables), 2)
     self.assertEqual([v.name for v in r_obj.variables],
                      ['true_positives:0', 'false_negatives:0'])
     self.assertEqual(r_obj.thresholds, [0.4, 0.9])
+    self.assertEqual(r_obj.top_k, 15)
+    self.assertEqual(r_obj.class_id, 12)
 
     # Check save and restore config
     r_obj2 = metrics.Recall.from_config(r_obj.get_config())
     self.assertEqual(r_obj2.name, 'my_recall')
     self.assertEqual(len(r_obj2.variables), 2)
     self.assertEqual(r_obj2.thresholds, [0.4, 0.9])
+    self.assertEqual(r_obj2.top_k, 15)
+    self.assertEqual(r_obj2.class_id, 12)
 
   def test_value_is_idempotent(self):
     r_obj = metrics.Recall(thresholds=[0.3, 0.72])
@@ -547,6 +639,88 @@ class RecallTest(test.TestCase):
     expected_recall = weighted_tp / weighted_positives
     self.assertArrayNear([expected_recall, 0], self.evaluate(r_obj.result()),
                          1e-3)
+
+  def test_unweighted_top_k(self):
+    r_obj = metrics.Recall(top_k=3)
+    y_pred = constant_op.constant([0.2, 0.1, 0.5, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+
+  def test_weighted_top_k(self):
+    r_obj = metrics.Recall(top_k=3)
+    y_pred1 = constant_op.constant([0.2, 0.1, 0.4, 0, 0.2], shape=(1, 5))
+    y_true1 = constant_op.constant([0, 1, 1, 0, 1], shape=(1, 5))
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    self.evaluate(
+        r_obj(
+            y_true1,
+            y_pred1,
+            sample_weight=constant_op.constant([[1, 4, 2, 3, 5]])))
+
+    y_pred2 = constant_op.constant([0.2, 0.6, 0.4, 0.2, 0.2], shape=(1, 5))
+    y_true2 = constant_op.constant([1, 0, 1, 1, 1], shape=(1, 5))
+    result = r_obj(y_true2, y_pred2, sample_weight=constant_op.constant(3))
+
+    tp = (2 + 5) + (3 + 3)
+    positives = (4 + 2 + 5) + (3 + 3 + 3 + 3)
+    expected_recall = tp / positives
+    self.assertAlmostEqual(expected_recall, self.evaluate(result))
+
+  def test_unweighted_class_id(self):
+    r_obj = metrics.Recall(class_id=2)
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+
+    y_pred = constant_op.constant([0.2, 0.1, 0.6, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.tp))
+    self.assertAlmostEqual(0, self.evaluate(r_obj.fn))
+
+    y_pred = constant_op.constant([0.2, 0.1, 0, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.tp))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.fn))
+
+    y_pred = constant_op.constant([0.2, 0.1, 0.6, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 0, 0, 0], shape=(1, 5))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.tp))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.fn))
+
+  def test_unweighted_top_k_and_class_id(self):
+    r_obj = metrics.Recall(class_id=2, top_k=2)
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+
+    y_pred = constant_op.constant([0.2, 0.6, 0.3, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.tp))
+    self.assertAlmostEqual(0, self.evaluate(r_obj.fn))
+
+    y_pred = constant_op.constant([1, 1, 0.9, 1, 1], shape=(1, 5))
+    y_true = constant_op.constant([0, 1, 1, 0, 0], shape=(1, 5))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.tp))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.fn))
+
+  def test_unweighted_top_k_and_threshold(self):
+    r_obj = metrics.Recall(thresholds=.7, top_k=2)
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+
+    y_pred = constant_op.constant([0.2, 0.8, 0.6, 0, 0.2], shape=(1, 5))
+    y_true = constant_op.constant([1, 1, 1, 0, 1], shape=(1, 5))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.25, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(r_obj.tp))
+    self.assertAlmostEqual(3, self.evaluate(r_obj.fn))
 
 
 @test_util.run_all_in_graph_and_eager_modes

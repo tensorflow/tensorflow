@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -424,7 +423,7 @@ class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
 
     Status MaterializeDataset(
         std::shared_ptr<MaterializedIndexedDataset>* materialized) override {
-      materialized->reset(new Materialized(this));
+      (*materialized) = std::make_shared<Materialized>(this);
       return Status::OK();
     }
 
@@ -441,8 +440,8 @@ class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::IdentityIndexedDataset")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::IdentityIndexedDataset")});
     }
 
     string DebugString() const override {

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -129,7 +130,16 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
     device_->ComputeAsync(async, &context, [&done]() { done.Notify(); });
     done.WaitForNotification();
   } else {
-    device_->Compute(kernel_.get(), &context);
+    const string& op_name = kernel_->name();
+    // If tracing if off, the overheads of ScopedAnnotation and ScopedActivity
+    // are negligible.
+    if (device_->TraceUsingAnnotations()) {
+      tracing::ScopedAnnotation activity(op_name, kernel_->type_string());
+      device_->Compute(kernel_.get(), &context);
+    } else {
+      tracing::ScopedActivity activity(op_name, kernel_->type_string());
+      device_->Compute(kernel_.get(), &context);
+    }
   }
   if (!context.status().ok()) return context.status();
 

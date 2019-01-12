@@ -147,6 +147,8 @@ class TensorHandle : public core::RefCounted {
            (ctx_ == nullptr || ctx_->HostCPU() == device_);
   }
 
+  bool IsRemote();
+
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that compuatation is
@@ -155,8 +157,6 @@ class TensorHandle : public core::RefCounted {
   Status WaitForNode(uint64 node_id, bool return_if_is_ready);
 
   bool IsReady();
-
-  bool IsRemote();
 
   // Id for the EagerNode that will compute the value pointed to by this handle.
   // If the value is 0, the handle is already ready, but not vice-versa.

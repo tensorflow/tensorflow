@@ -211,11 +211,21 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
+    case HloOpcode::kGetDimensionSize: {
+      int64 dimension_number = instr.dimensions(0);
+      const HloInstructionProto& operand =
+          *(LookUpInstructionByHandle(instr.operand_ids(0)).ValueOrDie());
+      Shape operand_shape(operand.shape());
+      if (operand_shape.is_dynamic_dimension(dimension_number)) {
+        *is_constant = false;
+      }
+      break;
+    }
 
     // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
-      // TODO(b/33009255): Implmement constant folding for cross replica sum.
+      // TODO(b/33009255): Implement constant folding for cross replica sum.
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCall:
@@ -2541,21 +2551,56 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     worklist.pop();
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
                         LookUpInstructionByHandle(handle));
-    for (int64 id : instr_proto->operand_ids()) {
-      if (related_ops.insert(id).second) {
-        worklist.push(id);
+
+    if (instr_proto->opcode() ==
+        HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+      // At this point, BuildConstantSubGraph should never encounter a
+      // GetDimensionSize with a dynamic dimension. IsConstant check would have
+      // failed at the beginning of this function.
+      //
+      // Replace GetDimensionSize with a Constant representing the static bound
+      // of the shape.
+      int64 dimension = instr_proto->dimensions(0);
+      int64 operand_handle = instr_proto->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          LookUpInstructionByHandle(operand_handle));
+
+      TF_RET_CHECK(!operand_proto->shape().is_dynamic_dimension(dimension));
+      auto constant_dimension_size =
+          static_cast<uint32>(operand_proto->shape().dimensions(dimension));
+
+      Literal literal = LiteralUtil::CreateR0(constant_dimension_size);
+
+      HloInstructionProto const_instr;
+      *const_instr.mutable_shape() = literal.shape().ToProto();
+      *const_instr.mutable_literal() = literal.ToProto();
+      *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
+      *const_instr.mutable_name() = HloOpcodeString(HloOpcode::kConstant);
+      const_instr.set_id(handle);
+      *entry.add_instructions() =
+          const_instr;  // Add to the result constant graph.
+    } else {
+      for (int64 id : instr_proto->operand_ids()) {
+        if (related_ops.insert(id).second) {
+          worklist.push(id);
+        }
       }
-    }
-    for (int64 called_id : instr_proto->called_computation_ids()) {
-      related_calls.insert(called_id);
+      for (int64 called_id : instr_proto->called_computation_ids()) {
+        related_calls.insert(called_id);
+      }
     }
   }
 
   // Add related ops to the computation.
   for (int64 id : related_ops) {
-    auto* instr = entry.add_instructions();
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_src,
                         LookUpInstructionByHandle(id));
+
+    if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+      continue;
+    }
+    auto* instr = entry.add_instructions();
+
     *instr = *instr_src;
     // Ensures that the instruction names are unique among the graph.
     const string& new_name =

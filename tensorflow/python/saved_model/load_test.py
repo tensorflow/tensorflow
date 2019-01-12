@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import tempfile
 
@@ -185,6 +186,68 @@ class LoadTest(test.TestCase):
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
 
+  def test_structured_inputs(self):
+
+    def func(x, training=True):
+      # x is a nested structure, we care about one particular tensor.
+      _, (a, b) = x
+      if training:
+        return 2 * a["a"] + b
+      else:
+        return 7
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(func)
+
+    x = constant_op.constant(10)
+    y = constant_op.constant(11)
+
+    input1 = [6, ({"a": x}, y)]
+    input2 = [7, ({"a": x}, y)]  # Not compatible with input1 signature.
+    input3 = [6, ({"a": y}, x)]  # Compatible with input1 signature.
+
+    # Note: by only calling f(input1) before serialization, only inputs with
+    # matching signature will be valid on the loaded model.
+    self.assertEqual(31, root.f(input1).numpy())
+
+    imported = self.cycle(root)
+
+    with self.assertRaisesRegexp(AssertionError,
+                                 "Could not find matching function to call.*"):
+      imported.f(input2)
+
+    self.assertEqual(31, imported.f(input1).numpy())
+    self.assertEqual(32, imported.f(input3).numpy())
+
+  def test_structured_output(self):
+
+    # Use fields with non-alphabetical order
+    named_tuple_type = collections.namedtuple("NamedTupleHello", ["b", "a"])
+
+    def func(input1, input2):
+      named_tuple = named_tuple_type(a=input1 + input2, b=input1 * input2)
+      return [named_tuple, input2, {"x": 0.5}]
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(func)
+
+    result = root.f(constant_op.constant(2), constant_op.constant(3))
+
+    self.assertEqual(5, result[0].a.numpy())
+    self.assertEqual(6, result[0].b.numpy())
+    self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
+    self.assertEqual(3, result[1].numpy())
+    self.assertEqual(0.5, result[2]["x"].numpy())
+
+    imported = self.cycle(root)
+
+    result = imported.f(constant_op.constant(2), constant_op.constant(5))
+    self.assertEqual(7, result[0].a.numpy())
+    self.assertEqual(10, result[0].b.numpy())
+    self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
+    self.assertEqual(5, result[1].numpy())
+    self.assertEqual(0.5, result[2]["x"].numpy())
+
   def test_positional_arguments(self):
     def func(x, training=False, abc=7.1, defg=7.7):
       del abc
@@ -342,6 +405,16 @@ class LoadTest(test.TestCase):
                         imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
+
+  def test_dict(self):
+    root = tracking.Checkpointable()
+    root.variables = dict(a=variables.Variable(1.))
+    root.variables["b"] = variables.Variable(2.)
+    root.variables["c"] = 1
+    imported = self.cycle(root)
+    self.assertEqual(1., imported.variables["a"].numpy())
+    self.assertEqual(2., imported.variables["b"].numpy())
+    self.assertEqual(set(["a", "b"]), set(imported.variables.keys()))
 
 
 if __name__ == "__main__":

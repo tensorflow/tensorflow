@@ -116,13 +116,26 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                 orc_jit_memory_mapper::GetInstance());
             result.Resolver = symbol_resolver_;
             return result;
+          },
+          /*NotifyLoaded=*/
+          llvm::orc::LegacyRTDyldObjectLinkingLayer::NotifyLoadedFtor(),
+          /*NotifyFinalized=*/
+          [this](VModuleKeyT, const llvm::object::ObjectFile& object,
+                 const llvm::RuntimeDyld::LoadedObjectInfo& object_info) {
+            this->NotifyObjectFinalized(object, object_info);
+          },
+          /*NotifyFreed=*/
+          [this](VModuleKeyT, const llvm::object::ObjectFile& object) {
+            this->NotifyObjectFreed(object);
           }),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
                                      opt_level, optimize_for_size,
                                      enable_fast_math, disable_expensive_passes,
                                      std::move(pre_optimization_hook),
-                                     std::move(post_optimization_hook))) {
+                                     std::move(post_optimization_hook))),
+      gdb_jit_event_listener_(
+          llvm::JITEventListener::createGDBRegistrationListener()) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
@@ -145,6 +158,20 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
                                        llvm::JITSymbolFlags::None);
   return symbol_info;
+}
+
+void SimpleOrcJIT::NotifyObjectFinalized(
+    const llvm::object::ObjectFile& object,
+    const llvm::RuntimeDyld::LoadedObjectInfo& object_info) {
+  uint64_t key = static_cast<uint64_t>(
+      reinterpret_cast<uintptr_t>(object.getData().data()));
+  gdb_jit_event_listener_->notifyObjectLoaded(key, object, object_info);
+}
+
+void SimpleOrcJIT::NotifyObjectFreed(const llvm::object::ObjectFile& object) {
+  uint64_t key = static_cast<uint64_t>(
+      reinterpret_cast<uintptr_t>(object.getData().data()));
+  gdb_jit_event_listener_->notifyFreeingObject(key);
 }
 
 SimpleOrcJIT::VModuleKeyT SimpleOrcJIT::AddModule(

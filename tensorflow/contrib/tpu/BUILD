@@ -453,7 +453,8 @@ py_library(
     srcs = ["python/tpu/tpu_embedding.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/tpu:tpu_ops",
+        ":tpu_lib",
+        ":tpu_ops",
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",

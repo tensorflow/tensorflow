@@ -27,6 +27,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training.checkpointable import tracking
@@ -46,12 +48,14 @@ class _Loader(object):
         function_deserialization.load_function_def_library(
             meta_graph.graph_def.library))
     self._load_all()
-    self._bind_function_captures()
+    self._setup_concrete_functions()
     self._restore_checkpoint()
 
   def _bind_function_captures(self):
-    """Setup captured tensors in restored concrete functions."""
+    """Setup captured tensors and output structure in restored concrete
+    functions."""
     seen_concrete_functions = set()
+    coder = nested_structure_coder.StructureCoder()
     for object_proto in self._proto.nodes:
       if object_proto.WhichOneof("kind") == "function":
         for concrete_function in object_proto.function.concrete_function:
@@ -65,17 +69,32 @@ class _Loader(object):
               if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
           ]
           if name in seen_concrete_functions:
-            if self._concrete_functions[name]._captured_inputs != bound_inputs:  # pylint: disable=protected-access
-              raise NotImplementedError(
-                  "Function %s is used more than once with different "
-                  "captured inputs." % name)
+            raise RuntimeError(
+                "Concrete function with a duplicate name: %s." % name)
           else:
             seen_concrete_functions.add(name)
             # TODO(andresp): This is only injecting the captured inputs into the
             # concrete function, note that we did not modify the FuncGraph
             # itself.
-            self._concrete_functions[name]._captured_inputs = bound_inputs  # pylint: disable=protected-access
-            self._concrete_functions[name]._func_graph.variables = bound_variables  # pylint: disable=protected-access
+            concrete_function = self._concrete_functions[name]
+            concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
+            concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
+            # By setting the structured_outputs directly, we can rely on this
+            # function_lib.ConcreteFunction object to perform the output
+            # repacking logic. The only limitation of that logic is that it only
+            # works with output that is convertible to Tensors and the
+            # conversion always happens. For example tf.TensorShape([2, 3])
+            # will be converted to Tensor representing [2, 3].
+            original_outputs = coder.decode_proto(
+                concrete_function.output_signature)
+            # The original_outputs here had Tensors converted to TensorSpecs, so
+            # the restored concrete function's structured_outputs field will not
+            # be exactly the same. Fortunately the repacking logic cares only
+            # about the structure.
+            # TODO(vbardiovsky): Should we just replicate the structures, with
+            # Nones instead of real objects? Decide when we start solving
+            # idempotency.
+            concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
     obj = self._nodes[node_id]
@@ -87,11 +106,17 @@ class _Loader(object):
 
   def _load_all(self):
     """Load all saved objects and wire their properties."""
-    self._nodes = [self._recreate(proto) for proto in self._proto.nodes]
+    self._nodes = []
+    node_setters = []
+    for proto in self._proto.nodes:
+      node, setter = self._recreate(proto)
+      self._nodes.append(node)
+      node_setters.append(setter)
     # After creating the objects, construct the edges between the objects.
-    for obj, object_proto in zip(self._nodes, self._proto.nodes):
+    for obj, object_proto, setter in zip(self._nodes, self._proto.nodes,
+                                         node_setters):
       for reference in object_proto.children:
-        setattr(obj, reference.local_name, self._nodes[reference.node_id])
+        setter(obj, reference.local_name, self._nodes[reference.node_id])
         # Note: if an object has an attribute `__call__` add a class method
         # that allows `obj()` syntax to work. This is done per-instance to
         # allow `callable` to be used to find out if an object is callable.
@@ -121,30 +146,32 @@ class _Loader(object):
 
   def _recreate_user_object(self, proto):
     """Instantiates a SavedUserObject."""
-    del proto
+    looked_up = revived_types.deserialize(proto)
+    if looked_up is None:
+      # Note: each user object has its own class. This allows to make each one
+      # individually callable by adding a `__call__` method to the classes of
+      # the objects instances that have a `__call__` property.
 
-    # Note: each user object has its own class. This allows to make each one
-    # individually callable by adding a `__call__` method to the classes of
-    # the objects instances that have a `__call__` property.
-    class _UserObject(tracking.Checkpointable):
-      pass
+      class _UserObject(tracking.Checkpointable):
+        pass
 
-    return _UserObject()
+      return _UserObject(), setattr
+    return looked_up
 
   def _recreate_asset(self, proto):
     filename = os.path.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
-    return tracking.TrackableAsset(filename)
+    return tracking.TrackableAsset(filename), setattr
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_function(
-        proto, self._concrete_functions)
+        proto, self._concrete_functions), setattr
 
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?
     dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
-    return variables.Variable(dummy_value, trainable=proto.trainable)
+    return variables.Variable(dummy_value, trainable=proto.trainable), setattr
 
 
 def _call_attribute(instance, *args, **kwargs):

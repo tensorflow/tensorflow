@@ -1049,6 +1049,17 @@ class Variable(six.with_metaclass(VariableMetaclass,
     return RefVariable(variable_def=variable_def,
                        import_scope=import_scope)
 
+  def _set_save_slice_info(self, save_slice_info):
+    """Sets the slice info for this `Variable`.
+
+    Args:
+      save_slice_info: A `Variable.SaveSliceInfo` object.
+    """
+    self._save_slice_info = save_slice_info
+
+  def _get_save_slice_info(self):
+    return self._save_slice_info
+
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
 
@@ -2294,17 +2305,6 @@ class RefVariable(VariableV1):
         " if you want assignment to the variable value or `x = x ** y`"
         " if you want a new python Tensor object.", 1)
     return self ** other
-
-  def _set_save_slice_info(self, save_slice_info):
-    """Sets the slice info for this `Variable`.
-
-    Args:
-      save_slice_info: A `Variable.SaveSliceInfo` object.
-    """
-    self._save_slice_info = save_slice_info
-
-  def _get_save_slice_info(self):
-    return self._save_slice_info
 
 
 def _try_guard_against_uninitialized_dependencies(name, initial_value):

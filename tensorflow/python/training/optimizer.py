@@ -816,7 +816,7 @@ class Optimizer(
     if v is None:
       self._maybe_initialize_checkpointable()
       distribution_strategy = distribute_ctx.get_strategy()
-      with distribution_strategy.colocate_vars_with(colocate_with):
+      with distribution_strategy.extended.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(
               name=name, shape=None)
