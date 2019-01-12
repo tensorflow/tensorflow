@@ -45,6 +45,7 @@ from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensi
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
@@ -1198,6 +1199,26 @@ def assert_not_shuffled(dataset):
           assert_not_shuffled(input_dataset)
         return
     raise ValueError('Could not assert that dataset is not shuffled.')
+
+
+def verify_dataset_shuffled(x):
+  """Verifies that the dataset is shuffled.
+
+  Args:
+    x: Dataset passed as an input to the model.
+
+  Raises:
+    ValueError: if the dataset is not already shuffled.
+  """
+  assert isinstance(x, dataset_ops.DatasetV2)
+  try:
+    assert_not_shuffled(x)
+  except ValueError:
+    # Dataset may or may not be shuffled.
+    return
+  else:
+    logging.warning('Expected a shuffled dataset but input dataset `x` is '
+                    'not shuffled. Please invoke `shuffle()` on input dataset.')
 
 
 def is_dataset_or_iterator(data):
