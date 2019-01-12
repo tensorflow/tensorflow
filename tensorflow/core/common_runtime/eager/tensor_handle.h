@@ -48,50 +48,15 @@ namespace tensorflow {
 // (unrelated to python TensorHandle).
 class TensorHandle : public core::RefCounted {
  public:
-  TensorHandle(const Tensor& t, Device* d, Device* op_device, EagerContext* ctx)
-      : dtype(t.dtype()),
-        node_id_(0),
-        tensor_(t),
-        device_(d),
-        op_device_(op_device),
-        remote_op_id_(-1),
-        remote_output_num_(-1),
-        remote_shape_node_id_(-1),
-        ctx_(ctx),
-        is_ready_(true) {}
-
-  TensorHandle(uint64 node_id, Device* d, Device* op_device, DataType dtype,
-               EagerContext* ctx)
-      : dtype(dtype),
-        node_id_(node_id),
-        tensor_(dtype),
-        device_(d),
-        op_device_(op_device),
-        remote_op_id_(-1),
-        remote_output_num_(-1),
-        remote_shape_node_id_(-1),
-        ctx_(ctx),
-        is_ready_(ctx == nullptr) {
-    DCHECK_GT(node_id_, 0);
-  }
+  TensorHandle(const Tensor& t, Device* d, Device* op_device,
+               EagerContext* ctx);
+  TensorHandle(uint64 node_id, Device* d, Device* op_device,
+               Device* resource_device, DataType dtype, EagerContext* ctx);
 
   // Remote tensor handle constructor.
   TensorHandle(int64 op_id, int32 output_num, uint64 remote_shape_node_id,
                DataType dtype, std::function<void()> call_on_destroy, Device* d,
-               Device* op_device, EagerContext* ctx)
-      : dtype(dtype),
-        node_id_(0),
-        device_(d),
-        op_device_(op_device),
-        remote_op_id_(op_id),
-        remote_output_num_(output_num),
-        remote_shape_node_id_(remote_shape_node_id),
-        call_on_destroy_(std::move(call_on_destroy)),
-        ctx_(ctx),
-        is_ready_(true) {
-    DCHECK(IsRemote()) << "Op ID and output num should be >= 0. Op ID: "
-                       << op_id << ", Output num: " << output_num;
-  }
+               Device* op_device, Device* resource_device, EagerContext* ctx);
 
   ~TensorHandle() override {
     if (call_on_destroy_) {
@@ -104,8 +69,8 @@ class TensorHandle : public core::RefCounted {
   Status TensorValue(tensorflow::TensorValue* t);
 
   tensorflow::Device* device() const { return device_; }
-
   tensorflow::Device* op_device() const { return op_device_; }
+  tensorflow::Device* resource_device() const { return resource_device_; }
 
   Status TensorAndDevice(const tensorflow::Tensor** tensor,
                          tensorflow::Device** device,
@@ -178,6 +143,10 @@ class TensorHandle : public core::RefCounted {
   // device_ for constant tensors.
   tensorflow::Device* const op_device_;
 
+  // If the tensor dtype is DT_RESOURCE, resource_device_ holds the device
+  // backing the resource. Else resource_device_ is nullptr.
+  tensorflow::Device* const resource_device_;
+
   // IDs required when this class is representing a remote tensor handle.
   const int64 remote_op_id_;
   const int32 remote_output_num_;
@@ -197,6 +166,10 @@ class TensorHandle : public core::RefCounted {
   EagerContext* ctx_ GUARDED_BY(ctx_mutex_);
   bool is_ready_ GUARDED_BY(ctx_mutex_);
 };
+
+// If tensor's dtype is DT_RESOURCE, returns the device backing the resource.
+// Else, returns nullptr.
+Device* GetResourceDevice(const Tensor& t, EagerContext* ctx);
 
 }  // namespace tensorflow
 
