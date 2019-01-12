@@ -145,10 +145,9 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
 
   FuncBuilder b(opInst);
   auto idMap = b.getMultiDimIdentityMap(rank);
-
   // Initialize 'accessValueMap' and compose with reachable AffineApplyOps.
+  fullyComposeAffineMapAndOperands(&idMap, &indices);
   AffineValueMap accessValueMap(idMap, indices);
-  forwardSubstituteReachableOps(&accessValueMap);
   AffineMap accessMap = accessValueMap.getAffineMap();
 
   // We'll first associate the dims and symbols of the access map to the dims
@@ -427,6 +426,9 @@ ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   unsigned sliceSurroundingLoopsSize = sliceSurroundingLoops.size();
   (void)sliceSurroundingLoopsSize;
   assert(dstLoopDepth + numSrcLoopIVs >= sliceSurroundingLoopsSize);
+  unsigned sliceLoopLimit = dstLoopDepth + numSrcLoopIVs;
+  (void)sliceLoopLimit;
+  assert(sliceLoopLimit >= sliceSurroundingLoopsSize);
 
   // Update loop bounds for loops in 'sliceLoopNest'.
   for (unsigned i = 0; i < srcLoopDepth; ++i) {

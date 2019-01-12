@@ -180,40 +180,6 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
   return true;
 }
 
-// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
-// its results equal to the number of 'operands, as a composition
-// of all other AffineApplyOps reachable from input parameter 'operands'. If the
-// operands were drawing results from multiple affine apply ops, this also leads
-// to a collapse into a single affine apply op. The final results of the
-// composed AffineApplyOp are returned in output parameter 'results'.
-OperationInst *
-mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
-                                  ArrayRef<Value *> operands,
-                                  ArrayRef<OperationInst *> affineApplyOps,
-                                  SmallVectorImpl<Value *> *results) {
-  // Create identity map with same number of dimensions as number of operands.
-  auto map = builder->getMultiDimIdentityMap(operands.size());
-  // Initialize AffineValueMap with identity map.
-  AffineValueMap valueMap(map, operands);
-
-  for (auto *opInst : affineApplyOps) {
-    assert(opInst->isa<AffineApplyOp>());
-    auto affineApplyOp = opInst->cast<AffineApplyOp>();
-    // Forward substitute 'affineApplyOp' into 'valueMap'.
-    valueMap.forwardSubstitute(*affineApplyOp);
-  }
-  // Compose affine maps from all ancestor AffineApplyOps.
-  // Create new AffineApplyOp from 'valueMap'.
-  // Create new AffineApplyOp based on 'valueMap'.
-  auto affineApplyOp = builder->create<AffineApplyOp>(
-      loc, valueMap.getAffineMap(), valueMap.getOperands());
-  results->resize(operands.size());
-  for (unsigned i = 0, e = operands.size(); i < e; ++i) {
-    (*results)[i] = affineApplyOp->getResult(i);
-  }
-  return affineApplyOp->getInstruction();
-}
-
 /// Given an operation instruction, inserts a new single affine apply operation,
 /// that is exclusively used by this operation instruction, and that provides
 /// all operands that are results of an affine_apply as a function of loop
@@ -277,11 +243,11 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
     return nullptr;
 
   FuncBuilder builder(opInst);
-  SmallVector<Value *, 4> results;
-  auto *affineApplyInst = createComposedAffineApplyOp(
-      &builder, opInst->getLoc(), subOperands, affineApplyOps, &results);
-  assert(results.size() == subOperands.size() &&
-         "number of results should be the same as the number of subOperands");
+  SmallVector<Value *, 4> composedOpOperands(subOperands);
+  auto map = builder.getMultiDimIdentityMap(composedOpOperands.size());
+  fullyComposeAffineMapAndOperands(&map, &composedOpOperands);
+  auto affineApply =
+      builder.create<AffineApplyOp>(opInst->getLoc(), map, composedOpOperands);
 
   // Construct the new operands that include the results from the composed
   // affine apply op above instead of existing ones (subOperands). So, they
@@ -296,7 +262,7 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
         break;
     }
     if (j < subOperands.size()) {
-      newOperands[i] = results[j];
+      newOperands[i] = affineApply->getResult(j);
     }
   }
 
@@ -304,47 +270,7 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
     opInst->setOperand(idx, newOperands[idx]);
   }
 
-  return affineApplyInst;
-}
-
-void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
-  auto *opInst = affineApplyOp->getInstruction();
-  // Iterate through all uses of all results of 'opInst', forward substituting
-  // into any uses which are AffineApplyOps.
-  for (unsigned resultIndex = 0, e = opInst->getNumResults(); resultIndex < e;
-       ++resultIndex) {
-    const Value *result = opInst->getResult(resultIndex);
-    for (auto it = result->use_begin(); it != result->use_end();) {
-      InstOperand &use = *(it++);
-      auto *useInst = use.getOwner();
-      auto *useOpInst = dyn_cast<OperationInst>(useInst);
-      // Skip if use is not AffineApplyOp.
-      if (useOpInst == nullptr || !useOpInst->isa<AffineApplyOp>())
-        continue;
-      // Advance iterator past 'opInst' operands which also use 'result'.
-      while (it != result->use_end() && it->getOwner() == useInst)
-        ++it;
-
-      FuncBuilder builder(useOpInst);
-      // Initialize AffineValueMap with 'affineApplyOp' which uses 'result'.
-      auto oldAffineApplyOp = useOpInst->cast<AffineApplyOp>();
-      AffineValueMap valueMap(*oldAffineApplyOp);
-      // Forward substitute 'result' at index 'i' into 'valueMap'.
-      valueMap.forwardSubstituteSingle(*affineApplyOp, resultIndex);
-
-      // Create new AffineApplyOp from 'valueMap'.
-      auto newAffineApplyOp = builder.create<AffineApplyOp>(
-          useOpInst->getLoc(), valueMap.getAffineMap(), valueMap.getOperands());
-
-      // Update all uses to use results from 'newAffineApplyOp'.
-      for (unsigned i = 0, e = useOpInst->getNumResults(); i < e; ++i) {
-        oldAffineApplyOp->getResult(i)->replaceAllUsesWith(
-            newAffineApplyOp->getResult(i));
-      }
-      // Erase 'oldAffineApplyOp'.
-      oldAffineApplyOp->getInstruction()->erase();
-    }
-  }
+  return affineApply->getInstruction();
 }
 
 /// Folds the specified (lower or upper) bound to a constant if possible

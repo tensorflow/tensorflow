@@ -107,7 +107,10 @@ AffineMap AffineMap::getMultiDimIdentityMap(unsigned numDims,
 
 MLIRContext *AffineMap::getContext() const { return getResult(0).getContext(); }
 
-bool AffineMap::isBounded() const { return !map->rangeSizes.empty(); }
+bool AffineMap::isBounded() const {
+  assert(map && "uninitialized AffineMap");
+  return !map->rangeSizes.empty();
+}
 
 bool AffineMap::isIdentity() const {
   if (getNumDims() != getNumResults())
@@ -130,18 +133,33 @@ int64_t AffineMap::getSingleConstantResult() const {
   return getResult(0).cast<AffineConstantExpr>().getValue();
 }
 
-unsigned AffineMap::getNumDims() const { return map->numDims; }
-unsigned AffineMap::getNumSymbols() const { return map->numSymbols; }
-unsigned AffineMap::getNumResults() const { return map->results.size(); }
+unsigned AffineMap::getNumDims() const {
+  assert(map && "uninitialized map storage");
+  return map->numDims;
+}
+unsigned AffineMap::getNumSymbols() const {
+  assert(map && "uninitialized map storage");
+  return map->numSymbols;
+}
+unsigned AffineMap::getNumResults() const {
+  assert(map && "uninitialized map storage");
+  return map->results.size();
+}
 unsigned AffineMap::getNumInputs() const {
+  assert(map && "uninitialized map storage");
   return map->numDims + map->numSymbols;
 }
 
-ArrayRef<AffineExpr> AffineMap::getResults() const { return map->results; }
+ArrayRef<AffineExpr> AffineMap::getResults() const {
+  assert(map && "uninitialized map storage");
+  return map->results;
+}
 AffineExpr AffineMap::getResult(unsigned idx) const {
+  assert(map && "uninitialized map storage");
   return map->results[idx];
 }
 ArrayRef<AffineExpr> AffineMap::getRangeSizes() const {
+  assert(map && "uninitialized map storage");
   return map->rangeSizes;
 }
 

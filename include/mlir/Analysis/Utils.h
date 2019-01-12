@@ -147,9 +147,6 @@ template <typename LoadOrStoreOpPointer>
 bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
                              bool emitError = true);
 
-/// Constructs a MemRefAccess from a load or store operation instruction.
-void getMemRefAccess(OperationInst *loadOrStoreOpInst, MemRefAccess *access);
-
 /// Returns the number of surrounding loops common to both A and B.
 unsigned getNumCommonSurroundingLoops(const Instruction &A,
                                       const Instruction &B);

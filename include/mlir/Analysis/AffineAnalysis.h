@@ -57,28 +57,31 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 AffineMap simplifyAffineMap(AffineMap map);
 
 /// Returns a composed AffineApplyOp.
-/// The operands of such a resulting AffineApplyOp are not coming from another
-/// AffineApplyOp by construction. This is achieved by performing a composition
-/// at the AffineMap level.
 ///
-/// Prerequisite:
-/// `operands` can involve at most a length-1 chain of AffineApplyOp.
-/// Essentially, all ancestor AffineApplyOp must have been constructed as
-/// composed AffineApply.
+/// The operands of such a resulting AffineApplyOp do not increase the length of
+/// the AffineApplyOp chains. This is achieved by performing a composition of
+/// `map` and `operands` with the immediately preceding AffineApplyOps.
 OpPointer<AffineApplyOp>
 makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
                         llvm::ArrayRef<Value *> operands);
 
-/// Returns the sequence of AffineApplyOp OperationInsts operation in
+/// Iteratively calls composes `map` and `operands`, eliminating one level of
+/// AffineApplyOp composition until no more operands are defined by an
+/// AffineApplyOp.
+void fullyComposeAffineMapAndOperands(AffineMap *map,
+                                      llvm::SmallVectorImpl<Value *> *operands);
+
+/// Calls `makeComposedAffineApply`, and returns the first resulting value.
+Value *makeSingleValueFromComposedAffineApply(FuncBuilder *b, Location loc,
+                                              AffineMap map,
+                                              llvm::ArrayRef<Value *> operands);
+
+/// Returns the sequence of AffineApplyOp OperationInsts operations in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.
 void getReachableAffineApplyOps(
     llvm::ArrayRef<Value *> operands,
     llvm::SmallVectorImpl<OperationInst *> &affineApplyOps);
-
-/// Forward substitutes into 'valueMap' all AffineApplyOps reachable from the
-/// operands of 'valueMap'.
-void forwardSubstituteReachableOps(AffineValueMap *valueMap);
 
 /// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
 /// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).

@@ -198,6 +198,9 @@ struct SimplifyAffineApplyState : public PatternState {
 
 void mlir::canonicalizeMapAndOperands(
     AffineMap &map, llvm::SmallVectorImpl<Value *> &operands) {
+  if (!map || operands.empty())
+    return;
+
   assert(map.getNumInputs() == operands.size() &&
          "map inputs must match number of operands");
 

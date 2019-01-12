@@ -133,24 +133,6 @@ public:
 
   ~AffineValueMap();
 
-  /// Substitute the results of inputMap into the operands of this map.
-  // The new list of operands will be a union of this map's and that of the map
-  // we are substituting from.
-  // Example usage scenario: a subscript operand for a 'load' is forward
-  // substituted into the memref's access map. The subscript operand itself is
-  // then substituted by its defining affine_apply op instructions and
-  // successively by a loop IV remap expression, eventually resulting in an
-  // affine value map that has only the loop IVs and symbols as its operands.
-  // Hence, the access pattern can then be analyzed for example.
-  // TODO(bondhugula)
-  void forwardSubstitute(const AffineValueMap &inputMap);
-  void forwardSubstitute(const AffineApplyOp &inputOp);
-  void forwardSubstituteSingle(const AffineApplyOp &inputOp,
-                               unsigned inputResultIndex);
-  // TODO(andydavis, bondhugula) Expose an affine map simplify function, which
-  // can be used to amortize the cost of simplification over multiple fwd
-  // substitutions).
-
   // Resets this AffineValueMap with 'map' and 'operands'.
   void reset(AffineMap map, ArrayRef<Value *> operands);
   /// Return true if the idx^th result can be proved to be a multiple of
@@ -177,8 +159,6 @@ public:
   AffineMap getAffineMap() const;
 
 private:
-  void forwardSubstitute(const AffineApplyOp &inputOp,
-                         ArrayRef<bool> inputResultsToSubstitute);
   // A mutable affine map.
   MutableAffineMap map;
 

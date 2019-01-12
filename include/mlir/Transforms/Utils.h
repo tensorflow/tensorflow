@@ -97,11 +97,6 @@ createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 /// affine_apply operation instruction otherwise.
 OperationInst *createAffineComputationSlice(OperationInst *opInst);
 
-/// Forward substitutes results from 'AffineApplyOp' into any users which
-/// are also AffineApplyOps.
-// NOTE: This method may modify users of results of this operation.
-void forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp);
-
 /// Folds the lower and upper bounds of a 'for' inst to constants if possible.
 /// Returns false if the folding happens for at least one bound, true otherwise.
 bool constantFoldBounds(ForInst *forInst);

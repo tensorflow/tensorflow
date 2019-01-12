@@ -200,7 +200,7 @@ void VectorizerTestPass::testSlicing(Function *f) {
   }
 }
 
-bool customOpWithAffineMapAttribute(const Instruction &inst) {
+static bool customOpWithAffineMapAttribute(const Instruction &inst) {
   const auto &opInst = cast<OperationInst>(inst);
   return opInst.getName().getStringRef() ==
          VectorizerTestPass::kTestAffineMapOpName;
@@ -227,12 +227,12 @@ void VectorizerTestPass::testComposeMaps(Function *f) {
   simplifyAffineMap(res).print(outs() << "\nComposed map: ");
 }
 
-bool affineApplyOp(const Instruction &inst) {
+static bool affineApplyOp(const Instruction &inst) {
   const auto &opInst = cast<OperationInst>(inst);
   return opInst.isa<AffineApplyOp>();
 }
 
-bool singleResultAffineApplyOpWithoutUses(const Instruction &inst) {
+static bool singleResultAffineApplyOpWithoutUses(const Instruction &inst) {
   const auto &opInst = cast<OperationInst>(inst);
   auto app = opInst.dyn_cast<AffineApplyOp>();
   return app && (app->getNumResults() == 1) &&

@@ -28,7 +28,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instructions.h"
 #include "mlir/StandardOps/StandardOps.h"
-#include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseMap.h"
@@ -83,16 +82,15 @@ static AffineExpr toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
 }
 
 AffineMap mlir::simplifyAffineMap(AffineMap map) {
-  auto exprs = functional::map(
-      [map](AffineExpr e) {
-        return simplifyAffineExpr(e, map.getNumDims(), map.getNumSymbols());
-      },
-      map.getResults());
-  auto sizes = functional::map(
-      [map](AffineExpr e) {
-        return simplifyAffineExpr(e, map.getNumDims(), map.getNumSymbols());
-      },
-      map.getRangeSizes());
+  SmallVector<AffineExpr, 8> exprs, sizes;
+  for (auto e : map.getResults()) {
+    exprs.push_back(
+        simplifyAffineExpr(e, map.getNumDims(), map.getNumSymbols()));
+  }
+  for (auto e : map.getRangeSizes()) {
+    sizes.push_back(
+        simplifyAffineExpr(e, map.getNumDims(), map.getNumSymbols()));
+  }
   return AffineMap::get(map.getNumDims(), map.getNumSymbols(), exprs, sizes);
 }
 
@@ -544,21 +542,6 @@ void mlir::getReachableAffineApplyOps(
         worklist.pop_back();
       }
     }
-  }
-}
-
-// Forward substitutes into 'valueMap' all AffineApplyOps reachable from the
-// operands of 'valueMap'.
-void mlir::forwardSubstituteReachableOps(AffineValueMap *valueMap) {
-  // Gather AffineApplyOps reachable from 'indices'.
-  SmallVector<OperationInst *, 4> affineApplyOps;
-  getReachableAffineApplyOps(valueMap->getOperands(), affineApplyOps);
-  // Compose AffineApplyOps in 'affineApplyOps'.
-  for (auto *opInst : affineApplyOps) {
-    assert(opInst->isa<AffineApplyOp>());
-    auto affineApplyOp = opInst->dyn_cast<AffineApplyOp>();
-    // Forward substitute 'affineApplyOp' into 'valueMap'.
-    valueMap->forwardSubstitute(*affineApplyOp);
   }
 }
 
@@ -1191,10 +1174,9 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
   // Create identity map with same number of dimensions as 'memrefType' rank.
   auto map = AffineMap::getMultiDimIdentityMap(memrefType.getRank(),
                                                memref->getType().getContext());
-  // Reset 'accessMap' and 'map' and access 'indices'.
-  accessMap->reset(map, indices);
-  // Compose 'accessMap' with reachable AffineApplyOps.
-  forwardSubstituteReachableOps(accessMap);
+  SmallVector<Value *, 8> operands(indices.begin(), indices.end());
+  fullyComposeAffineMapAndOperands(&map, &operands);
+  accessMap->reset(map, operands);
 }
 
 // Builds a flat affine constraint system to check if there exists a dependence
@@ -1544,12 +1526,44 @@ AffineNormalizer::AffineNormalizer(AffineMap map, ArrayRef<Value *> operands)
   LLVM_DEBUG(affineMap.print(dbgs() << "\nResult: "));
 }
 
-OpPointer<AffineApplyOp>
-mlir::makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
-                              ArrayRef<Value *> operands) {
-  AffineNormalizer normalizer(map, operands);
+/// Implements `map` and `operands` composition and simplification to support
+/// `makeComposedAffineApply`. This can be called to achieve the same effects
+/// on `map` and `operands` without creating an AffineApplyOp that needs to be
+/// immediately deleted.
+static void composeAffineMapAndOperands(AffineMap *map,
+                                        SmallVectorImpl<Value *> *operands) {
+  AffineNormalizer normalizer(*map, *operands);
   auto normalizedMap = normalizer.getAffineMap();
   auto normalizedOperands = normalizer.getOperands();
   canonicalizeMapAndOperands(normalizedMap, normalizedOperands);
+  *map = normalizedMap;
+  *operands = normalizedOperands;
+  assert(*map);
+}
+
+void mlir::fullyComposeAffineMapAndOperands(
+    AffineMap *map, SmallVectorImpl<Value *> *operands) {
+  while (llvm::any_of(*operands, [](Value *v) {
+    return v->getDefiningInst() && v->getDefiningInst()->isa<AffineApplyOp>();
+  })) {
+    composeAffineMapAndOperands(map, operands);
+  }
+}
+
+OpPointer<AffineApplyOp>
+mlir::makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
+                              ArrayRef<Value *> operands) {
+  AffineMap normalizedMap = map;
+  SmallVector<Value *, 8> normalizedOperands(operands.begin(), operands.end());
+  composeAffineMapAndOperands(&normalizedMap, &normalizedOperands);
+  assert(normalizedMap);
   return b->create<AffineApplyOp>(loc, normalizedMap, normalizedOperands);
+}
+
+Value *
+mlir::makeSingleValueFromComposedAffineApply(FuncBuilder *b, Location loc,
+                                             AffineMap map,
+                                             llvm::ArrayRef<Value *> operands) {
+  auto app = mlir::makeComposedAffineApply(b, loc, map, operands);
+  return app->getResult(0);
 }
