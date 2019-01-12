@@ -30,6 +30,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class ModelInputsTest(test.TestCase):
@@ -186,6 +187,19 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
     else:
       with self.assertRaises(expected_error):
         training_utils.assert_not_shuffled(dataset_fn())
+
+  def test_verify_dataset_shuffled(self):
+    dataset = dataset_ops.Dataset.range(5)
+    training_utils.assert_not_shuffled(dataset)
+
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      training_utils.verify_dataset_shuffled(dataset)
+      self.assertRegexpMatches(
+          str(mock_log.call_args),
+          'input dataset `x` is not shuffled.')
+
+    shuffled_dataset = dataset.shuffle(10)
+    training_utils.verify_dataset_shuffled(shuffled_dataset)
 
 
 class StandardizeWeightsTest(keras_parameterized.TestCase):
