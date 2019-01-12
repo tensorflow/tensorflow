@@ -363,6 +363,15 @@ Status FullVisitor::Postprocess(HloInstruction* inst) {
             inst->name().c_str(), Join(outs[0].shape(), ",").c_str(),
             Join(inst->shape().dimensions(), ",").c_str());
       }
+      TF_ASSIGN_OR_RETURN(poplar::Type expected_type,
+                          PoplarDataType(inst->shape()));
+      if (expected_type != outs[0].elementType()) {
+        return xla::InternalError(
+            "Instruction %s has mismatched Poplar (%s) and XLA (%s) type",
+            inst->name().c_str(),
+            expected_type.toString().cloneAsString().c_str(),
+            outs[0].elementType().toString().cloneAsString().c_str());
+      }
     }
   }
   return Status::OK();

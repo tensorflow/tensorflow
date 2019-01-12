@@ -1865,6 +1865,89 @@ ENTRY c1 {
   EXPECT_EQ(t.backward_path.size(), 0);
 }
 
+TEST_F(AllocationFinderTest, ForwardAllocationDontLookThroughCasts) {
+  // Check the layout is not forwarded to the element wise op argument as it's
+  // casted.
+  std::string hlo = R"(
+HloModule top
+
+_pop_op_conv_biasadd {
+  %arg_0 = f16[1,16,16,4] parameter(0)
+  %arg_1 = f16[4] parameter(1)
+  bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
+  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+}
+
+ENTRY c1 {
+  p0 = f16[1,16,16,2] parameter(0)
+  p1 = f16[3,3,2,4] parameter(1)
+  p2 = f16[2,2] parameter(2)
+  p2_r = f16[4] reshape(p2)
+
+  conv = f16[1,16,16,4] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  call = f16[1,16,16,64] fusion(conv, p2_r), kind=kCustom, calls=_pop_op_conv_biasadd
+  p3 = f32[1,16,16,64] parameter(3)
+  p3.c = f16[1,16,16,64] convert(p3)
+  ROOT add = f16[1,16,16,64] add(p3.c, call)
+}
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
+  config.set_resource_input_count(3);
+  config.set_input_mapping({0, 1, 2, 3});
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* add = root;
+  const auto* call = add->operand(1);
+  const auto* conv = call->operand(0);
+  const auto* ip2_r = call->operand(1);
+  const auto* ip2 = ip2_r->operand(0);
+  const auto* ip1 = conv->operand(1);
+  const auto* ip0 = conv->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  unsigned num_succesful_runs = 0;
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    num_succesful_runs++;
+  }
+
+  // We expect this to be executed successfully 1 time.
+  EXPECT_TRUE(num_succesful_runs == 1);
+
+  // We have added one new entry for the bias add
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, call);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], ip2_r);
+}
+
 TEST_F(AllocationFinderTest, ForwardAllocationElementwiseGetsALayoutWithGTE) {
   // Check the layout is forwarded to the element wise op argument with a GTE.
   std::string hlo = R"(

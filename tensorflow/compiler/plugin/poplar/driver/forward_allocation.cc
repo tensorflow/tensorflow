@@ -95,6 +95,16 @@ static absl::optional<HloInstruction*> reduce_to_one_with_no_dependencies(
              : absl::nullopt;
 }
 
+static bool output_and_all_operands_same_type(const HloInstruction* inst) {
+  const PrimitiveType& type = inst->shape().element_type();
+  for (auto* operand : inst->operands()) {
+    if (type != operand->shape().element_type()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // TODO - fix this.  it needs to take into account the indices of the path
 // from one op to the next. and probably do something to do with in-place ops
 static bool IsPrefixPathOk(const std::vector<HloInstruction*>& path) {
@@ -102,12 +112,12 @@ static bool IsPrefixPathOk(const std::vector<HloInstruction*>& path) {
                                      const unsigned) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
-      return true;
+      return output_and_all_operands_same_type(inst);
     }
     switch (inst->opcode()) {
       case HloOpcode::kReshape:
       case HloOpcode::kTranspose:
-        return true;
+        return output_and_all_operands_same_type(inst);
       default:
         break;
     }
@@ -127,7 +137,7 @@ static absl::optional<int64> IsSuffixPathOk(
                                      const unsigned path_size) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
-      return true;
+      return output_and_all_operands_same_type(inst);
     }
     switch (inst->opcode()) {
       case HloOpcode::kGetTupleElement:
@@ -135,7 +145,7 @@ static absl::optional<int64> IsSuffixPathOk(
         return path_idx == (path_size - 1);
       case HloOpcode::kReshape:
       case HloOpcode::kTranspose:
-        return true;
+        return output_and_all_operands_same_type(inst);
       default:
         break;
     }
