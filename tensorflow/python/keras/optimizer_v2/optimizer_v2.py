@@ -876,8 +876,8 @@ def merge_grads(grads_and_vars):
   """Merge gradients from different replicas."""
 
   def merge_grad_fn(strategy, grads_and_vars):
-    reduced_grads = strategy.batch_reduce(ds_reduce_util.ReduceOp.SUM,
-                                          grads_and_vars)
+    reduced_grads = strategy.extended.batch_reduce_to(
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     return reduced_grads
 
   return distribute_ctx.get_replica_context().merge_call(
