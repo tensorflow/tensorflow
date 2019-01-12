@@ -37,7 +37,6 @@ tf_cuda_library(
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
-            "//tensorflow/core/common_runtime/eager:profiler",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
@@ -71,6 +70,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/profiler/lib:eager_profiler",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -98,7 +98,6 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
-        "//tensorflow/core/common_runtime/eager:profiler",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
@@ -111,6 +110,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/profiler/lib:eager_profiler",
     ],
 )
 

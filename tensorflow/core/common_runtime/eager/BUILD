@@ -89,35 +89,6 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "profiler",
-    srcs = [
-        "profiler.cc",
-    ],
-    hdrs = [
-        "profiler.h",
-    ],
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":context",
-        "//tensorflow/cc/profiler",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:core_cpu_lib",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
-            "//tensorflow/core:session_options",
-            "//tensorflow/core:device_tracer",
-        ],
-    }),
-)
-
-tf_cuda_library(
     name = "tensor_handle",
     srcs = [
         "tensor_handle.cc",
