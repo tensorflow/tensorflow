@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/eager/profiler.h"
+#include "tensorflow/core/profiler/lib/eager_profiler.h"
 #include "tensorflow/cc/profiler/profiler.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
