@@ -51,7 +51,7 @@ class _Loader(object):
     self._setup_concrete_functions()
     self._restore_checkpoint()
 
-  def _bind_function_captures(self):
+  def _setup_concrete_functions(self):
     """Setup captured tensors and output structure in restored concrete
     functions."""
     seen_concrete_functions = set()
