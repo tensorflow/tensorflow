@@ -2391,7 +2391,8 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
         array_ops.reshape(input_tensor, (-1,)) +
         (len(self.boundaries) + 1) * i2)
 
-    indices = math_ops.cast(array_ops.transpose(array_ops.stack((i1, i2))), dtypes.int64)
+    indices = math_ops.cast(
+        array_ops.transpose(array_ops.stack((i1, i2))), dtypes.int64)
     dense_shape = math_ops.cast(array_ops.stack(
         [batch_size, source_dimension]), dtypes.int64)
     sparse_tensor = sparse_tensor_lib.SparseTensor(
@@ -2925,7 +2926,8 @@ class _IdentityCategoricalColumn(
               self.key, input_tensor.dtype))
 
     values = math_ops.cast(input_tensor.values, dtypes.int64, name='values')
-    num_buckets = math_ops.cast(self.num_buckets, dtypes.int64, name='num_buckets')
+    num_buckets = math_ops.cast(
+        self.num_buckets, dtypes.int64, name='num_buckets')
     zero = math_ops.cast(0, dtypes.int64, name='zero')
     if self.default_value is None:
       # Fail if values are out-of-range.
@@ -3256,7 +3258,8 @@ def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):
     # Example: orig tensor [[1, 2], [3]], col_ids = (0, 1, 1),
     # row_ids = (0, 0, 1), seq_length = [2, 1]. If num_elements = 2,
     # these will get grouped, and the final seq_length is [1, 1]
-    seq_length = math_ops.cast(math_ops.ceil(seq_length / num_elements), dtypes.int64)
+    seq_length = math_ops.cast(
+        math_ops.ceil(seq_length / num_elements), dtypes.int64)
 
     # If the last n rows do not have ids, seq_length will have shape
     # [batch_size - n]. Pad the remaining values with zeros.
