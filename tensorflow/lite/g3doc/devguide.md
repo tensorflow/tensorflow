@@ -216,12 +216,8 @@ trained Tensorflow models to the
 devices. To use the converter, refer to the
 [Tensorflow-CoreML converter documentation](https://github.com/tf-coreml/tf-coreml).
 
-### ARM32 and ARM64 Linux
+### Raspberry Pi
 
-Compile Tensorflow Lite for a Raspberry Pi by following the [RPi build
-instructions](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/rpi.md)
-Compile Tensorflow Lite for a generic aarch64 board such as Odroid C2, Pine64,
-NanoPi, and others by following the [ARM64 Linux build
-instructions](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/linux_aarch64.md)
-This compiles a static library file (`.a`) used to build your app. There are
-plans for Python bindings and a demo app.
+Compile Tensorflow Lite for a Raspberry Pi by following the
+[RPi build instructions](rpi.md) This compiles a static library file (`.a`) used
+to build your app. There are plans for Python bindings and a demo app.
