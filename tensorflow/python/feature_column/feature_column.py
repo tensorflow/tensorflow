@@ -2361,7 +2361,7 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
     del trainable
     input_tensor = inputs.get(self)
     return array_ops.one_hot(
-        indices=math_ops.to_int64(input_tensor),
+        indices=math_ops.cast(input_tensor, dtypes.int64),
         depth=len(self.boundaries) + 1,
         on_value=1.,
         off_value=0.)
@@ -2391,9 +2391,9 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
         array_ops.reshape(input_tensor, (-1,)) +
         (len(self.boundaries) + 1) * i2)
 
-    indices = math_ops.to_int64(array_ops.transpose(array_ops.stack((i1, i2))))
-    dense_shape = math_ops.to_int64(array_ops.stack(
-        [batch_size, source_dimension]))
+    indices = math_ops.cast(array_ops.transpose(array_ops.stack((i1, i2))), dtypes.int64)
+    dense_shape = math_ops.cast(array_ops.stack(
+        [batch_size, source_dimension]), dtypes.int64)
     sparse_tensor = sparse_tensor_lib.SparseTensor(
         indices=indices,
         values=bucket_indices,
@@ -2829,7 +2829,7 @@ class _VocabularyFileCategoricalColumn(
     if input_tensor.dtype.is_integer:
       # `index_table_from_file` requires 64-bit integer keys.
       key_dtype = dtypes.int64
-      input_tensor = math_ops.to_int64(input_tensor)
+      input_tensor = math_ops.cast(input_tensor, dtypes.int64)
 
     return lookup_ops.index_table_from_file(
         vocabulary_file=self.vocabulary_file,
@@ -2881,7 +2881,7 @@ class _VocabularyListCategoricalColumn(
     if input_tensor.dtype.is_integer:
       # `index_table_from_tensor` requires 64-bit integer keys.
       key_dtype = dtypes.int64
-      input_tensor = math_ops.to_int64(input_tensor)
+      input_tensor = math_ops.cast(input_tensor, dtypes.int64)
 
     return lookup_ops.index_table_from_tensor(
         vocabulary_list=tuple(self.vocabulary_list),
@@ -2924,9 +2924,9 @@ class _IdentityCategoricalColumn(
           'Invalid input, not integer. key: {} dtype: {}'.format(
               self.key, input_tensor.dtype))
 
-    values = math_ops.to_int64(input_tensor.values, name='values')
-    num_buckets = math_ops.to_int64(self.num_buckets, name='num_buckets')
-    zero = math_ops.to_int64(0, name='zero')
+    values = math_ops.cast(input_tensor.values, dtypes.int64, name='values')
+    num_buckets = math_ops.cast(self.num_buckets, dtypes.int64, name='num_buckets')
+    zero = math_ops.cast(0, dtypes.int64, name='zero')
     if self.default_value is None:
       # Fail if values are out-of-range.
       assert_less = check_ops.assert_less(
@@ -2944,7 +2944,7 @@ class _IdentityCategoricalColumn(
               values < zero, values >= num_buckets, name='out_of_range'),
           array_ops.fill(
               dims=array_ops.shape(values),
-              value=math_ops.to_int64(self.default_value),
+              value=math_ops.cast(self.default_value, dtypes.int64),
               name='default_values'),
           values)
 
@@ -3256,7 +3256,7 @@ def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):
     # Example: orig tensor [[1, 2], [3]], col_ids = (0, 1, 1),
     # row_ids = (0, 0, 1), seq_length = [2, 1]. If num_elements = 2,
     # these will get grouped, and the final seq_length is [1, 1]
-    seq_length = math_ops.to_int64(math_ops.ceil(seq_length / num_elements))
+    seq_length = math_ops.cast(math_ops.ceil(seq_length / num_elements), dtypes.int64)
 
     # If the last n rows do not have ids, seq_length will have shape
     # [batch_size - n]. Pad the remaining values with zeros.
