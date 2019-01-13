@@ -289,8 +289,11 @@ class _PastaEditVisitor(ast.NodeVisitor):
       reordered = function_reorders[full_name]
       new_keywords = []
       for idx, arg in enumerate(node.args):
+        if sys.version_info[:2] >= (3, 5) and isinstance(arg, ast.Starred):
+          continue  # Can't move Starred to keywords
         keyword_arg = reordered[idx]
-        new_keywords.append(ast.keyword(arg=keyword_arg, value=arg))
+        keyword = ast.keyword(arg=keyword_arg, value=arg)
+        new_keywords.append(keyword)
 
       if new_keywords:
         self.add_log(node.lineno, node.col_offset,
