@@ -490,17 +490,18 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual(
         new_text,
         "tf.image.extract_glimpse(x, size, off, False, "
-        "False, ('uniform' if False else 'gaussian'), name=\"foo\")\n",
+        "False, 'uniform' if (False) else 'gaussian', name=\"foo\")\n",
     )
 
     text = ("tf.image.extract_glimpse(x, size, off, centered=False, "
-            "normalized=False, uniform_noise=uniform_noise, name=\"foo\")\n")
+            "normalized=False, uniform_noise=True if uniform_noise else "
+            "False, name=\"foo\")\n")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(
         new_text,
         "tf.image.extract_glimpse(x, size, off, centered=False, "
-        "normalized=False, noise=('uniform' if uniform_noise else 'gaussian')"
-        ", name=\"foo\")\n",
+        "normalized=False, noise='uniform' if (True if uniform_noise else "
+        "False) else 'gaussian', name=\"foo\")\n",
     )
 
     text = ("tf.image.extract_glimpse(x,\n"
@@ -518,14 +519,13 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "                         off,\n"
         "                         centered=True,\n"
         "                         normalized=True, # Stuff before\n"
-        "                         noise=('uniform' if False else 'gaussian'),\n"
+        "                         noise='uniform' if (False) else 'gaussian',\n"
         "                         name=\"foo\")# Stuff after\n")
 
     text = "tf.image.extract_glimpse(x)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, text)
-    self.assertIn("tf.image.extract_glimpse called without arguments",
-                  errors[0])
+    self.assertEqual(errors, [])
 
   def testDropout(self):
     text = "tf.nn.dropout(x, keep_prob, name=\"foo\")\n"
