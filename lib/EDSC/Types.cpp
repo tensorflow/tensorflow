@@ -85,6 +85,9 @@ Expr Expr::operator+(Expr other) const {
 Expr Expr::operator-(Expr other) const {
   return BinaryExpr(ExprKind::Sub, *this, other);
 }
+Expr Expr::operator*(Expr other) const {
+  return BinaryExpr(ExprKind::Mul, *this, other);
+}
 
 Expr Expr::operator==(Expr other) const {
   return BinaryExpr(ExprKind::EQ, *this, other);

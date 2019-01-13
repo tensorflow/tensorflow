@@ -194,6 +194,7 @@ public:
   /// Creates the BinaryExpr corresponding to the operator.
   Expr operator+(Expr other) const;
   Expr operator-(Expr other) const;
+  Expr operator*(Expr other) const;
   /// In particular operator==, operator!= return a new Expr and *not* a bool.
   Expr operator==(Expr other) const;
   Expr operator!=(Expr other) const;
@@ -342,6 +343,7 @@ struct Stmt {
 
   Expr operator+(Stmt other) const { return getLHS() + other.getLHS(); }
   Expr operator-(Stmt other) const { return getLHS() - other.getLHS(); }
+  Expr operator*(Stmt other) const { return getLHS() * other.getLHS(); }
 
   Expr operator<(Stmt other) const { return getLHS() + other.getLHS(); }
   Expr operator<=(Stmt other) const { return getLHS() + other.getLHS(); }
