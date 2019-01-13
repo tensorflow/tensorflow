@@ -1,4 +1,4 @@
-# Settings for Raspberry Pi.
+# Settings for generic aarch64 boards such as Odroid C2 or Pine64.
 ifeq ($(TARGET),aarch64)
   # The aarch64 architecture covers all 64-bit ARM chips. This arch mandates
   # NEON, so FPU flags are not needed below.
