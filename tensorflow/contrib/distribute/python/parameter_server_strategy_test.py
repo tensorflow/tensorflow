@@ -236,7 +236,7 @@ class ParameterServerStrategyTestBase(
         self.assertIn('/job:ps/', h.device)
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_replica(model_fn)
+      y, z, f = d.extended.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -252,7 +252,7 @@ class ParameterServerStrategyTestBase(
       self, task_type, task_id, num_gpus, use_core_strategy=False):
     d, _, sess_config = self._get_test_objects(
         task_type, task_id, num_gpus, use_core_strategy=use_core_strategy)
-    num_shards = len(d.parameter_devices)
+    num_shards = len(d.extended.parameter_devices)
     partitioner = partitioned_variables.fixed_size_partitioner(num_shards)
     with ops.Graph().as_default(), \
          self.cached_session(target=self._default_target,
@@ -286,7 +286,7 @@ class ParameterServerStrategyTestBase(
 
         return x_add
 
-      x = d.call_for_each_replica(model_fn)
+      x = d.extended.call_for_each_replica(model_fn)
 
       if context.num_gpus() >= 1:
         variables.global_variables_initializer().run()
@@ -387,7 +387,7 @@ class ParameterServerStrategyTestBase(
             device_util.canonicalize(h.device))
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_replica(model_fn)
+      y, z, f = d.extended.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -438,7 +438,7 @@ class ParameterServerStrategyTestBase(
         train_op = control_flow_ops.group(x_add, y_add, z_add)
         return x, y, z, train_op
 
-      x, y, z, train_op = d.call_for_each_replica(model_fn)
+      x, y, z, train_op = d.extended.call_for_each_replica(model_fn)
       train_op = d.group(train_op)
 
       if context.num_gpus() < d.extended._num_gpus_per_worker:
@@ -519,7 +519,7 @@ class ParameterServerStrategyTestBase(
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, args=(one,))
+        g_v = d.extended.call_for_each_replica(grad_fn, args=(one,))
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
@@ -531,7 +531,7 @@ class ParameterServerStrategyTestBase(
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
-                d.update(v, update, g, grouped=False)):
+                d.extended.update(v, update, args=(g,), group=False)):
               after_list.append(d.extended.read_var(v))
         return before_list, after_list
 

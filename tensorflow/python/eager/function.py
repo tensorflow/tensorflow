@@ -52,6 +52,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -192,7 +193,7 @@ def _inference_name(n):
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
 class _EagerDefinedFunction(object):
-  """Callable with the interface of `framework.function._DefinedFunction.`
+  """Callable with the interface of `framework.function._DefinedFunction`.
 
   `_EagerDefinedFunction` encapsulates a function definition and its properties,
   and it provides a method for calling the encapsulated function. Some Ops
@@ -284,51 +285,60 @@ class _EagerDefinedFunction(object):
     Raises:
       ValueError: if the number of arguments is incorrect.
     """
+    if len(args) != len(self.signature.input_arg):
+      raise ValueError(
+          "Arguments and signature arguments do not match: %s %s " %
+          (len(args), len(list(self.signature.input_arg))))
+
+    function_call_options = ctx.get_function_call_options()
+    if function_call_options.config_proto_serialized is None:
+      config = function_utils.get_disabled_rewriter_config()
+    else:
+      config = function_call_options.config_proto_serialized
+    executor_type = function_call_options.executor_type or ""
 
     executing_eagerly = ctx.executing_eagerly()
-
-    if self._graph._xla_compile:  # pylint: disable=protected-access
-      # XLA compilation relies upon a custom kernel creator to run functions.
-      signature = self.signature
-      if executing_eagerly:
+    if executing_eagerly:
+      with _InterpolateFunctionError(self):
         outputs = execute.execute(
-            str(signature.name),
+            str(self.signature.name),
             num_outputs=self._num_outputs,
             inputs=args,
-            attrs=None,
+            attrs=("executor_type", executor_type,
+                   "config_proto", config),
             ctx=ctx)
+      # Replace empty list with None
+      outputs = outputs or None
+    elif self._graph._xla_compile:  # pylint: disable=protected-access
+      g = ops.get_default_graph()
+      self.add_to_graph(g)
+      signature = self.signature
+      op = g.create_op(
+          signature.name,
+          [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
+          tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
+          op_def=signature,
+          name="FunctionCall",
+          compute_shapes=False)
+      outputs = op.outputs
+      if not outputs:
+        return op
+      if isinstance(outputs, (ops.Tensor, type(None))):
+        outputs = [outputs]
       else:
-        g = ops.get_default_graph()
-        self.add_to_graph(g)
-        op = g.create_op(
-            signature.name,
-            [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
-            tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
-            op_def=signature,
-            name="FunctionCall",
-            compute_shapes=False)
-        outputs = op.outputs
-        if not outputs:
-          return op
-        outputs = [outputs] if isinstance(
-            outputs, (ops.Tensor, type(None))) else list(outputs)
+        outputs = list(outputs)
     else:
       # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
       # creates `PartitionedCallOp` kernels by default, or remove the previous
       # branch if a TPU kernel is registered for `PartitionedCall`.
-      if len(args) != len(self.signature.input_arg):
-        raise ValueError(
-            "Arguments and signature arguments do not match: %s %s " %
-            (len(args), len(list(self.signature.input_arg))))
-      function_call_options = ctx.get_function_call_options()
       with _InterpolateFunctionError(self):
         outputs = functional_ops.partitioned_call(
             args=args,
             f=self,
             tout=self._output_types,
             executing_eagerly=executing_eagerly,
-            config=function_call_options.config_proto_serialized,
-            executor_type=function_call_options.executor_type)
+            config=config,
+            executor_type=executor_type)
 
     if executing_eagerly:
       return outputs

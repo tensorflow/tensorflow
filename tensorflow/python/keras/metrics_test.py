@@ -1031,11 +1031,11 @@ class ResetStatesTest(keras_parameterized.TestCase):
     x = np.concatenate((np.ones((50, 4)), np.ones((50, 4))))
     y = np.concatenate((np.ones((50, 1)), np.zeros((50, 1))))
     model.evaluate(x, y)
-    self.assertEqual(self.evaluate(p_obj.tp), 50.)
-    self.assertEqual(self.evaluate(p_obj.fp), 50.)
+    self.assertEqual(self.evaluate(p_obj.true_positives), 50.)
+    self.assertEqual(self.evaluate(p_obj.false_positives), 50.)
     model.evaluate(x, y)
-    self.assertEqual(self.evaluate(p_obj.tp), 50.)
-    self.assertEqual(self.evaluate(p_obj.fp), 50.)
+    self.assertEqual(self.evaluate(p_obj.true_positives), 50.)
+    self.assertEqual(self.evaluate(p_obj.false_positives), 50.)
 
   def test_reset_states_recall(self):
     r_obj = metrics.Recall()
@@ -1043,11 +1043,11 @@ class ResetStatesTest(keras_parameterized.TestCase):
     x = np.concatenate((np.ones((50, 4)), np.zeros((50, 4))))
     y = np.concatenate((np.ones((50, 1)), np.ones((50, 1))))
     model.evaluate(x, y)
-    self.assertEqual(self.evaluate(r_obj.tp), 50.)
-    self.assertEqual(self.evaluate(r_obj.fn), 50.)
+    self.assertEqual(self.evaluate(r_obj.true_positives), 50.)
+    self.assertEqual(self.evaluate(r_obj.false_negatives), 50.)
     model.evaluate(x, y)
-    self.assertEqual(self.evaluate(r_obj.tp), 50.)
-    self.assertEqual(self.evaluate(r_obj.fn), 50.)
+    self.assertEqual(self.evaluate(r_obj.true_positives), 50.)
+    self.assertEqual(self.evaluate(r_obj.false_negatives), 50.)
 
   def test_reset_states_sensitivity_at_specificity(self):
     s_obj = metrics.SensitivityAtSpecificity(0.5, num_thresholds=1)
@@ -1056,16 +1056,13 @@ class ResetStatesTest(keras_parameterized.TestCase):
                         np.ones((25, 4))))
     y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
                         np.zeros((25, 1))))
-    model.evaluate(x, y)
-    self.assertEqual(self.evaluate(s_obj.tp), 25.)
-    self.assertEqual(self.evaluate(s_obj.fp), 25.)
-    self.assertEqual(self.evaluate(s_obj.fn), 25.)
-    self.assertEqual(self.evaluate(s_obj.tn), 25.)
-    model.evaluate(x, y)
-    self.assertEqual(self.evaluate(s_obj.tp), 25.)
-    self.assertEqual(self.evaluate(s_obj.fp), 25.)
-    self.assertEqual(self.evaluate(s_obj.fn), 25.)
-    self.assertEqual(self.evaluate(s_obj.tn), 25.)
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(s_obj.true_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
+      self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
 
   def test_reset_states_specificity_at_sensitivity(self):
     s_obj = metrics.SpecificityAtSensitivity(0.5, num_thresholds=1)
@@ -1074,16 +1071,28 @@ class ResetStatesTest(keras_parameterized.TestCase):
                         np.ones((25, 4))))
     y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
                         np.zeros((25, 1))))
-    model.evaluate(x, y)
-    self.assertEqual(self.evaluate(s_obj.tp), 25.)
-    self.assertEqual(self.evaluate(s_obj.fp), 25.)
-    self.assertEqual(self.evaluate(s_obj.fn), 25.)
-    self.assertEqual(self.evaluate(s_obj.tn), 25.)
-    model.evaluate(x, y)
-    self.assertEqual(self.evaluate(s_obj.tp), 25.)
-    self.assertEqual(self.evaluate(s_obj.fp), 25.)
-    self.assertEqual(self.evaluate(s_obj.fn), 25.)
-    self.assertEqual(self.evaluate(s_obj.tn), 25.)
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(s_obj.true_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
+      self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
+
+  def test_reset_states_auc(self):
+    auc_obj = metrics.AUC(num_thresholds=3)
+    model = _get_model([auc_obj])
+    x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
+                        np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
+                        np.zeros((25, 1))))
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(auc_obj.true_positives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.false_positives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
 
 
 if __name__ == '__main__':

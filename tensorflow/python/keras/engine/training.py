@@ -824,6 +824,10 @@ class Model(Network):
       # Make sure that y, sample_weights, validation_split are not passed.
       training_utils.validate_dataset_input(x, y, sample_weight,
                                             validation_split)
+      if (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2))
+          and shuffle):
+        training_utils.verify_dataset_shuffled(x)
+
       return self.fit_generator(
           x,
           steps_per_epoch=steps_per_epoch,
@@ -2155,15 +2159,19 @@ class Model(Network):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
-    # Validates `steps` argument right at the beginning since we use it to
-    # construct the dataset object.
+    # Validates `steps` and `shuffle` arguments right at the beginning
+    # since we use it to construct the dataset object.
     # TODO(anjalisridhar): Remove this check once we refactor the
     # _standardize_user_data code path. This check is already present elsewhere
     # in the codebase.
-    if check_steps and isinstance(x, dataset_ops.DatasetV2) and steps is None:
-      raise ValueError('When using Datasets as input, '
-                       'you should specify the `{steps_name}` argument.'
-                       .format(steps_name=steps_name))
+    if isinstance(x, dataset_ops.DatasetV2):
+      if shuffle:
+        training_utils.verify_dataset_shuffled(x)
+
+      if check_steps and steps is None:
+        raise ValueError('When using Datasets as input, '
+                         'you should specify the `{steps_name}` argument.'
+                         .format(steps_name=steps_name))
 
     if ops.executing_eagerly_outside_functions():
       session = None
@@ -2286,6 +2294,9 @@ class Model(Network):
       # the tensors from the dataset and we output them.
       training_utils.validate_dataset_input(x, y, sample_weight,
                                             validation_split)
+      if shuffle:
+        training_utils.verify_dataset_shuffled(x)
+
       is_dataset = True
       if extract_tensors_from_dataset:
         # We do this for `train_on_batch`/etc.

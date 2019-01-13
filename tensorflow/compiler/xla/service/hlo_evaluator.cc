@@ -416,15 +416,19 @@ Status HloEvaluator::HandleGetDimensionSize(
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
+  // Nothing to do other than sanity checks. Parameters' values are stored in
+  // arg_literals_.
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
+
+#ifndef NDEBUG
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
   DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()))
       << "parameter shape is: " << ShapeUtil::HumanString(parameter->shape())
       << ", but input literal shape is: "
       << ShapeUtil::HumanString(input_literal->shape());
+#endif
 
-  evaluated_[parameter] = input_literal->Clone();
   return Status::OK();
 }
 
