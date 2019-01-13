@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
 
+#include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -27,6 +28,12 @@ class PoplarTransferManager : public GenericTransferManager {
   PoplarTransferManager();
 
   ~PoplarTransferManager() override = default;
+
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal) override;
+
+  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
+                                const void* source);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarTransferManager);

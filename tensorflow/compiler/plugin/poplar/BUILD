@@ -205,6 +205,7 @@ cc_library(
         ":custom_kernels_util",
         ":optimizers",
         ":protos_cc_impl",
+        "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
@@ -245,6 +246,7 @@ cc_library(
         "kernels/ipu_kernels_common.cc",
         "kernels/popnn_kernels.cc",
         "kernels/popops_kernels.cc",
+        "kernels/pop_datastream_kernels.cc",
     ],
     hdrs = [
         "kernels/ipu_kernels_common.h",
@@ -303,6 +305,28 @@ tf_custom_op_py_library(
 )
 
 cc_library(
+    name = "pop_datastream_ops",
+    srcs = ["ops/pop_datastream_ops.cc"],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "pop_datastream_ops_wrapper_py",
+    out = "ops/gen_pop_datastream_ops.py",
+    deps = [":pop_datastream_ops"],
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_custom_op_py_library(
+    name = "pop_datastream_ops_py",
+    kernels = [":pop_datastream_ops"],
+    deps = [":pop_datastream_ops_wrapper_py"],
+    srcs_version = "PY2AND3",
+)
+
+
+cc_library(
     name = "poplar_lib",
     srcs = [
         "driver/xla_ipu_device.cc",
@@ -314,6 +338,7 @@ cc_library(
         ":poplar_backend",
         ":ipu_ops",
         ":popnn_ops",
+        ":pop_datastream_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
         "//tensorflow/compiler/jit:xla_device",
@@ -550,6 +575,23 @@ tf_cc_test(
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "ipu_infeed_test",
+    srcs = ["tests/ipu_infeed_test.cc"],
+    size = "small",
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        ":test_utils",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
     ],
 )
 
@@ -1112,6 +1154,7 @@ test_suite(
         "popops_custom_ops_test",
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
+        "ipu_infeed_test",
     ],
 )
 

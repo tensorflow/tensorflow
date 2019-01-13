@@ -50,7 +50,8 @@ class PoplarExecutable : public Executable {
                    const bool is_constant_graph,
                    std::vector<std::vector<Literal>> literal_output,
                    const bool is_remap_graph,
-                   std::vector<uint64> remaped_output);
+                   std::vector<uint64> remaped_output,
+                   std::vector<const HloInstruction*>&& infeed_instructions);
 
   ~PoplarExecutable() override;
 
@@ -79,6 +80,10 @@ class PoplarExecutable : public Executable {
     return literal_output_;
   }
 
+  const std::vector<const HloInstruction*>& InfeedInstructions() {
+    return infeed_instructions_;
+  }
+
   const bool IsConstantGraph() const { return is_constant_graph_; }
 
   const std::vector<uint64>& RemapMap() const { return remaped_output_; }
@@ -104,6 +109,7 @@ class PoplarExecutable : public Executable {
   std::vector<uint64> remaped_output_;
   const bool is_remap_graph_;
   int64 execution_count_;
+  std::vector<const HloInstruction*> infeed_instructions_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarExecutable);
 };
