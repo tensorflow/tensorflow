@@ -111,8 +111,8 @@ class GraphProperties {
 
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.
-  Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
-                         const NodeDef* node, bool* new_shapes) const;
+  Status UpdateMerge(SymbolicShapeRefiner* shape_refiner, const NodeDef* node,
+                     bool* new_shapes) const;
   // Process the Enter node, and enqueue its fanout in new_shapes if needed.
   static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
                             const NodeDef* node, bool* new_shapes);

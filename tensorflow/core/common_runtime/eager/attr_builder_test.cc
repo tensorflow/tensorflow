@@ -41,8 +41,10 @@ TEST(AttrTypeMap, Lookup) {
   Status s = AttrTypeMapForOp("SomeFunctionName", &m, &is_function);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(is_function);
+  ASSERT_NE(m->end(), m->find("executor_type"));
   EXPECT_EQ(TF_ATTR_STRING, m->find("executor_type")->second);
-  EXPECT_EQ(TF_ATTR_STRING, m->find("config")->second);
+  ASSERT_NE(m->end(), m->find("config_proto"));
+  EXPECT_EQ(TF_ATTR_STRING, m->find("config_proto")->second);
 
   is_function = true;
   s = AttrTypeMapForOp("MatMul", &m, &is_function);

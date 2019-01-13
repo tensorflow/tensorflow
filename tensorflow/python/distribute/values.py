@@ -653,8 +653,9 @@ class MirroredVariable(DistributedVariable, Mirrored,
         return f(v, *args, **kwargs)
 
       # We are calling assign on the mirrored variable in cross replica context,
-      # use `strategy.update()` to update the variable.
-      return self._distribute_strategy.update(self, f, *args, **kwargs)
+      # use `strategy.extended.update()` to update the variable.
+      return self._distribute_strategy.extended.update(
+          self, f, args=args, kwargs=kwargs)
     else:
       _assert_replica_context(self._distribute_strategy)
       # We are calling an assign function on the mirrored variable in replica
@@ -669,7 +670,8 @@ class MirroredVariable(DistributedVariable, Mirrored,
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.update(self, f, v, *other_args, **other_kwargs)
+        return strategy.extended.update(
+            self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, args=args, kwargs=kwargs)
@@ -721,7 +723,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
 # allowing instances of the class to be used as tensors.
 def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
   # Try to avoid assignments to and other mutations of MirroredVariable
-  # state except through a DistributionStrategy.update() call.
+  # state except through a DistributionStrategy.extended.update() call.
   assert not as_ref
   return ops.internal_convert_to_tensor(
       var.get(), dtype=dtype, name=name, as_ref=as_ref)
@@ -914,7 +916,8 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     f = kwargs.pop("f")
     if distribution_strategy_context.in_cross_replica_context():
       if _enclosing_tpu_context() is not None:
-        return self._distribute_strategy.update(self, f, *args, **kwargs)
+        return self._distribute_strategy.extended.update(
+            self, f, args=args, kwargs=kwargs)
 
       update_device = distribute_lib.get_update_device()
       # We are calling update on the mirrored variable in cross replica context.
@@ -924,7 +927,8 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
         v = self._get(device=update_device)
         return f(v, *args, **kwargs)
 
-      return self._distribute_strategy.update(self, f, *args, **kwargs)
+      return self._distribute_strategy.extended.update(
+          self, f, args=args, kwargs=kwargs)
     else:
       _assert_replica_context(self._distribute_strategy)
       # We are calling an assign function on the mirrored variable in replica
@@ -939,7 +943,8 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.update(self, f, v, *other_args, **other_kwargs)
+        return strategy.extended.update(
+            self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, args=args, kwargs=kwargs)
@@ -1459,7 +1464,8 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
 
       # We are calling an assign function in cross replica context, wrap it in
       # an update call.
-      return self._distribute_strategy.update(self, f, *args, **kwargs)
+      return self._distribute_strategy.extended.update(
+          self, f, args=args, kwargs=kwargs)
     else:
       replica_context = distribution_strategy_context.get_replica_context()
       assert replica_context
@@ -1473,7 +1479,8 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.update(self, f, v, *other_args, **other_kwargs)
+        return strategy.extended.update(
+            self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
       return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
 

@@ -146,6 +146,17 @@ class ConfusionMatrix(Enum):
   FALSE_NEGATIVES = 'fn'
 
 
+class AUCCurve(Enum):
+  ROC = 'ROC'
+  PR = 'PR'
+
+
+class AUCSummationMethod(Enum):
+  INTERPOLATION = 'interpolation'
+  MAJORING = 'majoring'
+  MINORING = 'minoring'
+
+
 def update_confusion_matrix_variables(variables_to_update,
                                       y_true,
                                       y_pred,

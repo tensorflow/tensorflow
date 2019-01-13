@@ -45,25 +45,26 @@ class _TestException(Exception):
   pass
 
 
-# May be the argument to either distribution.call_for_each_replica() or
+# May be the argument to either distribution.extended.call_for_each_replica() or
 # get_replica_context().merge_call()
 def _raise_exception_fn(_=None):
   raise _TestException()
 
 
-# Must be the argument to a distribution.call_for_each_replica() call, calls a
-# get_replica_context().merge_call() that raises an exception.
+# Must be the argument to a distribution.extended.call_for_each_replica() call,
+# calls a get_replica_context().merge_call() that raises an exception.
 def _merge_raises_fn():
   ds_context.get_replica_context().merge_call(_raise_exception_fn)
 
 
 # Must be the argument to a get_replica_context().merge_call() call, calls
-# dist.call_for_each_replica() with a function that raises an exception.
+# dist.extended.call_for_each_replica() with a function that raises an
+# exception.
 def _call_raises_fn(dist):
-  dist.call_for_each_replica(_raise_exception_fn)
+  dist.extended.call_for_each_replica(_raise_exception_fn)
 
 
-# Must be the argument to a distribution.call_for_each_replica() call,
+# Must be the argument to a distribution.extended.call_for_each_replica() call,
 # calls a get_replica_context().merge_call() that calls a
 # call_for_each_replica() that raises an exception.
 def _merge_call_raises_fn():
@@ -71,15 +72,16 @@ def _merge_call_raises_fn():
 
 
 # Must be the argument to a get_replica_context().merge_call() call, calls
-# dist.call_for_each_replica() with a function that calls a
+# dist.extended.call_for_each_replica() with a function that calls a
 # get_replica_context().merge_call() that raises an exception.
 def _call_merge_raises_fn(dist):
-  dist.call_for_each_replica(_merge_raises_fn)
+  dist.extended.call_for_each_replica(_merge_raises_fn)
 
 
-# Must be the argument to a distribution.call_for_each_replica() call, calls a
-# get_replica_context().merge_call() that calls a call_for_each_replica() that
-# calls a get_replica_context().merge_call() that raises an exception.
+# Must be the argument to a distribution.extended.call_for_each_replica() call,
+# calls a get_replica_context().merge_call() that calls a
+# call_for_each_replica() that calls a get_replica_context().merge_call() that
+# raises an exception.
 def _merge_call_merge_raises_fn():
   ds_context.get_replica_context().merge_call(_call_merge_raises_fn)
 
@@ -110,7 +112,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, args=(one,))
+        g_v = d.extended.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -122,8 +124,8 @@ class DistributionTestBase(test.TestCase):
           with ops.control_dependencies([fetched]):
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
-            with ops.control_dependencies(d.update(
-                v, update, g, grouped=False)):
+            with ops.control_dependencies(d.extended.update(
+                v, update, args=(g,), group=False)):
               after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
@@ -166,7 +168,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, args=(one,))
+        g_v = d.extended.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -177,8 +179,8 @@ class DistributionTestBase(test.TestCase):
           with ops.control_dependencies([fetched]):
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
-            with ops.control_dependencies(d.update(
-                v, update, g, grouped=False)):
+            with ops.control_dependencies(d.extended.update(
+                v, update, args=(g,), group=False)):
               after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
@@ -206,20 +208,20 @@ class DistributionTestBase(test.TestCase):
         self.assertFalse(expected_devices[replica_id])
         expected_devices[replica_id] = True
 
-      d.call_for_each_replica(mark_devices_fn)
+      d.extended.call_for_each_replica(mark_devices_fn)
       self.assertAllEqual(expected_devices,
                           [True] * len(d.extended.worker_devices))
 
   def _test_call_and_merge_exceptions(self, dist):
     with dist.scope():
       with self.assertRaises(_TestException):
-        dist.call_for_each_replica(_raise_exception_fn)
+        dist.extended.call_for_each_replica(_raise_exception_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_replica(_merge_raises_fn)
+        dist.extended.call_for_each_replica(_merge_raises_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_replica(_merge_call_raises_fn)
+        dist.extended.call_for_each_replica(_merge_call_raises_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_replica(_merge_call_merge_raises_fn)
+        dist.extended.call_for_each_replica(_merge_call_merge_raises_fn)
 
   def _input_fn_to_test_input_context(self,
                                       dataset_fn,
@@ -291,7 +293,7 @@ class DistributionTestBase(test.TestCase):
         value = global_step.read_value()
         return train_op, value
 
-      train_ops, value = strategy.call_for_each_replica(model_fn)
+      train_ops, value = strategy.extended.call_for_each_replica(model_fn)
       self.evaluate(strategy.group(train_ops))
       global_step_tensors = strategy.unwrap(value)
       global_step_values = self.evaluate(global_step_tensors)

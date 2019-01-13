@@ -816,7 +816,7 @@ def _make_eager_execution_function(model, mode):
   with K.get_graph().as_default(), strategy.scope():
     # Create train ops on each of the devices when we call
     # `_per_device_fit_function`.
-    (grouped_inputs, grouped_outputs) = strategy.call_for_each_replica(
+    (grouped_inputs, grouped_outputs) = strategy.extended.call_for_each_replica(
         _per_device_function, args=(model._distributed_model,))
 
     # Unwrap all the per device values returned from `call_for_each_replica`.

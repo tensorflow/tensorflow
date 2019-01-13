@@ -65,7 +65,8 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
     devices = ['/device:GPU:0', '/device:CPU:0']
     with distribution.scope():
-      (var, m, v, op, counter) = distribution.call_for_each_replica(create_fn)
+      (var, m, v, op,
+       counter) = distribution.extended.call_for_each_replica(create_fn)
       self.evaluate(variables.global_variables_initializer())
       var_val = [2.0, 2.0, 2.0]
       self.assertAllClose(
