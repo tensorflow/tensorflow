@@ -104,28 +104,32 @@ class OptimizationOptions(options.OptionsBase):
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
-    result = []
-    optimizations_to_enable = [
+    result = set()
+    all_optimizations = [
         "filter_fusion",
         "hoist_random_uniform",
+        "map_and_batch_fusion",
         "map_and_filter_fusion",
-        "map_fusion",
         "map_parallelization",
+        "map_fusion",
         "map_vectorization",
+        "noop_elimination",
+        "shuffle_and_repeat_fusion",
     ]
-    for optimization in optimizations_to_enable:
+    for optimization in all_optimizations:
       if getattr(self, optimization):
-        result.append(optimization)
+        result.add(optimization)
 
     if self.apply_default_optimizations is not False:
       # The following optimizations are turned on by default, unless the
       # user explicitly disables them.
       optimizations_to_disable = [
           "map_and_batch_fusion",
+          "map_parallelization",
           "noop_elimination",
           "shuffle_and_repeat_fusion",
       ]
       for optimization in optimizations_to_disable:
         if getattr(self, optimization) is not False:
-          result.append(optimization)
-    return result
+          result.add(optimization)
+    return list(result)
