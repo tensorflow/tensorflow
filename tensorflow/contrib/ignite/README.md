@@ -97,6 +97,7 @@ jdbc:ignite:thin://localhost/> INSERT INTO KITTEN_CACHE VALUES (3, 'LITTLE BALL 
 ```python
 >>> import tensorflow as tf
 >>> from tensorflow.contrib.ignite import IgniteDataset
+>>> tf.enable_eager_execution()
 >>>
 >>> dataset = IgniteDataset(cache_name="IMAGES").map(lambda obj: obj['val']['pixels'])
 >>>
@@ -166,6 +167,7 @@ Apache Ignite allows to protect data transfer channels by [SSL](https://en.wikip
 ```python
 >>> import tensorflow as tf
 >>> from tensorflow.contrib.ignite import IgniteDataset
+>>> tf.enable_eager_execution()
 >>>
 >>> dataset = IgniteDataset(cache_name="IMAGES",
                             certfile="client.pem",
@@ -197,7 +199,7 @@ docker run -it -p 10800:10800 dmitrievanthony/ignite-with-mnist
 
 After that you will be able to work with it following way:
 
-![ignite-dataset-mnist](https://s3.amazonaws.com/helloworld23423423ew23/ignite-dataset-mnist.png "Ignite Dataset Mnist")
+![ignite-dataset-mnist](https://s3.amazonaws.com/helloworld23423423ew23/ignite-dataset-mnist-2.png "Ignite Dataset Mnist")
 
 ### IGFS
 
