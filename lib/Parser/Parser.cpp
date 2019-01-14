@@ -766,6 +766,12 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
       if (value.getMinSignedBits() > bitWidth)
         return p.emitError("tensor literal element has more bits than that "
                            "specified in the type");
+
+      // FIXME: Handle larger than 64-bit types more gracefully.
+      if (bitWidth > 64)
+        return p.emitError("tensor literal element with more than 64-bits is "
+                           "not currently supported");
+
       addToStorage(value.getSExtValue());
       break;
     }

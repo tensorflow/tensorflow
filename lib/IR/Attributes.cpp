@@ -170,6 +170,8 @@ ArrayRef<char> DenseElementsAttr::getRawData() const {
 /// starting from `rawData`.
 void DenseElementsAttr::writeBits(char *data, size_t bitPos, size_t bitWidth,
                                   uint64_t value) {
+  assert(bitWidth <= 64 && "expected bitWidth to be within 64-bits");
+
   // Read the destination bytes which will be written to.
   uint64_t dst = 0;
   auto dstData = reinterpret_cast<char *>(&dst);
@@ -195,6 +197,8 @@ void DenseElementsAttr::writeBits(char *data, size_t bitPos, size_t bitWidth,
 /// and put them in the lowest bits.
 uint64_t DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
                                      size_t bitsWidth) {
+  assert(bitsWidth <= 64 && "expected bitWidth to be within 64-bits");
+
   uint64_t dst = 0;
   auto dstData = reinterpret_cast<char *>(&dst);
   auto endPos = bitPos + bitsWidth;

@@ -750,6 +750,15 @@ func @elementsattr_toolarge2() -> () {
 
 // -----
 
+// FIXME: Handle larger than 64-bit types more gracefully.
+func @elementsattr_larger_than_64_bits() -> () {
+^bb0:
+  "fooi67"(){bar: dense<vector<1x1x1xi67>, [[[-5]]]>} : () -> () // expected-error {{tensor literal element with more than 64-bits is not currently supported}}
+  return
+}
+
+// -----
+
 func @elementsattr_malformed_opaque() -> () {
 ^bb0:
   "foo"(){bar: opaque<tensor<1xi8>, "0xQZz123">} : () -> () // expected-error {{opaque string only contains hex digits}}
