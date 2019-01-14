@@ -114,6 +114,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -171,4 +172,5 @@ cuda_py_test(
         "//tensorflow/python/ops/losses",
     ],
     tags = ["optonly"],  # Too slow in non-opt mode
+    xla_enable_strict_auto_jit = True,
 )

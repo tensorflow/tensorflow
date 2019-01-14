@@ -58,6 +58,7 @@ def simple_scoped_fn(a, x):
 
 
 @test_util.with_control_flow_v2
+@test_util.disable_all_xla("This test never passed for XLA")
 class FunctionalOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -826,6 +827,8 @@ class FunctionalOpsTest(test.TestCase):
     self.assertAllEqual(Run(100., True), 5050.)
 
   @test_util.run_v1_only("b/120545219")
+  @test_util.disable_xla(
+      "This test never passed for XLA")  # Different error message
   def testWhileError(self):
     for use_gpu in (True, False):
       with ops.Graph().as_default() as g:
@@ -1102,6 +1105,7 @@ class FunctionalOpsTest(test.TestCase):
 
 # TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
 # below test cases.
+@test_util.disable_all_xla("This test never passed for XLA")
 class PartitionedCallTest(test.TestCase):
 
   @test_util.run_deprecated_v1

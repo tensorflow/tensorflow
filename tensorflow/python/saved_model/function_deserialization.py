@@ -60,6 +60,17 @@ def _inputs_compatible(args, stored_inputs):
   return True
 
 
+def _deserialize_function_spec(function_spec_proto, coder):
+  """Deserialize a FunctionSpec object from its proto representation."""
+  fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  is_method = function_spec_proto.is_method
+  args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
+  kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
+  input_signature = coder.decode_proto(function_spec_proto.input_signature)
+  return function_lib.FunctionSpec(fullargspec, is_method, args_to_prepend,
+                                   kwargs_to_include, input_signature)
+
+
 def recreate_function(saved_function, concrete_functions):
   """Creates a `Function` from a `SavedFunction`.
 
@@ -76,9 +87,8 @@ def recreate_function(saved_function, concrete_functions):
   # serialization cycle.
 
   coder = nested_structure_coder.StructureCoder()
-  function_spec_tuple = coder.decode_proto(
-      saved_function.function_spec_tuple)
-  function_spec = function_lib.FunctionSpec.from_tuple(function_spec_tuple)
+  function_spec = _deserialize_function_spec(
+      saved_function.function_spec, coder)
 
   # TODO(mdan): We may enable autograph once exceptions are supported.
   @def_function.function(autograph=False)

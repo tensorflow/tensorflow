@@ -1103,6 +1103,14 @@ py_library(
     ],
 )
 
+# Including this as a dependency will result in tests using
+# :framework_test_lib to use XLA.
+py_library(
+    name = "is_xla_test_true",
+    srcs = ["framework/is_xla_test_true.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_library(
     name = "distributed_framework_test_lib",
     srcs_version = "PY2AND3",

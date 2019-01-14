@@ -25,13 +25,28 @@ from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.util import nest
 
 
+def _serialize_function_spec(function_spec, coder):
+  """Serialize a FunctionSpec object into its proto representation."""
+  proto = saved_object_graph_pb2.FunctionSpec()
+  proto.fullargspec.CopyFrom(coder.encode_structure(function_spec.fullargspec))
+  proto.is_method = function_spec.is_method
+  proto.args_to_prepend.CopyFrom(
+      coder.encode_structure(function_spec.args_to_prepend))
+  proto.kwargs_to_include.CopyFrom(
+      coder.encode_structure(function_spec.kwargs_to_include))
+  proto.input_signature.CopyFrom(
+      coder.encode_structure(function_spec.input_signature))
+  return proto
+
+
 def serialize_function(function, node_ids):
   """Build a SavedFunction proto."""
   coder = nested_structure_coder.StructureCoder()
   proto = saved_object_graph_pb2.SavedFunction()
 
-  proto.function_spec_tuple.CopyFrom(
-      coder.encode_structure(function.function_spec.as_tuple()))  # pylint: disable=protected-access
+  function_spec_proto = _serialize_function_spec(
+      function.function_spec, coder)
+  proto.function_spec.CopyFrom(function_spec_proto)
   for signature, concrete_function in list_all_concrete_functions(function):
     bound_inputs = []
     try:

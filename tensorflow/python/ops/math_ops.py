@@ -1339,6 +1339,8 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
 @tf_export(v1=["math.count_nonzero", "count_nonzero"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+@deprecation.deprecated_args(
+    None, "reduction_indices is deprecated, use axis instead", "axis")
 def count_nonzero(input_tensor,
                   axis=None,
                   keepdims=None,
