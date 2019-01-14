@@ -4528,9 +4528,12 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         ":bounds_check",
         "//third_party/eigen3",
-    ] + if_cuda([
+    ] + if_cuda_is_configured([
         ":reduction_ops",
         "@cub_archive//:cub",
+    ]) + if_rocm_is_configured([
+        ":reduction_ops",
+        "@rocprim_archive//:rocprim",
     ]),
 )
 
@@ -5027,9 +5030,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ] + if_cuda([
+    ] + if_cuda_is_configured([
         ":reduction_ops",
         "@cub_archive//:cub",
+    ]) + if_rocm_is_configured([
+        ":reduction_ops",
+        "@rocprim_archive//:rocprim",
     ]),
 )
 

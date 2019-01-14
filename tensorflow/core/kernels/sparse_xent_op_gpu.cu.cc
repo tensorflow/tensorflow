@@ -24,6 +24,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/platform/types.h"
 
+#if GOOGLE_CUDA
+namespace gpuprim = ::cub;
+#elif TENSORFLOW_USE_ROCM
+namespace gpuprim = ::hipcub;
+#endif
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -48,8 +54,8 @@ struct RowMaxReduction<GPUDevice, T> {
 
     typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
     Constants<GPUDevice> constants;
-    cub::Max op;
-    functor::ReduceImpl<T, cub::Max, T*, const T*, ReductionAxes>(
+    gpuprim::Max op;
+    functor::ReduceImpl<T, gpuprim::Max, T*, const T*, ReductionAxes>(
         ctx, maximum.data(), logits.data(), 2, rows, cols, 1, 1, constants.kOne,
         op);
   }

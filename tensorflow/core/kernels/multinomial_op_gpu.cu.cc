@@ -30,6 +30,12 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
+#if GOOGLE_CUDA
+namespace gpuprim = ::cub;
+#elif TENSORFLOW_USE_ROCM
+namespace gpuprim = ::hipcub;
+#endif
+
 namespace tensorflow {
 
 namespace functor {
@@ -99,8 +105,8 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     // Max-reduce along classes for each (batch, sample).
     typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
     Constants<GPUDevice> constants;
-    cub::Max op;
-    functor::ReduceImpl<float, cub::Max, float*, const float*, ReductionAxes>(
+    gpuprim::Max op;
+    functor::ReduceImpl<float, gpuprim::Max, float*, const float*, ReductionAxes>(
         /*ctx=*/ctx, /*out=*/maxima.data(), /*in=*/scores.data(), /*in_rank=*/2,
         /*in_dim0=*/batch_size * num_samples,
         /*in_dim1=*/num_classes, /*in_dim2=*/1, /*out_rank=*/1,
