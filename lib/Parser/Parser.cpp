@@ -875,6 +875,7 @@ Attribute Parser::parseAttribute(Type type) {
     if (!val.hasValue())
       return (emitError("floating point value too large for attribute"),
               nullptr);
+    auto valTok = getToken().getLoc();
     consumeToken(Token::floatliteral);
     if (!type) {
       if (consumeIf(Token::colon)) {
@@ -888,7 +889,8 @@ Attribute Parser::parseAttribute(Type type) {
     if (!type.isa<FloatType>())
       return (emitError("floating point value not valid for specified type"),
               nullptr);
-    return builder.getFloatAttr(type, val.getValue());
+    return FloatAttr::getChecked(type, val.getValue(),
+                                 getEncodedSourceLocation(valTok));
   }
   case Token::integer: {
     auto val = getToken().getUInt64IntegerValue();
@@ -945,6 +947,7 @@ Attribute Parser::parseAttribute(Type type) {
       if (!val.hasValue())
         return (emitError("floating point value too large for attribute"),
                 nullptr);
+      auto valTok = getToken().getLoc();
       consumeToken(Token::floatliteral);
       if (!type) {
         if (consumeIf(Token::colon)) {
@@ -957,7 +960,8 @@ Attribute Parser::parseAttribute(Type type) {
       }
       if (!type.isa<FloatType>())
         return (emitError("floating point value not valid for type"), nullptr);
-      return builder.getFloatAttr(type, -val.getValue());
+      return FloatAttr::getChecked(type, -val.getValue(),
+                                   getEncodedSourceLocation(valTok));
     }
 
     return (emitError("expected constant integer or floating point value"),

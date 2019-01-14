@@ -818,7 +818,8 @@ IntegerAttr IntegerAttr::get(Type type, int64_t value) {
   return get(type, APInt(intType.getWidth(), value));
 }
 
-FloatAttr FloatAttr::get(Type type, double value) {
+static FloatAttr getFloatAttr(Type type, double value,
+                              llvm::Optional<Location> loc) {
   Optional<APFloat> val;
   if (type.isBF16())
     // Treat BF16 as double because it is not supported in LLVM's APFloat.
@@ -836,14 +837,23 @@ FloatAttr FloatAttr::get(Type type, double value) {
     auto status = (*val).convert(fltType.getFloatSemantics(),
                                  APFloat::rmTowardZero, &unused);
     if (status != APFloat::opOK) {
-      auto context = type.getContext();
-      context->emitError(
-          UnknownLoc::get(context),
-          "failed to convert floating point value to requested type");
-      val.reset();
+      if (loc)
+        type.getContext()->emitError(
+            *loc, "failed to convert floating point value to requested type");
+      return nullptr;
     }
   }
-  return get(type, *val);
+  return FloatAttr::get(type, *val);
+}
+
+FloatAttr FloatAttr::getChecked(Type type, double value, Location loc) {
+  return getFloatAttr(type, value, loc);
+}
+
+FloatAttr FloatAttr::get(Type type, double value) {
+  auto res = getFloatAttr(type, value, /*loc=*/llvm::None);
+  assert(res && "failed to construct float attribute");
+  return res;
 }
 
 FloatAttr FloatAttr::get(Type type, const APFloat &value) {

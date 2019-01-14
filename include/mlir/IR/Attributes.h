@@ -28,6 +28,7 @@ class Function;
 class FunctionAttr;
 class FunctionType;
 class IntegerSet;
+class Location;
 class MLIRContext;
 class Type;
 class VectorOrTensorType;
@@ -175,6 +176,8 @@ public:
 
   static FloatAttr get(Type type, double value);
   static FloatAttr get(Type type, const APFloat &value);
+
+  static FloatAttr getChecked(Type type, double value, Location loc);
 
   APFloat getValue() const;
 
