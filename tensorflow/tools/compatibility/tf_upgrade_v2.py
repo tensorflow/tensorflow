@@ -601,6 +601,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.initializers.truncated_normal",
         "tf.image.resize_images":
             "tf.image.resize",
+        "tf.random_poisson":
+            "tf.random.poisson",
     }
     # pylint: enable=line-too-long
 
