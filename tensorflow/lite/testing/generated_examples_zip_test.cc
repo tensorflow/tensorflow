@@ -287,10 +287,10 @@ struct ZipPathParamName {
   }
 };
 
-INSTANTIATE_TEST_CASE_P(tests, OpsTest,
-                        ::testing::ValuesIn(UnarchiveAndFindTestNames(
-                            *FLAGS_zip_file_path, *FLAGS_tar_file_path)),
-                        ZipPathParamName());
+INSTANTIATE_TEST_SUITE_P(tests, OpsTest,
+                         ::testing::ValuesIn(UnarchiveAndFindTestNames(
+                             *FLAGS_zip_file_path, *FLAGS_tar_file_path)),
+                         ZipPathParamName());
 
 }  // namespace testing
 }  // namespace tflite

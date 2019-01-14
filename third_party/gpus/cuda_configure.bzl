@@ -1058,7 +1058,7 @@ def _create_dummy_repository(repository_ctx):
               _lib_name("curand", cpu_value),
           "%{cupti_lib}":
               _lib_name("cupti", cpu_value),
-          "%{cuda_include_genrules}":
+          "%{copy_rules}":
               "",
           "%{cuda_headers}":
               "",
@@ -1148,65 +1148,37 @@ def _norm_path(path):
     path = path[:-1]
   return path
 
+def make_copy_files_rule(repository_ctx, name, srcs, outs):
+  """Returns a rule to copy a set of files."""
+  cmds = []
+  # Copy files.
+  for src, out in zip(srcs, outs):
+    cmds.append('cp -f "%s" $(location %s)' % (src, out))
+  outs = [('        "%s",' % out) for out in outs]
+  return """genrule(
+    name = "%s",
+    outs = [
+%s
+    ],
+    cmd = \"""%s \""",
+)""" % (name, "\n".join(outs), " && ".join(cmds))
 
-def symlink_genrule_for_dir(
-        repository_ctx,
-        src_dir,
-        dest_dir,
-        genrule_name,
-        src_files = [],
-        dest_files = []):
-  """Returns a genrule to symlink(or copy if on Windows) a set of files.
-
-    If src_dir is passed, files will be read from the given directory; otherwise
-    we assume files are in src_files and dest_files
-    """
-  if src_dir != None:
-    src_dir = _norm_path(src_dir)
-    dest_dir = _norm_path(dest_dir)
-    files = "\n".join(sorted(_read_dir(repository_ctx, src_dir).splitlines()))
-
-    # Create a list with the src_dir stripped to use for outputs.
-    dest_files = files.replace(src_dir, "").splitlines()
-    src_files = files.splitlines()
-  command = []
-  if not _is_windows(repository_ctx):
-    # We clear folders that might have been generated previously to avoid
-    # undesired inclusions
-    command.append('if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi')
-    command.append('if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi')
-    command.append('if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi')
-    command.append('if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi')
-  outs = []
-  for i in range(len(dest_files)):
-    if dest_files[i] != "":
-      # If we have only one file to link we do not want to use the dest_dir, as
-      # $(@D) will include the full path to the file.
-      dest = "$(@D)/" + dest_dir + dest_files[i] if len(
-          dest_files) != 1 else "$(@D)/" + dest_files[i]
-
-      # Copy the headers to create a sandboxable setup.
-      cmd = "cp -f"
-      command.append(cmd + ' "%s" "%s"' % (src_files[i], dest))
-      outs.append('        "' + dest_dir + dest_files[i] + '",')
-  genrule = _genrule(
-      src_dir,
-      genrule_name,
-      " && ".join(command),
-      "\n".join(outs),
-  )
-  return genrule
-
-
-def _genrule(src_dir, genrule_name, command, outs):
-  """Returns a string with a genrule.
-
-    Genrule executes the given command and produces the given outputs.
-    """
-  return (
-      "genrule(\n" + '    name = "' + genrule_name + '",\n' + "    outs = [\n" +
-      outs + "\n    ],\n" + '    cmd = """\n' + command + '\n   """,\n' + ")\n")
-
+def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
+  """Returns a rule to recursively copy a directory."""
+  src_dir = _norm_path(src_dir)
+  out_dir = _norm_path(out_dir)
+  outs = _read_dir(repository_ctx, src_dir)
+  outs = [('        "%s",' % out.replace(src_dir, out_dir)) for out in outs]
+  # '@D' already contains the relative path for a single file, see
+  # http://docs.bazel.build/versions/master/be/make-variables.html#predefined_genrule_variables
+  out_dir = "$(@D)/%s" % out_dir if len(outs) > 1 else "$(@D)"
+  return """genrule(
+    name = "%s",
+    outs = [
+%s
+    ],
+    cmd = \"""cp -rf "%s/." "%s/" \""",
+)""" % (name, "\n".join(outs), src_dir, out_dir)
 
 def _read_dir(repository_ctx, src_dir):
   """Returns a string with all files in a directory.
@@ -1233,7 +1205,7 @@ def _read_dir(repository_ctx, src_dir):
         empty_stdout_fine=True,
     )
     result = find_result.stdout
-  return result
+  return sorted(result.splitlines())
 
 
 def _flag_enabled(repository_ctx, flag_name):
@@ -1272,69 +1244,59 @@ def _create_local_cuda_repository(repository_ctx):
   cupti_header_dir = _find_cupti_header_dir(repository_ctx, cuda_config)
   nvvm_libdevice_dir = _find_nvvm_libdevice_dir(repository_ctx, cuda_config)
 
-  # Set up symbolic links for the cuda toolkit by creating genrules to do
-  # symlinking. We create one genrule for each directory we want to track under
-  # cuda_toolkit_path
-  cuda_toolkit_path = cuda_config.cuda_toolkit_path
-  genrules = [
-      symlink_genrule_for_dir(
+  # Create genrule to copy files from the installed CUDA toolkit into execroot.
+  copy_rules = [
+      make_copy_dir_rule(
           repository_ctx,
-          cuda_include_path,
-          "cuda/include",
-          "cuda-include",
-      )
+          name = "cuda-include",
+          src_dir = cuda_include_path,
+          out_dir = "cuda/include",
+      ),
+      make_copy_dir_rule(
+          repository_ctx,
+          name = "cuda-nvvm",
+          src_dir = nvvm_libdevice_dir,
+          out_dir = "cuda/nvvm/libdevice",
+      ),
+      make_copy_dir_rule(
+          repository_ctx,
+          name = "cuda-extras",
+          src_dir = cupti_header_dir,
+          out_dir = "cuda/extras/CUPTI/include",
+      ),
   ]
-  genrules.append(
-      symlink_genrule_for_dir(
-          repository_ctx,
-          nvvm_libdevice_dir,
-          "cuda/nvvm/libdevice",
-          "cuda-nvvm",
-      ))
-  genrules.append(
-      symlink_genrule_for_dir(
-          repository_ctx,
-          cupti_header_dir,
-          "cuda/extras/CUPTI/include",
-          "cuda-extras",
-      ))
 
   cuda_libs = _find_libs(repository_ctx, cuda_config)
-  cuda_lib_src = []
-  cuda_lib_dest = []
+  cuda_lib_srcs = []
+  cuda_lib_outs = []
   for lib in cuda_libs.values():
-    cuda_lib_src.append(lib.path)
-    cuda_lib_dest.append("cuda/lib/" + lib.file_name)
-  genrules.append(
-      symlink_genrule_for_dir(
-          repository_ctx,
-          None,
-          "",
-          "cuda-lib",
-          cuda_lib_src,
-          cuda_lib_dest,
-      ))
+    cuda_lib_srcs.append(lib.path)
+    cuda_lib_outs.append("cuda/lib/" + lib.file_name)
+  copy_rules.append(make_copy_files_rule(
+      repository_ctx,
+      name = "cuda-lib",
+      srcs = cuda_lib_srcs,
+      outs = cuda_lib_outs,
+  ))
 
-  # Set up the symbolic links for cudnn if cndnn was not installed to
-  # CUDA_TOOLKIT_PATH.
-  included_files = _read_dir(repository_ctx, cuda_include_path).replace(
-      cuda_include_path,
-      "",
-  ).splitlines()
-  if "/cudnn.h" not in included_files:
-    genrules.append(
-        symlink_genrule_for_dir(
-            repository_ctx,
-            None,
-            "cuda/include/",
-            "cudnn-include",
-            [cudnn_header_dir + "/cudnn.h"],
-            ["cudnn.h"],
-        ))
+  copy_rules.append(make_copy_dir_rule(
+      repository_ctx,
+      name = "cuda-bin",
+      src_dir = cuda_config.cuda_toolkit_path + "/bin",
+      out_dir = "cuda/bin"
+  ))
+
+  # Copy cudnn.h if cuDNN was not installed to CUDA_TOOLKIT_PATH.
+  included_files = _read_dir(repository_ctx, cuda_include_path)
+  if not any([file.endswith("cudnn.h") for file in included_files]):
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "cudnn-include",
+        srcs = [cudnn_header_dir + "/cudnn.h"],
+        outs = ["cuda/include/cudnn.h"],
+    ))
   else:
-    genrules.append(
-        "filegroup(\n" + '    name = "cudnn-include",\n' + "    srcs = [],\n" +
-        ")\n",)
+    copy_rules.append("filegroup(name = 'cudnn-include')\n")
 
   # Set up BUILD file for cuda/
   _tpl(
@@ -1374,8 +1336,8 @@ def _create_local_cuda_repository(repository_ctx):
               cuda_libs["curand"].file_name,
           "%{cupti_lib}":
               cuda_libs["cupti"].file_name,
-          "%{cuda_include_genrules}":
-              "\n".join(genrules),
+          "%{copy_rules}":
+              "\n".join(copy_rules),
           "%{cuda_headers}": ('":cuda-include",\n' + '        ":cudnn-include",'
                              ),
       },
@@ -1447,11 +1409,9 @@ def _create_local_cuda_repository(repository_ctx):
     # bazel's header check failing.
     cuda_defines["%{extra_no_canonical_prefixes_flags}"] = (
         "flag: \"-fno-canonical-system-headers\"")
-    nvcc_path = str(
-        repository_ctx.path("%s/bin/nvcc%s" % (
-            cuda_config.cuda_toolkit_path,
-            ".exe" if _is_windows(repository_ctx) else "",
-        )))
+    nvcc_path = "cuda/bin/nvcc"
+    if _is_windows(repository_ctx):
+      nvcc_path += ".exe"
     _tpl(
         repository_ctx,
         "crosstool:BUILD",

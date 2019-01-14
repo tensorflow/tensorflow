@@ -30,7 +30,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
-from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.checkpointable import tracking
@@ -389,8 +388,8 @@ class LoadTest(test.TestCase):
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
     self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
 
-    self.assertEqual(
-        1, len(function_serialization.list_all_concrete_functions(root.f)))
+    concrete_functions = root.f._list_all_concrete_functions_for_serialization()
+    self.assertEqual(1, len(concrete_functions))  # pylint: disable=protected-access
 
     imported = self.cycle(root)
 

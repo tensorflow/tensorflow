@@ -22,7 +22,20 @@ from tensorflow.python.eager import function as defun_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
-from tensorflow.python.util import nest
+
+
+def _serialize_function_spec(function_spec, coder):
+  """Serialize a FunctionSpec object into its proto representation."""
+  proto = saved_object_graph_pb2.FunctionSpec()
+  proto.fullargspec.CopyFrom(coder.encode_structure(function_spec.fullargspec))
+  proto.is_method = function_spec.is_method
+  proto.args_to_prepend.CopyFrom(
+      coder.encode_structure(function_spec.args_to_prepend))
+  proto.kwargs_to_include.CopyFrom(
+      coder.encode_structure(function_spec.kwargs_to_include))
+  proto.input_signature.CopyFrom(
+      coder.encode_structure(function_spec.input_signature))
+  return proto
 
 
 def serialize_polymorphic_function(polymorphic_function, node_ids):
@@ -30,10 +43,12 @@ def serialize_polymorphic_function(polymorphic_function, node_ids):
   coder = nested_structure_coder.StructureCoder()
   proto = saved_object_graph_pb2.SavedPolymorphicFunction()
 
-  proto.function_spec_tuple.CopyFrom(
-      coder.encode_structure(polymorphic_function.function_spec.as_tuple()))  # pylint: disable=protected-access
-  for signature, concrete_function in list_all_concrete_functions(
-      polymorphic_function):
+  function_spec_proto = _serialize_function_spec(
+      polymorphic_function.function_spec, coder)
+  proto.function_spec.CopyFrom(function_spec_proto)
+  all_concrete_functions = \
+      polymorphic_function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+  for signature, concrete_function in all_concrete_functions:
     bound_inputs = []
     try:
       for capture in concrete_function.captured_inputs:
@@ -55,27 +70,3 @@ def serialize_polymorphic_function(polymorphic_function, node_ids):
         coder.encode_structure(structured_outputs))
     function_proto.bound_inputs.extend(bound_inputs)
   return proto
-
-
-def list_all_concrete_functions(polymorphic_function):
-  """Given a polymorphic function, returns all of its concrete functions.
-
-  Args:
-    polymorphic_function: Instance of `PolymorphicFunction`.
-
-  Returns:
-    A list of tuples in the form (signature, concrete_function), where concrete
-    function is an instance of `Function`.
-  """
-  input_signature = polymorphic_function._input_signature  # pylint: disable=protected-access
-  if input_signature is not None:
-    polymorphic_function.get_concrete_function()
-  concrete_functions = []
-  for signature in polymorphic_function._cached_input_signatures:  # pylint: disable=protected-access
-    flattened = nest.flatten(signature)
-    if any(isinstance(arg, defun_lib.UnknownArgument) for arg in flattened):
-      logging.info("Unsupported signature for serialization: %s.", signature)
-      continue
-    concrete_function = polymorphic_function.get_concrete_function(*signature)
-    concrete_functions.append((signature, concrete_function))
-  return concrete_functions
