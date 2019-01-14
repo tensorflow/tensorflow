@@ -25,7 +25,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
@@ -44,8 +43,7 @@ class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
     dtype = dtypes.int32
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       b = self._ConstOp((4, 10), dtype)
       x = math_ops.matmul(x, b)
       b = self._ConstOp((10,), dtype)
@@ -79,5 +77,6 @@ class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
     # mode, which is a bug. Re-enable this when trt library is fixed.
     return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
   test.main()
