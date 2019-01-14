@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/custom_ops.h"
-#include <algorithm>
 
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poplibs_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poplin_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/popnn_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/popops_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poprand_ops.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
@@ -34,44 +37,44 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 
+#include <algorithm>
+
 namespace xla {
 namespace poplarplugin {
 namespace {
 
 // Every pop* has a OpInfoMap function which maps a function name to
 // CustomPoplibOpInfo which contains a creator and allocator function.
-typedef const absl::flat_hash_map<std::string, CustomPoplibOpInfo>& (
+typedef const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& (
     *GetOpInfoMapFn)();
-
-absl::flat_hash_map<std::string, GetOpInfoMapFn> poplibs_info_map = {
-    {"poplin", GetPoplinOpInfoMap},
-    {"popnn", GetPopnnOpInfoMap},
-    {"popops", GetPopopsOpInfoMap},
-    {"poprand", GetPoprandOpInfoMap},
-};
 
 StatusOr<const CustomPoplibOpInfo> GetCustomPoplibOpInfo(
     const HloInstruction* inst) {
-  // Mapping of getting the right Create function given the metadata:
-  // * op_type - poplibs library name
-  // * op_name - function inside given library
-  std::vector<std::string> op_info =
-      absl::StrSplit(inst->custom_call_target(), "::");
-  if (op_info.size() != 2) {
-    return xla::FailedPrecondition("Invalid custom poplibs call info: %s",
-                                   inst->custom_call_target().c_str());
-  }
+  // Mapping of getting the right Create function given the metadata.
+  PoplibsLib poplibs_lib;
+  PoplibsOp poplibs_op;
+  TF_ASSIGN_OR_RETURN(std::tie(poplibs_lib, poplibs_op),
+                      GetPoplibsCustomOp(inst));
+
+  static absl::flat_hash_map<PoplibsLib, GetOpInfoMapFn> poplibs_info_map = {
+      {PoplibsLib::Poplin, GetPoplinOpInfoMap},
+      {PoplibsLib::Popnn, GetPopnnOpInfoMap},
+      {PoplibsLib::Popops, GetPopopsOpInfoMap},
+      {PoplibsLib::Poprand, GetPoprandOpInfoMap},
+  };
+
   // First find the right poplibs library map
-  auto it_type = poplibs_info_map.find(op_info[0]);
+  auto it_type = poplibs_info_map.find(poplibs_lib);
   if (it_type == poplibs_info_map.end()) {
-    return xla::FailedPrecondition("Unknown poplibs library: %s.", op_info[0]);
+    return xla::FailedPrecondition("Unknown poplibs library: %s.",
+                                   PoplibsLibToString(poplibs_lib).c_str());
   }
-  // Then find the right Create function
+  // Then find the right CustomPoplibOpInfo
   auto lib_info_map = it_type->second();
-  auto it_name = lib_info_map.find(op_info[1]);
+  auto it_name = lib_info_map.find(poplibs_op);
   if (it_name == lib_info_map.end()) {
     return xla::FailedPrecondition("Unknown custom poplibs function: %s.",
-                                   op_info[1]);
+                                   PoplibsOpToString(poplibs_op).c_str());
   }
   return it_name->second;
 }

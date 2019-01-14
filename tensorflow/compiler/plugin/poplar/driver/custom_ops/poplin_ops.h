@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIBS_OPS_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIBS_OPS_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIN_OPS_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIN_OPS_
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poplibs_ops.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+
+#include <poplar/exceptions.hpp>
+#include <poputil/exceptions.hpp>
 
 #include <string>
 
@@ -31,19 +34,8 @@ namespace xla {
 class HloInstruction;
 
 namespace poplarplugin {
-
-typedef StatusOr<poplar::Tensor> (*CustomPoplibOpAllocator)(
-    poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64,
-    const IPUCustomKernelsUtil::AttributeMap&);
-
-typedef StatusOr<poplar::program::Program> (*CustomPoplibOpCreator)(
-    poplar::Graph&, CompilerResources&, const HloInstruction*,
-    const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
-
-using CustomPoplibOpInfo =
-    std::pair<CustomPoplibOpAllocator, CustomPoplibOpCreator>;
+const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPoplinOpInfoMap();
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIBS_OPS_H_
+#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIN_OPS_

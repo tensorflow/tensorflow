@@ -28,10 +28,48 @@ limitations under the License.
 
 namespace xla {
 class HloInstruction;
+
 namespace poplarplugin {
-namespace IPUCustomKernelsUtil {
+
+enum class PoplibsLib : uint32 {
+  Poplin = 0,
+  Popnn,
+  Popops,
+  Poprand,
+  // Do not add beyond this point.
+  _NumLibs
+};
+std::string PoplibsLibToString(const PoplibsLib&);
+StatusOr<PoplibsLib> StringToPoplibsLib(const std::string&);
+
+enum class PoplibsOp : uint32 {
+  // Poplin:
+  // Popnn:
+  LstmLayerFwd = 0,
+  LstmLayerBwd,
+  // Popops:
+  Sqrt,
+  Rsqrt,
+  // Poprand:
+  // Do not add beyond this point.
+  _NumOps
+};
+std::string PoplibsOpToString(const PoplibsOp&);
+StatusOr<PoplibsOp> StringToPoplibsOp(const std::string&);
+
+// Function used to get the string target for the kCustomCall
+std::string GetPoplibsCustomOpTargetString(const PoplibsLib&, const PoplibsOp&);
+// Tried to convert the string target for the kCustomCall
+StatusOr<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
+    const HloInstruction* inst);
+
 // Returns true if inst is a call to a custom op for Poplibs
-const bool IsPoplibsOp(const HloInstruction* inst);
+const bool IsPoplibsCustomOp(const HloInstruction* inst);
+// Returns true if inst is a call to a custom op for Poplibs which is
+// elementwise.
+const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst);
+
+namespace IPUCustomKernelsUtil {
 
 class AttributeMap {
  public:

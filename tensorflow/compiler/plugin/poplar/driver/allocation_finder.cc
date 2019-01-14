@@ -192,7 +192,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
           break;
         }
         case HloOpcode::kCustomCall: {
-          if (IPUCustomKernelsUtil::IsPoplibsOp(user)) {
+          if (IsPoplibsCustomOp(user)) {
             // Each custom Poplibs ops is required to have an
             // `allocating_indexes` attribute which tells us which operands are
             // allocating.

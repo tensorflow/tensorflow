@@ -200,7 +200,7 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     }
 
     case HloOpcode::kCustomCall: {
-      if (IPUCustomKernelsUtil::IsPoplibsOp(inst)) {
+      if (IsPoplibsCustomOp(inst)) {
         // For custom Poplibs Ops, get num_inplace_operands attribute which
         // indicates the following:
         // If num_inplace_operands == 0 then the op is NotInplaceHloInstruction;

@@ -1,6 +1,8 @@
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/popops_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poplibs_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -17,35 +19,30 @@
 namespace xla {
 namespace poplarplugin {
 namespace {
-
-absl::flat_hash_map<std::string, CustomPoplibOpInfo> info_map = {
-    {"sqrt", {AllocateUnaryOp, CreateUnaryOp}},
-    {"rsqrt", {AllocateUnaryOp, CreateUnaryOp}},
-};
-
 StatusOr<popops::expr::UnaryOpType> LookupUnaryFnForCustomOp(
     const HloInstruction* inst) {
-  std::vector<std::string> op_info =
-      absl::StrSplit(inst->custom_call_target(), "::");
-  if (op_info.size() != 2) {
-    return xla::FailedPrecondition("Invalid custom poplibs call info: %s",
-                                   inst->custom_call_target().c_str());
-  }
-  std::string op_name = op_info[1];
+  PoplibsLib poplibs_lib;
+  PoplibsOp poplibs_op;
+  TF_ASSIGN_OR_RETURN(std::tie(poplibs_lib, poplibs_op),
+                      GetPoplibsCustomOp(inst));
 
-  if (op_name == "sqrt") {
-    return popops::expr::UnaryOpType::SQRT;
-
-  } else if (op_name == "rsqrt") {
-    return popops::expr::UnaryOpType::RSQRT;
+  switch (poplibs_op) {
+    case PoplibsOp::Sqrt:
+      return popops::expr::UnaryOpType::SQRT;
+    case PoplibsOp::Rsqrt:
+      return popops::expr::UnaryOpType::RSQRT;
+    default:
+      return tensorflow::errors::Unknown(absl::StrCat(
+          "[Poplar] Invalid opcode lookup ", PoplibsOpToString(poplibs_op)));
   }
-  return tensorflow::errors::Unknown(
-      absl::StrCat("[Poplar] Invalid opcode lookup ", op_name));
 }
 }  // namespace
 
-const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
-GetPopopsOpInfoMap() {
+const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopopsOpInfoMap() {
+  static absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo> info_map = {
+      {PoplibsOp::Sqrt, {AllocateUnaryOp, CreateUnaryOp}},
+      {PoplibsOp::Rsqrt, {AllocateUnaryOp, CreateUnaryOp}},
+  };
   return info_map;
 }
 

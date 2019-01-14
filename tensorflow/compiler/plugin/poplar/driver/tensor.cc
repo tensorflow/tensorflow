@@ -706,7 +706,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         break;
       }
       case HloOpcode::kCustomCall: {
-        if (IPUCustomKernelsUtil::IsPoplibsOp(tgt)) {
+        if (IsPoplibsCustomOp(tgt)) {
           TF_ASSIGN_OR_RETURN(
               out, AllocatePoplibsOpTensor(graph, resources, name, tgt,
                                            target->second.input_index, shape));
