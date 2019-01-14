@@ -638,6 +638,10 @@ func @invalid_bound_map(%N : i32) {
 }
 
 // -----
+
+#set0 = (i)[N, M] : )i >= 0) // expected-error {{expected '(' at start of integer set constraint list}}
+
+// -----
 #set0 = (i)[N] : (i >= 0, N - i >= 0)
 
 func @invalid_if_operands1(%N : index) {

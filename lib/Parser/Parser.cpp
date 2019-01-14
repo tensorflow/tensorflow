@@ -3157,9 +3157,10 @@ AffineExpr AffineParser::parseAffineConstraint(bool *isEq) {
 ///
 IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
                                                     unsigned numSymbols) {
+  if (parseToken(Token::l_paren,
+                 "expected '(' at start of integer set constraint list"))
+    return IntegerSet();
 
-  parseToken(Token::l_paren,
-             "expected '(' at start of integer set constraint list");
   SmallVector<AffineExpr, 4> constraints;
   SmallVector<bool, 4> isEqs;
   auto parseElt = [&]() -> ParseResult {
