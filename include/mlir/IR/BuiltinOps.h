@@ -273,8 +273,8 @@ class ConstantOp : public Op<ConstantOp, OpTrait::ZeroOperands,
                              OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
   /// Builds a constant op with the specified attribute value and result type.
-  static void build(Builder *builder, OperationState *result, Attribute value,
-                    Type type);
+  static void build(Builder *builder, OperationState *result, Type type,
+                    Attribute value);
 
   Attribute getValue() const { return getAttr("value"); }
 

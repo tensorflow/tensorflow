@@ -87,8 +87,8 @@ void ConstantFold::visitOperationInst(OperationInst *op) {
     if (res->use_empty()) // ignore dead uses.
       continue;
 
-    auto cst = builder.create<ConstantOp>(op->getLoc(), resultConstants[i],
-                                          res->getType());
+    auto cst = builder.create<ConstantOp>(op->getLoc(), res->getType(),
+                                          resultConstants[i]);
     existingConstants.push_back(cst);
     res->replaceAllUsesWith(cst);
   }

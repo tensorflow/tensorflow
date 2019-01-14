@@ -213,8 +213,8 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
         if (it != uniquedConstants.end())
           cstValue = it->second->getResult(0);
         else
-          cstValue = create<ConstantOp>(op->getLoc(), resultConstants[i],
-                                        res->getType());
+          cstValue = create<ConstantOp>(op->getLoc(), res->getType(),
+                                        resultConstants[i]);
 
         // Add all the users of the result to the worklist so we make sure to
         // revisit them.

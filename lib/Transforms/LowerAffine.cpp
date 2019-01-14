@@ -187,7 +187,7 @@ public:
     auto valueAttr =
         builder.getIntegerAttr(builder.getIndexType(), expr.getValue());
     auto op =
-        builder.create<ConstantOp>(loc, valueAttr, builder.getIndexType());
+        builder.create<ConstantOp>(loc, builder.getIndexType(), valueAttr);
     return op->getResult();
   }
 

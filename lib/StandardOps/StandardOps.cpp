@@ -1197,7 +1197,7 @@ struct SimplifyMulX0 : public RewritePattern {
   void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
     auto type = op->getOperand(0)->getType();
     auto zeroAttr = rewriter.getZeroAttr(type);
-    rewriter.replaceOpWithNewOp<ConstantOp>(op, zeroAttr, type);
+    rewriter.replaceOpWithNewOp<ConstantOp>(op, type, zeroAttr);
   }
 };
 
