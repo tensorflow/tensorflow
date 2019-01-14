@@ -30,7 +30,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -442,6 +444,27 @@ class PolymorphicFunction(object):
             init, ops.get_default_graph())[init])
 
     return initialize_variables.get_concrete_function()
+
+  def _list_all_concrete_functions_for_serialization(self):
+    """Returns all of the concrete functions.
+
+    Returns:
+      A list of tuples in the form (signature, concrete_function), where
+      concrete function is an instance of `Function`.
+    """
+    input_signature = self._input_signature
+    if input_signature is not None:
+      self.get_concrete_function()
+    concrete_functions = []
+    for signature in self._cached_input_signatures:
+      flattened = nest.flatten(signature)
+      if any(
+          isinstance(arg, function_lib.UnknownArgument) for arg in flattened):
+        logging.info("Unsupported signature for serialization: %s.", signature)
+        continue
+      concrete_function = self.get_concrete_function(*signature)
+      concrete_functions.append((signature, concrete_function))
+    return concrete_functions
 
   @property
   def _cached_input_signatures(self):
