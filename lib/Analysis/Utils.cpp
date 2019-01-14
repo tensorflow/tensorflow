@@ -348,6 +348,47 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
 // dependence constraint system to create AffineMaps with which to adjust the
 // loop bounds of the inserted compution slice so that they are functions of the
 // loop IVs and symbols of the loops surrounding 'dstAccess'.
+bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
+                                            const MemRefAccess &dstAccess,
+                                            ComputationSliceState *sliceState) {
+  FlatAffineConstraints dependenceConstraints;
+  if (!checkMemrefAccessDependence(srcAccess, dstAccess, /*loopDepth=*/1,
+                                   &dependenceConstraints,
+                                   /*dependenceComponents=*/nullptr)) {
+    return false;
+  }
+  // Get loop nest surrounding src operation.
+  SmallVector<ForInst *, 4> srcLoopIVs;
+  getLoopIVs(*srcAccess.opInst, &srcLoopIVs);
+  unsigned numSrcLoopIVs = srcLoopIVs.size();
+
+  // Set up lower/upper bound affine maps for the slice.
+  sliceState->lbs.resize(numSrcLoopIVs, AffineMap::Null());
+  sliceState->ubs.resize(numSrcLoopIVs, AffineMap::Null());
+
+  // Get bounds for src IVs in terms of dst IVs, symbols, and constants.
+  dependenceConstraints.getSliceBounds(numSrcLoopIVs,
+                                       srcAccess.opInst->getContext(),
+                                       &sliceState->lbs, &sliceState->ubs);
+
+  // Set up bound operands for the slice's lower and upper bounds.
+  SmallVector<Value *, 4> sliceBoundOperands;
+  dependenceConstraints.getIdValues(
+      numSrcLoopIVs, dependenceConstraints.getNumDimAndSymbolIds(),
+      &sliceBoundOperands);
+  // Give each bound its own copy of 'sliceBoundOperands' for subsequent
+  // canonicalization.
+  sliceState->lbOperands.resize(numSrcLoopIVs, sliceBoundOperands);
+  sliceState->ubOperands.resize(numSrcLoopIVs, sliceBoundOperands);
+  return true;
+}
+
+/// Creates a computation slice of the loop nest surrounding 'srcAccess'
+/// utilizing slice loop bounds in 'sliceState' (for src loops up to
+/// 'srcLoopDepth'), and inserts this slice into loop nest surrounding
+/// 'dstAccess' at loop depth 'dstLoopDepth'. For all loops at loop depth
+/// greater than 'srcLoopDepth' their full loop bounds will be used in the
+/// slice.
 // TODO(andydavis,bondhugula): extend the slicing utility to compute slices that
 // aren't necessarily a one-to-one relation b/w the source and destination. The
 // relation between the source and destination could be many-to-many in general.
@@ -356,16 +397,13 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
 // entire destination index set. Subtract out the dependent destination
 // iterations from destination index set and check for emptiness --- this is one
 // solution.
+// TODO(andydavis) Remove dependence on 'srcLoopDepth' here. Instead project
+// out loop IVs we don't care about and produce smaller slice.
 ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
                                               MemRefAccess *dstAccess,
+                                              ComputationSliceState *sliceState,
                                               unsigned srcLoopDepth,
                                               unsigned dstLoopDepth) {
-  FlatAffineConstraints dependenceConstraints;
-  if (!checkMemrefAccessDependence(*srcAccess, *dstAccess, /*loopDepth=*/1,
-                                   &dependenceConstraints,
-                                   /*dependenceComponents=*/nullptr)) {
-    return nullptr;
-  }
   // Get loop nest surrounding src operation.
   SmallVector<ForInst *, 4> srcLoopIVs;
   getLoopIVs(*srcAccess->opInst, &srcLoopIVs);
@@ -383,26 +421,6 @@ ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
     dstAccess->opInst->emitError("invalid destination loop depth");
     return nullptr;
   }
-
-  // Project out dimensions other than those up to src/dstLoopDepth's.
-  dependenceConstraints.projectOut(srcLoopDepth, numSrcLoopIVs - srcLoopDepth);
-  dependenceConstraints.projectOut(srcLoopDepth + dstLoopDepth,
-                                   dstLoopIVsSize - dstLoopDepth);
-
-  // Set up lower/upper bound affine maps for the slice.
-  SmallVector<AffineMap, 4> sliceLbs(srcLoopDepth, AffineMap::Null());
-  SmallVector<AffineMap, 4> sliceUbs(srcLoopDepth, AffineMap::Null());
-
-  // Get bounds for src IVs in terms of dst IVs, symbols, and constants.
-  dependenceConstraints.getSliceBounds(std::min(srcLoopDepth, numSrcLoopIVs),
-                                       srcAccess->opInst->getContext(),
-                                       &sliceLbs, &sliceUbs);
-
-  // Set up bound operands for the slice's lower and upper bounds.
-  SmallVector<Value *, 4> sliceBoundOperands;
-  dependenceConstraints.getIdValues(
-      srcLoopDepth, dependenceConstraints.getNumDimAndSymbolIds(),
-      &sliceBoundOperands);
 
   // Find the inst block positions of 'srcAccess->opInst' within 'srcLoopIVs'.
   SmallVector<unsigned, 4> positions;
@@ -433,10 +451,10 @@ ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   // Update loop bounds for loops in 'sliceLoopNest'.
   for (unsigned i = 0; i < srcLoopDepth; ++i) {
     auto *forInst = sliceSurroundingLoops[dstLoopDepth + i];
-    if (AffineMap lbMap = sliceLbs[i])
-      forInst->setLowerBound(sliceBoundOperands, lbMap);
-    if (AffineMap ubMap = sliceUbs[i])
-      forInst->setUpperBound(sliceBoundOperands, ubMap);
+    if (AffineMap lbMap = sliceState->lbs[i])
+      forInst->setLowerBound(sliceState->lbOperands[i], lbMap);
+    if (AffineMap ubMap = sliceState->ubs[i])
+      forInst->setUpperBound(sliceState->ubOperands[i], ubMap);
   }
   return sliceLoopNest;
 }

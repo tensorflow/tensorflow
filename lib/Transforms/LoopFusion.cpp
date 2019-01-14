@@ -36,25 +36,14 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "loop-fusion"
 
 using llvm::SetVector;
 
 using namespace mlir;
-
-// TODO(andydavis) These flags are global for the pass to be used for
-// experimentation. Find a way to provide more fine grained control (i.e.
-// depth per-loop nest, or depth per load/store op) for this pass utilizing a
-// cost model.
-static llvm::cl::opt<unsigned> clSrcLoopDepth(
-    "fusion-src-loop-depth", llvm::cl::Hidden,
-    llvm::cl::desc("Controls the depth of the source loop nest at which "
-                   "to apply loop iteration slicing before fusion."));
-
-static llvm::cl::opt<unsigned> clDstLoopDepth(
-    "fusion-dst-loop-depth", llvm::cl::Hidden,
-    llvm::cl::desc("Controls the depth of the destination loop nest at which "
-                   "to fuse the source loop nest slice."));
 
 namespace {
 
@@ -379,6 +368,347 @@ bool MemRefDependenceGraph::init(Function *f) {
   return true;
 }
 
+namespace {
+
+// LoopNestStats aggregates various per-loop statistics (eg. loop trip count
+// and operation count) for a loop nest up until the innermost loop body.
+struct LoopNestStats {
+  // Map from ForInst to immediate child ForInsts in its loop body.
+  DenseMap<ForInst *, SmallVector<ForInst *, 2>> loopMap;
+  // Map from ForInst to count of operations in its loop body.
+  DenseMap<ForInst *, uint64_t> opCountMap;
+  // Map from ForInst to its constant trip count.
+  DenseMap<ForInst *, uint64_t> tripCountMap;
+};
+
+// LoopNestStatsCollector walks a single loop nest and gathers per-loop
+// trip count and operation count statistics and records them in 'stats'.
+class LoopNestStatsCollector : public InstWalker<LoopNestStatsCollector> {
+public:
+  LoopNestStats *stats;
+  bool hasLoopWithNonConstTripCount = false;
+
+  LoopNestStatsCollector(LoopNestStats *stats) : stats(stats) {}
+
+  void visitForInst(ForInst *forInst) {
+    auto *parentInst = forInst->getParentInst();
+    if (parentInst != nullptr) {
+      assert(isa<ForInst>(parentInst) && "Expected parent ForInst");
+      // Add mapping to 'forInst' from its parent ForInst.
+      stats->loopMap[cast<ForInst>(parentInst)].push_back(forInst);
+    }
+    // Record the number of op instructions in the body of 'forInst'.
+    unsigned count = 0;
+    stats->opCountMap[forInst] = 0;
+    for (auto &inst : *forInst->getBody()) {
+      if (isa<OperationInst>(&inst))
+        ++count;
+    }
+    stats->opCountMap[forInst] = count;
+    // Record trip count for 'forInst'. Set flag if trip count is not constant.
+    Optional<uint64_t> maybeConstTripCount = getConstantTripCount(*forInst);
+    if (!maybeConstTripCount.hasValue()) {
+      hasLoopWithNonConstTripCount = true;
+      return;
+    }
+    stats->tripCountMap[forInst] = maybeConstTripCount.getValue();
+  }
+};
+
+// Computes the total cost of the loop nest rooted at 'forInst'.
+// Currently, the total cost is computed by counting the total operation
+// instance count (i.e. total number of operations in the loop bodyloop
+// operation count * loop trip count) for the entire loop nest.
+// If 'tripCountOverrideMap' is non-null, overrides the trip count for loops
+// specified in the map when computing the total op instance count.
+// NOTE: this is used to compute the cost of computation slices, which are
+// sliced along the iteration dimension, and thus reduce the trip count.
+// If 'computeCostMap' is non-null, the total op count for forInsts specified
+// in the map is increased (not overridden) by adding the op count from the
+// map to the existing op count for the for loop. This is done before
+// multiplying by the loop's trip count, and is used to model the cost of
+// inserting a sliced loop nest of known cost into the loop's body.
+// NOTE: this is used to compute the cost of fusing a slice of some loop nest
+// within another loop.
+static uint64_t
+getComputeCost(ForInst *forInst, LoopNestStats *stats,
+               DenseMap<ForInst *, uint64_t> *tripCountOverrideMap,
+               DenseMap<ForInst *, uint64_t> *computeCostMap) {
+  // 'opCount' is the total number operations in one iteration of 'forInst' body
+  uint64_t opCount = stats->opCountMap[forInst];
+  if (stats->loopMap.count(forInst) > 0) {
+    for (auto *childForInst : stats->loopMap[forInst]) {
+      opCount += getComputeCost(childForInst, stats, tripCountOverrideMap,
+                                computeCostMap);
+    }
+  }
+  // Add in additional op instances from slice (if specified in map).
+  if (computeCostMap != nullptr) {
+    auto it = computeCostMap->find(forInst);
+    if (it != computeCostMap->end()) {
+      opCount += it->second;
+    }
+  }
+  // Override trip count (if specified in map).
+  uint64_t tripCount = stats->tripCountMap[forInst];
+  if (tripCountOverrideMap != nullptr) {
+    auto it = tripCountOverrideMap->find(forInst);
+    if (it != tripCountOverrideMap->end()) {
+      tripCount = it->second;
+    }
+  }
+  // Returns the total number of dynamic instances of operations in loop body.
+  return tripCount * opCount;
+}
+
+} // end anonymous namespace
+
+// Builds a map 'tripCountMap' from ForInst to constant trip count for loop
+// nest surrounding 'srcAccess' utilizing slice loop bounds in 'sliceState'.
+// Returns true on success, false otherwise (if a non-constant trip count
+// was encountered).
+// TODO(andydavis) Make this work with non-unit step loops.
+static bool
+buildSliceTripCountMap(MemRefAccess *srcAccess,
+                       ComputationSliceState *sliceState,
+                       DenseMap<ForInst *, uint64_t> *tripCountMap) {
+  SmallVector<ForInst *, 4> srcLoopIVs;
+  getLoopIVs(*srcAccess->opInst, &srcLoopIVs);
+  unsigned numSrcLoopIVs = srcLoopIVs.size();
+  // Populate map from ForInst -> trip count
+  for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
+    AffineMap lbMap = sliceState->lbs[i];
+    AffineMap ubMap = sliceState->ubs[i];
+    if (lbMap == AffineMap::Null() || ubMap == AffineMap::Null()) {
+      // The iteration of src loop IV 'i' was not sliced. Use full loop bounds.
+      if (srcLoopIVs[i]->hasConstantLowerBound() &&
+          srcLoopIVs[i]->hasConstantUpperBound()) {
+        (*tripCountMap)[srcLoopIVs[i]] =
+            srcLoopIVs[i]->getConstantUpperBound() -
+            srcLoopIVs[i]->getConstantLowerBound();
+        continue;
+      }
+      return false;
+    }
+    // TODO(andydavis) Merge this code with 'mlir::getTripCountExpr'.
+    // ub_expr - lb_expr
+    AffineExpr lbExpr(lbMap.getResult(0));
+    AffineExpr ubExpr(ubMap.getResult(0));
+    auto loopSpanExpr = simplifyAffineExpr(
+        ubExpr - lbExpr, std::max(lbMap.getNumDims(), ubMap.getNumDims()),
+        std::max(lbMap.getNumSymbols(), ubMap.getNumSymbols()));
+    auto cExpr = loopSpanExpr.dyn_cast<AffineConstantExpr>();
+    if (!cExpr)
+      return false;
+    (*tripCountMap)[srcLoopIVs[i]] = cExpr.getValue();
+  }
+  return true;
+}
+
+// Returns the maximum loop depth within the source loop nest at which a
+// sliced loop bound is detected in 'sliceState'.
+static unsigned getMaxSrcLoopDepth(unsigned srcLoopDepthLimit,
+                                   ComputationSliceState *sliceState) {
+  unsigned maxSrcPos = 0;
+  for (unsigned i = 0; i < srcLoopDepthLimit; ++i) {
+    if (sliceState->lbs[i] != AffineMap::Null() &&
+        sliceState->ubs[i] != AffineMap::Null()) {
+      maxSrcPos = std::max(maxSrcPos, i);
+    }
+  }
+  return maxSrcPos + 1;
+}
+
+// Returns the minimum loop depth within the destination loop nest at which the
+// computation slice can be inserted (based on the destination loop IVs that
+// the source slice actually depends on / is a function of).
+static unsigned getMinDstLoopDepth(unsigned srcLoopDepth,
+                                   ComputationSliceState *sliceState) {
+  // Record in 'maxDstLoopDepth' the largest position (+1) of a dst loop nest
+  // IV, which is used in a sliced loop bound in the src loop nest.
+  unsigned maxDstLoopDepth = 0;
+  for (unsigned i = 0; i < srcLoopDepth; ++i) {
+    if (AffineMap lbMap = sliceState->lbs[i]) {
+      lbMap.walkExprs([&](AffineExpr expr) {
+        if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
+          maxDstLoopDepth =
+              std::max(maxDstLoopDepth, dimExpr.getPosition() + 1);
+        }
+      });
+    }
+    if (AffineMap ubMap = sliceState->ubs[i]) {
+      ubMap.walkExprs([&](AffineExpr expr) {
+        if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
+          maxDstLoopDepth =
+              std::max(maxDstLoopDepth, dimExpr.getPosition() + 1);
+        }
+      });
+    }
+  }
+  return maxDstLoopDepth;
+}
+
+// Checks the profitability of fusion candidate 'candidate'. Returns true if it
+// profitable to fuse the candidate loop nests. Returns false otherwise.
+// The profitability model executes the following steps:
+// *) Computes the backward computation slice at 'candidate.srcAccess'. This
+//    computation slice of the loop nest surrounding 'candidate.srcAccess' is
+//    represented by modified src loop bounds in 'sliceState', which are
+//    functions of loop IVs in the loop nest surrounding 'candidate.dstAccess'.
+// *) Computes the cost of unfused src/dst loop nests (currently the cost of a
+//    loop nest is the total number of dynamic operation instances in the loop
+//    nest).
+// *) Computes the cost of fusing a slice of the src loop nest into the dst
+//    loop nest at various values of src/dst loop depth, attempting to fuse
+//    the biggest compution slice (max src loop depth) at the maximal dst loop
+//    depth (closest to the load) to minimize reuse distance and opportunity for
+//    subsequent load/store forwarding.
+//    NOTE: 'srcLoopDepth' refers to the loop depth within the source loop nest
+//    at which we slice the loops bounds (all src loops below this depth will
+//    utilize full loop bounds).
+//    NOTE: 'dstLoopDepth' refers the loop depth within the destination loop
+//    nest, at which the src computation slice is inserted/fused.
+//    NOTE: We attempt to maximize the source loop depth, but there are cases
+//    where a particular setting for 'dstLoopNest' might fused an unsliced
+//    loop (within the src computation slice) at a depth which results in
+//    execessive recomputation (see unit tests for examples).
+// *) Compares the total cost of the unfused loop nests to the min cost fused
+//    loop nest computed in the previous step, and returns true if the latter
+//    is lower.
+static bool isFusionProfitable(FusionCandidate *candidate,
+                               ComputationSliceState *sliceState,
+                               unsigned *srcLoopDepth, unsigned *dstLoopDepth) {
+  // Compute backward computation slice state: src IV bounds w.r.t dst IVs, etc.
+  if (!mlir::getBackwardComputationSliceState(
+          candidate->srcAccess, candidate->dstAccess, sliceState)) {
+    return false;
+  }
+
+  // Build trip count map for src loops with sliced loop bounds in 'sliceState'.
+  DenseMap<ForInst *, uint64_t> sliceTripCountMap;
+  if (!buildSliceTripCountMap(&candidate->srcAccess, sliceState,
+                              &sliceTripCountMap))
+    return false;
+
+  // Compute cost of sliced and unsliced src loop nest.
+  SmallVector<ForInst *, 4> srcLoopIVs;
+  getLoopIVs(*candidate->srcAccess.opInst, &srcLoopIVs);
+  unsigned numSrcLoopIVs = srcLoopIVs.size();
+
+  // Walk src loop nest and collect stats.
+  LoopNestStats srcLoopNestStats;
+  LoopNestStatsCollector srcStatsCollector(&srcLoopNestStats);
+  srcStatsCollector.walk(srcLoopIVs[0]);
+  // Currently only constant trip count loop nests are supported.
+  if (srcStatsCollector.hasLoopWithNonConstTripCount)
+    return false;
+
+  // Compute cost of dst loop nest.
+  SmallVector<ForInst *, 4> dstLoopIVs;
+  getLoopIVs(*candidate->dstAccess.opInst, &dstLoopIVs);
+  unsigned numDstLoopIVs = dstLoopIVs.size();
+
+  LoopNestStats dstLoopNestStats;
+  LoopNestStatsCollector dstStatsCollector(&dstLoopNestStats);
+  dstStatsCollector.walk(dstLoopIVs[0]);
+  // Currently only constant trip count loop nests are supported.
+  if (dstStatsCollector.hasLoopWithNonConstTripCount)
+    return false;
+
+  // Search for min cost values for 'srcLoopDepth' and 'dstLoopDepth'.
+  // This search is O(n^2) where 'n' is very small (eg. six).
+  // TODO(andydavis) Consider a solution where we just iteration through
+  // dstLoopDepth possibilities and project out IVs we do not need (remove
+  // dependence on 'srcLoopDepth'.
+  DenseMap<ForInst *, uint64_t> tripCountMap;
+  DenseMap<ForInst *, uint64_t> computeCostMap;
+  unsigned maxSrcLoopDepth = getMaxSrcLoopDepth(numSrcLoopIVs, sliceState);
+  unsigned minFusedLoopNestComputeCost = std::numeric_limits<unsigned>::max();
+  unsigned bestSrcLoopDepth;
+  unsigned bestDstLoopDepth;
+  for (unsigned i = maxSrcLoopDepth; i >= 1; --i) {
+    // Compute minDstLoopDepth based on dst loop IVs used in slice loop bounds.
+    unsigned minDstLoopDepth = getMinDstLoopDepth(i, sliceState);
+    assert(minDstLoopDepth <= numDstLoopIVs);
+    if (minDstLoopDepth == 0) {
+      // TODO(andydavis) Support inserting computation slices at top-level.
+      continue;
+    }
+    // Copy elements from slice trip count map up to src loop depth 'i'.
+    tripCountMap.clear();
+    for (unsigned k = 0; k < i; ++k) {
+      auto *forInst = srcLoopIVs[k];
+      auto it = sliceTripCountMap.find(forInst);
+      if (it != sliceTripCountMap.end()) {
+        tripCountMap[forInst] = it->second;
+      }
+    }
+    // Compute op instance count for the src loop nest with iteration slicing.
+    uint64_t sliceComputeCost =
+        getComputeCost(srcLoopIVs[0], &srcLoopNestStats, &tripCountMap,
+                       /*computeCostMap=*/nullptr);
+
+    for (unsigned j = numDstLoopIVs; j >= minDstLoopDepth; --j) {
+      // Compute cost of fusion for these values of 'i' and 'j'.
+      computeCostMap.clear();
+      computeCostMap[dstLoopIVs[j - 1]] = sliceComputeCost;
+      uint64_t fusedLoopNestComputeCost =
+          getComputeCost(dstLoopIVs[0], &dstLoopNestStats,
+                         /*tripCountOverrideMap=*/nullptr, &computeCostMap);
+      if (fusedLoopNestComputeCost < minFusedLoopNestComputeCost) {
+        minFusedLoopNestComputeCost = fusedLoopNestComputeCost;
+        bestSrcLoopDepth = i;
+        bestDstLoopDepth = j;
+      }
+    }
+  }
+
+  // Compute op instance count for the src loop nest without iteration slicing.
+  uint64_t srcLoopNestCost = getComputeCost(srcLoopIVs[0], &srcLoopNestStats,
+                                            /*tripCountOverrideMap=*/nullptr,
+                                            /*computeCostMap=*/nullptr);
+  // Compute op instance count for the src loop nest.
+  uint64_t dstLoopNestCost = getComputeCost(dstLoopIVs[0], &dstLoopNestStats,
+                                            /*tripCountOverrideMap=*/nullptr,
+                                            /*computeCostMap=*/nullptr);
+
+  LLVM_DEBUG(llvm::dbgs() << "LoopFusion statistics "
+                          << " bestSrcLoopDepth: " << bestSrcLoopDepth
+                          << " bestDstLoopDepth: " << bestDstLoopDepth
+                          << " srcLoopNestCost: " << srcLoopNestCost
+                          << " dstLoopNestCost: " << dstLoopNestCost
+                          << " minFusedLoopNestComputeCost: "
+                          << minFusedLoopNestComputeCost << "\n");
+
+  // Do not fuse if fused loop would increase the total cost of the computation.
+  // TODO(andydavis) Use locality/reduction in slice memref size/opportunity
+  // for load/store forwarding in cost model.
+  if (minFusedLoopNestComputeCost > srcLoopNestCost + dstLoopNestCost)
+    return false;
+  // Set src/dstLoopDepth based on best values from search.
+  *srcLoopDepth = bestSrcLoopDepth;
+  *dstLoopDepth = bestDstLoopDepth;
+  // Update 'sliceState' bounds based on computed 'srcLoopDepth':
+  // *) Canonicalize affine map now that 'srcLoopDepth' has been chosen.
+  // *) Replace slice bound maps at depth > 'srcLoopDepth' withAffineMap::Null()
+  for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
+    if (i < bestSrcLoopDepth) {
+      if (sliceState->lbs[i] != AffineMap::Null()) {
+        canonicalizeMapAndOperands(sliceState->lbs[i],
+                                   sliceState->lbOperands[i]);
+      }
+      if (sliceState->ubs[i] != AffineMap::Null()) {
+        canonicalizeMapAndOperands(sliceState->ubs[i],
+                                   sliceState->ubOperands[i]);
+      }
+    } else {
+      sliceState->lbs[i] = AffineMap::Null();
+      sliceState->ubs[i] = AffineMap::Null();
+    }
+  }
+  return true;
+}
+
 // GreedyFusion greedily fuses loop nests which have a producer/consumer
 // relationship on a memref, with the goal of improving locality. Currently,
 // this the producer/consumer relationship is required to be unique in the
@@ -479,16 +809,17 @@ public:
           // Build fusion candidate out of 'srcStoreOpInst' and 'dstLoadOpInst'.
           FusionCandidate candidate =
               buildFusionCandidate(srcStoreOpInst, dstLoadOpInst);
+          // Check if fusion would be profitable.
+          unsigned srcLoopDepth;
+          unsigned dstLoopDepth;
+          mlir::ComputationSliceState sliceState;
+          if (!isFusionProfitable(&candidate, &sliceState, &srcLoopDepth,
+                                  &dstLoopDepth))
+            continue;
           // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
-          unsigned srcLoopDepth = clSrcLoopDepth.getNumOccurrences() > 0
-                                      ? clSrcLoopDepth
-                                      : getNestingDepth(*srcStoreOpInst);
-          unsigned dstLoopDepth = clDstLoopDepth.getNumOccurrences() > 0
-                                      ? clDstLoopDepth
-                                      : getNestingDepth(*dstLoadOpInst);
           auto *sliceLoopNest = mlir::insertBackwardComputationSlice(
-              &candidate.srcAccess, &candidate.dstAccess, srcLoopDepth,
-              dstLoopDepth);
+              &candidate.srcAccess, &candidate.dstAccess, &sliceState,
+              srcLoopDepth, dstLoopDepth);
           if (sliceLoopNest != nullptr) {
             // Remove edges between 'srcNode' and 'dstNode' and remove 'srcNode'
             mdg->updateEdgesAndRemoveSrcNode(srcNode->id, dstNode->id);

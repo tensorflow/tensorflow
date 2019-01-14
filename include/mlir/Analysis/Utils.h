@@ -26,6 +26,7 @@
 #define MLIR_ANALYSIS_UTILS_H
 
 #include "mlir/Analysis/AffineStructures.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/SmallVector.h"
 #include <memory>
@@ -151,6 +152,29 @@ bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
 unsigned getNumCommonSurroundingLoops(const Instruction &A,
                                       const Instruction &B);
 
+/// ComputationSliceState aggregates loop bound AffineMaps and their associated
+/// operands for a set of loops within a loop nest (typically the set of loops
+/// surrounding a store operation). Loop bound AffineMaps which are non-null
+/// represent slices of that loop's iteration space.
+struct ComputationSliceState {
+  // List of lower bound AffineMaps.
+  SmallVector<AffineMap, 4> lbs;
+  // List of upper bound AffineMaps.
+  SmallVector<AffineMap, 4> ubs;
+  // List of lower bound operands (lbOperands[i] are used by 'lbs[i]').
+  std::vector<SmallVector<Value *, 4>> lbOperands;
+  // List of upper bound operands (ubOperands[i] are used by 'ubs[i]').
+  std::vector<SmallVector<Value *, 4>> ubOperands;
+};
+
+/// Computes computation slice loop bounds for the loop nest surrounding
+/// 'srcAccess', where the returned loop bound AffineMaps are functions of
+/// loop IVs from the loop nest surrounding 'dstAccess'.
+/// Returns true on success, false otherwise.
+bool getBackwardComputationSliceState(const MemRefAccess &srcAccess,
+                                      const MemRefAccess &dstAccess,
+                                      ComputationSliceState *sliceState);
+
 /// Creates a clone of the computation contained in the loop nest surrounding
 /// 'srcAccess', slices the iteration space of the first 'srcLoopDepth' src loop
 /// IVs, and inserts the computation slice at the beginning of the instruction
@@ -159,10 +183,11 @@ unsigned getNumCommonSurroundingLoops(const Instruction &A,
 /// success, returns nullptr otherwise.
 // Loop depth is a crucial optimization choice that determines where to
 // materialize the results of the backward slice - presenting a trade-off b/w
-// storage and redundant computation in several cases
+// storage and redundant computation in several cases.
 // TODO(andydavis) Support computation slices with common surrounding loops.
 ForInst *insertBackwardComputationSlice(MemRefAccess *srcAccess,
                                         MemRefAccess *dstAccess,
+                                        ComputationSliceState *sliceState,
                                         unsigned srcLoopDepth,
                                         unsigned dstLoopDepth);
 } // end namespace mlir
