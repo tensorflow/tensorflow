@@ -140,7 +140,7 @@ class TRTEngineCacheResource : public tensorflow::ResourceBase {
     }
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     std::stringstream oss;
     using std::dec;
     using std::endl;
