@@ -1652,6 +1652,7 @@ def categorical_column_with_vocabulary_file_v2(key,
 def categorical_column_with_vocabulary_list(key,
                                             vocabulary_list,
                                             dtype=None,
+                                            shape=None,
                                             default_value=-1,
                                             num_oov_buckets=0):
   """A `CategoricalColumn` with in-memory vocabulary.
@@ -1711,6 +1712,8 @@ def categorical_column_with_vocabulary_list(key,
       Must be castable to `dtype`.
     dtype: The type of features. Only string and integer types are supported. If
       `None`, it will be inferred from `vocabulary_list`.
+    shape: The shape of the featutres. If `None`, the result will be
+      SparseTensor
     default_value: The integer ID value to return for out-of-vocabulary feature
       values, defaults to `-1`. This can not be specified with a positive
       `num_oov_buckets`.
@@ -1761,6 +1764,7 @@ def categorical_column_with_vocabulary_list(key,
       key=key,
       vocabulary_list=tuple(vocabulary_list),
       dtype=dtype,
+      shape=shape,
       default_value=default_value,
       num_oov_buckets=num_oov_buckets)
 
@@ -3678,7 +3682,8 @@ class VocabularyListCategoricalColumn(
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
     collections.namedtuple(
         'VocabularyListCategoricalColumn',
-        ('key', 'vocabulary_list', 'dtype', 'default_value', 'num_oov_buckets'))
+        ('key', 'vocabulary_list', 'dtype', 'shape',
+        'default_value', 'num_oov_buckets'))
 ):
   """See `categorical_column_with_vocabulary_list`."""
 
@@ -3694,7 +3699,12 @@ class VocabularyListCategoricalColumn(
   @property
   def parse_example_spec(self):
     """See `FeatureColumn` base class."""
-    return {self.key: parsing_ops.VarLenFeature(self.dtype)}
+    if self.shape is None:
+      return {self.key: parsing_ops.VarLenFeature(self.dtype)}
+    else:
+      return {self.key: parsing_ops.FixedLenFeature(self.shape, self.dtype,
+                                  self.default_value)}
+
 
   @property
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,

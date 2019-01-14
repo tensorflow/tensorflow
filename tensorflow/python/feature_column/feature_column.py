@@ -1273,6 +1273,7 @@ def _categorical_column_with_vocabulary_file(key,
 def _categorical_column_with_vocabulary_list(key,
                                              vocabulary_list,
                                              dtype=None,
+                                             shape=None,
                                              default_value=-1,
                                              num_oov_buckets=0):
   """A `_CategoricalColumn` with in-memory vocabulary.
@@ -1332,6 +1333,8 @@ def _categorical_column_with_vocabulary_list(key,
       Must be castable to `dtype`.
     dtype: The type of features. Only string and integer types are supported.
       If `None`, it will be inferred from `vocabulary_list`.
+    shape: The shape of the featutres. If `None`, the result will be
+      SparseTensor
     default_value: The integer ID value to return for out-of-vocabulary feature
       values, defaults to `-1`. This can not be specified with a positive
       `num_oov_buckets`.
@@ -1380,7 +1383,8 @@ def _categorical_column_with_vocabulary_list(key,
 
   return _VocabularyListCategoricalColumn(
       key=key, vocabulary_list=tuple(vocabulary_list), dtype=dtype,
-      default_value=default_value, num_oov_buckets=num_oov_buckets)
+      shape=shape, default_value=default_value,
+      num_oov_buckets=num_oov_buckets)
 
 
 def _categorical_column_with_identity(key, num_buckets, default_value=None):
@@ -2852,7 +2856,7 @@ class _VocabularyFileCategoricalColumn(
 class _VocabularyListCategoricalColumn(
     _CategoricalColumn,
     collections.namedtuple('_VocabularyListCategoricalColumn', (
-        'key', 'vocabulary_list', 'dtype', 'default_value', 'num_oov_buckets'
+        'key', 'vocabulary_list', 'dtype', 'shape', 'default_value', 'num_oov_buckets'
     ))):
   """See `categorical_column_with_vocabulary_list`."""
 
@@ -2862,7 +2866,11 @@ class _VocabularyListCategoricalColumn(
 
   @property
   def _parse_example_spec(self):
-    return {self.key: parsing_ops.VarLenFeature(self.dtype)}
+    if self.shape is None:
+      return {self.key: parsing_ops.VarLenFeature(self.dtype)}
+    else:
+      return {self.key: parsing_ops.FixedLenFeature(self.shape, self.dtype,
+                                  self.default_value)}
 
   def _transform_feature(self, inputs):
     input_tensor = _to_sparse_input_and_drop_ignore_values(inputs.get(self.key))
