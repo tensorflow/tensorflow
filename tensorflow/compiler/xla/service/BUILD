@@ -1731,9 +1731,9 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "convolution_feature_group_converter_test",
+    name = "convolution_group_converter_test",
     size = "small",
-    srcs = ["convolution_feature_group_converter_test.cc"],
+    srcs = ["convolution_group_converter_test.cc"],
     deps = [
         ":convolution_group_converter",
         ":hlo",

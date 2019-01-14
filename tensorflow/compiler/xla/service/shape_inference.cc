@@ -1539,6 +1539,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         batch_group_count);
   }
 
+  if (batch_group_count > 1 && feature_group_count > 1) {
+    return InvalidArgument(
+        "both batch_group_count %d and feature_group_count %d cannot be "
+        "greater than 1",
+        batch_group_count, feature_group_count);
+  }
+
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
         "Convolution with different element types: %s and %s.",
@@ -1651,6 +1658,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       rhs.dimensions(dnums.kernel_input_feature_dimension());
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
+
+  if (batch_group_count > 1 && input_batch % kernel_output_features != 0) {
+    return InvalidArgument(
+        "Expected output feature dimension (value %d) to be divisible by "
+        "input_batch (value %d) for batch group count %d; "
+        "got <conv>(%s, %s)\n"
+        "Dimension numbers: {%s}.",
+        kernel_output_features, input_batch, batch_group_count,
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
+        dnums.DebugString());
+  }
 
   if (input_features % feature_group_count != 0 ||
       input_features / feature_group_count != kernel_input_features) {
