@@ -29,5 +29,5 @@ cc_library(
 )
 
 
-%{tensorrt_genrules}
+%{copy_rules}
 
