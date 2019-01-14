@@ -882,3 +882,7 @@ func @invalid_tensor_literal() {
 func @invalid_tensor_literal() {
   // expected-error @+1 {{expected '[' or scalar constant inside tensor literal}}
   "fooi16"(){bar: sparse<tensor<2x2x2xi16>, [[1, 1, 0], [0, 1, 0], [0,, [[0, 0, 0]], [-2.0]>} : () -> ()
+
+// -----
+
+#set_without_constraints = (i, j) : () // expected-error {{expected a valid affine constraint}}

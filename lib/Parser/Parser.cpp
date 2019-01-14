@@ -3167,7 +3167,7 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
                                                     unsigned numSymbols) {
   if (parseToken(Token::l_paren,
                  "expected '(' at start of integer set constraint list"))
-    return IntegerSet();
+    return IntegerSet::Null();
 
   SmallVector<AffineExpr, 4> constraints;
   SmallVector<bool, 4> isEqs;
@@ -3185,8 +3185,15 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
   // Parse a list of affine constraints (comma-separated) .
   // Grammar: affine-constraint-conjunct ::= `(` affine-constraint (`,`
   // affine-constraint)* `)
+  auto constraintListLoc = getToken().getLoc();
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
-    return IntegerSet();
+    return IntegerSet::Null();
+
+  // Check that at least one constraint was parsed.
+  if (constraints.empty()) {
+    emitError(constraintListLoc, "expected a valid affine constraint");
+    return IntegerSet::Null();
+  }
 
   // Parsed a valid integer set.
   return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
