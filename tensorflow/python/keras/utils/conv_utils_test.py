@@ -51,7 +51,6 @@ input_shapes = [
     (1, 2, 3, 4, 7, 2),
 ]
 
-
 class TestBasicConvUtilsTest(test.TestCase):
   def test_convert_data_format(self):
     self.assertEqual('NCDHW',
