@@ -273,3 +273,19 @@ func @simplify_affine_apply(%arg0: memref<index>, %arg1: index, %arg2: index) {
 
   return
 }
+
+// CHECK-LABEL: func @cond_br_folding
+func @cond_br_folding(%a : i32) {
+  %false_cond = constant 0 : i1
+  %true_cond = constant 1 : i1
+
+  // CHECK-NEXT: br ^bb1(%arg0 : i32)
+  cond_br %true_cond, ^bb1(%a : i32), ^bb2
+
+^bb1(%x : i32):
+  // CHECK: br ^bb2
+  cond_br %false_cond, ^bb1(%x : i32), ^bb2
+
+^bb2:
+  return
+}

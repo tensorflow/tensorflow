@@ -19,6 +19,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
@@ -319,6 +320,44 @@ void BranchOp::eraseOperand(unsigned index) {
 // CondBranchOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+/// cond_br true, ^bb1, ^bb2 -> br ^bb1
+/// cond_br false, ^bb1, ^bb2 -> br ^bb2
+///
+struct SimplifyConstCondBranchPred : public RewritePattern {
+  SimplifyConstCondBranchPred(MLIRContext *context)
+      : RewritePattern(CondBranchOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult match(OperationInst *op) const override {
+    auto condbr = op->cast<CondBranchOp>();
+    if (matchPattern(condbr->getCondition(), m_Op<ConstantOp>()))
+      return matchSuccess();
+
+    return matchFailure();
+  }
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
+    auto condbr = op->cast<CondBranchOp>();
+    Block *foldedDest;
+    SmallVector<Value *, 4> branchArgs;
+
+    // If the condition is known to evaluate to false we fold to a branch to the
+    // false destination. Otherwise, we fold to a branch to the true
+    // destination.
+    if (matchPattern(condbr->getCondition(), m_Zero())) {
+      foldedDest = condbr->getFalseDest();
+      branchArgs.assign(condbr->false_operand_begin(),
+                        condbr->false_operand_end());
+    } else {
+      foldedDest = condbr->getTrueDest();
+      branchArgs.assign(condbr->true_operand_begin(),
+                        condbr->true_operand_end());
+    }
+
+    rewriter.replaceOpWithNewOp<BranchOp>(op, foldedDest, branchArgs);
+  }
+};
+} // end anonymous namespace.
+
 void CondBranchOp::build(Builder *builder, OperationState *result,
                          Value *condition, Block *trueDest,
                          ArrayRef<Value *> trueOperands, Block *falseDest,
@@ -370,6 +409,11 @@ bool CondBranchOp::verify() const {
   if (!getCondition()->getType().isInteger(1))
     return emitOpError("expected condition type was boolean (i1)");
   return false;
+}
+
+void CondBranchOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.push_back(std::make_unique<SimplifyConstCondBranchPred>(context));
 }
 
 Block *CondBranchOp::getTrueDest() {

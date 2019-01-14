@@ -157,6 +157,9 @@ public:
   void print(OpAsmPrinter *p) const;
   bool verify() const;
 
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
+
   // The condition operand is the first operand in the list.
   Value *getCondition() { return getOperand(0); }
   const Value *getCondition() const { return getOperand(0); }
@@ -186,17 +189,21 @@ public:
     setOperand(getTrueDestOperandIndex() + idx, value);
   }
 
-  operand_iterator true_operand_begin() { return operand_begin(); }
+  operand_iterator true_operand_begin() {
+    return operand_begin() + getTrueDestOperandIndex();
+  }
   operand_iterator true_operand_end() {
-    return operand_begin() + getNumTrueOperands();
+    return true_operand_begin() + getNumTrueOperands();
   }
   llvm::iterator_range<operand_iterator> getTrueOperands() {
     return {true_operand_begin(), true_operand_end()};
   }
 
-  const_operand_iterator true_operand_begin() const { return operand_begin(); }
+  const_operand_iterator true_operand_begin() const {
+    return operand_begin() + getTrueDestOperandIndex();
+  }
   const_operand_iterator true_operand_end() const {
-    return operand_begin() + getNumTrueOperands();
+    return true_operand_begin() + getNumTrueOperands();
   }
   llvm::iterator_range<const_operand_iterator> getTrueOperands() const {
     return {true_operand_begin(), true_operand_end()};
@@ -245,10 +252,10 @@ public:
 
 private:
   /// Get the index of the first true destination operand.
-  unsigned getTrueDestOperandIndex() { return 1; }
+  unsigned getTrueDestOperandIndex() const { return 1; }
 
   /// Get the index of the first false destination operand.
-  unsigned getFalseDestOperandIndex() {
+  unsigned getFalseDestOperandIndex() const {
     return getTrueDestOperandIndex() + getNumTrueOperands();
   }
 
