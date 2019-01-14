@@ -44,12 +44,12 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap();
 // Allocating functions.
 StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
     poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64,
-    const IPUCustomKernelsUtil::AttributeMap&);
+    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
+    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&);
 StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
     poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64,
-    const IPUCustomKernelsUtil::AttributeMap&);
+    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
+    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&);
 
 // Creating functions.
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(

@@ -1017,6 +1017,75 @@ ENTRY c1 {
   EXPECT_EQ(t.layout_output_idx, 0);
 }
 
+TEST_F(AllocationFinderTest, CustomCallFindTensorAllocation) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  %arg2.3 = f32[3,1,5]{2,1,0} parameter(0)
+  %arg1.2 = f32[1,8]{1,0} parameter(1)
+  %arg0.1 = f32[1,8]{1,0} parameter(2)
+  %arg4.5 = f32[13,32]{1,0} parameter(3)
+  %arg3.4 = f32[4,8]{1,0} parameter(4)
+  ROOT cc = (f32[3,1,8]{2,1,0}, f32[1,8]{1,0}, f32[1,8]{1,0}, f32[3,6,1,8]{3,2,1,0}) custom-call(f32[3,1,5]{2,1,0} %arg2.3, f32[1,8]{1,0} %arg1.2, f32[1,8]{1,0} %arg0.1, f32[13,32]{1,0} %arg4.5, f32[4,8]{1,0} %arg3.4), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"allocating_indexes\":[4,2,0,3,1],\"is_training\":false,\"layout_dependencies\":{\"keys\":[],\"values\":[]},\"num_channels\":8,\"num_inplace_operands\":0,\"partials_dtype\":\"DT_FLOAT\"}\n", metadata={op_type="PopnnLstmLayer" op_name="ones"}
+}
+
+)";
+
+  auto module = ParseHloString(hlo, GetModuleConfigForTest());
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* lstm = module0->entry_computation()->root_instruction();
+  const auto* ip0 = lstm->operand(0);
+  const auto* ip1 = lstm->operand(1);
+  const auto* ip2 = lstm->operand(2);
+  const auto* ip3 = lstm->operand(3);
+  const auto* ip4 = lstm->operand(4);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 5);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, lstm);
+  EXPECT_EQ(t.input_index, 0ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], ip0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, lstm);
+  EXPECT_EQ(t.input_index, 1ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], ip1);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, lstm);
+  EXPECT_EQ(t.input_index, 2ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], ip2);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip3, 0));
+  EXPECT_EQ(t.tgt, lstm);
+  EXPECT_EQ(t.input_index, 3ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], ip3);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip4, 0));
+  EXPECT_EQ(t.tgt, lstm);
+  EXPECT_EQ(t.input_index, 4ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], ip4);
+}
+
 TEST_F(AllocationFinderTest, BiasAddAndMultiply) {
   std::string hlo = R"(
 HloModule top
@@ -1543,7 +1612,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
  %arg1.36.23 = f32[1,1,2,2] parameter(1)
  %convolution.36.29 = f32[1,4,4,2] convolution(%arg0.36.22, %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f
  %arg2.36.24 = f32[2]{1,0} parameter(2)
- %sqrt = f32[2] custom-call(%arg2.36.24), custom_call_target="Popops::Sqrt", opaque="{\"allocating_indexes\":\"\",\"num_inplace_operands\":1}\n"
+ %sqrt = f32[2] custom-call(%arg2.36.24), custom_call_target="Popops::Sqrt", opaque="{\"allocating_indexes\":[],\"layout_dependencies\":{\"keys\":[],\"values\":[]},\"num_inplace_operands\":1}\n"
  %arg3.36.25 = f32[1,2]{1,0} parameter(3)
  %arg3.36.25_r = f32[2] reshape(%arg3.36.25)
  %arg4.36.26 = f32[2] parameter(4)
@@ -2307,6 +2376,81 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   EXPECT_EQ(t.layout_output_idx, 2);
   EXPECT_EQ(t.forward_path.size(), 1);
   EXPECT_EQ(t.forward_path[0], gte);
+  EXPECT_EQ(t.backward_path.size(), 0);
+}
+
+TEST_F(AllocationFinderTest, ForwardAllocationCustomPoplibsOp) {
+  // Check that the layout gets forwarded to a custom op.
+  // TODO T6195 - replace the call with a Group Norm
+  std::string hlo = R"(
+HloModule top
+ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f32[2], arg3: f32[2]) -> (f32[1,4,4,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}) {
+  %arg0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
+  %arg1 = f32[1,1,2,2]{3,2,1,0} parameter(1)
+  %convolution = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %arg0, f32[1,1,2,2]{3,2,1,0} %arg1), window={size=1x1}, dim_labels=b01f_01io->b01f
+  %arg2 = f32[2]{0} parameter(2)
+  %arg3 = f32[2]{0} parameter(3)
+  ROOT %cc = (f32[1,4,4,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}) custom-call(f32[1,4,4,2]{3,2,1,0} %convolution, f32[2]{0} %arg2, f32[2]{0} %arg3), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"allocating_indexes\":[],\"is_training\":true,\"layout_dependencies\":{\"keys\":[1,2],\"values\":[0,0]},\"epsilon\":0.001,\"feature_index\":3,\"num_inplace_operands\":0}\n"
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* custom_op = root;
+  const auto* conv = custom_op->operand(0);
+  const auto* ip2 = custom_op->operand(1);
+  const auto* ip3 = custom_op->operand(2);
+  const auto* ip1 = conv->operand(1);
+  const auto* ip0 = conv->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  unsigned num_succesful_runs = 0;
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    num_succesful_runs++;
+  }
+
+  // Depending on the order we either expect this to be executed successfully 1
+  // or 2 times.
+  EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
+
+  // We have added one new entry for the bias add
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, custom_op);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip3, 0));
+  EXPECT_EQ(t.tgt, custom_op);
+  EXPECT_EQ(t.input_index, 2);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
 }
 

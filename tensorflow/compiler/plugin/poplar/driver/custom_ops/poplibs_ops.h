@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 #include <string>
+#include "absl/types/optional.h"
 
 namespace poplar {
 class Graph;
@@ -35,6 +36,8 @@ namespace poplarplugin {
 typedef StatusOr<poplar::Tensor> (*CustomPoplibOpAllocator)(
     poplar::Graph&, CompilerResources&, const std::string&,
     const HloInstruction*, const int64,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
     const IPUCustomKernelsUtil::AttributeMap&);
 
 typedef StatusOr<poplar::program::Program> (*CustomPoplibOpCreator)(

@@ -42,6 +42,8 @@ cc_library(
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:hlo",
         "@jsoncpp_git//:jsoncpp",
+        "@com_google_absl//absl/types:any",
+        "@com_google_absl//absl/types:bad_any_cast",
     ],
     alwayslink = True,
 )

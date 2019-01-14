@@ -123,6 +123,8 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
 StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
     const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
                       GetLstmParameters(inst, attribute_map));
@@ -170,6 +172,8 @@ StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
 StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
     const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   return xla::FailedPrecondition("LstmLayerBwdOp should not be allocating.");
 }

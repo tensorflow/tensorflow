@@ -126,9 +126,8 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
     }
 
     xla::XlaOp output_tuple =
-        xla::CustomCall(&b,
-                        GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
-                                                       PoplibsOp::LstmLayerFwd),
+        xla::CustomCall(&b, GetPoplibsCustomOpTargetString(
+                                PoplibsLib::Popnn, PoplibsOp::LstmLayerFwd),
                         args, output_tuple_shape, attribute_map_.Serialise());
 
     xla::XlaOp output_seq = xla::GetTupleElement(output_tuple, 0);
@@ -145,6 +144,10 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
   const absl::flat_hash_set<int64> AllocatingIndexes() override {
     return {0, 1, 2, 3, 4};
   }
+
+  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
+    return {};
+  };
 
   const uint64 NumberOfInplaceOperands() override { return 0; }
 
@@ -204,9 +207,8 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
     }
 
     xla::XlaOp output_tuple =
-        xla::CustomCall(&b,
-                        GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
-                                                       PoplibsOp::LstmLayerBwd),
+        xla::CustomCall(&b, GetPoplibsCustomOpTargetString(
+                                PoplibsLib::Popnn, PoplibsOp::LstmLayerBwd),
                         args, output_tuple_shape, attribute_map_.Serialise());
     xla::XlaOp input_backprop = xla::GetTupleElement(output_tuple, 0);
     xla::XlaOp input_h_state_backprop = xla::GetTupleElement(output_tuple, 1);
@@ -223,6 +225,10 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
 
  protected:
   const absl::flat_hash_set<int64> AllocatingIndexes() { return {}; }
+
+  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
+    return {};
+  };
 
   const uint64 NumberOfInplaceOperands() override { return 0; }
 

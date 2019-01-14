@@ -80,18 +80,18 @@ StatusOr<const CustomPoplibOpInfo> GetCustomPoplibOpInfo(
 }
 }  // namespace
 
-StatusOr<poplar::Tensor> AllocatePoplibsOpTensor(poplar::Graph& graph,
-                                                 CompilerResources& res,
-                                                 const std::string& name,
-                                                 const HloInstruction* inst,
-                                                 const int64 target_idx,
-                                                 const xla::Shape& shape) {
+StatusOr<poplar::Tensor> AllocatePoplibsOpTensor(
+    poplar::Graph& graph, CompilerResources& res, const std::string& name,
+    const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx, const xla::Shape& shape) {
   TF_ASSIGN_OR_RETURN(auto op_info, GetCustomPoplibOpInfo(inst));
   auto allocator_function = op_info.first;
   auto attribute_map = IPUCustomKernelsUtil::AttributeMap(inst);
   TF_ASSIGN_OR_RETURN(
       poplar::Tensor out,
-      allocator_function(graph, res, name, inst, target_idx, attribute_map));
+      allocator_function(graph, res, name, inst, target_idx, optional_layout,
+                         optional_layout_output_idx, attribute_map));
   return out;
 }
 

@@ -149,9 +149,8 @@ static bool IsPrefixPathOk(const std::vector<HloInstruction*>& path) {
 // For valid paths, either returns the GTE index for the last node or 0.
 static absl::optional<int64> IsSuffixPathOk(
     const std::vector<HloInstruction*>& path) {
-  const auto is_node_ok_on_path = [](HloInstruction* inst,
-                                     const unsigned path_idx,
-                                     const unsigned path_size) {
+  const auto is_node_ok_on_path = [](
+      HloInstruction* inst, const unsigned path_idx, const unsigned path_size) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
       return output_and_all_operands_same_type(inst);
@@ -185,6 +184,22 @@ static bool IsLayoutSensitiveTarget(const HloInstruction* target) {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
       return true;
+    case HloOpcode::kCustomCall: {
+      if (IsPoplibsCustomOp(target)) {
+        auto attribute_map = IPUCustomKernelsUtil::AttributeMap(target);
+        auto statusor =
+            attribute_map.GetAttributeFlatHashMap("layout_dependencies");
+        if (!statusor.ok()) {
+          LOG(FATAL) << "Custom Poplibs op " << target->ToString()
+                     << " is missing \'layout_dependencies\' field.";
+        }
+
+        absl::flat_hash_map<int64, int64> layout_dependencies =
+            statusor.ValueOrDie();
+        return layout_dependencies.size();
+      }
+      break;
+    }
     default:
       break;
   }
@@ -193,7 +208,8 @@ static bool IsLayoutSensitiveTarget(const HloInstruction* target) {
 
 // TODO - this should probably be in a more central location
 static absl::optional<int64> IsLayoutSensitiveOperand(
-    const HloInstruction* target, const HloInstruction* operand) {
+    const HloInstruction* target, const HloInstruction* operand,
+    const HloInstruction* layout_producer) {
   const auto op_idx = target->operand_index(operand);
   if (IsPopOpsElementwiseBinary(target)) {
     return op_idx;
@@ -201,11 +217,35 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
   switch (target->opcode()) {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
-      // Only a layout sensitive target on operands index 1 and 2.
-      if (op_idx == 1 || op_idx == 2) {
+      // Only a layout sensitive target on operands index 1 and 2 iff
+      // layout_producer is operand 0.
+      if (target->operand(0) == layout_producer &&
+          (op_idx == 1 || op_idx == 2)) {
         return op_idx;
       }
       return absl::nullopt;
+    case HloOpcode::kCustomCall: {
+      if (IsPoplibsCustomOp(target)) {
+        auto attribute_map = IPUCustomKernelsUtil::AttributeMap(target);
+        auto statusor =
+            attribute_map.GetAttributeFlatHashMap("layout_dependencies");
+        if (!statusor.ok()) {
+          LOG(FATAL) << "Custom Poplibs op " << target->ToString()
+                     << " is missing \'layout_dependencies\' field.";
+        }
+        // A Poplibs Custom op is layout sensative if the layout_producer is at
+        // the right index.
+        absl::flat_hash_map<int64, int64> layout_dependencies =
+            statusor.ValueOrDie();
+        auto itr = layout_dependencies.find(op_idx);
+        if (itr != layout_dependencies.end() &&
+            target->operand(itr->second) == layout_producer) {
+          return op_idx;
+        }
+        return absl::nullopt;
+      }
+      break;
+    }
     default:
       break;
   }
@@ -302,8 +342,8 @@ StatusOr<bool> ForwardAllocation::Run(
         auto prefix = g.ShortestPath(source, target);
         auto suffix = g.ShortestPath(layout_producer, target);
         // Only some operands are layout sensitive.
-        auto optional_op_idx =
-            IsLayoutSensitiveOperand(target, prefix.rbegin()[1]);
+        auto optional_op_idx = IsLayoutSensitiveOperand(
+            target, prefix.rbegin()[1], layout_producer);
         if (optional_op_idx) {
           const auto op_idx = *optional_op_idx;
           // The paths don't contain the source or target instructions

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/types/any.h"
 
 #include <stdlib.h>
 #include <sstream>
@@ -158,41 +159,76 @@ AttributeMap::AttributeMap(const HloInstruction* custom_call) {
   }
 }
 
+namespace {
 template <typename T>
-void AttributeMap::AddAttribute(const std::string& field_name, const T& attr) {
-  attributes_[field_name] = attr;
+Json::Value GetAsJsonValue(const T& val) {
+  return Json::Value(val);
 }
-
 template <>
-void AttributeMap::AddAttribute(const std::string& field_name,
-                                const tensorflow::DataType& attr) {
-  attributes_[field_name] = DataType_Name(attr);
+Json::Value GetAsJsonValue(const tensorflow::DataType& val) {
+  return Json::Value(DataType_Name(val));
 }
-
 template <>
-void AttributeMap::AddAttribute(const std::string& field_name,
-                                const absl::flat_hash_set<int64>& attr) {
-  attributes_[field_name] = absl::StrJoin(attr, ",");
+Json::Value GetAsJsonValue(const int64& val) {
+  return Json::Value(Json::Value::Int64(val));
 }
-
 template <>
-void AttributeMap::AddAttribute(const std::string& field_name,
-                                const uint64& attr) {
-  attributes_[field_name] = Json::Value::UInt64(attr);
+Json::Value GetAsJsonValue(const uint64& val) {
+  return Json::Value(Json::Value::UInt64(val));
+}
 }
 
-template void AttributeMap::AddAttribute<float>(const std::string&,
-                                                const float&);
-template void AttributeMap::AddAttribute<int>(const std::string&, const int&);
-template void AttributeMap::AddAttribute<uint64>(const std::string&,
-                                                 const uint64&);
-template void AttributeMap::AddAttribute<bool>(const std::string&, const bool&);
-template void AttributeMap::AddAttribute<std::string>(const std::string&,
-                                                      const std::string&);
-template void AttributeMap::AddAttribute<tensorflow::DataType>(
-    const std::string&, const tensorflow::DataType&);
-template void AttributeMap::AddAttribute<absl::flat_hash_set<int64>>(
-    const std::string&, const absl::flat_hash_set<int64>&);
+void AttributeMap::AddAttribute(const std::string& field_name,
+                                const absl::any& attr) {
+  const std::type_info& tinfo = attr.type();
+  if (tinfo == typeid(float)) {
+    auto casted_val = absl::any_cast<float>(attr);
+    attributes_[field_name] = GetAsJsonValue(casted_val);
+
+  } else if (tinfo == typeid(int)) {
+    auto casted_val = absl::any_cast<int>(attr);
+    attributes_[field_name] = GetAsJsonValue(casted_val);
+
+  } else if (tinfo == typeid(bool)) {
+    auto casted_val = absl::any_cast<bool>(attr);
+    attributes_[field_name] = GetAsJsonValue(casted_val);
+
+  } else if (tinfo == typeid(uint64)) {
+    auto casted_val = absl::any_cast<uint64>(attr);
+    attributes_[field_name] = GetAsJsonValue(casted_val);
+
+  } else if (tinfo == typeid(int64)) {
+    auto casted_val = absl::any_cast<int64>(attr);
+    attributes_[field_name] = GetAsJsonValue(casted_val);
+
+  } else if (tinfo == typeid(tensorflow::DataType)) {
+    auto casted_val = absl::any_cast<tensorflow::DataType>(attr);
+    attributes_[field_name] = GetAsJsonValue(casted_val);
+
+  } else if (tinfo == typeid(absl::flat_hash_set<int64>)) {
+    auto casted_vals = absl::any_cast<absl::flat_hash_set<int64>>(attr);
+    // Always create the field.
+    auto& values = attributes_[field_name];
+    values = Json::arrayValue;
+    for (auto val : casted_vals) {
+      values.append(GetAsJsonValue(val));
+    }
+
+  } else if (tinfo == typeid(absl::flat_hash_map<int64, int64>)) {
+    auto casted_vals = absl::any_cast<absl::flat_hash_map<int64, int64>>(attr);
+
+    auto& keys = attributes_[field_name]["keys"];
+    auto& values = attributes_[field_name]["values"];
+    keys = Json::arrayValue;
+    values = Json::arrayValue;
+    for (auto pair : casted_vals) {
+      keys.append(GetAsJsonValue(pair.first));
+      values.append(GetAsJsonValue(pair.second));
+    }
+  } else {
+    LOG(FATAL) << "Unsupported attribute value type " << tinfo.name();
+  }
+}
 
 StatusOr<std::string> AttributeMap::GetAttributeAsString(
     const std::string& field_name) const {
@@ -254,19 +290,38 @@ StatusOr<tensorflow::DataType> AttributeMap::GetAttributeAsTFDataType(
   return data_type;
 }
 
-StatusOr<absl::flat_hash_set<int64>>
-AttributeMap::GetAttributeAsInt64FlatHashSet(
+StatusOr<absl::flat_hash_set<int64>> AttributeMap::GetAttributeFlatHashSet(
     const std::string& field_name) const {
-  if (!attributes_.isMember(field_name)) {
+  if (!attributes_.isMember(field_name) || !attributes_[field_name].isArray()) {
     return xla::FailedPrecondition(
         "Could not obtain the field %s for the custom op.", field_name.c_str());
   }
-  const std::string result_string = attributes_[field_name].asString();
   absl::flat_hash_set<int64> result;
-  std::vector<std::string> split =
-      absl::StrSplit(result_string, ",", absl::SkipEmpty());
-  for (auto num_string : split) {
-    result.insert(std::stoll(num_string));
+  for (auto val : attributes_[field_name]) {
+    result.insert(val.asInt64());
+  }
+  return result;
+}
+
+StatusOr<absl::flat_hash_map<int64, int64>>
+AttributeMap::GetAttributeFlatHashMap(const std::string& field_name) const {
+  if (!attributes_.isMember(field_name) ||
+      !attributes_[field_name].isMember("keys") ||
+      !attributes_[field_name].isMember("values")) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  auto keys = attributes_[field_name]["keys"];
+  auto values = attributes_[field_name]["values"];
+  if (keys.size() != values.size()) {
+    return xla::FailedPrecondition("Corrupted hash map %s for the custom op.",
+                                   field_name.c_str());
+  }
+  absl::flat_hash_map<int64, int64> result;
+  for (int i = 0; i < keys.size(); i++) {
+    int64 key = keys[i].asInt64();
+    int64 value = values[i].asInt64();
+    result[key] = value;
   }
   return result;
 }

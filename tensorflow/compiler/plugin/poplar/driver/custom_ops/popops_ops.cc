@@ -49,6 +49,8 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopopsOpInfoMap() {
 StatusOr<poplar::Tensor> AllocateUnaryOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
     const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   return xla::FailedPrecondition("UnaryOp should not be allocating.");
 }
