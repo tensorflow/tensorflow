@@ -60,7 +60,7 @@
 #                      Will perform "bazel clean", if and only if this variable
 #                      is set to any non-empty and non-0 value
 #   TF_BAZEL_BUILD_ONLY:
-#                      If it is set to any non-empty value that is not "0", Bazel 
+#                      If it is set to any non-empty value that is not "0", Bazel
 #                      will only build specified targets
 #   TF_GPU_COUNT:
 #                      Run this many parallel tests for serial builds.
@@ -615,8 +615,14 @@ fi
 
 # Set a disk usage trap.
 function debug_disk_usage {
-    echo "Finished script... disk usage report in ${TMP_DIR}"
+    echo "-- script finished disk usage"
+    df -h
+    echo "-- disk usage report in ${TMP_DIR}"
     du -k -d 2 ${TMP_DIR} | sort -n -r
+    echo "-- disk usage report in /tmpfs"
+    if [ -d "/tmpfs" ]; then
+      du -k -d 2 /tmpfs | sort -n -r
+    fi
 }
 # trap debug_disk_usage EXIT
 
