@@ -121,7 +121,6 @@ renames = {
     'tf.container': 'tf.compat.v1.container',
     'tf.convert_to_tensor_or_indexed_slices': 'tf.compat.v1.convert_to_tensor_or_indexed_slices',
     'tf.convert_to_tensor_or_sparse_tensor': 'tf.compat.v1.convert_to_tensor_or_sparse_tensor',
-    'tf.count_nonzero': 'tf.compat.v1.count_nonzero',
     'tf.count_up_to': 'tf.compat.v1.count_up_to',
     'tf.create_partitioned_variables': 'tf.compat.v1.create_partitioned_variables',
     'tf.cross': 'tf.linalg.cross',

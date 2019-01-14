@@ -119,6 +119,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.load_file_system_library": {
             "library_filename": "library_location",
         },
+        "tf.count_nonzero": {
+            "input_tensor": "input",
+            "keep_dims": "keepdims",
+            "reduction_indices": "axis",
+        },
         "tf.math.count_nonzero": {
             "input_tensor": "input",
             "keep_dims": "keepdims",
@@ -511,6 +516,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sort",
         "tf.contrib.framework.argsort":
             "tf.argsort",
+        "tf.count_nonzero":
+            "tf.math.count_nonzero",
         "tf.manip.batch_to_space_nd":
             "tf.batch_to_space",
         "tf.quantize_v2":
