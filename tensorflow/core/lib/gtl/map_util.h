@@ -155,6 +155,18 @@ typename Collection::value_type::second_type& LookupOrInsert(
                         typename Collection::value_type(key, value));
 }
 
+template <class Collection>
+typename Collection::value_type::second_type& LookupOrInsert(
+    Collection* const collection,
+    const typename Collection::value_type::first_type& key,
+    const typename Collection::value_type::second_type& value,
+    bool* inserted_ok) {
+  auto result = collection->insert(typename Collection::value_type(key, value));
+  if (inserted_ok != nullptr) {
+    *inserted_ok = result.second;
+  }
+  return result.first->second;
+}
 }  // namespace gtl
 }  // namespace tensorflow
 

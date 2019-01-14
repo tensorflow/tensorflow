@@ -5846,6 +5846,9 @@ class GraphKeys(object):
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
 
+  # Key for lookup interface
+  MUTABLE_HASH_TABLE = "mutable_hash_table"
+
   # Used to store v2 summary names.
   _SUMMARY_COLLECTION = "_SUMMARY_V2"
 

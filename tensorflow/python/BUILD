@@ -2276,6 +2276,7 @@ py_library(
         ":sparse_ops",
         ":tensor_shape",
         ":variables",
+        ":lookup_ops",
     ],
 )
 

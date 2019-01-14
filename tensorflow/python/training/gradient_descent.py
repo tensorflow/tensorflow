@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import gen_lookup_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -68,6 +69,10 @@ class GradientDescentOptimizer(optimizer.Optimizer):
   def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
     return resource_variable_ops.resource_scatter_add(
         handle.handle, indices, -grad * self._learning_rate)
+
+  def _lookuptable_apply_sparse_duplicate_indices(self, grad, handle, indices):
+    return gen_lookup_ops.lookup_table_scatter_sub_v2(
+        handle.handle, indices, grad * self._learning_rate)
 
   def _apply_sparse_duplicate_indices(self, grad, var):
     delta = ops.IndexedSlices(

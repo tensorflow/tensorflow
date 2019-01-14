@@ -29,6 +29,10 @@ message VariableDef {
 
   // Whether this variable should be trained.
   bool trainable = 7;
+
+  // the resource type, so that we can init different
+  // type of resource from the proto
+  string resource_type = 8;
 }
 
 message SaveSliceInfoDef {

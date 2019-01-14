@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/lookup_table_op.h"
 #define EIGEN_USE_THREADS
 
+#include <deque>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -24,8 +25,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace lookup {
@@ -87,6 +91,28 @@ class MutableHashTableOfScalars final : public LookupInterface {
   Status Insert(OpKernelContext* ctx, const Tensor& keys,
                 const Tensor& values) override {
     return DoInsert(false, keys, values);
+  }
+
+  Status DoScatterAdd(const Tensor& keys, const Tensor& values) {
+    const auto key_values = keys.flat<K>();
+    const auto value_values = values.flat<V>();
+
+    mutex_lock l(mu_);
+    bool insert_ok;
+    for (int i = 0; i < key_values.size(); ++i) {
+      V& val = gtl::LookupOrInsert(
+          &table_, SubtleMustCopyIfIntegral(key_values(i)),
+          SubtleMustCopyIfIntegral(value_values(i)), &insert_ok);
+      if (!insert_ok) {
+        val += value_values(i);
+      }
+    }
+    return Status::OK();
+  }
+
+  Status ScatterAdd(OpKernelContext* ctx, const Tensor& keys,
+                    const Tensor& values) override {
+    return DoScatterAdd(keys, values);
   }
 
   Status Remove(OpKernelContext* ctx, const Tensor& keys) override {
@@ -152,19 +178,11 @@ class MutableHashTableOfScalars final : public LookupInterface {
   std::unordered_map<K, V> table_ GUARDED_BY(mu_);
 };
 
-// Lookup table that wraps an unordered_map. Behaves identical to
-// MutableHashTableOfScalars except that each value must be a vector.
-template <class K, class V>
-class MutableHashTableOfTensors final : public LookupInterface {
+template <class K>
+class MutableHashTableOfScalars<K, Variant> final : public LookupInterface {
  public:
-  MutableHashTableOfTensors(OpKernelContext* ctx, OpKernel* kernel) {
-    OP_REQUIRES_OK(ctx,
-                   GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(value_shape_),
-        errors::InvalidArgument("Default value must be a vector, got shape ",
-                                value_shape_.DebugString()));
-  }
+  using V = Variant;
+  MutableHashTableOfScalars(OpKernelContext* ctx, OpKernel* kernel) {}
 
   size_t size() const override {
     tf_shared_lock l(mu_);
@@ -173,24 +191,14 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
-    const auto default_flat = default_value.flat<V>();
+    const V default_val = default_value.flat<V>()(0);
     const auto key_values = key.flat<K>();
-    auto value_values = value->flat_inner_dims<V, 2>();
-    int64 value_dim = value_shape_.dim_size(0);
+    auto value_values = value->flat<V>();
 
     tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
-      ValueArray* value_vec =
-          gtl::FindOrNull(table_, SubtleMustCopyIfIntegral(key_values(i)));
-      if (value_vec != nullptr) {
-        for (int64 j = 0; j < value_dim; j++) {
-          value_values(i, j) = value_vec->at(j);
-        }
-      } else {
-        for (int64 j = 0; j < value_dim; j++) {
-          value_values(i, j) = default_flat(j);
-        }
-      }
+      value_values(i) = gtl::FindWithDefault(
+          table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
 
     return Status::OK();
@@ -198,21 +206,15 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
     const auto key_values = keys.flat<K>();
-    const auto value_values = values.flat_inner_dims<V, 2>();
-    int64 value_dim = value_shape_.dim_size(0);
+    const auto value_values = values.flat<V>();
 
     mutex_lock l(mu_);
     if (clear) {
       table_.clear();
     }
     for (int64 i = 0; i < key_values.size(); ++i) {
-      ValueArray value_vec;
-      for (int64 j = 0; j < value_dim; j++) {
-        V value = value_values(i, j);
-        value_vec.push_back(value);
-      }
       gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
-                          value_vec);
+                          SubtleMustCopyIfIntegral(value_values(i)));
     }
     return Status::OK();
   }
@@ -220,6 +222,15 @@ class MutableHashTableOfTensors final : public LookupInterface {
   Status Insert(OpKernelContext* ctx, const Tensor& keys,
                 const Tensor& values) override {
     return DoInsert(false, keys, values);
+  }
+
+  Status DoScatterAdd(const Tensor& keys, const Tensor& values) {
+    return Status::OK();
+  }
+
+  Status ScatterAdd(OpKernelContext* ctx, const Tensor& keys,
+                    const Tensor& values) override {
+    return DoScatterAdd(keys, values);
   }
 
   Status Remove(OpKernelContext* ctx, const Tensor& keys) override {
@@ -240,26 +251,418 @@ class MutableHashTableOfTensors final : public LookupInterface {
   Status ExportValues(OpKernelContext* ctx) override {
     tf_shared_lock l(mu_);
     int64 size = table_.size();
-    int64 value_dim = value_shape_.dim_size(0);
 
     Tensor* keys;
     Tensor* values;
     TF_RETURN_IF_ERROR(
         ctx->allocate_output("keys", TensorShape({size}), &keys));
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_output("values", TensorShape({size}), &values));
+
+    auto keys_data = keys->flat<K>();
+    auto values_data = values->flat<V>();
+    int64 i = 0;
+    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
+      keys_data(i) = it->first;
+      values_data(i) = it->second;
+    }
+    return Status::OK();
+  }
+
+  DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
+
+  DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
+
+  TensorShape key_shape() const final { return TensorShape(); }
+
+  TensorShape value_shape() const override { return TensorShape(); }
+
+  int64 MemoryUsed() const override {
+    int64 ret = 0;
+    tf_shared_lock l(mu_);
+    for (unsigned i = 0; i < table_.bucket_count(); ++i) {
+      size_t bucket_size = table_.bucket_size(i);
+      if (bucket_size == 0) {
+        ret++;
+      } else {
+        ret += bucket_size;
+      }
+    }
+    return sizeof(MutableHashTableOfScalars) + ret;
+  }
+
+ private:
+  mutable mutex mu_;
+  std::unordered_map<K, V> table_ GUARDED_BY(mu_);
+};
+
+template <typename T>
+class TensorCache {
+ public:
+  void Initialize(const Tensor& default_value, const int32& cache_size,
+                  const TensorShape& value_shape, const DataType& dtype) {
+    default_value_ = default_value;
+    cache_size_ = cache_size;
+    value_shape_ = value_shape;
+    dtype_ = dtype;
+    AllocateTensors();
+  }
+
+  Tensor GetTensor() {
+    if (TF_PREDICT_FALSE(freed_tensors_.empty())) {
+      AllocateTensors();
+    }
+    Tensor result = freed_tensors_.front();
+    freed_tensors_.pop_front();
+    return result;
+  }
+
+  void PutTensor(const Tensor& t) { freed_tensors_.push_back(t); }
+
+ private:
+  void AllocateTensors() {
+    for (int i = 0; i < cache_size_; ++i) {
+      Tensor new_one(dtype_, value_shape_);
+      new_one.flat<T>() = default_value_.flat<T>();
+      freed_tensors_.push_back(new_one);
+    }
+  }
+
+  Tensor default_value_;
+  int32 cache_size_;
+  TensorShape value_shape_;
+  DataType dtype_;
+  std::deque<Tensor> freed_tensors_;
+};
+
+template <class K, class V>
+class TensorHashTable {
+ public:
+  void Initialize(const Tensor& default_value, const int32& tensor_cache_size,
+                  const TensorShape& vshape, const DataType& dtype) {
+    cache_.Initialize(default_value, tensor_cache_size, vshape, dtype);
+    table_.reserve(tensor_cache_size);
+    tensor_bytes_ = vshape.num_elements() * sizeof(V);
+  }
+
+  size_t Size() const {
+    tf_shared_lock l(mu_);
+    return table_.size();
+  }
+
+  void Clear() {
+    mutex_lock l(mu_);
+    table_.clear();
+  }
+
+  void Find(const std::vector<K>& keys, const std::vector<int>& value_index,
+            typename TTypes<V, 2>::Tensor* value) {
+    std::vector<Tensor> result;
+    result.reserve(keys.size());
+    {
+      mutex_lock l(mu_);
+      for (const auto& k : keys) {
+        Tensor* found_value = gtl::FindOrNull(table_, k);
+        if (found_value != nullptr) {
+          result.push_back(*found_value);
+        } else {
+          Tensor t = cache_.GetTensor();
+          gtl::InsertOrUpdate(&table_, k, t);
+          result.push_back(t);
+        }
+      }
+    }
+
+    if (TF_PREDICT_TRUE(is_simple_type<V>::value)) {
+      for (int i = 0; i < value_index.size(); ++i) {
+        auto result_flat = result[i].flat<V>();
+        memcpy(&(*value)(value_index[i], 0), &result_flat(0), tensor_bytes_);
+      }
+    } else {
+      for (int i = 0; i < value_index.size(); ++i) {
+        auto result_flat = result[i].flat<V>();
+        value->template chip<0>(value_index[i]) = result_flat;
+      }
+    }
+  }
+
+  void ScatterAdd(const std::vector<K>& keys,
+                  const std::vector<int>& value_index,
+                  const typename TTypes<V, 2>::ConstTensor& value) {
+    std::vector<Tensor> result;
+    result.reserve(keys.size());
+    {
+      tf_shared_lock l(mu_);
+      for (const auto& k : keys) {
+        Tensor* found_value = gtl::FindOrNull(table_, k);
+        CHECK_NOTNULL(found_value);
+        result.push_back(*found_value);
+      }
+    }
+
+    {
+      mutex_lock l(update_mu_);
+      for (int i = 0; i < value_index.size(); ++i) {
+        auto result_flat = result[i].flat<V>();
+        result_flat = result_flat + value.template chip<0>(value_index[i]);
+      }
+    }
+  }
+
+  void ScatterSub(const std::vector<K>& keys,
+                  const std::vector<int>& value_index,
+                  const typename TTypes<V, 2>::ConstTensor& value) {
+    std::vector<Tensor> result;
+    result.reserve(keys.size());
+    {
+      tf_shared_lock l(mu_);
+      for (const auto& k : keys) {
+        Tensor* found_value = gtl::FindOrNull(table_, k);
+        CHECK_NOTNULL(found_value);
+        result.push_back(*found_value);
+      }
+    }
+
+    {
+      mutex_lock l(update_mu_);
+      for (int i = 0; i < value_index.size(); ++i) {
+        auto result_flat = result[i].flat<V>();
+        result_flat = result_flat - value.template chip<0>(value_index[i]);
+      }
+    }
+  }
+
+  void Insert(const std::vector<K>& keys, const std::vector<int>& value_index,
+              const typename TTypes<V, 2>::ConstTensor* value) {
+    std::vector<Tensor> result;
+    result.reserve(keys.size());
+    {
+      mutex_lock l(mu_);
+      for (const auto& k : keys) {
+        Tensor t = cache_.GetTensor();
+        gtl::InsertOrUpdate(&table_, k, t);
+        result.push_back(t);
+      }
+    }
+
+    {
+      mutex_lock l(update_mu_);
+      if (TF_PREDICT_TRUE(is_simple_type<V>::value)) {
+        for (int i = 0; i < value_index.size(); ++i) {
+          auto result_flat = result[i].flat<V>();
+          memcpy(&result_flat(0), &(*value)(value_index[i], 0), tensor_bytes_);
+        }
+      } else {
+        for (int i = 0; i < value_index.size(); ++i) {
+          auto result_flat = result[i].flat<V>();
+          result_flat = value->template chip<0>(value_index[i]);
+        }
+      }
+    }
+  }
+
+  void Remove(const std::vector<K>& keys) {
+    mutex_lock l(mu_);
+    for (const auto& k : keys) {
+      table_.erase(SubtleMustCopyIfIntegral(k));
+    }
+  }
+
+  size_t ExportValues(typename TTypes<K>::Flat* keys_data,
+                      typename TTypes<V>::Matrix* values_data,
+                      const int64& value_dim, const size_t& start,
+                      const size_t& total) {
+    tf_shared_lock l(mu_);
+    size_t export_pos = start;
+    for (auto it = table_.begin(); it != table_.end() && export_pos < total;
+         ++it, ++export_pos) {
+      K key = it->first;
+      Tensor value = it->second;
+      (*keys_data)(export_pos) = key;
+      auto value_flat = value.flat<V>();
+      for (int64 j = 0; j < value_dim; j++) {
+        (*values_data)(export_pos, j) = value_flat(j);
+      }
+    }
+    return export_pos - start;
+  }
+
+  int64 MemoryUsed() const {
+    int64 ret = 0;
+    tf_shared_lock l(mu_);
+    for (unsigned i = 0; i < table_.bucket_count(); ++i) {
+      size_t bucket_size = table_.bucket_size(i);
+      if (bucket_size == 0) {
+        ret++;
+      } else {
+        ret += bucket_size;
+      }
+    }
+    return sizeof(TensorHashTable) + ret;
+  }
+
+ private:
+  size_t tensor_bytes_;
+  mutable mutex update_mu_;
+  mutable mutex mu_;
+  TensorCache<V> cache_ GUARDED_BY(mu_);
+  std::unordered_map<K, Tensor> table_ GUARDED_BY(mu_);
+};
+
+// Lookup table that wraps an unordered_map. Behaves identical to
+// MutableHashTableOfScalars except that each value must be a vector.
+template <class K, class V>
+class MutableHashTableOfTensors : public LookupInterface {
+ public:
+  MutableHashTableOfTensors(OpKernelContext* ctx, OpKernel* kernel) {
+    OP_REQUIRES_OK(ctx,
+                   GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
+    OP_REQUIRES_OK(ctx, GetNodeAttr(kernel->def(), "hash_table_segments",
+                                    &hash_table_segments_));
+    OP_REQUIRES_OK(ctx, GetNodeAttr(kernel->def(), "tensor_cache_size",
+                                    &tensor_cache_size_));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(value_shape_),
+        errors::InvalidArgument("Default value must be a vector, got shape ",
+                                value_shape_.DebugString()));
+    tables_.resize(hash_table_segments_);
+    for (int i = 0; i < hash_table_segments_; ++i) {
+      tables_[i].Initialize(ctx->input(0), tensor_cache_size_, value_shape_,
+                            value_dtype());
+    }
+  }
+
+  size_t size() const override {
+    size_t result = 0;
+    for (int i = 0; i < hash_table_segments_; ++i) {
+      result += tables_[i].Size();
+    }
+    return result;
+  }
+
+  void ShardKeys(const typename TTypes<K>::ConstFlat& key_values,
+                 std::vector<std::vector<K>>* sharded_keys,
+                 std::vector<std::vector<int>>* sharded_index) {
+    for (int i = 0; i < key_values.size(); ++i) {
+      size_t segment_id = std::hash<K>{}(key_values(i)) % hash_table_segments_;
+      (*sharded_keys)[segment_id].push_back(key_values(i));
+      if (sharded_index) {
+        (*sharded_index)[segment_id].push_back(i);
+      }
+    }
+  }
+
+  void ScheduleSegments(
+      OpKernelContext* ctx,
+      std::function<void(const size_t& segment_id)> per_segment_work) {
+    int num_threads =
+        ctx->device()->tensorflow_cpu_worker_threads()->num_threads;
+    thread::ThreadPool* thread_pool =
+        ctx->device()->tensorflow_cpu_worker_threads()->workers;
+
+    BlockingCounter counter(num_threads);
+    auto per_thread_work = [&, this](int thread_id) {
+      for (int i = thread_id; i < hash_table_segments_; i += num_threads) {
+        per_segment_work(i);
+      }
+      counter.DecrementCount();
+    };
+
+    for (int i = 0; i < num_threads - 1; ++i) {
+      thread_pool->Schedule([&, i]() { per_thread_work(i); });
+    }
+    per_thread_work(num_threads - 1);
+    counter.Wait();
+  }
+
+  Status Find(OpKernelContext* ctx, const Tensor& keys, Tensor* values,
+              const Tensor& default_value) override {
+    const auto key_values = keys.flat<K>();
+    auto value_values = values->flat_inner_dims<V, 2>();
+
+    std::vector<std::vector<K>> sharded_keys(hash_table_segments_);
+    std::vector<std::vector<int>> sharded_index(hash_table_segments_);
+
+    ShardKeys(key_values, &sharded_keys, &sharded_index);
+
+    auto per_segment_work = [&, this](const size_t& segment_id) {
+      if (sharded_keys[segment_id].empty()) return;
+      tables_[segment_id].Find(sharded_keys[segment_id],
+                               sharded_index[segment_id], &value_values);
+    };
+    ScheduleSegments(ctx, per_segment_work);
+
+    return Status::OK();
+  }
+
+  Status DoInsert(bool clear, OpKernelContext* ctx, const Tensor& keys,
+                  const Tensor& values) {
+    const auto key_values = keys.flat<K>();
+    auto value_values = values.flat_inner_dims<V, 2>();
+
+    std::vector<std::vector<K>> sharded_keys(hash_table_segments_);
+    std::vector<std::vector<int>> sharded_index(hash_table_segments_);
+
+    ShardKeys(key_values, &sharded_keys, &sharded_index);
+
+    auto per_segment_work = [&, this](size_t segment_id) {
+      if (clear) tables_[segment_id].Clear();
+      if (sharded_keys[segment_id].empty()) return;
+      tables_[segment_id].Insert(sharded_keys[segment_id],
+                                 sharded_index[segment_id], &value_values);
+    };
+    ScheduleSegments(ctx, per_segment_work);
+    return Status::OK();
+  }
+  Status Insert(OpKernelContext* ctx, const Tensor& keys,
+                const Tensor& values) override {
+    return DoInsert(false, ctx, keys, values);
+  }
+
+  Status ScatterAdd(OpKernelContext* ctx, const Tensor& keys,
+                    const Tensor& values) override {
+    return Status(error::Code::INVALID_ARGUMENT, "Value type cannot be added.");
+  }
+
+  Status Remove(OpKernelContext* ctx, const Tensor& keys) override {
+    const auto key_values = keys.flat<K>();
+
+    std::vector<std::vector<K>> sharded_keys(hash_table_segments_);
+
+    ShardKeys(key_values, &sharded_keys, nullptr);
+
+    auto per_segment_work = [&, this](const size_t& segment_id) {
+      if (sharded_keys[segment_id].empty()) return;
+      tables_[segment_id].Remove(sharded_keys[segment_id]);
+    };
+    ScheduleSegments(ctx, per_segment_work);
+    return Status::OK();
+  }
+
+  Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                      const Tensor& values) override {
+    return DoInsert(true, ctx, keys, values);
+  }
+
+  Status ExportValues(OpKernelContext* ctx) override {
+    Tensor* keys;
+    Tensor* values;
+    int64 table_size = size();
+    int64 value_dim = value_shape_.dim_size(0);
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_output("keys", TensorShape({table_size}), &keys));
     TF_RETURN_IF_ERROR(ctx->allocate_output(
-        "values", TensorShape({size, value_dim}), &values));
+        "values", TensorShape({table_size, value_dim}), &values));
 
     auto keys_data = keys->flat<K>();
     auto values_data = values->matrix<V>();
-    int64 i = 0;
-    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
-      K key = it->first;
-      ValueArray value = it->second;
-      keys_data(i) = key;
-      for (int64 j = 0; j < value_dim; j++) {
-        values_data(i, j) = value[j];
-      }
+    int64 export_id = 0;
+    for (size_t segment_id = 0; segment_id < hash_table_segments_;
+         ++segment_id) {
+      export_id += tables_[segment_id].ExportValues(
+          &keys_data, &values_data, value_dim, export_id, table_size);
     }
+
     return Status::OK();
   }
 
@@ -273,23 +676,66 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   int64 MemoryUsed() const override {
     int64 ret = 0;
-    tf_shared_lock l(mu_);
-    for (unsigned i = 0; i < table_.bucket_count(); ++i) {
-      size_t bucket_size = table_.bucket_size(i);
-      if (bucket_size == 0) {
-        ret++;
-      } else {
-        ret += bucket_size;
-      }
+    for (size_t segment_id = 0; segment_id < hash_table_segments_;
+         ++segment_id) {
+      ret += tables_[segment_id].MemoryUsed();
     }
     return sizeof(MutableHashTableOfTensors) + ret;
   }
 
- private:
+ protected:
+  int32 hash_table_segments_;
+  int32 tensor_cache_size_;
   TensorShape value_shape_;
-  mutable mutex mu_;
-  typedef gtl::InlinedVector<V, 4> ValueArray;
-  std::unordered_map<K, ValueArray> table_ GUARDED_BY(mu_);
+  std::vector<TensorHashTable<K, V>> tables_;
+};
+
+template <class K, class V>
+class TrainableHashTableOfTensors final
+    : public MutableHashTableOfTensors<K, V> {
+ public:
+  TrainableHashTableOfTensors(OpKernelContext* ctx, OpKernel* kernel)
+      : MutableHashTableOfTensors<K, V>(ctx, kernel) {}
+
+  Status ScatterAdd(OpKernelContext* ctx, const Tensor& keys,
+                    const Tensor& values) override {
+    const auto key_values = keys.flat<K>();
+    const auto value_values = values.flat_inner_dims<V, 2>();
+
+    std::vector<std::vector<K>> sharded_keys(this->hash_table_segments_);
+    std::vector<std::vector<int>> sharded_index(this->hash_table_segments_);
+
+    this->ShardKeys(key_values, &sharded_keys, &sharded_index);
+
+    auto per_segment_work = [&, this](size_t segment_id) {
+      if (sharded_keys[segment_id].empty()) return;
+      this->tables_[segment_id].ScatterAdd(
+          sharded_keys[segment_id], sharded_index[segment_id], value_values);
+    };
+    this->ScheduleSegments(ctx, per_segment_work);
+
+    return Status::OK();
+  }
+
+  Status ScatterSub(OpKernelContext* ctx, const Tensor& keys,
+                    const Tensor& values) override {
+    const auto key_values = keys.flat<K>();
+    const auto value_values = values.flat_inner_dims<V, 2>();
+
+    std::vector<std::vector<K>> sharded_keys(this->hash_table_segments_);
+    std::vector<std::vector<int>> sharded_index(this->hash_table_segments_);
+
+    this->ShardKeys(key_values, &sharded_keys, &sharded_index);
+
+    auto per_segment_work = [&, this](size_t segment_id) {
+      if (sharded_keys[segment_id].empty()) return;
+      this->tables_[segment_id].ScatterSub(
+          sharded_keys[segment_id], sharded_index[segment_id], value_values);
+    };
+    this->ScheduleSegments(ctx, per_segment_work);
+
+    return Status::OK();
+  }
 };
 
 namespace {
@@ -325,9 +771,8 @@ class MutableDenseHashTable final : public LookupInterface {
 
     OP_REQUIRES_OK(ctx,
                    GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(value_shape_) ||
-                    TensorShapeUtils::IsVector(value_shape_),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(value_shape_) ||
+                         TensorShapeUtils::IsVector(value_shape_),
                 errors::InvalidArgument(
                     "Empty value must be a scalar or a vector, got shape ",
                     value_shape_.DebugString()));
@@ -335,9 +780,8 @@ class MutableDenseHashTable final : public LookupInterface {
     const Tensor* empty_key_input;
     OP_REQUIRES_OK(ctx, ctx->input("empty_key", &empty_key_input));
     key_shape_ = empty_key_input->shape();
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(key_shape_) ||
-                    TensorShapeUtils::IsVector(key_shape_),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_shape_) ||
+                         TensorShapeUtils::IsVector(key_shape_),
                 errors::InvalidArgument(
                     "Empty key must be a scalar or a vector, got shape ",
                     key_shape_.DebugString()));
@@ -852,6 +1296,76 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableInsert").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("LookupTableInsertV2").Device(DEVICE_CPU),
                         LookupTableInsertOp);
 
+class LookupTableScatterAddOp : public OpKernel {
+ public:
+  explicit LookupTableScatterAddOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table;
+    OP_REQUIRES_OK(ctx, lookup::GetLookupTable("table_handle", ctx, &table));
+
+    core::ScopedUnref unref_me(table);
+
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
+                                      table->value_dtype()};
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
+
+    const Tensor& keys = ctx->input(1);
+    const Tensor& values = ctx->input(2);
+    OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForInsert(keys, values));
+
+    int64 memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
+    OP_REQUIRES_OK(ctx, table->ScatterAdd(ctx, keys, values));
+    if (ctx->track_allocations()) {
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("LookupTableScatterAddV2").Device(DEVICE_CPU),
+                        LookupTableScatterAddOp);
+
+class LookupTableScatterSubOp : public OpKernel {
+ public:
+  explicit LookupTableScatterSubOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table;
+    OP_REQUIRES_OK(ctx, lookup::GetLookupTable("table_handle", ctx, &table));
+
+    core::ScopedUnref unref_me(table);
+
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
+                                      table->value_dtype()};
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
+
+    const Tensor& keys = ctx->input(1);
+    const Tensor& values = ctx->input(2);
+    OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForInsert(keys, values));
+
+    int64 memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
+    OP_REQUIRES_OK(ctx, table->ScatterSub(ctx, keys, values));
+    if (ctx->track_allocations()) {
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("LookupTableScatterSubV2").Device(DEVICE_CPU),
+                        LookupTableScatterSubOp);
+
 // Table remove op.
 class LookupTableRemoveOp : public OpKernel {
  public:
@@ -1032,7 +1546,7 @@ REGISTER_KERNEL(string, int64);
 #undef REGISTER_KERNEL
 
 // Register the MutableHashTableOfTensors op.
-#define REGISTER_KERNEL(key_dtype, value_dtype)                                \
+#define REGISTER_UNTRAINABLE_KERNEL(key_dtype, value_dtype)                    \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("MutableHashTableOfTensors")                                        \
           .Device(DEVICE_CPU)                                                  \
@@ -1048,21 +1562,43 @@ REGISTER_KERNEL(string, int64);
       LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
-REGISTER_KERNEL(int64, double);
-REGISTER_KERNEL(int64, float);
-REGISTER_KERNEL(int64, int32);
-REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, string);
-REGISTER_KERNEL(string, bool);
-REGISTER_KERNEL(string, double);
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, int32);
-REGISTER_KERNEL(string, int64);
+REGISTER_UNTRAINABLE_KERNEL(int64, string);
+REGISTER_UNTRAINABLE_KERNEL(string, bool);
 
-#undef REGISTER_KERNEL
+#undef REGISTER_UNTRAINABLE_KERNEL
+
+// Register the MutableHashTableOfTensors op for trainable value.
+#define REGISTER_TRAINABLE_KERNEL(key_dtype, value_dtype)              \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("MutableHashTableOfTensors")                                \
+          .Device(DEVICE_CPU)                                          \
+          .TypeConstraint<key_dtype>("key_dtype")                      \
+          .TypeConstraint<value_dtype>("value_dtype"),                 \
+      LookupTableOp<                                                   \
+          lookup::TrainableHashTableOfTensors<key_dtype, value_dtype>, \
+          key_dtype, value_dtype>)                                     \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("MutableHashTableOfTensorsV2")                              \
+          .Device(DEVICE_CPU)                                          \
+          .TypeConstraint<key_dtype>("key_dtype")                      \
+          .TypeConstraint<value_dtype>("value_dtype"),                 \
+      LookupTableOp<                                                   \
+          lookup::TrainableHashTableOfTensors<key_dtype, value_dtype>, \
+          key_dtype, value_dtype>)
+
+REGISTER_TRAINABLE_KERNEL(int32, double);
+REGISTER_TRAINABLE_KERNEL(int32, float);
+REGISTER_TRAINABLE_KERNEL(int32, int32);
+REGISTER_TRAINABLE_KERNEL(int64, double);
+REGISTER_TRAINABLE_KERNEL(int64, float);
+REGISTER_TRAINABLE_KERNEL(int64, int32);
+REGISTER_TRAINABLE_KERNEL(int64, int64);
+REGISTER_TRAINABLE_KERNEL(string, double);
+REGISTER_TRAINABLE_KERNEL(string, float);
+REGISTER_TRAINABLE_KERNEL(string, int32);
+REGISTER_TRAINABLE_KERNEL(string, int64);
+
+#undef REGISTER_TRAINABLE_KERNEL
 
 // Register the MutableDenseHashTable op.
 #define REGISTER_KERNEL(key_dtype, value_dtype)                            \

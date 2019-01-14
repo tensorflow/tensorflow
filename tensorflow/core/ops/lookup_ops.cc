@@ -214,6 +214,30 @@ REGISTER_OP("LookupTableInsertV2")
       return Status::OK();
     });
 
+REGISTER_OP("LookupTableScatterAddV2")
+    .Input("table_handle: resource")
+    .Input("keys: Tin")
+    .Input("values: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+      return Status::OK();
+    });
+
+REGISTER_OP("LookupTableScatterSubV2")
+    .Input("table_handle: resource")
+    .Input("keys: Tin")
+    .Input("values: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+      return Status::OK();
+    });
+
 REGISTER_OP("LookupTableRemoveV2")
     .Input("table_handle: resource")
     .Input("keys: Tin")
@@ -377,6 +401,7 @@ REGISTER_OP("MutableHashTableV2")
     });
 
 REGISTER_OP("MutableHashTableOfTensors")
+    .Input("default_value: value_dtype")
     .Output("table_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -384,10 +409,13 @@ REGISTER_OP("MutableHashTableOfTensors")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .Attr("value_shape: shape = {}")
+    .Attr("hash_table_segments: int >= 1")
+    .Attr("tensor_cache_size: int >= 1")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput);
 
 REGISTER_OP("MutableHashTableOfTensorsV2")
+    .Input("default_value: value_dtype")
     .Output("table_handle: resource")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -395,6 +423,8 @@ REGISTER_OP("MutableHashTableOfTensorsV2")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .Attr("value_shape: shape = {}")
+    .Attr("hash_table_segments: int >= 1")
+    .Attr("tensor_cache_size: int >= 1")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape value_p;

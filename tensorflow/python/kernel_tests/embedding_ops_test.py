@@ -32,6 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_lookup_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
@@ -43,7 +44,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import compat
-
+from tensorflow.contrib.lookup import lookup_ops
 
 def _AsLong(array):
   """Casts arrays elements to long type. Used to convert from numpy tf."""

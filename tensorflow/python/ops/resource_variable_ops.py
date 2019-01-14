@@ -1491,6 +1491,8 @@ def _to_proto_fn(v, export_scope=None):
 def _from_proto_fn(v, import_scope=None):
   """Creates Variable or ResourceVariable from VariableDef as needed."""
   if v.is_resource:
+    if v.resource_type != "":
+      ops.get_from_proto_function(v.resource_type)(v, import_scope)
     return ResourceVariable.from_proto(v, import_scope=import_scope)
   return variables.Variable.from_proto(v, import_scope=import_scope)
 

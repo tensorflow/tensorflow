@@ -126,8 +126,33 @@ class LookupInterface(checkpointable.TrackableResource):
     return self._value_dtype
 
   @property
+  def value_shape(self):
+    """The table value shape."""
+    return NotImplementedError
+
+  @property
   def name(self):
     """The name of the table."""
+    return NotImplementedError
+
+  @property
+  def handle(self):
+    """The handle of the interface"""
+    return NotImplementedError
+
+  @property
+  def op(self):
+    """The op for this table."""
+    return NotImplementedError
+
+  @property
+  def dtype(self):
+    """The dtype for this table"""
+    return NotImplementedError
+
+  @property
+  def trainable(self):
+    """whether the table is trainable"""
     return NotImplementedError
 
   def size(self, name=None):
@@ -1351,9 +1376,12 @@ def index_to_string_table_from_tensor(vocabulary_list,
     # TODO(yleon): Use a more effienct structure.
     return HashTable(init, default_value, shared_name=shared_name, name=scope)
 
+@ops.RegisterGradient("LookupTableFind")
+@ops.RegisterGradient("LookupTableFindV2")
+def _LookupTableFindGrad(op, grad):
+  keys = op.inputs[1]
+  return [ops.IndexedSlices(grad, keys), None, None]
 
-ops.NotDifferentiable("LookupTableFind")
-ops.NotDifferentiable("LookupTableFindV2")
 ops.NotDifferentiable("LookupTableInsert")
 ops.NotDifferentiable("LookupTableInsertV2")
 ops.NotDifferentiable("LookupTableSize")

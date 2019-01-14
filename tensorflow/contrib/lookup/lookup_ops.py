@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import functools
 
+from tensorflow.core.framework import variable_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_lookup_ops
@@ -310,9 +312,74 @@ class MutableHashTable(LookupInterface):
                key_dtype,
                value_dtype,
                default_value,
+               hash_table_segments=1,
+               tensor_cache_size=100,
                shared_name=None,
                name="MutableHashTable",
-               checkpoint=True):
+               checkpoint=True,
+               trainable=True,
+               variable_def=None,
+               import_scope=None):
+    if variable_def is None:
+      self._init_from_args(key_dtype=key_dtype,
+                           value_dtype=value_dtype,
+                           default_value=default_value,
+                           hash_table_segments=hash_table_segments,
+                           tensor_cache_size=tensor_cache_size,
+                           shared_name=shared_name,
+                           name=name,
+                           checkpoint=checkpoint,
+                           trainable=trainable)
+    else:
+      self._init_from_proto(variable_def=variable_def,
+                            import_scope=import_scope)
+
+  def _init_from_proto(self, variable_def, import_scope=None):
+    """Initializes from `VariableDef` proto."""
+    # Note that init_from_proto is currently not supported in Eager mode.
+    assert not context.executing_eagerly()
+    self._in_graph_mode = True
+    assert isinstance(variable_def, variable_pb2.VariableDef)
+    if not variable_def.is_resource:
+      raise ValueError("Trying to restore Variable as MutableHashTable.")
+
+    # Create from variable_def.
+    g = ops.get_default_graph()
+    self._resource_handle = g.as_graph_element(
+        ops.prepend_name_scope(
+            variable_def.variable_name, import_scope=import_scope))
+    self._name = self._resource_handle.name
+    self._table_name = self._resource_handle.op.name.split("/")[-1]
+    self._trainable = getattr(variable_def, "trainable", True)
+    self._key_dtype = dtypes.as_dtype(self._resource_handle.op.get_attr("key_dtype"))
+    self._value_dtype = dtypes.as_dtype(self._resource_handle.op.get_attr("value_dtype"))
+    shape_value = self._resource_handle.op.get_attr("value_shape")
+    if shape_value is None:
+      self._value_shape = ()
+    else:
+      self._value_shape = tensor_shape.as_shape(shape_value)
+
+    if (hasattr(variable_def, "initial_value_name") and
+        variable_def.initial_value_name):
+      self._default_value = g.as_graph_element(
+          ops.prepend_name_scope(variable_def.initial_value_name,
+                                 import_scope=import_scope))
+
+    if self._trainable:
+      ops.add_to_collections(ops.GraphKeys.TRAINABLE_VARIABLES, self)
+      self._in_graph_mode = not context.executing_eagerly()
+      self._dtype = dtypes.resource
+
+  def _init_from_args(self,
+                      key_dtype,
+                      value_dtype,
+                      default_value,
+                      hash_table_segments=1,
+                      tensor_cache_size=100,
+                      shared_name=None,
+                      name="MutableHashTable",
+                      checkpoint=True,
+                      trainable=True):
     """Creates an empty `MutableHashTable` object.
 
     Creates a table, the type of its keys and values are specified by key_dtype
@@ -322,6 +389,8 @@ class MutableHashTable(LookupInterface):
       key_dtype: the type of the key tensors.
       value_dtype: the type of the value tensors.
       default_value: The value to use if a key is missing in the table.
+      hash_table_segments: The num of hash_table concurrent segments.
+      tensor_cache_size: Cache size of initial tensors in each segments.
       shared_name: If non-empty, this table will be shared under
         the given name across multiple sessions.
       name: A name for the operation (optional).
@@ -335,9 +404,12 @@ class MutableHashTable(LookupInterface):
     Raises:
       ValueError: If checkpoint is True and no name was specified.
     """
-    self._default_value = ops.convert_to_tensor(default_value,
-                                                dtype=value_dtype)
-    self._value_shape = self._default_value.get_shape()
+    self._default_value_ref = default_value
+    self._temp_default_value = ops.convert_to_tensor(default_value,
+                                                     dtype=value_dtype)
+    self._hash_table_segments = hash_table_segments
+    self._tensor_cache_size = tensor_cache_size
+    self._value_shape = self._temp_default_value.get_shape()
     self._checkpoint = checkpoint
     self._key_dtype = key_dtype
     self._value_dtype = value_dtype
@@ -358,12 +430,18 @@ class MutableHashTable(LookupInterface):
       if not context.executing_eagerly():
         ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
+    self._trainable = trainable
+    if trainable:
+      ops.add_to_collections(ops.GraphKeys.TRAINABLE_VARIABLES, self)
+      self._in_graph_mode = not context.executing_eagerly()
+      self._dtype = dtypes.resource
+
   def create_resource(self):
     # The table must be shared if checkpointing is requested for multi-worker
     # training to work correctly. Use the node name if no shared_name has been
     # explicitly specified.
     use_node_name_sharing = self._checkpoint and self._shared_name is None
-    if self._default_value.get_shape().ndims == 0:
+    if self._temp_default_value.get_shape().ndims == 0:
       table_ref = gen_lookup_ops.mutable_hash_table_v2(
           shared_name=self._shared_name,
           use_node_name_sharing=use_node_name_sharing,
@@ -372,12 +450,20 @@ class MutableHashTable(LookupInterface):
           name=self._name)
     else:
       table_ref = gen_lookup_ops.mutable_hash_table_of_tensors_v2(
+          default_value=self._temp_default_value,
           shared_name=self._shared_name,
           use_node_name_sharing=use_node_name_sharing,
           key_dtype=self._key_dtype,
-          value_dtype=self._value_dtype,
-          value_shape=self._default_value.get_shape(),
+          value_shape=self._temp_default_value.get_shape(),
+          hash_table_segments=self._hash_table_segments,
+          tensor_cache_size=self._tensor_cache_size,
           name=self._name)
+
+    # we must ensure the default_value and the resource are placed together
+    with ops.colocate_with(table_ref):
+      self._default_value = ops.convert_to_tensor(self._default_value_ref,
+                                                  dtype=self._value_dtype)
+      self._default_value_ref = None
 
     if context.executing_eagerly():
       self._table_name = None
@@ -386,8 +472,68 @@ class MutableHashTable(LookupInterface):
     return table_ref
 
   @property
+  def value_shape(self):
+    return self._value_shape
+
+  @property
+  def handle(self):
+    return self._resource_handle
+
+  @property
+  def op(self):
+    return self._resource_handle.op
+
+  @property
   def name(self):
     return self._table_name
+
+  @property
+  def dtype(self):
+    return self._dtype
+
+  @property
+  def trainable(self):
+    return self._trainable
+
+  def _should_act_as_resource_variable(self):
+    """Pass resource_variable_ops.is_resource_variable check."""
+    pass
+
+  def to_proto(self, export_scope=None):
+    """Converts a `MutableHashVariable` to a `VariableDef` protocol buffer.
+
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
+
+    Raises:
+      RuntimeError: If run in EAGER mode.
+
+    Returns:
+      A `VariableDef` protocol buffer, or `None` if the `Variable` is not
+      in the specified name scope.
+    """
+    if context.executing_eagerly():
+        raise RuntimeError("to_proto not supported in EAGER mode.")
+    if export_scope is None or self.handle.name.startswith(export_scope):
+      var_def = variable_pb2.VariableDef()
+      var_def.variable_name = ops.strip_name_scope(self.handle.name,
+                                                   export_scope)
+      var_def.is_resource = True
+      var_def.trainable = self.trainable
+      var_def.resource_type = ops.GraphKeys.MUTABLE_HASH_TABLE
+      var_def.initial_value_name = ops.strip_name_scope(self._default_value.name,
+                                                        export_scope)
+      return var_def
+    else:
+      return None
+
+  @staticmethod
+  def from_proto(variable_def, import_scope=None):
+    if context.executing_eagerly():
+      raise RuntimeError("from_proto not supported in EAGER mode.")
+    return MutableHashTable(
+        key_dtype=None, value_dtype=None, default_value=None,
+        variable_def=variable_def, import_scope=import_scope)
 
   def size(self, name=None):
     """Compute the number of elements in this table.
@@ -486,6 +632,33 @@ class MutableHashTable(LookupInterface):
             self.resource_handle, keys, values, name=name)
     return op
 
+  def scatter_add(self, keys, values, name=None):
+    """Add table values by learning values.
+
+    Args:
+      keys: Keys to add. Can be a tensor of any shape. Must match the
+        table's key type.
+      values: Values to be added to table values. Must be a tensor of the same
+        shape as `keys` and match the table's value type.
+      name: A name for the operation (optional).
+
+    Returns:
+      The created Operation.
+
+    Raises:
+      TypeError: when `keys` or `values` doesn't match the table data
+        types.
+    """
+    with ops.name_scope(name, "%s_lookup_table_scatter_add" % self.name,
+                        [self.resource_handle, keys, values]) as name:
+      keys = ops.convert_to_tensor(keys, self._key_dtype, name="keys")
+      values = ops.convert_to_tensor(values, self._value_dtype, name="values")
+      with ops.colocate_with(self.resource_handle):
+        # pylint: disable=protected-access
+        op = gen_lookup_ops.lookup_table_scatter_add_v2(
+            self.resource_handle, keys, values, name=name)
+    return op
+
   def export(self, name=None):
     """Returns tensors of all keys and values in the table.
 
@@ -526,6 +699,10 @@ class MutableHashTable(LookupInterface):
         return gen_lookup_ops.lookup_table_import_v2(
             self.op.resource_handle, restored_tensors[0], restored_tensors[1])
 
+ops.register_proto_function(ops.GraphKeys.MUTABLE_HASH_TABLE,
+                            proto_type=variable_pb2.VariableDef,
+                            to_proto=None,
+                            from_proto=MutableHashTable.from_proto)
 
 class MutableDenseHashTable(LookupInterface):
   """A generic mutable hash table implementation using tensors as backing store.

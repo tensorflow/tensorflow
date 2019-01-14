@@ -64,6 +64,18 @@ class LookupInterface : public ResourceBase {
   virtual Status Insert(OpKernelContext* ctx, const Tensor& keys,
                         const Tensor& values) = 0;
 
+  // TODO: make a generic update
+  virtual Status ScatterAdd(OpKernelContext* ctx, const Tensor& keys,
+                            const Tensor& values) {
+    return Status::OK();
+  }
+
+  // TODO: make a generic update
+  virtual Status ScatterSub(OpKernelContext* ctx, const Tensor& keys,
+                            const Tensor& values) {
+    return Status::OK();
+  }
+
   // Removes elements from the table.
   // This method is only implemented in mutable tables that can be updated over
   // the execution of the graph. It returns Status::NotImplemented for read-only

@@ -41,6 +41,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lookup_ops",
+	"//tensorflow/python:embedding_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",

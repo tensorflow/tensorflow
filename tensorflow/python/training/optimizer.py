@@ -176,6 +176,24 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
       return update_op
 
 
+class _LookupTableProcessor(_OptimizableVariable):
+  "Processor for lookup table ResourceVaraible."
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    if not isinstance(g, ops.IndexedSlices):
+      raise RuntimeError(
+        "Only update gradients of IndexedSlices are permitted for Lookuptable")
+    update_op = optimizer._lookuptable_apply_sparse_duplicate_indices(
+      g.values, self._v, g.indices
+    )
+    return update_op
+
 class _TensorProcessor(_OptimizableVariable):
   """Processor for ordinary Tensors.
 
@@ -206,6 +224,8 @@ def _get_processor(v):
     return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
+  if v.op.type.startswith("MutableHashTable"):
+    return _LookupTableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
   if isinstance(v, ops.Tensor):
@@ -975,6 +995,9 @@ class Optimizer(
     summed_grad, unique_indices = _deduplicate_indexed_slices(
         values=grad, indices=indices)
     return self._resource_apply_sparse(summed_grad, handle, unique_indices)
+
+  def _lookuptable_apply_sparse_duplicate_indices(self, grad, handle, indices):
+    raise NotImplementedError()
 
   def _resource_apply_sparse(self, grad, handle, indices):
     """Add ops to apply sparse gradients to the variable `handle`.

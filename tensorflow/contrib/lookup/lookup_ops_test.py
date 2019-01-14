@@ -35,6 +35,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import gen_lookup_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
@@ -491,12 +493,17 @@ class MutableHashTableOpTest(test.TestCase):
       table.remove(remove_string).run()
       self.assertAllEqual(3, table.size().eval())
 
-      input_string = constant_op.constant(["brain", "salad", "tank"])
+      keys_to_add = constant_op.constant(["brain", "salad"])
+      values_to_add = constant_op.constant([[1, 2], [3, 4]],
+                                           dtypes.int64)
+      table.scatter_add(keys_to_add, values_to_add).run()
+
+      input_string = constant_op.constant(["brain", "salad"])
       output = table.lookup(input_string)
-      self.assertAllEqual([3, 2], output.get_shape())
+      self.assertAllEqual([2, 2], output.get_shape())
 
       result = output.eval()
-      self.assertAllEqual([[0, 1], [2, 3], [-1, -1]], result)
+      self.assertAllEqual([[1, 3], [5, 7]], result)
 
       exported_keys, exported_values = table.export()
       self.assertAllEqual([None], exported_keys.get_shape().as_list(),
@@ -505,9 +512,10 @@ class MutableHashTableOpTest(test.TestCase):
                           msg="Saw shape %s" % exported_values.shape)
       # exported data is in the order of the internal map, i.e. undefined
       sorted_keys = np.sort(exported_keys.eval())
-      sorted_values = np.sort(exported_values.eval())
-      self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
-      self.assertAllEqual([[4, 5], [2, 3], [0, 1]], sorted_values)
+      sorted_values = np.sort(exported_values.eval(), axis=0)
+      self.assertAllEqual([b"brain", b"salad", b"surgery"],
+                          sorted_keys)
+      self.assertAllEqual([[1, 3], [4, 5], [5, 7]], sorted_values)
 
   def testMutableHashTableExportInsert(self):
     with self.cached_session():
@@ -526,15 +534,15 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual(expected_output, output1.eval())
 
       exported_keys, exported_values = table1.export()
-      self.assertAllEqual(3, exported_keys.eval().size)
-      self.assertAllEqual(6, exported_values.eval().size)
+      self.assertAllEqual(4, exported_keys.eval().size)
+      self.assertAllEqual(8, exported_values.eval().size)
 
       # Populate a second table from the exported data
       table2 = lookup.MutableHashTable(dtypes.string, dtypes.int64,
                                        default_val)
       self.assertAllEqual(0, table2.size().eval())
       table2.insert(exported_keys, exported_values).run()
-      self.assertAllEqual(3, table2.size().eval())
+      self.assertAllEqual(4, table2.size().eval())
 
       # Verify lookup result is still the same
       output2 = table2.lookup(input_string)
@@ -840,6 +848,15 @@ class MutableHashTableOpTest(test.TestCase):
 
       result = output.eval()
       self.assertAllEqual((b"brain", b"salad", b"n/a"), result)
+
+  def testToFromProto(self):
+    with self.cached_session():
+      v = lookup.MutableHashTable(key_dtype=dtypes.string,
+                                  value_dtype=dtypes.int64,
+                                  default_value=[-2]*3)
+      w = lookup.MutableHashTable.from_proto(v.to_proto())
+      self.assertAllEqual([-2, -2, -2], w.lookup("hello").eval())
+      self.assertEquals(v.resource_handle, w.resource_handle)
 
 
 class MutableDenseHashTableOpTest(test.TestCase):
@@ -1924,6 +1941,216 @@ class IndexToStringTableFromFileTest(test.TestCase):
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", b"surgery", b"UNK"), features.eval())
 
+
+class EmbeddingLookupHashVariableTest(test.TestCase):
+
+  def testHashVariableWithoutPartition(self):
+    with self.cached_session():
+      table = lookup.MutableHashTable(key_dtype=dtypes.int64,
+                                          value_dtype=dtypes.float64,
+                                          default_value=[0, 0])
+
+      ti = gen_lookup_ops.lookup_table_insert_v2(
+        table.handle,
+        keys=np.array([0, 3, 6, 9], dtype=np.int64),
+        values=np.array([[0, 0], [3, 3], [6, 6], [9, 9]], dtype=np.float64))
+
+      res = embedding_ops.embedding_lookup(table,
+                                           np.array([3, 6, 9], dtype=np.int64))
+
+      self.evaluate(ti)
+      expected = [[3, 3], [6, 6], [9, 9]]
+      self.assertAllEqual(self.evaluate(res), expected)
+
+  def testHashVariableWithDefaultValues(self):
+    with self.cached_session():
+      table0 = lookup.MutableHashTable(key_dtype=dtypes.int32,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[1])
+      table1 = lookup.MutableHashTable(key_dtype=dtypes.int32,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[1])
+      table2 = lookup.MutableHashTable(key_dtype=dtypes.int32,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[1])
+      table0.lookup([0, 1, 2, 3])
+      table1.lookup([0, 1, 2, 3])
+      table2.lookup([0, 1, 2])
+
+      res = embedding_ops.embedding_lookup([table0, table1, table2], [3, 4, 5])
+
+      expected = [[1], [1], [1]]
+      self.assertAllEqual(self.evaluate(res), expected)
+
+  def testHashVariablePartitionMod(self):
+    with self.cached_session():
+      table0 = lookup.MutableHashTable(key_dtype=dtypes.int64,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[1])
+      table1 = lookup.MutableHashTable(key_dtype=dtypes.int64,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[1])
+      table2 = lookup.MutableHashTable(key_dtype=dtypes.int64,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[1])
+
+      t0i = gen_lookup_ops.lookup_table_insert_v2(
+        table0.handle,
+        keys=np.array([0, 3, 6, 9], dtype=np.int64),
+        values=np.array([[0], [3], [6], [9]], dtype=np.float64))
+      t1i = gen_lookup_ops.lookup_table_insert_v2(
+        table1.handle,
+        keys=np.array([1, 4, 7, 10], dtype=np.int64),
+        values=np.array([[1], [4], [7], [10]], dtype=np.float64))
+      t2i = gen_lookup_ops.lookup_table_insert_v2(
+        table2.handle,
+        keys=np.array([2, 5, 8], dtype=np.int64),
+        values=np.array([[2], [5], [8]], dtype=np.float64))
+
+      res = embedding_ops.embedding_lookup([table0, table1, table2],
+                                           np.array([3, 4, 5], dtype=np.int64))
+
+      self.evaluate([t0i, t1i, t2i])
+      expected = [[3], [4], [5]]
+      self.assertAllEqual(self.evaluate(res), expected)
+
+  def testHashVariablePartitionDiv(self):
+    with self.cached_session():
+      table0 = lookup.MutableHashTable(key_dtype=dtypes.int32,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[0])
+      table1 = lookup.MutableHashTable(key_dtype=dtypes.int32,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[0])
+      table2 = lookup.MutableHashTable(key_dtype=dtypes.int32,
+                                       value_dtype=dtypes.float64,
+                                       default_value=[0])
+
+      t0i = gen_lookup_ops.lookup_table_insert_v2(
+        table0.handle,
+        keys=np.array([715827882], dtype=np.int32),
+        values=np.array([[1]], dtype=np.float64))
+      t1i = gen_lookup_ops.lookup_table_insert_v2(
+        table1.handle,
+        keys=np.array([1431655764], dtype=np.int32),
+        values=np.array([[2]], dtype=np.float64))
+      t2i = gen_lookup_ops.lookup_table_insert_v2(
+        table2.handle,
+        keys=np.array([1431655765], dtype=np.int32),
+        values=np.array([[3]], dtype=np.float64))
+
+      res = embedding_ops.embedding_lookup([table0, table1, table2],
+                                           np.array([715827882, 1431655764, 1431655765], dtype=np.int32),
+                                           partition_strategy="div")
+
+      self.evaluate([t0i, t1i, t2i])
+      expected = [[1], [2], [3]]
+      self.assertAllEqual(self.evaluate(res), expected)
+
+
+class EmbeddingLookupSparseHashVariableTest(test.TestCase):
+
+  def _keys_values(self, num_features, num_shards, value_dim):
+    keys = []
+    values = []
+    for id in range(num_shards):
+      t = id
+      key_tuple = []
+      while t < num_features:
+        key_tuple.append(t)
+        t += num_shards
+      keys.append(key_tuple)
+      value_tuple = []
+      for key_value in keys[-1]:
+        value_tuple.append([key_value + 1] * value_dim)
+      values.append(value_tuple)
+
+    return keys, values
+
+  def testHashVariableWithoutPartition(self):
+    shape = [3, 6]
+    indices = [[0, 0], [0, 1], [1, 0], [2, 3]]
+    ids = np.array([1, 3, 0, 1], dtype=np.int64)
+    weights = np.array([2.0, .5, 1.0, 3.], dtype=np.float64)
+    sp_ids = sparse_tensor.SparseTensor(
+      constant_op.constant(indices, dtypes.int64),
+      constant_op.constant(ids, dtypes.int64),
+      constant_op.constant(shape, dtypes.int64))
+    sp_weights = sparse_tensor.SparseTensor(
+      constant_op.constant(indices, dtypes.int64),
+      constant_op.constant(weights, dtypes.float32),
+      constant_op.constant(shape, dtypes.int64))
+    with self.cached_session():
+      table = lookup.MutableHashTable(key_dtype=dtypes.int64,
+                                      value_dtype=dtypes.float64,
+                                      default_value=[0, 0, 0])
+      ti = gen_lookup_ops.lookup_table_insert_v2(
+        table.handle,
+        keys=np.array([0, 1, 3], dtype=np.int64),
+        values=np.array([[1, 1, 1], [2, 2, 2], [4, 4, 4]], dtype=np.float64))
+
+      embedding_sum = embedding_ops.embedding_lookup_sparse(
+        [table],
+        sp_ids,
+        sp_weights,
+        combiner="sum")
+
+      self.evaluate(ti)
+      expected = [[6, 6, 6], [1, 1, 1], [6, 6, 6]]
+      self.assertAllEqual(self.evaluate(embedding_sum), expected)
+
+  def testModShard(self):
+    num_shards = 5
+    num_features = 13
+    num_values = 4
+    batch = 5
+    nzdim = 3
+    shape = [batch, nzdim]
+
+    indices = []
+    for i in range(batch):
+      indices.extend([[i, x] for x in range(0, nzdim)])
+    ids = np.random.randint(num_features, size=batch * nzdim)
+    weights = np.random.rand(batch * nzdim)
+    expected = []
+    for i in range(batch):
+      sum_tuple = np.zeros(num_values)
+      for j in range(nzdim):
+        idx = i * nzdim + j
+        sum_tuple += [(ids[idx] + 1) * weights[idx]] * num_values
+      expected.append(sum_tuple)
+
+    sp_ids = sparse_tensor.SparseTensor(
+      constant_op.constant(indices, dtypes.int64),
+      constant_op.constant(ids, dtypes.int64),
+      constant_op.constant(shape, dtypes.int64))
+    sp_weights = sparse_tensor.SparseTensor(
+      constant_op.constant(indices, dtypes.int64),
+      constant_op.constant(weights, dtypes.float32),
+      constant_op.constant(shape, dtypes.int64))
+
+    with self.cached_session():
+      keys, values = self._keys_values(num_features, num_shards, num_values)
+      tables = []
+      insert_ops = []
+      for i in range(num_shards):
+        tb = lookup.MutableHashTable(key_dtype=dtypes.int64,
+                                     value_dtype=dtypes.float64,
+                                     default_value=[0] * num_values)
+        tables.append(tb)
+        insert_ops.append(gen_lookup_ops.lookup_table_insert_v2(
+          tables[i].handle,
+          keys=np.array(keys[i], dtype=np.int64),
+          values=np.array(values[i], dtype=np.float64)))
+
+      embedding_sum = embedding_ops.embedding_lookup_sparse(
+        tables,
+        sp_ids,
+        sp_weights,
+        combiner="sum")
+
+      self.evaluate(insert_ops)
+      self.assertAllClose(self.evaluate(embedding_sum), expected)
 
 class IndexToStringTableFromTensorTest(test.TestCase):
 

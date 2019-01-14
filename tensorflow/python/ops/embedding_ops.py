@@ -35,7 +35,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
-
+from tensorflow.python.ops import lookup_ops
 
 def _clip(params, ids, max_norm):
   """Helper function for _embedding_lookup_and_transform.
@@ -124,14 +124,23 @@ def _embedding_lookup_and_transform(params,
   with ops.name_scope(name, "embedding_lookup", params + [ids]) as name:
     np = len(params)  # Number of partitions
     # Preserve the resource variable status to avoid accidental dense reads.
-    if not any(
+    is_hash_variable = False
+    for p in params:
+      if isinstance(p, lookup_ops.LookupInterface):
+        is_hash_variable = True
+      elif is_hash_variable:
+        raise ValueError("All of parameters should be hash variable")
+    if not is_hash_variable and not any(
         isinstance(p, resource_variable_ops.ResourceVariable) for p in params):
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     ids = ops.convert_to_tensor(ids, name="ids")
     if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
       with ops.colocate_with(params[0]):
-        result = _clip(array_ops.gather(params[0], ids, name=name),
-                       ids, max_norm)
+        if is_hash_variable:
+          result = _clip(params[0].lookup(ids), ids, max_norm)
+        else:
+          result = _clip(array_ops.gather(params[0], ids, name=name),
+                         ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
       # Make sure the final result does not have colocation contraints on the
@@ -150,29 +159,35 @@ def _embedding_lookup_and_transform(params,
       # Create p_assignments and set new_ids depending on the strategy.
       if partition_strategy == "mod":
         p_assignments = flat_ids % np
-        new_ids = flat_ids // np
-      elif partition_strategy == "div":
-        # Compute num_total_ids as the sum of dim-0 of params, then assign to
-        # partitions based on a constant number of ids per partition. Optimize
-        # if we already know the full shape statically.
-        dim_0_size = tensor_shape.Dimension(tensor_shape.dimension_value(
-            params[0].get_shape()[0]))
-        for p in xrange(1, np):
-          dim_0_size += tensor_shape.Dimension(tensor_shape.dimension_value(
-              params[p].get_shape()[0]))
-        if dim_0_size.value:
-          num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
+        if is_hash_variable:
+          new_ids = flat_ids
         else:
-          dim_0_sizes = []
-          for p in xrange(np):
-            param_p_dim = tensor_shape.dimension_value(params[p].get_shape()[0])
-            if param_p_dim is not None:
-              dim_0_sizes.append(param_p_dim)
-            else:
-              with ops.colocate_with(params[p]):
-                dim_0_sizes.append(array_ops.shape(params[p])[0])
-          num_total_ids = math_ops.reduce_sum(
-              math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
+          new_ids = flat_ids // np
+      elif partition_strategy == "div":
+        if is_hash_variable:
+          num_total_ids = flat_ids.dtype.max
+        else:
+          # Compute num_total_ids as the sum of dim-0 of params, then assign to
+          # partitions based on a constant number of ids per partition. Optimize
+          # if we already know the full shape statically.
+          dim_0_size = tensor_shape.Dimension(tensor_shape.dimension_value(
+              params[0].get_shape()[0]))
+          for p in xrange(1, np):
+            dim_0_size += tensor_shape.Dimension(tensor_shape.dimension_value(
+                params[p].get_shape()[0]))
+          if dim_0_size.value:
+            num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
+          else:
+            dim_0_sizes = []
+            for p in xrange(np):
+              param_p_dim = tensor_shape.dimension_value(params[p].get_shape()[0])
+              if param_p_dim is not None:
+                dim_0_sizes.append(param_p_dim)
+              else:
+                with ops.colocate_with(params[p]):
+                  dim_0_sizes.append(array_ops.shape(params[p])[0])
+            num_total_ids = math_ops.reduce_sum(
+                math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
         ids_per_partition = num_total_ids // np
         extras = num_total_ids % np
 
@@ -181,9 +196,12 @@ def _embedding_lookup_and_transform(params,
             (flat_ids - extras) // ids_per_partition)
 
         # Emulate a conditional using a boolean indicator tensor
-        new_ids = array_ops.where(p_assignments < extras,
-                                  flat_ids % (ids_per_partition + 1),
-                                  (flat_ids - extras) % ids_per_partition)
+        if is_hash_variable:
+          new_ids = flat_ids
+        else:
+          new_ids = array_ops.where(p_assignments < extras,
+                                    flat_ids % (ids_per_partition + 1),
+                                    (flat_ids - extras) % ids_per_partition)
       else:
         raise ValueError("Unrecognized partition strategy: " +
                          partition_strategy)
@@ -201,7 +219,10 @@ def _embedding_lookup_and_transform(params,
       for p in xrange(np):
         pids = gather_ids[p]
         with ops.colocate_with(params[p]):
-          result = array_ops.gather(params[p], pids)
+          if is_hash_variable:
+            result = params[p].lookup(pids)
+          else:
+            result = array_ops.gather(params[p], pids)
           if transform_fn:
             # If transform_fn is provided, the clip_by_norm precedes
             # the transform and hence must be co-located. See below
@@ -214,9 +235,14 @@ def _embedding_lookup_and_transform(params,
 
       # Determine the static element shape.
       if transform_fn is None:
-        element_shape_s = params[0].get_shape()[1:]
-        for p in params[1:]:
-          element_shape_s = element_shape_s.merge_with(p.get_shape()[1:])
+        if is_hash_variable:
+          element_shape_s = params[0].value_shape
+          for p in params[1:]:
+            element_shape_s = element_shape_s.merge_with(p.value_shape)
+        else:
+          element_shape_s = params[0].get_shape()[1:]
+          for p in params[1:]:
+            element_shape_s = element_shape_s.merge_with(p.get_shape()[1:])
       else:
         element_shape_s = ret.get_shape()[1:]
 
@@ -224,6 +250,8 @@ def _embedding_lookup_and_transform(params,
       if element_shape_s.is_fully_defined():
         element_shape_d = element_shape_s
       elif transform_fn is None:
+        if is_hash_variable:
+          raise ValueError("Unable to get the element shape for hash variables in static")
         # It's important that we compute params[0].shape on the right device
         # to avoid data motion.
         with ops.colocate_with(params[0]):
