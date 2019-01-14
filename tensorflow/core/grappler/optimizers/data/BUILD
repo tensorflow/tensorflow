@@ -447,12 +447,10 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
