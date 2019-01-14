@@ -20,9 +20,9 @@ from __future__ import print_function
 import threading
 
 from tensorflow.contrib.rccl.python.ops import gen_rccl_ops
-from tensorflow.contrib.util import loader
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device
+from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
 
@@ -270,8 +270,9 @@ def _maybe_load_rccl_ops_so():
   with _module_lock:
     global _rccl_ops_so
     if not _rccl_ops_so:
-      _rccl_ops_so = loader.load_op_library(
-          resource_loader.get_path_to_datafile('_rccl_ops.so'))
+      library_filename = os.path.join(resource_loader.get_data_files_path(),
+                                    '_rccl_ops.so')
+      _rccl_ops_so = load_library.load_op_library(library_filename)
 
 
 def _validate_and_load_rccl_so():
