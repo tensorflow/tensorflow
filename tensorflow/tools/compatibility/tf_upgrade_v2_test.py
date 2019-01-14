@@ -506,9 +506,21 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.nn.dropout(x, 1 - (1 - func(3 + 4.)), name=\"foo\")\n",
     )
 
-  def testCountNonZeroChanges(self):
+  def testMathCountNonZeroChanges(self):
     text = (
         "tf.math.count_nonzero(input_tensor=input, dtype=dtype, name=name, "
+        "reduction_indices=axis, keep_dims=keepdims)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.math.count_nonzero(input=input, dtype=dtype, name=name, "
+        "axis=axis, keepdims=keepdims)\n"
+        )
+    self.assertEqual(new_text, expected_text)
+
+  def testCountNonZeroChanges(self):
+    text = (
+        "tf.count_nonzero(input_tensor=input, dtype=dtype, name=name, "
         "reduction_indices=axis, keep_dims=keepdims)\n"
         )
     _, unused_report, unused_errors, new_text = self._upgrade(text)
