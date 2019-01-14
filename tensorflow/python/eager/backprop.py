@@ -465,7 +465,7 @@ def val_and_grad_function(f, params=None):
 
 
 def make_vjp(f, params=None, persistent=True):
-  """Returns a function that computes f and is vjp w.r.t. params.
+  """Returns a function that computes f and its vjp w.r.t. params.
 
   The term "vjp" here is an abbreviation for vector-jacobian product.
 
