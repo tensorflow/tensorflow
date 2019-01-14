@@ -1514,7 +1514,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "bias_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["bias_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
