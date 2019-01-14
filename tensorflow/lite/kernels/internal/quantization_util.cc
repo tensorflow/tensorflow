@@ -366,4 +366,13 @@ bool CheckedLog2(const float x, int* log2_result) {
   return std::abs(x_log2_fracpart) < 1e-3;
 }
 
+void QuantizeMultiplierArray(const double* effective_scales, size_t size,
+                             int32_t* effective_scale_significand,
+                             int* effective_shift) {
+  for (size_t i = 0; i < size; ++i) {
+    QuantizeMultiplier(effective_scales[i], &effective_scale_significand[i],
+                       &effective_shift[i]);
+  }
+}
+
 }  // namespace tflite
