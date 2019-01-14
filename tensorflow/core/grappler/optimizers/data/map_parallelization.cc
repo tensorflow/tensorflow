@@ -89,7 +89,8 @@ Status MapParallelization::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* parallel_map =
         graph.AddNode(MakeParallelMap(map_node->name(), &graph));
-    graph.UpdateFanouts(map_node->name(), parallel_map->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(map_node->name(), parallel_map->name()));
     nodes_to_delete.insert(map_node->name());
   }
 
