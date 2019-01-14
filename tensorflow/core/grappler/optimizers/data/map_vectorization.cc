@@ -264,7 +264,8 @@ Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* new_map_node = graph.AddNode(MakeNewMapNode(
         *map_node, batch_node, *new_batch_node, *vectorized_func, &graph));
-    graph.UpdateFanouts(batch_node.name(), new_map_node->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(batch_node.name(), new_map_node->name()));
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());

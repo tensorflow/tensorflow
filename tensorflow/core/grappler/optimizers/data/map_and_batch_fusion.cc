@@ -120,7 +120,8 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* new_node =
         graph.AddNode(MakeMapAndBatchNode(*map_node, batch_node, &graph));
-    graph.UpdateFanouts(batch_node.name(), new_node->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(batch_node.name(), new_node->name()));
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());

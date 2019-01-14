@@ -266,7 +266,8 @@ Status HoistRandomUniform::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* stateless_map = graph.AddNode(
         MakeStatelessMap(*map_node, *zip_node, *stateless_func, &graph));
 
-    graph.UpdateFanouts(map_node->name(), stateless_map->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(map_node->name(), stateless_map->name()));
 
     // TODO(b/116285210): we could also remove map functions from library if
     // they are not used anymore.

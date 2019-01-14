@@ -130,7 +130,8 @@ Status MapFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* fused_maps_node = graph.AddNode(
         MakeFusedNode(*parent_map_node, *map_node, *fused_function, &graph));
 
-    graph.UpdateFanouts(map_node->name(), fused_maps_node->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(map_node->name(), fused_maps_node->name()));
 
     // TODO(prazek): we should run some optimizations on the fused map
     // functions, or make sure that optimization passes run after map
