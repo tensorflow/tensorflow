@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/generator_dataset_op.h"
+
 #include <iterator>
 #include <vector>
-
-#include "tensorflow/core/kernels/data/generator_dataset_op.h"
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -44,8 +44,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return std::unique_ptr<IteratorBase>(
-        new Iterator({this, strings::StrCat(prefix, "::Generator")}));
+    return absl::make_unique<Iterator>(
+        Iterator::Params{this, strings::StrCat(prefix, "::Generator")});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }

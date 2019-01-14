@@ -1152,11 +1152,11 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     }
 
     ConvBackpropDimensions dims;
-    OP_REQUIRES_OK(context,
-                   ConvBackpropComputeDimensionsV2(
-                       "Conv3DBackpropInputOp", /*num_spatial_dims=*/3,
-                       input_shape, filter_shape, out_backprop_shape, dilation_,
-                       stride_, padding_, data_format_, &dims));
+    OP_REQUIRES_OK(context, ConvBackpropComputeDimensionsV2(
+                                "Conv3DBackpropInputOp", /*num_spatial_dims=*/3,
+                                input_shape, filter_shape, out_backprop_shape,
+                                dilation_, stride_, padding_,
+                                /*explicit_paddings=*/{}, data_format_, &dims));
 
     Tensor* in_backprop;
     OP_REQUIRES_OK(context,
@@ -1537,11 +1537,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     }
 
     ConvBackpropDimensions dims;
-    OP_REQUIRES_OK(context,
-                   ConvBackpropComputeDimensionsV2(
-                       "Conv3DBackpropFilterOp", /*num_spatial_dims=*/3,
-                       input_shape, filter_shape, out_backprop_shape, dilation_,
-                       stride_, padding_, data_format_, &dims));
+    OP_REQUIRES_OK(
+        context,
+        ConvBackpropComputeDimensionsV2(
+            "Conv3DBackpropFilterOp", /*num_spatial_dims=*/3, input_shape,
+            filter_shape, out_backprop_shape, dilation_, stride_, padding_,
+            /*explicit_paddings=*/{}, data_format_, &dims));
 
     Tensor* filter_backprop;
     OP_REQUIRES_OK(context,

@@ -42,8 +42,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return std::unique_ptr<IteratorBase>(
-        new Iterator({this, strings::StrCat(prefix, "::Prefetch")}));
+    return absl::make_unique<Iterator>(
+        Iterator::Params{this, strings::StrCat(prefix, "::Prefetch")});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -266,8 +266,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!prefetch_thread_) {
-        std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-        prefetch_thread_.reset(ctx->env()->StartThread(
+        std::shared_ptr<IteratorContext> new_ctx =
+            std::make_shared<IteratorContext>(*ctx);
+        prefetch_thread_ = absl::WrapUnique<Thread>(ctx->env()->StartThread(
             {}, "tf_data_prefetch",
             [this, new_ctx]() { PrefetchThread(new_ctx); }));
       }

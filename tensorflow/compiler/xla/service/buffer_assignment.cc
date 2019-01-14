@@ -1530,15 +1530,16 @@ void BufferAssigner::BuildColocatedBufferSets(
   VLOG(4) << "Input/Output Alias Config: ";
   VLOG(4) << module->input_output_alias_config();
   module->input_output_alias_config().ForEachAlias(
-      [&](const ShapeIndex& output_index, int64 param_number,
-          const ShapeIndex& param_index) {
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
         std::vector<const LogicalBuffer*> colocated_set;
         AddBufferToColocatedSet(module->entry_computation()->root_instruction(),
                                 output_index, points_to_analysis,
                                 &colocated_set);
         AddBufferToColocatedSet(
-            module->entry_computation()->parameter_instruction(param_number),
-            param_index, points_to_analysis, &colocated_set);
+            module->entry_computation()->parameter_instruction(
+                alias.parameter_number),
+            alias.parameter_index, points_to_analysis, &colocated_set);
         AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
       });
 

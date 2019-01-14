@@ -86,28 +86,6 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to run."""
     return ["TRTEngineOp_1"]
 
-  def ShouldRunTest(self, run_params):
-    """Whether to run the test."""
-    # TODO(aaroey): Trt library will fail like:
-    #
-    # ../builder/cudnnBuilder2.cpp:685:
-    # virtual std::vector<nvinfer1::query::Ports<
-    #     nvinfer1::query::TensorRequirements>>
-    # nvinfer1::builder::Node::getSupportedFormats(
-    #     const nvinfer1::query::Ports<nvinfer1::query::AbstractTensor>&,
-    #     const nvinfer1::cudnn::HardwareContext&,
-    #     nvinfer1::builder::Format::Type,
-    #     const nvinfer1::builder::FormatTypeHack&) const:
-    # Assertion `sf' failed.
-    #
-    # To reproduce, run:
-    # bazel test -c opt --copt=-mavx \
-    #   --test_arg=BatchMatMulTest.testTfTrt_ToolConversion_INT8_DynamicEngine \
-    #   tensorflow/contrib/tensorrt:batch_matmul_test
-    #
-    # Investigate and fix it.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode)
-
 
 if __name__ == "__main__":
   test.main()

@@ -151,19 +151,18 @@ TEST_F(ComputeConstantTest, DirectParamMissing) {
   }
 }
 
-TEST_F(ComputeConstantTest, IndirectParamMissing) {
+TEST_F(ComputeConstantTest, GetDimensionSize) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
-    auto computation =
-        Add(ConstantR0<float>(&b, 1.0f),
-            Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "param"));
-    EXPECT_FALSE(IsConstant(computation, &b));
+    auto add =
+        Add(ConstantR1<float>(&b, {1.0f}), ConstantR1<float>(&b, {1.0f}));
+    auto get_dimension_size = GetDimensionSize(add, 0);
+    EXPECT_TRUE(IsConstant(get_dimension_size, &b));
 
-    auto value = ComputeConstantScalar<float>(client, computation, &b);
-    EXPECT_TRUE(
-        absl::StrContains(value.status().ToString(), "depends on a parameter"))
-        << value.status();
+    TF_ASSERT_OK_AND_ASSIGN(auto value, ComputeConstantScalar<uint32>(
+                                            client, get_dimension_size, &b));
+    EXPECT_EQ(value, 1);
   }
 }
 

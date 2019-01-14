@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -123,6 +124,11 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
                                   const PrecisionConfig& precision_config,
                                   const Literal& lhs, const Literal& rhs);
 
+  void set_dynamic_dimension_inference(
+      DynamicDimensionInference* dynamic_dimension_inference) {
+    dynamic_dimension_inference_ = dynamic_dimension_inference;
+  }
+
   // Enable the fast path for certain operations like dot or convolution.
   void set_use_fast_path(bool value) { use_fast_path_ = value; }
 
@@ -160,6 +166,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // HandleIsFinite where boolean is always returned.
   //
   Status HandleBitcast(HloInstruction* bitcast) override;
+
+  Status HandleGetDimensionSize(HloInstruction* get_dimension_size) override;
 
   Status HandleParameter(HloInstruction* parameter) override;
 
@@ -235,12 +243,20 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   };
 
   // Returns the already-evaluated literal result for the instruction.
+  //
   // A Constant instruction is considered evaluated and its literal will be
   // returned directly without looking up the cache.
+  //
+  // Similarly, a Parameter instruction is considered evaluated and its literal
+  // is looked up in arg_literals.
+  //
   // Crash with log if the given instruction has not been evaluated previously.
   const Literal& GetEvaluatedLiteralFor(const HloInstruction* hlo) {
     if (hlo->IsConstant()) {
       return hlo->literal();
+    }
+    if (hlo->opcode() == HloOpcode::kParameter) {
+      return *arg_literals_.at(hlo->parameter_number());
     }
     auto it = evaluated_.find(hlo);
     CHECK(it != evaluated_.end())
@@ -249,12 +265,18 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   }
 
   // Tracks the HLO instruction and its evaluated literal result.
+  //
+  // Parameters and constants aren't stored here, see implementation of
+  // GetEvaluatedLiteralFor.
+  //
   // TODO(b/35950897): have better memory management here to free instructions
   // that are no longer a parent for any other subsequent instruction in
   // post-orderring.
+  //
   // Must be cleared for each evaluation.
-  // Storing Literal in place require the container to have pointer stability so
-  // we cannot use flat_hash_map any more.
+  //
+  // Storing Literal in place requires the container to have pointer stability
+  // so we cannot use flat_hash_map any more.
   absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
 
   // Use fast path that uses eigen in the evaluator.
@@ -294,6 +316,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   uint64 seed_;
   // RNG engine.
   std::minstd_rand0 engine_;
+
+  // DynamicDimensionInference is used to evaluate GetDimensionSize, which
+  // returns the dynamic dimension size of its operand.
+  DynamicDimensionInference* dynamic_dimension_inference_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloEvaluator);
 };

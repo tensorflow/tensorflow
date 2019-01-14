@@ -157,7 +157,7 @@ REGISTER_KERNEL_BUILDER(Name("Old").Device(DEVICE_CPU), OldOp);
 // Stubbed-out resource to test resource handle ops.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
 };
 
 REGISTER_RESOURCE_HANDLE_KERNEL(StubResource);

@@ -69,6 +69,7 @@ py_library(
         ":ast_edits",
         ":renames_v2",
         ":reorders_v2",
+        "@six_archive//:six",
     ],
 )
 

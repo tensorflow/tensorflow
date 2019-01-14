@@ -99,12 +99,12 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
           dataset_fn).make_initializable_iterator()
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
-          value, update = distribution.call_for_each_replica(
+          value, update = distribution.extended.call_for_each_replica(
               metric_fn, args=(inputs,))
           ctx.set_non_tensor_output(name="value", output=value)
           return distribution.group(update)
 
-        ctx = distribution.run_steps_on_dataset(
+        ctx = distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=distribution.extended.steps_per_run)
         update = ctx.run_op
         value = ctx.non_tensor_outputs["value"]
@@ -114,7 +114,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
             distribution.num_replicas_in_sync *
             distribution.extended.steps_per_run)
       else:
-        value, update = distribution.call_for_each_replica(
+        value, update = distribution.extended.call_for_each_replica(
             metric_fn, args=(iterator.get_next(),))
         update = distribution.group(update)
         # TODO(josh11b): Once we switch to using a global batch size for input,

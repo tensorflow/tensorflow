@@ -1065,7 +1065,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(printed.contents(), "D\nD\n")
 
   # Microbenchmark: 256,000 iterations/s.
-  @test_util.disable_control_flow_v2("b/116630618 (Times out)")
   def testWhile_1(self):
     with self.cached_session():
       n = constant_op.constant(0)
@@ -2245,7 +2244,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(216.0, grad_a_val)
       self.assertAllClose(81.0, grad_v_val)
 
-  @test_util.disable_control_flow_v2("b/116630618 (parallel_iters: times out)")
   @test_util.run_deprecated_v1
   def testWhileGrad_Mul(self):
     self._testWhileGrad_Mul(use_gpu=False, p_iters=1)
@@ -2382,6 +2380,8 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
 
+  @test_util.disable_xla("This test never passed for XLA"
+                        )  # Resource variable issue for ControlFlowV2
   @test_util.run_gpu_only
   def testGpuResourceAccess(self):
     with ops.device(test.gpu_device_name()):

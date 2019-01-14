@@ -190,6 +190,15 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   if (opcode1 != i2->opcode() || operands1.size() != i2->operands().size()) {
     return false;
   }
+  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
+    return *a == *b;
+  };
+  if (i1->IsCrossModuleAllReduce()) {
+    return i1->Identical(*i2,
+                         /*eq_operands=*/std::equal_to<const HloInstruction*>(),
+                         eq_computations,
+                         /*layout_sensitive=*/false);
+  }
   visited_pairs->emplace(min_uid, max_uid);
   for (int i = 0; i < operands1.size(); ++i) {
     auto operand1 = operands1[i];
@@ -215,9 +224,6 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   // InstructionsComputeSameValue earlier.
   auto eq_instructions = [](const HloInstruction* i1,
                             const HloInstruction* i2) -> bool { return true; };
-  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
-    return *a == *b;
-  };
   return i1->Identical(*i2, eq_instructions, eq_computations,
                        /*layout_sensitive=*/false);
 }

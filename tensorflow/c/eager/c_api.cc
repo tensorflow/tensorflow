@@ -443,15 +443,15 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     return nullptr;
   }
   // TODO(agarwal): move this implementation inside TFE_TensorHandle.
+  const tensorflow::Tensor* t = nullptr;
+  tensorflow::TensorHandle* h_cpu = nullptr;
   tensorflow::Device* d = nullptr;
   tensorflow::Device* op_device = nullptr;
-  const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
-  if (!status->status.ok()) return nullptr;
-  tensorflow::TensorHandle* h_cpu = nullptr;
-  if (!IsCPU(d)) {
-    status->status = h->handle->CopyToDevice(
-        h->handle->Context(), h->handle->Context()->HostCPU(), &h_cpu);
+
+  if (h->handle->IsRemote()) {
+    status->status = EagerCopyToDevice(
+        h->handle, h->handle->Context(),
+        h->handle->Context()->HostCPU()->name().c_str(), &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -459,6 +459,22 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     if (!status->status.ok()) {
       h_cpu->Unref();
       return nullptr;
+    }
+  } else {
+    status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
+    if (!status->status.ok()) return nullptr;
+
+    if (!IsCPU(d)) {
+      status->status = h->handle->CopyToDevice(
+          h->handle->Context(), h->handle->Context()->HostCPU(), &h_cpu);
+      if (!status->status.ok()) {
+        return nullptr;
+      }
+      status->status = h_cpu->TensorAndDevice(&t, &d, &op_device);
+      if (!status->status.ok()) {
+        h_cpu->Unref();
+        return nullptr;
+      }
     }
   }
   TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
@@ -774,7 +790,7 @@ void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
   if (!status->status.ok()) return;
   tensorflow::mutex_lock ml(*ctx->context.MetadataMu());
   status->status = MessageToBuffer(*ctx->context.RunMetadataProto(), buf);
-  ctx->context.RunMetadataProto()->Clear();
+  ctx->context.ClearRunMetadata();
 }
 
 namespace {

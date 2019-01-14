@@ -3492,6 +3492,7 @@ def while_loop(cond,
         body,
         loop_vars,
         shape_invariants=shape_invariants,
+        parallel_iterations=parallel_iterations,
         maximum_iterations=maximum_iterations,
         name=name,
         return_same_structure=return_same_structure)

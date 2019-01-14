@@ -446,6 +446,26 @@ TEST_F(XlaBuilderTest, ProtoMatches) {
   EXPECT_EQ(c0_string, c1_string);
 }
 
+TEST_F(XlaBuilderTest, DynamicParameter) {
+  std::vector<XlaComputation> computations;
+  XlaBuilder b("builder");
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6})});
+  auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
+  Parameter(&b, 1, ShapeUtil::MakeShape(U32, {}), "p1");
+  ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/1,
+                                   /*dynamic_size_param_index=*/{},
+                                   /*target_param_num=*/0,
+                                   /*target_param_index=*/{1},
+                                   /*target_dim_num=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b, /*root=*/p0));
+  const Shape& param_shape = module->entry_computation()
+                                 ->parameter_instruction(0)
+                                 ->shape()
+                                 .tuple_shapes(1);
+  EXPECT_TRUE(param_shape.is_dynamic_dimension(0));
+}
+
 TEST_F(XlaBuilderTest, AfterAllWithNonTokenOperands) {
   XlaBuilder b(TestName());
   AfterAll(&b, {CreateToken(&b), ConstantR0<float>(&b, 1.0)});

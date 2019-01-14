@@ -239,10 +239,12 @@ Status IrEmitter::HandleCopy(HloInstruction* copy) {
 int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   int64 byte_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   DCHECK_GE(byte_size, 0);
-  // Largest scalar is a complex64 so we don't need to worry about the
+  // Largest scalar is a complex128 so we don't need to worry about the
   // int64->int truncation here.
-  DCHECK_LE(byte_size, 8);
-  return byte_size;
+  DCHECK_LE(byte_size, 16);
+
+  // Allocations may be 8-byte aligned if part of a small block.
+  return std::min(8LL, byte_size);
 }
 
 int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
@@ -942,12 +944,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   auto rhs = dot->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, F64, C64}));
+      /*supported_types=*/{F16, F32, F64, C64, C128}));
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  if (dnums.lhs_batch_dimensions_size() > 0 ||
-      dnums.rhs_batch_dimensions_size() > 0) {
-    return Unimplemented("Dot with batch dimensions not implemented.");
-  }
 
   if (dnums.lhs_contracting_dimensions_size() != 1) {
     // This is disallowed by ShapeInference today.
@@ -970,10 +968,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
           << llvm_ir::DumpToString(*target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  return DotOpEmitter::EmitDotOperation(
-      *dot, target_array, lhs_array, rhs_array, /*addend_array=*/nullptr,
-      GetExecutableRunOptionsArgument(), &b_, hlo_module_config_,
-      target_machine_features_);
+  return EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                          /*addend_array=*/nullptr,
+                          GetExecutableRunOptionsArgument(), &b_,
+                          hlo_module_config_, target_machine_features_);
 }
 
 StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
@@ -1118,7 +1116,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   auto rhs = convolution->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, C64}));
+      /*supported_types=*/{F16, F32, C64, C128}));
 
   // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
   // different data layouts.
@@ -2203,10 +2201,10 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray addend_array(
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
-    TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
-        *dot, target_array, lhs_array, rhs_array, &addend_array,
-        GetExecutableRunOptionsArgument(), &b_, hlo_module_config_,
-        target_machine_features_));
+    TF_RETURN_IF_ERROR(
+        EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                         &addend_array, GetExecutableRunOptionsArgument(), &b_,
+                         hlo_module_config_, target_machine_features_));
     return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");

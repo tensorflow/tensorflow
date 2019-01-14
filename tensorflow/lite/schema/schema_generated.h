@@ -2335,7 +2335,9 @@ struct QuantizationParametersT : public flatbuffers::NativeTable {
   std::vector<float> scale;
   std::vector<int64_t> zero_point;
   QuantizationDetailsUnion details;
-  QuantizationParametersT() {
+  int32_t quantized_dimension;
+  QuantizationParametersT()
+      : quantized_dimension(0) {
   }
 };
 
@@ -2347,7 +2349,8 @@ struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tab
     VT_SCALE = 8,
     VT_ZERO_POINT = 10,
     VT_DETAILS_TYPE = 12,
-    VT_DETAILS = 14
+    VT_DETAILS = 14,
+    VT_QUANTIZED_DIMENSION = 16
   };
   const flatbuffers::Vector<float> *min() const {
     return GetPointer<const flatbuffers::Vector<float> *>(VT_MIN);
@@ -2371,6 +2374,9 @@ struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tab
   const CustomQuantization *details_as_CustomQuantization() const {
     return details_type() == QuantizationDetails_CustomQuantization ? static_cast<const CustomQuantization *>(details()) : nullptr;
   }
+  int32_t quantized_dimension() const {
+    return GetField<int32_t>(VT_QUANTIZED_DIMENSION, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_MIN) &&
@@ -2384,6 +2390,7 @@ struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tab
            VerifyField<uint8_t>(verifier, VT_DETAILS_TYPE) &&
            VerifyOffset(verifier, VT_DETAILS) &&
            VerifyQuantizationDetails(verifier, details(), details_type()) &&
+           VerifyField<int32_t>(verifier, VT_QUANTIZED_DIMENSION) &&
            verifier.EndTable();
   }
   QuantizationParametersT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2416,6 +2423,9 @@ struct QuantizationParametersBuilder {
   void add_details(flatbuffers::Offset<void> details) {
     fbb_.AddOffset(QuantizationParameters::VT_DETAILS, details);
   }
+  void add_quantized_dimension(int32_t quantized_dimension) {
+    fbb_.AddElement<int32_t>(QuantizationParameters::VT_QUANTIZED_DIMENSION, quantized_dimension, 0);
+  }
   explicit QuantizationParametersBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2435,8 +2445,10 @@ inline flatbuffers::Offset<QuantizationParameters> CreateQuantizationParameters(
     flatbuffers::Offset<flatbuffers::Vector<float>> scale = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> zero_point = 0,
     QuantizationDetails details_type = QuantizationDetails_NONE,
-    flatbuffers::Offset<void> details = 0) {
+    flatbuffers::Offset<void> details = 0,
+    int32_t quantized_dimension = 0) {
   QuantizationParametersBuilder builder_(_fbb);
+  builder_.add_quantized_dimension(quantized_dimension);
   builder_.add_details(details);
   builder_.add_zero_point(zero_point);
   builder_.add_scale(scale);
@@ -2453,7 +2465,8 @@ inline flatbuffers::Offset<QuantizationParameters> CreateQuantizationParametersD
     const std::vector<float> *scale = nullptr,
     const std::vector<int64_t> *zero_point = nullptr,
     QuantizationDetails details_type = QuantizationDetails_NONE,
-    flatbuffers::Offset<void> details = 0) {
+    flatbuffers::Offset<void> details = 0,
+    int32_t quantized_dimension = 0) {
   return tflite::CreateQuantizationParameters(
       _fbb,
       min ? _fbb.CreateVector<float>(*min) : 0,
@@ -2461,7 +2474,8 @@ inline flatbuffers::Offset<QuantizationParameters> CreateQuantizationParametersD
       scale ? _fbb.CreateVector<float>(*scale) : 0,
       zero_point ? _fbb.CreateVector<int64_t>(*zero_point) : 0,
       details_type,
-      details);
+      details,
+      quantized_dimension);
 }
 
 flatbuffers::Offset<QuantizationParameters> CreateQuantizationParameters(flatbuffers::FlatBufferBuilder &_fbb, const QuantizationParametersT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -8263,6 +8277,7 @@ inline void QuantizationParameters::UnPackTo(QuantizationParametersT *_o, const 
   { auto _e = zero_point(); if (_e) { _o->zero_point.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->zero_point[_i] = _e->Get(_i); } } };
   { auto _e = details_type(); _o->details.type = _e; };
   { auto _e = details(); if (_e) _o->details.value = QuantizationDetailsUnion::UnPack(_e, details_type(), _resolver); };
+  { auto _e = quantized_dimension(); _o->quantized_dimension = _e; };
 }
 
 inline flatbuffers::Offset<QuantizationParameters> QuantizationParameters::Pack(flatbuffers::FlatBufferBuilder &_fbb, const QuantizationParametersT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -8279,6 +8294,7 @@ inline flatbuffers::Offset<QuantizationParameters> CreateQuantizationParameters(
   auto _zero_point = _o->zero_point.size() ? _fbb.CreateVector(_o->zero_point) : 0;
   auto _details_type = _o->details.type;
   auto _details = _o->details.Pack(_fbb);
+  auto _quantized_dimension = _o->quantized_dimension;
   return tflite::CreateQuantizationParameters(
       _fbb,
       _min,
@@ -8286,7 +8302,8 @@ inline flatbuffers::Offset<QuantizationParameters> CreateQuantizationParameters(
       _scale,
       _zero_point,
       _details_type,
-      _details);
+      _details,
+      _quantized_dimension);
 }
 
 inline TensorT *Tensor::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

@@ -155,9 +155,9 @@ class TensorListPushBackOp : public XlaOpKernel {
     xla::XlaOp value = ctx->Input(1);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices =
-        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
-                 xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+    std::vector<xla::XlaOp> start_indices(elem_shape.dims() + 1,
+                                          xla::ConstantR0<int32>(b, 0));
+    start_indices[0] = index;
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
@@ -197,10 +197,9 @@ class TensorListPopBackOp : public XlaOpKernel {
     index = index - xla::ConstantR0<int32>(b, 1);
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-    auto start_indices =
-        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
-                 xla::MakeEdgePaddingConfig({{0, shape.dims() - 1}}));
-
+    std::vector<xla::XlaOp> start_indices(shape.dims(),
+                                          xla::ConstantR0<int32>(b, 0));
+    start_indices[0] = index;
     auto slice_shape = shape.dim_sizes();
     slice_shape[0] = 1LL;
 

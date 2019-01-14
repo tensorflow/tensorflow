@@ -199,6 +199,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F32: np.dtype('float32'),
     xla_data_pb2.F64: np.dtype('float64'),
     xla_data_pb2.C64: np.dtype('complex64'),
+    xla_data_pb2.C128: np.dtype('complex128'),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
@@ -1476,6 +1477,18 @@ class ComputationBuilder(object):
     """Enqueues a triangular-solve operation onto the computation."""
     return self._client.TriangularSolve(
         a, b, left_side, lower, transpose_a, conjugate_a)
+
+  def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
+    """Enqueues a Gather operation onto the computation."""
+    return self._client.Gather(a, start_indices, dimension_numbers,
+                               slice_sizes)
+
+  def Scatter(self, a, scatter_indices, updates, update_computation,
+              dimension_numbers):
+    """Enqueues a Scatter operation onto the computation."""
+    return self._client.Scatter(
+        a, scatter_indices, updates, update_computation.computation,
+        dimension_numbers,)
 
 
 def _forward_methods_to_local_builder():

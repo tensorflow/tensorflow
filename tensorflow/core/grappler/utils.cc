@@ -20,6 +20,8 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -166,10 +168,10 @@ string AddPrefixToNodeName(const string& name, const string& prefix,
                            const string& delimiter) {
   if (!name.empty()) {
     if (name[0] == '^') {
-      return strings::StrCat("^", prefix, delimiter, name.substr(1));
+      return absl::StrCat("^", prefix, delimiter, name.substr(1));
     }
   }
-  return strings::StrCat(prefix, delimiter, name);
+  return absl::StrCat(prefix, delimiter, name);
 }
 
 string AddPrefixToNodeName(const string& name, const string& prefix) {
@@ -193,20 +195,26 @@ bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
 }
 
 string AsControlDependency(const NodeDef& node) {
-  return strings::StrCat("^", node.name());
+  return absl::StrCat("^", node.name());
 }
 
 string AsControlDependency(const string& node_name) {
   CHECK(!node_name.empty());
   return (!node_name.empty() && node_name[0] == '^')
              ? node_name
-             : strings::StrCat("^", node_name);
+             : absl::StrCat("^", node_name);
 }
 
 bool NodeIsOnCpu(const NodeDef* node) {
   string task, device;
   return DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
-         str_util::StartsWith(device, DEVICE_CPU);
+         absl::StartsWith(device, DEVICE_CPU);
+}
+
+bool NodeIsOnGpu(const NodeDef* node) {
+  string task, device;
+  return DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
+         absl::StartsWith(device, DEVICE_GPU);
 }
 
 int NumOutputs(const NodeDef& node, GraphDef* graph) {

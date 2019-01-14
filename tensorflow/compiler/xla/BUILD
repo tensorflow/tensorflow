@@ -152,7 +152,7 @@ cc_library(
         ":status",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 

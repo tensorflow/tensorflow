@@ -88,7 +88,7 @@ class XlaCompilationCache : public ResourceBase {
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
 
-  string DebugString() override;
+  string DebugString() const override;
 
   // Describes the types, shapes and any compile-time constant arguments
   // to a kernel. Key that uniquely identifies a compilation output.

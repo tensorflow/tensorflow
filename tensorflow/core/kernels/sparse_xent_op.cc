@@ -90,9 +90,8 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
             context, CheckInvalidLabelIndex<Index>(labels, logits.dim_size(1)));
       }
       functor::SparseXentFunctor<Device, T, Index> functor;
-      functor(context->eigen_device<Device>(), logits.matrix<T>(),
-              labels.vec<Index>(), scratch.vec<T>(), loss_out->vec<T>(),
-              back_out->matrix<T>());
+      functor(context, logits.matrix<T>(), labels.vec<Index>(),
+              scratch.vec<T>(), loss_out->vec<T>(), back_out->matrix<T>());
     }
   }
 };
@@ -102,11 +101,11 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
 namespace functor {
 template <typename T, typename Index>
 struct SparseXentFunctor<CPUDevice, T, Index> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix logits,
+  void operator()(OpKernelContext* ctx, typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<Index>::ConstVec labels,
                   typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-    SparseXentEigenImpl<CPUDevice, T, Index>::Compute(d, logits, labels,
+    SparseXentEigenImpl<CPUDevice, T, Index>::Compute(ctx, logits, labels,
                                                       scratch, loss, backprop);
   }
 };

@@ -38,20 +38,37 @@ def _is_tensor(t):
 
 def _inputs_compatible(args, stored_inputs):
   """Checks whether function arguments are compatible with parameters."""
-  # TODO(vbardiovsky): The compatibility check should be about the signature,
-  # not the flattened version of it.
   if len(args) != len(stored_inputs):
     return False
-  for a, b in zip(args, stored_inputs):
-    if _is_tensor(a):
-      if not isinstance(b, tensor_spec.TensorSpec):
-        return False
-      if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
-        return False
-    else:
-      if a != b:
-        return False
+
+  for arg, stored_input in zip(args, stored_inputs):
+    if not function_lib.is_same_structure(arg, stored_input):
+      return False
+
+    flattened_arg = nest.flatten(arg)
+    flattened_stored_input = nest.flatten(stored_input)
+
+    for a, b in zip(flattened_arg, flattened_stored_input):
+      if _is_tensor(a):
+        if not isinstance(b, tensor_spec.TensorSpec):
+          return False
+        if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
+          return False
+      else:
+        if a != b:
+          return False
   return True
+
+
+def _deserialize_function_spec(function_spec_proto, coder):
+  """Deserialize a FunctionSpec object from its proto representation."""
+  fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  is_method = function_spec_proto.is_method
+  args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
+  kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
+  input_signature = coder.decode_proto(function_spec_proto.input_signature)
+  return function_lib.FunctionSpec(fullargspec, is_method, args_to_prepend,
+                                   kwargs_to_include, input_signature)
 
 
 def recreate_polymorphic_function(
@@ -71,9 +88,8 @@ def recreate_polymorphic_function(
   # serialization cycle.
 
   coder = nested_structure_coder.StructureCoder()
-  function_spec_tuple = coder.decode_proto(
-      saved_polymorphic_function.function_spec_tuple)
-  function_spec = function_lib.FunctionSpec.from_tuple(function_spec_tuple)
+  function_spec = _deserialize_function_spec(
+      saved_polymorphic_function.function_spec, coder)
 
   # TODO(mdan): We may enable autograph once exceptions are supported.
   @def_function.function(autograph=False)
@@ -84,8 +100,7 @@ def recreate_polymorphic_function(
     for monomorphic_function in saved_polymorphic_function.monomorphic_function:
       function_obj = functions[monomorphic_function.concrete_function]
       canonicalized_original_inputs = coder.decode_proto(
-          monomorphic_function.canonicalized_input)
-
+          monomorphic_function.canonicalized_input_signature)
       try:
         can_args, can_kwargs = function_spec.canonicalize_function_inputs(
             *args, **kwargs)
@@ -98,15 +113,11 @@ def recreate_polymorphic_function(
       except ValueError:
         continue
 
-      canonicalized_inputs = nest.flatten(can_args)
-
-      if _inputs_compatible(canonicalized_inputs,
+      if _inputs_compatible(can_args,
                             canonicalized_original_inputs):
-        filtered_inputs = [t for t in canonicalized_inputs if _is_tensor(t)]
-        flattened_outputs = function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
-        # TODO(vbardiovsky): Rebuild output structure.
-        single_output, = flattened_outputs
-        return single_output
+        flattened_inputs = nest.flatten(can_args)
+        filtered_inputs = [t for t in flattened_inputs if _is_tensor(t)]
+        return function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
 
     raise AssertionError(
         "Could not find matching function to call for arguments: %s" % (args,))
