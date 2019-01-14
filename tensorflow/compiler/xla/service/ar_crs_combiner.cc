@@ -249,14 +249,17 @@ void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
       auto next_0 = instr_0->users()[0];
       auto next_i = instr_i->users()[0];
       absl::flat_hash_map<int64, int64> visited_pairs;
-      do {
+      while (true) {
         if (!InstructionsComputeSameValue(next_0, next_i, &visited_pairs)) {
           all_reduce_map_.erase(all_reduce_id);
           break;
         }
+        if (next_0->IsCrossReplicaAllReduce()) {
+          break;
+        }
         next_0 = next_0->users()[0];
         next_i = next_i->users()[0];
-      } while (!next_0->IsCrossReplicaAllReduce());
+      }
     }
   }
 }
