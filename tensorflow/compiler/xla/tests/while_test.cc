@@ -861,7 +861,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
     // Update.
     auto update = ConvertElementType(Broadcast(out0, {2}), F32);
     // Starts = iteration * 2;
-    auto starts = Reshape(Mul(iteration, ConstantR0<int32>(&builder, 2)), {1});
+    auto starts = Mul(iteration, ConstantR0<int32>(&builder, 2));
     // UpdateSlice.
     auto out1 = DynamicUpdateSlice(input, update, starts);
 
@@ -1299,9 +1299,9 @@ void BM_WhileLoop(int num_iters) {
     auto one = ConstantR0<float>(&builder, 1.0);
     auto update = Broadcast(one, {1, 1024, 1024});
     // Starts = iteration * 2;
-    auto starts = ConstantR1<int32>(&builder, {0, 0, 0});
+    auto zero = ConstantR0<int32>(&builder, 0);
     // UpdateSlice.
-    auto out1 = DynamicUpdateSlice(input, update, starts);
+    auto out1 = DynamicUpdateSlice(input, update, {zero, zero, zero});
     Tuple(&builder, {out0, out1});
     body = builder.Build().ConsumeValueOrDie();
   }
