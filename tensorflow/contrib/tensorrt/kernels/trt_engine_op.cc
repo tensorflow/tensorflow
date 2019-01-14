@@ -297,7 +297,6 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 
 bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                    EngineContext* engine_context) {
-  
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
   const bool kRetry = true;
@@ -468,11 +467,11 @@ EngineContext* TRTEngineOp::GetEngine(
       engine_input_shapes[i].set_dim(0, max_batch_size);
     }
     // Assume engine_input_shapes matches the input shapes of the engine.
-    cache.emplace(
-        engine_input_shapes, absl::make_unique<EngineContext>(
-            std::move(static_engine),
-            TrtUniquePtrType<nvinfer1::IExecutionContext>(
-                raw_static_engine->createExecutionContext())));
+    cache.emplace(engine_input_shapes,
+                  absl::make_unique<EngineContext>(
+                      std::move(static_engine),
+                      TrtUniquePtrType<nvinfer1::IExecutionContext>(
+                          raw_static_engine->createExecutionContext())));
     // Runtime is safe to delete after engine creation
     serialized_segment_.clear();
     if (max_batch_size < batch_size) {
