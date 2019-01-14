@@ -866,14 +866,6 @@ def _deterministic_dict_values(dictionary):
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
-  def as_tuple(self):
-    return (self._fullargspec, self._is_method, self._args_to_prepend,
-            self._kwargs_to_include, self.input_signature)
-
-  @staticmethod
-  def from_tuple(spec_tuple):
-    return FunctionSpec(*spec_tuple)
-
   @staticmethod
   def from_function_and_signature(python_function, input_signature):
     """Create a FunctionSpec instance given a python function and signature."""
@@ -920,7 +912,7 @@ class FunctionSpec(object):
     }
     self._default_values_start_index = offset
     if input_signature is None:
-      self.input_signature = None
+      self._input_signature = None
     else:
       if fullargspec.varkw is not None or fullargspec.kwonlyargs:
         raise ValueError("Cannot define a TensorFlow function from a Python "
@@ -931,8 +923,32 @@ class FunctionSpec(object):
         raise TypeError("input_signature must be either a tuple or a "
                         "list, received " + str(type(input_signature)))
 
-      self.input_signature = tuple(input_signature)
-      self.flat_input_signature = tuple(nest.flatten(input_signature))
+      self._input_signature = tuple(input_signature)
+      self._flat_input_signature = tuple(nest.flatten(input_signature))
+
+  @property
+  def fullargspec(self):
+    return self._fullargspec
+
+  @property
+  def is_method(self):
+    return self._is_method
+
+  @property
+  def args_to_prepend(self):
+    return self._args_to_prepend
+
+  @property
+  def kwargs_to_include(self):
+    return self._kwargs_to_include
+
+  @property
+  def input_signature(self):
+    return self._input_signature
+
+  @property
+  def flat_input_signature(self):
+    return self._flat_input_signature
 
   def canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
@@ -980,7 +996,7 @@ class FunctionSpec(object):
         if index is not None:
           arg_indices_to_values[index] = value
           consumed_args.append(arg)
-        elif self.input_signature is not None:
+        elif self._input_signature is not None:
           raise ValueError("Cannot define a TensorFlow function from a Python "
                            "function with keyword arguments when "
                            "input_signature is provided.")
@@ -1003,12 +1019,13 @@ class FunctionSpec(object):
     if need_packing:
       inputs = nest.pack_sequence_as(
           structure=inputs, flat_sequence=flat_inputs)
-    if self.input_signature is None:
+    if self._input_signature is None:
       return inputs, kwargs
     else:
       assert not kwargs
-      signature_relevant_inputs = inputs[:len(self.input_signature)]
-      if not is_same_structure(self.input_signature, signature_relevant_inputs):
+      signature_relevant_inputs = inputs[:len(self._input_signature)]
+      if not is_same_structure(self._input_signature,
+                               signature_relevant_inputs):
         raise ValueError("Structure of Python function inputs does not match "
                          "input_signature.")
       signature_inputs_flat = nest.flatten(signature_relevant_inputs)
@@ -1017,10 +1034,10 @@ class FunctionSpec(object):
         raise ValueError("When input_signature is provided, all inputs to "
                          "the Python function must be Tensors.")
       if any(not spec.is_compatible_with(other) for spec, other in zip(
-          self.flat_input_signature, signature_inputs_flat)):
+          self._flat_input_signature, signature_inputs_flat)):
         raise ValueError("Python inputs incompatible with input_signature: "
                          "inputs (%s), input_signature (%s)" %
-                         (str(inputs), str(self.input_signature)))
+                         (str(inputs), str(self._input_signature)))
       return inputs, {}
 
 

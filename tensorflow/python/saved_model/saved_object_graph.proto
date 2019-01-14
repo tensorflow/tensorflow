@@ -86,9 +86,7 @@ message SavedAsset {
 // A function with multiple signatures, possibly with non-Tensor arguments.
 message SavedPolymorphicFunction {
   repeated SavedMonomorphicFunction monomorphic_function = 1;
-  // Tuple representing a `FunctionSpec`.
-  // TODO(vbardiovsky): Make this a proto.
-  StructuredValue function_spec_tuple = 2;
+  FunctionSpec function_spec = 2;
 }
 
 message SavedMonomorphicFunction {
@@ -117,4 +115,21 @@ message SavedVariable {
   bool trainable = 3;
 
   // TODO(andresp): Add save_slice_info_def?
+}
+
+// Represents FunctionSpec used in PolymorphicFunction. This represents a
+// function that has been wrapped as a PolymorphicFunction.
+message FunctionSpec {
+  // Full arg spec from inspect.getfullargspec().
+  StructuredValue fullargspec = 1;
+  // Whether this represents a class method.
+  bool is_method = 2;
+  // Which arguments to always prepend, in case the original function is based
+  // on a functools.partial.
+  StructuredValue args_to_prepend = 3;
+  // Which kwargs to always include, in case the original function is based on a
+  // functools.partial.
+  StructuredValue kwargs_to_include = 4;
+  // The input signature, if specified.
+  StructuredValue input_signature = 5;
 }
