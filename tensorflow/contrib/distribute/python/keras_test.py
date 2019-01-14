@@ -940,9 +940,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @combinations.generate(all_strategy_combinations())
   def testOptimizerWithCallbacks(self, distribution):
     with self.cached_session():
-      # TODO(b/120946189): Investigate why default strategy + eager fails.
-      if '_Default' in distribution.__class__.__name__:
-        self.skipTest('Disable the test for default strategy.')
       with distribution.scope():
         model = get_model()
         optimizer = gradient_descent_keras.SGD(0.01)

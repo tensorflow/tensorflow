@@ -437,8 +437,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     on_create_m_bias_slot = on_create_optimizer.get_slot(
         on_create_model._named_dense.variables[1], "m")
     status.assert_existing_objects_matched()
-    with self.assertRaises(AssertionError):
-      status.assert_consumed()
+    if not context.executing_eagerly():
+      with self.assertRaises(AssertionError):
+        status.assert_consumed()
     # Optimizer slot variables are created when the original variable is
     # restored.
     self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
@@ -830,8 +831,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.assertEqual(12., self.evaluate(new_root.var))
     new_root.optimizer = adam.Adam(0.1)
     slot_status.assert_existing_objects_matched()
-    with self.assertRaisesRegexp(AssertionError, "Unresolved object"):
-      slot_status.assert_consumed()
+    if not context.executing_eagerly():
+      with self.assertRaisesRegexp(AssertionError, "Unresolved object"):
+        slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
     if context.executing_eagerly():
       # Slot variables are only created with restoring initializers when
