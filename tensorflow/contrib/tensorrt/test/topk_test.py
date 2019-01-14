@@ -40,18 +40,18 @@ class TopKTest(trt_test.TfTrtIntegrationTestBase):
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       k_tensor = constant_op.constant(k, dtype=tf.int32, name="Const")
       values, indices = nn_ops.top_k(x, k_tensor, name="TopK")
-      values = array_ops.identity(values, name='output_values')
-      indices = array_ops.identity(indices, name='output_indices')
+      values = array_ops.identity(values, name="output_values")
+      indices = array_ops.identity(indices, name="output_indices")
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        output_names=['output_values', 'output_indices'],
+        output_names=["output_values", "output_indices"],
         expected_output_dims=[(100, k), (100, k)])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0" : ["Const", "TopK"]}
+    return {"TRTEngineOp_0": ["Const", "TopK"]}
 
 
 if __name__ == "__main__":
