@@ -251,6 +251,7 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def test_fused_batch_norm(self):
     data_formats = ["NHWC"]
     if test.is_gpu_available():

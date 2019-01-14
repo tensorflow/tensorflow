@@ -139,6 +139,7 @@ class AtrousConv2DTest(test.TestCase):
                   y1.eval(), self.evaluate(y2), rtol=1e-2, atol=1e-2)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")  # larger error range
   def testGradient(self):
     with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
