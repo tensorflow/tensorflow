@@ -9,6 +9,7 @@ load(
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
     "tf_cuda_tests_tags",
+    "tf_exec_compatible_with",
     "tf_sycl_tests_tags",
 )
 load(
@@ -785,6 +786,7 @@ def tf_cc_test(
             ],
         ),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),
+        exec_compatible_with = tf_exec_compatible_with(kwargs),
         # Nested select() statements seem not to be supported when passed to
         # linkstatic, and we already have a cuda select() passed in to this
         # function.
@@ -897,6 +899,7 @@ def tf_cuda_only_cc_test(
         args = [],
         kernels = [],
         linkopts = []):
+    tags = tags + tf_cuda_tests_tags()
     native.cc_test(
         name = "%s%s" % (name, "_gpu"),
         srcs = srcs + tf_binary_additional_srcs(),
@@ -919,7 +922,8 @@ def tf_cuda_only_cc_test(
             clean_dep("//tensorflow:darwin"): 1,
             "//conditions:default": 0,
         }),
-        tags = tags + tf_cuda_tests_tags(),
+        tags = tags,
+        exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
     )
 
 register_extension_info(
@@ -983,6 +987,7 @@ def tf_cc_test_mkl(
             }) + _rpath_linkopts(src_to_test_name(src)),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
             data = data + tf_binary_dynamic_kernel_dsos(kernels),
+            exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
             linkstatic = linkstatic,
             tags = tags,
             size = size,
@@ -1752,6 +1757,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             "//conditions:default": [],
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
         }) + tf_binary_dynamic_kernel_dsos(kernels),
+        exec_compatible_with = tf_exec_compatible_with(kwargs),
         **kwargs
     )
 
