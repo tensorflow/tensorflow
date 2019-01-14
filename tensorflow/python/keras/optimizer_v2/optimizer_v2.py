@@ -95,6 +95,11 @@ class OptimizerV2(checkpointable.CheckpointableBase):
   opt_op.run()
   ```
 
+  ### Thread Compatibility
+
+  The entire optimizer is currently thread compatible, not thread-safe. The user
+  needs to perform synchronization if necessary.
+
   ### Processing gradients before applying them.
 
   Calling `minimize()` takes care of both computing the gradients and
@@ -411,6 +416,8 @@ class OptimizerV2(checkpointable.CheckpointableBase):
         backend.set_value(self._hyper[name], value)
 
   def _get_hyper(self, name, dtype=None):
+    if not self._hypers_created:
+      self._create_hypers()
     value = self._hyper[name]
     if callable(value):
       value = value()
@@ -431,7 +438,7 @@ class OptimizerV2(checkpointable.CheckpointableBase):
       if name == "lr":
         name = "learning_rate"
       if name in self._hyper:
-        return self._hyper[name]
+        return self._get_hyper(name)
       raise e
 
   def __setattr__(self, name, value):
@@ -573,7 +580,7 @@ class OptimizerV2(checkpointable.CheckpointableBase):
 
   def _serialize_hyperparameter(self, hyperparameter_name):
     """Serialize a hyperparameter that can be a float, callable, or Tensor."""
-    value = self._get_hyper(hyperparameter_name)
+    value = self._hyper[hyperparameter_name]
     if callable(value):
       return value()
     if isinstance(value, (ops.Tensor, tf_variables.Variable,
