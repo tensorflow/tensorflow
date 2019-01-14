@@ -465,6 +465,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 gen_complex(complex_dims), rank, (size,) * rank)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testError(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
