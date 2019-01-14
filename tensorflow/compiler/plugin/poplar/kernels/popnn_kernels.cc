@@ -37,6 +37,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 
+using namespace xla::poplarplugin;
+
 namespace tensorflow {
 
 class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
@@ -124,8 +126,9 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
     }
 
     xla::XlaOp output_tuple =
-        xla::CustomCall(&b, "popnn::lstm_layer_fwd", args, output_tuple_shape,
-                        attribute_map_.Serialise());
+        xla::CustomCall(&b, GetPoplibsCustomOpTargetString(
+                                PoplibsLib::Popnn, PoplibsOp::LstmLayerFwd),
+                        args, output_tuple_shape, attribute_map_.Serialise());
 
     xla::XlaOp output_seq = xla::GetTupleElement(output_tuple, 0);
     xla::XlaOp output_h_state = xla::GetTupleElement(output_tuple, 1);
@@ -141,6 +144,10 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
   const absl::flat_hash_set<int64> AllocatingIndexes() override {
     return {0, 1, 2, 3, 4};
   }
+
+  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
+    return {};
+  };
 
   const uint64 NumberOfInplaceOperands() override { return 0; }
 
@@ -200,8 +207,9 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
     }
 
     xla::XlaOp output_tuple =
-        xla::CustomCall(&b, "popnn::lstm_layer_bwd", args, output_tuple_shape,
-                        attribute_map_.Serialise());
+        xla::CustomCall(&b, GetPoplibsCustomOpTargetString(
+                                PoplibsLib::Popnn, PoplibsOp::LstmLayerBwd),
+                        args, output_tuple_shape, attribute_map_.Serialise());
     xla::XlaOp input_backprop = xla::GetTupleElement(output_tuple, 0);
     xla::XlaOp input_h_state_backprop = xla::GetTupleElement(output_tuple, 1);
     xla::XlaOp input_c_state_backprop = xla::GetTupleElement(output_tuple, 2);
@@ -217,6 +225,10 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
 
  protected:
   const absl::flat_hash_set<int64> AllocatingIndexes() { return {}; }
+
+  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
+    return {};
+  };
 
   const uint64 NumberOfInplaceOperands() override { return 0; }
 

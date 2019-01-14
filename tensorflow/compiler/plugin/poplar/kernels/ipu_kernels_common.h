@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 #include "tensorflow/core/platform/types.h"
@@ -32,10 +33,20 @@ namespace tensorflow {
 // custom ops.
 class IpuOpKernel {
  protected:
-  IpuOpKernel();
+  IpuOpKernel() = default;
 
   // Allocating indexes used by the Allocation Finder - op specific.
   virtual const absl::flat_hash_set<int64> AllocatingIndexes() = 0;
+
+  // Layout dependent indexes used by the Forward Allocation Finder - op
+  // specific.
+  // Example - custom op has 3 inputs a(0), b(1), c(2) - a is an input, and b
+  // and c are dependent on allocation of a, then
+  // this map would look as follows:
+  // { {1, 0}, {2, 0} }
+  // Note that the dependent allocation cannot be an Allocating index or another
+  // layout dependency.
+  virtual const absl::flat_hash_map<int64, int64> LayoutDependencies() = 0;
 
   // Return how many of the first n operands are updated in place. If 0, the op
   // is treated as NotInplace.

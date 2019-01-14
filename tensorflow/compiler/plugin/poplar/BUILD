@@ -42,6 +42,8 @@ cc_library(
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:hlo",
         "@jsoncpp_git//:jsoncpp",
+        "@com_google_absl//absl/types:any",
+        "@com_google_absl//absl/types:bad_any_cast",
     ],
     alwayslink = True,
 )
@@ -199,6 +201,10 @@ cc_library(
         "driver/visitor_subcomputation.h",
         "driver/custom_ops/custom_ops.h",
         "driver/custom_ops/poplibs_ops.h",
+        "driver/custom_ops/poplin_ops.h",
+        "driver/custom_ops/popnn_ops.h",
+        "driver/custom_ops/popops_ops.h",
+        "driver/custom_ops/poprand_ops.h",
     ],
     deps = [
         ":common",

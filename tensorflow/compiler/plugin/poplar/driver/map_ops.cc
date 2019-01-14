@@ -254,7 +254,7 @@ StatusOr<poplar::program::Program> CreateCustomCallOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
-  if (IPUCustomKernelsUtil::IsPoplibsOp(inst)) {
+  if (IsPoplibsCustomOp(inst)) {
     VLOG(1) << "Processing " << inst->name() << " as Poplibs call";
     return CreatePoplibsOp(graph, res, inst, output, tensor_map);
   } else if (inst->custom_call_target() == "inter_ipu_copy") {

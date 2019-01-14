@@ -1,5 +1,6 @@
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
@@ -277,7 +278,7 @@ bool IsPopOpsBiasAdd(const HloInstruction* inst) {
 
 bool IsPopOpsElementwise(const HloInstruction* inst) {
   return IsPopOpsBiasAdd(inst) || IsPopOpsFusion(inst, "scaled_inplace") ||
-         inst->IsElementwise();
+         inst->IsElementwise() || IsPoplibsCustomOpElementwise(inst);
 }
 
 bool IsPopOpsElementwiseBinary(const HloInstruction* inst) {
@@ -285,6 +286,11 @@ bool IsPopOpsElementwiseBinary(const HloInstruction* inst) {
   // is always constant - we consider it a binary op.
   return (IsPopOpsElementwise(inst) && inst->operand_count() == 2) ||
          IsPopOpsFusion(inst, "scaled_inplace");
+}
+
+bool IsLayerNormInferenceOrTraining(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kBatchNormInference ||
+         inst->opcode() == HloOpcode::kBatchNormTraining;
 }
 
 }  // namespace poplarplugin

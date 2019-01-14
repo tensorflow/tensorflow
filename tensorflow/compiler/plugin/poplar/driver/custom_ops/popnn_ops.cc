@@ -1,7 +1,8 @@
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/popnn_ops.h"
 #include <algorithm>
-#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poplibs_ops.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poplibs_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -19,18 +20,17 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 
+#include <poplar/Graph.hpp>
+#include <poplar/Tensor.hpp>
+#include <poplar/exceptions.hpp>
 #include <popnn/Lstm.hpp>
 #include <popops/ElementWise.hpp>
+#include <poputil/exceptions.hpp>
 
 namespace xla {
 namespace poplarplugin {
 namespace {
 static const size_t basic_lstm_cell_num_units = 4;
-
-absl::flat_hash_map<std::string, CustomPoplibOpInfo> info_map = {
-    {"lstm_layer_fwd", {AllocateLstmLayerFwdOp, CreateLstmLayerFwdOp}},
-    {"lstm_layer_bwd", {AllocateLstmLayerBwdOp, CreateLstmLayerBwdOp}},
-};
 
 StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
     const HloInstruction* inst,
@@ -112,14 +112,19 @@ poplar::Tensor PackLstmKernel(poplar::Tensor input_weights,
 
 }  // namespace
 
-const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
-GetPopnnOpInfoMap() {
+const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
+  static absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo> info_map = {
+      {PoplibsOp::LstmLayerFwd, {AllocateLstmLayerFwdOp, CreateLstmLayerFwdOp}},
+      {PoplibsOp::LstmLayerBwd, {AllocateLstmLayerBwdOp, CreateLstmLayerBwdOp}},
+  };
   return info_map;
 }
 
 StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
     const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
                       GetLstmParameters(inst, attribute_map));
@@ -167,6 +172,8 @@ StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
 StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
     const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   return xla::FailedPrecondition("LstmLayerBwdOp should not be allocating.");
 }

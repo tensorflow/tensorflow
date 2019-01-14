@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIBS_OPS_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIBS_OPS_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPOPS_OPS_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPOPS_OPS_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poplibs_ops.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+#include "absl/container/flat_hash_map.h"
+
+#include <poplar/exceptions.hpp>
+#include <poputil/exceptions.hpp>
+
 #include <string>
-#include "absl/types/optional.h"
 
 namespace poplar {
 class Graph;
@@ -33,20 +39,19 @@ class HloInstruction;
 
 namespace poplarplugin {
 
-typedef StatusOr<poplar::Tensor> (*CustomPoplibOpAllocator)(
-    poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64,
-    absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx,
-    const IPUCustomKernelsUtil::AttributeMap&);
+const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopopsOpInfoMap();
 
-typedef StatusOr<poplar::program::Program> (*CustomPoplibOpCreator)(
+// Allocating functions.
+StatusOr<poplar::Tensor> AllocateUnaryOp(
+    poplar::Graph&, CompilerResources&, const std::string&,
+    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
+    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&);
+
+// Creating functions.
+StatusOr<poplar::program::Program> CreateUnaryOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
-
-using CustomPoplibOpInfo =
-    std::pair<CustomPoplibOpAllocator, CustomPoplibOpCreator>;
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPLIBS_OPS_H_
+#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CUSTOM_OPS_POPOPS_OPS_H_

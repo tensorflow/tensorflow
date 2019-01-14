@@ -37,12 +37,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 
+using namespace xla::poplarplugin;
+
 namespace tensorflow {
 namespace {
 class PopopsUnaryOp : public XlaOpKernel, IpuOpKernel {
  public:
-  explicit PopopsUnaryOp(const std::string& op_name, OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx), op_name_(op_name) {
+  explicit PopopsUnaryOp(const PoplibsOp& op_type, OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx), op_type_(op_type) {
     AddRequiredAttributesToMap();
   }
 
@@ -62,9 +64,9 @@ class PopopsUnaryOp : public XlaOpKernel, IpuOpKernel {
     xla::XlaBuilder& b = *ctx->builder();
 
     std::vector<xla::XlaOp> args = {input};
-    xla::XlaOp output =
-        xla::CustomCall(&b, "popops::" + op_name_, args, input_shape,
-                        attribute_map_.Serialise());
+    xla::XlaOp output = xla::CustomCall(
+        &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popops, op_type_), args,
+        input_shape, attribute_map_.Serialise());
 
     ctx->SetOutput(0, output);
   }
@@ -72,17 +74,21 @@ class PopopsUnaryOp : public XlaOpKernel, IpuOpKernel {
  protected:
   const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
 
+  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
+    return {};
+  };
+
   const uint64 NumberOfInplaceOperands() override { return 1; }
 
  private:
-  std::string op_name_;
+  PoplibsOp op_type_;
 };
 }  // namespace
 
 class PopopsSqrtOp : public PopopsUnaryOp {
  public:
   explicit PopopsSqrtOp(OpKernelConstruction* ctx)
-      : PopopsUnaryOp("sqrt", ctx) {}
+      : PopopsUnaryOp(PoplibsOp::Sqrt, ctx) {}
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PopopsSqrtOp);
@@ -92,7 +98,7 @@ REGISTER_XLA_OP(Name("Sqrt").Device(DEVICE_IPU_XLA_JIT), PopopsSqrtOp);
 class PopopsRsqrtOp : public PopopsUnaryOp {
  public:
   explicit PopopsRsqrtOp(OpKernelConstruction* ctx)
-      : PopopsUnaryOp("rsqrt", ctx) {}
+      : PopopsUnaryOp(PoplibsOp::Rsqrt, ctx) {}
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PopopsRsqrtOp);
