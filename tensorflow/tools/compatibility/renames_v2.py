@@ -478,7 +478,6 @@ renames = {
     'tf.random_crop': 'tf.image.random_crop',
     'tf.random_gamma': 'tf.random.gamma',
     'tf.random_normal': 'tf.random.normal',
-    'tf.random_poisson': 'tf.compat.v1.random_poisson',
     'tf.random_shuffle': 'tf.random.shuffle',
     'tf.random_uniform': 'tf.random.uniform',
     'tf.read_file': 'tf.io.read_file',

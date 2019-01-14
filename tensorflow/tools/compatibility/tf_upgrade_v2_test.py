@@ -539,6 +539,15 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         )
     self.assertEqual(new_text, expected_text)
 
+  def testRandomPoissonConversion(self):
+    text1 = "tf.random_poisson(lam, shape, dtype)"
+    text2 = "tf.random.poisson(lam, shape, dtype)"
+    expected_text = "tf.random.poisson(lam=lam, shape=shape, dtype=dtype)"
+    _, unused_report, unused_errors, new_text1 = self._upgrade(text1)
+    self.assertEqual(new_text1, expected_text)
+    _, unused_report, unused_errors, new_text2 = self._upgrade(text2)
+    self.assertEqual(new_text2, expected_text)
+
   def testConvolutionOpUpdate(self):
     text = (
         "tf.nn.convolution(input, filter, padding, strides, dilation_rate, "
