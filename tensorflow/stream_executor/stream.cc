@@ -5678,4 +5678,13 @@ string Stream::DebugStreamPointers() const {
                       ",impl=", ToVlogString(implementation_.get()), "]");
 }
 
+void Stream::CheckStatus(port::Status status) {
+  if (status.ok()) {
+    return;
+  }
+  LOG(ERROR) << status;
+  mutex_lock lock(mu_);
+  ok_ = false;
+}
+
 }  // namespace stream_executor
