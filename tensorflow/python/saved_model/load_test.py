@@ -37,9 +37,9 @@ from tensorflow.python.training.checkpointable import tracking
 
 class LoadTest(test.TestCase):
 
-  def cycle(self, obj):
+  def cycle(self, obj, signatures=None):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-    save.save(obj, path, signatures={})
+    save.save(obj, path, signatures=signatures or {})
     return load.load(path)
 
   def test_structure_import(self):
@@ -150,6 +150,19 @@ class LoadTest(test.TestCase):
     root.f = func
 
     imported = self.cycle(root)
+    self.assertEqual(4., imported.f(constant_op.constant(2.0)).numpy())
+
+  def test_explicit_save_signature(self):
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    root = tracking.Checkpointable()
+    root.f = func
+
+    imported = self.cycle(
+        root, {"f": root.f.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.float32))})
     self.assertEqual(4., imported.f(constant_op.constant(2.0)).numpy())
 
   def test_nested_functions(self):
