@@ -162,7 +162,8 @@ class TRTEngineCacheResource : public tensorflow::ResourceBase {
   std::unique_ptr<TRTBaseAllocator> allocator_;
 
   // Declare cache after allocator so that it is destroyed before allocator is.
-  LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>, VectorTensorShapeHasher>
+  LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
+           VectorTensorShapeHasher>
       cache_;
 };
 
