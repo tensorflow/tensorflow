@@ -114,12 +114,12 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertTrue(report.find("Failed to parse") != -1)
 
   def testReport(self):
-    text = "tf.assert_near(a)\n"
+    text = "tf.angle(a)\n"
     _, report, unused_errors, unused_new_text = self._upgrade(text)
     # This is not a complete test, but it is a sanity test that a report
     # is generating information.
-    self.assertTrue(report.find("Renamed function `tf.assert_near` to "
-                                "`tf.debugging.assert_near`"))
+    self.assertTrue(report.find("Renamed function `tf.angle` to "
+                                "`tf.math.angle`"))
 
   def testRename(self):
     text = "tf.conj(a)\n"
@@ -936,6 +936,39 @@ def _log_prob(self, x):
           axis=-1)"""
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
+
+  def testAssertStatements(self):
+    for name in ["assert_greater", "assert_equal", "assert_none_equal",
+                 "assert_less", "assert_negative", "assert_positive",
+                 "assert_non_negative", "assert_non_positive", "assert_near",
+                 "assert_less", "assert_less_equal", "assert_greater",
+                 "assert_greater_equal", "assert_integer", "assert_type",
+                 "assert_scalar"]:
+      text = "tf.%s(a)" % name
+      expected_text = "tf.compat.v1.%s(a)" % name
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+      self.assertIn("assert_* functions", errors[0])
+
+      text = "tf.debugging.%s(a)" % name
+      expected_text = "tf.compat.v1.debugging.%s(a)" % name
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+      self.assertIn("assert_* functions", errors[0])
+
+  def testAssertRankStatements(self):
+    for name in ["assert_rank", "assert_rank_at_least", "assert_rank_in"]:
+      text = "tf.%s(a)" % name
+      expected_text = "tf.compat.v1.%s(a)" % name
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+      self.assertIn("assert_rank_* functions", errors[0])
+
+      text = "tf.debugging.%s(a)" % name
+      expected_text = "tf.compat.v1.debugging.%s(a)" % name
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+      self.assertIn("assert_rank_* functions", errors[0])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
