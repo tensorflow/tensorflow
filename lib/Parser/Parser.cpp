@@ -1102,6 +1102,8 @@ Attribute Parser::parseAttribute(Type type) {
       auto indicesEltType = builder.getIntegerType(32);
       auto indices =
           parseDenseElementsAttr(indicesEltType, type.isa<VectorType>());
+      if (!indices)
+        return nullptr;
 
       if (parseToken(Token::comma, "expected ','"))
         return nullptr;
