@@ -1058,9 +1058,9 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
         CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, device_).ValueOrDie();
     builder.set_thread_dim_limit(thread_dim_limit);
 
-    int clockRate = CUDADriver::GetDeviceAttribute(
+    int clock_rate = CUDADriver::GetDeviceAttribute(
         CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device_).ValueOrDie();
-    builder.set_clock_rate_ghz(static_cast<float>(clockRate) / 1e6);
+    builder.set_clock_rate_ghz(static_cast<float>(clock_rate) / 1e6);
   }
 
   {
