@@ -40,6 +40,9 @@ public:
   ~Block();
 
   void clear() {
+    // Drop all references from within this block.
+    dropAllReferences();
+
     // Clear instructions in the reverse order so that uses are destroyed
     // before their defs.
     while (!empty())
@@ -161,6 +164,11 @@ public:
     return const_cast<Block *>(this)->findAncestorInstInBlock(
         const_cast<Instruction *>(&inst));
   }
+
+  /// This drops all operand uses from instructions within this block, which is
+  /// an essential step in breaking cyclic dependences between references when
+  /// they are to be deleted.
+  void dropAllReferences();
 
   //===--------------------------------------------------------------------===//
   // Terminator management

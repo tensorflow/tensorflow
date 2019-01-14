@@ -87,6 +87,14 @@ Instruction *Block::findAncestorInstInBlock(Instruction *inst) {
   return currInst;
 }
 
+/// This drops all operand uses from instructions within this block, which is
+/// an essential step in breaking cyclic dependences between references when
+/// they are to be deleted.
+void Block::dropAllReferences() {
+  for (Instruction &i : *this)
+    i.dropAllReferences();
+}
+
 //===----------------------------------------------------------------------===//
 // Argument list management.
 //===----------------------------------------------------------------------===//

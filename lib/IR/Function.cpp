@@ -37,8 +37,7 @@ Function::~Function() {
   // Instructions may have cyclic references, which need to be dropped before we
   // can start deleting them.
   for (auto &bb : *this)
-    for (auto &inst : bb)
-      inst.dropAllReferences();
+    bb.dropAllReferences();
 
   // Clean up function attributes referring to this function.
   FunctionAttr::dropFunctionReference(this);
