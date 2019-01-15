@@ -40,7 +40,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-static const char* const kOptimizerName = "tf_data_meta_optimizer";
+constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -99,7 +99,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // prefix is used to identify checkpoint elements and since the
       // optimization dataset is excluded from the checkpoint, adding a token
       // here would result in invalid checkpoint identifiers.
-      return std::unique_ptr<IteratorBase>(new Iterator({this, prefix}));
+      return absl::make_unique<Iterator>(Iterator::Params{this, prefix});
     }
 
     Status Optimize(OpKernelContext* ctx) {
@@ -129,7 +129,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
 
       // Create a FunctionHandleCache.
-      function_handle_cache_.reset(new FunctionHandleCache(lib_));
+      function_handle_cache_ = absl::make_unique<FunctionHandleCache>(lib_);
 
       // Some functions may have been modified without having their names
       // changed (for example, nested dataset graphs from FlatMap or
@@ -301,7 +301,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       RewriterConfig& rewriter_config =
           *config.mutable_graph_options()->mutable_rewrite_options();
       rewriter_config.add_optimizers(kOptimizerName);
-
+      rewriter_config.set_meta_optimizer_iterations(
+          RewriterConfig_NumIterationsType_ONE);
       auto custom_optimizer = rewriter_config.add_custom_optimizers();
       custom_optimizer->set_name(kOptimizerName);
       auto* custom_optimizations_list =

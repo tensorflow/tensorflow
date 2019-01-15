@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +29,8 @@ namespace data {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
+
+constexpr char kDatasetName[] = "Prefetch";
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
@@ -43,7 +46,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return absl::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::Prefetch")});
+        Iterator::Params{this, strings::StrCat(prefix, "::", kDatasetName)});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -391,6 +394,10 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES(ctx,
               buffer_size >= 0 || buffer_size == PrefetchAutotuner::kAutoTune,
               errors::InvalidArgument("buffer_size must be >= 0"));
+
+  if (buffer_size == PrefetchAutotuner::kAutoTune) {
+    metrics::RecordTFDataAutotune(kDatasetName);
+  }
 
   *output = new Dataset(ctx, input, buffer_size);
 }

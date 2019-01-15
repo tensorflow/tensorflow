@@ -64,8 +64,10 @@ NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
 
 }  // namespace
 
-Status LatencyAllEdges::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output) {
+Status LatencyAllEdges::OptimizeAndCollectStats(Cluster* cluster,
+                                                const GrapplerItem& item,
+                                                GraphDef* output,
+                                                OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
 
@@ -96,6 +98,7 @@ Status LatencyAllEdges::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     NodeDef* latency_node = graph.AddNode(MakeLatencyNode(node, &graph));
     TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), latency_node->name()));
+    stats->num_changes++;
   }
   return Status::OK();
 }
@@ -107,5 +110,5 @@ void LatencyAllEdges::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(LatencyAllEdges, "latency_all_edges");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow
