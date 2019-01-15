@@ -93,6 +93,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -281,10 +282,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
-    AlgebraicSimplifierOptions options(
-        [](const Shape&, const Shape&) { return false; });
+    AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<AlgebraicSimplifier>(options);
+    pass.AddPass<SortSimplifier>();
     pass.AddPass<HloDCE>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
@@ -348,8 +349,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false);
-    AlgebraicSimplifierOptions options(
-        [](const Shape&, const Shape&) { return true; });
+    AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<HloPassFix<AlgebraicSimplifier>>(options);

@@ -25,6 +25,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -459,7 +460,8 @@ class PolymorphicFunction(object):
     for signature in self._cached_input_signatures:
       flattened = nest.flatten(signature)
       if any(
-          isinstance(arg, function_lib.UnknownArgument) for arg in flattened):
+          isinstance(arg, func_graph_module.UnknownArgument)
+          for arg in flattened):
         logging.info("Unsupported signature for serialization: %s.", signature)
         continue
       concrete_function = self.get_concrete_function(*signature)
@@ -482,7 +484,7 @@ class PolymorphicFunction(object):
     if self._stateless_fn:
       concrete_functions.extend(self._stateless_fn._function_cache.values())
     for concrete_function in concrete_functions:
-      signature = concrete_function._python_call_signature
+      signature, _ = concrete_function.structured_input_signature
       equal_to_signature = functools.partial(
           function_lib.is_same_structure, signature, check_values=True)
       if not any(equal_to_signature(s) for s in seen):

@@ -943,9 +943,10 @@ ENTRY main {
   return result;
 }
 
-INSTANTIATE_TEST_CASE_P(GatherLoopFusionTestInstantiation, GatherLoopFusionTest,
-                        ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
-                        GatherLoopFusionTestSpec::Name);
+INSTANTIATE_TEST_SUITE_P(GatherLoopFusionTestInstantiation,
+                         GatherLoopFusionTest,
+                         ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
+                         GatherLoopFusionTestSpec::Name);
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

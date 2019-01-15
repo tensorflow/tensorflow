@@ -1371,20 +1371,20 @@ TEST_P(HloParserTestLongProto, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShort, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShortProto, Run) { ExpectEqual(); }
 
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestLongProto,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestShortProto,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestLongProto,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestShortProto,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
 
 class HloParserTest : public ::testing::Test {
  protected:

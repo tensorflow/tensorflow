@@ -28,9 +28,9 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-static const char* kMapDataset = "MapDataset";
-static const char* kParallelMapDataset = "ParallelMapDataset";
-static constexpr int kAutotune = -1;
+constexpr char kMapDataset[] = "MapDataset";
+constexpr char kParallelMapDataset[] = "ParallelMapDataset";
+constexpr int kAutotune = -1;
 
 bool CanParallelize(const FunctionDef& function,
                     const FunctionLibraryDefinition& library) {
@@ -67,8 +67,10 @@ NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
 
 }  // namespace
 
-Status MapParallelization::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                    GraphDef* output) {
+Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
+                                                   const GrapplerItem& item,
+                                                   GraphDef* output,
+                                                   OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   std::set<string> nodes_to_delete;
@@ -92,6 +94,7 @@ Status MapParallelization::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(
         graph.UpdateFanouts(map_node->name(), parallel_map->name()));
     nodes_to_delete.insert(map_node->name());
+    stats->num_changes++;
   }
 
   graph.DeleteNodes(nodes_to_delete);
@@ -106,5 +109,5 @@ void MapParallelization::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapParallelization, "map_parallelization");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

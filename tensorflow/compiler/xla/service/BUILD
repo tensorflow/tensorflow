@@ -3468,6 +3468,34 @@ cc_library(
 )
 
 cc_library(
+    name = "sort_simplifier",
+    srcs = ["sort_simplifier.cc"],
+    hdrs = ["sort_simplifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "sort_simplifier_test",
+    srcs = ["sort_simplifier_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        ":sort_simplifier",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "tuple_util",
     srcs = ["tuple_util.cc"],
     hdrs = ["tuple_util.h"],
