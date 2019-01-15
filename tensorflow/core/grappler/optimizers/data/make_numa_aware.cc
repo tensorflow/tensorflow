@@ -37,8 +37,10 @@ NodeDef MakeNumaAwareNode(const NodeDef& node, MutableGraphView* graph) {
 
 }  // namespace
 
-Status MakeNumaAware::Optimize(Cluster* cluster, const GrapplerItem& item,
-                               GraphDef* output) {
+Status MakeNumaAware::OptimizeAndCollectStats(Cluster* cluster,
+                                              const GrapplerItem& item,
+                                              GraphDef* output,
+                                              OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   std::set<string> nodes_to_delete;
@@ -49,6 +51,7 @@ Status MakeNumaAware::Optimize(Cluster* cluster, const GrapplerItem& item,
     auto* numa_node = graph.AddNode(MakeNumaAwareNode(node, &graph));
     TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), numa_node->name()));
     nodes_to_delete.insert(node.name());
+    stats->num_changes++;
   }
   graph.DeleteNodes(nodes_to_delete);
   return Status::OK();

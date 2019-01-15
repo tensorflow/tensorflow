@@ -212,8 +212,10 @@ NodeDef MakeNewMapNode(const NodeDef& old_map_node,
 
 }  // namespace
 
-Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                  GraphDef* output) {
+Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
+                                                 const GrapplerItem& item,
+                                                 GraphDef* output,
+                                                 OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   std::set<string> nodes_to_delete;
@@ -270,6 +272,7 @@ Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());
     nodes_to_delete.insert(batch_node.name());
+    stats->num_changes++;
   }
   graph.DeleteNodes(nodes_to_delete);
   return Status::OK();
@@ -283,5 +286,5 @@ void MapVectorization::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapVectorization, "map_vectorization");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

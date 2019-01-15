@@ -13,30 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_MODEL_DATASET_OP_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_MODEL_DATASET_OP_H_
+#include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
-#include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 
 namespace tensorflow {
-namespace data {
+namespace grappler {
 
-class ModelDatasetOp : public UnaryDatasetOpKernel {
- public:
-  using ModelFactory = std::function<std::shared_ptr<model::Model>()>;
+Status TFDataOptimizerBase::Optimize(Cluster* cluster, const GrapplerItem& item,
+                                     GraphDef* output) {
+  OptimizationStats stats;
+  Status s = OptimizeAndCollectStats(cluster, item, output, &stats);
+  if (s.ok() && stats.num_changes > 0) {
+    metrics::RecordTFDataOptimization(name(), stats.num_changes);
+  }
+  return s;
+}
 
-  explicit ModelDatasetOp(OpKernelConstruction* ctx);
-
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override;
-
-  virtual ModelFactory CreateModelFactory() const;
-
- private:
-  class Dataset;
-};
-
-}  // namespace data
+}  // namespace grappler
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_MODEL_DATASET_OP_H_
