@@ -172,6 +172,7 @@ ArrayElementwiseOpTest.CompareNeC64s POPLAR
 TupleTest.ComplexTuples POPLAR
 DotOperationTest.MatrixVectorC64 POPLAR
 ConvertTest.ConvertC64ToC64 POPLAR
+ArrayElementwiseOpTest.PowC64s POPLAR
 
 ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
 
