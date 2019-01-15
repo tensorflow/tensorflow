@@ -221,8 +221,8 @@ tf_cuda_library(
     ],
     hdrs = [
         "resources/trt_int8_calibrator.h",
-        "resources/trt_resource_manager.h",
         "resources/trt_lru_cache.h",
+        "resources/trt_resource_manager.h",
         "resources/trt_resources.h",
     ],
     deps = [
@@ -568,7 +568,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:framework"
+        "//tensorflow/core:framework",
     ],
 )
 
