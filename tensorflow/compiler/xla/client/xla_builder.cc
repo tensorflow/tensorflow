@@ -2575,8 +2575,10 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
       *const_instr.mutable_shape() = literal.shape().ToProto();
       *const_instr.mutable_literal() = literal.ToProto();
       *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
-      *const_instr.mutable_name() = HloOpcodeString(HloOpcode::kConstant);
+
       const_instr.set_id(handle);
+      *const_instr.mutable_name() =
+          GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
       *entry.add_instructions() =
           const_instr;  // Add to the result constant graph.
     } else {

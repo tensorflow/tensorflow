@@ -1023,11 +1023,11 @@ class Model(Network):
     # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(x):
       training_utils.check_generator_arguments(y, sample_weight)
-      # TODO(fchollet): why aren't callbacks supported here?
       return self.evaluate_generator(
           x,
           steps=steps,
           verbose=verbose,
+          callbacks=callbacks,
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing)
@@ -1146,11 +1146,11 @@ class Model(Network):
     # Case 2: generator-like. Input is Python generator, or Sequence object,
     # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(x):
-      # TODO(fchollet): why aren't callbacks supported here?
       return self.predict_generator(
           x,
           steps=steps,
           verbose=verbose,
+          callbacks=callbacks,
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing)

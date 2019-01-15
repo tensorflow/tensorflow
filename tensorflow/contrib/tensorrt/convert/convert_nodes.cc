@@ -1725,6 +1725,13 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
         "Unsupported binary op broadcast scheme for op ", node_def.name(), ": ",
         status.error_message());
   }
+  TFAttrs attrs(node_def);
+  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
+  if (dtype == nvinfer1::DataType::kINT32) {
+    return errors::Unimplemented("Binary op ", node_def.op(),
+                                 " does not support INT32, at ",
+                                 node_def.name());
+  }
   if (params->validation_only) return Status::OK();
 
   const nvinfer1::ITensor* tensor_l = nullptr;
@@ -1741,8 +1748,6 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
   }
 
   // Check type consistency.
-  TFAttrs attrs(node_def);
-  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
   TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
       << DebugString(tensor_l->getType()) << " vs " << DebugString(dtype);
   TFTRT_CHECK_EQ_TYPE(tensor_r->getType(), dtype)
@@ -2597,12 +2602,18 @@ tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
     return errors::InvalidArgument("Input expects tensor and weights, at ",
                                    node_def.name());
   }
+  TFAttrs attrs(node_def);
+  tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
+  if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
+    return errors::Unimplemented("Data type is not supported, for node ",
+                                 node_def.name(), " got ",
+                                 DataTypeString(tf_dtype));
+  }
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ITensor* tensor =
       const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
   const nvinfer1::Dims original_dims = tensor->getDimensions();
-  TFAttrs attrs(node_def);
   const string data_format = attrs.get<string>("data_format");
   const int channel_index =
       (data_format == "NHWC" ? original_dims.nbDims - 1 : 0);
@@ -3449,7 +3460,6 @@ tensorflow::Status ConvertMatMul(OpConverterParams* params) {
   }
 
   TFAttrs attrs(node_def);
-  // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
     return errors::Unimplemented("Data type is not supported, for node ",
@@ -3475,7 +3485,6 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TFAttrs attrs(node_def);
 
-  // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != tensorflow::DataType::DT_FLOAT &&
       tf_dtype != tensorflow::DataType::DT_HALF) {
@@ -3597,6 +3606,9 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
 
   nvinfer1::ITensor* output_value_tensor = layer->getOutput(0);
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
+  // Tensor type for network output is not inferred. Indices should be INT32
+  // (default is float).
+  output_indices_tensor->setType(nvinfer1::DataType::kINT32);
   params->outputs->push_back(TRT_TensorOrWeights(output_value_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_indices_tensor));
   return tensorflow::Status::OK();
@@ -3843,8 +3855,10 @@ tensorflow::Status ConvertSegmentToGraphDef(
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
       tensorflow::NodeDefBuilder builder(node_name, "Identity");
-      auto status = builder.Input(connection.inside_node_name, 0, dtype)
-                        .Finalize(seg_node);
+      auto status =
+          builder
+              .Input(connection.inside_node_name, connection.inside_port, dtype)
+              .Finalize(seg_node);
       VLOG(1) << "Constructing output " << node_name << " for the edge "
               << connection.inside_node_name << ":" << connection.inside_port
               << " -> " << connection.outside_node_name << ":"

@@ -44,8 +44,8 @@ void CostAnalyzer::PredictCosts(CostEstimator* cost_estimator,
   TF_CHECK_OK(cost_estimator->Initialize(*item_));
   RunMetadata run_metadata;
   Costs costs;
-  const Status status = cost_estimator->PredictCostsAndReturnRunMetadata(
-      item_->graph, &run_metadata, &costs);
+  const Status status =
+      cost_estimator->PredictCosts(item_->graph, &run_metadata, &costs);
   if (cost_graph) {
     cost_graph->Swap(run_metadata.mutable_cost_graph());
   }

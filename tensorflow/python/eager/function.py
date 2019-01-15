@@ -845,7 +845,7 @@ def convert_structure_to_signature(structure):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
-    if isinstance(arg, (int, float, bool)):
+    if isinstance(arg, (int, float, bool, tensor_spec.TensorSpec)):
       return arg
     return UnknownArgument()
 

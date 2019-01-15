@@ -22,7 +22,6 @@ from tensorflow.python.eager import function as defun_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
-from tensorflow.python.util import nest
 
 
 def _serialize_function_spec(function_spec, coder):
@@ -47,7 +46,9 @@ def serialize_function(function, node_ids):
   function_spec_proto = _serialize_function_spec(
       function.function_spec, coder)
   proto.function_spec.CopyFrom(function_spec_proto)
-  for signature, concrete_function in list_all_concrete_functions(function):
+  all_concrete_functions = \
+      function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+  for signature, concrete_function in all_concrete_functions:
     bound_inputs = []
     try:
       for capture in concrete_function.captured_inputs:
@@ -69,27 +70,3 @@ def serialize_function(function, node_ids):
         coder.encode_structure(structured_outputs))
     function_proto.bound_inputs.extend(bound_inputs)
   return proto
-
-
-def list_all_concrete_functions(function):
-  """Given a `Function`, returns all of its concrete functions.
-
-  Args:
-    function: Instance of `Function`.
-
-  Returns:
-    A list of tuples in the form (signature, concrete_function), where
-    `concrete_function` is an instance of `ConcreteFunction`.
-  """
-  input_signature = function._input_signature  # pylint: disable=protected-access
-  if input_signature is not None:
-    function.get_concrete_function()
-  concrete_functions = []
-  for signature in function._cached_input_signatures:  # pylint: disable=protected-access
-    flattened = nest.flatten(signature)
-    if any(isinstance(arg, defun_lib.UnknownArgument) for arg in flattened):
-      logging.info("Unsupported signature for serialization: %s.", signature)
-      continue
-    concrete_function = function.get_concrete_function(*signature)
-    concrete_functions.append((signature, concrete_function))
-  return concrete_functions

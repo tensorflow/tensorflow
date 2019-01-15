@@ -84,7 +84,7 @@ class _SaveableView(object):
         #  input_signature and have not been called.
         #  - force side effects of creation of concrete functions, e.g. create
         #  variables on first run.
-        function_serialization.list_all_concrete_functions(function)
+        function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
 
   @property
   def root(self):
@@ -555,7 +555,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   for obj in accessible_objects:
     for function in saveable_view.functions[obj].values():
       concrete_functions.extend(
-          function_serialization.list_all_concrete_functions(function))
+          function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
 
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)

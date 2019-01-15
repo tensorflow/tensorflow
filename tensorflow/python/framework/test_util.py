@@ -885,8 +885,7 @@ def generate_combinations_with_testcase_name(**kwargs):
 def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
-  for name in dir(cls):
-    value = getattr(cls, name)
+  for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith(
         unittest.TestLoader.testMethodPrefix) and not (
             name.startswith("testSkipEager") or
@@ -1467,6 +1466,18 @@ def disable_all_xla(description):
   return disable_all_impl
 
 
+class EagerSessionWarner(object):
+
+  def __getattr__(self, attr):
+    raise AttributeError(
+        "Trying to access properties or call methods on the result of "
+        "self.session(), self.cached_session(), etc while eager execution "
+        "is enabled. If you're porting this test case to TF 2.0, either "
+        "adapt the test to work with eager execution or insert a call to "
+        "tf.disable_eager_execution() in the main() function of this test "
+        "file.")
+
+
 @tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow."""
@@ -1715,7 +1726,7 @@ class TensorFlowTestCase(googletest.TestCase):
       the graph building and execution code in a test case.
     """
     if context.executing_eagerly():
-      yield None
+      yield EagerSessionWarner()
     else:
       with self._create_session(graph, config, force_gpu) as sess:
         with self._constrain_devices_and_set_default(sess, use_gpu, force_gpu):

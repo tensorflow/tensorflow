@@ -25,6 +25,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ptr_util",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -48,6 +49,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -212,6 +214,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -248,6 +251,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -266,6 +270,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -297,6 +302,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -333,6 +339,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -370,6 +377,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -409,6 +417,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -438,15 +447,14 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -486,6 +494,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -521,6 +530,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -555,6 +565,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 tf_cc_test(
