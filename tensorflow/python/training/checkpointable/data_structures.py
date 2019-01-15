@@ -304,6 +304,9 @@ class List(CheckpointableDataStructure, collections.Sequence):
   def __getitem__(self, key):
     return self._storage[key]
 
+  def __getslice__(self, i, j):
+    return self._storage[slice(i, j)]
+
   def __len__(self):
     return len(self._storage)
 

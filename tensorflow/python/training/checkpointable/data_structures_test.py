@@ -271,6 +271,12 @@ class ListTests(test.TestCase):
     with self.assertRaises(TypeError):
       has_sequences.add(data_structures._ListWrapper([]))
 
+  def testSlicing(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    self.assertEqual(l[1:], [2, 3, 4])
+    self.assertEqual(l[1:-1], [2, 3])
+    self.assertEqual(l[:-1], [1, 2, 3])
+
 
 class HasMapping(training.Model):
 
