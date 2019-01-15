@@ -31,6 +31,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 
 
 def parse_branch_ref(filename):
@@ -137,6 +138,20 @@ def configure(src_base_path, gen_path, debug=False):
     print("gen_git_source.py: %s" + repr(os.listdir(gen_path)))
     print("gen_git_source.py: spec is %r" % spec)
 
+def as_bytes(s):
+  """Interpret s as bytes and if it is a string encode it as utf-8.
+
+  This handles python 2.7 and python 3.x
+
+  Args:
+    s: s of type string to convert
+  Returns:
+    A bytes object.
+  """
+  if sys.version_info.major <= 2:
+    return bytes(s)
+  else:  # python 3
+    return bytes(s, "utf-8")
 
 def get_git_version(git_base_path, git_tag_override):
   """Get the git version from the repository.
@@ -175,7 +190,7 @@ def get_git_version(git_base_path, git_tag_override):
       # two "-" are those inserted by the git describe command.
       abbrev_commit = split_val[-1]
       val = version_separator.join(
-          [bytes(git_tag_override, "utf-8"), b"0", abbrev_commit])
+          [as_bytes(git_tag_override), b"0", abbrev_commit])
     return val if val else unknown_label
   except (subprocess.CalledProcessError, OSError):
     return unknown_label
