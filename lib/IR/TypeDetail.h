@@ -45,11 +45,10 @@ struct UnknownTypeStorage : public TypeStorage {
   KeyTy getKey() const { return std::make_pair(dialectNamespace, typeData); }
 
   static UnknownTypeStorage *construct(TypeStorageAllocator &allocator,
-                                       Identifier dialectName,
-                                       StringRef tyData) {
-    auto *instance = allocator.allocate<UnknownTypeStorage>();
-    tyData = allocator.copyInto(tyData);
-    return new (instance) UnknownTypeStorage(dialectName, tyData);
+                                       const KeyTy &key) {
+    StringRef tyData = allocator.copyInto(key.second);
+    return new (allocator.allocate<UnknownTypeStorage>())
+        UnknownTypeStorage(key.first, tyData);
   }
 
   // The unknown dialect namespace.
@@ -70,9 +69,9 @@ struct IntegerTypeStorage : public TypeStorage {
   KeyTy getKey() const { return width; }
 
   static IntegerTypeStorage *construct(TypeStorageAllocator &allocator,
-                                       unsigned bitwidth) {
-    auto *instance = allocator.allocate<IntegerTypeStorage>();
-    return new (instance) IntegerTypeStorage(bitwidth);
+                                       KeyTy bitwidth) {
+    return new (allocator.allocate<IntegerTypeStorage>())
+        IntegerTypeStorage(bitwidth);
   }
 
   unsigned width;
@@ -93,9 +92,9 @@ struct FunctionTypeStorage : public TypeStorage {
 
   /// Construction.
   static FunctionTypeStorage *construct(TypeStorageAllocator &allocator,
-                                        ArrayRef<Type> inputs,
-                                        ArrayRef<Type> results) {
-    auto *result = allocator.allocate<FunctionTypeStorage>();
+                                        const KeyTy &key) {
+    ArrayRef<Type> inputs, results;
+    std::tie(inputs, results) = key;
 
     // Copy the inputs and results into the bump pointer.
     SmallVector<Type, 16> types;
@@ -105,9 +104,8 @@ struct FunctionTypeStorage : public TypeStorage {
     auto typesList = allocator.copyInto(ArrayRef<Type>(types));
 
     // Initialize the memory using placement new.
-    return new (result) FunctionTypeStorage(
-        static_cast<unsigned int>(inputs.size()),
-        static_cast<unsigned int>(results.size()), typesList.data());
+    return new (allocator.allocate<FunctionTypeStorage>())
+        FunctionTypeStorage(inputs.size(), results.size(), typesList.data());
   }
 
   ArrayRef<Type> getInputs() const {
@@ -150,15 +148,13 @@ struct VectorTypeStorage : public VectorOrTensorTypeStorage {
 
   /// Construction.
   static VectorTypeStorage *construct(TypeStorageAllocator &allocator,
-                                      ArrayRef<int> shape, Type elementTy) {
-    auto *result = allocator.allocate<VectorTypeStorage>();
-
+                                      const KeyTy &key) {
     // Copy the shape into the bump pointer.
-    shape = allocator.copyInto(shape);
+    ArrayRef<int> shape = allocator.copyInto(key.first);
 
     // Initialize the memory using placement new.
-    return new (result) VectorTypeStorage(
-        static_cast<unsigned int>(shape.size()), elementTy, shape.data());
+    return new (allocator.allocate<VectorTypeStorage>())
+        VectorTypeStorage(shape.size(), key.second, shape.data());
   }
 
   ArrayRef<int> getShape() const {
@@ -182,16 +178,13 @@ struct RankedTensorTypeStorage : public VectorOrTensorTypeStorage {
 
   /// Construction.
   static RankedTensorTypeStorage *construct(TypeStorageAllocator &allocator,
-                                            ArrayRef<int> shape,
-                                            Type elementTy) {
-    auto *result = allocator.allocate<RankedTensorTypeStorage>();
-
+                                            const KeyTy &key) {
     // Copy the shape into the bump pointer.
-    shape = allocator.copyInto(shape);
+    ArrayRef<int> shape = allocator.copyInto(key.first);
 
     // Initialize the memory using placement new.
-    return new (result) RankedTensorTypeStorage(
-        static_cast<unsigned int>(shape.size()), elementTy, shape.data());
+    return new (allocator.allocate<RankedTensorTypeStorage>())
+        RankedTensorTypeStorage(shape.size(), key.second, shape.data());
   }
 
   ArrayRef<int> getShape() const {
@@ -233,22 +226,19 @@ struct MemRefTypeStorage : public TypeStorage {
 
   /// Construction.
   static MemRefTypeStorage *construct(TypeStorageAllocator &allocator,
-                                      ArrayRef<int> shape, Type elementType,
-                                      ArrayRef<AffineMap> affineMapComposition,
-                                      unsigned memorySpace) {
-    auto *result = allocator.allocate<MemRefTypeStorage>();
-
+                                      const KeyTy &key) {
     // Copy the shape into the bump pointer.
-    shape = allocator.copyInto(shape);
+    ArrayRef<int> shape = allocator.copyInto(std::get<0>(key));
 
     // Copy the affine map composition into the bump pointer.
-    affineMapComposition = allocator.copyInto(affineMapComposition);
+    ArrayRef<AffineMap> affineMapComposition =
+        allocator.copyInto(std::get<2>(key));
 
     // Initialize the memory using placement new.
-    return new (result) MemRefTypeStorage(
-        static_cast<unsigned int>(shape.size()), elementType, shape.data(),
-        static_cast<unsigned int>(affineMapComposition.size()),
-        affineMapComposition.data(), memorySpace);
+    return new (allocator.allocate<MemRefTypeStorage>())
+        MemRefTypeStorage(shape.size(), std::get<1>(key), shape.data(),
+                          affineMapComposition.size(),
+                          affineMapComposition.data(), std::get<3>(key));
   }
 
   ArrayRef<int> getShape() const {

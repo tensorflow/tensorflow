@@ -88,10 +88,10 @@ struct UnknownTypeStorage;
 ///      from an existing storage instance.
 ///
 ///    - Provide a construction method:
-///        'DerivedStorage *construct(TypeStorageAllocator &, ...)'
-///      that builds a unique instance of the derived storage. The arguments
-///      after the TypeStorageAllocator must correspond with the values passed
-///      into the detail::TypeUniquer::get call after the type kind.
+///        'DerivedStorage *construct(TypeStorageAllocator &, const KeyTy &key)'
+///      that builds a unique instance of the derived storage. The arguments to
+///      this function are an allocator to store any uniqued data within the
+///      context and the key type for this storage.
 class Type {
 public:
   /// Integer identifier for all the concrete type kinds.

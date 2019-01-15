@@ -189,7 +189,7 @@ public:
     // Otherwise, construct and initialize the derived storage for this type
     // instance.
     TypeStorageAllocator allocator(ctx);
-    storage = ImplType::construct(allocator, args...);
+    storage = ImplType::construct(allocator, derivedKey);
     storage->initializeTypeInfo(dialect, kind);
 
     // Insert the new type storage instance into the context.
