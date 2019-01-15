@@ -43,7 +43,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "extract_feature_op_test",
     size = "small",
     srcs = ["ops/extract_feature_test.cc"],
