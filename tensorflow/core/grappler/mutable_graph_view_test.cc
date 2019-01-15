@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/mutable_graph_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -44,7 +45,7 @@ TEST(MutableGraphViewTest, AddAndUpdateFanouts) {
   NodeDef* new_bar = graph.AddNode(NDef("new_bar", "NotImportant", {}, {}));
   NodeDef* bar = graph.GetNode("bar");
 
-  EXPECT_TRUE(graph.UpdateFanouts(bar->name(), new_bar->name()));
+  EXPECT_TRUE(graph.UpdateFanouts(bar->name(), new_bar->name()).ok());
 
   // Fanout nodes must have their inputs updated.
   NodeDef* foo_1 = graph.GetNode("foo_1");
@@ -93,7 +94,7 @@ TEST(MutableGraphViewTest, AddAndUpdateFanoutsKeepControls) {
   NodeDef* new_bar = graph.AddNode(NDef("new_bar", "Identity", {"bar_1:2"}));
   NodeDef* bar_2 = graph.GetNode("bar_2");
 
-  EXPECT_TRUE(graph.UpdateFanouts(bar_2->name(), new_bar->name()));
+  EXPECT_TRUE(graph.UpdateFanouts(bar_2->name(), new_bar->name()).ok());
 
   // Fanout nodes must have their inputs updated.
   NodeDef* foo_1 = graph.GetNode("foo_1");
@@ -138,7 +139,7 @@ TEST(MutableGraphViewTest, AddAndUpdateFanoutsWithoutSelfLoops) {
   NodeDef* new_bar = graph.AddNode(NDef("new_bar", "NewBar", {"bar"}, {}));
   NodeDef* bar = graph.GetNode("bar");
 
-  EXPECT_TRUE(graph.UpdateFanouts("bar", new_bar->name()));
+  EXPECT_TRUE(graph.UpdateFanouts("bar", new_bar->name()).ok());
 
   // Foo node must read from `new_bar`.
   NodeDef* foo_1 = graph.GetNode("foo_1");
@@ -197,8 +198,18 @@ TEST(MutableGraphViewTest, UpdateFanoutsToSwitchWithControlFromSwitch) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_FALSE(graph.UpdateFanouts("a", "b"));
-  EXPECT_FALSE(graph.UpdateFanouts("d", "b"));
+  Status s = graph.UpdateFanouts("a", "b");
+  EXPECT_FALSE(s.ok());
+  string expected_msg =
+      "Can't update fanouts from 'a' to 'b', to node is being added as a "
+      "Switch control dependency.";
+  EXPECT_EQ(s.error_message(), expected_msg);
+  s = graph.UpdateFanouts("d", "b");
+  EXPECT_FALSE(s.ok());
+  expected_msg =
+      "Can't update fanouts from 'd' to 'b', to node is being added as a "
+      "Switch control dependency.";
+  EXPECT_EQ(s.error_message(), expected_msg);
 
   EXPECT_EQ(graph.graph()->node_size(), 5);
 
@@ -234,7 +245,7 @@ TEST(MutableGraphViewTest, UpdateFanoutsToSwitchWithNoControlFromSwitch) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.UpdateFanouts("c", "b"));
+  EXPECT_TRUE(graph.UpdateFanouts("c", "b").ok());
 
   EXPECT_EQ(graph.graph()->node_size(), 5);
 
@@ -277,7 +288,8 @@ GraphDef SimpleMutateFaninGraph() {
 }
 
 void TestAddRegularFanin(absl::string_view node_name,
-                         const TensorId& fanin_to_add, bool modified,
+                         const TensorId& fanin_to_add, bool success,
+                         const string& error_msg,
                          const NodeDef* expected_node) {
   GraphDef graph_def = SimpleMutateFaninGraph();
 
@@ -290,7 +302,11 @@ void TestAddRegularFanin(absl::string_view node_name,
     EXPECT_NE(node, nullptr);
   }
 
-  EXPECT_EQ(modified, graph.AddRegularFanin(node_name, fanin_to_add));
+  Status s = graph.AddRegularFanin(node_name, fanin_to_add);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
   if (expected_node != nullptr) {
     CompareNodeInputs(graph, expected_node, node);
   }
@@ -298,63 +314,98 @@ void TestAddRegularFanin(absl::string_view node_name,
 
 TEST(MutableGraphViewTest, AddRegularFanin) {
   NodeDef expected_node;
+  string error_msg;
   // Add input to node with 1 input 0 controls.
   expected_node = NDef("", "", {"a", "b:1"});
-  TestAddRegularFanin("foo_1", {"b", 1}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_1", {"b", 1}, /*success=*/true, error_msg,
+                      &expected_node);
   // Add input to node with multiple inputs and 0 controls.
   expected_node = NDef("", "", {"b", "a:1", "a:1", "b:2"});
-  TestAddRegularFanin("foo_3", {"b", 2}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_3", {"b", 2}, /*success=*/true, error_msg,
+                      &expected_node);
   // Add input to node with 1 input multiple controls.
   expected_node = NDef("", "", {"b", "a", "^c"});
-  TestAddRegularFanin("foo_2", {"a", 0}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_2", {"a", 0}, /*success=*/true, error_msg,
+                      &expected_node);
   // Add input to node with multiple inputs and controls.
   expected_node = NDef("", "", {"a", "b:2", "b:2", "a:1", "^d", "^c"});
-  TestAddRegularFanin("foo_4", {"a", 1}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_4", {"a", 1}, /*success=*/true, error_msg,
+                      &expected_node);
   // Add input to node with 0 inputs 0 controls.
   expected_node = NDef("", "", {"a:1"});
-  TestAddRegularFanin("foo_5", {"a", 1}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_5", {"a", 1}, /*success=*/true, error_msg,
+                      &expected_node);
   // Add input to node with 0 inputs multiple controls.
   expected_node = NDef("", "", {"c:1", "^b", "^a"});
-  TestAddRegularFanin("foo_6", {"c", 1}, /*modified=*/true, &expected_node);
+  TestAddRegularFanin("foo_6", {"c", 1}, /*success=*/true, error_msg,
+                      &expected_node);
 
   // Add control to node with 1 input 0 controls.
   expected_node = NDef("", "", {"a"});
-  TestAddRegularFanin("foo_1", {"b", Graph::kControlSlot}, /*modified=*/false,
-                      &expected_node);
+  error_msg = "Can't add invalid fanin '^b' as regular fanin to node 'foo_1'.";
+  TestAddRegularFanin("foo_1", {"b", Graph::kControlSlot}, /*success=*/false,
+                      error_msg, &expected_node);
   // Add control to node with multiple inputs and 0 controls.
   expected_node = NDef("", "", {"b", "a:1", "a:1"});
-  TestAddRegularFanin("foo_3", {"c", Graph::kControlSlot}, /*modified=*/false,
-                      &expected_node);
+  error_msg = "Can't add invalid fanin '^c' as regular fanin to node 'foo_3'.";
+  TestAddRegularFanin("foo_3", {"c", Graph::kControlSlot}, /*success=*/false,
+                      error_msg, &expected_node);
   // Add control to node with 1 input multiple controls.
   expected_node = NDef("", "", {"b", "^a", "^c"});
-  TestAddRegularFanin("foo_2", {"d", Graph::kControlSlot}, /*modified=*/false,
-                      &expected_node);
+  error_msg = "Can't add invalid fanin '^d' as regular fanin to node 'foo_2'.";
+  TestAddRegularFanin("foo_2", {"d", Graph::kControlSlot}, /*success=*/false,
+                      error_msg, &expected_node);
   // Add control to node with multiple input multiple controls.
   expected_node = NDef("", "", {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg = "Can't add invalid fanin '^a' as regular fanin to node 'foo_4'.";
   TestAddRegularFanin("foo_4", {"a", Graph::kControlSlot},
-                      /*modified=*/false, &expected_node);
+                      /*success=*/false, error_msg, &expected_node);
   // Add control to node with 0 inputs 0 controls.
   expected_node = NDef("", "", {});
-  TestAddRegularFanin("foo_5", {"a", Graph::kControlSlot}, /*modified=*/false,
-                      &expected_node);
+  error_msg = "Can't add invalid fanin '^a' as regular fanin to node 'foo_5'.";
+  TestAddRegularFanin("foo_5", {"a", Graph::kControlSlot}, /*success=*/false,
+                      error_msg, &expected_node);
   // Add control to node with 0 inputs multiple controls.
   expected_node = NDef("", "", {"^a", "^b"});
-  TestAddRegularFanin("foo_6", {"c", Graph::kControlSlot}, /*modified=*/false,
-                      &expected_node);
+  error_msg = "Can't add invalid fanin '^c' as regular fanin to node 'foo_6'.";
+  TestAddRegularFanin("foo_6", {"c", Graph::kControlSlot}, /*success=*/false,
+                      error_msg, &expected_node);
   // Add control to node with control that already exists.
   expected_node = NDef("", "", {"b", "^a", "^c"});
+  error_msg = "Can't add invalid fanin '^a' as regular fanin to node 'foo_2'.";
   TestAddRegularFanin("foo_2", {"a", Graph::kControlSlot},
-                      /*modified=*/false, &expected_node);
+                      /*success=*/false, error_msg, &expected_node);
 
   // Add fanin to node where node is missing.
-  TestAddRegularFanin("foo_missing", {"a", 0}, /*modified=*/false, nullptr);
+  error_msg =
+      "Can't add fanin 'a:0' as regular fanin to missing node 'foo_missing'.";
+  TestAddRegularFanin("foo_missing", {"a", 0}, /*success=*/false, error_msg,
+                      nullptr);
   // Add fanin to node where fanin is missing.
   expected_node = NDef("", "", {"a"});
-  TestAddRegularFanin("foo_1", {"bar_missing", 0}, /*modified=*/false,
+  error_msg =
+      "Can't add missing fanin 'bar_missing:0' as regular fanin to node "
+      "'foo_1'.";
+  TestAddRegularFanin("foo_1", {"bar_missing", 0}, /*success=*/false, error_msg,
                       &expected_node);
   // Add fanin to node where node and fanin are missing.
-  TestAddRegularFanin("foo_missing", {"bar_missing", 0}, /*modified=*/false,
-                      /*expected_node=*/nullptr);
+  error_msg =
+      "Can't add missing fanin 'bar_missing:0' as regular fanin to missing "
+      "node 'foo_missing'.";
+  TestAddRegularFanin("foo_missing", {"bar_missing", 0}, /*success=*/false,
+                      error_msg, /*expected_node=*/nullptr);
+  // Add control fanin to node where node and fanin are missing.
+  error_msg =
+      "Can't add invalid/missing fanin '^bar_missing' as regular fanin to "
+      "missing node 'foo_missing'.";
+  TestAddRegularFanin("foo_missing", {"bar_missing", Graph::kControlSlot},
+                      /*success=*/false, error_msg, /*expected_node=*/nullptr);
+
+  // Add self to create cycle.
+  error_msg = "Can't add fanin 'foo_6:2' as regular fanin to self.";
+  expected_node = NDef("", "", {"^a", "^b"});
+  TestAddRegularFanin("foo_6", {"foo_6", 2}, /*success=*/false, error_msg,
+                      &expected_node);
 }
 
 void CheckFanout(const MutableGraphView& graph, const TensorId& fanin,
@@ -368,7 +419,8 @@ void CheckFanout(const MutableGraphView& graph, const TensorId& fanin,
 }
 
 void TestRemoveRegularFanin(absl::string_view node_name,
-                            const TensorId& fanin_to_remove, bool modified,
+                            const TensorId& fanin_to_remove, bool success,
+                            const string& error_msg,
                             const NodeDef* expected_node) {
   GraphDef graph_def = SimpleMutateFaninGraph();
 
@@ -381,10 +433,14 @@ void TestRemoveRegularFanin(absl::string_view node_name,
     EXPECT_NE(nullptr, node);
   }
 
-  EXPECT_EQ(modified, graph.RemoveRegularFanin(node_name, fanin_to_remove));
+  Status s = graph.RemoveRegularFanin(node_name, fanin_to_remove);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
   if (expected_node != nullptr) {
     CompareNodeInputs(graph, expected_node, node);
-    if (modified) {
+    if (success) {
       CheckFanout(graph, fanin_to_remove, node_name);
     }
   }
@@ -392,70 +448,115 @@ void TestRemoveRegularFanin(absl::string_view node_name,
 
 TEST(MutableGraphViewTest, RemoveRegularFanin) {
   NodeDef expected_node;
+  string error_msg;
   // Remove input from node with 1 input 0 controls.
   expected_node = NDef("", "", {});
-  TestRemoveRegularFanin("foo_1", {"a", 0}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_1", {"a", 0}, /*success=*/true, error_msg,
+                         &expected_node);
   // Remove input from node with multiple inputs and 0 controls.
   expected_node = NDef("", "", {"b"});
-  TestRemoveRegularFanin("foo_3", {"a", 1}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_3", {"a", 1}, /*success=*/true, error_msg,
+                         &expected_node);
   // Remove input from node with 1 input multiple controls.
   expected_node = NDef("", "", {"^a", "^c"});
-  TestRemoveRegularFanin("foo_2", {"b", 0}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_2", {"b", 0}, /*success=*/true, error_msg,
+                         &expected_node);
   // Remove input from node with multiple inputs and controls.
   expected_node = NDef("", "", {"a", "^c", "^d"});
-  TestRemoveRegularFanin("foo_4", {"b", 2}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_4", {"b", 2}, /*success=*/true, error_msg,
+                         &expected_node);
   // Remove input from node with multiple inputs and controls, and results in
   // shifting of ports.
   expected_node = NDef("", "", {"b:2", "b:2", "^c", "^d"});
-  TestRemoveRegularFanin("foo_4", {"a", 0}, /*modified=*/true, &expected_node);
+  TestRemoveRegularFanin("foo_4", {"a", 0}, /*success=*/true, error_msg,
+                         &expected_node);
 
   // Remove control from node with 1 input multiple controls.
   expected_node = NDef("", "", {"b", "^a", "^c"});
+  error_msg =
+      "Can't remove invalid fanin '^a' as regular fanin from node 'foo_2'.";
   TestRemoveRegularFanin("foo_2", {"a", Graph::kControlSlot},
-                         /*modified=*/false, &expected_node);
+                         /*success=*/false, error_msg, &expected_node);
   // Remove control from node with multiple input multiple controls.
   expected_node = NDef("", "", {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "Can't remove invalid fanin '^d' as regular fanin from node 'foo_4'.";
   TestRemoveRegularFanin("foo_4", {"d", Graph::kControlSlot},
-                         /*modified=*/false, &expected_node);
+                         /*success=*/false, error_msg, &expected_node);
   // Remove control from node with 0 inputs multiple controls.
   expected_node = NDef("", "", {"^a", "^b"});
+  error_msg =
+      "Can't remove invalid fanin '^a' as regular fanin from node 'foo_6'.";
   TestRemoveRegularFanin("foo_6", {"a", Graph::kControlSlot},
-                         /*modified=*/false, &expected_node);
+                         /*success=*/false, error_msg, &expected_node);
 
   // Remove input from node with 0 inputs 0 controls.
   expected_node = NDef("", "", {});
-  TestRemoveRegularFanin("foo_5", {"a", 1}, /*modified=*/false, &expected_node);
+  error_msg = "";
+  TestRemoveRegularFanin("foo_5", {"a", 1}, /*success=*/true, error_msg,
+                         &expected_node);
   // Remove input from node with 0 inputs multiple controls.
   expected_node = NDef("", "", {"^a", "^b"});
-  TestRemoveRegularFanin("foo_6", {"a", 1}, /*modified=*/false, &expected_node);
+  TestRemoveRegularFanin("foo_6", {"a", 1}, /*success=*/true, error_msg,
+                         &expected_node);
 
   // Remove control from node with 1 input 0 controls.
   expected_node = NDef("", "", {"a"});
+  error_msg =
+      "Can't remove invalid fanin '^b' as regular fanin from node 'foo_1'.";
   TestRemoveRegularFanin("foo_1", {"b", Graph::kControlSlot},
-                         /*modified=*/false, &expected_node);
+                         /*success=*/false, error_msg, &expected_node);
   // Remove control from node with multiple inputs and 0 controls.
   expected_node = NDef("", "", {"b", "a:1", "a:1"});
+  error_msg =
+      "Can't remove invalid fanin '^c' as regular fanin from node 'foo_3'.";
   TestRemoveRegularFanin("foo_3", {"c", Graph::kControlSlot},
-                         /*modified=*/false, &expected_node);
+                         /*success=*/false, error_msg, &expected_node);
   // Remove control from node with 0 inputs 0 controls.
   expected_node = NDef("", "", {});
+  error_msg =
+      "Can't remove invalid fanin '^a' as regular fanin from node 'foo_5'.";
   TestRemoveRegularFanin("foo_5", {"a", Graph::kControlSlot},
-                         /*modified=*/false, &expected_node);
+                         /*success=*/false, error_msg, &expected_node);
 
   // Remove fanin from node where node is missing.
-  TestRemoveRegularFanin("foo_missing", {"a", 0}, /*modified=*/false,
+  error_msg =
+      "Can't remove fanin 'a:0' as regular fanin from missing node "
+      "'foo_missing'.";
+  TestRemoveRegularFanin("foo_missing", {"a", 0}, /*success=*/false, error_msg,
                          /*expected_node=*/nullptr);
   // Remove fanin from node where fanin is missing.
   expected_node = NDef("", "", {"a"});
-  TestRemoveRegularFanin("foo_1", {"bar_missing", 0}, /*modified=*/false,
-                         &expected_node);
+  error_msg =
+      "Can't remove missing fanin 'bar_missing:0' as regular fanin from node "
+      "'foo_1'.";
+  TestRemoveRegularFanin("foo_1", {"bar_missing", 0}, /*success=*/false,
+                         error_msg, &expected_node);
   // Remove fanin from node where node and fanin are missing.
-  TestRemoveRegularFanin("foo_missing", {"bar_missing", 0}, /*modified=*/false,
+  error_msg =
+      "Can't remove missing fanin 'bar_missing:0' as regular fanin from "
+      "missing node 'foo_missing'.";
+  TestRemoveRegularFanin("foo_missing", {"bar_missing", 0}, /*success=*/false,
+                         error_msg,
                          /*expected_node=*/nullptr);
+  // Remove control from node where node and fanin are missing.
+  error_msg =
+      "Can't remove invalid/missing fanin '^bar_missing' as regular fanin from "
+      "missing node 'foo_missing'.";
+  TestRemoveRegularFanin("foo_missing", {"bar_missing", Graph::kControlSlot},
+                         /*success=*/false, error_msg,
+                         /*expected_node=*/nullptr);
+
+  // Remove self.
+  error_msg = "Can't remove fanin 'foo_6:2' as regular fanin from self.";
+  expected_node = NDef("", "", {"^a", "^b"});
+  TestRemoveRegularFanin("foo_6", {"foo_6", 2}, /*success=*/false, error_msg,
+                         &expected_node);
 }
 
 void TestRemoveAllFanins(absl::string_view node_name,
-                         bool keep_controlling_nodes, bool modified,
+                         bool keep_controlling_nodes, bool success,
+                         const string& error_msg,
                          const NodeDef* expected_node) {
   GraphDef graph_def = SimpleMutateFaninGraph();
 
@@ -470,10 +571,14 @@ void TestRemoveAllFanins(absl::string_view node_name,
     fanin_strings.insert(node->input().begin(), node->input().end());
   }
 
-  EXPECT_EQ(modified, graph.RemoveAllFanins(node_name, keep_controlling_nodes));
+  Status s = graph.RemoveAllFanins(node_name, keep_controlling_nodes);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
   if (expected_node != nullptr) {
     CompareNodeInputs(graph, expected_node, node);
-    if (modified) {
+    if (success) {
       TensorId tensor_id;
       auto retained_inputs = absl::flat_hash_set<string>(node->input().begin(),
                                                          node->input().end());
@@ -489,48 +594,50 @@ void TestRemoveAllFanins(absl::string_view node_name,
 
 TEST(MutableGraphViewTest, RemoveAllFanins) {
   NodeDef expected_node;
+  string error_msg;
   // Remove all fanins from node with no control dependencies.
   expected_node = NDef("", "", {});
   TestRemoveAllFanins("foo_3", /*keep_controlling_nodes=*/false,
-                      /*modified=*/true, &expected_node);
+                      /*success=*/true, error_msg, &expected_node);
   // Remove all fanins from node with control dependencies.
   TestRemoveAllFanins("foo_4", /*keep_controlling_nodes=*/false,
-                      /*modified=*/true, &expected_node);
+                      /*success=*/true, error_msg, &expected_node);
 
   // Remove all fanins from node with no control dependencies and preserve
   // control dependencies.
   TestRemoveAllFanins("foo_3", /*keep_controlling_nodes=*/true,
-                      /*modified=*/true, &expected_node);
+                      /*success=*/true, error_msg, &expected_node);
   // Remove all fanins from node with control dependencies and preserve control
   // dependencies.
   expected_node = NDef("", "", {"^c", "^d"});
   TestRemoveAllFanins("foo_4", /*keep_controlling_nodes=*/true,
-                      /*modified=*/true, &expected_node);
+                      /*success=*/true, error_msg, &expected_node);
 
   // Remove all fanins from node with no fanins.
   expected_node = NDef("", "", {});
   TestRemoveAllFanins("foo_5", /*keep_controlling_nodes=*/false,
-                      /*modified=*/false, &expected_node);
+                      /*success=*/true, error_msg, &expected_node);
   TestRemoveAllFanins("foo_5", /*keep_controlling_nodes=*/true,
-                      /*modified=*/false, &expected_node);
+                      /*success=*/true, error_msg, &expected_node);
 
   // Remove all fanins from node with only control dependencies.
   TestRemoveAllFanins("foo_6", /*keep_controlling_nodes=*/false,
-                      /*modified=*/true, &expected_node);
+                      /*success=*/true, error_msg, &expected_node);
   expected_node = NDef("", "", {"^a", "^b"});
   TestRemoveAllFanins("foo_6", /*keep_controlling_nodes=*/true,
-                      /*modified=*/false, &expected_node);
+                      /*success=*/true, error_msg, &expected_node);
 
   // Remove all fanins from node where node is missing.
+  error_msg = "Can't remove all fanins from missing node 'foo_missing'.";
   TestRemoveAllFanins("foo_missing", /*keep_controlling_nodes=*/false,
-                      /*modified=*/false, /*expected_node=*/nullptr);
+                      /*success=*/false, error_msg, /*expected_node=*/nullptr);
   TestRemoveAllFanins("foo_missing", /*keep_controlling_nodes=*/true,
-                      /*modified=*/false, /*expected_node=*/nullptr);
+                      /*success=*/false, error_msg, /*expected_node=*/nullptr);
 }
 
 void TestUpdateFanin(absl::string_view node_name, const TensorId& from_fanin,
-                     const TensorId& to_fanin, bool modified,
-                     const NodeDef* expected_node) {
+                     const TensorId& to_fanin, bool success,
+                     const string& error_msg, const NodeDef* expected_node) {
   GraphDef graph_def = SimpleMutateFaninGraph();
 
   MutableGraphView graph(&graph_def);
@@ -542,10 +649,14 @@ void TestUpdateFanin(absl::string_view node_name, const TensorId& from_fanin,
     EXPECT_NE(node, nullptr);
   }
 
-  EXPECT_EQ(modified, graph.UpdateFanin(node_name, from_fanin, to_fanin));
+  Status s = graph.UpdateFanin(node_name, from_fanin, to_fanin);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
   if (expected_node != nullptr) {
     CompareNodeInputs(graph, expected_node, node);
-    if (modified) {
+    if (success) {
       CheckFanout(graph, from_fanin, node_name);
     }
   }
@@ -553,49 +664,98 @@ void TestUpdateFanin(absl::string_view node_name, const TensorId& from_fanin,
 
 TEST(MutableGraphViewTest, UpdateFanin) {
   NodeDef expected_node;
+  string error_msg;
   // Update fanin from non control to non control.
   expected_node = NDef("", "", {"a", "b:3", "b:3", "^c", "^d"});
-  TestUpdateFanin("foo_4", {"b", 2}, {"b", 3}, /*modified=*/true,
+  TestUpdateFanin("foo_4", {"b", 2}, {"b", 3}, /*success=*/true, error_msg,
                   &expected_node);
   // Update fanin from non control to control.
   expected_node = NDef("", "", {"a", "^c", "^d", "^b"});
   TestUpdateFanin("foo_4", {"b", 2}, {"b", Graph::kControlSlot},
-                  /*modified=*/true, &expected_node);
+                  /*success=*/true, error_msg, &expected_node);
   // Update fanin from control to non control.
   expected_node = NDef("", "", {"a", "b:2", "b:2", "d:1", "^c"});
   TestUpdateFanin("foo_4", {"d", Graph::kControlSlot}, {"d", 1},
-                  /*modified=*/true, &expected_node);
+                  /*success=*/true, error_msg, &expected_node);
   // Update fanin from control to control.
   expected_node = NDef("", "", {"a", "b:2", "b:2", "^d"});
   TestUpdateFanin("foo_4", {"c", Graph::kControlSlot},
-                  {"b", Graph::kControlSlot}, /*modified=*/true,
+                  {"b", Graph::kControlSlot}, /*success=*/true, error_msg,
                   &expected_node);
   // Update fanin from control to existing control.
   expected_node = NDef("", "", {"a", "b:2", "b:2", "^d"});
   TestUpdateFanin("foo_4", {"c", Graph::kControlSlot},
-                  {"d", Graph::kControlSlot}, /*modified=*/true,
+                  {"d", Graph::kControlSlot}, /*success=*/true, error_msg,
                   &expected_node);
 
   // Update fanin of node where from and to fanins are the same.
   expected_node = NDef("", "", {"a"});
-  TestUpdateFanin("foo_1", {"a", -1}, {"a", -1}, /*modified=*/false,
+  TestUpdateFanin("foo_1", {"a", -1}, {"a", -1}, /*success=*/true, error_msg,
                   &expected_node);
-  TestUpdateFanin("foo_1", {"a", 0}, {"a", 0}, /*modified=*/false,
+  TestUpdateFanin("foo_1", {"a", 0}, {"a", 0}, /*success=*/true, error_msg,
                   &expected_node);
-  TestUpdateFanin("foo_1", {"a", 1}, {"a", 1}, /*modified=*/false,
+  TestUpdateFanin("foo_1", {"a", 1}, {"a", 1}, /*success=*/true, error_msg,
                   &expected_node);
+
   // Update fanin of node where node is missing.
-  TestUpdateFanin("foo_missing", {"a", 0}, {"a", 1}, /*modified=*/false,
+  error_msg =
+      "Can't update fanin 'a:0' to fanin 'a:1' in missing node 'foo_missing'.";
+  TestUpdateFanin("foo_missing", {"a", 0}, {"a", 1}, /*success=*/false,
+                  error_msg,
                   /*expected_node=*/nullptr);
   // Update fanin of node where from fanin is missing.
+  error_msg =
+      "Can't update missing fanin 'from_bar_missing:0' to fanin 'a:1' in node "
+      "'foo_1'.";
   TestUpdateFanin("foo_1", {"from_bar_missing", 0}, {"a", 1},
-                  /*modified=*/false, &expected_node);
+                  /*success=*/false, error_msg, &expected_node);
   // Update fanin of node where to fanin is missing.
-  TestUpdateFanin("foo_1", {"a", 0}, {"to_bar_missing", 1}, /*modified=*/false,
-                  &expected_node);
+  error_msg =
+      "Can't update fanin 'a:0' to missing fanin 'to_bar_missing:1' in node "
+      "'foo_1'.";
+  TestUpdateFanin("foo_1", {"a", 0}, {"to_bar_missing", 1}, /*success=*/false,
+                  error_msg, &expected_node);
   // Update fanin of node where from/to fanins and node are missing.
+  error_msg =
+      "Can't update missing fanin 'from_bar_missing:0' to missing fanin "
+      "'to_bar_missing:1' in missing node 'foo_missing'.";
   TestUpdateFanin("foo_missing", {"from_bar_missing", 0}, {"to_bar_missing", 1},
-                  /*modified=*/false, /*expected_node=*/nullptr);
+                  /*success=*/false, error_msg, /*expected_node=*/nullptr);
+  // Update fanin of node where from fanin is invalid.
+  error_msg =
+      "Can't update invalid fanin 'a:-2' to fanin 'a:0' in node 'foo_1'.";
+  TestUpdateFanin("foo_1", {"a", -2}, {"a", 0},
+                  /*success=*/false, error_msg, &expected_node);
+  // Update fanin of node where to fanin is invalid.
+  error_msg =
+      "Can't update fanin 'a:0' to invalid fanin 'a:-2' in node 'foo_1'.";
+  TestUpdateFanin("foo_1", {"a", 0}, {"a", -2},
+                  /*success=*/false, error_msg, &expected_node);
+  // Update fanin of node where from/to fanins are invalid and missing and node
+  // is missing.
+  error_msg =
+      "Can't update invalid/missing fanin 'from_bar_missing:-2' to "
+      "invalid/missing fanin 'to_bar_missing:-3' in missing node "
+      "'foo_missing'.";
+  TestUpdateFanin("foo_missing", {"from_bar_missing", -2},
+                  {"to_bar_missing", -3},
+                  /*success=*/false, error_msg, /*expected_node=*/nullptr);
+
+  // Update to self to create cycle.
+  expected_node = NDef("", "", {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg = "Can't update fanin 'b:2' to fanin 'foo_4:3' in self 'foo_4'.";
+  TestUpdateFanin("foo_4", {"b", 2}, {"foo_4", 3}, /*success=*/false, error_msg,
+                  &expected_node);
+  error_msg = "Can't update fanin 'b:2' to fanin '^foo_4' in self 'foo_4'.";
+  TestUpdateFanin("foo_4", {"b", 2}, {"foo_4", Graph::kControlSlot},
+                  /*success=*/false, error_msg, &expected_node);
+  error_msg = "Can't update fanin '^c' to fanin 'foo_4:4' in self 'foo_4'.";
+  TestUpdateFanin("foo_4", {"c", Graph::kControlSlot}, {"foo_4", 4},
+                  /*success=*/false, error_msg, &expected_node);
+  error_msg = "Can't update fanin '^c' to fanin '^foo_4' in self 'foo_4'.";
+  TestUpdateFanin("foo_4", {"c", Graph::kControlSlot},
+                  {"foo_4", Graph::kControlSlot}, /*success=*/false, error_msg,
+                  &expected_node);
 }
 
 void TestUpdateFaninFromFaninToNodeAsSwitchControl(const TensorId& fanin) {
@@ -607,7 +767,13 @@ void TestUpdateFaninFromFaninToNodeAsSwitchControl(const TensorId& fanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_FALSE(graph.UpdateFanin("c", fanin, {"b", Graph::kControlSlot}));
+  Status s = graph.UpdateFanin("c", fanin, {"b", Graph::kControlSlot});
+  EXPECT_FALSE(s.ok());
+  string expected_msg = absl::Substitute(
+      "Can't update fanin '$0' to fanin '^b' in node 'c', to fanin is a Switch "
+      "control dependency.",
+      fanin.ToString());
+  EXPECT_EQ(s.error_message(), expected_msg);
 
   EXPECT_EQ(graph.graph()->node_size(), 3);
 
@@ -714,14 +880,14 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddRegularFanin("b", {"a", 2}));
+  EXPECT_TRUE(graph.AddRegularFanin("b", {"a", 2}).ok());
   NodeDef expected;
   NodeDef* b = graph.GetNode("b");
   ASSERT_NE(b, nullptr);
   expected = NDef("", "", {"a:2"});
   CompareNodeInputs(graph, &expected, b);
 
-  EXPECT_FALSE(graph.AddControllingFanin("c", {"a", Graph::kControlSlot}));
+  EXPECT_TRUE(graph.AddControllingFanin("c", {"a", Graph::kControlSlot}).ok());
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
   expected = NDef("", "", {"a:1"});
@@ -736,28 +902,28 @@ TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddRegularFanin("c", {"b", 2}));
+  EXPECT_TRUE(graph.AddRegularFanin("c", {"b", 2}).ok());
   NodeDef expected;
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
   expected = NDef("", "", {"b:2"});
   CompareNodeInputs(graph, &expected, c);
-  EXPECT_TRUE(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}));
+  EXPECT_TRUE(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}).ok());
   expected = NDef("", "", {"b:2", "^b"});
   CompareNodeInputs(graph, &expected, c);
-  EXPECT_FALSE(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}));
+  EXPECT_TRUE(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}).ok());
   expected = NDef("", "", {"b:2", "^b"});
   CompareNodeInputs(graph, &expected, c);
 
-  EXPECT_TRUE(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
+  EXPECT_TRUE(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}).ok());
   NodeDef* d = graph.GetNode("d");
   ASSERT_NE(d, nullptr);
   expected = NDef("", "", {"^b"});
   CompareNodeInputs(graph, &expected, d);
-  EXPECT_FALSE(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
+  EXPECT_TRUE(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}).ok());
   expected = NDef("", "", {"^b"});
   CompareNodeInputs(graph, &expected, d);
-  EXPECT_TRUE(graph.AddRegularFanin("d", {"b", 3}));
+  EXPECT_TRUE(graph.AddRegularFanin("d", {"b", 3}).ok());
   expected = NDef("", "", {"b:3", "^b"});
   CompareNodeInputs(graph, &expected, d);
 }
@@ -771,7 +937,7 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnUpdateFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.UpdateFanin("c", {"a", 1}, {"b", 2}));
+  EXPECT_TRUE(graph.UpdateFanin("c", {"a", 1}, {"b", 2}).ok());
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
   NodeDef expected = NDef("", "", {"b:2"});
@@ -787,21 +953,24 @@ TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnUpdateFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.UpdateFanin("d", {"b", Graph::kControlSlot},
-                                {"c", Graph::kControlSlot}));
+  EXPECT_TRUE(graph
+                  .UpdateFanin("d", {"b", Graph::kControlSlot},
+                               {"c", Graph::kControlSlot})
+                  .ok());
   NodeDef expected;
   NodeDef* d = graph.GetNode("d");
   ASSERT_NE(d, nullptr);
   expected = NDef("", "", {"c", "^c"});
   CompareNodeInputs(graph, &expected, d);
 
-  EXPECT_TRUE(graph.UpdateFanin("e", {"b", 0}, {"c", 3}));
+  EXPECT_TRUE(graph.UpdateFanin("e", {"b", 0}, {"c", 3}).ok());
   NodeDef* e = graph.GetNode("e");
   ASSERT_NE(e, nullptr);
   expected = NDef("", "", {"c:3", "^c"});
   CompareNodeInputs(graph, &expected, e);
 
-  EXPECT_TRUE(graph.UpdateFanin("e", {"c", 3}, {"c", Graph::kControlSlot}));
+  EXPECT_TRUE(
+      graph.UpdateFanin("e", {"c", 3}, {"c", Graph::kControlSlot}).ok());
   ASSERT_NE(e, nullptr);
   expected = NDef("", "", {"^c"});
   CompareNodeInputs(graph, &expected, e);
@@ -816,7 +985,7 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddRegularFanin("c", {"a", 3}));
+  EXPECT_TRUE(graph.AddRegularFanin("c", {"a", 3}).ok());
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
 
@@ -841,7 +1010,7 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnRemoveFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveRegularFanin("c", {"a", 2}));
+  EXPECT_TRUE(graph.RemoveRegularFanin("c", {"a", 2}).ok());
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
 
@@ -862,7 +1031,7 @@ TEST(MutableGraphViewTest, KeepMaxRegularOutputPortOnRemoveFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveRegularFanin("b", {"a", 1}));
+  EXPECT_TRUE(graph.RemoveRegularFanin("b", {"a", 1}).ok());
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
 
@@ -883,7 +1052,7 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnUpdateFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.UpdateFanin("c", {"a", 2}, {"b", 3}));
+  EXPECT_TRUE(graph.UpdateFanin("c", {"a", 2}, {"b", 3}).ok());
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
 
@@ -910,11 +1079,21 @@ TEST(MutableGraphViewTest, AddControllingFaninMissing) {
 
   MutableGraphView graph(&graph_def);
   // Missing fanin.
-  EXPECT_FALSE(graph.AddControllingFanin("a", {"c", Graph::kControlSlot}));
+  Status s = graph.AddControllingFanin("a", {"c", Graph::kControlSlot});
+  EXPECT_FALSE(s.ok());
+  string expected_msg = "Can't add missing controlling fanin '^c' to node 'a'.";
+  EXPECT_EQ(s.error_message(), expected_msg);
   // Missing node.
-  EXPECT_FALSE(graph.AddControllingFanin("d", {"a", Graph::kControlSlot}));
+  s = graph.AddControllingFanin("d", {"a", Graph::kControlSlot});
+  EXPECT_FALSE(s.ok());
+  expected_msg = "Can't add controlling fanin '^a' to missing node 'd'.";
+  EXPECT_EQ(s.error_message(), expected_msg);
   // Missing node and fanin.
-  EXPECT_FALSE(graph.AddControllingFanin("c", {"d", Graph::kControlSlot}));
+  s = graph.AddControllingFanin("c", {"d", Graph::kControlSlot});
+  EXPECT_FALSE(s.ok());
+  expected_msg =
+      "Can't add missing controlling fanin '^d' to missing node 'c'.";
+  EXPECT_EQ(s.error_message(), expected_msg);
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
   NodeDef expected;
@@ -935,8 +1114,8 @@ TEST(MutableGraphViewTest, AddControllingFaninExistingControl) {
       /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}));
-  EXPECT_FALSE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}));
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}).ok());
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}).ok());
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
   NodeDef expected;
@@ -958,8 +1137,8 @@ TEST(MutableGraphViewTest, AddControllingFaninNotSwitch) {
       /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", 2}));
-  EXPECT_FALSE(graph.AddControllingFanin("a", {"b", 2}));
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", 2}).ok());
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", 2}).ok());
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
   NodeDef expected;
@@ -974,6 +1153,30 @@ TEST(MutableGraphViewTest, AddControllingFaninNotSwitch) {
   CompareNodeInputs(graph, &expected, b);
 }
 
+TEST(MutableGraphViewTest, AddControllingFaninSwitch) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "Switch", {}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  Status s = graph.AddControllingFanin("a", {"b", Graph::kControlSlot});
+  EXPECT_FALSE(s.ok());
+  string expected_msg =
+      "Can't add Switch as controlling fanin '^b' to node 'a'.";
+  EXPECT_EQ(s.error_message(), expected_msg);
+
+  ASSERT_EQ(graph.graph()->node_size(), 2);
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  NodeDef expected = NDef("", "", {});
+  CompareNodeInputs(graph, &expected, a);
+
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  CompareNodeInputs(graph, &expected, b);
+}
+
 TEST(MutableGraphViewTest, AddControllingFaninSwitchWithIdentity) {
   GraphDef graph_def = test::function::GDef(
       {NDef("a", "NotImportant", {}, {}), NDef("switch", "Switch", {}, {}),
@@ -982,8 +1185,8 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithIdentity) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}));
-  EXPECT_FALSE(graph.AddControllingFanin("a", {"switch", 0}));
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
   NodeDef* a = graph.GetNode("a");
@@ -1001,8 +1204,8 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithNoExistingIdentity) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}));
-  EXPECT_FALSE(graph.AddControllingFanin("a", {"switch", 0}));
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
   NodeDef expected;
@@ -1029,14 +1232,123 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithExistingAddedIdentity) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}));
-  EXPECT_FALSE(graph.AddControllingFanin("a", {"switch", 0}));
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
   NodeDef* a = graph.GetNode("a");
   ASSERT_NE(a, nullptr);
   NodeDef expected = NDef("", "", {"^ConstantFoldingCtrl/switch_0"});
   CompareNodeInputs(graph, &expected, a);
+}
+
+void TestAddControllingFaninSelfLoops(absl::string_view node_name,
+                                      const TensorId& fanin,
+                                      const string& error_msg) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}),
+       NDef("b", "Switch", {}, {{"T", DT_FLOAT}}),
+       NDef("c", "Identity", {"b:0"}), NDef("d", "Identity", {"b:1"}),
+       NDef("e", "NotImportant", {"^a"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  Status s = graph.AddControllingFanin(node_name, fanin);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(), error_msg);
+
+  EXPECT_EQ(graph.graph()->node_size(), 5);
+  NodeDef expected;
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  expected = NDef("", "", {}, {});
+  CompareNodeInputs(graph, &expected, a);
+
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  CompareNodeInputs(graph, &expected, b);
+
+  NodeDef* c = graph.GetNode("c");
+  ASSERT_NE(c, nullptr);
+  expected = NDef("", "", {"b:0"});
+  CompareNodeInputs(graph, &expected, c);
+
+  NodeDef* d = graph.GetNode("d");
+  ASSERT_NE(d, nullptr);
+  expected = NDef("", "", {"b:1"});
+  CompareNodeInputs(graph, &expected, d);
+
+  NodeDef* e = graph.GetNode("e");
+  ASSERT_NE(e, nullptr);
+  expected = NDef("", "", {"^a"});
+  CompareNodeInputs(graph, &expected, e);
+}
+
+TEST(MutableGraphViewTest, AddControllingFaninSelfLoops) {
+  string error_msg = "Can't add controlling fanin '^a' to self.";
+  TestAddControllingFaninSelfLoops("a", {"a", Graph::kControlSlot}, error_msg);
+
+  // Adding Switch control dependency to Identity consumer. Node `c` is
+  // consuming `b:0`, so adding `b:0` as a control dependency, because it is a
+  // Switch, should trigger a lookup of outputs. As `c` is a consumer and an
+  // Identity, this will introduce a self loop, so no control dependency should
+  // be added.
+  error_msg =
+      "Can't add found controlling fanin '^c' from fanin 'b:0' to self.";
+  TestAddControllingFaninSelfLoops("c", {"b", 0}, error_msg);
+
+  // Adding Switch control dependency to Identity consumer. Node `d` is
+  // consuming `b:1`, so adding `b:1` as a control dependency, because it is a
+  // Switch, should trigger a lookup of outputs. As `d` is a consumer and an
+  // Identity, this will introduce a self loop, so no control dependency should
+  // be added.
+  error_msg =
+      "Can't add found controlling fanin '^d' from fanin 'b:1' to self.";
+  TestAddControllingFaninSelfLoops("d", {"b", 1}, error_msg);
+}
+
+TEST(MutableGraphViewTest, AddControllingFaninSelfLoopsGeneratedIdentity) {
+  GraphDef graph_def =
+      test::function::GDef({NDef("a", "NotImportant", {}, {}),
+                            NDef("b", "Switch", {}, {{"T", DT_FLOAT}}),
+                            NDef("c", "NotImportant", {}),
+                            NDef("ConstantFoldingCtrl/b_1", "Identity", {})},
+                           /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  // Adding Switch control dependency to Identity node of the same name as a
+  // generated Identity node for pinning the control dependency. Because there
+  // are no consumers of `b:1`, there will be an attempt to generate an Identity
+  // node, with name `ConstantFoldingCtrl/b_1`. As the input node is of the same
+  // name, we will introduce a self loop, so no control dependency should be
+  // added.
+  Status s = graph.AddControllingFanin("ConstantFoldingCtrl/b_1", {"b", 1});
+  EXPECT_FALSE(s.ok());
+  string expected_msg =
+      "Can't add generated controlling fanin '^ConstantFoldingCtrl/b_1' from "
+      "fanin 'b:1' to self.";
+  EXPECT_EQ(s.error_message(), expected_msg);
+
+  EXPECT_EQ(graph.graph()->node_size(), 4);
+  NodeDef expected;
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  expected = NDef("", "", {}, {});
+  CompareNodeInputs(graph, &expected, a);
+
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  CompareNodeInputs(graph, &expected, b);
+
+  NodeDef* c = graph.GetNode("c");
+  ASSERT_NE(c, nullptr);
+  CompareNodeInputs(graph, &expected, c);
+
+  NodeDef* d = graph.GetNode("ConstantFoldingCtrl/b_1");
+  ASSERT_NE(d, nullptr);
+  CompareNodeInputs(graph, &expected, d);
 }
 
 TEST(MutableGraphViewTest, RemoveControllingFaninMissing) {
@@ -1049,7 +1361,7 @@ TEST(MutableGraphViewTest, RemoveControllingFaninMissing) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_FALSE(graph.RemoveControllingFanin("d", "c"));
+  EXPECT_TRUE(graph.RemoveControllingFanin("d", "c").ok());
 
   ASSERT_EQ(graph.graph()->node_size(), 4);
   NodeDef* d = graph.GetNode("d");
@@ -1068,8 +1380,8 @@ TEST(MutableGraphViewTest, RemoveControllingFaninExisting) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveControllingFanin("d", "a"));
-  EXPECT_FALSE(graph.RemoveControllingFanin("d", "a"));
+  EXPECT_TRUE(graph.RemoveControllingFanin("d", "a").ok());
+  EXPECT_TRUE(graph.RemoveControllingFanin("d", "a").ok());
 
   ASSERT_EQ(graph.graph()->node_size(), 4);
   NodeDef* d = graph.GetNode("d");
@@ -1082,18 +1394,39 @@ TEST(MutableGraphViewTest, RemoveControllingFaninOnRegularFanin) {
   // Actual node.op() is not important in this test.
   GraphDef graph_def = test::function::GDef(
       {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {"a"}),
-       NDef("c", "NotImportant", {"a", "b", "^c"})},
+       NDef("c", "NotImportant", {"a", "b"})},
       /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_FALSE(graph.RemoveControllingFanin("c", "a"));
-  EXPECT_FALSE(graph.RemoveControllingFanin("c", "b"));
+  EXPECT_TRUE(graph.RemoveControllingFanin("c", "a").ok());
+  EXPECT_TRUE(graph.RemoveControllingFanin("c", "b").ok());
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
   NodeDef* c = graph.GetNode("c");
   ASSERT_NE(c, nullptr);
-  NodeDef expected = NDef("", "", {"a", "b", "^c"});
+  NodeDef expected = NDef("", "", {"a", "b"});
+  CompareNodeInputs(graph, &expected, c);
+}
+
+TEST(MutableGraphViewTest, RemoveControllingFaninSelfLoop) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {"a"}),
+       NDef("c", "NotImportant", {"a", "b"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  Status s = graph.RemoveControllingFanin("c", "c");
+  EXPECT_FALSE(s.ok());
+  string expected_msg = "Can't remove controlling fanin '^c' from self.";
+  EXPECT_EQ(s.error_message(), expected_msg);
+
+  ASSERT_EQ(graph.graph()->node_size(), 3);
+  NodeDef* c = graph.GetNode("c");
+  ASSERT_NE(c, nullptr);
+  NodeDef expected = NDef("", "", {"a", "b"});
   CompareNodeInputs(graph, &expected, c);
 }
 

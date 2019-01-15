@@ -1195,6 +1195,36 @@ def _coordinate_where(condition):
 
 
 #===============================================================================
+# RaggedTensor Size
+#===============================================================================
+
+
+def size(input, out_type=dtypes.int32, name=None):  # pylint: disable=redefined-builtin
+  """Returns the size of a potentially ragged tensor.
+
+  The size of a ragged tensor is the size of its inner values.
+
+  Args:
+    input: A potentially ragged `Tensor`.
+    out_type: The numeric output type for the operation.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor of type `out_type`.
+
+  #### Example:
+    ```python
+    >>> tf.size(tf.ragged.constant([[1, 2], [3]]))
+    3
+    ```
+  """
+  if ragged_tensor.is_ragged(input):
+    return array_ops.size(input.flat_values, out_type=out_type, name=name)
+  else:
+    return array_ops.size(input, out_type=out_type, name=name)
+
+
+#===============================================================================
 # Internal Helper Functions
 #===============================================================================
 

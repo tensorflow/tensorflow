@@ -46,17 +46,9 @@ namespace {
 using ::testing::ElementsAre;
 namespace m = match;
 
-AlgebraicSimplifierOptions::ValidBitcastCallback bitcasting_callback() {
-  return [](const Shape&, const Shape&) { return true; };
-}
-
-AlgebraicSimplifierOptions::ValidBitcastCallback non_bitcasting_callback() {
-  return [](const Shape&, const Shape&) { return false; };
-}
-
 class AlgebraicSimplifierTest : public HloTestBase {
  protected:
-  AlgebraicSimplifierOptions default_options_{non_bitcasting_callback()};
+  AlgebraicSimplifierOptions default_options_;
 };
 
 // Test that A + 0 is simplified to A
@@ -1463,23 +1455,77 @@ TEST_F(AlgebraicSimplifierTest, RemoveCopy) {
   EXPECT_THAT(computation->root_instruction(), param0);
 }
 
+TEST_F(AlgebraicSimplifierTest, CopyOfReshapeOfCopyEqualsBitcast) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
+          "param"));
+  HloInstruction* copy = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
+      HloOpcode::kCopy, param));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShapeWithLayout(F32, {14 * 14, 64}, {0, 1}), copy));
+  builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShapeWithLayout(F32, {14 * 14, 64}, {1, 0}),
+      HloOpcode::kCopy, reshape));
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Reshape(m::Copy(m::Parameter(0))))));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  // Verify that the copy of reshape of copy is replaced.
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Bitcast(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReshapeOfCopyEqualsBitcast) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
+          "param"));
+  HloInstruction* copy = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
+      HloOpcode::kCopy, param));
+  builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShapeWithLayout(F32, {14 * 14, 64}, {1, 0}), copy));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Copy(m::Parameter(0)))));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  // Verify that the copy of reshape of copy is replaced.
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Bitcast(m::Parameter(0))));
+}
+
 TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 14, 14, 64}), "param"));
-  *param->mutable_shape()->mutable_layout() =
-      LayoutUtil::MakeLayout({0, 1, 2, 3});
-  HloInstruction* copy = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(F32, {1, 14, 14, 64}), HloOpcode::kCopy, param));
-  *copy->mutable_shape()->mutable_layout() =
-      LayoutUtil::MakeLayout({1, 2, 0, 3});
+          0, ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
+          "param"));
+  builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {1, 2, 0, 3}),
+      HloOpcode::kCopy, param));
   auto computation = m->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  AlgebraicSimplifierOptions options(
+      [](const Shape&, const Shape&) { return false; });
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier1(options);
   ASSERT_FALSE(simplifier1.Run(m.get()).ValueOrDie());
@@ -1487,10 +1533,10 @@ TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options2(bitcasting_callback());
+  AlgebraicSimplifierOptions options2;
   options2.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier2(options2);
-  ASSERT_TRUE(simplifier2.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier2.Run(m.get()).ValueOrDie());
   // Verify that the copy is replaced.
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Bitcast(m::Parameter(0))));
@@ -1743,7 +1789,7 @@ TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
@@ -1773,7 +1819,7 @@ TEST_F(AlgebraicSimplifierTest, CopyWithSameLayout) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1803,7 +1849,8 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Reshape(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  AlgebraicSimplifierOptions options(
+      [](const Shape&, const Shape&) { return false; });
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
@@ -1834,8 +1881,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(
-      (AlgebraicSimplifierOptions(bitcasting_callback())));
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   // Verify that reshape(transpose(rng)) is replace by a single rng of the
@@ -1886,7 +1932,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
                                   m::Op().Is(dimensions_wrong_reshape),
                                   m::Op().Is(layout_wrong_reshape))));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   simplifier.Run(m.get()).ValueOrDie();
@@ -1916,8 +1962,7 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkReshapeDoesntAffectChangedBit) {
   builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {4}), add));
 
-  AlgebraicSimplifier simplifier(
-      (AlgebraicSimplifierOptions(bitcasting_callback())));
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   m->AddEntryComputation(builder.Build());
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 }
@@ -1941,8 +1986,7 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkBroadcastDoesntAffectChangedBit) {
       HloInstruction::CreateBroadcast(ShapeUtil::MakeShape(F32, {2, 2, 2}), add,
                                       /*broadcast_dimensions=*/{0, 1}));
 
-  AlgebraicSimplifier simplifier(
-      (AlgebraicSimplifierOptions(bitcasting_callback())));
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   m->AddEntryComputation(builder.Build());
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 }
@@ -1967,7 +2011,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Transpose(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1997,7 +2041,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Transpose(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -2054,7 +2098,7 @@ TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Copy(m::Parameter(0)))));
 
-  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -2650,7 +2694,7 @@ TEST_F(AlgebraicSimplifierTest, ReplacePermutationSortWithScatter) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_enable_permutation_sort_replacement(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
@@ -2679,7 +2723,7 @@ TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortIfNonIntegral) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_enable_permutation_sort_replacement(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
@@ -2702,7 +2746,7 @@ TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortWrongDimensions) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   options.set_enable_permutation_sort_replacement(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
@@ -2944,7 +2988,7 @@ class ConvInputPaddingTest
     : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<ConvPaddingTestcase> {};
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ConvInputPaddingTestCases, ConvInputPaddingTest,
     ::testing::ValuesIn(std::vector<ConvPaddingTestcase>{
         // Merge this edge padding into the conv.
@@ -3051,7 +3095,7 @@ class ConvFilterPaddingTest
     : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<ConvPaddingTestcase> {};
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ConvFilterPaddingTestCases, ConvFilterPaddingTest,
     ::testing::ValuesIn(std::vector<ConvPaddingTestcase>{
         // Can only merge interior padding on the filter's spatial dimensions;
@@ -3289,7 +3333,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     auto module = CreateNewUnverifiedModule();
     auto* computation = module->AddEntryComputation(b.Build());
 
-    AlgebraicSimplifierOptions simplifier_options(bitcasting_callback());
+    AlgebraicSimplifierOptions simplifier_options;
     simplifier_options.set_is_layout_sensitive(true);
     AlgebraicSimplifier simplifier(simplifier_options);
     if (!simplifier.Run(module.get()).ValueOrDie()) {
@@ -3866,7 +3910,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
@@ -3887,7 +3931,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadHigh) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
@@ -3908,7 +3952,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidNonScalar) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
@@ -3927,7 +3971,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalar) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
@@ -3949,7 +3993,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatScalarInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
@@ -3971,7 +4015,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatNonScalarInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
@@ -3993,7 +4037,7 @@ TEST_F(AlgebraicSimplifierTest, NegateNegate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
@@ -4013,7 +4057,7 @@ TEST_F(AlgebraicSimplifierTest, NotNot) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
@@ -4149,7 +4193,7 @@ PadReduceWindowEffectiveBroadcastCases() {
   return *cases;
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     PadReduceWindowEffectiveBroadcastInstantiation,
     PadReduceWindowEffectiveBroadcastTest,
     ::testing::ValuesIn(PadReduceWindowEffectiveBroadcastCases()));
@@ -4200,7 +4244,7 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   EXPECT_EQ(has_no_dot, dot_should_be_transformed);
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
     ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
                        ::testing::Values(1, 2), ::testing::Values(F32, BF16)));
@@ -4257,7 +4301,7 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   EXPECT_EQ(has_no_dot, dot_should_be_transformed);
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     DotStrengthReductionTestInstantiation, DotStrengthReductionTest,
     ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
                        ::testing::Values(1, 2), ::testing::Bool(),
@@ -4431,9 +4475,9 @@ TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
   EXPECT_THAT(computation->root_instruction(), operand);
 }
 
-INSTANTIATE_TEST_CASE_P(DotOfConcatSimplificationTestInstantiation,
-                        DotOfConcatSimplificationTest,
-                        ::testing::ValuesIn(kDotOfConcatTestSpecs));
+INSTANTIATE_TEST_SUITE_P(DotOfConcatSimplificationTestInstantiation,
+                         DotOfConcatSimplificationTest,
+                         ::testing::ValuesIn(kDotOfConcatTestSpecs));
 
 struct DotOfGatherTestSpec {
   int64 m;
@@ -4639,7 +4683,7 @@ std::vector<DotOfGatherTestSpec> DotOfGatherPositiveNegativeTests() {
   return all;
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
 

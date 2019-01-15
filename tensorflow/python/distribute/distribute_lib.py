@@ -1685,7 +1685,8 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
   def _make_input_fn_iterator(self,
                               input_fn,
                               replication_mode=InputReplicationMode.PER_WORKER):
-    return input_fn(InputContext()).make_initializable_iterator()
+    dataset = input_fn(InputContext())
+    return _DefaultDistributionExtended.DefaultInputIterator(dataset)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     numpy_flat = nest.flatten(numpy_input)

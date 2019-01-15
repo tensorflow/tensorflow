@@ -163,6 +163,9 @@ java_test(
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_oss",  # Currently requires --config=monolithic, b/118895218.
+    ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
     deps = [

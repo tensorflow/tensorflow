@@ -3475,13 +3475,9 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_pass",
-        ":while_util",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -3490,11 +3486,11 @@ tf_cc_test(
     srcs = ["sort_simplifier_test.cc"],
     deps = [
         ":hlo_matchers",
-        ":sort_simplifier",
+        ":hlo_parser",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
+        ":sort_simplifier",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
     ],

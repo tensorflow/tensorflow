@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedSortOperandArrayResult) {
   do {
     num_executions++;
   } while (simplifier.Run(module.get()).ValueOrDie());
-  EXPECT_TRUE(num_executions == 2);
+  EXPECT_EQ(num_executions, 2);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(0))));
 }

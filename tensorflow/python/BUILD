@@ -112,6 +112,7 @@ py_library(
     ],
     deps = [
         ":array_ops",
+        ":audio_ops_gen",
         ":bitwise_ops",
         ":boosted_trees_ops",
         ":check_ops",

@@ -140,8 +140,8 @@ void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
 // and renaming nodes does not mutate any edges.
 Status EnsureNodeNamesUnique(Graph* g);
 
-}  // end namespace graph_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace graph_utils
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_GRAPH_UTILS_H_

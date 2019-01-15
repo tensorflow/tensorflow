@@ -334,6 +334,20 @@ Status Converter::GetTrtBroadcastShape(
   return Status::OK();
 }
 
+nvinfer1::ITensor* Converter::CreateConstantLayer(
+    const TRT_ShapedWeights& weights, const nvinfer1::Dims& dims) {
+  nvinfer1::Weights trt_weights = weights.GetTrtWeights();
+  nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
+  if (!layer) return nullptr;
+  const nvinfer1::DataType trt_dtype = trt_weights.type;
+  // NOTE(laigd): calling layer->setOutputType() does not work. This may be a
+  // bug and we should report to NVIDIA.
+  // layer->setOutputType(0, trt_dtype);
+  nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
+  trt_tensor->setType(trt_dtype);
+  return trt_tensor;
+}
+
 inline bool DimsEqual(const nvinfer1::Dims& dim_l,
                       const nvinfer1::Dims& dim_r) {
   if (dim_l.nbDims != dim_r.nbDims) {
@@ -1104,10 +1118,8 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
       *tensor = layer->getOutput(0);
     }
   } else {
-    nvinfer1::IConstantLayer* layer =
-        this->network()->addConstant(dims, input.weights().GetTrtWeights());
-    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
-    *tensor = layer->getOutput(0);
+    *tensor = CreateConstantLayer(input.weights(), dims);
+    TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, "TF-TRT Internal Reshape");
     if (precision_mode() == INT8MODE && !use_calibration()) {
       // If we are in int8 mode and not calibrating, we need to explicitly set a
       // quantization range for the output tensor of the IConstantLayer. Here we
@@ -1725,6 +1737,13 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
         "Unsupported binary op broadcast scheme for op ", node_def.name(), ": ",
         status.error_message());
   }
+  TFAttrs attrs(node_def);
+  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
+  if (dtype == nvinfer1::DataType::kINT32) {
+    return errors::Unimplemented("Binary op ", node_def.op(),
+                                 " does not support INT32, at ",
+                                 node_def.name());
+  }
   if (params->validation_only) return Status::OK();
 
   const nvinfer1::ITensor* tensor_l = nullptr;
@@ -1741,8 +1760,6 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
   }
 
   // Check type consistency.
-  TFAttrs attrs(node_def);
-  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
   TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
       << DebugString(tensor_l->getType()) << " vs " << DebugString(dtype);
   TFTRT_CHECK_EQ_TYPE(tensor_r->getType(), dtype)
@@ -2565,22 +2582,18 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   auto weights_ptr =
       static_cast<float*>(const_cast<void*>(weights.GetValues()));
   weights_ptr[0] = 6.0f;
-  nvinfer1::IConstantLayer* const6_layer =
-      params->converter->network()->addConstant(dims, weights.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_layer, node_def.name());
-  params->converter->ProvideQuantizationRange(const6_layer->getOutput(0), 0.0f,
-                                              6.0f);
+  nvinfer1::ITensor* const6_tensor =
+      params->converter->CreateConstantLayer(weights, dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_tensor, node_def.name());
+  params->converter->ProvideQuantizationRange(const6_tensor, 0.0f, 6.0f);
 
   // ElementWise Min Operation
   // Min op is a nop for INT8 execution path, as the input tensor
   // to this layer will only have values in range [0.f, 6.0f].
-  const nvinfer1::ITensor* tensor_l = relu_layer->getOutput(0);
-  const nvinfer1::ITensor* tensor_r = const6_layer->getOutput(0);
   nvinfer1::IElementWiseLayer* relu6_layer =
       params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r),
-          nvinfer1::ElementWiseOperation::kMIN);
+          *const_cast<nvinfer1::ITensor*>(relu_layer->getOutput(0)),
+          *const6_tensor, nvinfer1::ElementWiseOperation::kMIN);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu6_layer, node_def.name());
   nvinfer1::ITensor* output_tensor = relu6_layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
@@ -2597,12 +2610,18 @@ tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
     return errors::InvalidArgument("Input expects tensor and weights, at ",
                                    node_def.name());
   }
+  TFAttrs attrs(node_def);
+  tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
+  if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
+    return errors::Unimplemented("Data type is not supported, for node ",
+                                 node_def.name(), " got ",
+                                 DataTypeString(tf_dtype));
+  }
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ITensor* tensor =
       const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
   const nvinfer1::Dims original_dims = tensor->getDimensions();
-  TFAttrs attrs(node_def);
   const string data_format = attrs.get<string>("data_format");
   const int channel_index =
       (data_format == "NHWC" ? original_dims.nbDims - 1 : 0);
@@ -2978,18 +2997,15 @@ tensorflow::Status ConvertSquare(OpConverterParams* params) {
   auto weights_ptr =
       static_cast<float*>(const_cast<void*>(weights.GetValues()));
   weights_ptr[0] = 2.f;
-  nvinfer1::IConstantLayer* const2_layer =
-      params->converter->network()->addConstant(dims, weights.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const2_layer, node_def.name());
+  nvinfer1::ITensor* const2_tensor =
+      params->converter->CreateConstantLayer(weights, dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const2_tensor, node_def.name());
 
   // ElementWise Pow Operation
-  const nvinfer1::ITensor* tensor_l = inputs.at(0).tensor();
-  const nvinfer1::ITensor* tensor_r = const2_layer->getOutput(0);
   nvinfer1::IElementWiseLayer* layer =
       params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r),
-          nvinfer1::ElementWiseOperation::kPOW);
+          *const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor()),
+          *const2_tensor, nvinfer1::ElementWiseOperation::kPOW);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
@@ -3449,7 +3465,6 @@ tensorflow::Status ConvertMatMul(OpConverterParams* params) {
   }
 
   TFAttrs attrs(node_def);
-  // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
     return errors::Unimplemented("Data type is not supported, for node ",
@@ -3475,7 +3490,6 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TFAttrs attrs(node_def);
 
-  // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != tensorflow::DataType::DT_FLOAT &&
       tf_dtype != tensorflow::DataType::DT_HALF) {
@@ -3597,6 +3611,9 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
 
   nvinfer1::ITensor* output_value_tensor = layer->getOutput(0);
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
+  // Tensor type for network output is not inferred. Indices should be INT32
+  // (default is float).
+  output_indices_tensor->setType(nvinfer1::DataType::kINT32);
   params->outputs->push_back(TRT_TensorOrWeights(output_value_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_indices_tensor));
   return tensorflow::Status::OK();
@@ -3843,8 +3860,10 @@ tensorflow::Status ConvertSegmentToGraphDef(
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
       tensorflow::NodeDefBuilder builder(node_name, "Identity");
-      auto status = builder.Input(connection.inside_node_name, 0, dtype)
-                        .Finalize(seg_node);
+      auto status =
+          builder
+              .Input(connection.inside_node_name, connection.inside_port, dtype)
+              .Finalize(seg_node);
       VLOG(1) << "Constructing output " << node_name << " for the edge "
               << connection.inside_node_name << ":" << connection.inside_port
               << " -> " << connection.outside_node_name << ":"
