@@ -75,14 +75,14 @@ struct MemRefCastFolder : public RewritePattern {
   }
 };
 
-/// Performs the const folding `calculation` on the two attributes in `operands`
-/// and returns the result if possible.
+/// Performs const folding `calculate` with element-wise behavior on the two
+/// attributes in `operands` and returns the result if possible.
 template <class AttrElementT,
           class ElementValueT = typename AttrElementT::ValueType,
           class CalculationT =
               std::function<ElementValueT(ElementValueT, ElementValueT)>>
 Attribute constFoldBinaryOp(ArrayRef<Attribute> operands,
-                            const CalculationT &calculation) {
+                            const CalculationT &calculate) {
   assert(operands.size() == 2 && "binary op takes two operands");
 
   if (auto lhs = operands[0].dyn_cast_or_null<AttrElementT>()) {
@@ -91,14 +91,14 @@ Attribute constFoldBinaryOp(ArrayRef<Attribute> operands,
       return {};
 
     return AttrElementT::get(lhs.getType(),
-                             calculation(lhs.getValue(), rhs.getValue()));
+                             calculate(lhs.getValue(), rhs.getValue()));
   } else if (auto lhs = operands[0].dyn_cast_or_null<SplatElementsAttr>()) {
     auto rhs = operands[1].dyn_cast_or_null<SplatElementsAttr>();
     if (!rhs || lhs.getType() != rhs.getType())
       return {};
 
     auto elementResult = constFoldBinaryOp<AttrElementT>(
-        {lhs.getValue(), rhs.getValue()}, calculation);
+        {lhs.getValue(), rhs.getValue()}, calculate);
     if (!elementResult)
       return {};
 
