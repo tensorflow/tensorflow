@@ -357,12 +357,14 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 
 
 @tf_export("size", v1=[])
+@dispatch.add_dispatch_support
 def size_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   return size(input, name, out_type)
 
 
 @tf_export(v1=["size"])
+@dispatch.add_dispatch_support
 def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
