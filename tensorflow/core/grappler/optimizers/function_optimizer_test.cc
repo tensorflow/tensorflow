@@ -1025,6 +1025,163 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithoutSideEffects) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(FunctionOptimizerTest, InlineIndirectFunctionDoNotInlineDeadOutputs) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+
+  // Function output can be dead.
+  FunctionDef dead_outputs = FunctionDefHelper::Create(
+      "DeadOutputs", {"x:T", "cond:bool"}, {"z:T"}, {"T: {float, double}"},
+      {
+          {{"switch"}, "Switch", {"x", "cond"}, {{"T", "$T"}}},
+          {{"if_false"}, "Identity", {"switch:output_false:0"}, {{"T", "$T"}}},
+          {{"if_true"}, "Identity", {"switch:output_true:0"}, {{"T", "$T"}}},
+      },
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "if_false:output:0"}});
+
+  // Simple proxy functions that calls DeadOutputs from the function body.
+  FunctionDef proxy_func = FunctionDefHelper::Create(
+      "Proxy", {"x:T", "cond:bool"}, {"z:T"}, {"T: {float, double}"},
+      {{{"dead"}, "DeadOutputs", {"x", "cond"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "dead:z:0"}});
+
+  // Build a graph to compute:
+  //   a: float
+  //   b: bool
+  //   fn0 = DeadOutputs(x, b)
+  //   fn1 = Proxy(x, b)
+  //   out0 = Identity(fn0)
+  //   out1 = Identity(fn1)
+  //   return [out0, out1]
+  //
+  GrapplerItem item;
+  item.fetch = {"out0", "out1"};
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_BOOL}}, kDevice),
+
+       NDef("fn0", "PartitionedCall", {"a", "b"},
+            {{"Tin", DataTypeSlice{DT_FLOAT, DT_BOOL}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"f", FDH::FunctionRef("DeadOutputs", {{"T", DT_FLOAT}})}},
+            kDevice),
+
+       NDef("fn1", "PartitionedCall", {"a", "b"},
+            {{"Tin", DataTypeSlice{DT_FLOAT, DT_BOOL}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"f", FDH::FunctionRef("Proxy", {{"T", DT_FLOAT}})}},
+            kDevice),
+
+       NDef("out0", "Identity", {"fn0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("out1", "Identity", {"fn1"}, {{"T", DT_FLOAT}}, kDevice)},
+      // Function library.
+      {dead_outputs, proxy_func});
+
+  GraphDef optimized_graph;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+  GraphDef expected = item.graph;
+  CompareGraphs(expected, optimized_graph);
+
+  const Tensor one = test::AsScalar<float>(1.0);
+  item.feed.emplace_back("a", one);
+  item.feed.emplace_back("b", test::AsScalar<bool>(false));
+
+  auto tensors = EvaluateFetchNodes(item);
+  ASSERT_EQ(tensors.size(), 2);
+  test::ExpectTensorEqual<float>(tensors[0], one);
+  test::ExpectTensorEqual<float>(tensors[1], one);
+}
+
+TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithMergedDeadTensors) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+
+  // Function output can't be dead because it goes through the Merge node.
+  FunctionDef no_dead_outputs = FunctionDefHelper::Create(
+      "NoDeadOutputs", {"x:T", "cond:bool"}, {"z:T"}, {"T: {float, double}"},
+      {
+          {{"switch"}, "Switch", {"x", "cond"}, {{"T", "$T"}}},
+          {{"if_false"}, "Identity", {"switch:output_false:0"}, {{"T", "$T"}}},
+          {{"if_true"}, "Identity", {"switch:output_true:0"}, {{"T", "$T"}}},
+          {{"merge"},
+           "Merge",
+           {"if_false:output:0", "if_true:output:0"},
+           {{"T", "$T"}, {"N", 2}}},
+      },
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "merge:output:0"}});
+
+  // Build a graph to compute:
+  //   a: float
+  //   b: bool
+  //   d = DeadOutputs(x, b)
+  //   out = Identity(d)
+  //   return out
+  //
+  GrapplerItem item;
+  item.fetch = {"out"};
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_BOOL}}, kDevice),
+
+       NDef("fn", "PartitionedCall", {"a", "b"},
+            {{"Tin", DataTypeSlice{DT_FLOAT, DT_BOOL}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"f", FDH::FunctionRef("NoDeadOutputs", {{"T", DT_FLOAT}})}},
+            kDevice),
+
+       NDef("out", "Identity", {"fn"}, {{"T", DT_FLOAT}}, kDevice)},
+      // Function library.
+      {no_dead_outputs});
+
+  GraphDef optimized_graph;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+  GraphDef expected = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_BOOL}}, kDevice),
+
+       // Function body of a first function call inlined into the graph.
+       NDef("fn/x", "Identity", {"a:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("fn/cond", "Identity", {"b:0"}, {{"T", DT_BOOL}}, kDevice),
+       NDef("fn/switch", "Switch", {"fn/x:0", "fn/cond:0"}, {{"T", DT_FLOAT}},
+            kDevice),
+       NDef("fn/if_false", "Identity", {"fn/switch:0"}, {{"T", DT_FLOAT}},
+            kDevice),
+       NDef("fn/if_true", "Identity", {"fn/switch:1"}, {{"T", DT_FLOAT}},
+            kDevice),
+       NDef("fn/merge", "Merge", {"fn/if_false:0", "fn/if_true:0"},
+            {{"T", DT_FLOAT}, {"N", 2}}, kDevice),
+
+       // Return directly from inlined node.
+       NDef("out", "Identity", {"fn/merge:0"}, {{"T", DT_FLOAT}}, kDevice)},
+
+      // Function library.
+      {no_dead_outputs});
+
+  CompareGraphs(expected, optimized_graph);
+
+  const Tensor one = test::AsScalar<float>(1.0);
+  item.feed.emplace_back("a", one);
+  item.feed.emplace_back("b", test::AsScalar<bool>(false));
+
+  auto tensors_expected = EvaluateFetchNodes(item);
+  ASSERT_EQ(tensors_expected.size(), 1);
+
+  GrapplerItem optimized = item.WithGraph(std::move(optimized_graph));
+  auto tensors = EvaluateFetchNodes(optimized);
+  ASSERT_EQ(tensors.size(), 1);
+
+  test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+}
+
 TEST_F(FunctionOptimizerTest, SpecializeFunctionXTimesTwo) {
   using test::function::NDef;
 
