@@ -61,7 +61,7 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[[(2, 4, 5, 4)]])
+        expected_output_dims=[[[2, 4, 5, 4]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

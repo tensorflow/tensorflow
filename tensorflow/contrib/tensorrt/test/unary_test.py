@@ -102,7 +102,7 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name, input2_name],
         input_dims=[[input_dims, input2_dims]],
         output_names=[output_name],
-        expected_output_dims=[[(12, 5, 8, 12)]])
+        expected_output_dims=[[[12, 5, 8, 12]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

@@ -39,17 +39,19 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
-TfTrtIntegrationTestParams = namedtuple("TfTrtIntegrationTestParams", [
-    "gdef",
-    # A list of names of the input placeholder nodes.
-    "input_names",
-    # A list of list of output shapes of the input placeholder nodes.
-    "input_dims",
-    # A list of names of the output identity nodes.
-    "output_names",
-    # A list of list of expected output shapes of the output identity nodes.
-    "expected_output_dims"
-])
+TfTrtIntegrationTestParams = namedtuple(
+    "TfTrtIntegrationTestParams",
+    [
+        "gdef",
+        # A list of names of the input placeholder nodes.
+        "input_names",
+        # A list of list of output shapes of the input placeholder nodes.
+        "input_dims",
+        # A list of names of the output identity nodes.
+        "output_names",
+        # A list of list of expected output shapes of the output identity nodes.
+        "expected_output_dims"
+    ])
 
 RunParams = namedtuple("RunParams", [
     "use_optimizer", "precision_mode", "dynamic_engine", "test_name",
@@ -167,10 +169,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
-    batch_list
+    batch_list = []
     for dims_list in self._GetParamsCached().input_dims:
-      if not len(dims_list):
-        continue
+      assert dims_list
       # Each list of shapes should have same batch size.
       input_batches = [dims[0] for dims in dims_list]
       assert max(input_batches) == min(input_batches)
@@ -323,19 +324,20 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       with self.test_session(
           graph=g, config=config, use_gpu=True, force_gpu=True) as sess:
         # Run for each input(s) shape
-        for ind in range(len(inputs_data)):
+        for shape_index in range(len(inputs_data)):
           val = None
           # Defaults to 2 runs to verify result across multiple runs is same.
           for _ in range(num_runs):
             self._PrepareRun(graph_state)
-            new_val = sess.run(
-                outputs,
-                {inputs[i]: inputs_data[ind][i] for i in range(len(inputs))})
-            output_len = len(params.expected_output_dims[ind])
+            new_val = sess.run(outputs, {
+                inputs[i]: inputs_data[shape_index][i]
+                for i in range(len(inputs))
+            })
+            output_len = len(params.expected_output_dims[shape_index])
             self.assertEqual(output_len, len(new_val))
             for i in range(output_len):
               self.assertEqual(
-                  list(params.expected_output_dims[ind][i]),
+                  list(params.expected_output_dims[shape_index][i]),
                   list(new_val[i].shape))
             if val is not None:
               self.assertAllClose(val, new_val, atol=1.e-06, rtol=1.e-06)
@@ -506,8 +508,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       current_input_data = []
       for i in range(len(params.input_names)):
         dtype = input_dtypes[params.input_names[i]]
-        # Multiply the input by some constant to avoid all zeros input for integer
-        # types.
+        # Multiply the input by some constant to avoid all zeros input for
+        # integer types.
         scale = 10.0 if np.issubdtype(dtype, np.integer) else 1.0
         dims = inp[i]
         # TODO(laigd): add debug options. E.g. we can set the input data to be

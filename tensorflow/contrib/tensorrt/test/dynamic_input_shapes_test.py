@@ -18,17 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
+import numpy as np
+
 # pylint: disable=unused-import
 from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 # pylint: enable=unused-import
+from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
-import numpy as np
 
 
 class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
@@ -47,12 +48,10 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
 
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(shape=(None, None, None, 1),
-                                dtype=dtypes.float32,
-                                name='input')
-      conv_filter1 = constant_op.constant(np.ones([3, 3, 1, 8]),
-                                          name="weights1",
-                                          dtype=dtypes.float32)
+      x = array_ops.placeholder(
+          shape=(None, None, None, 1), dtype=dtypes.float32, name="input")
+      conv_filter1 = constant_op.constant(
+          np.ones([3, 3, 1, 8]), name="weights1", dtype=dtypes.float32)
       bias1 = constant_op.constant(np.random.randn(8), dtype=dtypes.float32)
       x = nn.conv2d(
           input=x,
@@ -62,9 +61,8 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
           name="conv")
       x = nn.bias_add(x, bias1)
       x = nn.relu(x)
-      conv_filter2 = constant_op.constant(np.ones([3, 3, 8, 1]),
-                                          name="weights2",
-                                          dtype=dtypes.float32)
+      conv_filter2 = constant_op.constant(
+          np.ones([3, 3, 8, 1]), name="weights2", dtype=dtypes.float32)
       bias2 = constant_op.constant(np.random.randn(1), dtype=dtypes.float32)
       x = nn.conv2d(
           input=x,
@@ -73,13 +71,13 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
           padding="SAME",
           name="conv")
       x = nn.bias_add(x, bias2)
-      x = array_ops.identity(x, name='output')
+      x = array_ops.identity(x, name="output")
 
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
-        input_names=['input'],
+        input_names=["input"],
         input_dims=input_dims,
-        output_names=['output'],
+        output_names=["output"],
         expected_output_dims=expected_output_dims)
 
   def GetConversionParams(self, run_params):
@@ -107,5 +105,6 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
     """The relative tolerance to compare floating point results."""
     return 1.e-03 if run_params.precision_mode == "FP32" else 1.e-01
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   test.main()

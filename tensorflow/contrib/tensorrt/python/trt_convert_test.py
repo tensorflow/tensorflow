@@ -239,8 +239,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         # Run with batch size 2, a new engine is created and cached.
         self._TestRun(sess, 2, True)
         # Run with batch size 3, since the number of cached engines has reached
-        # the max, it should fall back to TF function.
-        self._TestRun(sess, 3, False)
+        # the max, it should evict an old engine and create a new one.
+        self._TestRun(sess, 3, True)
 
     # Test the output SavedModel
     with ops.Graph().as_default():
@@ -251,8 +251,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         # Run with batch size 2, a new engine is created and cached.
         self._TestRun(sess, 2, True)
         # Run with batch size 3, since the number of cached engines has reached
-        # the max, it should fall back to TF function.
-        self._TestRun(sess, 3, False)
+        # the max, it should evict an old engine and create a new one.
+        self._TestRun(sess, 3, True)
 
   def testCreateInferenceGraph_StaticOp(self):
     if not trt_convert.is_tensorrt_enabled():
