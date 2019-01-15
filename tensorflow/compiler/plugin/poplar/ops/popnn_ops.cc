@@ -91,4 +91,24 @@ REGISTER_OP("PopnnLstmLayerBackprop")
 Internal implementation of PopnnLstmLayerBackprop.
 )doc");
 
+REGISTER_OP("PopnnGroupNormInference")
+    .Input("inputs: dtype")
+    .Input("gamma: dtype")
+    .Input("beta: dtype")
+    .Input("mean: dtype")
+    .Input("variance: dtype")
+    .Output("normalized: dtype")
+    .Attr("data_format: string")
+    .Attr("epsilon: float")
+    .Attr("num_groups: int")
+    .Attr("dtype: {float16, float32}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      auto in_shape = c->input(0);
+      c->set_output(0, in_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Internal implementation of PopnnGroupNormInference.
+)doc");
+
 }  // namespace tensorflow

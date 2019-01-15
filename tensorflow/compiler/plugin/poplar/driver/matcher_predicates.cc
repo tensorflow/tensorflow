@@ -288,7 +288,7 @@ bool IsPopOpsElementwiseBinary(const HloInstruction* inst) {
          IsPopOpsFusion(inst, "scaled_inplace");
 }
 
-bool IsLayerNormInferenceOrTraining(const HloInstruction* inst) {
+bool IsNormInferenceOrTraining(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kBatchNormInference ||
          inst->opcode() == HloOpcode::kBatchNormTraining;
 }

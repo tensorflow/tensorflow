@@ -56,8 +56,8 @@ StatusOr<PoplibsLib> StringToPoplibsLib(const std::string& name) {
 }
 
 std::string PoplibsOpToString(const PoplibsOp& poplibs_op) {
-  static std::vector<std::string> names = {"LstmLayerFwd", "LstmLayerBwd",
-                                           "Sqrt", "Rsqrt"};
+  static std::vector<std::string> names = {
+      "LstmLayerFwd", "LstmLayerBwd", "GroupNormInference", "Sqrt", "Rsqrt"};
   if (names.size() != static_cast<uint32>(PoplibsOp::_NumOps)) {
     LOG(FATAL) << "The number of Poplibs Custom Ops does not match.";
   }
@@ -70,6 +70,9 @@ StatusOr<PoplibsOp> StringToPoplibsOp(const std::string& name) {
       // Popnn:
       {"LstmLayerFwd", PoplibsOp::LstmLayerFwd},
       {"LstmLayerBwd", PoplibsOp::LstmLayerBwd},
+      {"GroupNormInference", PoplibsOp::GroupNormInference},
+      // {"GroupNormTraining", PoplibsOp::GroupNormTraining},
+      // {"GroupNormGrad", PoplibsOp::GroupNormGrad},
       // Popops:
       {"Sqrt", PoplibsOp::Sqrt},
       {"Rsqrt", PoplibsOp::Rsqrt},

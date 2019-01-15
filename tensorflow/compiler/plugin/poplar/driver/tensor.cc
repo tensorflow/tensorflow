@@ -461,12 +461,12 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
                                       &resources.dot_cache);
 }
 
-static StatusOr<poplar::Tensor> AddBatchNormScale(poplar::Graph& graph,
-                                                  const std::string& debug_name,
-                                                  const HloInstruction* target,
-                                                  const HloInstruction* layout,
-                                                  int64 layout_output_idx,
-                                                  const TensorMap& tensor_map) {
+StatusOr<poplar::Tensor> AddNormScaleTensor(poplar::Graph& graph,
+                                            const std::string& debug_name,
+                                            const HloInstruction* layout,
+                                            int64 layout_output_idx,
+                                            const unsigned feature_dimension,
+                                            const TensorMap& tensor_map) {
   OutVector outputs = FindInstructionOutputs(tensor_map, layout);
 
   if (layout_output_idx < 0 || outputs.size() <= layout_output_idx) {
@@ -475,18 +475,18 @@ static StatusOr<poplar::Tensor> AddBatchNormScale(poplar::Graph& graph,
         debug_name);
   }
 
-  const auto* bn = Cast<HloBatchNormInstruction>(target);
-
   poplar::Tensor acts = outputs[layout_output_idx];
-  auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
+  auto pair = ShuffleNormInputToPoplar(acts, feature_dimension);
 
   return poplin::createNormGamma(graph, pair.first);
 }
 
-static StatusOr<poplar::Tensor> AddBatchNormOffset(
-    poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* target, const HloInstruction* layout,
-    int64 layout_output_idx, const TensorMap& tensor_map) {
+StatusOr<poplar::Tensor> AddNormOffsetTensor(poplar::Graph& graph,
+                                             const std::string& debug_name,
+                                             const HloInstruction* layout,
+                                             int64 layout_output_idx,
+                                             const unsigned feature_dimension,
+                                             const TensorMap& tensor_map) {
   OutVector outputs = FindInstructionOutputs(tensor_map, layout);
 
   if (layout_output_idx < 0 || outputs.size() <= layout_output_idx) {
@@ -495,10 +495,8 @@ static StatusOr<poplar::Tensor> AddBatchNormOffset(
         debug_name);
   }
 
-  const auto* bn = Cast<HloBatchNormInstruction>(target);
-
   poplar::Tensor acts = outputs[layout_output_idx];
-  auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
+  auto pair = ShuffleNormInputToPoplar(acts, feature_dimension);
 
   return poplin::createNormBeta(graph, pair.first);
 }
@@ -582,19 +580,21 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       switch (tgt->opcode()) {
         case HloOpcode::kBatchNormInference:
         case HloOpcode::kBatchNormTraining: {
+          const unsigned feature_dimension =
+              Cast<HloBatchNormInstruction>(tgt)->feature_index();
           switch (target->second.input_index) {
             case 1: {
               TF_ASSIGN_OR_RETURN(
-                  out,
-                  AddBatchNormScale(graph, name, tgt, *optional_layout,
-                                    *optional_layout_output_idx, tensor_map));
+                  out, AddNormScaleTensor(graph, name, *optional_layout,
+                                          *optional_layout_output_idx,
+                                          feature_dimension, tensor_map));
               break;
             }
             case 2: {
               TF_ASSIGN_OR_RETURN(
-                  out,
-                  AddBatchNormOffset(graph, name, tgt, *optional_layout,
-                                     *optional_layout_output_idx, tensor_map));
+                  out, AddNormOffsetTensor(graph, name, *optional_layout,
+                                           *optional_layout_output_idx,
+                                           feature_dimension, tensor_map));
               break;
             }
             default:
@@ -708,10 +708,10 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         case HloOpcode::kCustomCall: {
           if (IsPoplibsCustomOp(tgt)) {
             TF_ASSIGN_OR_RETURN(
-                out,
-                AllocatePoplibsOpTensor(
-                    graph, resources, name, tgt, target->second.input_index,
-                    optional_layout, optional_layout_output_idx, shape));
+                out, AllocatePoplibsOpTensor(
+                         graph, resources, name, tgt,
+                         target->second.input_index, optional_layout,
+                         optional_layout_output_idx, shape, tensor_map));
           } else {
             LOG(FATAL) << "Unsupported custom call " << tgt->name();
           }

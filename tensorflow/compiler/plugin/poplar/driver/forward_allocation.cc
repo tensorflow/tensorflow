@@ -94,17 +94,16 @@ static absl::optional<std::vector<HloInstruction*>> find_all_targets(
 
   auto biases =
       reduce(insts, [](HloInstruction* inst) { return IsPopOpsBiasAdd(inst); });
-  auto layer_norms = reduce(insts, [](HloInstruction* inst) {
-    return IsLayerNormInferenceOrTraining(inst);
+  auto norms = reduce(insts, [](HloInstruction* inst) {
+    return IsNormInferenceOrTraining(inst);
   });
 
   // Add the instructions in order.
   std::vector<HloInstruction*> result;
   result.insert(std::end(result), std::begin(biases), std::end(biases));
-  result.insert(std::end(result), std::begin(layer_norms),
-                std::end(layer_norms));
+  result.insert(std::end(result), std::begin(norms), std::end(norms));
   for (auto inst : insts) {
-    if (biases.count(inst) == 0 && layer_norms.count(inst) == 0) {
+    if (biases.count(inst) == 0 && norms.count(inst) == 0) {
       result.push_back(inst);
     }
   }

@@ -45,7 +45,8 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopopsOpInfoMap();
 StatusOr<poplar::Tensor> AllocateUnaryOp(
     poplar::Graph&, CompilerResources&, const std::string&,
     const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
-    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&);
+    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
+    const TensorMap&);
 
 // Creating functions.
 StatusOr<poplar::program::Program> CreateUnaryOp(

@@ -49,7 +49,8 @@ StatusOr<poplar::Tensor> AllocatePoplibsOpTensor(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
     const HloInstruction* inst, const int64 target_idx,
     absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx, const xla::Shape& shape);
+    absl::optional<int64> optional_layout_output_idx, const xla::Shape& shape,
+    const TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreatePoplibsOp(poplar::Graph& graph,
                                                    CompilerResources& res,

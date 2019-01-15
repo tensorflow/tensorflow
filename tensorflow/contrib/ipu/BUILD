@@ -14,6 +14,7 @@ py_library(
       "__init__.py",
       "python/ops.py",
       "python/utils.py",
+      #"python/popnn_normalization.py",
       "python/popnn_rnn.py",
     ],
     srcs_version = "PY2AND3",

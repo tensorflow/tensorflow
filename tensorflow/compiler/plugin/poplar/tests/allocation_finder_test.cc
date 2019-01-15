@@ -2381,7 +2381,6 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
 
 TEST_F(AllocationFinderTest, ForwardAllocationCustomPoplibsOp) {
   // Check that the layout gets forwarded to a custom op.
-  // TODO T6195 - replace the call with a Group Norm
   std::string hlo = R"(
 HloModule top
 ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f32[2], arg3: f32[2]) -> (f32[1,4,4,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}) {
@@ -2390,7 +2389,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   %convolution = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %arg0, f32[1,1,2,2]{3,2,1,0} %arg1), window={size=1x1}, dim_labels=b01f_01io->b01f
   %arg2 = f32[2]{0} parameter(2)
   %arg3 = f32[2]{0} parameter(3)
-  ROOT %cc = (f32[1,4,4,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}) custom-call(f32[1,4,4,2]{3,2,1,0} %convolution, f32[2]{0} %arg2, f32[2]{0} %arg3), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"allocating_indexes\":[],\"is_training\":true,\"layout_dependencies\":{\"keys\":[1,2],\"values\":[0,0]},\"epsilon\":0.001,\"feature_index\":3,\"num_inplace_operands\":0}\n"
+  ROOT %cc = (f32[1,4,4,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}) custom-call(f32[1,4,4,2]{3,2,1,0} %convolution, f32[2]{0} %arg2, f32[2]{0} %arg3), custom_call_target="Popnn::GroupNormInference", opaque="{\"allocating_indexes\":[],\"layout_dependencies\":{\"keys\":[1,2],\"values\":[0,0]},\"epsilon\":0.001,\"feature_index\":3,\"num_inplace_operands\":0}\n"
 }
 
 )";

@@ -24,9 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 #include "tensorflow/core/platform/types.h"
 
-#define REGISTER_IPU_OP(OP_NAME, IMPL)                                     \
-  REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_IPU_XLA_JIT), IMPL); \
-  REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_XLA_IPU), IMPL);
+#define REGISTER_IPU_OP(OP_NAME, IMPL)                             \
+  REGISTER_XLA_OP(Name(OP_NAME).Device(DEVICE_IPU_XLA_JIT), IMPL); \
+  REGISTER_XLA_OP(Name(OP_NAME).Device(DEVICE_XLA_IPU), IMPL);
 
 namespace tensorflow {
 // A class used to make sure that kernels set the properties expected by all

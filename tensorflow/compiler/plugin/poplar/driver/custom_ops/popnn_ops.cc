@@ -3,6 +3,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poplibs_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -116,6 +117,8 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
   static absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo> info_map = {
       {PoplibsOp::LstmLayerFwd, {AllocateLstmLayerFwdOp, CreateLstmLayerFwdOp}},
       {PoplibsOp::LstmLayerBwd, {AllocateLstmLayerBwdOp, CreateLstmLayerBwdOp}},
+      {PoplibsOp::GroupNormInference,
+       {AllocateNormInferenceAndTrainingOp, CreateGroupNormInferenceOp}},
   };
   return info_map;
 }
@@ -125,7 +128,8 @@ StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
     const HloInstruction* inst, const int64 target_idx,
     absl::optional<const HloInstruction*> optional_layout,
     absl::optional<int64> optional_layout_output_idx,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map,
+    const TensorMap& tensor_map) {
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
                       GetLstmParameters(inst, attribute_map));
   TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts,
@@ -174,8 +178,44 @@ StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
     const HloInstruction* inst, const int64 target_idx,
     absl::optional<const HloInstruction*> optional_layout,
     absl::optional<int64> optional_layout_output_idx,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map,
+    const TensorMap& tensor_map) {
   return xla::FailedPrecondition("LstmLayerBwdOp should not be allocating.");
+}
+
+StatusOr<poplar::Tensor> AllocateNormInferenceAndTrainingOp(
+    poplar::Graph& graph, CompilerResources& res, const std::string& name,
+    const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map,
+    const TensorMap& tensor_map) {
+  TF_ASSIGN_OR_RETURN(int32 feature_index_int32,
+                      attribute_map.GetAttributeAsInt("feature_index"));
+  auto optional_feature_index = convert_scalar<uint32>(feature_index_int32);
+  if (!optional_feature_index) {
+    return xla::FailedPrecondition("Norm - Feature index can't be casted.");
+  }
+  const auto feature_index = *optional_feature_index;
+
+  switch (target_idx) {
+    case 1: {
+      return AddNormScaleTensor(graph, name, *optional_layout,
+                                *optional_layout_output_idx, feature_index,
+                                tensor_map);
+    }
+    case 2: {
+      return AddNormOffsetTensor(graph, name, *optional_layout,
+                                 *optional_layout_output_idx, feature_index,
+                                 tensor_map);
+    }
+    default: {
+      return xla::FailedPrecondition(
+          "NormInferenceTraining op %s should not be allocating on index "
+          "%lld.",
+          inst->name().c_str(), target_idx);
+    }
+  }
 }
 
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
@@ -301,6 +341,32 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 3, kernel_backprop));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 4, weights_backprop.biases));
   return seq;
+}
+
+StatusOr<poplar::program::Program> CreateGroupNormInferenceOp(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  TF_ASSIGN_OR_RETURN(int32 feature_index_int32,
+                      attribute_map.GetAttributeAsInt("feature_index"));
+  auto optional_feature_index = convert_scalar<uint32>(feature_index_int32);
+  if (!optional_feature_index) {
+    return xla::FailedPrecondition("Norm - Feature index can't be casted.");
+  }
+  const auto feature_index = *optional_feature_index;
+
+  TF_ASSIGN_OR_RETURN(int32 num_groups_int32,
+                      attribute_map.GetAttributeAsInt("num_groups"));
+  auto optional_num_groups = convert_scalar<uint32>(num_groups_int32);
+  if (!optional_num_groups) {
+    return xla::FailedPrecondition("Norm - Num groups can't be casted.");
+  }
+  const auto num_groups = *optional_num_groups;
+
+  TF_ASSIGN_OR_RETURN(float epsilon,
+                      attribute_map.GetAttributeAsFloat("epsilon"));
+  return CreateNormInference(NormType::GroupNorm, graph, res, inst, epsilon,
+                             feature_index, num_groups, tensor_map);
 }
 
 }  // namespace poplarplugin
