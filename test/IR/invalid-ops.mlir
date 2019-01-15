@@ -178,7 +178,7 @@ func @func_with_ops(f32) {
 
 func @func_with_ops(i32) {
 ^bb0(%a : i32):
-  %sf = addf %a, %a : i32  // expected-error {{'addf' op requires a floating point type}}
+  %sf = addf %a, %a : i32  // expected-error {{'addf' op operand #0 must be float-like}}
 }
 
 // -----

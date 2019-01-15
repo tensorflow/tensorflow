@@ -24,7 +24,37 @@
 
 using namespace mlir;
 
-tblgen::Type::Type(const llvm::Record &def) : def(def) {
+tblgen::TypeConstraint::TypeConstraint(const llvm::Record &record)
+    : def(record) {
+  assert(def.isSubClassOf("TypeConstraint") &&
+         "must be subclass of TableGen 'TypeConstraint' class");
+}
+
+tblgen::Pred tblgen::TypeConstraint::getPredicate() const {
+  auto *val = def.getValue("predicate");
+  assert(val && "TableGen 'Type' class should have 'predicate' field");
+
+  const auto *pred = dyn_cast<llvm::DefInit>(val->getValue());
+  return Pred(pred);
+}
+
+llvm::StringRef tblgen::TypeConstraint::getConditionTemplate() const {
+  return getPredicate().getCondition();
+}
+
+llvm::StringRef tblgen::TypeConstraint::getDescription() const {
+  const static auto fieldName = "description";
+  auto *val = def.getValue(fieldName);
+  if (!val)
+    return "";
+
+  return def.getValueAsString(fieldName);
+}
+
+tblgen::TypeConstraint::TypeConstraint(const llvm::DefInit &init)
+    : def(*init.getDef()) {}
+
+tblgen::Type::Type(const llvm::Record &record) : TypeConstraint(record) {
   assert(def.isSubClassOf("Type") &&
          "must be subclass of TableGen 'Type' class");
 }
@@ -42,10 +72,3 @@ StringRef tblgen::Type::getBuilderCall() const {
   return {};
 }
 
-tblgen::PredCNF tblgen::Type::getPredicate() const {
-  auto *val = def.getValue("predicate");
-  assert(val && "TableGen 'Type' class should have 'predicate' field");
-
-  const auto *pred = dyn_cast<llvm::DefInit>(val->getValue());
-  return PredCNF(pred);
-}

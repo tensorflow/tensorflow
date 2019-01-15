@@ -27,103 +27,135 @@
 // Predicates.
 //===----------------------------------------------------------------------===//
 
-// Singular predicate condition.
-class PredAtom<code call, bit neg = 0> {
-  // The function to invoke to compute the predicate.
-  code predCall = call;
-
-  // Whether the predicate result should be negated.
-  bit negated = neg;
+// Logical predicate wrapping a C expression.
+class CPred<code pred> {
+  code predCall = "(" # pred # ")";
 }
 
-// Predicate atoms in conjunctive normal form. The inner list consists
-// of PredAtoms, one of which in the list must hold, while all the outer
-// most conditions must hold. Conceptually
-//   all_of(outer_conditions, any_of(inner_conditions)).
-class PredCNF<list<list<PredAtom>> conds> {
-  list<list<PredAtom>> conditions = conds;
-}
+// A predicate that holds if all of its children hold.  Always holds for zero
+// children.
+class AllOf<list<CPred> children> : CPred<
+  !if(
+    !empty(children),
+    "true",
+    !foldl(!head(children).predCall, !tail(children), acc, elem,
+           !cast<code>(acc # " && " # elem.predCall))
+  )>;
 
-def IsVectorTypePred : PredAtom<"{0}.isa<VectorType>()">;
+// A predicate that holds if any of its children hold.  Never holds for zero
+// children.
+class AnyOf<list<CPred> children> : CPred<
+  !if(
+    !empty(children),
+    "false",
+    !foldl(!head(children).predCall, !tail(children), acc, elem,
+           !cast<code>(acc # " || " # elem.predCall))
+  )>;
 
-def IsTensorTypePred : PredAtom<"{0}.isa<TensorType>()">;
+// A predicate that hold if its child does not.
+class NotCPred<CPred child> : CPred<"!" # child>;
+
+//===----------------------------------------------------------------------===//
+// Type predicates.  ({0} is replaced by an instance of mlir::Type)
+//===----------------------------------------------------------------------===//
+
+// Whether a type is a VectorType.
+def IsVectorTypePred : CPred<"{0}.isa<VectorType>()">;
+
+// Whether a type is a TensorType.
+def IsTensorTypePred : CPred<"{0}.isa<TensorType>()">;
 
 // For a TensorType, verify that it is a statically shaped tensor.
 def IsStaticShapeTensorTypePred :
-  PredAtom<"{0}.cast<TensorType>().hasStaticShape()">;
+  CPred<"{0}.cast<TensorType>().hasStaticShape()">;
 
 //===----------------------------------------------------------------------===//
-// Types.
+// Type constraints and types.
 //===----------------------------------------------------------------------===//
 
-// Base class for all types.
-class Type {
+// A constraint on types.  This can be used to check the validity of
+// instruction arguments.
+class TypeConstraint<CPred condition, string descr = ""> {
+  // The predicates that this type satisfies.
+  // Format: {0} will be expanded to the type.
+  CPred predicate = condition;
+  // User-readable description used, e.g., for error reporting.  If empty, a
+  // generic message will be used instead.
+  string description = descr;
+}
+
+// A specific type that can be constructed.  Also carries type constraints, but
+// accepts any type by default.
+class Type<CPred condition = CPred<"true">, string descr = ""> : TypeConstraint<condition, descr> {
   // The builder call to invoke (if specified) to construct the Type.
   // Format: this will be affixed to the builder.
   code builderCall = ?;
-  // The predicates that this type satisfies.
-  // Format: {0} will be expanded to the type.
-  PredCNF predicate = ?;
 }
 
 // Integer types.
-class I<int width> : Type {
+class IntegerBase<CPred pred, string descr = ?> : Type<pred, descr>;
+
+// Any integer type irrespective of its width.
+def Integer : IntegerBase<CPred<"{0}.isa<IntegerType>()">, "integer">;
+
+// Index type.
+def Index : IntegerBase<CPred<"{0}.isa<IndexType>()">, "index">;
+
+// Integer type of a specific width.
+class I<int width>
+    : IntegerBase<CPred<"{0}.isInteger(" # width # ")">, "i" # width> {
   int bitwidth = width;
   let builderCall = "getIntegerType(" # bitwidth # ")";
-  let predicate = PredCNF<[[PredAtom<"{0}.isInteger(" # bitWidth # ")">]]>;
 }
 def I1  : I<1>;
 def I32 : I<32>;
 
 // Floating point types.
-class F<int width> : Type {
+class FloatBase<CPred pred, string descr = ?> : Type<pred, descr>;
+
+// Any float type irrespective of its width.
+def Float : FloatBase<CPred<"{0}.isa<FloatType>()">, "floating point">;
+
+// Float type of a specific width.
+class F<int width>
+    : FloatBase<CPred<"{0}.isF" # width # "()">, "f" # width> {
   int bitwidth = width;
-}
-def F32 : F<32> {
-  let builderCall = "getF32Type()";
-  let predicate = PredCNF<[[PredAtom<"{0}.isF32()">]]>;
+  let builderCall = "getF" # width # "Type()";
 }
 
+def F32 : F<32>;
+
 // A container type is a type that has another type embedded within it.
-class ContainerType<Type etype, PredCNF containerPred> : Type {
+class ContainerType<Type etype, CPred containerPred, code elementTypeCall,
+                    string descr> :
+    // First, check the container predicate.  Then, substitute the extracted
+    // element into the element type checker.
+    Type<AllOf<[containerPred,
+                   CPred<!subst("{0}",
+                                !cast<string>(elementTypeCall),
+                                !cast<string>(etype.predicate.predCall))>]>,
+	 descr # "<" # etype.description # ">" > {
   // The type of elements in the container.
   Type elementType = etype;
 
   // Call to retrieve.
-  code getElementTypeCall = ?;
-
-  let predicate = PredCNF<
-    !foldl(
-      // Initialize with the predicate of the container.
-      containerPred.conditions,
-      // Add constraints of the element type. This uses TableGen foldl (fold
-      // left) to iterate over the rules of the element type's predicates,
-      // expanding '{0}' which correspond to the type of the element to
-      // getElementTypeCall of the container type so that the
-      // predicates of the element type are applied to the elements of
-      // the container.
-      elementType.predicate.conditions, a, b,
-      !listconcat(a, [!foldl([]<PredAtom>, b, c, d,
-        !listconcat(c, [PredAtom<
-          !subst("{0}", !cast<string>(getElementTypeCall),
-                        !cast<string>(d.predCall))>]
-        ))]
-      )
-    )
-  >;
+  code getElementTypeCall = elementTypeCall;
 }
 
 // Vector types.
-class Vector<Type t, list<int> dims> : ContainerType<t, PredCNF<[
-    [IsVectorTypePred],
+class TypedVector<Type t> : ContainerType<t, IsVectorTypePred,
+    "{0}.cast<VectorType>().getElementType()", "vector">;
+
+class Vector<Type t, list<int> dims> : ContainerType<t, AllOf<[
+    IsVectorTypePred,
     // Match dims. Construct an ArrayRef with the elements of `dims` by folding
     // over the list.
-    [PredAtom<"{0}.cast<VectorType>().getShape() == ArrayRef{{" #
+    CPred<"{0}.cast<VectorType>().getShape() == ArrayRef{{" #
       !foldl("", dims, sum, element, sum #
-       !if(!empty(sum), "", ",") # !cast<string>(element)) # "}">]
-    ]>> {
+       !if(!empty(sum), "", ",") # !cast<string>(element)) # "}">]>,
+    "{0}.cast<VectorType>().getElementType()",
+    "vector"> {
   list<int> dimensions = dims;
-  let getElementTypeCall = "{0}.cast<VectorType>().getElementType()";
 }
 
 // Tensor type.
@@ -131,23 +163,20 @@ class Vector<Type t, list<int> dims> : ContainerType<t, PredCNF<[
 // This represents a generic tensor without constraints on elemental type,
 // rank, size. As there is no constraint on elemental type, derive from Type
 // directly instead of ContainerType.
-def Tensor : Type {
-  let predicate = PredCNF<[[IsTensorTypePred]]>;
-}
+def Tensor : Type<IsTensorTypePred, "tensor">;
 
 // A tensor with static shape but no other constraints. Note: as
 // Tensor is a def this doesn't derive from it, but reuses the predicate
 // that must hold for it to be a tensor.
-def StaticShapeTensor : Type {
-  let predicate = PredCNF<
-    !listconcat(Tensor.predicate.conditions, [[IsStaticShapeTensorTypePred]])
-  >;
-}
+def StaticShapeTensor
+    : Type<AllOf<[Tensor.predicate, IsStaticShapeTensorTypePred]>,
+           "statically shaped tensor">;
 
 // For typed tensors.
-class TypedTensor<Type t> : ContainerType<t, Tensor.predicate> {
-  let getElementTypeCall = "{0}.cast<TensorType>().getElementType()";
-}
+class TypedTensor<Type t>
+    : ContainerType<t, Tensor.predicate,
+                    "{0}.cast<TensorType>().getElementType()",
+		    "tensor">;
 
 def F32Tensor : TypedTensor<F32>;
 
@@ -156,6 +185,17 @@ def String : Type;
 
 // Type corresponding to derived attribute.
 def DerivedAttrBody : Type;
+
+// Type constraint for integer-like types: integers, indices, vectors of
+// integers, tensors of integers.
+def IntegerLike : TypeConstraint<AnyOf<[Integer.predicate, Index.predicate,
+        TypedVector<Integer>.predicate, TypedTensor<Integer>.predicate]>,
+    "integer-like">;
+
+// Type constraint for float-like types: floats, vectors or tensors thereof.
+def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
+        TypedVector<Float>.predicate, TypedTensor<Float>.predicate]>,
+    "float-like">;
 
 //===----------------------------------------------------------------------===//
 // Attributes

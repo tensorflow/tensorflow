@@ -28,58 +28,20 @@
 
 using namespace mlir;
 
-tblgen::PredCNF::PredCNF(const llvm::Init *init) : def(nullptr) {
-  if (const auto *defInit = dyn_cast<llvm::DefInit>(init)) {
+// Construct a Predicate from a record.
+tblgen::Pred::Pred(const llvm::Record *def) : def(def) {
+  assert(def->isSubClassOf("Pred") &&
+         "must be a subclass of TableGen 'Pred' class");
+}
+
+// Construct a Predicate from an initializer.
+tblgen::Pred::Pred(const llvm::Init *init) : def(nullptr) {
+  if (const auto *defInit = dyn_cast_or_null<llvm::DefInit>(init))
     def = defInit->getDef();
-    assert(def->isSubClassOf("PredCNF") &&
-           "must be subclass of TableGen 'PredCNF' class");
-  }
 }
 
-const llvm::ListInit *tblgen::PredCNF::getConditions() const {
-  if (!def)
-    return nullptr;
-
-  return def->getValueAsListInit("conditions");
-}
-
-std::string
-tblgen::PredCNF::createTypeMatcherTemplate(PredCNF predsKnownToHold) const {
-  const auto *conjunctiveList = getConditions();
-  if (!conjunctiveList)
-    return "true";
-
-  // Create a set of all the disjunctive conditions that hold. This is taking
-  // advantage of uniquieing of lists to discard based on the pointer
-  // below. This is not perfect but this will also be moved to FSM matching in
-  // future and gets rid of trivial redundant checking.
-  llvm::SmallSetVector<const llvm::Init *, 4> existingConditions;
-  auto existingList = predsKnownToHold.getConditions();
-  if (existingList) {
-    for (auto disjunctiveInit : *existingList)
-      existingConditions.insert(disjunctiveInit);
-  }
-
-  std::string outString;
-  llvm::raw_string_ostream ss(outString);
-  bool firstDisjunctive = true;
-  for (auto disjunctiveInit : *conjunctiveList) {
-    if (existingConditions.count(disjunctiveInit) != 0)
-      continue;
-    ss << (firstDisjunctive ? "(" : " && (");
-    firstDisjunctive = false;
-    bool firstConjunctive = true;
-    for (auto atom : *cast<llvm::ListInit>(disjunctiveInit)) {
-      auto predAtom = cast<llvm::DefInit>(atom)->getDef();
-      ss << (firstConjunctive ? "" : " || ")
-         << (predAtom->getValueAsBit("negated") ? "!" : "")
-         << predAtom->getValueAsString("predCall");
-      firstConjunctive = false;
-    }
-    ss << ")";
-  }
-  if (firstDisjunctive)
-    return "true";
-  ss.flush();
-  return outString;
+// Get condition of the Predicate.
+StringRef tblgen::Pred::getCondition() const {
+  assert(!isNull() && "null predicate does not have a condition");
+  return def->getValueAsString("predCall");
 }

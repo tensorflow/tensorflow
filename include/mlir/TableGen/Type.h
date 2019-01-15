@@ -34,13 +34,38 @@ class Record;
 namespace mlir {
 namespace tblgen {
 
+// Wrapper class with helper methods for accessing Type constraints defined in
+// TableGen.
+class TypeConstraint {
+public:
+  explicit TypeConstraint(const llvm::Record &record);
+  explicit TypeConstraint(const llvm::DefInit &init);
+
+  // Returns the predicate that can be used to check if a type satisfies this
+  // type constraint.
+  Pred getPredicate() const;
+
+  // Returns the condition template that can be used to check if a type
+  // satisfies this type constraint.  The template may contain "{0}" that must
+  // be substituted with an expression returning an mlir::Type.
+  StringRef getConditionTemplate() const;
+
+  // Returns the user-readable description of the constraint.  If the
+  // description is not provided, returns an empty string.
+  StringRef getDescription() const;
+
+protected:
+  // The TableGen definition of this type.
+  const llvm::Record &def;
+};
+
 // Wrapper class providing helper methods for accessing MLIR Type defined
 // in TableGen. This class should closely reflect what is defined as
 // class Type in TableGen.
-class Type {
+class Type : public TypeConstraint {
 public:
-  explicit Type(const llvm::Record &def);
-  explicit Type(const llvm::Record *def) : Type(*def) {}
+  explicit Type(const llvm::Record &record);
+  explicit Type(const llvm::Record *record) : Type(*record) {}
   explicit Type(const llvm::DefInit *init);
 
   // Returns the TableGen def name for this type.
@@ -50,14 +75,6 @@ public:
   // construct this type. Returns an empty StringRef if the method call
   // is undefined or unset.
   StringRef getBuilderCall() const;
-
-  // Returns this type's predicate CNF, which is used for checking the
-  // validity of this type.
-  PredCNF getPredicate() const;
-
-private:
-  // The TableGen definition of this type.
-  const llvm::Record &def;
 };
 
 } // end namespace tblgen

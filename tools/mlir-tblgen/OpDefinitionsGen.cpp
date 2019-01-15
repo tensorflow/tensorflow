@@ -377,10 +377,18 @@ void OpEmitter::emitVerifier() {
     // TODO: Commonality between matchers could be extracted to have a more
     // concise code.
     if (operand.hasMatcher()) {
-      auto pred =
-          "if (!(" + operand.createTypeMatcherTemplate() + ")) return true;\n";
-      OUT(4) << formatv(pred, "this->getInstruction()->getOperand(" +
-                                  Twine(opIndex) + ")->getType()");
+      auto constraint = operand.getTypeConstraint();
+      auto description = constraint.getDescription();
+      OUT(4) << "if (!("
+             << formatv(constraint.getConditionTemplate(),
+                        "this->getInstruction()->getOperand(" + Twine(opIndex) +
+                            ")->getType()")
+             << ")) {\n";
+      OUT(6) << "return emitOpError(\"operand #" + Twine(opIndex)
+             << (description.empty() ? " type precondition failed"
+                                     : " must be " + Twine(description))
+             << "\");";
+      OUT(4) << "}\n";
     }
     ++opIndex;
   }

@@ -33,38 +33,24 @@ class Record;
 namespace mlir {
 namespace tblgen {
 
-// Predicate in Conjunctive Normal Form (CNF).
-//
-// CNF is an AND of ORs. That means there are two levels of lists: the inner
-// list contains predicate atoms, which are ORed. Then outer list ANDs its inner
-// lists.
-// An empty CNF is defined as always true, thus matching everything.
-class PredCNF {
+// A logical predicate.
+class Pred {
 public:
-  // Constructs an empty predicate CNF.
-  explicit PredCNF() : def(nullptr) {}
+  // Construct a Predicate from a record.
+  explicit Pred(const llvm::Record *def);
+  // Construct a Predicate from an initializer.
+  explicit Pred(const llvm::Init *init);
 
-  explicit PredCNF(const llvm::Record *def) : def(def) {}
+  // Get the predicate condition.  The predicate must not be null.
+  StringRef getCondition() const;
 
-  // Constructs a predicate CNF out of the given TableGen initializer.
-  // The initializer is allowed to be unset initializer (?); then we are
-  // constructing an empty predicate CNF.
-  explicit PredCNF(const llvm::Init *init);
-
-  // Returns true if this is an empty predicate CNF.
-  bool isEmpty() const { return !def; }
-
-  // Returns the conditions inside this predicate CNF. Returns nullptr if
-  // this is an empty predicate CNF.
-  const llvm::ListInit *getConditions() const;
-
-  // Returns the template string to construct the matcher corresponding to this
-  // predicate CNF. The string uses '{0}' to represent the type.
-  std::string createTypeMatcherTemplate(PredCNF predsKnownToHold) const;
+  // Check if the predicate is defined.  Callers may use this to interpret the
+  // missing predicate as either true (e.g. in filters) or false (e.g. in
+  // precondition verification).
+  bool isNull() const { return def == nullptr; }
 
 private:
-  // The TableGen definition of this predicate CNF. nullptr means an empty
-  // predicate CNF.
+  // The TableGen definition of this predicate.
   const llvm::Record *def;
 };
 

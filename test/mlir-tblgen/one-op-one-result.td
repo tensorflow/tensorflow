@@ -1,7 +1,8 @@
 // RUN: mlir-tblgen -gen-rewriters %s | FileCheck %s
 
 // Extracted & simplified from op_base.td to do more directed testing.
-class Type {
+class TypeConstraint;
+class Type : TypeConstraint {
   code builderCall = ?;
 }
 class Pattern<dag patternToMatch, list<dag> resultOps> {

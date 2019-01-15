@@ -159,10 +159,9 @@ std::string tblgen::Operator::NamedAttribute::getName() const {
 }
 
 bool tblgen::Operator::Operand::hasMatcher() const {
-  return !tblgen::Type(defInit).getPredicate().isEmpty();
+  return !tblgen::TypeConstraint(*defInit).getPredicate().isNull();
 }
 
-std::string tblgen::Operator::Operand::createTypeMatcherTemplate() const {
-  return tblgen::Type(defInit).getPredicate().createTypeMatcherTemplate(
-      PredCNF());
+tblgen::TypeConstraint tblgen::Operator::Operand::getTypeConstraint() const {
+  return tblgen::TypeConstraint(*defInit);
 }

@@ -80,8 +80,8 @@ public:
 
   struct Operand {
     bool hasMatcher() const;
-    // Return the matcher template for the operand type.
-    std::string createTypeMatcherTemplate() const;
+    // Return the type constraint applicable to this operand.
+    tblgen::TypeConstraint getTypeConstraint() const;
 
     llvm::StringInit *name;
     llvm::DefInit *defInit;

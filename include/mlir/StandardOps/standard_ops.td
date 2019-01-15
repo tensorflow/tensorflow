@@ -37,7 +37,6 @@ class ArithmeticOp<string mnemonic, list<OpProperty> props = [],
                    list<string> traits = []> :
     Op<mnemonic, !listconcat(props, [NoSideEffect])>,
     Traits<!listconcat(traits, ["SameOperandsAndResultType"])>,
-    Arguments<(ins AnyType:$lhs, AnyType:$rhs)>,
     Results<[AnyType]> {
 
   let opName = mnemonic;
@@ -67,8 +66,8 @@ class ArithmeticOp<string mnemonic, list<OpProperty> props = [],
 //     <op>i %0, %1 : i32
 class IntArithmeticOp<string mnemonic, list<OpProperty> props = [],
                       list<string> traits = []> :
-    ArithmeticOp<mnemonic, props,
-                 !listconcat(["ResultsAreIntegerLike"], traits)>;
+    ArithmeticOp<mnemonic, props, traits>,
+    Arguments<(ins IntegerLike:$lhs, IntegerLike:$rhs)>;
 
 // Base class for standard arithmetic binary operations on floats, vectors and
 // tensors thereof.  This operation has two operands and returns one result,
@@ -80,8 +79,8 @@ class IntArithmeticOp<string mnemonic, list<OpProperty> props = [],
 //     <op>f %0, %1 : f32
 class FloatArithmeticOp<string mnemonic, list<OpProperty> props = [],
                         list<string> traits = []> :
-    ArithmeticOp<mnemonic, props,
-                 !listconcat(["ResultsAreFloatLike"], traits)>;
+    ArithmeticOp<mnemonic, props, traits>,
+    Arguments<(ins FloatLike:$lhs, FloatLike:$rhs)>;
 
 def AddFOp : FloatArithmeticOp<"addf"> {
   let summary = "floating point addition operation";
