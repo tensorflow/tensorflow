@@ -666,7 +666,13 @@ def _add_attributes_to_object_graph(
         if cached_attributes is not None:
           cached_attributes[name] = saveables
 
+      optional_restore = None
       for saveable in saveables:
+        if optional_restore is None:
+          optional_restore = saveable.optional_restore
+        else:
+          optional_restore = optional_restore and saveable.optional_restore
+
         if hasattr(saveable, "full_name"):
           attribute.full_name = saveable.full_name
         if isinstance(saveable, base.PythonStateSaveable):
@@ -688,6 +694,9 @@ def _add_attributes_to_object_graph(
                     % (checkpointable, new_feed_key))
             feed_additions.update(saveable_feed_dict)
         named_saveable_objects.append(saveable)
+      if optional_restore is None:
+        optional_restore = False
+      attribute.optional_restore = optional_restore
 
   return named_saveable_objects, feed_additions
 
@@ -1020,7 +1029,7 @@ class CheckpointLoadStatus(_LoadStatus):
       raise AssertionError(
           ("Unused attributes in these objects (the attributes exist in the "
            "checkpoint but not in the objects): %s") % (
-               self._checkpoint.unused_attributes.items(),))
+               list(self._checkpoint.unused_attributes.items()),))
     return self
 
   def assert_existing_objects_matched(self):
