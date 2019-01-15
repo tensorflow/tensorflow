@@ -282,8 +282,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
-    AlgebraicSimplifierOptions options(
-        [](const Shape&, const Shape&) { return false; });
+    AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<AlgebraicSimplifier>(options);
     pass.AddPass<SortSimplifier>();
@@ -350,8 +349,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false);
-    AlgebraicSimplifierOptions options(
-        [](const Shape&, const Shape&) { return true; });
+    AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
