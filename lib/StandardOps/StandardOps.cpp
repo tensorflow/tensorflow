@@ -536,9 +536,9 @@ void CmpIOp::build(Builder *build, OperationState *result,
 bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   SmallVector<NamedAttribute, 4> attrs;
-  StringAttr predicateName;
+  Attribute predicateNameAttr;
   Type type;
-  if (parser->parseAttribute(predicateName, getPredicateAttrName().data(),
+  if (parser->parseAttribute(predicateNameAttr, getPredicateAttrName().data(),
                              attrs) ||
       parser->parseComma() || parser->parseOperandList(ops, 2) ||
       parser->parseOptionalAttributeDict(attrs) ||
@@ -546,12 +546,17 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->resolveOperands(ops, type, result->operands))
     return true;
 
+  if (!predicateNameAttr.isa<StringAttr>())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected string comparison predicate attribute");
+
   // Rewrite string attribute to an enum value.
-  auto predicate = getPredicateByName(predicateName.getValue());
+  StringRef predicateName = predicateNameAttr.cast<StringAttr>().getValue();
+  auto predicate = getPredicateByName(predicateName);
   if (predicate == CmpIPredicate::NumPredicates)
     return parser->emitError(parser->getNameLoc(),
-                             "unknown comparison predicate \"" +
-                                 Twine(predicateName.getValue()) + "\"");
+                             "unknown comparison predicate \"" + predicateName +
+                                 "\"");
 
   auto builder = parser->getBuilder();
   Type i1Type = getCheckedI1SameShape(&builder, type);

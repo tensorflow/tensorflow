@@ -506,3 +506,9 @@ func @dma_wait_no_tag_memref(%tag : f32, %c0 : index) {
   // expected-error@+1 {{expected tag to be of memref type}}
   dma_wait %tag[%c0], %arg0 : f32
 }
+
+// -----
+
+func @invalid_cmp_attr(%idx : i32) {
+  // expected-error@+1 {{expected string comparison predicate attribute}}
+  %cmp = cmpi i1, %idx, %idx : i32
