@@ -479,7 +479,30 @@ func @invalid_cmp_shape(%idx : () -> ()) {
 
 // -----
 
-func @dma_wait_no_memref(%tag : f32, %c0 : index) {
+func @dma_no_src_memref(%m : f32, %tag : f32, %c0 : index) {
+  // expected-error@+1 {{expected source to be of memref type}}
+  dma_start %m[%c0], %m[%c0], %c0, %tag[%c0] : f32, f32, f32
+}
+
+// -----
+
+func @dma_no_dst_memref(%m : f32, %tag : f32, %c0 : index) {
+  %mref = alloc() : memref<8 x f32>
+  // expected-error@+1 {{expected destination to be of memref type}}
+  dma_start %mref[%c0], %m[%c0], %c0, %tag[%c0] : memref<8 x f32>, f32, f32
+}
+
+// -----
+
+func @dma_no_tag_memref(%tag : f32, %c0 : index) {
+  %mref = alloc() : memref<8 x f32>
+  // expected-error@+1 {{expected tag to be of memref type}}
+  dma_start %mref[%c0], %mref[%c0], %c0, %tag[%c0] : memref<8 x f32>, memref<8 x f32>, f32
+}
+
+// -----
+
+func @dma_wait_no_tag_memref(%tag : f32, %c0 : index) {
   // expected-error@+1 {{expected tag to be of memref type}}
   dma_wait %tag[%c0], %arg0 : f32
 }

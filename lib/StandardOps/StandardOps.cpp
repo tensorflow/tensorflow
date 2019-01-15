@@ -904,6 +904,18 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->resolveOperands(tagIndexInfos, indexType, result->operands))
     return true;
 
+  if (!types[0].isa<MemRefType>())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected source to be of memref type");
+
+  if (!types[1].isa<MemRefType>())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected destination to be of memref type");
+
+  if (!types[2].isa<MemRefType>())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected tag to be of memref type");
+
   if (isStrided) {
     if (parser->resolveOperand(strideInfo[0], indexType, result->operands) ||
         parser->resolveOperand(strideInfo[1], indexType, result->operands))
