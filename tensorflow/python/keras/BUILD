@@ -152,6 +152,7 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/training/checkpointable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
