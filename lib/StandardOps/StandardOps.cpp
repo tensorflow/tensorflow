@@ -445,7 +445,7 @@ bool CallIndirectOp::verify() const {
 }
 
 // Return the type of the same shape (scalar, vector or tensor) containing i1.
-static Type getI1SameShape(Builder *build, Type type) {
+static Type getCheckedI1SameShape(Builder *build, Type type) {
   auto i1Type = build->getI1Type();
   if (type.isIntOrIndexOrFloat())
     return i1Type;
@@ -455,8 +455,13 @@ static Type getI1SameShape(Builder *build, Type type) {
     return build->getTensorType(i1Type);
   if (auto vectorType = type.dyn_cast<VectorType>())
     return build->getVectorType(vectorType.getShape(), i1Type);
+  return Type();
+}
 
-  llvm_unreachable("unsupported type");
+static Type getI1SameShape(Builder *build, Type type) {
+  Type res = getCheckedI1SameShape(build, type);
+  assert(res && "expected type with valid i1 shape");
+  return res;
 }
 
 static inline bool isI1(Type type) {
@@ -547,11 +552,17 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "unknown comparison predicate \"" +
                                  Twine(predicateName.getValue()) + "\"");
+
   auto builder = parser->getBuilder();
+  Type i1Type = getCheckedI1SameShape(&builder, type);
+  if (!i1Type)
+    return parser->emitError(parser->getNameLoc(),
+                             "expected type with valid i1 shape");
+
   attrs[0].second = builder.getI64IntegerAttr(static_cast<int64_t>(predicate));
   result->attributes = attrs;
 
-  result->addTypes({getI1SameShape(&builder, type)});
+  result->addTypes({i1Type});
   return false;
 }
 
@@ -1305,7 +1316,11 @@ bool SelectOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->parseColonType(type))
     return true;
 
-  auto i1Type = getI1SameShape(&parser->getBuilder(), type);
+  auto i1Type = getCheckedI1SameShape(&parser->getBuilder(), type);
+  if (!i1Type)
+    return parser->emitError(parser->getNameLoc(),
+                             "expected type with valid i1 shape");
+
   SmallVector<Type, 3> types = {i1Type, type, type};
   return parser->resolveOperands(ops, types, parser->getNameLoc(),
                                  result->operands) ||

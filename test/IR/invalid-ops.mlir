@@ -465,5 +465,14 @@ func @test_vector_transfer_write(memref<?x?x?xf32>) {
   vector_transfer_write %cst, %arg0, %c3, %c3, %c3 {permutation_map: (d0, d1, d2)->(d0, d0)} : vector<3x7xf32>, memref<?x?x?xf32>, index, index, index
 }
 
+// -----
 
+func @invalid_select_shape(%cond : i1, %idx : () -> ()) {
+  // expected-error@+1 {{expected type with valid i1 shape}}
+  %sel = select %cond, %idx, %idx : () -> ()
 
+// -----
+
+func @invalid_cmp_shape(%idx : () -> ()) {
+  // expected-error@+1 {{expected type with valid i1 shape}}
+  %cmp = cmpi "eq", %idx, %idx : () -> ()
