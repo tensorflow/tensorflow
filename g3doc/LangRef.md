@@ -449,8 +449,7 @@ Syntax of affine constraints:
 ``` {.ebnf}
 affine-constraint ::= affine-expr `>=` `0`
                     | affine-expr `==` `0`
-affine-constraint-conjunction ::= /*empty*/
-                                | affine-constraint (`,` affine-constraint)*
+affine-constraint-conjunction ::= affine-constraint (`,` affine-constraint)*
 ```
 
 Integer sets may be defined inline at the point of use, or may be hoisted to the
