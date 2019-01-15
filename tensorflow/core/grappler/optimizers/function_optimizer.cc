@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_if_while.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -1365,20 +1367,6 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
         SummarizeNodeDef(func_node));
   }
 
-  // TODO(b/120991525, b/120986912): We need to lower `If` and `While` nodes to
-  // `Switch` nodes after function inlining (one more PRE_PLACEMENT pass?), but
-  // because of the reason described above we are not sure that it's safe, for
-  // now just disable inlining functions with functional control flow.
-  const auto is_functional_ctrl_flow_op = [](const NodeDef& node) {
-    return IsIf(node) || IsWhile(node);
-  };
-  if (absl::c_any_of(func.node_def(), is_functional_ctrl_flow_op)) {
-    return errors::FailedPrecondition(
-        "Can't inline function with `If` or `While` nodes in the function "
-        "body: ",
-        SummarizeNodeDef(func_node));
-  }
-
   return Status::OK();
 }
 
@@ -1489,29 +1477,51 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   const string prefix = strings::StrCat(func_node.name(), "/");
 
   // ------------------------------------------------------------------------ //
+  // Grappler receives the graph after PRE_PLACEMENT, Placer, and POST_PLACEMENT
+  // passes, so each node has a valid device assignment. Also V2 control
+  // flow ops (functional If and While) lowered to V1 control flow (Switch and
+  // Merge nodes). To keep graph valid for execution we must assign device to
+  // every inlined graph node, and also lower the control flow.
+
+  // Control flow lowering and Placer works with a Graph object.
+  std::unique_ptr<Graph> func_body_graph =
+      absl::make_unique<Graph>(ctx->function_library());
+
+  GraphConstructorOptions opts;
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(opts, item.graph, func_body_graph.get()));
+
+  GraphOptimizationPassOptions opt_options;
+  opt_options.graph = &func_body_graph;
+  opt_options.flib_def = ctx->mutable_function_library();
+
+  // TODO(ezhulenev): Should we run full PRE_PLACEMENT pass here? And
+  // POST_PLACEMENT after placer?
+  LowerIfWhilePass pass;
+  TF_RETURN_IF_ERROR(pass.Run(opt_options));
+
+  // ------------------------------------------------------------------------ //
   // Before placing the function body nodes we pin input placeholders to the
   // same device as their corresponding input nodes.
 
-  for (NodeDef& func_body_node : *item.graph.mutable_node()) {
+  for (Node* func_body_node : func_body_graph->nodes()) {
     const auto input_placeholder_idx =
-        input_placeholders_idx.find(func_body_node.name());
+        input_placeholders_idx.find(func_body_node->name());
 
     if (input_placeholder_idx != input_placeholders_idx.end()) {
       const int input_idx = input_placeholder_idx->second;
       const GraphView::OutputPort output_port =
           ctx->graph_view().GetRegularFanin({&func_node, input_idx});
 
-      VLOG(3) << "Pin inlined function input node '" << func_body_node.name()
+      VLOG(3) << "Pin inlined function input node '" << func_body_node->name()
               << "' to the '" << output_port.node->device() << "' device.";
-      func_body_node.set_device(output_port.node->device());
+      func_body_node->set_requested_device(output_port.node->device());
     }
   }
 
   // ------------------------------------------------------------------------ //
   // After placing nodes corresponding to the function inputs, we need to assign
   // device placements to all other function body nodes.
-
-  GraphDef placed_graph_def;
 
   const DeviceSet* devices = ctx->devices();
 
@@ -1522,9 +1532,8 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
     // of a batch job for graph analysis/optimization.
     VLOG(3) << "Assign function call node device to all function body nodes. "
             << "Device: " << func_node.device();
-    placed_graph_def = item.mutable_function_body();
-    for (NodeDef& node : *placed_graph_def.mutable_node()) {
-      node.set_device(func_node.device());
+    for (Node* func_body_node : func_body_graph->nodes()) {
+      func_body_node->set_requested_device(func_node.device());
     }
   } else {
     // If we are running in an active runtime session, Grappler will get the
@@ -1536,23 +1545,20 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
                    [](string* out, const Device* d) { out->append(d->name()); })
             << "]";
 
-    // Construct a Graph object from the instantiated function body.
-    GraphConstructorOptions opts;
-    Graph graph(ctx->function_library());
-    TF_RETURN_IF_ERROR(
-        ConvertGraphDefToGraph(opts, item.function_body(), &graph));
-
     // Use function caller node device as a default for placer.
     const Device* default_device =
         devices->FindDeviceByName(func_node.device());
 
-    Placer placer(&graph, devices, nullptr, /* No session options */
-                  default_device);
+    Placer placer(func_body_graph.get(), devices,
+                  nullptr /* No session options */, default_device);
     TF_RETURN_IF_ERROR(placer.Run());
-
-    // Convert Graph back to the GraphDef.
-    graph.ToGraphDef(&placed_graph_def);
   }
+
+  // TODO(ezhulenev): Should we run POST_PLACEMENT runtime pass here?
+
+  // All following transformations will work with GraphDef.
+  GraphDef placed_graph_def;
+  func_body_graph->ToGraphDef(&placed_graph_def);
 
   // ------------------------------------------------------------------------ //
   // After all nodes placed we need to prepare them for inlining into the
