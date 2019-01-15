@@ -34,6 +34,12 @@ import numpy as np
 class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
+    # TODO(laigd): we should test the following cases:
+    # - batch size is not changed, other dims are changing
+    # - batch size is decreasing, other dims are identical
+    # - batch size is decreasing, other dims are changing
+    # - batch size is increasing, other dims are identical
+    # - batch size is increasing, other dims are changing
     input_dims = [[[1, 5, 5, 1]], [[10, 5, 5, 1]], [[3, 5, 5, 1]],
                   [[1, 5, 5, 1]], [[1, 3, 1, 1]], [[2, 9, 9, 1]],
                   [[1, 224, 224, 1]], [[1, 128, 224, 1]]]

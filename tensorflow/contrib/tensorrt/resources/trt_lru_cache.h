@@ -22,8 +22,9 @@ class LRUCache {
   typedef Value value_type;
   typedef Key key_type;
   typedef HashFunction hasher;
-  typedef typename std::unordered_map<key_type, value_type, hasher>::iterator
-      map_iterator;
+  typedef typename std::unordered_map<key_type, value_type, hasher> map_type;
+  typedef typename map_type::iterator iterator;
+  typedef typename map_type::const_iterator const_iterator;
 
   LRUCache() : capacity_(0) {}
   explicit LRUCache(size_t capacity) : capacity_(capacity) {}
@@ -39,31 +40,26 @@ class LRUCache {
 
   size_t count(const key_type& k) const { return objects_.count(k); }
 
-  value_type& at(key_type k, tensorflow::Status* status_ptr = nullptr) {
-    tensorflow::Status status = Touch(k);
-    if (!status.ok()) {
-      if (status_ptr) {
-        *status_ptr = status;
-      }
-      return not_found_value_;
-    }
-    return objects_.at(k);
+  value_type& at(key_type k) {
+    return Touch(k);
   }
 
-  map_iterator begin() { return objects_.begin(); }
+  const_iterator begin() const { return objects_.begin(); }
+  const_iterator end() const { return objects_.end(); }
 
-  map_iterator end() { return objects_.end(); }
+  iterator begin() { return objects_.begin(); }
+  iterator end() { return objects_.end(); }
 
   template <typename... Args>
-  std::pair<map_iterator, bool> emplace(Args&&... args) {
+  std::pair<iterator, bool> emplace(Args&&... args) {
     DiscardOld(1);
-    std::pair<map_iterator, bool> result =
+    std::pair<iterator, bool> result =
         objects_.emplace(std::forward<Args>(args)...);
     key_type key = result.first->first;
     if (result.second) {
       keys_.push_front(key);
     } else {
-      Touch(key);
+      TouchNoCheck(key);  // The key must exist in this case.
     }
     return result;
   }
@@ -74,16 +70,20 @@ class LRUCache {
   size_t capacity_;
   value_type not_found_value_;
 
-  tensorflow::Status Touch(const key_type& key) {
-    if (!count(key)) {
-      return tensorflow::errors::NotFound("Key not found in cache.");
-    }
+  value_type& Touch(const key_type& key) {
+    // Check that the key exists, and let it return std::out_of_range error if
+    // not.
+    value_type& value = objects_.at(k);
+    TouchNoCheck(key);
+    return value;
+  }
+
+  void TouchNoCheck(const key_type& key) {
     auto rank = std::find(keys_.begin(), keys_.end(), key);
     if (rank != keys_.begin()) {
       keys_.erase(rank);
       keys_.push_front(key);
     }
-    return tensorflow::Status::OK();
   }
 
   // Creates n free positions in cache
@@ -149,7 +149,7 @@ class TRTEngineCacheResource : public tensorflow::ResourceBase {
     oss << "TRTBaseAllocator = " << hex << allocator_.get() << dec << ", ";
     oss << "LRUCache = " << hex << &cache_ << dec << endl;
     oss << "Containing " << cache_.size() << " entries: " << endl;
-    for (auto& item : cache_) {
+    for (const auto& item : cache_) {
       oss << TensorShapeUtils::ShapeListString(item.first) << ": " << hex
           << "ICudaEngine: " << item.second.get()->cuda_engine.get() << ", "
           << "IExecutionContext: " << item.second.get()->execution_context.get()

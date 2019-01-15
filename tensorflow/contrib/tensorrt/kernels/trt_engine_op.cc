@@ -249,6 +249,10 @@ bool TRTEngineOp::GetCompatibleCachedEngine(
   *engine_input_shapes = actual_input_shapes;
   for (const int cached_batch_size : cached_engine_batch_sizes_) {
     // Check if compatible: batch <= cached batch.
+    //
+    // TODO(laigd): here it only compare the first dim a.k.a the batch size,
+    // we'll need to to support non-batch dimensions as well. This will be done
+    // as part of the offline conversion implementation.
     if (batch_size <= cached_batch_size) {
       // First case: first compatible engine found
       // Second case: smaller batch size engine found
@@ -466,7 +470,8 @@ EngineContext* TRTEngineOp::GetEngine(
       // TODO(tmorris): will all inputs have batch size as first dimension??
       engine_input_shapes[i].set_dim(0, max_batch_size);
     }
-    // Assume engine_input_shapes matches the input shapes of the engine.
+    // TODO(laigd): here we assume engine_input_shapes matches the actual input
+    // shapes of the engine, we should verify that.
     cache.emplace(engine_input_shapes,
                   absl::make_unique<EngineContext>(
                       std::move(static_engine),
@@ -484,7 +489,7 @@ EngineContext* TRTEngineOp::GetEngine(
   // See if there is a compatible engine cached. The batch size should be <= the
   // cached batch size.
   std::vector<tensorflow::TensorShape> engine_input_shapes;
-  bool matched_successfully =
+  const bool matched_successfully =
       GetCompatibleCachedEngine(input_shapes, &engine_input_shapes);
   // If matched, use that engine. Otherwise, we will look in cache for that
   // exact shape and possibly create a new engine if it is not in cache.
