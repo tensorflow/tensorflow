@@ -588,8 +588,8 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(IndirectUseTestInstantiation, IndirectUseTest,
-                        ::testing::Values(true, false));
+INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,
+                         ::testing::Values(true, false));
 
 }  // namespace
 
