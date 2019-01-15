@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import function as defun_lib
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
@@ -64,7 +64,7 @@ def serialize_polymorphic_function(polymorphic_function, node_ids):
     function_proto.concrete_function = concrete_function.name
     function_proto.canonicalized_input_signature.CopyFrom(
         coder.encode_structure(signature))
-    structured_outputs = defun_lib.convert_structure_to_signature(
+    structured_outputs = func_graph_module.convert_structure_to_signature(
         concrete_function.structured_outputs)
     function_proto.output_signature.CopyFrom(
         coder.encode_structure(structured_outputs))

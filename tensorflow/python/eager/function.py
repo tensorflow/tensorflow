@@ -569,6 +569,11 @@ class Function(object):
     return self._func_graph.inputs
 
   @property
+  def structured_input_signature(self):
+    """Returns structured signature of the original function."""
+    return self._func_graph.structured_input_signature
+
+  @property
   def outputs(self):
     """Returns tensors in `self.graph` corresponding to returned tensors."""
     return self._func_graph.outputs
@@ -822,37 +827,6 @@ class Function(object):
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
                                 outputs_list)
     return ret
-
-
-class UnknownArgument(object):
-  """Signifies an argument which is not currently handled."""
-  pass
-
-
-def convert_structure_to_signature(structure):
-  """Convert a potentially nested structure to a signature.
-
-  Args:
-    structure: Structure to convert.
-
-  Returns:
-    Identical structure that has TensorSpec objects instead of Tensors and
-    UknownArgument instead of any unsupported types.
-  """
-
-  def encode_arg(arg, name=None):
-    """A representation for this argument, for converting into signatures."""
-    if isinstance(arg, ops.Tensor):
-      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
-    if isinstance(arg, (int, float, bool, tensor_spec.TensorSpec)):
-      return arg
-    return UnknownArgument()
-
-  # We are using the flattened paths to name the TensorSpecs. We need an
-  # explicit name for them downstream.
-  flattened_with_paths = nest.flatten_with_joined_string_paths(structure)
-  mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
-  return nest.pack_sequence_as(structure, mapped)
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -1347,14 +1321,7 @@ class PolymorphicFunction(object):
                 autograph=self._autograph,
                 arg_names=arg_names),
             self._function_attributes)
-        if self._input_signature:
-          python_call_signature = self._input_signature
-        else:
-          python_call_signature = tuple(convert_structure_to_signature(args))
         # pylint: disable=protected-access
-        # Save information about non-Tensor arguments with the concrete
-        # function. Used to serialize PolymorphicFunctions.
-        graph_function._python_call_signature = python_call_signature
         # Tell the Function to clean up its graph once it goes out of
         # scope. Function does not do this in its constructor since it gets used
         # in some places (like Keras) where the FuncGraph lives longer than the
