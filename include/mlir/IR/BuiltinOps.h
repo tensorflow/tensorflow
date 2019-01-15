@@ -399,8 +399,8 @@ bool parseDimAndSymbolList(OpAsmParser *parser,
                            SmallVector<Value *, 4> &operands,
                            unsigned &numDims);
 
-void canonicalizeMapAndOperands(AffineMap &map,
-                                llvm::SmallVectorImpl<Value *> &operands);
+void canonicalizeMapAndOperands(AffineMap *map,
+                                llvm::SmallVectorImpl<Value *> *operands);
 
 } // end namespace mlir
 

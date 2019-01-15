@@ -223,13 +223,8 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
   // on; this would correspond to loop IVs surrounding the level at which the
   // DMA generation is being done.
   const FlatAffineConstraints *cst = region.getConstraints();
-  auto ids = cst->getIds();
   SmallVector<Value *, 8> outerIVs;
-  for (unsigned i = rank, e = ids.size(); i < e; i++) {
-    auto id = cst->getIds()[i];
-    assert(id.hasValue() && "Value id expected");
-    outerIVs.push_back(id.getValue());
-  }
+  cst->getIdValues(rank, cst->getNumIds(), &outerIVs);
 
   // Construct the index expressions for the fast memory buffer. The index
   // expression for a particular dimension of the fast buffer is obtained by

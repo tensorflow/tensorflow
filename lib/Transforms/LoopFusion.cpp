@@ -694,12 +694,12 @@ static bool isFusionProfitable(FusionCandidate *candidate,
   for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
     if (i < bestSrcLoopDepth) {
       if (sliceState->lbs[i] != AffineMap::Null()) {
-        canonicalizeMapAndOperands(sliceState->lbs[i],
-                                   sliceState->lbOperands[i]);
+        canonicalizeMapAndOperands(&sliceState->lbs[i],
+                                   &sliceState->lbOperands[i]);
       }
       if (sliceState->ubs[i] != AffineMap::Null()) {
-        canonicalizeMapAndOperands(sliceState->ubs[i],
-                                   sliceState->ubOperands[i]);
+        canonicalizeMapAndOperands(&sliceState->ubs[i],
+                                   &sliceState->ubOperands[i]);
       }
     } else {
       sliceState->lbs[i] = AffineMap::Null();

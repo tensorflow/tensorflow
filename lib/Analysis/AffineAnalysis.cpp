@@ -1535,7 +1535,7 @@ static void composeAffineMapAndOperands(AffineMap *map,
   AffineNormalizer normalizer(*map, *operands);
   auto normalizedMap = normalizer.getAffineMap();
   auto normalizedOperands = normalizer.getOperands();
-  canonicalizeMapAndOperands(normalizedMap, normalizedOperands);
+  canonicalizeMapAndOperands(&normalizedMap, &normalizedOperands);
   *map = normalizedMap;
   *operands = normalizedOperands;
   assert(*map);

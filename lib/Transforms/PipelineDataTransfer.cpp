@@ -87,12 +87,12 @@ static bool doubleBuffer(Value *oldMemRef, ForInst *forInst) {
   // Doubles the shape with a leading dimension extent of 2.
   auto doubleShape = [&](MemRefType oldMemRefType) -> MemRefType {
     // Add the leading dimension in the shape for the double buffer.
-    ArrayRef<int> shape = oldMemRefType.getShape();
-    SmallVector<int, 4> shapeSizes(shape.begin(), shape.end());
-    shapeSizes.insert(shapeSizes.begin(), 2);
-
+    ArrayRef<int> oldShape = oldMemRefType.getShape();
+    SmallVector<int, 4> newShape(1 + oldMemRefType.getRank());
+    newShape[0] = 2;
+    std::copy(oldShape.begin(), oldShape.end(), newShape.begin() + 1);
     auto newMemRefType =
-        bInner.getMemRefType(shapeSizes, oldMemRefType.getElementType(), {},
+        bInner.getMemRefType(newShape, oldMemRefType.getElementType(), {},
                              oldMemRefType.getMemorySpace());
     return newMemRefType;
   };

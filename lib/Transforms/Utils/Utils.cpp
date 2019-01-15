@@ -123,9 +123,6 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 
     FuncBuilder builder(opInst);
     for (auto *extraIndex : extraIndices) {
-      // TODO(mlir-team): An operation/SSA value should provide a method to
-      // return the position of an SSA result in its defining
-      // operation.
       assert(extraIndex->getDefiningInst()->getNumResults() == 1 &&
              "single result op's expected to generate these indices");
       assert((extraIndex->isValidDim() || extraIndex->isValidSymbol()) &&
@@ -137,7 +134,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
     // provided. The indices of a memref come right after it, i.e.,
     // at position memRefOperandPos + 1.
     SmallVector<Value *, 4> remapOperands;
-    remapOperands.reserve(oldMemRefRank + extraOperands.size());
+    remapOperands.reserve(extraOperands.size() + oldMemRefRank);
     remapOperands.append(extraOperands.begin(), extraOperands.end());
     remapOperands.append(opInst->operand_begin() + memRefOperandPos + 1,
                          opInst->operand_begin() + memRefOperandPos + 1 +
@@ -146,12 +143,11 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
       auto remapOp = builder.create<AffineApplyOp>(opInst->getLoc(), indexRemap,
                                                    remapOperands);
       // Remapped indices.
-      for (auto *index : remapOp->getInstruction()->getResults())
-        state.operands.push_back(index);
+      state.operands.append(remapOp->getInstruction()->result_begin(),
+                            remapOp->getInstruction()->result_end());
     } else {
       // No remapping specified.
-      for (auto *index : remapOperands)
-        state.operands.push_back(index);
+      state.operands.append(remapOperands.begin(), remapOperands.end());
     }
 
     // Insert the remaining operands unmodified.

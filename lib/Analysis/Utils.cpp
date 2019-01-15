@@ -112,22 +112,22 @@ Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
 // (dma_start, dma_wait).
 bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
                            MemRefRegion *region) {
-  OpPointer<LoadOp> loadOp;
-  OpPointer<StoreOp> storeOp;
   unsigned rank;
   SmallVector<Value *, 4> indices;
-
-  if ((loadOp = opInst->dyn_cast<LoadOp>())) {
+  if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
     rank = loadOp->getMemRefType().getRank();
+    indices.reserve(rank);
     indices.append(loadOp->getIndices().begin(), loadOp->getIndices().end());
     region->memref = loadOp->getMemRef();
     region->setWrite(false);
-  } else if ((storeOp = opInst->dyn_cast<StoreOp>())) {
+  } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
     rank = storeOp->getMemRefType().getRank();
+    indices.reserve(rank);
     indices.append(storeOp->getIndices().begin(), storeOp->getIndices().end());
     region->memref = storeOp->getMemRef();
     region->setWrite(true);
   } else {
+    assert(false && "expected load or store op");
     return false;
   }
 
@@ -191,6 +191,7 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
   // this memref region is symbolic.
   SmallVector<ForInst *, 4> outerIVs;
   getLoopIVs(*opInst, &outerIVs);
+  assert(loopDepth <= outerIVs.size() && "invalid loop depth");
   outerIVs.resize(loopDepth);
   for (auto *operand : accessValueMap.getOperands()) {
     ForInst *iv;
@@ -249,12 +250,13 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
   static_assert(
       std::is_same<LoadOrStoreOpPointer, OpPointer<LoadOp>>::value ||
           std::is_same<LoadOrStoreOpPointer, OpPointer<StoreOp>>::value,
-      "function argument should be either a LoadOp or a StoreOp");
+      "argument should be either a LoadOp or a StoreOp");
 
   OperationInst *opInst = loadOrStoreOp->getInstruction();
   MemRefRegion region;
   if (!getMemRefRegion(opInst, /*loopDepth=*/0, &region))
     return false;
+
   LLVM_DEBUG(llvm::dbgs() << "Memory region");
   LLVM_DEBUG(region.getConstraints()->dump());
 
