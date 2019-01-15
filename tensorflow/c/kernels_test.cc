@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/kernels.h"
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/op.h"
@@ -42,7 +43,17 @@ static void MyComputeFunc(void* kernel, TF_OpKernelContext* ctx) {
   struct MyCustomKernel* s = static_cast<struct MyCustomKernel*>(kernel);
   s->compute_called = true;
   if (ctx != nullptr) {
+    TF_Status* status = TF_NewStatus();
+
     EXPECT_EQ(43, TF_StepId(ctx));
+
+    // Exercise attribute reads.
+    TF_DataType type;
+    TF_OpKernelContext_GetAttrType(ctx, "SomeDataTypeAttr", &type, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    EXPECT_EQ(TF_FLOAT, type);
+
+    TF_DeleteStatus(status);
   }
 }
 
@@ -64,6 +75,11 @@ static std::unique_ptr<OpKernel> GetFakeKernel(const char* device_name,
   def.set_device(device_name);
   def.add_input("input1");
   def.add_input("input2");
+
+  AttrValue v;
+  v.set_type(DataType::DT_FLOAT);
+  (*def.mutable_attr())["SomeDataTypeAttr"] = v;
+
   return CreateOpKernel(DeviceType(device_name), nullptr, nullptr, def, 1,
                         status);
 }
@@ -78,7 +94,8 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
   REGISTER_OP(op_name)
       .Input("input1: double")
       .Input("input2: uint8")
-      .Output("output1: uint8");
+      .Output("output1: uint8")
+      .Attr("SomeDataTypeAttr: type");
 
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
       op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
@@ -129,7 +146,8 @@ TEST(TestKernel, TestInputAndOutputCount) {
   REGISTER_OP(op_name)
       .Input("input1: double")
       .Input("input2: uint8")
-      .Output("output1: uint8");
+      .Output("output1: uint8")
+      .Attr("SomeDataTypeAttr: type");
 
   static int num_inputs = 0;
   static int num_outputs = 0;
