@@ -406,8 +406,11 @@ class _ListWrapper(List, collections.MutableSequence,
     del self._storage[key]
 
   def __setitem__(self, key, value):
-    self._non_append_mutation = True
-    self._storage[key] = value
+    self._check_external_modification()
+    if isinstance(self._storage[key], base.CheckpointableBase):
+      self._non_append_mutation = True
+    self._storage[key] = self._track_value(value, self._name_element(key))
+    self._update_snapshot()
 
   def append(self, value):
     """Add a new checkpointable value."""
@@ -734,8 +737,28 @@ revived_types.register_revived_type(
     "checkpointable_dict_wrapper",
     lambda obj: isinstance(obj, _DictWrapper),
     versions=[revived_types.VersionedTypeRegistration(
-        object_factory=lambda _: _DictWrapper({}),
+        # Standard dependencies are enough to reconstruct the checkpointable
+        # items in dictionaries, so we don't need to save any extra information.
+        object_factory=lambda proto: _DictWrapper({}),
         version=1,
         min_producer_version=1,
         min_consumer_version=1,
         setter=operator.setitem)])
+
+
+def _set_list_item(list_object, index_string, value):
+  item_index = int(index_string)
+  if len(list_object) <= item_index:
+    list_object.extend([None] * (1 + item_index - len(list_object)))
+  list_object[item_index] = value
+
+
+revived_types.register_revived_type(
+    "checkpointable_list_wrapper",
+    lambda obj: isinstance(obj, _ListWrapper),
+    versions=[revived_types.VersionedTypeRegistration(
+        object_factory=lambda proto: _ListWrapper([]),
+        version=1,
+        min_producer_version=1,
+        min_consumer_version=1,
+        setter=_set_list_item)])
