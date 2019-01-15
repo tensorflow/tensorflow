@@ -229,7 +229,7 @@ def standardize_single_array(x, expected_shape=None):
   if x is None:
     return None
   if tensor_util.is_tensor(x):
-    x_shape_ndims = x.shape.ndims if x.shape is not None else None
+    x_shape_ndims = array_ops.rank(x)
   else:
     x_shape_ndims = len(x.shape)
 
