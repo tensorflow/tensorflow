@@ -1,4 +1,4 @@
-#Settings for Mac OS platforms.
+# Settings for Mac OS platforms.
 ifeq ($(TARGET), osx)
 
   PLATFORM_FLAGS = \

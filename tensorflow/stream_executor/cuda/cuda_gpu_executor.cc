@@ -53,6 +53,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/timer.h"
 
+// LOG(ERROR) uses a const named ERROR, so a macro with the same name is
+// always unwanted. This happens on Windows that defines such a macro.
+#undef ERROR
+
 #ifdef PLATFORMS_GPUS_CUDA_DYNAMIC_LIBCUDA_DYNAMIC_LIBCUDA_H_
 #error \
     "No driver calls in this file, wrap driver functionality in cuda_driver.cc."
@@ -1039,18 +1043,28 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
     builder.set_numa_node(numa_node);
   }
 
-  CUdevprop prop;
-  if (CUDADriver::GetDeviceProperties(&prop, device_ordinal_)) {
-    builder.set_threads_per_block_limit(prop.maxThreadsPerBlock);
+  {
+    builder.set_threads_per_block_limit(
+        CUDADriver::GetDeviceAttribute(
+            CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, device_)
+            .ValueOrDie());
 
     ThreadDim thread_dim_limit;
-    thread_dim_limit.x = prop.maxThreadsDim[0];
-    thread_dim_limit.y = prop.maxThreadsDim[1];
-    thread_dim_limit.z = prop.maxThreadsDim[2];
+    thread_dim_limit.x = CUDADriver::GetDeviceAttribute(
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, device_)
+                             .ValueOrDie();
+    thread_dim_limit.y = CUDADriver::GetDeviceAttribute(
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y, device_)
+                             .ValueOrDie();
+    thread_dim_limit.z = CUDADriver::GetDeviceAttribute(
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, device_)
+                             .ValueOrDie();
     builder.set_thread_dim_limit(thread_dim_limit);
 
-    float clock_rate_ghz = static_cast<float>(prop.clockRate) / 1e6;
-    builder.set_clock_rate_ghz(clock_rate_ghz);
+    int clock_rate =
+        CUDADriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device_)
+            .ValueOrDie();
+    builder.set_clock_rate_ghz(static_cast<float>(clock_rate) / 1e6);
   }
 
   {

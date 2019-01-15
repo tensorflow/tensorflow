@@ -140,8 +140,4 @@ tf_module {
     name: "sdca_shrink_l1"
     argspec: "args=[\'weights\', \'l1\', \'l2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
-  member_method {
-    name: "summary_iterator"
-    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
-  }
 }

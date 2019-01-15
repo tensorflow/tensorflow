@@ -116,6 +116,9 @@ class MirroredTwoDeviceDistributionTest(
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values)
 
+  def testNumpyIterator(self, distribution):
+    self._test_numpy_iterator(distribution)
+
   def testGlobalStepUpdate(self, distribution):
     self._test_global_step_update(distribution)
 

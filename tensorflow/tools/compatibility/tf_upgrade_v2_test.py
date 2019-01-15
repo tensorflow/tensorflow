@@ -114,12 +114,12 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertTrue(report.find("Failed to parse") != -1)
 
   def testReport(self):
-    text = "tf.assert_near(a)\n"
+    text = "tf.angle(a)\n"
     _, report, unused_errors, unused_new_text = self._upgrade(text)
     # This is not a complete test, but it is a sanity test that a report
     # is generating information.
-    self.assertTrue(report.find("Renamed function `tf.assert_near` to "
-                                "`tf.debugging.assert_near`"))
+    self.assertTrue(report.find("Renamed function `tf.angle` to "
+                                "`tf.math.angle`"))
 
   def testRename(self):
     text = "tf.conj(a)\n"
@@ -506,9 +506,21 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.nn.dropout(x, 1 - (1 - func(3 + 4.)), name=\"foo\")\n",
     )
 
-  def testCountNonZeroChanges(self):
+  def testMathCountNonZeroChanges(self):
     text = (
         "tf.math.count_nonzero(input_tensor=input, dtype=dtype, name=name, "
+        "reduction_indices=axis, keep_dims=keepdims)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.math.count_nonzero(input=input, dtype=dtype, name=name, "
+        "axis=axis, keepdims=keepdims)\n"
+        )
+    self.assertEqual(new_text, expected_text)
+
+  def testCountNonZeroChanges(self):
+    text = (
+        "tf.count_nonzero(input_tensor=input, dtype=dtype, name=name, "
         "reduction_indices=axis, keep_dims=keepdims)\n"
         )
     _, unused_report, unused_errors, new_text = self._upgrade(text)
@@ -538,6 +550,15 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "name=name, dtype=output_dtype)\n"
         )
     self.assertEqual(new_text, expected_text)
+
+  def testRandomPoissonConversion(self):
+    text1 = "tf.random_poisson(lam, shape, dtype)"
+    text2 = "tf.random.poisson(lam, shape, dtype)"
+    expected_text = "tf.random.poisson(lam=lam, shape=shape, dtype=dtype)"
+    _, unused_report, unused_errors, new_text1 = self._upgrade(text1)
+    self.assertEqual(new_text1, expected_text)
+    _, unused_report, unused_errors, new_text2 = self._upgrade(text2)
+    self.assertEqual(new_text2, expected_text)
 
   def testConvolutionOpUpdate(self):
     text = (
@@ -911,6 +932,55 @@ tf.print('abc')
     self.assertEqual(expected_text, new_text)
     self.assertIn("tf.cond", errors[0])
     self.assertIn("requires manual check", errors[0])
+
+  def testParens(self):
+    text = """
+def _log_prob(self, x):
+  return tf.reduce_logsumexp(
+      (self.mixture_distribution.logits + self.distribution.log_prob(
+          x[..., tf.newaxis])),
+          axis=-1)"""
+    expected_text = """
+def _log_prob(self, x):
+  return tf.reduce_logsumexp(
+      input_tensor=(self.mixture_distribution.logits + self.distribution.log_prob(
+          x[..., tf.newaxis])),
+          axis=-1)"""
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def testAssertStatements(self):
+    for name in ["assert_greater", "assert_equal", "assert_none_equal",
+                 "assert_less", "assert_negative", "assert_positive",
+                 "assert_non_negative", "assert_non_positive", "assert_near",
+                 "assert_less", "assert_less_equal", "assert_greater",
+                 "assert_greater_equal", "assert_integer", "assert_type",
+                 "assert_scalar"]:
+      text = "tf.%s(a)" % name
+      expected_text = "tf.compat.v1.%s(a)" % name
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+      self.assertIn("assert_* functions", errors[0])
+
+      text = "tf.debugging.%s(a)" % name
+      expected_text = "tf.compat.v1.debugging.%s(a)" % name
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+      self.assertIn("assert_* functions", errors[0])
+
+  def testAssertRankStatements(self):
+    for name in ["assert_rank", "assert_rank_at_least", "assert_rank_in"]:
+      text = "tf.%s(a)" % name
+      expected_text = "tf.compat.v1.%s(a)" % name
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+      self.assertIn("assert_rank_* functions", errors[0])
+
+      text = "tf.debugging.%s(a)" % name
+      expected_text = "tf.compat.v1.debugging.%s(a)" % name
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+      self.assertIn("assert_rank_* functions", errors[0])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

@@ -2,6 +2,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 common_copts = [
@@ -65,10 +66,10 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],
-    copts = common_copts,
+    extra_copts = common_copts,
     deps = [
         ":profile_summarizer",
         "//tensorflow/lite:framework",

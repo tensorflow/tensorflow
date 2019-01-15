@@ -85,17 +85,17 @@ cc_library(
 # Dummy stream executor cuda plugins.
 cc_library(
     name = "cublas_plugin",
-    deps = if_static(["//tensorflow/stream_executor/cuda:cublas_plugin"]),
+    srcs = [],
 )
 
 cc_library(
     name = "cufft_plugin",
-    deps = if_static(["//tensorflow/stream_executor/cuda:cufft_plugin"]),
+    srcs = [],
 )
 
 cc_library(
     name = "cudnn_plugin",
-    deps = if_static(["//tensorflow/stream_executor/cuda:cudnn_plugin"]),
+    srcs = [],
 )
 
 # OSX framework for device driver access

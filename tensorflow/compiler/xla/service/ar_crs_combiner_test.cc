@@ -360,6 +360,7 @@ HloModule foobar
 
 ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   %p = bf16[] parameter(0)
+  %constant.bf16 = bf16[] constant(1)
 
   %all-reduce.ar.1 = bf16[]
       all-reduce(%p),
@@ -377,7 +378,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
       sharding={maximal device=0}
 
   %all-reduce.ar.2 = bf16[]
-      all-reduce(%p),
+      all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.bf16,
@@ -407,7 +408,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Convert(op::Parameter())),
-                        op::AllReduce(op::Convert(op::Parameter()))));
+                        op::AllReduce(op::Convert(op::Constant()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -703,6 +704,73 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   ArCrsCombiner combiner(2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
+}
+
+TEST_F(ArCrsCombinerTest, ArThenCrsDontCrash) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.1 (a: f32[], b: f32[]) -> f32[] {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
+  %p = f32[] parameter(0)
+  %constant.f32 = f32[] constant(123)
+
+  %all-reduce.ar.1 = f32[]
+      all-reduce(%p),
+      replica_groups={{0},{1}},
+      all_reduce_id=1,
+      to_apply=%sum.1,
+      sharding={maximal device=0}
+  %all-reduce.1 = f32[]
+      all-reduce(%all-reduce.ar.1),
+      replica_groups={{0,1}},
+      to_apply=%sum.1,
+      sharding={maximal device=0}
+  %multiply.1 = f32[]
+      multiply(%all-reduce.1, %constant.f32),
+      sharding={maximal device=0}
+
+  %all-reduce.ar.2 = f32[]
+      all-reduce(%p),
+      replica_groups={{0},{1}},
+      all_reduce_id=1,
+      to_apply=%sum.1,
+      sharding={maximal device=1}
+  %all-reduce.2 = f32[]
+      all-reduce(%all-reduce.ar.2),
+      replica_groups={{0,1}},
+      to_apply=%sum.1,
+      sharding={maximal device=1}
+  %multiply.2 = f32[]
+      multiply(%all-reduce.2, %constant.f32),
+      sharding={maximal device=1}
+
+  ROOT %tuple = (f32[], f32[])
+      tuple(%all-reduce.1, %all-reduce.2),
+      sharding={{maximal device=0}, {maximal device=1}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto crs_before =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_before = crs_before->replica_groups();
+  ArCrsCombiner combiner(2);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::AllReduce(op::Parameter()),
+                        op::AllReduce(op::Parameter())));
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_after = crs_after->replica_groups();
+  CompareReplicaGroups(replica_groups_before, replica_groups_after);
 }
 
 }  // namespace

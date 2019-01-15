@@ -496,6 +496,7 @@ void Model::RemoveNode(const string& name) {
   if (node && (*node)->output()) {
     (*node)->output()->remove_input(*node);
   }
+  remove_node_hook_(*node);
   lookup_table_.erase(name);
 }
 

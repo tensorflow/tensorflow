@@ -245,6 +245,12 @@ class OpNode {
       op_->MutableAttrs()->Set(attr.first, attr.second);
     }
 
+    // Precalculating a cache key saves about 10% of inference time for very
+    // small models.
+    tensorflow::Device* device = op_->Device();
+    op_->MutableAttrs()->CacheKey(device == nullptr ? "unspecified"
+                                                    : device->name());
+
     return tensorflow::Status::OK();
   }
 

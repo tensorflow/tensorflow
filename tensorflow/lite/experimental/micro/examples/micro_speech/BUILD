@@ -216,6 +216,9 @@ tflite_micro_cc_test(
     srcs = [
         "recognize_commands_test.cc",
     ],
+    tags = [
+        "no_oss",  # TODO(122853023): Resolve issues and re-enable.
+    ],
     deps = [
         ":recognize_commands",
         "//tensorflow/lite/c:c_api_internal",

@@ -1,46 +1,142 @@
 # TensorFlow Lite for Microcontrollers
 
-This an experimental port of TensorFlow Lite aimed at micro controllers and other devices with only kilobytes of memory. It doesn't require any operating system support, any standard C or C++ libraries, or dynamic memory allocation, so it's designed to be portable even to 'bare metal' systems. The core runtime fits in 16KB on a Cortex M3, and with enough operators to run a speech keyword detection model, takes up a total of 22KB.
+This an experimental port of TensorFlow Lite aimed at micro controllers and
+other devices with only kilobytes of memory. It doesn't require any operating
+system support, any standard C or C++ libraries, or dynamic memory allocation,
+so it's designed to be portable even to 'bare metal' systems. The core runtime
+fits in 16KB on a Cortex M3, and with enough operators to run a speech keyword
+detection model, takes up a total of 22KB.
 
 The design goals are for the framework to be:
 
-- **Readable**: We want embedded software engineers to be able to understand what's required to run ML inference without having to study research papers. We've tried to keep the code base small, modular, and have reference implementations of all operations to help with this.
+-   **Readable**: We want embedded software engineers to be able to understand
+    what's required to run ML inference without having to study research papers.
+    We've tried to keep the code base small, modular, and have reference
+    implementations of all operations to help with this.
 
-- **Easy to modify**: We know that there are a lot of different platforms and requirements in the embedded world, and we don't expect to cover all of them in one framework. Instead, we're hoping that it can be a good starting point for developers to build on top of to meet their own needs. For example, we tried to make it easy to replace the implementations of key computational operators that are often crucial for performance, without having to touch the data flow and other runtime code. We want it to make more sense to use our workflow to handle things like model import and less-important operations, and customize the parts that matter, rather than having to reimplement everything in your own engine.
+-   **Easy to modify**: We know that there are a lot of different platforms and
+    requirements in the embedded world, and we don't expect to cover all of them
+    in one framework. Instead, we're hoping that it can be a good starting point
+    for developers to build on top of to meet their own needs. For example, we
+    tried to make it easy to replace the implementations of key computational
+    operators that are often crucial for performance, without having to touch
+    the data flow and other runtime code. We want it to make more sense to use
+    our workflow to handle things like model import and less-important
+    operations, and customize the parts that matter, rather than having to
+    reimplement everything in your own engine.
 
-- **Well-tested**: If you're modifying code, you need to know if your changes are correct. Having an easy way to test lets you develop much faster. To help there, we've written tests for all the components, and we've made sure that the tests can be run on almost any platform, with no dependencies apart from the ability to log text to a debug console somewhere. We also provide an easy way to run all the tests on-device as part of an automated test framework, and we use qemu/Renode emulation so that tests can be run even without physical devices present.
+-   **Well-tested**: If you're modifying code, you need to know if your changes
+    are correct. Having an easy way to test lets you develop much faster. To
+    help there, we've written tests for all the components, and we've made sure
+    that the tests can be run on almost any platform, with no dependencies apart
+    from the ability to log text to a debug console somewhere. We also provide
+    an easy way to run all the tests on-device as part of an automated test
+    framework, and we use qemu/Renode emulation so that tests can be run even
+    without physical devices present.
 
-- **Easy to integrate**: We want to be as open a system as possible, and use the best code available for each platform. To do that, we're going to rely on projects like [CMSIS-NN](https://www.keil.com/pack/doc/CMSIS/NN/html/index.html), [uTensor](https://github.com/uTensor/uTensor), and other vendor libraries to handle as much performance-critical code as possible. We know that there are an increasing number of options to accelerate neural networks on microcontrollers, so we're aiming to be a good host for deploying those hardware technologies too.
+-   **Easy to integrate**: We want to be as open a system as possible, and use
+    the best code available for each platform. To do that, we're going to rely
+    on projects like
+    [CMSIS-NN](https://www.keil.com/pack/doc/CMSIS/NN/html/index.html),
+    [uTensor](https://github.com/uTensor/uTensor), and other vendor libraries to
+    handle as much performance-critical code as possible. We know that there are
+    an increasing number of options to accelerate neural networks on
+    microcontrollers, so we're aiming to be a good host for deploying those
+    hardware technologies too.
 
-- **Compatible**: We're using the same file schema, interpreter API, and kernel interface as regular TensorFlow Lite, so we leverage the large existing set of tools, documentation, and examples for the project. The biggest barrier to deploying ML models is getting them from a training environment into a form that's easy to run inference on, so we see reusing this rich ecosystem as being crucial to being easily usable. We also hope to integrate this experimental work back into the main codebase in the future.
+-   **Compatible**: We're using the same file schema, interpreter API, and
+    kernel interface as regular TensorFlow Lite, so we leverage the large
+    existing set of tools, documentation, and examples for the project. The
+    biggest barrier to deploying ML models is getting them from a training
+    environment into a form that's easy to run inference on, so we see reusing
+    this rich ecosystem as being crucial to being easily usable. We also hope to
+    integrate this experimental work back into the main codebase in the future.
 
 To meet those goals, we've made some tradeoffs:
 
-- **Simple C++**: To help with readability, our code is written in a modern version of C++, but we generally treat it as a "better C", rather relying on more complex features such as template meta-programming. As mentioned earlier, we avoid any use of dynamic memory allocation (new/delete) or the standard C/C++ libraries, so we believe this should still be fairly portable. It does mean that some older devices with C-only toolchains won't be supported, but we're hoping that the reference operator implementations (which are simple C-like functions) can still be useful in those cases. The interfaces are also designed to be C-only, so it should be possible to integrate the resulting library with pure C projects.
+-   **Simple C++**: To help with readability, our code is written in a modern
+    version of C++, but we generally treat it as a "better C", rather relying on
+    more complex features such as template meta-programming. As mentioned
+    earlier, we avoid any use of dynamic memory allocation (new/delete) or the
+    standard C/C++ libraries, so we believe this should still be fairly
+    portable. It does mean that some older devices with C-only toolchains won't
+    be supported, but we're hoping that the reference operator implementations
+    (which are simple C-like functions) can still be useful in those cases. The
+    interfaces are also designed to be C-only, so it should be possible to
+    integrate the resulting library with pure C projects.
 
-- **Interpreted**: Code generation is a popular pattern for embedded code, because it gives standalone code that's easy to modify and step through, but we've chosen to go with an interpreted approach. In our internal microcontroller work we've found that using an extremely stripped-down interpreter with almost no dependencies gives us a lot of the same advantages, but is easier to maintain. For example, when new updates come out for the underlying library, you can just merge your local modifications in a single step, rather than having to regenerate new code and then patch in any changes you subsequently made. The coarse granularity of the interpreted primitives means that each operation call typically takes hundreds of thousands of instruction cycles at least, so we don't see noticeable performance gains from avoiding what's essentially a single switch statement at the interpreter level to call each operation. We're still working on improving the packaging though, for example we're considering having the ability to snapshot all the source files and headers used for a particular model, being able to compile the code and data together as a library, and then access it through a minimal set of C interface calls which hide the underlying complexity.
+-   **Interpreted**: Code generation is a popular pattern for embedded code,
+    because it gives standalone code that's easy to modify and step through, but
+    we've chosen to go with an interpreted approach. In our internal
+    microcontroller work we've found that using an extremely stripped-down
+    interpreter with almost no dependencies gives us a lot of the same
+    advantages, but is easier to maintain. For example, when new updates come
+    out for the underlying library, you can just merge your local modifications
+    in a single step, rather than having to regenerate new code and then patch
+    in any changes you subsequently made. The coarse granularity of the
+    interpreted primitives means that each operation call typically takes
+    hundreds of thousands of instruction cycles at least, so we don't see
+    noticeable performance gains from avoiding what's essentially a single
+    switch statement at the interpreter level to call each operation. We're
+    still working on improving the packaging though, for example we're
+    considering having the ability to snapshot all the source files and headers
+    used for a particular model, being able to compile the code and data
+    together as a library, and then access it through a minimal set of C
+    interface calls which hide the underlying complexity.
 
-- **Flatbuffers**: We represent our models using [the standard flatbuffer schema used by the rest of TensorFlow Lite](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs), with the difference that we always keep it in read-only program memory (typically flash) rather than relying on having a file system to read it from. This is a good fit because flatbuffer's serialized format is designed to be mapped into memory without requiring any extra memory allocations or modifications to access it. All of the functions to read model values work directly on the serialized bytes, and large sections of data like weights are directly accessible as sequential C-style arrays of their data type, with no strides or unpacking needed. We do get a lot of value from using flatbuffers, but there is a cost in complexity. The flat buffer library code is all inline [inside the main headers](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema_generated.h), but it isn't straightforward to inspect their implementations, and the model data structures aren't easy to comprehend from the debugger. The header for the schema itself also has to be periodically updated when new information is added to the file format, though we try to handle that transparently for most developers by checking in a pre-generated version.
+-   **Flatbuffers**: We represent our models using
+    [the standard flatbuffer schema used by the rest of TensorFlow Lite](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs),
+    with the difference that we always keep it in read-only program memory
+    (typically flash) rather than relying on having a file system to read it
+    from. This is a good fit because flatbuffer's serialized format is designed
+    to be mapped into memory without requiring any extra memory allocations or
+    modifications to access it. All of the functions to read model values work
+    directly on the serialized bytes, and large sections of data like weights
+    are directly accessible as sequential C-style arrays of their data type,
+    with no strides or unpacking needed. We do get a lot of value from using
+    flatbuffers, but there is a cost in complexity. The flat buffer library code
+    is all inline
+    [inside the main headers](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema_generated.h),
+    but it isn't straightforward to inspect their implementations, and the model
+    data structures aren't easy to comprehend from the debugger. The header for
+    the schema itself also has to be periodically updated when new information
+    is added to the file format, though we try to handle that transparently for
+    most developers by checking in a pre-generated version.
 
-- **Code Duplication**: Some of the code in this prototype largely duplicates the logic in other parts of the TensorFlow Lite code base, for example the operator wrappers. We've tried to keep share as much as we can between the two interpreters, but there are some assumptions built into the original runtime that make this difficult. We'll be working on modularizing the main interpreter so that we can move to an entirely shared system.
+-   **Code Duplication**: Some of the code in this prototype largely duplicates
+    the logic in other parts of the TensorFlow Lite code base, for example the
+    operator wrappers. We've tried to keep share as much as we can between the
+    two interpreters, but there are some assumptions built into the original
+    runtime that make this difficult. We'll be working on modularizing the main
+    interpreter so that we can move to an entirely shared system.
 
-This initial preview release is designed to get early feedback, and is not intended to be a final product. It only includes enough operations to run a simple keyword recognition model, and the implementations are not optimized. We're hoping this will be a good way to get feedback and collaborate to improve the framework.
+This initial preview release is designed to get early feedback, and is not
+intended to be a final product. It only includes enough operations to run a
+simple keyword recognition model, and the implementations are not optimized.
+We're hoping this will be a good way to get feedback and collaborate to improve
+the framework.
 
-## Getting Started
+## Getting Started with Make
 
 Building requires a Linux or OS X machine.
 
- - Open a terminal
- - Download the TensorFlow source with `git clone https://github.com/tensorflow/tensorflow.git`
- - Enter the source root directory by running `cd tensorflow`
- - Download the dependencies by running `tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`. This may take a few minutes
- - Build and test the library with `make -f tensorflow/lite/experimental/micro/tools/make/Makefile test`
+-   Open a terminal
+-   Download the TensorFlow source with `git clone
+    https://github.com/tensorflow/tensorflow.git`
+-   Enter the source root directory by running `cd tensorflow`
+-   Download the dependencies by running
+    `tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`.
+    This may take a few minutes
+-   Build and test the library with `make -f
+    tensorflow/lite/experimental/micro/tools/make/Makefile test`
 
 You should see a series of compilation steps, followed by `~~~ALL TESTS
 PASSED~~~` for the various tests of the code that it will run. If there's an
 error, you should get an informative message from make about what went wrong.
 
-These tests are all built as simple binaries with few dependencies, so you can run them manually. For example, here's how to run the depthwise convolution test, and its output:
+These tests are all built as simple binaries with few dependencies, so you can
+run them manually. For example, here's how to run the depthwise convolution
+test, and its output:
 
 ```
 tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test
@@ -53,7 +149,9 @@ Testing SimpleTestReluQuantized
 ~ALL TESTS PASSED~~~
 ```
 
-Looking at the [depthwise_conv_test.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test.cc) code, you'll see a sequence that looks like this:
+Looking at the
+[depthwise_conv_test.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test.cc)
+code, you'll see a sequence that looks like this:
 
 ```
 ...
@@ -74,19 +172,41 @@ output, and the test harness that runs the binary during the make process knows
 that everything ran correctly. If there's an error, the lack of the expected
 string lets the harness know that the test failed.
 
-So, why are we running tests in this complicated way? So far, we've been building binaries that run locally on the Mac OS or Linux machine you're building on, but this approach becomes important when we're targeting simple micro controller devices.
+So, why are we running tests in this complicated way? So far, we've been
+building binaries that run locally on the Mac OS or Linux machine you're
+building on, but this approach becomes important when we're targeting simple
+micro controller devices.
 
 ## Building for the "Blue Pill" STM32F103
 
-The goal of this library is to enable machine learning on resource-constrained micro controllers and DSPs, and as part of that we've targeted the ["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib) as a cheap and popular platform. It only has 20KB of RAM and 64KB of flash, so it's a good device to ensure we can run efficiently on small chips.
+The goal of this library is to enable machine learning on resource-constrained
+micro controllers and DSPs, and as part of that we've targeted the
+["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib)
+as a cheap and popular platform. It only has 20KB of RAM and 64KB of flash, so
+it's a good device to ensure we can run efficiently on small chips.
 
-It's fairly easy to [buy and wire up a physical board](https://github.com/google/stm32_bare_lib#wiring-up-your-blue-pill), but even if you don't have an actual device, the [Renode project](https://renode.io/) makes it easy to run a faithful emulation on your desktop machine. You'll need [Docker](https://www.docker.com/) installed, but once you have that set up, try running the following command:
+It's fairly easy to
+[buy and wire up a physical board](https://github.com/google/stm32_bare_lib#wiring-up-your-blue-pill),
+but even if you don't have an actual device, the
+[Renode project](https://renode.io/) makes it easy to run a faithful emulation
+on your desktop machine. You'll need [Docker](https://www.docker.com/)
+installed, but once you have that set up, try running the following command:
 
-`make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=bluepill test`
+`make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=bluepill
+test`
 
-You should see a similar set of outputs as you did in the previous section, with the addition of some extra Docker logging messages. These are because we're using Docker to run the Renode micro controller emulation tool, and the tests themselves are being run on a simulated STM32F103 device. The communication channels between an embedded device and the host are quite limited, so the test harness looks at the output of the debug log to see if tests have passed, just as it did in the previous section. This makes it a very flexible way to run cross-platform tests, even when a platform has no operating system facilities, as long as it can output debugging text logs.
+You should see a similar set of outputs as you did in the previous section, with
+the addition of some extra Docker logging messages. These are because we're
+using Docker to run the Renode micro controller emulation tool, and the tests
+themselves are being run on a simulated STM32F103 device. The communication
+channels between an embedded device and the host are quite limited, so the test
+harness looks at the output of the debug log to see if tests have passed, just
+as it did in the previous section. This makes it a very flexible way to run
+cross-platform tests, even when a platform has no operating system facilities,
+as long as it can output debugging text logs.
 
-To understand what's happening here, try running the same depthwise convolution test, but through the emulated device test harness, with the following command:
+To understand what's happening here, try running the same depthwise convolution
+test, but through the emulated device test harness, with the following command:
 
 ```
 tensorflow/lite/experimental/micro/testing/test_bluepill_binary.sh \
@@ -115,7 +235,7 @@ LOGS:
 03:27:32.4834 [DEBUG] cpu.uartSemihosting: [+0.18ms host +0s virt 0s virt from start]   Testing SimpleTestReluQuantized
 03:27:32.4838 [DEBUG] cpu.uartSemihosting: [+0.4ms host +0s virt 0s virt from start]   4/4 tests passed
 03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+41µs host +0s virt 0s virt from start]   ~~~ALL TESTS PASSED~~~
-03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+5µs host +0s virt 0s virt from start]   
+03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+5µs host +0s virt 0s virt from start]
 ...
 tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test: PASS
 ```
@@ -128,16 +248,19 @@ than your desktop. We hope that the simplicity of this testing approach will
 help make adding support for new platforms as easy as possible.
 
 ## Building for "Hifive1" SiFive FE310 development board
-We've targeted the ["HiFive1" Arduino-compatible development board](https://www.sifive.com/boards/hifive1) as a test platform for RISC-V MCU.
 
-Similar to Blue Pill setup, you will need Docker installed. The binary can be executed on either HiFive1 board or emulated using [Renode project](https://renode.io/) on your desktop machine.
+We've targeted the
+["HiFive1" Arduino-compatible development board](https://www.sifive.com/boards/hifive1)
+as a test platform for RISC-V MCU.
+
+Similar to Blue Pill setup, you will need Docker installed. The binary can be
+executed on either HiFive1 board or emulated using
+[Renode project](https://renode.io/) on your desktop machine.
 
 The following instructions builds and transfers the source files to the Docker
-```
-docker build -t riscv_build \
--f {PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/testing/Dockerfile.riscv \
-{PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/testing/
-```
+`docker build -t riscv_build \ -f
+{PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/testing/Dockerfile.riscv
+\ {PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/testing/`
 
 You should see output that looks something like this:
 
@@ -160,18 +283,21 @@ Successfully tagged riscv_build:latest
 
 Building micro_speech_test binary
 
- - Lauch the Docker that we just created using: `docker run -it-v /tmp/copybara_out:/workspace riscv_build:latest bash`
- - Enter the source root directory by running `cd /workspace`
- - Download the dependencies by running `./tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`. This may take a few minutes.
- - Set the path to RISC-V tools: `export PATH=${PATH}:/workspace/tensorflow/lite/experimental/micro/tools/make/downloads/riscv_toolchain/bin/`
- - Build the binary: `make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=riscv32_mcu`
+-   Lauch the Docker that we just created using: `docker run -it-v
+    /tmp/copybara_out:/workspace riscv_build:latest bash`
+-   Enter the source root directory by running `cd /workspace`
+-   Download the dependencies by running
+    `./tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`.
+    This may take a few minutes.
+-   Set the path to RISC-V tools: `export
+    PATH=${PATH}:/workspace/tensorflow/lite/experimental/micro/tools/make/downloads/riscv_toolchain/bin/`
+-   Build the binary: `make -f
+    tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=riscv32_mcu`
 
 Lauching Renode to test the binary, currently this set up is not automated.
 
- - Until https://github.com/renode/renode/pull/30 is in the Docker image, patch the change manully: `sed -E -i 's/"rv32g"/"rv32imac"/g' /opt/renode/platforms/cpus/sifive-fe310.repl`
-
-
- - Execute the binary on Renode: `renode -P 5000 --disable-xwt -e 's @/workspace/tensorflow/lite/experimental/micro/testing/sifive_fe310.resc'`
+-   Execute the binary on Renode: `renode -P 5000 --disable-xwt -e 's
+    @/workspace/tensorflow/lite/experimental/micro/testing/sifive_fe310.resc'`
 
 You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
 
@@ -238,3 +364,148 @@ JFlashLiteExe 2. Device = AMA3B1KK-KBR 3. Interface = SWD at 1000 kHz 4. Data
 file =
 tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin
 5. Prog Addr = 0x0000C000
+
+## Generating Project Files
+
+It's not always easy or convenient to use a makefile-based build process,
+especially if you're working on a product that uses a different IDE for the rest
+of its code. To address that, it's possible to generate standalone project
+folders for various popular build systems. These projects are self-contained,
+with only the headers and source files needed by a particular binary, and
+include project files to make loading them into an IDE easy. These can be
+auto-generated for any target you can compile using the main Make system, using
+a command like this (making sure you've run `download_dependencies.sh` first):
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_mbed_project
+```
+
+This will create a folder in
+`tensorflow/lite/experimental/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech_main_test/mbed`
+that contains the source and header files, some Mbed configuration files, and a
+README. You should then be able to copy this directory to another machine, and
+use it just like any other Mbed project.
+
+## How to Port TensorFlow Lite Micro to a New Platform
+
+Are you a hardware or operating system provider looking to run machine learning
+on your platform? We're keen to help, and we've had experience helping other
+teams do the same thing, so here are our recommendations.
+
+### Requirements
+
+Since the core neural network operations are pure arithmetic, and don't require
+any I/O or other system-specific functionality, the code doesn't have to have
+many dependencies. We've tried to enforce this, so that it's as easy as possible
+to get TensorFlow Lite Micro running even on 'bare metal' systems without an OS.
+Here are the core requirements that a platform needs to run the framework:
+
+-   C/C++ compiler capable of C++11 compatibility. This is probably the most
+    restrictive of the requirements, since C++11 is not as widely adopted in the
+    embedded world as it is elsewhere. We made the decision to require it since
+    one of the main goals of TFL Micro is to share as much code as possible with
+    the wider TensorFlow codebase, and since that relies on C++11 features, we
+    need compatibility to achieve it. We only use a small, sane, subset of C++
+    though, so don't worry about having to deal with template metaprogramming or
+    similar challenges!
+
+-   Debug logging. The core network operations don't need any I/O functions, but
+    to be able to run tests and tell if they've worked as expected, the
+    framework needs some way to write out a string to some kind of debug
+    console. This will vary from system to system, for example on Linux it could
+    just be `fprintf(stderr, debug_string)` whereas an embedded device might
+    write the string out to a specified UART. As long as there's some mechanism
+    for outputting debug strings, you should be able to use TFL Micro on that
+    platform.
+
+-   Math library. The C standard `libm.a` library is needed to handle some of
+    the mathematical operations used to calculate neural network results.
+
+-   Global variable initialization. We do use a pattern of relying on global
+    variables being set before `main()` is run in some places, so you'll need to
+    make sure your compiler toolchain
+
+And that's it! You may be wondering about some other common requirements that
+are needed by a lot of non-embedded software, so here's a brief list of things
+that aren't necessary to get started with TFL Micro on a new platform:
+
+-   Operating system. Since the only platform-specific function we need is
+    `DebugLog()`, there's no requirement for any kind of Posix or similar
+    functionality around files, processes, or threads.
+
+-   C or C++ standard libraries. The framework tries to avoid relying on any
+    standard library functions that require linker-time support. This includes
+    things like string functions, but still allows us to use headers like
+    `stdtypes.h` which typically just define constants and typedefs.
+    Unfortunately this distinction isn't officially defined by any standard, so
+    it's possible that different toolchains may decide to require linked code
+    even for the subset we use, but in practice we've found it's usually a
+    pretty obvious decision and stable over platforms and toolchains.
+
+-   Dynamic memory allocation. All the TFL Micro code avoids dynamic memory
+    allocation, instead relying on local variables on the stack in most cases,
+    or global variables for a few situations. These are all fixed-size, which
+    can mean some compile-time configuration to ensure there's enough space for
+    particular networks, but does avoid any need for a heap and the
+    implementation of `malloc\new` on a platform.
+
+-   Floating point. Eight-bit integer arithmetic is enough for inference on many
+    networks, so if a model sticks to these kind of quantized operations, no
+    floating point instructions should be required or executed by the framework.
+
+### Getting Started
+
+We recommend that you start trying to compile and run one of the simplest tests
+in the framework as your first step. The full TensorFlow codebase can seem
+overwhelming to work with at first, so instead you can begin with a collection
+of self-contained project folders that only include the source files needed for
+a particular test or executable. You can find a set of pre-generated projects
+[here](https://drive.google.com/open?id=1cawEQAkqquK_SO4crReDYqf_v7yAwOY8).
+
+As mentioned above, the one function you will need to implement for a completely
+new platform is debug logging. If your device is just a variation on an existing
+platform you may be able to reuse code that's already been written. To
+understand what's available, begin with the default reference implementation at
+[tensorflow/lite/experimental/micro/debug_log.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/debug_log.cc]),
+which uses fprintf and stderr. If your platform has this level of support for
+the C standard library in its toolchain, then you can just reuse this.
+Otherwise, you'll need to do some research into how your platform and device can
+communicate logging statements to the outside world. As another example, take a
+look at
+[the Mbed version of `DebugLog()`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/mbed/debug_log.cc),
+which creates a UART object and uses it to output strings to the host's console
+if it's connected.
+
+Begin by navigating to the micro_error_reporter_test folder in the pregenerated
+projects you downloaded. Inside here, you'll see a set of folders containing all
+the source code you need. If you look through them, you should find a total of
+around 60 C or C++ files that compiled together will create the test executable.
+There's an example makefile in the directory that lists all of the source files
+and include paths for the headers. If you're building on a Linux or MacOS host
+system, you may just be able to reuse that same makefile to cross-compile for
+your system, as long as you swap out the `CC` and `CXX` variables from their
+defaults, to point to your cross compiler instead (for example
+`arm-none-eabi-gcc` or `riscv64-unknown-elf-gcc`). Otherwise, set up a project
+in the build system you are using. It should hopefully be fairly
+straightforward, since all of the source files in the folder need to be
+compiled, so on many IDEs you can just drag the whole lot in. Then you need to
+make sure that C++11 compatibility is turned on, and that the right include
+paths (as mentioned in the makefile) have been added.
+
+You'll see the default `DebugLog()` implementation in
+'tensorflow/lite/experimental/micro/debug_log.cc' inside the
+micro_error_reporter_test folder. Modify that file to add the right
+implementation for your platform, and then you should be able to build the set
+of files into an executable. Transfer that executable to your target device (for
+example by flashing it), and then try running it. You should see output that
+looks something like this:
+
+```
+Number: 42
+Badly-formed format string
+Another  badly-formed  format string
+~~ALL TESTS PASSED~~~
+```
+
+If not, you'll need to debug what went wrong, but hopefully with this small
+starting project it should be manageable.

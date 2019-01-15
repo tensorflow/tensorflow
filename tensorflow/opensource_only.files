@@ -71,6 +71,10 @@ tensorflow/third_party/toolchains/cpus/arm/CROSSTOOL.tpl
 tensorflow/third_party/toolchains/cpus/arm/BUILD
 tensorflow/third_party/toolchains/cpus/py3/BUILD
 tensorflow/third_party/toolchains/cpus/py/BUILD
+tensorflow/third_party/toolchains/remote/configure.bzl
+tensorflow/third_party/toolchains/remote/BUILD.tpl
+tensorflow/third_party/toolchains/remote/BUILD
+tensorflow/third_party/toolchains/remote/execution.bzl.tpl
 tensorflow/third_party/toolchains/BUILD
 tensorflow/third_party/gpus/BUILD
 tensorflow/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_rocm.tpl

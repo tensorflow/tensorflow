@@ -26,6 +26,7 @@ import enum
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import constant_op
@@ -209,12 +210,14 @@ class _SameScopeAgainContext(object):
 # TODO(yuefengz): add more replication modes.
 @tf_export("distribute.InputReplicationMode")
 class InputReplicationMode(enum.Enum):
-  """Replication mode for input function."""
+  """Replication mode for input function.
 
-  # The input function will be called on each worker independently, creating as
-  # many input pipelines as number of workers. Replicas will dequeue from the
-  # local Dataset on their worker. Distribution Strategy doesn't manage any
-  # state sharing between such separate input pipelines.
+  * `PER_WORKER`: The input function will be called on each worker
+    independently, creating as many input pipelines as number of workers.
+    Replicas will dequeue from the local Dataset on their worker.
+    `tf.distribute.Strategy` doesn't manage any state sharing between such
+    separate input pipelines.
+  """
   PER_WORKER = "PER_WORKER"
 
 
@@ -352,7 +355,8 @@ class DistributionStrategy(object):
     ```
 
     Args:
-      dataset_fn: A function that returns a `tf.data.Dataset`.
+      dataset_fn: A function that returns a `tf.data.Dataset` with per-replica
+        batching.
 
     Returns:
       A `PerReplicaDataset` that will produce data for each replica.
@@ -360,7 +364,7 @@ class DistributionStrategy(object):
     return self._extended._distribute_dataset(dataset_fn)  # pylint: disable=protected-access
 
   def make_dataset_iterator(self, dataset):
-    """Makes an iterator for input provided via input_dataset.
+    """Makes an iterator for input provided via `dataset`.
 
     Data from the given dataset will be distributed evenly across all the
     compute replicas. We will assume that the input dataset is batched by the
@@ -389,34 +393,76 @@ class DistributionStrategy(object):
     """Returns an iterator split across replicas created from an input function.
 
     The `input_fn` should take an `tf.distribute.InputContext` object where
-    information about input sharding can be accessed:
+    information about batching and input sharding can be accessed:
 
     ```
     def input_fn(input_context):
-      d = tf.data.Dataset.from_tensors([[1.]]).repeat()
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
       return d.shard(input_context.num_input_pipelines,
                      input_context.input_pipeline_id)
     with strategy.scope():
-      iterator = strategy.make_input_fn_iterator(
-          input_fn)
-      replica_results = strategy.extended.call_for_each_replica(
-          replica_fn, iterator.get_next())
+      iterator = strategy.make_input_fn_iterator(input_fn)
+      replica_results = strategy.experimental_run(replica_fn, iterator)
     ```
 
+    The `tf.data.Dataset` returned by `input_fn` should have a per-replica
+    batch size, which may be computed using
+    `input_context.get_per_replica_batch_size`.
+
     Args:
-      input_fn: A function that returns a `tf.data.Dataset`. This function is
-        expected to take an `tf.distribute.InputContext` object.
+      input_fn: A function taking a `tf.distribute.InputContext` object and
+        returning a `tf.data.Dataset`.
       replication_mode: an enum value of `tf.distribute.InputReplicationMode`.
-        Only `PER_WORKER` is supported currently.
+        Only `PER_WORKER` is supported currently, which means there will be
+        a single call to `input_fn` per worker. Replicas will dequeue from the
+        local `tf.data.Dataset` on their worker.
 
     Returns:
-      An iterator object that can be initialized and fetched next element.
+      An iterator object that should first be `.initialize()`-ed. It may then
+      either be passed to `strategy.experimental_run()` or you can
+      `iterator.get_next()` to get the next value to pass to
+      `strategy.extended.call_for_each_replica()`.
     """
     if replication_mode != InputReplicationMode.PER_WORKER:
       raise ValueError(
           "Input replication mode not supported: %r" % replication_mode)
     return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
         input_fn, replication_mode=replication_mode)
+
+  def experimental_make_numpy_iterator(
+      self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
+    """Makes an iterator for input provided via a nest of numpy arrays.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+      batch_size: The number of entries from the array we should consume in one
+        step of the computation, across all replicas. This is the global batch
+        size. It should be divisible by `num_replicas_in_sync`.
+      num_epochs: The number of times to iterate through the examples. A value
+        of `None` means repeat forever.
+      shuffle: Size of buffer to use for shuffling the input examples.
+        Use `None` to disable shuffling.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      An `tf.distribute.InputIterator` which returns inputs for each step of the
+      computation.  User should call `initialize` on the returned iterator.
+    """
+    ds = self.extended.experimental_make_numpy_dataset(
+        numpy_input, session=session)
+    if shuffle:
+      ds = ds.shuffle(shuffle)
+    if num_epochs != 1:
+      ds = ds.repeat(num_epochs)
+    # We need to use the drop_remainder argument to get a known static
+    # input shape which is required for TPUs.
+    drop_remainder = self.extended.experimental_require_static_shapes
+    ds = ds.batch(batch_size, drop_remainder=drop_remainder)
+    return self.make_dataset_iterator(ds)
 
   def experimental_run(self, fn, input_iterator=None):
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
@@ -458,42 +504,6 @@ class DistributionStrategy(object):
   def broadcast(self, tensor, destinations=None):
     """DEPRECATED: use extended.broadcast_to() instead."""
     return self._extended.broadcast_to(tensor, destinations)
-
-  @doc_controls.do_not_generate_docs  # Use experimental_initialize() instead.
-  def initialize(self):
-    """DEPRECATED: Use `experimental_initialize()` instead."""
-    return self._extended._initialize()  # pylint: disable=protected-access
-
-  def experimental_initialize(self):
-    """Any initialization to be done before running any computations.
-
-    In eager mode, it executes any initialization as a side effect.
-    In graph mode, it creates the initialization ops and returns them.
-
-    For example, TPU initialize_system ops.
-
-    Returns:
-      A list of ops to execute.
-    """
-    return self._extended._initialize()  # pylint: disable=protected-access
-
-  @doc_controls.do_not_generate_docs  # Use experimental_finalize() instead.
-  def finalize(self):
-    """DEPRECATED: Use `experimental_finalize()` instead."""
-    return self._extended._finalize()  # pylint: disable=protected-access
-
-  def experimental_finalize(self):
-    """Any final actions to be done at the end of all computations.
-
-    In eager mode, it executes any finalize actions as a side effect.
-    In graph mode, it creates the finalize ops and returns them.
-
-    For example, TPU shutdown ops.
-
-    Returns:
-      A list of ops to execute.
-    """
-    return self._extended._finalize()  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
   def run_steps_on_dataset(self, fn, iterator, iterations=1,
@@ -1083,6 +1093,29 @@ class DistributionStrategyExtended(object):
   def _make_input_fn_iterator(self, input_fn, replication_mode):
     raise NotImplementedError("must be implemented in descendants")
 
+  def experimental_make_numpy_dataset(self, numpy_input, session=None):
+    """Makes a dataset for input provided via a numpy array.
+
+    This avoids adding `numpy_input` as a large constant in the graph,
+    and copies the data to the machine or machines that will be processing
+    the input.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      A `tf.data.Dataset` representing `numpy_input`.
+    """
+    _require_cross_replica_context_extended(self)
+    return self._experimental_make_numpy_dataset(numpy_input, session=session)
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    raise NotImplementedError("must be implemented in descendants")
+
   def broadcast_to(self, tensor, destinations):
     """Mirror a tensor on one device to all worker devices.
 
@@ -1101,12 +1134,6 @@ class DistributionStrategyExtended(object):
 
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
-
-  def _initialize(self):
-    return []
-
-  def _finalize(self):
-    return []
 
   def experimental_run_steps_on_iterator(self, fn, iterator, iterations=1,
                                          initial_loop_values=None):
@@ -1658,7 +1685,20 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
   def _make_input_fn_iterator(self,
                               input_fn,
                               replication_mode=InputReplicationMode.PER_WORKER):
-    return input_fn(InputContext()).make_initializable_iterator()
+    dataset = input_fn(InputContext())
+    return _DefaultDistributionExtended.DefaultInputIterator(dataset)
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    numpy_flat = nest.flatten(numpy_input)
+    vars_flat = tuple(
+        variable_scope.variable(array_ops.zeros(i.shape, i.dtype),
+                                trainable=False, use_resource=True)
+        for i in numpy_flat
+    )
+    for v, i in zip(vars_flat, numpy_flat):
+      numpy_dataset.init_var_from_numpy(v, i, session)
+    vars_nested = nest.pack_sequence_as(numpy_input, vars_flat)
+    return dataset_ops.Dataset.from_tensor_slices(vars_nested)
 
   def _broadcast_to(self, tensor, destinations):
     if destinations is None:
@@ -1743,6 +1783,7 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """Global and per-replica batching are equivalent for this strategy."""
     return True
 
 

@@ -57,6 +57,7 @@ def while_loop(cond,
                body,
                loop_vars,
                shape_invariants=None,
+               parallel_iterations=10,
                maximum_iterations=None,
                name=None,
                return_same_structure=True):
@@ -215,6 +216,7 @@ def while_loop(cond,
         util.create_new_tf_function(cond_graph),
         util.create_new_tf_function(body_graph),
         output_shapes=[t.shape for t in body_graph.outputs],
+        parallel_iterations=parallel_iterations,
         name=scope)
 
     _copy_handle_data(body_graph.outputs, outputs)
@@ -257,6 +259,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   maximum_iterations = op.get_attr(
       "_maximum_iterations") if _is_in_xla_context() else None
+  parallel_iterations = op.get_attr("parallel_iterations")
   assert not _is_in_xla_context() or maximum_iterations is not None
   maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
 
@@ -325,6 +328,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(cond_grad_graph),
       util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
+      parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
@@ -724,31 +728,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     if captured_tensor is not None:
       return captured_tensor
 
+    # Resource tensors are not accumulated and handled specially.
     if tensor.dtype == dtypes.resource:
-      # Resource-type tensors are not accumulated.
-      # If a resource tensor exists in the loop body it must either be a loop
-      # input or an output of a nested While op inside the loop body which
-      # had captured the external resource.
-      if tensor in self._forward_graph.inputs:
-        index = self._forward_graph.inputs.index(tensor)
-      elif tensor.op.type == "While":
-        # Captured resources occur at the same index in the lists of inputs and
-        # outputs of a while op. So we lookup the input of `tensor.op` at the
-        # same index as the index of `tensor` in the `tensor.op.outputs`.
-        index = self._forward_graph.inputs.index(
-            tensor.op.inputs[tensor.value_index])
-      else:
-        raise ValueError(
-            "Taking gradient of a while loop which creates"
-            " a resource in its body is not supported: %s" % str(tensor))
-      # This must be a loop invariant.
-      assert self._forward_graph.inputs[index] == self._forward_graph.outputs[
-          index], "Resource tensors must be loop invariants %s." % str(
-              self._forward_graph._while.inputs[index])
-      tensor_in_outer_graph = self._forward_graph._while.inputs[index]
-      self._indirect_captures[tensor] = self.capture(
-          tensor_in_outer_graph, whitelisted=True)
-      return self._indirect_captures[tensor]
+      return self._resource_capture_helper(tensor)
 
     # Create or find an existing accumulator output for `tensor` in the forward
     # graph, and fetch from this accumulator in the gradient graph to get the
@@ -788,6 +770,41 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     self._indirect_captures[tensor] = captured_tensor
     self.popped_tensor_lists[captured_accumulator] = new_tensor_list
     return captured_tensor
+
+  def _resource_capture_helper(self, tensor):
+    """Returns the captured resource tensor.
+
+    Resource-type tensors are not accumulated. If a resource tensor exists in
+    the loop body it must either be a loop input or an output of a nested While
+    op inside the loop body which had captured the external resource.
+
+    Args:
+      tensor: the external resource Tensor to be captured.
+
+    Returns:
+      Tensor in this graph.
+    """
+    assert tensor.dtype == dtypes.resource
+    if tensor in self._forward_graph.inputs:
+      index = self._forward_graph.inputs.index(tensor)
+    elif tensor.op.type == "While":
+      # Captured resources occur at the same index in the lists of inputs and
+      # outputs of a while op. So we lookup the input of `tensor.op` at the
+      # same index as the index of `tensor` in the `tensor.op.outputs`.
+      index = self._forward_graph.inputs.index(
+          tensor.op.inputs[tensor.value_index])
+    else:
+      raise ValueError(
+          "Taking gradient of a while loop which creates "
+          "a resource in its body is not supported: %s" % tensor)
+    # This must be a loop invariant.
+    assert self._forward_graph.inputs[index] == self._forward_graph.outputs[
+        index], ("Resource tensors must be loop invariants %s." %
+                 self._forward_graph._while.inputs[index])
+    tensor_in_outer_graph = self._forward_graph._while.inputs[index]
+    self._indirect_captures[tensor] = self.capture(
+        tensor_in_outer_graph, whitelisted=True)
+    return self._indirect_captures[tensor]
 
 
 def _check_shapes_compat(output_tensors, shape_invariants, input_tensors):

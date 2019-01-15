@@ -22,6 +22,7 @@ import collections
 import functools
 import os
 
+from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.eager import context
@@ -38,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -82,7 +84,7 @@ class _SaveableView(object):
         #  input_signature and have not been called.
         #  - force side effects of creation of concrete functions, e.g. create
         #  variables on first run.
-        function_serialization.list_all_concrete_functions(function)
+        function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
 
   @property
   def root(self):
@@ -222,7 +224,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
 
 
 def _tensor_dict_to_tensorinfo(tensor_dict):
-  return {key: utils_impl.build_tensor_info(value)
+  return {key: utils_impl.build_tensor_info_internal(value)
           for key, value in tensor_dict.items()}
 
 
@@ -554,7 +556,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   for obj in accessible_objects:
     for function in saveable_view.polymorphic_functions[obj].values():
       concrete_functions.extend(
-          function_serialization.list_all_concrete_functions(function))
+          function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
 
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
@@ -617,7 +619,14 @@ def _write_object_proto(obj, proto, asset_file_def_index, node_ids):
     proto.function.CopyFrom(
         function_serialization.serialize_polymorphic_function(obj, node_ids))
   else:
-    proto.user_object.SetInParent()
+    registered_type_proto = revived_types.serialize(obj)
+    if registered_type_proto is None:
+      # Fallback for types with no matching registration
+      registered_type_proto = saved_object_graph_pb2.SavedUserObject(
+          identifier="_generic_user_object",
+          version=versions_pb2.VersionDef(
+              producer=1, min_consumer=1, bad_consumers=[]))
+    proto.user_object.CopyFrom(registered_type_proto)
 
 
 @tf_export("saved_model.save", v1=["saved_model.experimental.save"])

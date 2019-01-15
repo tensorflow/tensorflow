@@ -34,9 +34,9 @@ constexpr char kFusedOpName[] = "ShuffleAndRepeatDataset";
 
 }  // namespace
 
-Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
-                                        const GrapplerItem& item,
-                                        GraphDef* output) {
+Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   std::set<string> nodes_to_delete;
@@ -86,11 +86,13 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
 
     NodeDef* shuffle_and_repeat_node =
         graph.AddNode(make_shuffle_and_repeat_node(shuffle_node, repeat_node));
-    graph.UpdateFanouts(repeat_node.name(), shuffle_and_repeat_node->name());
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(repeat_node.name(),
+                                           shuffle_and_repeat_node->name()));
 
     // Mark the `Shuffle` and `Repeat` nodes for removal.
     nodes_to_delete.insert(shuffle_node.name());
     nodes_to_delete.insert(repeat_node.name());
+    stats->num_changes++;
   }
 
   graph.DeleteNodes(nodes_to_delete);
@@ -107,5 +109,5 @@ void ShuffleAndRepeatFusion::Feedback(Cluster* cluster,
 REGISTER_GRAPH_OPTIMIZER_AS(ShuffleAndRepeatFusion,
                             "shuffle_and_repeat_fusion");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

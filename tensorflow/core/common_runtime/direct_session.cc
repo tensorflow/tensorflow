@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -720,7 +719,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
-  UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+  metrics::UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
 
   return Status::OK();
 }
@@ -1192,6 +1191,10 @@ Status DirectSession::CreateExecutors(
   options.use_function_convention = !run_state_args->is_partial_run;
   options.collective_graph_key =
       callable_options.run_options().experimental().collective_graph_key();
+  if (options_.config.experimental()
+          .collective_deterministic_sequential_execution()) {
+    options.collective_order = GraphCollectiveOrder::kEdges;
+  }
 
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
@@ -1521,12 +1524,6 @@ Status DirectSession::CreateGraphs(
   if (run_state_args->is_partial_run) {
     run_state_args->graph.reset(new Graph(flib_def_.get()));
     CopyGraph(*execution_state->full_graph(), run_state_args->graph.get());
-  }
-
-  // Make collective execution order deterministic if needed.
-  if (options_.config.experimental()
-          .collective_deterministic_sequential_execution()) {
-    TF_RETURN_IF_ERROR(OrderCollectives(&client_graph->graph));
   }
 
   // Partition the graph across devices.

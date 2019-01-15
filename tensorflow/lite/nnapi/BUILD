@@ -8,6 +8,7 @@ cc_library(
     name = "nnapi_lib",
     hdrs = [
         "NeuralNetworksShim.h",
+        "NeuralNetworksTypes.h",
     ],
     linkopts = ["-ldl"],
 )

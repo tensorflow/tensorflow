@@ -192,11 +192,12 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      tpu: Either a string, or a list of strings corresponding to the TPUs to
-        use. If the single string is the empty string, the string 'local', or a
-        string that begins with 'grpc://' or '/bns', then it is assumed to not
-        correspond with a Cloud TPU and will instead be passed as the session
-        master and no ClusterSpec propagation will be done.
+      tpu: A string corresponding to the TPU to use. If the string is the empty
+        string, the string 'local', or a string that begins with 'grpc://' or
+        '/bns', then it is assumed to not correspond with a Cloud TPU and will
+        instead be passed as the session master and no ClusterSpec propagation
+        will be done. In the future, this may also support a list of strings
+        when multiple Cloud TPUs are used.
       zone: Zone where the TPUs are located. If omitted or empty, we will assume
         that the zone of the TPU is the same as the zone of the GCE VM, which we
         will try to discover from the GCE metadata service.

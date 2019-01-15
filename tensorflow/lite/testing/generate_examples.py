@@ -3222,6 +3222,48 @@ def make_slice_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_conv2d_transpose_tests(zip_path):
+  """Make a set of tests to do transpose_conv."""
+
+  test_parameters = [{
+      "input_shape": [[1, 50, 54, 3]],
+      "filter_shape": [[1, 1, 8, 3], [1, 2, 8, 3], [1, 3, 8, 3], [1, 4, 8, 3]],
+      "output_shape": [[1, 100, 108, 8]],
+  }]
+
+  def build_graph(parameters):
+    """Build a transpose_conv graph given `parameters`."""
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+
+    filter_tensor = tf.placeholder(
+        dtype=tf.float32, name="filter", shape=parameters["filter_shape"])
+
+    out = tf.nn.conv2d_transpose(
+        input_tensor,
+        filter_tensor,
+        output_shape=parameters["output_shape"],
+        padding="SAME",
+        strides=(1, 2, 2, 1))
+
+    input_tensors = [input_tensor, filter_tensor]
+    return input_tensors, [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    values = [
+        create_tensor_data(np.float32, parameters["input_shape"]),
+        create_tensor_data(np.float32, parameters["filter_shape"])
+    ]
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
+
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_success=4)
+
+
 # Since compute output_shape is fairly complicated for
 # tf.nn.conv2d_backprop_input input_sizes argument, so we here first perform a
 # "conv2d" operation to get the output, then we use the output to feed in

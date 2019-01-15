@@ -523,6 +523,7 @@ class BatchNormalizationTest(test.TestCase):
             data_format='NHWC',
             is_training=is_training)
 
+  @test_util.disable_xla('This test never passed for XLA')
   def testBatchNormGradShape5(self):
     for is_training in [True, False]:
       x_shape = [0, 7, 11, 4]

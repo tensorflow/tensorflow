@@ -1065,7 +1065,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(printed.contents(), "D\nD\n")
 
   # Microbenchmark: 256,000 iterations/s.
-  @test_util.disable_control_flow_v2("b/116630618 (Times out)")
   def testWhile_1(self):
     with self.cached_session():
       n = constant_op.constant(0)
@@ -1817,7 +1816,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(0.0, sess.run(r, {p: False}))
       self.assertEqual([2.0], sess.run(r1, {p: False}))
 
-  @test_util.disable_control_flow_v2("b/116743589")
   @test_util.run_deprecated_v1
   def testCondWhile_3(self):
     self._testCondWhile_3(use_gpu=False)
@@ -2245,7 +2243,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(216.0, grad_a_val)
       self.assertAllClose(81.0, grad_v_val)
 
-  @test_util.disable_control_flow_v2("b/116630618 (parallel_iters: times out)")
   @test_util.run_deprecated_v1
   def testWhileGrad_Mul(self):
     self._testWhileGrad_Mul(use_gpu=False, p_iters=1)
@@ -2382,6 +2379,8 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
 
+  @test_util.disable_xla("This test never passed for XLA"
+                        )  # Resource variable issue for ControlFlowV2
   @test_util.run_gpu_only
   def testGpuResourceAccess(self):
     with ops.device(test.gpu_device_name()):
@@ -2755,13 +2754,11 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(1024.0, self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/117519152")
   @test_util.run_deprecated_v1
   def testWhileCondGrad_Simple(self):
     self._testWhileCondGrad_Simple(use_gpu=False)
     self._testWhileCondGrad_Simple(use_gpu=True)
 
-  @test_util.disable_control_flow_v2("b/117276490")
   @test_util.run_deprecated_v1
   def testWhileCondGrad_UnknownShape(self):
     with self.cached_session() as sess:
@@ -2882,7 +2879,6 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/115920078 (gradients)")
   @test_util.run_v1_only("b/120545219")
   def testCallGradInLoop(self):
     with self.cached_session() as sess:
@@ -3045,7 +3041,6 @@ class ControlFlowTest(test.TestCase):
       all_ops = x.graph.get_operations()
       self.assertFalse(any(name in op.name for op in all_ops))
 
-  @test_util.disable_control_flow_v2("b/117954949")
   @test_util.run_deprecated_v1
   def testWhileGradGradFail(self):
     theta = variables.Variable(initial_value=1.)
@@ -3116,7 +3111,6 @@ class ControlFlowTest(test.TestCase):
       self.evaluate(q.initializer)
       self.assertAllClose([1., 1.], self.evaluate(dy_dq))
 
-  @test_util.disable_control_flow_v2("b/115920078 (gradients)")
   @test_util.run_v1_only("b/120545219")
   def testIssue16504(self):
     c = constant_op.constant(np.arange(100), dtype=dtypes.float32)

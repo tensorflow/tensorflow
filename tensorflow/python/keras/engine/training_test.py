@@ -350,16 +350,21 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(len(out), 2)
 
   @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
   def test_activity_regularizer_fit(self):
     loss = {}
     for reg in [None, 'l2']:
-      inputs = keras.layers.Input(shape=(10,))
-      x = keras.layers.Dense(
-          10, activation='relu', activity_regularizer=reg,
-          kernel_initializer='ones', use_bias=False)(inputs)
-      outputs = keras.layers.Dense(1, activation='sigmoid',
-                                   kernel_initializer='ones', use_bias=False)(x)
-      model = keras.Model(inputs, outputs)
+      layers = [
+          keras.layers.Dense(
+              10, activation='relu', activity_regularizer=reg,
+              kernel_initializer='ones', use_bias=False),
+          keras.layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones',
+              use_bias=False),
+      ]
+
+      model = testing_utils.get_model_from_layers(
+          layers, input_shape=(10,))
 
       x = np.ones((10, 10), 'float32')
       y = np.ones((10, 1), 'float32')
@@ -372,15 +377,14 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertLess(loss[None], loss['l2'])
 
   @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
   def test_activity_regularizer_loss_value(self):
-    inputs = keras.layers.Input(shape=(10,))
-    outputs = keras.layers.Dense(
-        1,
-        kernel_initializer=keras.initializers.zeros(),
-        bias_initializer=keras.initializers.ones(),
-        activity_regularizer='l2')(
-            inputs)
-    model = keras.Model(inputs, outputs)
+    layer = keras.layers.Dense(
+        1, kernel_initializer=keras.initializers.zeros(),
+        bias_initializer=keras.initializers.ones(), activity_regularizer='l2')
+
+    model = testing_utils.get_model_from_layers([layer], input_shape=(10,))
+
     x = np.ones((10, 10), 'float32')
     y = np.ones((10, 1), 'float32')
     optimizer = RMSPropOptimizer(learning_rate=0.001)

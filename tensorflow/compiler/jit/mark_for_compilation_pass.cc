@@ -677,6 +677,11 @@ Status MarkForCompilationPass::Run(
   VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
+  // Deadness analysis expects a graph with source and sink edges properly
+  // connected but sometimes the incoming graph does not follow this invariant.
+  // So fix up the source and sink edges before calling into deadness analysis.
+  FixupSourceAndSinkEdges(options.graph->get());
+
   std::unique_ptr<DeadnessAnalysis> deadness;
   {
     XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);

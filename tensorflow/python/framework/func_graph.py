@@ -58,6 +58,37 @@ WHITELIST_COLLECTIONS = [
 ]
 
 
+class UnknownArgument(object):
+  """Signifies an argument which is not currently handled."""
+  pass
+
+
+def convert_structure_to_signature(structure):
+  """Convert a potentially nested structure to a signature.
+
+  Args:
+    structure: Structure to convert.
+
+  Returns:
+    Identical structure that has TensorSpec objects instead of Tensors and
+    UknownArgument instead of any unsupported types.
+  """
+
+  def encode_arg(arg, name=None):
+    """A representation for this argument, for converting into signatures."""
+    if isinstance(arg, ops.Tensor):
+      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+    if isinstance(arg, (int, float, bool, tensor_spec.TensorSpec)):
+      return arg
+    return UnknownArgument()
+
+  # We are using the flattened paths to name the TensorSpecs. We need an
+  # explicit name for them downstream.
+  flattened_with_paths = nest.flatten_with_joined_string_paths(structure)
+  mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
+  return nest.pack_sequence_as(structure, mapped)
+
+
 class FuncGraph(ops.Graph):
   """Graph representing a function body.
 
@@ -69,6 +100,9 @@ class FuncGraph(ops.Graph):
       inputs coming first.
     outputs: Tensors that will be returned by this function. The tensors are in
       this FuncGraph.
+    structured_input_signature: A possibly-nested python object that was
+      received by this function. Note that this structure might contain Python
+      `None`s.
     structured_outputs: A possibly-nested python object which will be returned
       by this function. The Tensors in this structure are the same as those of
       self.outputs. Note that this structure might contain Python `None`s.
@@ -101,6 +135,7 @@ class FuncGraph(ops.Graph):
     self.name = name
     self.inputs = []
     self.outputs = []
+    self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
     self.outer_graph = ops.get_default_graph()
@@ -406,6 +441,11 @@ def func_graph_from_py_func(name,
     # Creates and names placeholders for all arguments.
     func_args = _get_defun_inputs_from_args(args, arg_names)
     func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
+
+    # Convert all Tensors into TensorSpecs before saving the structured inputs.
+    func_graph.structured_input_signature = (
+        convert_structure_to_signature(func_args),
+        convert_structure_to_signature(func_kwargs))
 
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
     # Variables to help check whether mutation happens in calling the function

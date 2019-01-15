@@ -9,10 +9,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Event"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "GradientTape"
     mtype: "<type \'type\'>"
   }
@@ -39,14 +35,6 @@ tf_module {
   member {
     name: "SparseTensor"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Summary"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "SummaryMetadata"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Tensor"
@@ -79,6 +67,10 @@ tf_module {
   member {
     name: "VariableSynchronization"
     mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "audio"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "autograph"

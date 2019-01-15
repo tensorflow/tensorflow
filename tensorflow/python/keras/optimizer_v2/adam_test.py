@@ -505,11 +505,16 @@ class AdamOptimizerTest(test.TestCase):
 
   def testConstructAdamWithLR(self):
     opt = adam.Adam(lr=1.0)
-    self.assertEqual(opt.lr, 1.0)
     opt_2 = adam.Adam(learning_rate=0.1, lr=1.0)
-    self.assertEqual(opt_2.lr, 1.0)
     opt_3 = adam.Adam(learning_rate=0.1)
-    self.assertEqual(opt_3.lr, 0.1)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
 
 if __name__ == "__main__":
