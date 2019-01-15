@@ -39,11 +39,13 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
@@ -263,6 +265,8 @@ class FunctionOptimizerContext {
     InitializeTrulyConstNodes(item);
     InitializeFetchNodes(item);
   }
+
+  int graph_version() const { return graph_version_; }
 
   const RewriterConfig::Toggle opt_level() const { return opt_level_; }
 
@@ -1259,6 +1263,74 @@ Status InlineSymbolicGradient(const NodeDef& node,
 // because they are pure functions of input tensors, and can be freely
 // reordered.
 
+struct MaybeDeadOutput {
+  const NodeDef* dead_tensor_src;
+  const NodeDef* output_node_dst;
+};
+
+// Finds all function outputs that might return a dead tensor. This can happen
+// if there is no `Merge` node on the path from the `Switch` node, to the
+// function output.
+Status MaybeDeadOutputs(const FunctionOptimizerContext& ctx,
+                        const GrapplerFunctionItem& item,
+                        std::vector<MaybeDeadOutput>* maybe_dead) {
+  DCHECK(maybe_dead->empty()) << "Input argument must be an empty vector";
+
+  std::vector<const NodeDef*> dead_tensor_srcs;
+  for (const NodeDef& node : item.graph.node()) {
+    if (IsSwitch(node)) {
+      dead_tensor_srcs.push_back(&node);
+      continue;
+    }
+
+    // Regular (aka 'direct') function call can also produce dead tensors if
+    // the function body has mergeless switches.
+    const FunctionDef* func = ctx.function_library().Find(node.op());
+    if (func != nullptr) {
+      GrapplerFunctionItem func_item;
+      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
+          *func, FunctionInstantiationAttributes(*func, node),
+          ctx.function_library(), ctx.graph_version(), &func_item));
+
+      std::vector<MaybeDeadOutput> func_dead_outputs;
+      TF_RETURN_IF_ERROR(MaybeDeadOutputs(ctx, func_item, &func_dead_outputs));
+
+      if (!func_dead_outputs.empty()) dead_tensor_srcs.push_back(&node);
+    }
+  }
+
+  // If we do not have dead tensor sources in the function body, it's
+  // guaranteed that all output tensors can't become dead.
+  if (dead_tensor_srcs.empty()) return Status::OK();
+
+  // Names of the function body nodes that return function output values.
+  absl::flat_hash_set<absl::string_view> output_nodes;
+  for (const auto& output_expansion : item.outputs()) {
+    for (const auto& output_node : output_expansion.output_nodes) {
+      output_nodes.insert(output_node);
+    }
+  }
+
+  GraphTopologyView topology_view;
+  TF_RETURN_IF_ERROR(topology_view.InitializeFromGraph(item.graph));
+
+  for (const NodeDef* dead_tensor_src : dead_tensor_srcs) {
+    DfsTraversal(topology_view, {dead_tensor_src},
+                 TraversalDirection::kFollowOutputs,
+                 // Stop traversal when reached first `Merge` node.
+                 DfsPredicates::Advance(
+                     [](const NodeDef* node) { return !IsMerge(*node); }),
+                 // If we reached output node, add MaybeDeadOutput edge.
+                 DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                   if (output_nodes.find(node->name()) != output_nodes.end()) {
+                     maybe_dead->push_back({dead_tensor_src, node});
+                   }
+                 }));
+  }
+
+  return Status::OK();
+}
+
 // Returns `Status::OK()` iff `node` is an indirect function call of `func`, and
 // we know how to inline it into the main graph, otherwise returns and error
 // indicating why the function call is not inlinable.
@@ -1290,20 +1362,6 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
   if (ctx.IsFetchNode(func_node.name())) {
     return errors::FailedPrecondition(
         "Can't inline function in a Grappler item fetch set: ",
-        SummarizeNodeDef(func_node));
-  }
-
-  // We can't inline functions with `Switch` nodes in the function body, because
-  // they might have dead tensors as a function output argument (we need all
-  // intermediate tensors to compute the function gradient). `PartitionedCallOp`
-  // invokes functions with `allow_dead_tensors = true` to reset dead flag,
-  // and return default initialized tensors instead of a dead tensors.
-  // TODO(ezhulenev): Do the liveness analysis and add
-  // `IdentitytWithResurrection` nodes after all potentially dead output
-  // tensors?
-  if (absl::c_any_of(func.node_def(), IsSwitch)) {
-    return errors::FailedPrecondition(
-        "Can't inline function with `Switch` nodes in the function body: ",
         SummarizeNodeDef(func_node));
   }
 
@@ -1344,6 +1402,26 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
                                    " instantiated by ", func_node.name(),
                                    ". Error: ", item_status.error_message());
+  }
+
+  // `PartitionedCallOp` invokes functions with `allow_dead_tensors = true` to
+  // reset dead flag, and return default initialized tensors instead of a dead
+  // tensors. There is no way to express this in a regular Tensorflow graph, so
+  // we choose not to inline if a function can have dead tensors as an output
+  // position. In practice `mergeless switches` should not exists in a function
+  // body, because tf-eager will only use v2 control flow ops.
+  std::vector<MaybeDeadOutput> maybe_dead_outputs;
+  TF_RETURN_IF_ERROR(MaybeDeadOutputs(*ctx, item, &maybe_dead_outputs));
+  if (!maybe_dead_outputs.empty()) {
+    struct MaybeDeadOutputFormatter {
+      void operator()(string* out, const MaybeDeadOutput& md) const {
+        absl::StrAppend(out, SummarizeNodeDef(*md.dead_tensor_src));
+      }
+    };
+    return errors::FailedPrecondition(
+        "Can't inline function with dead outputs. Dead tensor sources (size = ",
+        maybe_dead_outputs.size(), "): ",
+        absl::StrJoin(maybe_dead_outputs, "\n", MaybeDeadOutputFormatter()));
   }
 
   GraphView::InputPort control_input_port =

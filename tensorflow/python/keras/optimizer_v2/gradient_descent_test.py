@@ -263,11 +263,16 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testConstructSGDWithLR(self):
     opt = gradient_descent.SGD(lr=1.0)
-    self.assertEqual(opt.lr, 1.0)
     opt_2 = gradient_descent.SGD(learning_rate=0.1, lr=1.0)
-    self.assertEqual(opt_2.lr, 1.0)
     opt_3 = gradient_descent.SGD(learning_rate=0.1)
-    self.assertEqual(opt_3.lr, 0.1)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
 
 class MomentumOptimizerTest(test.TestCase):
@@ -667,11 +672,16 @@ class MomentumOptimizerTest(test.TestCase):
       opt = gradient_descent.SGD(learning_rate=1.0, momentum=0.9, nesterov=True)
       config = opt.get_config()
       opt2 = gradient_descent.SGD.from_config(config)
-      # assert both are equal float values.
-      self.assertEqual(
-          opt._get_hyper("learning_rate"), opt2._get_hyper("learning_rate"))
-      self.assertEqual(opt._get_hyper("momentum"), opt2._get_hyper("momentum"))
-      # self.assertEqual(opt._get_hyper("decay"), opt2._get_hyper("decay"))
+      lr = opt.lr
+      lr2 = opt2.lr
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose(self.evaluate(lr), self.evaluate(lr2))
+      self.assertAllClose(
+          self.evaluate(opt._get_hyper("momentum")),
+          self.evaluate(opt2._get_hyper("momentum")))
+      self.assertAllClose(
+          self.evaluate(opt._get_hyper("decay")),
+          self.evaluate(opt2._get_hyper("decay")))
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
       loss = lambda: 3 * var0
       # learning rate variable created when calling minimize.
@@ -679,14 +689,15 @@ class MomentumOptimizerTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       config = opt.get_config()
       opt3 = gradient_descent.SGD.from_config(config)
-      self.assertEqual(
-          self.evaluate(opt._get_hyper("learning_rate")),
-          opt3._get_hyper("learning_rate"))
-      self.assertEqual(
+      lr3 = opt3.lr
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose(self.evaluate(lr), self.evaluate(lr3))
+      self.assertAllClose(
           self.evaluate(opt._get_hyper("momentum")),
-          opt3._get_hyper("momentum"))
-      # self.assertEqual(
-      #     self.evaluate(opt._get_hyper("decay")), opt3._get_hyper("decay"))
+          self.evaluate(opt3._get_hyper("momentum")))
+      self.assertAllClose(
+          self.evaluate(opt._get_hyper("decay")),
+          self.evaluate(opt3._get_hyper("decay")))
       self.assertTrue(opt3.nesterov)
 
   def testNesterovWithoutMomentum(self):
@@ -695,11 +706,16 @@ class MomentumOptimizerTest(test.TestCase):
 
   def testConstructMomentumWithLR(self):
     opt = gradient_descent.SGD(lr=1.0, momentum=0.9)
-    self.assertEqual(opt.lr, 1.0)
     opt_2 = gradient_descent.SGD(learning_rate=0.1, momentum=0.9, lr=1.0)
-    self.assertEqual(opt_2.lr, 1.0)
     opt_3 = gradient_descent.SGD(learning_rate=0.1, momentum=0.9)
-    self.assertEqual(opt_3.lr, 0.1)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
 
 if __name__ == "__main__":

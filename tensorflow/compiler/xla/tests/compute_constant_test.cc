@@ -166,6 +166,23 @@ TEST_F(ComputeConstantTest, GetDimensionSize) {
   }
 }
 
+TEST_F(ComputeConstantTest, MultipleGetDimensionSize) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    auto add =
+        Add(ConstantR2<float>(&b, {{1.0f}}), ConstantR2<float>(&b, {{1.0f}}));
+    auto get_dimension_size = GetDimensionSize(add, 0);
+    auto get_dimension_size_2 = GetDimensionSize(add, 0);
+    auto add_2 = Add(get_dimension_size, get_dimension_size_2);
+    EXPECT_TRUE(IsConstant(add_2, &b));
+
+    TF_ASSERT_OK_AND_ASSIGN(auto value,
+                            ComputeConstantScalar<uint32>(client, add_2, &b));
+    EXPECT_EQ(value, 2);
+  }
+}
+
 // Test computation of an expression interspersed with param nodes but
 // the expression does not depend on the param nodes.
 TEST_F(ComputeConstantTest, UnrelatedParam) {

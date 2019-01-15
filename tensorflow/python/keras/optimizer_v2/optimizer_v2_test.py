@@ -266,19 +266,19 @@ class OptimizerTest(test.TestCase):
       opt = gradient_descent.SGD(learning_rate=1.0)
       config = opt.get_config()
       opt2 = gradient_descent.SGD.from_config(config)
+      lr = opt._get_hyper('learning_rate')
+      lr2 = opt2._get_hyper('learning_rate')
+      self.evaluate(variables.global_variables_initializer())
       # assert both are equal float values.
-      self.assertEqual(
-          opt._get_hyper('learning_rate'), opt2._get_hyper('learning_rate'))
+      self.assertEqual(self.evaluate(lr), self.evaluate(lr2))
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
       loss = lambda: 3 * var0
       # learning rate variable created when calling minimize.
       opt.minimize(loss, [var0])
-      self.evaluate(variables.global_variables_initializer())
-      config = opt.get_config()
       opt3 = gradient_descent.SGD.from_config(config)
-      self.assertEqual(
-          self.evaluate(opt._get_hyper('learning_rate')),
-          opt3._get_hyper('learning_rate'))
+      lr3 = opt3._get_hyper('learning_rate')
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEqual(self.evaluate(lr), self.evaluate(lr3))
 
   @test_util.run_in_graph_and_eager_modes
   def testGradClipValue(self):

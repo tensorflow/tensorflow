@@ -94,5 +94,32 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
   EXPECT_EQ(root->operand(1)->feature_group_count(), 1);
 }
 
+TEST_F(ConvolutionGroupConverterTest,
+       ConvertBatchGroupCountEqualToInputBatchDim) {
+  string hlo_string = R"(HloModule Convolve1D1Window_0_module
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16,19,19,512]{3,2,1,0}) -> f32[3,3,512,1]{3,2,1,0} {
+  %input = f32[16,19,19,512]{3,2,1,0} parameter(0)
+  %filter = f32[16,19,19,512]{3,2,1,0} parameter(1)
+  ROOT %convolution = f32[3,3,512,1]{3,2,1,0} convolution(f32[16,19,19,512]{3,2,1,0} %input, f32[16,19,19,512]{3,2,1,0} %filter), window={size=19x19 pad=1_1x1_1}, dim_labels=f01b_i01o->01fb, batch_group_count=512
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+
+  auto computation = module->entry_computation();
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
+  auto cost_model = [](HloInstruction* conv) { return true; };
+  ConvolutionGroupConverter converter(cost_model, /*convert_batch_groups_only=*/
+                                      true);
+  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  // Make sure the convolution is converted to one with batch_group_count = 1.
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConvolution);
+  EXPECT_EQ(root->operand(0)->batch_group_count(), 1);
+  // Verify that the convolution is replaced by a reshape.
+  EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
+}
+
 }  // namespace
 }  // namespace xla

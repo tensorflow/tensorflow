@@ -35,6 +35,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         optimization.assert_next(["Model"]))
     options = dataset_ops.Options()
     options.experimental_autotune = True
+    options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
 
     iterator = dataset_ops.make_one_shot_iterator(dataset)

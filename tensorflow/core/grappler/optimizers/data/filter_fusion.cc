@@ -109,7 +109,8 @@ Status FilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* fused_filter_node = graph.AddNode(MakeFusedFilterNode(
         *first_filter_node, *second_filter_node, *fused_predicate, &graph));
 
-    graph.UpdateFanouts(second_filter_node->name(), fused_filter_node->name());
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(second_filter_node->name(),
+                                           fused_filter_node->name()));
 
     // TODO(prazek): we should run some optimizations on the fused filter
     // functions, or make sure that optimization passes run after filter

@@ -27,6 +27,7 @@ import tempfile
 import threading
 import unittest
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
@@ -88,6 +89,23 @@ class Counter(keras.callbacks.Callback):
     return _call_and_count
 
 
+def _get_numpy():
+  return np.ones((10, 10)), np.ones((10, 1))
+
+
+def _get_sequence():
+
+  class MySequence(keras.utils.data_utils.Sequence):
+
+    def __getitem__(self, _):
+      return np.ones((2, 10)), np.ones((2, 1))
+
+    def __len__(self):
+      return 5
+
+  return MySequence(), None
+
+
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
 class CallbackCountsTest(keras_parameterized.TestCase):
@@ -113,8 +131,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     return model
 
-  def test_callback_hooks_are_called_in_fit(self):
-    x, y = np.ones((10, 10)), np.ones((10, 1))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_fit(self, data):
+    x, y = data
     val_x, val_y = np.ones((4, 10)), np.ones((4, 1))
 
     model = self._get_model()
@@ -147,8 +167,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
             'on_train_end': 1
         })
 
-  def test_callback_hooks_are_called_in_evaluate(self):
-    x, y = np.ones((10, 10)), np.ones((10, 1))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_evaluate(self, data):
+    x, y = data
 
     model = self._get_model()
     counter = Counter()
@@ -161,8 +183,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
             'on_test_end': 1
         })
 
-  def test_callback_hooks_are_called_in_predict(self):
-    x = np.ones((10, 10))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_predict(self, data):
+    x = data[0]
 
     model = self._get_model()
     counter = Counter()
