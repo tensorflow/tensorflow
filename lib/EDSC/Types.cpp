@@ -38,6 +38,11 @@ struct ExprStorage {
   ExprKind kind;
 };
 
+struct BindableStorage : public ExprStorage {
+  BindableStorage(unsigned id) : ExprStorage(ExprKind::Unbound), id(id) {}
+  unsigned id;
+};
+
 struct UnaryExprStorage : public ExprStorage {
   UnaryExprStorage(ExprKind k, Expr expr) : ExprStorage(k), expr(expr) {}
   Expr expr;
@@ -172,25 +177,55 @@ Stmt ForNest(MutableArrayRef<Bindable> indices, ArrayRef<Expr> lbs,
   Stmt curStmt =
       For(indices.back(), lbs.back(), ubs.back(), steps.back(), enclosedStmts);
   for (int64_t i = indices.size() - 2; i >= 0; --i) {
-    Stmt nextStmt = For(indices[i], lbs[i], ubs[i], steps[i], {curStmt});
-    curStmt = nextStmt;
+    curStmt = For(indices[i], lbs[i], ubs[i], steps[i], {curStmt});
   }
   return curStmt;
 }
 
-Expr load(Expr m, llvm::ArrayRef<Expr> indices) {
+Stmt ForNest(llvm::MutableArrayRef<Bindable> indices,
+             llvm::ArrayRef<Bindable> lbs, llvm::ArrayRef<Bindable> ubs,
+             llvm::ArrayRef<Bindable> steps,
+             llvm::ArrayRef<Stmt> enclosedStmts) {
+  return ForNest(indices, SmallVector<Expr, 8>{lbs.begin(), lbs.end()},
+                 SmallVector<Expr, 8>{ubs.begin(), ubs.end()},
+                 SmallVector<Expr, 8>{steps.begin(), steps.end()},
+                 enclosedStmts);
+}
+
+template <typename BindableOrExpr>
+static Expr loadBuilder(Expr m, ArrayRef<BindableOrExpr> indices) {
   SmallVector<Expr, 8> exprs;
   exprs.push_back(m);
   exprs.append(indices.begin(), indices.end());
   return VariadicExpr(ExprKind::Load, exprs);
 }
+Expr load(Expr m, Expr index) { return loadBuilder<Expr>(m, {index}); }
+Expr load(Expr m, Bindable index) { return loadBuilder<Bindable>(m, {index}); }
+Expr load(Expr m, const llvm::SmallVectorImpl<Bindable> &indices) {
+  return loadBuilder(m, ArrayRef<Bindable>{indices.begin(), indices.end()});
+}
+Expr load(Expr m, ArrayRef<Expr> indices) { return loadBuilder(m, indices); }
 
-Expr store(Expr val, Expr m, llvm::ArrayRef<Expr> indices) {
+template <typename BindableOrExpr>
+static Expr storeBuilder(Expr val, Expr m, ArrayRef<BindableOrExpr> indices) {
   SmallVector<Expr, 8> exprs;
   exprs.push_back(val);
   exprs.push_back(m);
   exprs.append(indices.begin(), indices.end());
   return VariadicExpr(ExprKind::Store, exprs);
+}
+Expr store(Expr val, Expr m, Expr index) {
+  return storeBuilder<Expr>(val, m, {index});
+}
+Expr store(Expr val, Expr m, Bindable index) {
+  return storeBuilder<Bindable>(val, m, {index});
+}
+Expr store(Expr val, Expr m, const llvm::SmallVectorImpl<Bindable> &indices) {
+  return storeBuilder(val, m,
+                      ArrayRef<Bindable>{indices.begin(), indices.end()});
+}
+Expr store(Expr val, Expr m, ArrayRef<Expr> indices) {
+  return storeBuilder(val, m, indices);
 }
 
 Expr select(Expr cond, Expr lhs, Expr rhs) {
@@ -203,8 +238,10 @@ Expr vector_type_cast(Expr memrefExpr, Type memrefType) {
 
 void Expr::print(raw_ostream &os) const {
   if (auto unbound = this->dyn_cast<Bindable>()) {
-    os << "bindable";
+    os << "$" << unbound.getId();
     return;
+  } else if (auto un = this->dyn_cast<UnaryExpr>()) {
+    os << "unknown_unary";
   } else if (auto bin = this->dyn_cast<BinaryExpr>()) {
     os << bin.getLHS();
     switch (bin.getKind()) {
@@ -213,6 +250,12 @@ void Expr::print(raw_ostream &os) const {
       break;
     case ExprKind::Sub:
       os << " - ";
+      break;
+    case ExprKind::Mul:
+      os << " * ";
+      break;
+    case ExprKind::Div:
+      os << " / ";
       break;
     case ExprKind::LT:
       os << " < ";
@@ -227,6 +270,7 @@ void Expr::print(raw_ostream &os) const {
       os << " >= ";
       break;
     default: {
+      os << "unknown_binary";
     }
     }
     os << bin.getRHS();
@@ -237,6 +281,7 @@ void Expr::print(raw_ostream &os) const {
          << ter.getRHS() << ")";
       return;
     default: {
+      os << "unknown_ternary";
     }
     }
   } else if (auto nar = this->dyn_cast<VariadicExpr>()) {
@@ -244,7 +289,11 @@ void Expr::print(raw_ostream &os) const {
     case ExprKind::Load:
       os << "load( ... )";
       return;
+    case ExprKind::Store:
+      os << "store( ... )";
+      return;
     default: {
+      os << "unknown_variadic";
     }
     }
   } else if (auto stmtLikeExpr = this->dyn_cast<StmtBlockLikeExpr>()) {
@@ -257,6 +306,7 @@ void Expr::print(raw_ostream &os) const {
       os << exprs[0] << " to " << exprs[1] << " step " << exprs[2];
       return;
     default: {
+      os << "unknown_stmt";
     }
     }
   }
@@ -271,9 +321,18 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Expr &expr) {
 }
 
 Bindable::Bindable(ExprKind kind)
-    : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
+    : Expr(Expr::globalAllocator()->Allocate<detail::BindableStorage>()) {
   // Initialize with placement new.
-  new (storage) detail::ExprStorage{kind};
+  new (storage) detail::BindableStorage{Bindable::newId()};
+}
+
+unsigned Bindable::getId() const {
+  return static_cast<ImplType *>(storage)->id;
+}
+
+unsigned &Bindable::newId() {
+  static thread_local unsigned id = 0;
+  return ++id;
 }
 
 UnaryExpr::UnaryExpr(ExprKind kind, Expr expr)
@@ -379,6 +438,14 @@ void Stmt::print(raw_ostream &os, Twine indent) const {
         os << ";\n";
       }
       os << indent << "}";
+      return;
+    case ExprKind::Block:
+      os << indent << "block {";
+      for (auto &s : getEnclosedStmts()) {
+        os << "\n";
+        s.print(os, indent + "  ");
+      }
+      os << "\n" << indent << "}";
       return;
     default: {
       // TODO(ntv): print more statement cases.

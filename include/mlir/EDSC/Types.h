@@ -40,6 +40,7 @@ namespace edsc {
 namespace detail {
 
 struct ExprStorage;
+struct BindableStorage;
 struct UnaryExprStorage;
 struct BinaryExprStorage;
 struct TernaryExprStorage;
@@ -215,12 +216,16 @@ protected:
 };
 
 struct Bindable : public Expr {
-  using ImplType = detail::ExprStorage;
+  using ImplType = detail::BindableStorage;
   friend class Expr;
   Bindable(ExprKind kind = ExprKind::Unbound);
+  unsigned getId() const;
 
 protected:
   Bindable(Expr::ImplType *ptr) : Expr(ptr) {}
+
+private:
+  static unsigned &newId();
 };
 
 struct UnaryExpr : public Expr {
@@ -450,19 +455,28 @@ llvm::SmallVector<Expr, 8> makeExprs(IterTy begin, IterTy end) {
 Expr alloc(llvm::ArrayRef<Expr> sizes, Type memrefType);
 inline Expr alloc(Type memrefType) { return alloc({}, memrefType); }
 Expr dealloc(Expr memref);
+Expr load(Expr m, Expr index);
+Expr load(Expr m, Bindable index);
 Expr load(Expr m, llvm::ArrayRef<Expr> indices);
+Expr load(Expr m, const llvm::SmallVectorImpl<Bindable> &indices);
+Expr store(Expr val, Expr m, Expr index);
+Expr store(Expr val, Expr m, Bindable index);
 Expr store(Expr val, Expr m, llvm::ArrayRef<Expr> indices);
+Expr store(Expr val, Expr m, const llvm::SmallVectorImpl<Bindable> &indices);
 Expr select(Expr cond, Expr lhs, Expr rhs);
 Expr vector_type_cast(Expr memrefExpr, Type memrefType);
 
-Stmt Block(ArrayRef<Stmt> stmts);
-Stmt For(Expr lb, Expr ub, Expr step, ArrayRef<Stmt> enclosedStmts);
+Stmt Block(llvm::ArrayRef<Stmt> stmts);
+Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);
 Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,
-         ArrayRef<Stmt> enclosedStmts);
-Stmt ForNest(MutableArrayRef<Bindable> indices, ArrayRef<Expr> lbs,
-             ArrayRef<Expr> ubs, ArrayRef<Expr> steps,
-             ArrayRef<Stmt> enclosedStmts);
-
+         llvm::ArrayRef<Stmt> enclosedStmts);
+Stmt ForNest(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Expr> lbs,
+             llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Expr> steps,
+             llvm::ArrayRef<Stmt> enclosedStmts);
+Stmt ForNest(llvm::MutableArrayRef<Bindable> indices,
+             llvm::ArrayRef<Bindable> lbs, llvm::ArrayRef<Bindable> ubs,
+             llvm::ArrayRef<Bindable> steps,
+             llvm::ArrayRef<Stmt> enclosedStmts);
 } // namespace edsc
 } // namespace mlir
 

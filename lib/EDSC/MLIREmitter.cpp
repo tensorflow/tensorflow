@@ -171,6 +171,9 @@ Value *MLIREmitter::emit(Expr e) {
   } else if (auto bin = e.dyn_cast<BinaryExpr>()) {
     auto *a = emit(bin.getLHS());
     auto *b = emit(bin.getRHS());
+    if (!a || !b) {
+      return nullptr;
+    }
     if (bin.getKind() == ExprKind::Add) {
       res = add(builder, location, a, b);
     } else if (bin.getKind() == ExprKind::Sub) {
@@ -223,6 +226,9 @@ Value *MLIREmitter::emit(Expr e) {
       auto *cond = emit(ter.getCond());
       auto *lhs = emit(ter.getLHS());
       auto *rhs = emit(ter.getRHS());
+      if (!cond || !rhs || !lhs) {
+        return nullptr;
+      }
       res = builder->create<SelectOp>(location, cond, lhs, rhs)->getResult();
     }
   }
@@ -230,6 +236,9 @@ Value *MLIREmitter::emit(Expr e) {
   if (auto nar = e.dyn_cast<VariadicExpr>()) {
     if (nar.getKind() == ExprKind::Alloc) {
       auto exprs = emit(nar.getExprs());
+      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
+        return nullptr;
+      }
       auto types = nar.getTypes();
       assert(types.size() == 1 && "Expected 1 type");
       res =
@@ -237,12 +246,18 @@ Value *MLIREmitter::emit(Expr e) {
               ->getResult();
     } else if (nar.getKind() == ExprKind::Load) {
       auto exprs = emit(nar.getExprs());
+      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
+        return nullptr;
+      }
       assert(exprs.size() > 1 && "Expected > 1 expr");
       assert(nar.getTypes().empty() && "Expected no type");
       SmallVector<Value *, 8> vals(exprs.begin() + 1, exprs.end());
       res = builder->create<LoadOp>(location, exprs[0], vals)->getResult();
     } else if (nar.getKind() == ExprKind::Store) {
       auto exprs = emit(nar.getExprs());
+      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
+        return nullptr;
+      }
       assert(exprs.size() > 2 && "Expected > 2 expr");
       assert(nar.getTypes().empty() && "Expected no type");
       SmallVector<Value *, 8> vals(exprs.begin() + 2, exprs.end());
@@ -250,6 +265,9 @@ Value *MLIREmitter::emit(Expr e) {
       return nullptr;
     } else if (nar.getKind() == ExprKind::VectorTypeCast) {
       auto exprs = emit(nar.getExprs());
+      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
+        return nullptr;
+      }
       assert(exprs.size() == 1 && "Expected 1 expr");
       auto types = nar.getTypes();
       assert(types.size() == 1 && "Expected 1 type");
@@ -263,6 +281,9 @@ Value *MLIREmitter::emit(Expr e) {
   if (auto expr = e.dyn_cast<StmtBlockLikeExpr>()) {
     if (expr.getKind() == ExprKind::For) {
       auto exprs = emit(expr.getExprs());
+      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
+        return nullptr;
+      }
       assert(exprs.size() == 3 && "Expected 3 exprs");
       assert(expr.getTypes().empty() && "Expected no type");
       auto lb =
@@ -276,8 +297,17 @@ Value *MLIREmitter::emit(Expr e) {
   }
 
   if (!res) {
+    // If we hit here it must mean that the Bindables have not all been bound
+    // properly. Because EDSCs are currently dynamically typed, it becomes a
+    // runtime error.
     e.print(llvm::errs() << "\nError @" << e.getStoragePtr() << ": ");
-    assert(false);
+    auto it = ssaBindings.find(e);
+    if (it != ssaBindings.end()) {
+      it->second->print(llvm::errs() << "\nError on value: ");
+    } else {
+      llvm::errs() << "\nUnbound";
+    }
+    return nullptr;
   }
 
   auto resIter = ssaBindings.insert(std::make_pair(e, res));
@@ -304,6 +334,7 @@ void MLIREmitter::emitStmt(const Stmt &stmt) {
   if (stmt.getRHS().getKind() != ExprKind::Block) {
     auto *val = emit(stmt.getRHS());
     if (!val) {
+      llvm::errs() << "\n" << stmt.getRHS();
       assert((stmt.getRHS().getKind() == ExprKind::Dealloc ||
               stmt.getRHS().getKind() == ExprKind::Store) &&
              "dealloc or store expected as the only 0-result ops");

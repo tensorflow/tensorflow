@@ -380,7 +380,7 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
       scalarValue = load(scalarMemRef, accessInfo.clippedScalarAccessExprs),
       store(scalarValue, tmpAlloc, accessInfo.tmpAccessExprs),
     }),
-    vectorValue = load(vectorView, zero),
+    vectorValue = load(vectorView, {zero}),
     tmpDealloc = dealloc(tmpAlloc.getLHS())});
   // clang-format on
 
