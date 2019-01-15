@@ -57,7 +57,7 @@ cpu_micros: This is the cpu times.
 Tensor memory are usually ref-counted. The memory is released when there is
 no more reference to it. It will be difficult to track the release of memory.
 Currently, profiler only tracks the allocation of memory. As a result, the
-accumulated memory request is uaually larger than the peak memory of the overall
+accumulated memory request is usually larger than the peak memory of the overall
 model.
 
 It's recommended to generate timeline to see the allocator memory usage over
