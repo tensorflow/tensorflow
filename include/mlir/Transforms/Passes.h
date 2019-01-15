@@ -69,7 +69,7 @@ FunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
 /// Creates an simplification pass for affine structures.
 FunctionPass *createSimplifyAffineStructuresPass();
 
-/// Creates a loop fusion pass which fuses loops in MLFunctions.
+/// Creates a loop fusion pass which fuses loops.
 FunctionPass *createLoopFusionPass();
 
 /// Creates a pass to pipeline explicit movement of data across levels of the

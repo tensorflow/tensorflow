@@ -286,10 +286,10 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 // Create an SESE region for the loop (including its body) and append it to the
 // end of the current region.  The loop region consists of the initialization
 // block that sets up the initial value of the loop induction variable (%iv) and
-// computes the loop bounds that are loop-invariant in MLFunctions; the
-// condition block that checks the exit condition of the loop; the body SESE
-// region; and the end block that post-dominates the loop.  The end block of the
-// loop becomes the new end of the current SESE region.  The body of the loop is
+// computes the loop bounds that are loop-invariant in functions; the condition
+// block that checks the exit condition of the loop; the body SESE region; and
+// the end block that post-dominates the loop.  The end block of the loop
+// becomes the new end of the current SESE region.  The body of the loop is
 // constructed recursively after starting a new region (it may be, for example,
 // a nested loop).  Induction variable modification is appended to the body SESE
 // region that always loops back to the condition block.

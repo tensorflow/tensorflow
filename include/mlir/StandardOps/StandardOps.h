@@ -280,9 +280,9 @@ private:
 // at the end, a stride and a number_of_elements_per_stride arguments. The tag
 // location is used by a DmaWaitOp to check for completion. The indices of the
 // source memref, destination memref, and the tag memref have the same
-// restrictions as any load/store in MLFunctions. The optional stride arguments
-// should be of 'index' type, and specify a stride for the slower memory space
-// (memory space with a lower memory space id), tranferring chunks of
+// restrictions as any load/store. The optional stride arguments should be of
+// 'index' type, and specify a stride for the slower memory space (memory space
+// with a lower memory space id), tranferring chunks of
 // number_of_elements_per_stride every stride until %num_elements are
 // transferred. Either both or no stride arguments should be specified.
 //
@@ -435,9 +435,8 @@ protected:
 
 // DmaWaitOp blocks until the completion of a DMA operation associated with the
 // tag element '%tag[%index]'. %tag is a memref, and %index has to be an index
-// with the same restrictions as any load/store index in MLFunctions.
-// %num_elements is the number of elements associated with the DMA operation.
-// For example:
+// with the same restrictions as any load/store index. %num_elements is the
+// number of elements associated with the DMA operation. For example:
 //
 //   dma_start %src[%i, %j], %dst[%k, %l], %num_elements, %tag[%index] :
 //     memref<2048 x f32>, (d0) -> (d0), 0>,

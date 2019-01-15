@@ -35,11 +35,9 @@ namespace mlir {
 class Module;
 
 /// Convert the given MLIR module into LLVM IR.  Create an LLVM IR module in
-/// "llvmContext" and return a unique pointer to it.  The MLIR module is not
-/// allowed to contain MLFunctions, lower them to CFGFunctions beforehand using
-/// an appropriate pass.  In case of error, report it to the error handler
-/// registered with the MLIR context, if any (obtained from the MLIR module),
-/// and return `nullptr`.
+/// "llvmContext" and return a unique pointer to it. In case of error, report it
+/// to the error handler registered with the MLIR context, if any (obtained from
+/// the MLIR module), and return `nullptr`.
 std::unique_ptr<llvm::Module>
 convertModuleToLLVMIR(Module &module, llvm::LLVMContext &llvmContext);
 

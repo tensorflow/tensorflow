@@ -15,12 +15,11 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements loop unroll and jam for MLFunctions. Unroll and jam is a
-// transformation that improves locality, in particular, register reuse, while
-// also improving instruction level parallelism. The example below shows what it
-// does in nearly the general case. Loop unroll and jam currently works if the
-// bounds of the loops inner to the loop being unroll-jammed do not depend on
-// the latter.
+// This file implements loop unroll and jam. Unroll and jam is a transformation
+// that improves locality, in particular, register reuse, while also improving
+// instruction level parallelism. The example below shows what it does in nearly
+// the general case. Loop unroll and jam currently works if the bounds of the
+// loops inner to the loop being unroll-jammed do not depend on the latter.
 //
 // Before      After unroll and jam of i by factor 2:
 //

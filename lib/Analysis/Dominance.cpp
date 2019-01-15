@@ -1,4 +1,4 @@
-//===- Dominance.cpp - Dominator analysis for CFG Functions ---------------===//
+//===- Dominance.cpp - Dominator analysis for functions -------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

@@ -15,8 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass that converts CFG function to LLVM IR.  No ML
-// functions must be presented in MLIR.
+// This file implements a pass that converts MLIR functions to LLVM IR.
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,11 +53,11 @@ public:
 
 private:
   bool convertBlock(const Block &bb, bool ignoreArguments = false);
-  bool convertFunction(const Function &cfgFunc, llvm::Function &llvmFunc);
+  bool convertFunction(const Function &func, llvm::Function &llvmFunc);
   bool convertFunctions(const Module &mlirModule, llvm::Module &llvmModule);
   bool convertInstruction(const OperationInst &inst);
 
-  void connectPHINodes(const Function &cfgFunc);
+  void connectPHINodes(const Function &func);
 
   /// Type conversion functions.  If any conversion fails, report errors to the
   /// context of the MLIR type and return nullptr.
@@ -822,11 +821,10 @@ static const Value *getPHISourceValue(const Block *current, const Block *pred,
   return nullptr;
 }
 
-void ModuleLowerer::connectPHINodes(const Function &cfgFunc) {
+void ModuleLowerer::connectPHINodes(const Function &func) {
   // Skip the first block, it cannot be branched to and its arguments correspond
   // to the arguments of the LLVM function.
-  for (auto it = std::next(cfgFunc.begin()), eit = cfgFunc.end(); it != eit;
-       ++it) {
+  for (auto it = std::next(func.begin()), eit = func.end(); it != eit; ++it) {
     const Block *bb = &*it;
     llvm::BasicBlock *llvmBB = blockMapping[bb];
     auto phis = llvmBB->phis();
@@ -844,21 +842,21 @@ void ModuleLowerer::connectPHINodes(const Function &cfgFunc) {
   }
 }
 
-bool ModuleLowerer::convertFunction(const Function &cfgFunc,
+bool ModuleLowerer::convertFunction(const Function &func,
                                     llvm::Function &llvmFunc) {
   // Clear the block mapping.  Blocks belong to a function, no need to keep
   // blocks from the previous functions around.  Furthermore, we use this
   // mapping to connect PHI nodes inside the function later.
   blockMapping.clear();
   // First, create all blocks so we can jump to them.
-  for (const auto &bb : cfgFunc) {
+  for (const auto &bb : func) {
     auto *llvmBB = llvm::BasicBlock::Create(llvmContext);
     llvmBB->insertInto(&llvmFunc);
     blockMapping[&bb] = llvmBB;
   }
 
   // Then, convert blocks one by one.
-  for (auto indexedBB : llvm::enumerate(cfgFunc)) {
+  for (auto indexedBB : llvm::enumerate(func)) {
     const auto &bb = indexedBB.value();
     if (convertBlock(bb, /*ignoreArguments=*/indexedBB.index() == 0))
       return true;
@@ -866,7 +864,7 @@ bool ModuleLowerer::convertFunction(const Function &cfgFunc,
 
   // Finally, after all blocks have been traversed and values mapped, connect
   // the PHI nodes to the results of preceding blocks.
-  connectPHINodes(cfgFunc);
+  connectPHINodes(func);
   return false;
 }
 

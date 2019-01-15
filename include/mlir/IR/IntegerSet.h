@@ -17,16 +17,15 @@
 //
 // Integer sets are sets of points from the integer lattice constrained by
 // affine equality/inequality constraints. This class is meant to represent
-// affine equality/inequality conditions for MLFunctions' if instructions. As
-// such, it is only expected to contain a handful of affine constraints, and it
-// is immutable like an Affine Map. Integer sets are however not unique'd -
-// although affine expressions that make up the equalities and inequalites of an
-// integer set are themselves unique.
+// integer sets in the IR - for 'if' instructions and as attributes of other
+// instructions. It is typically expected to contain only a handful of affine
+// constraints, and is immutable like an affine map. Integer sets are not
+// unique'd - although affine expressions that make up its equalities and
+// inequalites are themselves unique.
 
 // This class is not meant for affine analysis and operations like set
 // operations, emptiness checks, or other math operations for analysis and
-// transformation. Another data structure (TODO(bondhugula)) will be used to
-// create and operate on such temporary constaint systems.
+// transformation. For the latter, use FlatAffineConstraints.
 //
 //===----------------------------------------------------------------------===//
 
@@ -44,11 +43,11 @@ struct IntegerSetStorage;
 
 class MLIRContext;
 
-/// An integer set representing a conjunction of affine equalities and
-/// inequalities. An integer set in the IR is immutable like the affine map, but
-/// integer sets are not unique'd. The affine expressions that make up the
-/// equalities and inequalities of an integer set are themselves unique and live
-/// in the bump allocator.
+/// An integer set representing a conjunction of one or more affine equalities
+/// and inequalities. An integer set in the IR is immutable like the affine map,
+/// but integer sets are not unique'd. The affine expressions that make up the
+/// equalities and inequalities of an integer set are themselves unique and are
+/// allocated by the bump pointer allocator.
 class IntegerSet {
 public:
   using ImplType = detail::IntegerSetStorage;
