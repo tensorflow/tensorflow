@@ -524,13 +524,13 @@ Service::ExecuteParallelAndRegisterResult(
 
 StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
-    const absl::Span<const std::vector<const ShapedBuffer*>> arguments,
-    Backend* backend, const string& result_tag, ExecutionProfile* profile) {
+    absl::Span<const std::vector<const ShapedBuffer*>> arguments,
+    Backend* backend, const DeviceHandle& device_handle,
+    const string& result_tag, ExecutionProfile* profile) {
   // Set up streams.
   std::vector<StreamPool::Ptr> streams;
 
-  TF_ASSIGN_OR_RETURN(auto replicas,
-                      Replicas(*backend, SingleComputationDeviceHandle()));
+  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handle));
   TF_RET_CHECK(!replicas.empty());
   for (se::StreamExecutor* executor : replicas) {
     TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
@@ -538,10 +538,11 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     streams.push_back(std::move(stream));
   }
 
-  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
-                      backend->computation_placer()->AssignDevices(
-                          options_.number_of_replicas(),
-                          /*computation_count=*/1));
+  DeviceAssignment device_assignment(options_.number_of_replicas(),
+                                     /*computation_count=*/1);
+  for (int64 replica = 0; replica < replicas.size(); ++replica) {
+    device_assignment(replica, 0) = replicas[replica]->device_ordinal();
+  }
 
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
@@ -553,9 +554,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
-    run_options.emplace_back(
-        options, backend->StreamBorrower(),
-        /*xla_intra_op_thread_pool=*/backend->eigen_intra_op_thread_pool());
+    run_options.emplace_back(options, backend->StreamBorrower());
   }
 
   if (options_.number_of_replicas() == 1) {
@@ -712,14 +711,33 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     }
   }
 
-  // Execute the generated executables in parallel and return the device
-  // handles for each computation's output.
+  // If we have multiple executables to run, execute them all in parallel.  But
+  // if we only have one executable, execute it using the vanilla, non-parallel
+  // call.
+  //
+  // We do this because the Client API uses ExecuteGraphParallel when it wants
+  // to compile and run one computation without caching the executable, but not
+  // all backends support the async StreamExecutor API required by
+  // ExecuteParallelAndRegisterResult.
+  //
+  // TODO(b/122731460): Consolidate Execute{,Parallel}AndRegisterResult; they do
+  // basically the same thing.
   ExecutionProfile profile;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<GlobalDataHandle> outputs,
-      ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
-                                       execute_backend_.get(), device_handles,
-                                       computation_names, &profile));
+  std::vector<GlobalDataHandle> outputs;
+  if (executable_ptrs.size() == 1) {
+    TF_ASSIGN_OR_RETURN(
+        auto output,
+        ExecuteAndRegisterResult(executable_ptrs[0], all_arguments[0],
+                                 execute_backend_.get(), device_handles[0],
+                                 computation_names[0], &profile));
+    outputs.push_back(std::move(output));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        outputs, ExecuteParallelAndRegisterResult(
+                     executable_ptrs, all_arguments, execute_backend_.get(),
+                     device_handles, computation_names, &profile));
+  }
+
   for (const GlobalDataHandle& output : outputs) {
     ExecuteResponse response;
     *response.mutable_output() = output;
@@ -905,6 +923,7 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
       *result->mutable_output(),
       ExecuteAndRegisterResult(executable.get(), replicated_arguments,
                                execute_backend_.get(),
+                               SingleComputationDeviceHandle(),
                                "result of " + executable->module().name(),
                                result->mutable_profile()));
 

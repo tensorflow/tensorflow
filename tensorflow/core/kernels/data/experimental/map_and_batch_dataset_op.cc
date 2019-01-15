@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -32,14 +33,15 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr char kDatasetName[] = "MapAndBatch";
+
 // Maximum number of batch results to buffer.
-const int64 kMaxBatchResults = 16;
+constexpr int64 kMaxBatchResults = 16;
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -127,6 +129,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       };
     }
 
+    if (num_parallel_calls == model::kAutoTune) {
+      metrics::RecordTFDataAutotune(kDatasetName);
+    }
+
     *output = new Dataset(ctx, input, func_, batch_size, num_parallel_calls,
                           drop_remainder, output_types_, output_shapes_,
                           std::move(captured_func), &ctx->eigen_cpu_device(),
@@ -163,8 +169,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return MakeUnique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::MapAndBatch")},
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::", kDatasetName)},
           map_func_);
     }
 

@@ -223,13 +223,16 @@ cc_library(
         "hlo_evaluator_typed_visitor.h",
         "hlo_evaluator_typed_visitor_bfloat16.cc",
         "hlo_evaluator_typed_visitor_bool.cc",
+        "hlo_evaluator_typed_visitor_complex128.cc",
         "hlo_evaluator_typed_visitor_complex64.cc",
         "hlo_evaluator_typed_visitor_double.cc",
         "hlo_evaluator_typed_visitor_float.cc",
         "hlo_evaluator_typed_visitor_half.cc",
+        "hlo_evaluator_typed_visitor_int16.cc",
         "hlo_evaluator_typed_visitor_int32.cc",
         "hlo_evaluator_typed_visitor_int64.cc",
         "hlo_evaluator_typed_visitor_int8.cc",
+        "hlo_evaluator_typed_visitor_uint16.cc",
         "hlo_evaluator_typed_visitor_uint32.cc",
         "hlo_evaluator_typed_visitor_uint64.cc",
         "hlo_evaluator_typed_visitor_uint8.cc",
@@ -257,6 +260,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -1727,9 +1731,9 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "convolution_feature_group_converter_test",
+    name = "convolution_group_converter_test",
     size = "small",
-    srcs = ["convolution_feature_group_converter_test.cc"],
+    srcs = ["convolution_group_converter_test.cc"],
     deps = [
         ":convolution_group_converter",
         ":hlo",
@@ -3460,6 +3464,34 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "sort_simplifier",
+    srcs = ["sort_simplifier.cc"],
+    hdrs = ["sort_simplifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "sort_simplifier_test",
+    srcs = ["sort_simplifier_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        ":sort_simplifier",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
     ],
 )
 

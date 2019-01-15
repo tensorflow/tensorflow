@@ -430,15 +430,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                               parameterized.TestCase):
 
   @combinations.generate(strategy_for_numpy_input_combinations())
-  def test_creating_var_with_numpy_arrays(self, distribution):
-    with self.cached_session():
-      x = np.asarray(np.random.random((64, 3)), dtype=np.float32)
-      var_x = distributed_training_utils.get_var_for_numpy(distribution, x)
-      val = self.evaluate(var_x.value())
-      # Verify that the numpy value is copied to the variable.
-      self.assertAllEqual(x, val)
-
-  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calculating_input_params_no_steps_no_batch_size(self, distribution):
     # Calculate the per_replica_batch_size scaling factor for strategies
     # that use per_core_batch_size
@@ -576,26 +567,26 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         metrics = ['mae']
         model.compile(optimizer, loss, metrics=metrics)
 
-      inputs = np.zeros((64, 3), dtype=np.float32)
-      targets = np.zeros((64, 4), dtype=np.float32)
+        inputs = np.zeros((64, 3), dtype=np.float32)
+        targets = np.zeros((64, 4), dtype=np.float32)
 
-      # Call fit with validation data
-      model.fit(inputs, targets, epochs=1, batch_size=2, verbose=0,
-                validation_data=(inputs, targets))
+        # Call fit with validation data
+        model.fit(inputs, targets, epochs=1, batch_size=2, verbose=0,
+                  validation_data=(inputs, targets))
 
-      # TODO(anjalisridhar): We need tests for when the batch size and steps are
-      # smaller and results in a 0 batch_size and steps value.
-      model.evaluate(inputs, targets)
-      # with steps
-      model.evaluate(inputs, targets, steps=2)
-      # with batch_size
-      model.evaluate(inputs, targets, batch_size=8)
+        # TODO(anjalisridhar): We need tests for when the batch size and steps
+        # are smaller and results in a 0 batch_size and steps value.
+        model.evaluate(inputs, targets)
+        # with steps
+        model.evaluate(inputs, targets, steps=2)
+        # with batch_size
+        model.evaluate(inputs, targets, batch_size=8)
 
-      model.predict(inputs)
-      # with steps
-      model.predict(inputs, steps=2)
-      # with batch_size
-      model.predict(inputs, batch_size=8)
+        model.predict(inputs)
+        # with steps
+        model.predict(inputs, steps=2)
+        # with batch_size
+        model.predict(inputs, batch_size=8)
 
   @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calling_model_with_nested_numpy_arrays(self, distribution):
@@ -949,9 +940,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @combinations.generate(all_strategy_combinations())
   def testOptimizerWithCallbacks(self, distribution):
     with self.cached_session():
-      # TODO(b/120946189): Investigate why default strategy + eager fails.
-      if '_Default' in distribution.__class__.__name__:
-        self.skipTest('Disable the test for default strategy.')
       with distribution.scope():
         model = get_model()
         optimizer = gradient_descent_keras.SGD(0.01)
@@ -1191,21 +1179,6 @@ class TestDistributionStrategyValidation(test.TestCase,
           loss = 'mse'
           metrics = ['mae', keras.metrics.CategoricalAccuracy()]
           model.compile(optimizer, loss, metrics=metrics)
-
-  @combinations.generate(all_strategy_combinations_minus_default())
-  def test_loop_in_scope(self, distribution):
-    with self.cached_session():
-      with self.assertRaisesRegexp(
-          RuntimeError, 'should not be run inside the tf.distribute.Strategy'):
-        with distribution.scope():
-          x = keras.layers.Input(shape=(3,), name='input')
-          y = keras.layers.Dense(4, name='dense')(x)
-          model = keras.Model(x, y)
-          optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-          loss = 'mse'
-          model.compile(optimizer, loss)
-          input_array = np.zeros((3, 3), dtype=np.float32)
-          model.predict(input_array)
 
 
 if __name__ == '__main__':

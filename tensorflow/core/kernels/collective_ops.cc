@@ -87,6 +87,9 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
                     "final_op must be one of {\"Id\", \"Div\"} but got ",
                     final_op_name));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c,
+                   c->GetAttr("wait_for",
+                              &col_params_.instance.impl_details.dependencies));
 
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Reduce(",

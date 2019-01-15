@@ -123,13 +123,22 @@ func (th *TensorHandle) DeviceName() (string, error) {
 // BackingDeviceName returns the name of the device in whose memory the tensor
 // handle resides. This function will block till the operation that produces
 // `h` has completed.
+//
+// WARNING: The implementation currently returns the same as DeviceName().
+// After TensoFlow 1.13's C library is released, this implementation will
+// be updated to return what the documentation says!
 func (th *TensorHandle) BackingDeviceName() (string, error) {
+	// TODO(ashankar): Restore after TensorFlow 1.13 is released.
+	// See https://github.com/tensorflow/tensorflow/issues/23257#issuecomment-433751410
+	return th.DeviceName()
+	/*
 	status := newStatus()
 	name := C.TFE_TensorHandleBackingDeviceName(th.c, status.c)
 	if err := status.Err(); err != nil {
 		return "", err
 	}
 	return C.GoString(name), nil
+	*/
 }
 
 // ToTensor returns the Tensor referenced by th. It may block if this tensor is

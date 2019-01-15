@@ -843,8 +843,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       scale_loss_by_num_replicas = (
           distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN)
     if scale_loss_by_num_replicas:
-      num_replicas = \
-        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= 1. / num_replicas
     return loss_value

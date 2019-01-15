@@ -54,6 +54,7 @@ def model_iteration(model,
                     initial_epoch=0,
                     mode=ModeKeys.TRAIN,
                     batch_size=None,
+                    steps_name='steps',
                     **kwargs):
   """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
 
@@ -93,6 +94,9 @@ def model_iteration(model,
       mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
       batch_size: Integer batch size or None if unknown. Will only be used if
         `data` is in NumPy/Tensor format.
+      steps_name: The string name of the steps argument, either `steps`,
+        `validation_steps`, or `steps_per_epoch`. Only used for error message
+        formatting.
       **kwargs: Additional arguments for backwards compatibility. `steps` is
         accepted as an alias for `steps_per_epoch`.
 
@@ -107,6 +111,18 @@ def model_iteration(model,
   if 'steps' in kwargs:
     steps_per_epoch = kwargs['steps']
 
+  # Determine the number of steps per epoch and whether we should reset the
+  # dataset at the end of each epoch.
+  reset_dataset_after_each_epoch = False
+  original_dataset = None
+  is_dataset = isinstance(data, (dataset_ops.DatasetV2, dataset_ops.DatasetV1))
+  if is_dataset:
+    original_dataset = data
+    if steps_per_epoch is None:
+      reset_dataset_after_each_epoch = True
+      steps_per_epoch = training_utils.infer_steps_for_dataset(
+          data, steps_per_epoch, epochs=epochs, steps_name=steps_name)
+
   # Convert to a format that supports `next(generator)`.
   generator, steps_per_epoch = convert_to_generator_like(
       data,
@@ -118,7 +134,7 @@ def model_iteration(model,
   do_validation = validation_data is not None
   should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   is_sequence = isinstance(generator, data_utils.Sequence)
-  _validate_arguments(is_sequence, use_multiprocessing, workers,
+  _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
                       steps_per_epoch, validation_data, validation_steps, mode,
                       kwargs)
 
@@ -175,10 +191,36 @@ def model_iteration(model,
       callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
 
-    for step in range(steps_per_epoch):
+    if steps_per_epoch is None:
+      # Loop over dataset until `OutOfRangeError` is raised.
+      target_steps = np.inf
+    else:
+      # Loop over dataset for the specified number of steps.
+      target_steps = steps_per_epoch
+
+    step = 0
+    while step < target_steps:
       batch_data = _get_next_batch(output_generator, mode)
       if batch_data is None:
-        callbacks.model.stop_training = True
+        if not is_dataset:
+          # We ran out of batches while the user passed an iterator (legacy).
+          logging.warning(
+              'Your dataset iterator ran out of data; '
+              'interrupting training. Make sure that your iterator '
+              'can generate at least `%s * epochs` '
+              'batches (in this case, %d batches). You may need to'
+              'use the repeat() function when building your '
+              'dataset.' % (steps_name, steps_per_epoch * epochs))
+          callbacks.model.stop_training = True
+        else:
+          # The dataset passed by the user ran out of batches.
+          # Now we know the cardinality of the dataset.
+          # assert steps_per_epoch is None
+          if step > 0:
+            steps_per_epoch = step
+            aggregator.num_samples_or_steps = steps_per_epoch
+            progbar.params['steps'] = steps_per_epoch
+            progbar.progbar.target = steps_per_epoch
         break
 
       # `batch_size` used for validation data if validation
@@ -203,6 +245,7 @@ def model_iteration(model,
       batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
       callbacks._call_batch_hook(mode, 'end', step, batch_logs)
       progbar.on_batch_end(step, batch_logs)
+      step += 1
 
       if callbacks.model.stop_training:
         break
@@ -226,7 +269,8 @@ def model_iteration(model,
           max_queue_size=max_queue_size,
           callbacks=callbacks,
           verbose=0,
-          mode=ModeKeys.TEST)
+          mode=ModeKeys.TEST,
+          steps_name='validation_steps')
 
       if not isinstance(val_results, list):
         val_results = [val_results]
@@ -236,7 +280,11 @@ def model_iteration(model,
     if mode == ModeKeys.TRAIN:
       # Epochs only apply to `fit`.
       callbacks.on_epoch_end(epoch, epoch_logs)
-      progbar.on_epoch_end(epoch, epoch_logs)
+    progbar.on_epoch_end(epoch, epoch_logs)
+
+    # Recreate dataset iterator for the next epoch.
+    if reset_dataset_after_each_epoch and epoch < epochs - 1:
+      generator = dataset_ops.make_one_shot_iterator(original_dataset)
 
   callbacks._call_end_hook(mode)
 
@@ -263,9 +311,7 @@ def _get_next_batch(output_generator, mode):
   """Retrieves the next batch of input data."""
   try:
     generator_output = next(output_generator)
-  except (errors.OutOfRangeError, StopIteration):
-    # Returning `None` will trigger looping to stop.
-    logging.warning('Your dataset iterator ran out of data.')
+  except (StopIteration, errors.OutOfRangeError):
     return None
   if not isinstance(generator_output, tuple):
     if mode == ModeKeys.PREDICT:
@@ -283,7 +329,7 @@ def _get_next_batch(output_generator, mode):
   return generator_output
 
 
-def _validate_arguments(is_sequence, use_multiprocessing, workers,
+def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
                         steps_per_epoch, validation_data, validation_steps,
                         mode, kwargs):
   """Raises errors if arguments are invalid.
@@ -291,6 +337,7 @@ def _validate_arguments(is_sequence, use_multiprocessing, workers,
   Arguments:
     is_sequence: Boolean, whether data is a `keras.utils.data_utils.Sequence`
       instance.
+    is_dataset: Boolean, whether data is a dataset instance.
     use_multiprocessing: Boolean. If `True`, use process-based threading. If
       unspecified, `use_multiprocessing` will default to `False`. Note that
       because this implementation relies on multiprocessing, you should not pass
@@ -322,15 +369,14 @@ def _validate_arguments(is_sequence, use_multiprocessing, workers,
                     ' Please consider using the `keras.utils.Sequence`'
                     ' class.'))
 
-  if steps_per_epoch is None:
+  if steps_per_epoch is None and not is_dataset:
     arg_name = 'steps_per_epoch' if mode == ModeKeys.TRAIN else 'steps'
     raise ValueError('Please specify the number of steps via the '
                      '`{}` argument.'.format(arg_name))
 
   val_gen = (
       data_utils.is_generator_or_sequence(validation_data) or
-      isinstance(validation_data, iterator_ops.EagerIterator) or
-      isinstance(validation_data, dataset_ops.DatasetV2))
+      isinstance(validation_data, iterator_ops.EagerIterator))
   if (val_gen and not isinstance(validation_data, data_utils.Sequence) and
       not validation_steps):
     raise ValueError('Please specify the `validation_steps` argument.')
@@ -430,12 +476,8 @@ def _make_enqueued_generator(generator,
 def _make_execution_function(model, mode, class_weight=None):
   """Makes function to run one step of model execution."""
   if mode == ModeKeys.TRAIN:
-    if not context.executing_eagerly():
-      model._make_fit_function()
     f = functools.partial(model.train_on_batch, class_weight=class_weight)
   elif mode == ModeKeys.TEST:
-    if not context.executing_eagerly():
-      model._make_eval_function()
     f = model.test_on_batch
   else:
     # Match signature of other modes to allow

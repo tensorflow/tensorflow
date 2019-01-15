@@ -39,11 +39,13 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
@@ -263,6 +265,8 @@ class FunctionOptimizerContext {
     InitializeTrulyConstNodes(item);
     InitializeFetchNodes(item);
   }
+
+  int graph_version() const { return graph_version_; }
 
   const RewriterConfig::Toggle opt_level() const { return opt_level_; }
 
@@ -806,8 +810,17 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   // update outputs for the fetch nodes, so we just skip them.
   std::vector<std::pair<int, int>> output_mapping;
   if (!signature.is_in_fetch_set) {
-    TF_RETURN_IF_ERROR(
-        RemoveUnusedOutputs(signature.active_outputs, &item, &output_mapping));
+    int num_func_outputs = 0;
+    for (const auto& out_arg : item.outputs()) {
+      num_func_outputs += out_arg.output_nodes.size();
+    }
+
+    absl::flat_hash_set<int> remove;
+    for (int i = 0; i < num_func_outputs; ++i) {
+      if (!signature.active_outputs.count(i)) remove.insert(i);
+    }
+
+    TF_RETURN_IF_ERROR(RemoveFunctionOutputs(remove, &item, &output_mapping));
   }
 
   // TODO(ezhulenev): Push down known input shapes.
@@ -962,8 +975,10 @@ NodeDef InlinedFunctionInputsNode(const NodeDef& func_node,
 
 // Create an IdentityN node to hook the function outputs to: this ensures that
 // the function body is fully evaluated before its fanout gets scheduled.
-NodeDef InlinedFunctionOutputsNode(const NodeDef& func_node,
-                                   const GrapplerFunctionItem& item) {
+NodeDef InlinedFunctionOutputsNode(
+    const NodeDef& func_node, const GrapplerFunctionItem& item,
+    const absl::flat_hash_map<absl::string_view, absl::string_view>
+        output_tensors) {
   NodeDef outputs;
   outputs.set_name(func_node.name());
   outputs.set_op("IdentityN");
@@ -972,7 +987,8 @@ NodeDef InlinedFunctionOutputsNode(const NodeDef& func_node,
       (*outputs.mutable_attr())["T"].mutable_list();
 
   for (const OutputArgExpansion& output_arg : item.outputs()) {
-    for (const string& output_tensor : output_arg.output_tensors) {
+    for (const string& output_node : output_arg.output_nodes) {
+      const absl::string_view output_tensor = output_tensors.at(output_node);
       type_list->add_type(output_arg.data_type);
       outputs.add_input(strings::StrCat(func_node.name(), "/", output_tensor));
     }
@@ -1004,29 +1020,51 @@ Status InlineDirectFunctionCall(const NodeDef& func_node,
   }
 
   // Mapping from input placeholder name to function input position.
-  int idx = 0;
-  absl::flat_hash_map<string, int> input_placeholders_idx;
+  absl::flat_hash_map<absl::string_view, int> input_placeholders_idx;
   for (const InputArgExpansion& input_arg : item.inputs()) {
     for (const string& placeholder : input_arg.placeholders) {
-      input_placeholders_idx[placeholder] = idx++;
+      const int idx = input_placeholders_idx.size();
+      input_placeholders_idx[placeholder] = idx;
     }
   }
+
+  // Bypass identity nodes added to the graph in place of function outputs.
+  absl::flat_hash_set<absl::string_view> output_nodes;
+  for (const OutputArgExpansion& output_arg : item.outputs()) {
+    for (const string& output_node : output_arg.output_nodes) {
+      output_nodes.insert(output_node);
+    }
+  }
+
+  // For each function output value we added an identity node that reads the
+  // tensor from one of the function body nodes. When we inline function into
+  // the main graph we want to bypass these nodes, so we keep a mapping from
+  // 'output node name' -> 'output tensor name'.
+  absl::flat_hash_map<absl::string_view, absl::string_view> output_tensors;
 
   // Hook inlined function inputs to IdentityN node.
   NodeDef* func_inputs = optimized_graph->add_node();
   *func_inputs = InlinedFunctionInputsNode(func_node, item);
 
   for (NodeDef& func_body_node : *item.mutable_function_body().mutable_node()) {
-    if (item.IsInputPlaceholder(func_body_node.name())) {
-      // Turn input placeholders into identity nodes.
+    const string& node_name = func_body_node.name();
+
+    // Skip output identity node, and update a mapping to the output tensor.
+    if (IsIdentity(func_body_node) && output_nodes.count(node_name)) {
+      output_tensors.emplace(node_name, func_body_node.input(0));
+      continue;
+    }
+
+    // Turn placeholders added in place of input arguments into identity nodes.
+    const auto input_placeholder_idx = input_placeholders_idx.find(node_name);
+    if (input_placeholder_idx != input_placeholders_idx.end()) {
       CHECK_EQ(0, func_body_node.input_size());
       func_body_node.set_op("Identity");
       (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
       func_body_node.mutable_attr()->erase("dtype");
       func_body_node.mutable_attr()->erase("shape");
-      int input_idx = input_placeholders_idx[func_body_node.name()];
-      func_body_node.add_input(
-          strings::StrCat(func_inputs->name(), ":", input_idx));
+      func_body_node.add_input(strings::StrCat(func_inputs->name(), ":",
+                                               input_placeholder_idx->second));
     } else {
       // Update the input names if any.
       for (string& input : *func_body_node.mutable_input()) {
@@ -1082,9 +1120,12 @@ Status InlineDirectFunctionCall(const NodeDef& func_node,
     }
   }
 
+  DCHECK(output_tensors.size() == item.output_size())
+      << "Each function output must be mapped to an output tensor";
+
   // Hook inlined function outputs to IdentityN node.
   NodeDef* func_outputs = optimized_graph->add_node();
-  *func_outputs = InlinedFunctionOutputsNode(func_node, item);
+  *func_outputs = InlinedFunctionOutputsNode(func_node, item, output_tensors);
 
   return Status::OK();
 }
@@ -1222,6 +1263,74 @@ Status InlineSymbolicGradient(const NodeDef& node,
 // because they are pure functions of input tensors, and can be freely
 // reordered.
 
+struct MaybeDeadOutput {
+  const NodeDef* dead_tensor_src;
+  const NodeDef* output_node_dst;
+};
+
+// Finds all function outputs that might return a dead tensor. This can happen
+// if there is no `Merge` node on the path from the `Switch` node, to the
+// function output.
+Status MaybeDeadOutputs(const FunctionOptimizerContext& ctx,
+                        const GrapplerFunctionItem& item,
+                        std::vector<MaybeDeadOutput>* maybe_dead) {
+  DCHECK(maybe_dead->empty()) << "Input argument must be an empty vector";
+
+  std::vector<const NodeDef*> dead_tensor_srcs;
+  for (const NodeDef& node : item.graph.node()) {
+    if (IsSwitch(node)) {
+      dead_tensor_srcs.push_back(&node);
+      continue;
+    }
+
+    // Regular (aka 'direct') function call can also produce dead tensors if
+    // the function body has mergeless switches.
+    const FunctionDef* func = ctx.function_library().Find(node.op());
+    if (func != nullptr) {
+      GrapplerFunctionItem func_item;
+      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
+          *func, FunctionInstantiationAttributes(*func, node),
+          ctx.function_library(), ctx.graph_version(), &func_item));
+
+      std::vector<MaybeDeadOutput> func_dead_outputs;
+      TF_RETURN_IF_ERROR(MaybeDeadOutputs(ctx, func_item, &func_dead_outputs));
+
+      if (!func_dead_outputs.empty()) dead_tensor_srcs.push_back(&node);
+    }
+  }
+
+  // If we do not have dead tensor sources in the function body, it's
+  // guaranteed that all output tensors can't become dead.
+  if (dead_tensor_srcs.empty()) return Status::OK();
+
+  // Names of the function body nodes that return function output values.
+  absl::flat_hash_set<absl::string_view> output_nodes;
+  for (const auto& output_expansion : item.outputs()) {
+    for (const auto& output_node : output_expansion.output_nodes) {
+      output_nodes.insert(output_node);
+    }
+  }
+
+  GraphTopologyView topology_view;
+  TF_RETURN_IF_ERROR(topology_view.InitializeFromGraph(item.graph));
+
+  for (const NodeDef* dead_tensor_src : dead_tensor_srcs) {
+    DfsTraversal(topology_view, {dead_tensor_src},
+                 TraversalDirection::kFollowOutputs,
+                 // Stop traversal when reached first `Merge` node.
+                 DfsPredicates::Advance(
+                     [](const NodeDef* node) { return !IsMerge(*node); }),
+                 // If we reached output node, add MaybeDeadOutput edge.
+                 DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                   if (output_nodes.find(node->name()) != output_nodes.end()) {
+                     maybe_dead->push_back({dead_tensor_src, node});
+                   }
+                 }));
+  }
+
+  return Status::OK();
+}
+
 // Returns `Status::OK()` iff `node` is an indirect function call of `func`, and
 // we know how to inline it into the main graph, otherwise returns and error
 // indicating why the function call is not inlinable.
@@ -1253,20 +1362,6 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
   if (ctx.IsFetchNode(func_node.name())) {
     return errors::FailedPrecondition(
         "Can't inline function in a Grappler item fetch set: ",
-        SummarizeNodeDef(func_node));
-  }
-
-  // We can't inline functions with `Switch` nodes in the function body, because
-  // they might have dead tensors as a function output argument (we need all
-  // intermediate tensors to compute the function gradient). `PartitionedCallOp`
-  // invokes functions with `allow_dead_tensors = true` to reset dead flag,
-  // and return default initialized tensors instead of a dead tensors.
-  // TODO(ezhulenev): Do the liveness analysis and add
-  // `IdentitytWithResurrection` nodes after all potentially dead output
-  // tensors?
-  if (absl::c_any_of(func.node_def(), IsSwitch)) {
-    return errors::FailedPrecondition(
-        "Can't inline function with `Switch` nodes in the function body: ",
         SummarizeNodeDef(func_node));
   }
 
@@ -1307,6 +1402,26 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
                                    " instantiated by ", func_node.name(),
                                    ". Error: ", item_status.error_message());
+  }
+
+  // `PartitionedCallOp` invokes functions with `allow_dead_tensors = true` to
+  // reset dead flag, and return default initialized tensors instead of a dead
+  // tensors. There is no way to express this in a regular Tensorflow graph, so
+  // we choose not to inline if a function can have dead tensors as an output
+  // position. In practice `mergeless switches` should not exists in a function
+  // body, because tf-eager will only use v2 control flow ops.
+  std::vector<MaybeDeadOutput> maybe_dead_outputs;
+  TF_RETURN_IF_ERROR(MaybeDeadOutputs(*ctx, item, &maybe_dead_outputs));
+  if (!maybe_dead_outputs.empty()) {
+    struct MaybeDeadOutputFormatter {
+      void operator()(string* out, const MaybeDeadOutput& md) const {
+        absl::StrAppend(out, SummarizeNodeDef(*md.dead_tensor_src));
+      }
+    };
+    return errors::FailedPrecondition(
+        "Can't inline function with dead outputs. Dead tensor sources (size = ",
+        maybe_dead_outputs.size(), "): ",
+        absl::StrJoin(maybe_dead_outputs, "\n", MaybeDeadOutputFormatter()));
   }
 
   GraphView::InputPort control_input_port =
@@ -1363,11 +1478,11 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   }
 
   // Mapping from input placeholder name to function input position.
-  int idx = 0;
   absl::flat_hash_map<absl::string_view, int> input_placeholders_idx;
   for (const InputArgExpansion& input_arg : item.inputs()) {
     for (const string& placeholder : input_arg.placeholders) {
-      input_placeholders_idx[placeholder] = idx++;
+      const int idx = input_placeholders_idx.size();
+      input_placeholders_idx[placeholder] = idx;
     }
   }
 
@@ -1378,8 +1493,11 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   // same device as their corresponding input nodes.
 
   for (NodeDef& func_body_node : *item.graph.mutable_node()) {
-    if (item.IsInputPlaceholder(func_body_node.name())) {
-      const int input_idx = input_placeholders_idx[func_body_node.name()];
+    const auto input_placeholder_idx =
+        input_placeholders_idx.find(func_body_node.name());
+
+    if (input_placeholder_idx != input_placeholders_idx.end()) {
+      const int input_idx = input_placeholder_idx->second;
       const GraphView::OutputPort output_port =
           ctx->graph_view().GetRegularFanin({&func_node, input_idx});
 
@@ -1441,16 +1559,23 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   // optimized graph: turn placeholders into identities, update nodes
   // connectivity, etc...
 
+  const auto inlined_node_name = [&func_node](const string& name) -> string {
+    return AddPrefixToNodeName(name, /*prefix=*/func_node.name());
+  };
+
   for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
-    if (item.IsInputPlaceholder(func_body_node.name())) {
-      // Turn input placeholders into identity node.
+    const string& node_name = func_body_node.name();
+
+    // Turn placeholders added in place of input arguments into identity nodes.
+    const auto input_placeholder_idx = input_placeholders_idx.find(node_name);
+    if (input_placeholder_idx != input_placeholders_idx.end()) {
       DCHECK_EQ(0, func_body_node.input_size());
       func_body_node.set_op("Identity");
       (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
       func_body_node.mutable_attr()->erase("dtype");
       func_body_node.mutable_attr()->erase("shape");
-      const int input_idx = input_placeholders_idx[func_body_node.name()];
-      func_body_node.add_input(strings::StrCat(inputs[input_idx].ToString()));
+      const int input_idx = input_placeholder_idx->second;
+      func_body_node.add_input(inputs[input_idx].ToString());
 
       // All side effects must happen before inputs can start executing.
       for (const string& hb_node : happens_before) {
@@ -1460,7 +1585,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
     } else {
       // Update inputs of the regular function body nodes.
       for (string& input : *func_body_node.mutable_input()) {
-        input = AddPrefixToNodeName(input, /*prefix=*/func_node.name());
+        input = inlined_node_name(input);
       }
       if (func_body_node.input_size() == 0 && !empty_inputs_hook.empty()) {
         *func_body_node.add_input() = empty_inputs_hook[0];
@@ -1494,7 +1619,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
     if (!IsFreeOfSideEffect(func_body_node, &ctx->function_library())) {
       int num_fanouts = placed_graph_view.NumFanouts(
-          func_body_node, /*include_controlling_nodes=*/true);
+          func_body_node, /*include_controlled_nodes=*/true);
 
       // If the node doesn't have any outgoing edges and we do not have any
       // nodes in the `happens_after` set, we can't inline a function and
@@ -1514,10 +1639,35 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
     }
   }
 
+  // Identity nodes added to the function body in place of function outputs.
+  absl::flat_hash_set<string> output_nodes;
+  for (const OutputArgExpansion& output_arg : item.outputs()) {
+    for (const string& output_node : output_arg.output_nodes) {
+      output_nodes.insert(inlined_node_name(output_node));
+    }
+  }
+
+  // For each function output value we added an identity node that reads the
+  // tensor from one of the function body nodes. When we inline function into
+  // the main graph we want to bypass these nodes, so we keep a mapping from
+  // 'output node name' -> 'output tensor name'.
+  absl::flat_hash_map<string, string> output_tensors;
+
   // Move all the nodes to the optimized graph after successful preprocessing.
   for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
+    const string& node_name = func_body_node.name();
+
+    // Skip output identity node, and add a mapping to the output tensor.
+    if (IsIdentity(func_body_node) && output_nodes.count(node_name)) {
+      output_tensors.emplace(node_name, func_body_node.input(0));
+      continue;
+    }
+
     optimized_graph->add_node()->Swap(&func_body_node);
   }
+
+  DCHECK(output_tensors.size() == item.output_size())
+      << "Each function output must be mapped to an output tensor";
 
   // TODO(ezhulenev): Inline nested indirect function calls.
 
@@ -1526,10 +1676,13 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   // mapping from old output tensors, to the outputs of inlined nodes.
   int output_idx = 0;
   for (const OutputArgExpansion& output : item.outputs()) {
-    for (const string& output_tensor : output.output_tensors) {
+    for (const string& output_node : output.output_nodes) {
+      const string inlined_output = inlined_node_name(output_node);
+      const string& output_tensor = output_tensors.at(inlined_output);
+
       const SafeTensorId from_tensor(func_node.name(), output_idx++);
-      const SafeTensorId to_tensor = ParseTensorName(
-          AddPrefixToNodeName(output_tensor, /*prefix=*/func_node.name()));
+      const SafeTensorId to_tensor = ParseTensorName(output_tensor);
+
       ctx->AddTensorMapping(from_tensor, to_tensor);
     }
   }

@@ -1412,7 +1412,8 @@ class _ModelFnWrapper(object):
       if tensor_tracer.TensorTracer.is_enabled():
         tt = tensor_tracer.TensorTracer()
         loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
-                                         self._ctx.num_replicas)
+                                         self._ctx.num_replicas,
+                                         fetches=[loss, train_op])
 
       # We must run train_op to update the variables prior to running the
       # outfeed.
@@ -2186,7 +2187,9 @@ class TPUEstimator(estimator_lib.Estimator):
       eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
         model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
       export_to_tpu: If True, `export_savedmodel()` exports a metagraph for
-        serving on TPU besides the one on CPU.
+        serving on TPU besides the one on CPU. Note that unsupported export
+        modes such as EVAL will be ignored. For those modes, only a CPU model
+        will be exported. Currently, export_to_tpu only supports PREDICT.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
         warm-start from, or a `tf.estimator.WarmStartSettings` object to fully
         configure warm-starting.  If the string filepath is provided instead of
@@ -2277,10 +2280,9 @@ class TPUEstimator(estimator_lib.Estimator):
                                export_tags=None,
                                check_variables=True):
     if self._export_to_tpu and mode != model_fn_lib.ModeKeys.PREDICT:
-      raise NotImplementedError(
-          'TPUEstimator only handles mode PREDICT for exporting '
-          'when `export_to_tpu` is `True`; '
-          'got {}.'.format(mode))
+      logging.warning('TPUEstimator only handles mode PREDICT for exporting '
+                      'when `export_to_tpu` is `True`; Mode {} will be ignored '
+                      'for TPU.'.format(mode))
 
     (super(TPUEstimator, self)._add_meta_graph_for_mode(
         builder,
@@ -2291,7 +2293,7 @@ class TPUEstimator(estimator_lib.Estimator):
         export_tags=export_tags,
         check_variables=check_variables))
 
-    if self._export_to_tpu:
+    if self._export_to_tpu and mode == model_fn_lib.ModeKeys.PREDICT:
       input_receiver_fn_map = {
           _REWRITE_FOR_INFERENCE_MODE: input_receiver_fn_map[mode]
       }
@@ -2654,7 +2656,11 @@ class TPUEstimator(estimator_lib.Estimator):
         if self._log_every_n_steps is not None:
           examples_hook = ExamplesPerSecondHook(
               ctx.global_batch_size,
-              output_dir=self.model_dir if config.save_summary_steps else None,
+              # pylint:disable=g-long-ternary
+              output_dir=(self.model_dir
+                          if not config or config.save_summary_steps
+                          else None),
+              # pylint:enable=g-long-ternary
               every_n_steps=self._log_every_n_steps)
 
         if ctx.is_running_on_cpu(is_export_mode=is_export_mode):

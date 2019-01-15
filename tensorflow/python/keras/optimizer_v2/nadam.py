@@ -26,7 +26,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.Nadam', v1=[])
+@keras_export('keras.optimizers.Nadam')
 class Nadam(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the NAdam algorithm.
 
@@ -84,8 +84,7 @@ class Nadam(optimizer_v2.OptimizerV2):
     """
 
     # Backwards compatiblity with keras NAdam optimizer.
-    if 'schedule_decay' in kwargs:
-      kwargs['decay'] = kwargs.pop('schedule_decay', 0.004)
+    kwargs['decay'] = kwargs.pop('schedule_decay', 0.004)
     super(Nadam, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)

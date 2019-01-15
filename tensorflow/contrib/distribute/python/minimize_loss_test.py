@@ -67,12 +67,13 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, inputs):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_replica(model_fn, args=(inputs,)))
+            distribution.extended.call_for_each_replica(
+                model_fn, args=(inputs,)))
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
-        return distribution.run_steps_on_dataset(
+        return distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=2).run_op
 
       if not context.executing_eagerly():
@@ -105,7 +106,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       def run_step():
         return distribution.group(
-            distribution.call_for_each_replica(
+            distribution.extended.call_for_each_replica(
                 model_fn, args=(iterator.get_next(),)))
 
       if not context.executing_eagerly():
@@ -157,12 +158,13 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, inputs):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_replica(model_fn, args=(inputs,)))
+            distribution.extended.call_for_each_replica(
+                model_fn, args=(inputs,)))
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
-        return distribution.run_steps_on_dataset(
+        return distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=1).run_op
 
       if not context.executing_eagerly():
@@ -189,7 +191,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       self.assertEqual(
           get_expected_variables(optimizer_fn,
-                                 len(distribution.parameter_devices)),
+                                 len(distribution.extended.parameter_devices)),
           set(created_variables))
 
   @combinations.generate(
@@ -222,7 +224,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, inputs):
         del ctx  # Unused
         fetches = distribution.unwrap(
-            distribution.call_for_each_replica(model_fn, args=(inputs,)))
+            distribution.extended.call_for_each_replica(
+                model_fn, args=(inputs,)))
         if update_ops_in_cross_replica_mode:
           fetches += tuple(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
         return control_flow_ops.group(fetches)
@@ -230,7 +233,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
-        return distribution.run_steps_on_dataset(
+        return distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=1).run_op
 
       if not context.executing_eagerly():
@@ -316,12 +319,13 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, inputs):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_replica(model_fn, args=(inputs,)))
+            distribution.extended.call_for_each_replica(
+                model_fn, args=(inputs,)))
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
-        return distribution.run_steps_on_dataset(
+        return distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=1).run_op
 
       if not context.executing_eagerly():
@@ -398,7 +402,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         return (train_op, loss)
 
       def step_fn(output_context, inputs):
-        (train_op, loss) = distribution.call_for_each_replica(
+        (train_op, loss) = distribution.extended.call_for_each_replica(
             model_fn, args=(output_context, inputs))
         output_context.set_last_step_output(
             name="cross_replica_loss_reduced",
@@ -425,7 +429,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             "cross_replica_loss_not_reduced":
             distribution.unwrap(distribution.broadcast(initial_loss()))
         }
-        ctx = distribution.run_steps_on_dataset(
+        ctx = distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=2,
             initial_loop_values=initial_loop_values)
 

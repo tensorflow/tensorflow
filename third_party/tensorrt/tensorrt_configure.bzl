@@ -13,7 +13,8 @@ load(
     "get_cpu_value",
     "find_cuda_define",
     "matches_version",
-    "symlink_genrule_for_dir",
+    "make_copy_dir_rule",
+    "make_copy_files_rule",
 )
 
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
@@ -177,35 +178,43 @@ def _tensorrt_configure_impl(repository_ctx):
     auto_configure_fail(
         "Cannot find TensorRT install path %s." % trt_install_path)
 
-  # Set up the symbolic links for the library files.
+  # Copy the library files.
   trt_lib_version = _trt_lib_version(repository_ctx, trt_install_path)
   trt_libs = _find_trt_libs(repository_ctx, trt_install_path, trt_lib_version)
-  trt_lib_src = []
-  trt_lib_dest = []
+  trt_lib_srcs = []
+  trt_lib_outs = []
   for lib in trt_libs.values():
-    trt_lib_src.append(lib.src_file_path)
-    trt_lib_dest.append(lib.dst_file_name)
-  genrules = [
-      symlink_genrule_for_dir(repository_ctx, None, "tensorrt/lib/",
-                              "tensorrt_lib", trt_lib_src, trt_lib_dest)
-  ]
+    trt_lib_srcs.append(lib.src_file_path)
+    trt_lib_outs.append("tensorrt/lib/" + lib.dst_file_name)
+  copy_rules = [make_copy_files_rule(
+      repository_ctx,
+      name = "tensorrt_lib",
+      srcs = trt_lib_srcs,
+      outs = trt_lib_outs,
+  )]
 
-  # Set up the symbolic links for the header files.
+  # Copy the header files header files.
   trt_header_dir = _find_trt_header_dir(repository_ctx, trt_install_path)
-  src_files = [
+  trt_header_srcs = [
       "%s/%s" % (trt_header_dir, header) for header in _TF_TENSORRT_HEADERS
   ]
-  dest_files = _TF_TENSORRT_HEADERS
-  genrules.append(
-      symlink_genrule_for_dir(repository_ctx, None, "tensorrt/include/",
-                              "tensorrt_include", src_files, dest_files))
+  trt_header_outs = [
+      "tensorrt/include/" + header for header in _TF_TENSORRT_HEADERS
+  ]
+  copy_rules.append(
+      make_copy_files_rule(
+          repository_ctx,
+          name = "tensorrt_include",
+          srcs = trt_header_srcs,
+          outs = trt_header_outs,
+  ))
 
   # Set up config file.
   _tpl(repository_ctx, "build_defs.bzl", {"%{tensorrt_is_configured}": "True"})
 
   # Set up BUILD file.
   substitutions = {
-      "%{tensorrt_genrules}": "\n".join(genrules),
+      "%{copy_rules}": "\n".join(copy_rules),
       "%{tensorrt_headers}": '":tensorrt_include"',
   }
   for lib in _TF_TENSORRT_LIBS:

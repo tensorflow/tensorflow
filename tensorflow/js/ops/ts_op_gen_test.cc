@@ -112,22 +112,15 @@ import {createTensorsTypeOpAttr, nodeBackend} from './op_utils';
 }
 
 TEST(TsOpGenTest, InputSingleAndList) {
-  const string api_def = R"(
-op {
-  name: "Foo"
-  input_arg {
-    name: "images"
-    type_attr: "T"
-    number_attr: "N"
-  }
-}
-)";
+  const string api_def = R"pb(
+    op { graph_op_name: "Foo" arg_order: "dim" arg_order: "images" }
+  )pb";
 
   string ts_file_text;
   GenerateTsOpFileText("", api_def, &ts_file_text);
 
   const string expected = R"(
-export function Foo(images: tfc.Tensor[], dim: tfc.Tensor): tfc.Tensor {
+export function Foo(dim: tfc.Tensor, images: tfc.Tensor[]): tfc.Tensor {
 )";
   ExpectContainsStr(ts_file_text, expected);
 }

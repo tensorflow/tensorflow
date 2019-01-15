@@ -123,7 +123,8 @@ Status GetTensorArrayShape(const XlaResource* resource,
 xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp& operand,
                            const xla::XlaOp& update,
                            absl::Span<const int64> update_dims,
-                           const xla::XlaOp& start_indices, DataType dtype) {
+                           absl::Span<const xla::XlaOp> start_indices,
+                           DataType dtype) {
   xla::XlaOp current = xla::DynamicSlice(operand, start_indices, update_dims);
   xla::XlaOp sum =
       dtype == DT_BOOL ? xla::Or(current, update) : xla::Add(current, update);
@@ -212,9 +213,9 @@ class TensorArrayWriteOp : public XlaOpKernel {
     xla::XlaOp flow = ctx->Input(3);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices =
-        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
-                 xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+    std::vector<xla::XlaOp> start_indices(elem_shape.dims() + 1,
+                                          xla::ConstantR0<int32>(b, 0));
+    start_indices[0] = index;
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
@@ -263,9 +264,9 @@ class TensorArrayReadOp : public XlaOpKernel {
     xla::XlaOp index = ctx->Input(1);
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-    auto start_indices =
-        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
-                 xla::MakeEdgePaddingConfig({{0, ta_shape.dims() - 1}}));
+    std::vector<xla::XlaOp> start_indices(ta_shape.dims(),
+                                          xla::ConstantR0<int32>(b, 0));
+    start_indices[0] = index;
 
     auto slice_shape = ta_shape.dim_sizes();
     slice_shape[0] = 1LL;
@@ -419,10 +420,10 @@ class TensorArrayScatterOp : public XlaOpKernel {
         auto slice = xla::Slice(value, value_starts, value_ends, value_strides);
 
         // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-        auto index = xla::Slice(indices, {i}, {i + 1}, {1});
-        auto start_indices =
-            xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
-                     xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+        auto index = xla::Reshape(xla::Slice(indices, {i}, {i + 1}, {1}), {});
+        std::vector<xla::XlaOp> start_indices(elem_shape.dims() + 1,
+                                              xla::ConstantR0<int32>(b, 0));
+        start_indices[0] = index;
         ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices, dtype_);
       }
     }

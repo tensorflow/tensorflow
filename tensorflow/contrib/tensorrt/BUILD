@@ -97,6 +97,7 @@ cc_library(
         ":trt_plugins",
         ":trt_resources",
         ":utils",
+        "@com_google_absl//absl/memory",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
@@ -493,6 +494,7 @@ cuda_py_tests(
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",
         "test/identity_output_test.py",
+        "test/int32_test.py",
         "test/manual_test.py",
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
@@ -500,6 +502,8 @@ cuda_py_tests(
         "test/quantization_test.py",
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
+        "test/topk_test.py",
+        "test/unary_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],
@@ -510,25 +514,6 @@ cuda_py_tests(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_windows",
-        "nomac",
-    ],
-)
-
-cuda_py_tests(
-    name = "tf_trt_integration_test_no_oss",
-    srcs = [
-        "test/unary_test.py",
-    ],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_oss",  # TODO(b/117274186): re-enable in OSS after crash fixed
-        "no_pip",  # TODO(b/117274186): re-enable in OSS after crash fixed
         "no_windows",
         "nomac",
     ],
@@ -551,7 +536,6 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_oss",  # TODO(b/121194394): re-enable in OSS after OOM is fixed.
         "no_pip",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",

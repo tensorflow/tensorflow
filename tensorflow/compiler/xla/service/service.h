@@ -250,8 +250,9 @@ class Service : public ServiceInterface {
   // ExecutionProfile object which will be filled in with profile data.
   StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
       Executable* executable,
-      const absl::Span<const std::vector<const ShapedBuffer*>> arguments,
-      Backend* backend, const string& result_tag, ExecutionProfile* profile);
+      absl::Span<const std::vector<const ShapedBuffer*>> arguments,
+      Backend* backend, const DeviceHandle& device_handle,
+      const string& result_tag, ExecutionProfile* profile);
 
   // Runs the given executables with the given arguments and register the result
   // from each executable in the allocation tracker. The handles of the result

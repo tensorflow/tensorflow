@@ -62,7 +62,7 @@ class KerasOptimizersTest(test.TestCase):
     np.testing.assert_equal(
         keras.backend.get_value(model.optimizer.iterations),
         126)  # 63 steps per epoch
-    assert history.history['acc'][-1] >= target
+    self.assertGreaterEqual(history.history['acc'][-1], target)
     config = keras.optimizers.serialize(optimizer)
     optim = keras.optimizers.deserialize(config)
     new_config = keras.optimizers.serialize(optim)
@@ -190,7 +190,6 @@ class KerasOptimizersTest(test.TestCase):
     self.assertIs(graph_weak(), None)
     self.assertIs(optimizer_weak(), None)
 
-  @test_util.run_in_graph_and_eager_modes
   def test_tf_optimizer_iterations(self):
     with self.cached_session():
       optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))

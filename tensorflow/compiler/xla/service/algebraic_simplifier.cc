@@ -122,23 +122,37 @@ bool TransposeIsBitcast(const HloInstruction* transpose) {
                                        transpose->dimensions());
 }
 
-// Returns true if the given reshape/copy produces a result which is bit-wise
-// identical to its operand and thus may be replaced with a bitcast.
-//
-// This function is conservative -- even if this function returns false, the
-// reshape may still be a bitcast. For example, a reshape from [28x28] to [784].
-bool ReshapeOrCopyIsBitcast(
-    const HloInstruction* instr,
-    const AlgebraicSimplifierOptions::ValidBitcastCallback&
-        valid_bitcast_callback) {
+// Recursive helper for method below.
+HloInstruction* BitcastingOperandOfReshapeOrCopyChainHelper(
+    HloInstruction* instr, HloInstruction* operand,
+    const AlgebraicSimplifierOptions& options) {
+  // Can't replace chain of copies and reshapes with bitcasts if the compiler
+  // used a memory layout which isn't compatible.
+  if (options.ReshapeIsBitcast(operand->shape(), instr->shape())) {
+    return operand;
+  }
+
+  // If the operand is a copy or reshape try to see if the operand's operand
+  // would produce a bitcast with initial instruction.
+  if (HloOpcode::kReshape == operand->opcode() ||
+      HloOpcode::kCopy == operand->opcode()) {
+    return BitcastingOperandOfReshapeOrCopyChainHelper(
+        instr, operand->mutable_operand(0), options);
+  }
+  return nullptr;
+}
+
+// Returns an operand of a chain of reshapes and copies that is bit-wise
+// identical to first reshape or copy in the chain.
+HloInstruction* BitcastingOperandOfReshapeOrCopyChain(
+    HloInstruction* instr, const AlgebraicSimplifierOptions& options) {
+  if (!options.is_layout_sensitive()) {
+    return nullptr;
+  }
   CHECK(HloOpcode::kReshape == instr->opcode() ||
         HloOpcode::kCopy == instr->opcode());
-
-  const HloInstruction* operand = instr->operand(0);
-  // Can't insert bitcasts if the compiler used a memory layout which isn't
-  // compatible.
-  return ShapeUtil::ReshapeIsBitcast(operand->shape(), instr->shape()) &&
-         valid_bitcast_callback(operand->shape(), instr->shape());
+  return BitcastingOperandOfReshapeOrCopyChainHelper(
+      instr, instr->mutable_operand(0), options);
 }
 
 bool IsUnstridedSlice(const HloInstruction* hlo) {
@@ -273,8 +287,11 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
         shape, hlo, zero, {dim}, AddReduce_computation));
   }
 
-  // Convenience method for replacing an instruction with a bitcast.
-  void ReplaceWithBitcast(HloInstruction* instruction);
+  // Convenience method for replacing an instruction with a bitcast. If operand
+  // is not null, then the bitcast will use the specified operand instead of the
+  // operand of the instruction.
+  void ReplaceWithBitcast(HloInstruction* instruction,
+                          HloInstruction* operand = nullptr);
 
   // Replace old instruction with new instruction if old and new instructions
   // have the same shape. Updates uses and root instruction. Returns whether a
@@ -371,11 +388,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
-  // If the sort instruction has a tuple shape then looks for unused output
-  // values and removes them from the sort instruction. Returns true if the
-  // graph have been modified.
-  StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort);
-
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -408,17 +420,19 @@ bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
   }
 }
 
-void AlgebraicSimplifierVisitor::ReplaceWithBitcast(
-    HloInstruction* instruction) {
+void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
+                                                    HloInstruction* operand) {
   CHECK_EQ(1, instruction->operand_count());
+  if (operand == nullptr) {
+    operand = instruction->mutable_operand(0);
+  }
   CHECK_EQ(ShapeUtil::ElementsIn(instruction->shape()),
-           ShapeUtil::ElementsIn(instruction->operand(0)->shape()));
+           ShapeUtil::ElementsIn(operand->shape()));
   CHECK_EQ(ShapeUtil::ByteSizeOf(instruction->shape()),
-           ShapeUtil::ByteSizeOf(instruction->operand(0)->shape()));
+           ShapeUtil::ByteSizeOf(operand->shape()));
 
-  auto bitcast = computation_->AddInstruction(
-      HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kBitcast,
-                                  instruction->mutable_operand(0)));
+  auto bitcast = computation_->AddInstruction(HloInstruction::CreateUnary(
+      instruction->shape(), HloOpcode::kBitcast, operand));
   TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
@@ -579,9 +593,9 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
     return Status::OK();
   }
 
-  if (options_.is_layout_sensitive() &&
-      ReshapeOrCopyIsBitcast(copy, options_.valid_bitcast_callback())) {
-    ReplaceWithBitcast(copy);
+  if (HloInstruction* bitcast_operand =
+          BitcastingOperandOfReshapeOrCopyChain(copy, options_)) {
+    ReplaceWithBitcast(copy, bitcast_operand);
   }
 
   return Status::OK();
@@ -876,6 +890,9 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
         break;
       case C64:
         TF_RETURN_IF_ERROR(InvertConstant<complex64>(*b, &new_literal));
+        break;
+      case C128:
+        TF_RETURN_IF_ERROR(InvertConstant<complex128>(*b, &new_literal));
         break;
       default:
         return Status::OK();
@@ -2198,12 +2215,10 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   }
 
   // Make this a bitcast if possible.
-  if (options_.is_layout_sensitive() &&
-      ReshapeOrCopyIsBitcast(reshape, options_.valid_bitcast_callback())) {
-    ReplaceWithBitcast(reshape);
-    return Status::OK();
+  if (HloInstruction* bitcast_operand =
+          BitcastingOperandOfReshapeOrCopyChain(reshape, options_)) {
+    ReplaceWithBitcast(reshape, bitcast_operand);
   }
-
   return Status::OK();
 }
 
@@ -2819,69 +2834,6 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   return Status::OK();
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::RemoveUnusedOperandFromSort(
-    HloInstruction* sort) {
-  if (!sort->shape().IsTuple()) {
-    return false;
-  }
-
-  if (sort->parent()->root_instruction() == sort) {
-    // Can't analyse users of the root instruction.
-    return false;
-  }
-
-  // Index 0 is the sorting key used by the sort HLO itself.
-  absl::flat_hash_set<int64> used_indices{0};
-  for (const HloInstruction* user : sort->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
-      // Can't analyse users other then get-tuple-element.
-      return false;
-    }
-    used_indices.insert(user->tuple_index());
-  }
-
-  if (used_indices.size() == sort->operand_count()) {
-    // All operands are used.
-    return false;
-  }
-
-  std::vector<HloInstruction*> operands{sort->mutable_operand(0)};
-  std::vector<Shape> new_shapes{sort->operand(0)->shape()};
-  for (int64 i = 1; i < sort->operand_count(); ++i) {
-    if (used_indices.count(i)) {
-      operands.push_back(sort->mutable_operand(i));
-      new_shapes.push_back(sort->operand(i)->shape());
-    }
-  }
-  Shape new_sort_shape = new_shapes.size() == 1
-                             ? new_shapes[0]
-                             : ShapeUtil::MakeTupleShape(new_shapes);
-  HloInstruction* new_sort = computation_->AddInstruction(
-      sort->CloneWithNewOperands(new_sort_shape, operands));
-
-  // Map from original get-tuple-element tuple index to new HLO instruction
-  absl::flat_hash_map<int64, HloInstruction*> result_map;
-  if (new_sort->shape().IsTuple()) {
-    // Old sort key maps to new sort key.
-    int64 new_index = 0;
-    for (int64 i = 0; i < sort->operand_count(); ++i) {
-      if (used_indices.count(i)) {
-        result_map[i] =
-            computation_->AddInstruction(HloInstruction::CreateGetTupleElement(
-                new_shapes[new_index], new_sort, new_index));
-        ++new_index;
-      }
-    }
-  } else {
-    result_map[0] = new_sort;
-  }
-  for (HloInstruction* user : sort->users()) {
-    TF_RETURN_IF_ERROR(
-        user->ReplaceAllUsesWith(result_map.at(user->tuple_index())));
-  }
-  return true;
-}
-
 Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
   auto operand = sort->mutable_operand(0);
   int64 dimension_to_sort = sort->dimensions(0);
@@ -2893,13 +2845,6 @@ Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
     // If it is key/value sort, the output of sort is a tuple.
     return ReplaceWithNewInstruction(
         sort, HloInstruction::CreateTuple(sort->operands()));
-  }
-
-  // Remove the unused values from a key-value sort.
-  TF_ASSIGN_OR_RETURN(bool removed_operand, RemoveUnusedOperandFromSort(sort));
-  if (removed_operand) {
-    changed_ = true;
-    return Status::OK();
   }
 
   if (!options_.enable_permutation_sort_replacement()) {
@@ -3294,15 +3239,6 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
       filter_shape.element_type(), {input_channels, output_channels});
   const Shape dot_output_shape = ShapeUtil::MakeShapeWithDescendingLayout(
       convolution_shape.element_type(), {conv_width, output_channels});
-
-  // We cannot insert bitcasts if the layouts will not be compatible.
-  // TODO(b/33178038): Consider inserting a transpose if a bitcast would be
-  // invalid.
-  if (!options_.valid_bitcast_callback()(input_shape, new_input_shape) ||
-      !options_.valid_bitcast_callback()(filter_shape, new_filter_shape) ||
-      !options_.valid_bitcast_callback()(dot_output_shape, convolution_shape)) {
-    return false;
-  }
 
   auto new_lhs = add_bitcast(new_input_shape, lhs);
   auto new_rhs = add_bitcast(new_filter_shape, rhs);

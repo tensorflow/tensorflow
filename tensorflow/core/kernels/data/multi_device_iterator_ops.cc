@@ -81,9 +81,8 @@ class MultiDeviceIterator : public ResourceBase {
     ++incarnation_id_;
     *incarnation_id = incarnation_id_;
 
-    multi_device_buffer_.reset(
-        new MultiDeviceBuffer(devices_.size(), max_buffer_size, incarnation_id_,
-                              std::move(iterator)));
+    multi_device_buffer_ = absl::make_unique<MultiDeviceBuffer>(
+        devices_.size(), max_buffer_size, incarnation_id_, std::move(iterator));
     return Status::OK();
   }
 
@@ -217,10 +216,11 @@ class MultiDeviceIterator : public ResourceBase {
     void EnsureBackgroundThreadStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!background_thread_) {
-        background_thread_.reset(ctx->env()->StartThread(
+        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
+        background_thread_ = absl::WrapUnique<Thread>(ctx->env()->StartThread(
             {}, "tf_data_multi_device_iterator",
             std::bind(&MultiDeviceIterator::MultiDeviceBuffer::BackgroundThread,
-                      this, new IteratorContext(*ctx))));
+                      this, std::move(ctx_copy))));
       }
     }
 
@@ -258,12 +258,11 @@ class MultiDeviceIterator : public ResourceBase {
       }
     }
 
-    void BackgroundThread(IteratorContext* ctx) {
+    void BackgroundThread(std::shared_ptr<IteratorContext> ctx) {
       {
         mutex_lock l(mu_);
         background_thread_started_ = true;
       }
-      std::unique_ptr<IteratorContext> cleanup(ctx);
       int shard_to_fetch = 0;
       while (true) {
         HostBufferElement elem;
@@ -284,8 +283,8 @@ class MultiDeviceIterator : public ResourceBase {
           }
         }
 
-        elem.status =
-            host_iterator_->GetNext(ctx, &elem.value, &elem.end_of_sequence);
+        elem.status = host_iterator_->GetNext(ctx.get(), &elem.value,
+                                              &elem.end_of_sequence);
 
         if (elem.status.ok() && elem.end_of_sequence) {
           end_of_iterator = true;
@@ -397,8 +396,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
         OP_REQUIRES_OK(context, context->function_library()->Clone(
                                     &flib_def, &pflr, &lib));
-        std::unique_ptr<FunctionHandleCache> function_handle_cache(
-            new FunctionHandleCache(lib));
+        std::unique_ptr<FunctionHandleCache> function_handle_cache =
+            absl::make_unique<FunctionHandleCache>(lib);
         ResourceMgr* mgr = context->resource_manager();
         OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 

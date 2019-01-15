@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import itertools
 from multiprocessing.pool import ThreadPool
 import sys
 import weakref
@@ -45,8 +46,10 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -2063,6 +2066,292 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # function itself is not involved in a reference cycle.
     self.assertIs(None, weak_fn())
 
+  def testFunctionStackInErrorMessage(self):
+    if context.executing_eagerly():
+      # TODO(b/122736651): Remove this skipTest once fixed.
+      self.skipTest('Error interpolation is not working when function is '
+                    'invoked without PartitionedCallOp.')
+
+    @def_function.function()
+    def fn3(x):
+      return x + 2
+
+    @def_function.function()
+    def fn2(x):
+      check_ops.assert_equal(fn3(x), 3)
+      return 2
+
+    @def_function.function()
+    def fn(x):
+      return fn2(x)
+
+    try:
+      fn(2)
+      self.assertFail()
+    except errors.InvalidArgumentError as e:
+      self.assertIn('fn -> fn2', e.message)
+      self.assertIn('node assert_equal/Assert/Assert (defined at', e.message)
+      self.assertNotIn('fn3', e.message)
+
+
+class MultiDeviceTest(test.TestCase, parameterized.TestCase):
+
+  def testMultiDeviceOutput(self):
+    """Tests that functions can produce outputs on multiple devices."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    @function.defun
+    def func(a, b, transpose_a):
+      with ops.device('/device:CPU:0'):
+        m1 = math_ops.matmul(a, b, transpose_a=transpose_a)
+      with ops.device('/device:GPU:0'):
+        m2 = math_ops.matmul(a, b, transpose_a=transpose_a)
+      return m1, m2
+
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    m1, m2 = func(t, t, transpose_a=True)
+    self.assertAllEqual(m1.numpy(), [[10, 14], [14, 20]])
+    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertAllEqual(m2.numpy(), [[10, 14], [14, 20]])
+    self.assertRegexpMatches(m2.backing_device, 'GPU')
+
+  def testEmptyBody(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    @function.defun
+    def func(a, b):
+      return b, a
+
+    with ops.device('/device:CPU:0'):
+      a = constant_op.constant(3.0)
+    with ops.device('/device:GPU:0'):
+      b = constant_op.constant(5.0)
+
+    m1, m2 = func(a, b)
+    self.assertAllEqual(m1.numpy(), 5.0)
+    self.assertRegexpMatches(m1.backing_device, 'GPU')
+    self.assertAllEqual(m2.numpy(), 3.0)
+    self.assertRegexpMatches(m2.backing_device, 'CPU')
+
+  def testMultiDeviceInt32(self):
+    """Tests that multi-device functions can take and output INT32s.
+
+    When an INT32 device tensor is fed into a function, it is copied to CPU
+    by the eager runtime. The function sees all INT32 inputs on CPU.
+
+    We set allocator attribute 'on_host' for INT32 outputs. They can be
+    partitioned into the GPU component function, but will be allocated on
+    CPU nevertheless.
+
+    There is experimental support for `ints_on_device` in
+    FunctionLibraryRuntime now. We can try that.
+
+    """
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      int_cpu = constant_op.constant(3, dtype=dtypes.int32)
+      resource = resource_variable_ops.ResourceVariable(5, dtype=dtypes.int32)
+    with ops.device('/device:GPU:0'):
+      int_gpu = constant_op.constant(7, dtype=dtypes.int32)
+
+    @function.defun
+    def func(int_cpu, resource, int_gpu):
+      with ops.device('/device:CPU:0'):
+        m1 = int_cpu * resource + int_gpu
+      with ops.device('/device:GPU:0'):
+        # This computation will happen on GPU but m2 will be copied to CPU.
+        m2 = int_gpu * resource + int_cpu + 1
+      return m1, m2
+
+    m1, m2 = func(int_cpu, resource, int_gpu)
+    self.assertAllEqual(m1.numpy(), 22)
+    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertAllEqual(m2.numpy(), 39)
+    self.assertRegexpMatches(m2.backing_device, 'CPU')
+
+    # flip arguments
+    m1, m2 = func(int_gpu, resource, int_cpu)
+    self.assertAllEqual(m1.numpy(), 38)
+    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertAllEqual(m2.numpy(), 23)
+    self.assertRegexpMatches(m2.backing_device, 'CPU')
+
+  def testMultiDeviceColocateWith(self):
+    """Tests that function's outputs respect colocation constraints."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    @function.defun
+    def func(a, b):
+      with ops.colocate_with(a):
+        ra = 2 * a
+      with ops.colocate_with(b):
+        rb = 3 * b
+      return ra, rb
+
+    devices = ['/device:CPU:0', '/device:GPU:0']
+    for dev1, dev2 in itertools.product(devices, devices):
+      with ops.device(dev1):
+        a = constant_op.constant(1.0)
+      with ops.device(dev2):
+        b = constant_op.constant(10.0)
+
+      ra, rb = func(a, b)
+      self.assertEqual(ra.numpy(), 2.0)
+      self.assertRegexpMatches(ra.backing_device, dev1)
+      self.assertEqual(rb.numpy(), 30.0)
+      self.assertRegexpMatches(rb.backing_device, dev2)
+
+  def testMultiDeviceResources(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      c1 = resource_variable_ops.ResourceVariable(2.0)
+      c2 = resource_variable_ops.ResourceVariable(7.0)
+    with ops.device('/device:GPU:0'):
+      g1 = resource_variable_ops.ResourceVariable(3.0)
+      g2 = resource_variable_ops.ResourceVariable(5.0)
+
+    @function.defun
+    def func(resource1, resource2):
+      with ops.device('/device:CPU:0'):
+        result1 = resource1 * g2
+      with ops.device('/device:GPU:0'):
+        result2 = resource2 * c2
+      return result1, result2
+
+    r1, r2 = func(c1, g1)
+    self.assertEqual(r1.numpy(), 10.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertEqual(r2.numpy(), 21.0)
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+
+    # Call with flipped inputs. Check that we look at resource's
+    # device and reinstantiates the function when inputs' devices change.
+    r1, r2 = func(g1, c1)
+    self.assertEqual(r1.numpy(), 15.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertEqual(r2.numpy(), 14.0)
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+
+  def testOutputResources(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      c1 = resource_variable_ops.ResourceVariable(2.0)
+    with ops.device('/device:GPU:0'):
+      g1 = resource_variable_ops.ResourceVariable(3.0)
+
+    @function.defun
+    def func(resource1, resource2):
+      with ops.device('/device:CPU:0'):
+        result1 = resource1 * 5
+      with ops.device('/device:GPU:0'):
+        result2 = resource2 * 7
+      return result1, resource1.handle, result2, resource2.handle
+
+    r1, res1, r2, res2 = func(c1, g1)
+    self.assertEqual(r1.numpy(), 10.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertEqual(r2.numpy(), 21.0)
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+
+    def check_handle(handle, expected_value):
+      self.assertRegexpMatches(handle.backing_device, 'CPU')
+      tensor = gen_resource_variable_ops.read_variable_op(
+          handle, dtypes.float32)
+      self.assertEqual(tensor.numpy(), expected_value)
+
+    # Check that handles returned from functions are on CPU and an op using
+    # the resource handle is correctly placed on the device backing the
+    # resource.
+    check_handle(res1, 2.0)
+    check_handle(res2, 3.0)
+
+    # Call with flipped inputs to make sure the same the function is
+    # reinstantiated and eager runtime does not mess up the device assignment
+    # for ops consuming handles returned from defuns.
+    r1, res1, r2, res2 = func(g1, c1)
+    self.assertEqual(r1.numpy(), 15.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertEqual(r2.numpy(), 14.0)
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    check_handle(res1, 3.0)
+    check_handle(res2, 2.0)
+
+  def testComplexInputOutputDevicePattern(self):
+    """Tests input/output mapping logic in partitioning."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      rc0 = resource_variable_ops.ResourceVariable(2.0)
+      rc1 = resource_variable_ops.ResourceVariable(3.0)
+      cc0 = constant_op.constant(5.0)
+      cc1 = constant_op.constant(7.0)
+    with ops.device('/device:GPU:0'):
+      rg0 = resource_variable_ops.ResourceVariable(11.0)
+      rg1 = resource_variable_ops.ResourceVariable(13.0)
+      cg0 = constant_op.constant(17.0)
+      cg1 = constant_op.constant(19.0)
+
+    # Make sure tensors are on expected devices.
+    for tensor in [cc0, cc1]:
+      self.assertRegexpMatches(tensor.backing_device, 'CPU:0')
+    for tensor in [cg0, cg1]:
+      self.assertRegexpMatches(tensor.backing_device, 'GPU:0')
+
+    @function.defun
+    def func(rc0, cc0, cg0, rc1, cg1, rg0, rg1, cc1):
+      with ops.device('/device:CPU:0'):
+        m1 = rc0 * cg0
+      with ops.device('/device:GPU:0'):
+        m2 = rg0 * cc0
+
+      with ops.device('/device:CPU:0'):
+        r1 = 1000.0 * m2 + rc1 * cg1
+      with ops.device('/device:GPU:0'):
+        r2 = 1000.0 * m1 + rg1 * cc1
+
+      return r1, r2, m2, m1
+
+    r1, r2, m2, m1 = func(rc0, cc0, cg0, rc1, cg1, rg0, rg1, cc1)
+    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertRegexpMatches(m2.backing_device, 'GPU')
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    self.assertEqual(m1.numpy(), 34.0)
+    self.assertEqual(r1.numpy(), 55000.0 + 3.0 * 19.0)
+    self.assertEqual(m2.numpy(), 55.0)
+    self.assertEqual(r2.numpy(), 34000.0 + 13.0 * 7.0)
+
+  def testArgumentPrunning(self):
+    """Tests functions taking unnecessary arguments."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      c1 = constant_op.constant(5.0)
+      c2 = constant_op.constant(7.0)
+
+    with ops.device('/device:GPU:0'):
+      g1 = constant_op.constant(11.0)
+      g2 = constant_op.constant(13.0)
+      g3 = constant_op.constant(17.0)
+
+    @function.defun
+    def func(g1, g2, c1, g3, c2):  # pylint: disable=unused-argument
+      # arguments g1 and g2 are unused and can be pruned by grappler.
+      return c1 * g3 * c2
+
+    result = func(g1, g2, c1, g3, c2)
+    self.assertEqual(result.numpy(), 5.0 * 7.0 * 17.0)
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

@@ -52,12 +52,6 @@ class BufferMap {
   // shallow copy.
   void SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor);
 
-  // Removes any association of a tensor and the given 'tensor_index'.
-  void RemoveTensor(int tensor_index);
-
-  // Removes all *TF* tensors that are not contained in the given 'keep' set.
-  void RemoveTensorsNotInSet(const std::set<int>& keep);
-
   // Same as above but creates a new tensorflow::Tensor with a copy of the
   // given TfLiteTensor's data.
   void SetFromTfLite(int tensor_index, const TfLiteTensor* tensor);

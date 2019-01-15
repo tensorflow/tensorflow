@@ -1702,6 +1702,10 @@ std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
     extra.push_back(StrCat("feature_group_count=", feature_group_count_));
   }
 
+  if (batch_group_count_ != 1) {
+    extra.push_back(StrCat("batch_group_count=", batch_group_count_));
+  }
+
   string precision_config_string = PrecisionConfigToString(precision_config_);
   if (!precision_config_string.empty()) {
     extra.push_back(precision_config_string);

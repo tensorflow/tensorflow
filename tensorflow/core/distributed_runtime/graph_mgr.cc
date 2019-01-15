@@ -451,7 +451,8 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
       cancellation_manager,
       [item, rendezvous, ce_handle, done, start_time_usecs](const Status& s) {
         done(s);
-        UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+        metrics::UpdateGraphExecTime(Env::Default()->NowMicros() -
+                                     start_time_usecs);
         rendezvous->Unref();
         item->Unref();
         delete ce_handle;

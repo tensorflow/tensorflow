@@ -254,6 +254,11 @@ class Tests(test.TestCase):
         "Value for attr 'num_split' of -1 must be at least minimum 1"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=-1)
 
+    with self.assertRaisesRegexp(
+        Exception,
+        "Value for attr 'num_split' of 0 must be at least minimum 1"):
+      array_ops.split(value=[1, 2, 3], num_or_size_splits=0)
+
 
 if __name__ == "__main__":
   test.main()

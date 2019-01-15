@@ -190,6 +190,20 @@ class TestAstEdits(test_util.TensorFlowTestCase):
     _, new_text = self._upgrade(RenameKeywordSpec(), text)
     self.assertEqual(new_text, text)
 
+  def testKeywordReorderWithParens(self):
+    """Test that we get the expected result if there are parens around args."""
+    text = "f((a), ( ( b ) ))\n"
+    acceptable_outputs = [
+        # No change is a valid output
+        text,
+        # Also cases where all arguments are fully specified are allowed
+        "f(a=(a), b=( ( b ) ))\n",
+        # Making the parens canonical is ok
+        "f(a=(a), b=((b)))\n",
+    ]
+    _, new_text = self._upgrade(ReorderKeywordSpec(), text)
+    self.assertIn(new_text, acceptable_outputs)
+
   def testKeywordReorder(self):
     """Test that we get the expected result if kw2 is now before kw1."""
     text = "f(a, b, kw1=c, kw2=d)\n"

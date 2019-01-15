@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import tempfile
 
@@ -36,9 +37,9 @@ from tensorflow.python.training.checkpointable import tracking
 
 class LoadTest(test.TestCase):
 
-  def cycle(self, obj):
+  def cycle(self, obj, signatures=None):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-    save.save(obj, path, signatures={})
+    save.save(obj, path, signatures=signatures or {})
     return load.load(path)
 
   def test_structure_import(self):
@@ -151,6 +152,19 @@ class LoadTest(test.TestCase):
     imported = self.cycle(root)
     self.assertEqual(4., imported.f(constant_op.constant(2.0)).numpy())
 
+  def test_explicit_save_signature(self):
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    root = tracking.Checkpointable()
+    root.f = func
+
+    imported = self.cycle(
+        root, {"f": root.f.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.float32))})
+    self.assertEqual(4., imported.f(constant_op.constant(2.0)).numpy())
+
   def test_nested_functions(self):
     f = def_function.function(
         lambda x: x*2.0,
@@ -183,6 +197,68 @@ class LoadTest(test.TestCase):
 
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+
+  def test_structured_inputs(self):
+
+    def func(x, training=True):
+      # x is a nested structure, we care about one particular tensor.
+      _, (a, b) = x
+      if training:
+        return 2 * a["a"] + b
+      else:
+        return 7
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(func)
+
+    x = constant_op.constant(10)
+    y = constant_op.constant(11)
+
+    input1 = [6, ({"a": x}, y)]
+    input2 = [7, ({"a": x}, y)]  # Not compatible with input1 signature.
+    input3 = [6, ({"a": y}, x)]  # Compatible with input1 signature.
+
+    # Note: by only calling f(input1) before serialization, only inputs with
+    # matching signature will be valid on the loaded model.
+    self.assertEqual(31, root.f(input1).numpy())
+
+    imported = self.cycle(root)
+
+    with self.assertRaisesRegexp(AssertionError,
+                                 "Could not find matching function to call.*"):
+      imported.f(input2)
+
+    self.assertEqual(31, imported.f(input1).numpy())
+    self.assertEqual(32, imported.f(input3).numpy())
+
+  def test_structured_output(self):
+
+    # Use fields with non-alphabetical order
+    named_tuple_type = collections.namedtuple("NamedTupleHello", ["b", "a"])
+
+    def func(input1, input2):
+      named_tuple = named_tuple_type(a=input1 + input2, b=input1 * input2)
+      return [named_tuple, input2, {"x": 0.5}]
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(func)
+
+    result = root.f(constant_op.constant(2), constant_op.constant(3))
+
+    self.assertEqual(5, result[0].a.numpy())
+    self.assertEqual(6, result[0].b.numpy())
+    self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
+    self.assertEqual(3, result[1].numpy())
+    self.assertEqual(0.5, result[2]["x"].numpy())
+
+    imported = self.cycle(root)
+
+    result = imported.f(constant_op.constant(2), constant_op.constant(5))
+    self.assertEqual(7, result[0].a.numpy())
+    self.assertEqual(10, result[0].b.numpy())
+    self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
+    self.assertEqual(5, result[1].numpy())
+    self.assertEqual(0.5, result[2]["x"].numpy())
 
   def test_positional_arguments(self):
     def func(x, training=False, abc=7.1, defg=7.7):
@@ -311,6 +387,57 @@ class LoadTest(test.TestCase):
     self.assertTrue(callable(imported))
     x = constant_op.constant(1.0)
     self.assertAllEqual(imported(x).numpy(), 3.0)
+
+  def test_soft_matching(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)])
+    def func(x):
+      return 2 * x
+
+    root = tracking.Checkpointable()
+    root.f = func
+
+    self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
+    self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
+
+    concrete_functions = root.f._list_all_concrete_functions_for_serialization()
+    self.assertEqual(1, len(concrete_functions))  # pylint: disable=protected-access
+
+    imported = self.cycle(root)
+
+    with self.assertRaises(AssertionError):
+      # We cannot call the function with a constant of shape ().
+      self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+
+    # TODO(vbardiovsky): When classes are revived with input_signatures, we
+    # should also check that the calls below are not generating any more
+    # concrete functions.
+    self.assertAllEqual([2, 4, 6, 8],
+                        imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
+    self.assertAllEqual([2, 4, 6],
+                        imported.f(constant_op.constant([1, 2, 3])).numpy())
+
+  def test_dict(self):
+    root = tracking.Checkpointable()
+    root.variables = dict(a=variables.Variable(1.))
+    root.variables["b"] = variables.Variable(2.)
+    root.variables["c"] = 1
+    imported = self.cycle(root)
+    self.assertEqual(1., imported.variables["a"].numpy())
+    self.assertEqual(2., imported.variables["b"].numpy())
+    self.assertEqual(set(["a", "b"]), set(imported.variables.keys()))
+
+  def test_list(self):
+    root = tracking.Checkpointable()
+    root.variables = [variables.Variable(1.)]
+    root.variables.append(1)
+    root.variables.append(variables.Variable(3.))
+    imported = self.cycle(root)
+    self.assertEqual(1., imported.variables[0].numpy())
+    self.assertEqual(3., imported.variables[2].numpy())
+    self.assertIs(None, imported.variables[1])
+    self.assertEqual(3, len(imported.variables))
 
 
 if __name__ == "__main__":

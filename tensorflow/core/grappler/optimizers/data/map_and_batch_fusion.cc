@@ -98,8 +98,10 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
 
 }  // namespace
 
-Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                   GraphDef* output) {
+Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                                  const GrapplerItem& item,
+                                                  GraphDef* output,
+                                                  OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   std::set<string> nodes_to_delete;
@@ -120,11 +122,13 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* new_node =
         graph.AddNode(MakeMapAndBatchNode(*map_node, batch_node, &graph));
-    graph.UpdateFanouts(batch_node.name(), new_node->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(batch_node.name(), new_node->name()));
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());
     nodes_to_delete.insert(batch_node.name());
+    stats->num_changes++;
   }
 
   graph.DeleteNodes(nodes_to_delete);
@@ -139,5 +143,5 @@ void MapAndBatchFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapAndBatchFusion, "map_and_batch_fusion");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

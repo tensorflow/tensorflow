@@ -1290,15 +1290,28 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                            CUdevice device) {
   *cc_major = 0;
   *cc_minor = 0;
-  CUresult result = cuDeviceComputeCapability(cc_major, cc_minor, device);
-  if (result == CUDA_SUCCESS) {
-    return port::Status::OK();
+
+  CUresult res = cuDeviceGetAttribute(
+      cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device);
+  if (res != CUDA_SUCCESS) {
+    return port::Status(
+        port::error::INTERNAL,
+        port::Printf(
+            "failed to get compute capability major for device: %s; %d",
+            ToString(res).c_str(), device));
   }
 
-  return port::Status(
-      port::error::INTERNAL,
-      port::Printf("failed to get compute capability for device: %s; %d",
-                   ToString(result).c_str(), device));
+  res = cuDeviceGetAttribute(
+      cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device);
+  if (res != CUDA_SUCCESS) {
+    return port::Status(
+        port::error::INTERNAL,
+        port::Printf(
+            "failed to get compute capability minor for device: %s; %d",
+            ToString(res).c_str(), device));
+  }
+
+  return port::Status::OK();
 }
 
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
@@ -1392,17 +1405,6 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   CUresult res = cuDriverGetVersion(driver_version);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to query driver version: " << ToString(res);
-    return false;
-  }
-
-  return true;
-}
-
-/* static */ bool CUDADriver::GetDeviceProperties(CUdevprop *device_properties,
-                                                  int device_ordinal) {
-  CUresult res = cuDeviceGetProperties(device_properties, device_ordinal);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to query device properties: " << ToString(res);
     return false;
   }
 

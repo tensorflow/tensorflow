@@ -59,6 +59,23 @@ void VerifyGraph(const Graph& graph,
               UnorderedElementsAreArray(expected_collective_control_edges));
 }
 
+// Verifies that the `wait_for` attribute on collective nodes matches
+// `wait_for_map`.
+void VerifyAttrs(
+    const Graph& graph,
+    const std::unordered_map<string, std::vector<int32>> wait_for_map) {
+  for (const Node* node : graph.nodes()) {
+    if (node->IsCollective() ||
+        wait_for_map.find(node->name()) == wait_for_map.end()) {
+      continue;
+    }
+    std::vector<int32> wait_for_actual;
+    TF_EXPECT_OK(GetNodeAttr(node->attrs(), "wait_for", &wait_for_actual));
+    auto wait_for_expected = wait_for_map.at(node->name());
+    EXPECT_THAT(wait_for_actual, UnorderedElementsAreArray(wait_for_expected));
+  }
+}
+
 Node* CollectiveReduceNode(GraphDefBuilder* builder, Node* input,
                            const string& name, const string& device,
                            int instance_key) {
@@ -123,9 +140,15 @@ std::unique_ptr<Graph> InitGraph() {
 // added after calling `OrderCollectives`: c2_0 -> c3_0 and c2_1 -> c3_1.
 TEST(CollectiveOrderTest, SimpleOrder) {
   std::unique_ptr<Graph> graph = InitGraph();
-  TF_EXPECT_OK(OrderCollectives(graph.get()));
+  TF_EXPECT_OK(OrderCollectives(graph.get(), GraphCollectiveOrder::kEdges));
   VerifyGraph(*graph, {"c1_0", "c1_1", "c2_0", "c2_1", "c3_0", "c3_1"},
               {{"c2_0", "c3_0"}, {"c2_1", "c3_1"}});
+}
+
+TEST(CollectiveOrderTest, SimpleOrderAttr) {
+  std::unique_ptr<Graph> graph = InitGraph();
+  TF_EXPECT_OK(OrderCollectives(graph.get(), GraphCollectiveOrder::kAttrs));
+  VerifyAttrs(*graph, {{"c3_0", {2}}, {"c3_1", {2}}});
 }
 
 // Initialize the following graph:
@@ -162,12 +185,50 @@ std::unique_ptr<Graph> InitGraph2() {
 }
 
 // Tests that in the graph created by `InitGraph2`, we add the following control
-// edges after calling `OrderCollectives`: c2 -> c3, c3 -> c4, and c2 -> c4.
+// edges after calling `OrderCollectives`: c2 -> c3, c3 -> c4.  c2->c4 is
+// pruned because it follows from the other two edges.
 TEST(CollectiveOrderTest, SimpleOrder2) {
   std::unique_ptr<Graph> graph = InitGraph2();
-  TF_EXPECT_OK(OrderCollectives(graph.get()));
-  VerifyGraph(*graph, {"c1", "c2", "c3", "c4"},
-              {{"c2", "c3"}, {"c3", "c4"}, {"c2", "c4"}});
+  TF_EXPECT_OK(OrderCollectives(graph.get(), GraphCollectiveOrder::kEdges));
+  VerifyGraph(*graph, {"c1", "c2", "c3", "c4"}, {{"c2", "c3"}, {"c3", "c4"}});
+}
+
+// Initialize the following graph:
+//
+//         w   x   y   z
+//         |   |   |   |
+//         c1  c2  c3  c4
+//
+std::unique_ptr<Graph> InitGraphForPruning() {
+  GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+  const string dev0 = "/job:localhost/replica:0/task:0/device:CPU:0";
+  Node* w = ops::SourceOp("TestParams",
+                          builder.opts().WithName("w").WithDevice(dev0));
+  Node* x = ops::SourceOp("TestParams",
+                          builder.opts().WithName("x").WithDevice(dev0));
+  Node* y = ops::SourceOp("TestParams",
+                          builder.opts().WithName("y").WithDevice(dev0));
+  Node* z = ops::SourceOp("TestParams",
+                          builder.opts().WithName("z").WithDevice(dev0));
+  CollectiveReduceNode(&builder, w, "c1", dev0, 1);
+  CollectiveReduceNode(&builder, x, "c2", dev0, 2);
+  CollectiveReduceNode(&builder, y, "c3", dev0, 3);
+  CollectiveReduceNode(&builder, z, "c4", dev0, 4);
+
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  Status s = GraphDefBuilderToGraph(builder, graph.get());
+  if (!s.ok()) {
+    LOG(FATAL) << "Error building graph " << s;
+  }
+  return graph;
+}
+
+// Tests that in the graph created by `InitGraphForPruning`, we only add c1 ->
+// c2, c2 -> c3, c3 -> c4, and other edges are pruned away.
+TEST(CollectiveOrderTest, Pruning) {
+  std::unique_ptr<Graph> graph = InitGraphForPruning();
+  TF_EXPECT_OK(OrderCollectives(graph.get(), GraphCollectiveOrder::kAttrs));
+  VerifyAttrs(*graph, {{"c4", {3}}, {"c3", {2}}, {"c2", {1}}});
 }
 
 }  // namespace

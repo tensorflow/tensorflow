@@ -871,9 +871,7 @@ DotGeneral performs the sum of products over contracting dimensions specified
 in 'dimension_numbers'.
 
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
-to be the same, but must be listed in the same order in both
-'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
-There must be exactly one contracting dimension on both 'lhs' and 'rhs'.
+to be the same and but must have the same dimension sizes.
 
 Example with contracting dimension numbers:
 
@@ -892,10 +890,8 @@ DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
 {15.0, 30.0} }
 ```
 
-Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
-dimension number, must be listed in the same order in both arrays, must
-have the same dimension sizes, and must be ordered before contracting and
-non-contracting/non-batch dimension numbers.
+Associated batch dimension numbers from the 'lhs' and 'rhs' must
+have the same dimension sizes.
 
 Example with batch dimension numbers (batch size 2, 2x2 matrices):
 

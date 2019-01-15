@@ -349,6 +349,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.map(map_fn, num_parallel_calls)
       dataset = dataset.batch(100)
       options = dataset_ops.Options()
+      options.experimental_optimization.apply_default_optimizations = False
       options.experimental_optimization.map_and_batch_fusion = False
       dataset = dataset.with_options(options)
       return dataset
@@ -357,6 +358,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     optimized = _make_dataset(["Batch", map_node_name]
                               if expect_optimized else [map_node_name, "Batch"])
     options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_vectorization = True
     optimized = optimized.with_options(options)
     return unoptimized, optimized
