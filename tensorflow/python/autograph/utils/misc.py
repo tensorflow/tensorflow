@@ -23,7 +23,7 @@ from tensorflow.python.ops import array_ops
 
 
 def alias_tensors(*args):
-  """Wrap any Tensor arguments with an identity op.
+  """Wraps any Tensor arguments with an identity op.
 
   Any other argument, including Variables, is returned unchanged.
 
@@ -48,3 +48,10 @@ def alias_tensors(*args):
     return alias_if_tensor(args[0])
 
   raise ValueError('at least one argument required')
+
+
+def capitalize_initial(s):
+  """Capitalizes the initial of a string only."""
+  if s:
+    return s[0].upper() + s[1:]
+  return s
