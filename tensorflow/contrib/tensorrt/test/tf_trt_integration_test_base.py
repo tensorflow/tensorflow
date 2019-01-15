@@ -40,7 +40,15 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
 TfTrtIntegrationTestParams = namedtuple("TfTrtIntegrationTestParams", [
-    "gdef", "input_names", "input_dims", "output_names", "expected_output_dims"
+    "gdef",
+    # A list of names of the input placeholder nodes.
+    "input_names",
+    # A list of list of output shapes of the input placeholder nodes.
+    "input_dims",
+    # A list of names of the output identity nodes.
+    "output_names",
+    # A list of list of expected output shapes of the output identity nodes.
+    "expected_output_dims"
 ])
 
 RunParams = namedtuple("RunParams", [
@@ -159,10 +167,19 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
+    batch_list
+    for dims_list in self._GetParamsCached().input_dims:
+      if not len(dims_list):
+        continue
+      # Each list of shapes should have same batch size.
+      input_batches = [dims[0] for dims in dims_list]
+      assert max(input_batches) == min(input_batches)
+      batch_list.append(input_batches[0])
     return ConversionParams(
-        max_batch_size=max([
-            dims[0] for inp in self._GetParamsCached().input_dims if len(inp) for dims in inp
-        ]),
+        # We use the minimum of all the batch sizes, so when multiple different
+        # input shapes are provided it'll always create new engines in the
+        # cache, and we can therefore test the cache behavior.
+        max_batch_size=min(batch_list),
         max_workspace_size_bytes=1 << 25,
         precision_mode=run_params.precision_mode,
         minimum_segment_size=2,
@@ -317,8 +334,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             output_len = len(params.expected_output_dims[ind])
             self.assertEqual(output_len, len(new_val))
             for i in range(output_len):
-              self.assertEqual(list(params.expected_output_dims[ind][i]),
-                               list(new_val[i].shape))
+              self.assertEqual(
+                  list(params.expected_output_dims[ind][i]),
+                  list(new_val[i].shape))
             if val is not None:
               self.assertAllClose(val, new_val, atol=1.e-06, rtol=1.e-06)
             val = new_val
@@ -497,7 +515,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         # seq = np.arange(np.prod(dims))
         # seq.resize(dims)
         # input_data.append(scale * seq.astype(dtype))
-        current_input_data.append((scale * np.random.random_sample(dims)).astype(dtype))
+        current_input_data.append(
+            (scale * np.random.random_sample(dims)).astype(dtype))
       inputs_data.append(current_input_data)
 
     self._VerifyGraphDef(run_params, input_gdef, GraphState.ORIGINAL)
