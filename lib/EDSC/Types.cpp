@@ -464,5 +464,22 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Stmt &stmt) {
   return os;
 }
 
+Indexed Indexed::operator[](llvm::ArrayRef<Expr> indices) const {
+  Indexed res(base);
+  res.indices = llvm::SmallVector<Expr, 4>(indices.begin(), indices.end());
+  return res;
+}
+
+Indexed Indexed::operator[](llvm::ArrayRef<Bindable> indices) const {
+  return (*this)[llvm::ArrayRef<Expr>{indices.begin(), indices.end()}];
+}
+
+Stmt Indexed::operator=(Expr expr) { // NOLINT: unconventional-assing-operator
+  assert(!indices.empty() && "Expected attached indices to Indexed");
+  assert(base);
+  Stmt stmt(store(expr, base, indices));
+  indices.clear();
+  return stmt;
+}
 } // namespace edsc
 } // namespace mlir

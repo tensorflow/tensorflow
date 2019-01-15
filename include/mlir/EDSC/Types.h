@@ -477,6 +477,47 @@ Stmt ForNest(llvm::MutableArrayRef<Bindable> indices,
              llvm::ArrayRef<Bindable> lbs, llvm::ArrayRef<Bindable> ubs,
              llvm::ArrayRef<Bindable> steps,
              llvm::ArrayRef<Stmt> enclosedStmts);
+
+/// This helper class exists purely for sugaring purposes and allows writing
+/// expressions such as:
+///
+/// ```mlir
+///    Indexed A(...), B(...), C(...);
+///    ForNest(ivs, zeros, shapeA, ones, {
+///      C[ivs] = A[ivs] + B[ivs]
+///    });
+/// ```
+struct Indexed {
+  Indexed(Bindable m) : base(m), indices() {}
+
+  /// Returns a new `Indexed`. As a consequence, an Indexed with attached
+  /// indices can never be reused unless it is captured (e.g. via a Stmt).
+  /// This is consistent with SSA behavior in MLIR but also allows for some
+  /// minimal state and sugaring.
+  Indexed operator[](llvm::ArrayRef<Expr> indices) const;
+  Indexed operator[](llvm::ArrayRef<Bindable> indices) const;
+
+  /// Returns a new `Stmt`.
+  /// Emits a `store` and clears the attached indices.
+  Stmt operator=(Expr expr); // NOLINT: unconventional-assing-operator
+
+  /// Implicit conversion.
+  /// Emits a `load` and clears indices.
+  operator Expr() const {
+    assert(!indices.empty() && "Expected attached indices to Indexed");
+    return load(base, indices);
+  }
+
+  /// Operator overloadings.
+  Expr operator+(Expr e) const { return static_cast<Expr>(*this) + e; }
+  Expr operator-(Expr e) const { return static_cast<Expr>(*this) - e; }
+  Expr operator*(Expr e) const { return static_cast<Expr>(*this) * e; }
+
+private:
+  Bindable base;
+  llvm::SmallVector<Expr, 4> indices;
+};
+
 } // namespace edsc
 } // namespace mlir
 
