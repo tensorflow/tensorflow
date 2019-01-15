@@ -482,7 +482,7 @@ EngineContext* TRTEngineOp::GetEngine(
     if (max_batch_size < batch_size) {
       return &empty_context;
     }
-    return cache.at(input_shapes).get();
+    return cache.at(engine_input_shapes).get();
   }  // static_engine_
 
   // Handle the dynamic engine case.
@@ -503,10 +503,8 @@ EngineContext* TRTEngineOp::GetEngine(
       cached_engine_batch_sizes_.push_back(batch_size);
     }
   }
-  tensorflow::Status engine_found_status;
-  cache.at(engine_input_shapes, &engine_found_status);
 
-  if (!engine_found_status.ok()) {
+  if (!cache.count(engine_input_shapes)) {
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()

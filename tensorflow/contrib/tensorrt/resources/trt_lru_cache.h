@@ -38,10 +38,10 @@ class LRUCache {
 
   size_t size() const { return objects_.size(); }
 
-  size_t count(const key_type& k) const { return objects_.count(k); }
+  size_t count(const key_type& key) const { return objects_.count(key); }
 
-  value_type& at(key_type k) {
-    return Touch(k);
+  value_type& at(const key_type& key) {
+    return Touch(key);
   }
 
   const_iterator begin() const { return objects_.begin(); }
@@ -73,7 +73,7 @@ class LRUCache {
   value_type& Touch(const key_type& key) {
     // Check that the key exists, and let it return std::out_of_range error if
     // not.
-    value_type& value = objects_.at(k);
+    value_type& value = objects_.at(key);
     TouchNoCheck(key);
     return value;
   }
