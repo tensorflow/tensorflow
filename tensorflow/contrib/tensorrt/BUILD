@@ -567,8 +567,8 @@ cc_library(
     hdrs = ["convert/utils.h"],
     copts = tf_copts(),
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 

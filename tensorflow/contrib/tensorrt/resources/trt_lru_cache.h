@@ -1,5 +1,20 @@
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_TRT_LRU_CACHE_H_
-#define TENSORFLOW_CONTRIB_TENSORRT_TRT_LRU_CACHE_H_
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_LRU_CACHE_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_LRU_CACHE_H_
 
 #include <list>
 #include <unordered_map>
@@ -9,9 +24,9 @@
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "tensorrt/include/NvInfer.h"
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -40,9 +55,7 @@ class LRUCache {
 
   size_t count(const key_type& key) const { return objects_.count(key); }
 
-  value_type& at(const key_type& key) {
-    return Touch(key);
-  }
+  value_type& at(const key_type& key) { return Touch(key); }
 
   const_iterator begin() const { return objects_.begin(); }
   const_iterator end() const { return objects_.end(); }
@@ -111,6 +124,9 @@ struct VectorTensorShapeHasher {
   }
 };
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+
 struct EngineContext {
   EngineContext() {}  // Creates an empty context.
   EngineContext(
@@ -167,10 +183,10 @@ class TRTEngineCacheResource : public tensorflow::ResourceBase {
       cache_;
 };
 
-}  // namespace tensorrt
-}  // namespace tensorflow
-
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_TRT_LRU_CACHE_H_
+}  // namespace tensorrt
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_LRU_CACHE_H_

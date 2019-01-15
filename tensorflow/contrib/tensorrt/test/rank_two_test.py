@@ -65,7 +65,7 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
         input_names=input_names,
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[[tuple(input_dims[1])]])
+        expected_output_dims=[[input_dims[1]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
