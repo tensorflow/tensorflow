@@ -471,9 +471,7 @@ class Function(object):
     """
     ctx = context.context()
 
-    for v in self._func_graph.variables:
-      if v.trainable:
-        tape.variable_accessed(v)
+    tape.variables_accessed(self._func_graph.variables)
 
     tensor_inputs = []
     for i, arg in enumerate(args):

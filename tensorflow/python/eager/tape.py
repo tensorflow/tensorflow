@@ -61,8 +61,9 @@ def watch(tape, tensor):
 
 def watch_variable(tape, variable):
   """Marks this variable to be watched by the given tape."""
-  strategy = distribution_strategy_context.get_strategy()
-  if distribution_strategy_context.get_replica_context():
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  if context:
     variables = [strategy.extended.value_container(variable)]
   else:
     variables = strategy.unwrap(variable)
@@ -76,12 +77,36 @@ def variable_accessed(variable):
   Args:
     variable: variable to be watched.
   """
-  strategy = distribution_strategy_context.get_strategy()
-  if distribution_strategy_context.get_replica_context():
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  if context:
     variables = [strategy.extended.value_container(variable)]
   else:
     variables = strategy.unwrap(variable)
   for var in variables:
+    pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
+
+
+def variables_accessed(variables):
+  """Notifies all tapes in the stack that variables have been accessed.
+
+  Only trainable variables are marked as accessed.
+
+  Args:
+    variables: iterable of variables to mark as accessed.
+  """
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  accessed = []
+  if context:
+    accessed = [strategy.extended.value_container(variable)
+                for variable in variables if variable.trainable]
+  else:
+    for variable in variables:
+      if variable.trainable:
+        accessed.extend(strategy.unwrap(variable))
+
+  for var in accessed:
     pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
 
 
