@@ -4294,6 +4294,31 @@ tf_cuda_cc_test(
 )
 
 tf_kernel_library(
+    name = "stateful_random_ops",
+    prefix = "stateful_random_ops",
+    deps = [
+        ":bounds_check",
+        ":dense_update_functor",
+        ":gather_functor",
+        ":mutex_ops",
+        ":random_op",
+        ":resource_variable_ops",
+        ":scatter_functor",
+        ":state",
+        ":training_op_helpers",
+        ":variable_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:stateful_random_ops_op_lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+tf_kernel_library(
     name = "stateless_random_ops",
     prefix = "stateless_random_ops",
     deps = [
