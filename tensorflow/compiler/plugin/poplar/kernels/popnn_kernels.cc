@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -236,5 +237,107 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(PopnnLstmLayerBackpropOp);
 };
 REGISTER_IPU_OP("PopnnLstmLayerBackprop", PopnnLstmLayerBackpropOp);
+
+class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
+ public:
+  explicit PopnnGroupNorm(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    AddRequiredAttributesToMap();
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_groups", &num_groups_));
+    attribute_map_.AddAttribute("num_groups", num_groups_);
+    float epsilon;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon));
+    attribute_map_.AddAttribute("epsilon", epsilon);
+    std::string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(
+        ctx, FormatFromString(data_format_str, &data_format_),
+        errors::InvalidArgument("Invalid data format: ", data_format_str));
+  }
+
+ public:
+  ~PopnnGroupNorm() override{};
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::PrimitiveType input_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
+
+    xla::XlaOp input = ctx->Input(0);
+    TensorShape input_shape = ctx->InputShape(0);
+
+    const int feature_index =
+        GetTensorFeatureDimIndex(input_shape.dims(), data_format_);
+    attribute_map_.AddAttribute("feature_index", feature_index);
+    const int batch_index =
+        GetTensorBatchDimIndex(input_shape.dims(), data_format_);
+
+    const auto num_batches = input_shape.dim_size(batch_index);
+    const auto num_channels = input_shape.dim_size(feature_index);
+
+    xla::XlaBuilder& b = *ctx->builder();
+
+    // All the inputs are arguments.
+    std::vector<xla::XlaOp> args;
+    for (unsigned idx = 0; idx < ctx->num_inputs(); idx++) {
+      args.push_back(ctx->Input(idx));
+    }
+
+    // Validate scale and offset shapes are per channel.
+    TensorShape expected_scale_offset_shape;
+    TensorShapeUtils::MakeShape(std::vector<int64>({num_channels}),
+                                &expected_scale_offset_shape);
+    OP_REQUIRES(
+        ctx, ctx->InputShape(1) == expected_scale_offset_shape,
+        errors::InvalidArgument(absl::StrFormat(
+            "The scale tensor needs to be of shape [%u].", num_channels)));
+    OP_REQUIRES(
+        ctx, ctx->InputShape(2) == expected_scale_offset_shape,
+        errors::InvalidArgument(absl::StrFormat(
+            "The offset tensor needs to be of shape [%u].", num_channels)));
+
+    if (ctx->num_inputs() == 5) {
+      // Inference
+      // Validate mean/variance shape is per group
+      TensorShape expected_mean_variance_shape;
+      TensorShapeUtils::MakeShape(
+          std::vector<int64>({num_groups_ * num_batches}),
+          &expected_mean_variance_shape);
+      OP_REQUIRES(ctx, ctx->InputShape(3) == expected_mean_variance_shape,
+                  errors::InvalidArgument(absl::StrFormat(
+                      "The mean tensor needs to be of shape [%u].",
+                      num_groups_ * num_batches)));
+      OP_REQUIRES(ctx, ctx->InputShape(4) == expected_mean_variance_shape,
+                  errors::InvalidArgument(absl::StrFormat(
+                      "The variance tensor needs to be of shape [%u].",
+                      num_groups_ * num_batches)));
+      xla::Shape output_shape = TensorShapeToXLAShape(input_type, input_shape);
+      xla::XlaOp normalized = xla::CustomCall(
+          &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
+                                             PoplibsOp::GroupNormInference),
+          args, output_shape, attribute_map_.Serialise());
+      ctx->SetOutput(0, normalized);
+
+    } else {
+      LOG(FATAL) << "Unsupported use of PopnnGroupNorm.";
+    }
+  }
+
+ protected:
+  const absl::flat_hash_set<int64> AllocatingIndexes() { return {}; }
+
+  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
+    // Scale and offset layouts depend on the passed in activations.
+    return {{1, 0}, {2, 0}};
+  };
+
+  const uint64 NumberOfInplaceOperands() override { return 0; }
+
+ private:
+  int32 num_groups_;
+  TensorFormat data_format_;
+  TF_DISALLOW_COPY_AND_ASSIGN(PopnnGroupNorm);
+};
+REGISTER_IPU_OP("PopnnGroupNormInference", PopnnGroupNorm);
+// REGISTER_IPU_OP("PopnnGroupNormTraining", PopnnGroupNorm);
 
 }  // namespace tensorflow

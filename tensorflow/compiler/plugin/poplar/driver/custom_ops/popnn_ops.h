@@ -45,17 +45,32 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap();
 StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
     poplar::Graph&, CompilerResources&, const std::string&,
     const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
-    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&);
+    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
+    const TensorMap&);
 StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
     poplar::Graph&, CompilerResources&, const std::string&,
     const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
-    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&);
+    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
+    const TensorMap&);
+StatusOr<poplar::Tensor> AllocateNormInferenceAndTrainingOp(
+    poplar::Graph&, CompilerResources&, const std::string&,
+    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
+    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
+    const TensorMap&);
+// StatusOr<poplar::Tensor> AllocateNormGradOp(
+//     poplar::Graph&, CompilerResources&, const std::string&,
+//     const HloInstruction*, const int64, absl::optional<const
+//     HloInstruction*>,
+//     absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&);
 
 // Creating functions.
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
+    poplar::Graph&, CompilerResources&, const HloInstruction*,
+    const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
+StatusOr<poplar::program::Program> CreateGroupNormInferenceOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 }  // namespace poplarplugin

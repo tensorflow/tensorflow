@@ -51,6 +51,20 @@ StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
                                         const std::string& debug_name,
                                         const xla::Shape& shape);
 
+StatusOr<poplar::Tensor> AddNormScaleTensor(poplar::Graph& graph,
+                                            const std::string& debug_name,
+                                            const HloInstruction* layout,
+                                            int64 layout_output_idx,
+                                            const unsigned feature_dimension,
+                                            const TensorMap& tensor_map);
+
+StatusOr<poplar::Tensor> AddNormOffsetTensor(poplar::Graph& graph,
+                                             const std::string& debug_name,
+                                             const HloInstruction* layout,
+                                             int64 layout_output_idx,
+                                             const unsigned feature_dimension,
+                                             const TensorMap& tensor_map);
+
 StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorSource& src,
                                    const xla::Shape& shape,

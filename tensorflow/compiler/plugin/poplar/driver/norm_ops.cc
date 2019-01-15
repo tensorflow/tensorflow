@@ -1,7 +1,7 @@
 #include <algorithm>
 
-#include "tensorflow/compiler/plugin/poplar/driver/batch_norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -18,9 +18,8 @@ namespace pe = popops::expr;
 namespace xla {
 namespace poplarplugin {
 
-std::pair<poplar::Tensor, std::vector<std::size_t>>
-ShuffleBatchNormInputToPoplar(const poplar::Tensor& input,
-                              const unsigned feature_dimension) {
+std::pair<poplar::Tensor, std::vector<std::size_t>> ShuffleNormInputToPoplar(
+    const poplar::Tensor& input, const unsigned feature_dimension) {
   std::vector<std::size_t> non_broadcast_dims;
   poplar::Tensor input_shuffled;
   if (input.rank() == 4) {
@@ -37,7 +36,7 @@ ShuffleBatchNormInputToPoplar(const poplar::Tensor& input,
   return {input_shuffled, non_broadcast_dims};
 }
 
-poplar::Tensor ShuffleBatchNormOutputToTensorflow(
+poplar::Tensor ShuffleNormOutputToTensorflow(
     const poplar::Tensor& output, const unsigned feature_dimension,
     const std::vector<std::size_t>& non_broadcast_dims) {
   poplar::Tensor output_shuffled;
@@ -59,6 +58,18 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
 
   poplar::Graph& graph = GetGraph(res, inst);
 
+  const auto epsilon = batch_inf_inst->epsilon();
+  const unsigned dimension = batch_inf_inst->feature_index();
+
+  return CreateNormInference(NormType::BatchNorm, graph, res, inst, epsilon,
+                             dimension, absl::nullopt, tensor_map);
+}
+
+StatusOr<poplar::program::Program> CreateNormInference(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const HloInstruction* inst, const float epsilon,
+    const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
@@ -71,9 +82,6 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
                       FindInstructionInput(tensor_map, res, inst, 3, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor variance,
                       FindInstructionInput(tensor_map, res, inst, 4, seq));
-
-  const auto epsilon = batch_inf_inst->epsilon();
-  const unsigned dimension = batch_inf_inst->feature_index();
 
   // Special case - zero sized array
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
@@ -88,15 +96,15 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
   std::vector<std::size_t> non_broadcast_dims;
   poplar::Tensor operand_view;
   std::tie(operand_view, non_broadcast_dims) =
-      ShuffleBatchNormInputToPoplar(operand, dimension);
+      ShuffleNormInputToPoplar(operand, feature_dimension);
 
-  auto name = GetDebugName(inst);
+  auto out = norm_graph_caching::DoCachedNormInference(
+      norm_type, graph, res, operand_view, scale, offset, mean, variance,
+      epsilon, optional_num_groups, GetShardingDeviceId(inst), seq,
+      GetDebugName(inst));
 
-  auto out = batch_norm_graph_caching::DoCachedBatchNormInference(
-      graph, res, operand_view, scale, offset, mean, variance, epsilon,
-      GetShardingDeviceId(inst), seq, name);
-
-  out = ShuffleBatchNormOutputToTensorflow(out, dimension, non_broadcast_dims);
+  out =
+      ShuffleNormOutputToTensorflow(out, feature_dimension, non_broadcast_dims);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -109,7 +117,17 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
       Cast<HloBatchNormTrainingInstruction>(inst);
 
   poplar::Graph& graph = GetGraph(res, inst);
+  const auto epsilon = batch_train_inst->epsilon();
+  const unsigned dimension = batch_train_inst->feature_index();
+  return CreateNormTraining(NormType::BatchNorm, graph, res, inst, epsilon,
+                            dimension, absl::nullopt, tensor_map);
+}
 
+StatusOr<poplar::program::Program> CreateNormTraining(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const HloInstruction* inst, const float epsilon,
+    const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
@@ -118,8 +136,6 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor offset,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
-  const auto epsilon = batch_train_inst->epsilon();
-  const unsigned dimension = batch_train_inst->feature_index();
 
   // Special case - zero sized array
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
@@ -142,17 +158,15 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
 
   poplar::Tensor operand_view;
   std::tie(operand_view, non_broadcast_dims) =
-      ShuffleBatchNormInputToPoplar(operand, dimension);
+      ShuffleNormInputToPoplar(operand, feature_dimension);
 
-  auto name = GetDebugName(inst);
   poplar::Tensor out, mean, variance;
+  std::tie(out, mean, variance) = norm_graph_caching::DoCachedNormTraining(
+      norm_type, graph, res, operand_view, scale, offset, epsilon,
+      optional_num_groups, GetShardingDeviceId(inst), seq, GetDebugName(inst));
 
-  std::tie(out, mean, variance) =
-      batch_norm_graph_caching::DoCachedBatchNormTraining(
-          graph, res, operand_view, scale, offset, epsilon,
-          GetShardingDeviceId(inst), seq, name);
-
-  out = ShuffleBatchNormOutputToTensorflow(out, dimension, non_broadcast_dims);
+  out =
+      ShuffleNormOutputToTensorflow(out, feature_dimension, non_broadcast_dims);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, mean));
@@ -168,6 +182,17 @@ StatusOr<poplar::program::Program> CreateBatchNormGrad(
 
   poplar::Graph& graph = GetGraph(res, inst);
 
+  const auto epsilon = batch_grad_inst->epsilon();
+  const unsigned dimension = batch_grad_inst->feature_index();
+  return CreateNormGrad(NormType::BatchNorm, graph, res, inst, epsilon,
+                        dimension, absl::nullopt, tensor_map);
+}
+
+StatusOr<poplar::program::Program> CreateNormGrad(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const HloInstruction* inst, const float epsilon,
+    const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
@@ -180,9 +205,6 @@ StatusOr<poplar::program::Program> CreateBatchNormGrad(
                       FindInstructionInput(tensor_map, res, inst, 3, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor grad_output,
                       FindInstructionInput(tensor_map, res, inst, 4, seq));
-  const auto epsilon = batch_grad_inst->epsilon();
-  const unsigned dimension = batch_grad_inst->feature_index();
-
   // Special case - zero sized array
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     poplar::Tensor operand_grad =
@@ -203,26 +225,25 @@ StatusOr<poplar::program::Program> CreateBatchNormGrad(
     return seq;
   }
 
-  auto name = GetDebugName(inst);
-
   // Reshape the input
   std::vector<std::size_t> non_broadcast_dims;
 
   poplar::Tensor operand_view, grad_output_view;
   std::tie(operand_view, non_broadcast_dims) =
-      ShuffleBatchNormInputToPoplar(operand, dimension);
+      ShuffleNormInputToPoplar(operand, feature_dimension);
   std::tie(grad_output_view, non_broadcast_dims) =
-      ShuffleBatchNormInputToPoplar(grad_output, dimension);
+      ShuffleNormInputToPoplar(grad_output, feature_dimension);
 
   poplar::Tensor operand_grad, scale_grad, offset_grad;
 
   std::tie(operand_grad, scale_grad, offset_grad) =
-      batch_norm_graph_caching::DoCachedBatchNormGrad(
-          graph, res, operand_view, scale, mean, variance, grad_output_view,
-          epsilon, GetShardingDeviceId(inst), seq, name);
+      norm_graph_caching::DoCachedNormGrad(
+          norm_type, graph, res, operand_view, scale, mean, variance,
+          grad_output_view, epsilon, optional_num_groups,
+          GetShardingDeviceId(inst), seq, GetDebugName(inst));
 
-  operand_grad = ShuffleBatchNormOutputToTensorflow(operand_grad, dimension,
-                                                    non_broadcast_dims);
+  operand_grad = ShuffleNormOutputToTensorflow(operand_grad, feature_dimension,
+                                               non_broadcast_dims);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, operand_grad));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, scale_grad));

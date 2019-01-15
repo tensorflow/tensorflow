@@ -44,7 +44,7 @@ bool IsBiasAdd(const HloInstruction*);
 bool IsPopOpsBiasAdd(const xla::HloInstruction*);
 bool IsPopOpsElementwise(const xla::HloInstruction*);
 bool IsPopOpsElementwiseBinary(const xla::HloInstruction*);
-bool IsLayerNormInferenceOrTraining(const xla::HloInstruction*);
+bool IsNormInferenceOrTraining(const xla::HloInstruction*);
 }  // namespace poplarplugin
 }  // namespace xla
 

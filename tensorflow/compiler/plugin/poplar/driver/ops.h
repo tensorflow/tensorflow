@@ -38,6 +38,11 @@ namespace poplarplugin {
 
 struct CompilerResources;
 
+enum class NormType {
+  BatchNorm,
+  GroupNorm,
+};
+
 using TensorKey = std::pair<std::string, int64>;
 using TensorMap = std::map<TensorKey, poplar::Tensor>;
 using TensorMaps = std::map<std::string, TensorMap>;
@@ -281,11 +286,10 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
 StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
                                               const HloInstruction* inst,
                                               TensorMap& tensor_map);
-std::pair<poplar::Tensor, std::vector<std::size_t>>
-ShuffleBatchNormInputToPoplar(const poplar::Tensor& input,
-                              const unsigned feature_dimension);
+std::pair<poplar::Tensor, std::vector<std::size_t>> ShuffleNormInputToPoplar(
+    const poplar::Tensor& input, const unsigned feature_dimension);
 
-poplar::Tensor ShuffleBatchNormOutputToTensorflow(
+poplar::Tensor ShuffleNormOutputToTensorflow(
     const poplar::Tensor& output, const unsigned feature_dimension,
     const std::vector<std::size_t>& non_broadcast_dims);
 
@@ -297,6 +301,24 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
 
 StatusOr<poplar::program::Program> CreateBatchNormGrad(
     CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateNormInference(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const HloInstruction* inst, const float epsilon,
+    const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateNormTraining(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const HloInstruction* inst, const float epsilon,
+    const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateNormGrad(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const HloInstruction* inst, const float epsilon,
+    const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map);
 
 /* Optimization tests */
 

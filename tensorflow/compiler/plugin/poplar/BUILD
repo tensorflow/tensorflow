@@ -144,7 +144,7 @@ cc_library(
 cc_library(
     name = "driver",
     srcs = [
-        "driver/batch_norm_ops.cc",
+        "driver/norm_ops.cc",
         "driver/compiler.cc",
         "driver/conversions.cc",
         "driver/conv_op.cc",
@@ -152,7 +152,7 @@ cc_library(
         "driver/executable.cc",
         "driver/executor.cc",
         "driver/graph_caching_util.cc",
-        "driver/batch_norm_graph_caching.cc",
+        "driver/norm_graph_caching.cc",
         "driver/conv_graph_caching.cc",
         "driver/map_ops.cc",
         "driver/math_ops.cc",
@@ -185,7 +185,7 @@ cc_library(
         "driver/executable.h",
         "driver/executor.h",
         "driver/graph_caching_util.h",
-        "driver/batch_norm_graph_caching.h",
+        "driver/norm_graph_caching.h",
         "driver/conv_graph_caching.h",
         "driver/ops.h",
         "driver/platform.h",
@@ -1027,9 +1027,9 @@ py_test(
 )
 
 py_test(
-    name = "batch_norm_graph_caching_test",
+    name = "norm_graph_caching_test",
     size = "medium",
-    srcs = ["tests/batch_norm_graph_caching_test.py"],
+    srcs = ["tests/norm_graph_caching_test.py"],
     deps = [
         ":test_utils_py",
         ":ipu_ops_py",
@@ -1067,6 +1067,25 @@ py_test(
     deps = [
         ":test_utils_py",
         ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/ops/poplar:poplar"
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "group_norm_test",
+    size = "medium",
+    srcs = ["tests/group_norm_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -1144,7 +1163,7 @@ test_suite(
         "casts_elimination_test",
         "update_op_dependencies_test",
         "fuse_wide_const_test",
-        "batch_norm_graph_caching_test",
+        "norm_graph_caching_test",
         "conv_graph_caching_test",
         "scheduler_test",
         "sharding_pass_test",
@@ -1161,6 +1180,7 @@ test_suite(
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
         "ipu_infeed_test",
+        "group_norm_test",
     ],
 )
 

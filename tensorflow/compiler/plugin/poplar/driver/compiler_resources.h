@@ -19,10 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/batch_norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/conv_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include <poplar/OptionFlags.hpp>
@@ -67,11 +67,11 @@ struct CompilerResources {
 
   conv_graph_caching::WeightUpdateConvolutionGraphCache wu_graph_cache;
 
-  batch_norm_graph_caching::BatchNormInferenceGraphCache bn_inf_graph_cache;
+  norm_graph_caching::NormInferenceGraphCache norm_inf_graph_cache;
 
-  batch_norm_graph_caching::BatchNormTrainingGraphCache bn_tr_graph_cache;
+  norm_graph_caching::NormTrainingGraphCache norm_tr_graph_cache;
 
-  batch_norm_graph_caching::BatchNormGradGraphCache bn_grad_graph_cache;
+  norm_graph_caching::NormGradGraphCache norm_grad_graph_cache;
 
   CompilerResources(const poplar::Device& dev, uint64 seed,
                     poprand::RandomGenMode mode,
