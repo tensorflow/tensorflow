@@ -33,19 +33,16 @@ using namespace mlir::LLVM;
 namespace mlir {
 namespace LLVM {
 namespace detail {
-class LLVMTypeStorage : public ::mlir::detail::TypeStorage {
-public:
+struct LLVMTypeStorage : public ::mlir::detail::TypeStorage {
+  LLVMTypeStorage(llvm::Type *ty) : underlyingType(ty) {}
+
   // LLVM types are pointer-unique.
   using KeyTy = llvm::Type *;
-
-  KeyTy getKey() const { return underlyingType; }
+  bool operator==(const KeyTy &key) const { return key == underlyingType; }
 
   static LLVMTypeStorage *construct(TypeStorageAllocator &allocator,
-                                    llvm::Type *t) {
-    auto *memory = allocator.allocate<LLVMTypeStorage>();
-    auto *storage = new (memory) LLVMTypeStorage;
-    storage->underlyingType = t;
-    return storage;
+                                    llvm::Type *ty) {
+    return new (allocator.allocate<LLVMTypeStorage>()) LLVMTypeStorage(ty);
   }
 
   llvm::Type *underlyingType;

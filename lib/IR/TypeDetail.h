@@ -40,9 +40,9 @@ struct UnknownTypeStorage : public TypeStorage {
 
   /// The hash key used for uniquing.
   using KeyTy = std::pair<Identifier, StringRef>;
-
-  /// Convert to the key type.
-  KeyTy getKey() const { return std::make_pair(dialectNamespace, typeData); }
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(dialectNamespace, typeData);
+  }
 
   static UnknownTypeStorage *construct(TypeStorageAllocator &allocator,
                                        const KeyTy &key) {
@@ -64,9 +64,7 @@ struct IntegerTypeStorage : public TypeStorage {
 
   /// The hash key used for uniquing.
   using KeyTy = unsigned;
-
-  /// Convert to the key type.
-  KeyTy getKey() const { return width; }
+  bool operator==(const KeyTy &key) const { return key == width; }
 
   static IntegerTypeStorage *construct(TypeStorageAllocator &allocator,
                                        KeyTy bitwidth) {
@@ -86,9 +84,9 @@ struct FunctionTypeStorage : public TypeStorage {
 
   /// The hash key used for uniquing.
   using KeyTy = std::pair<ArrayRef<Type>, ArrayRef<Type>>;
-
-  /// Convert to the key type.
-  KeyTy getKey() const { return KeyTy(getInputs(), getResults()); }
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(getInputs(), getResults());
+  }
 
   /// Construction.
   static FunctionTypeStorage *construct(TypeStorageAllocator &allocator,
@@ -125,9 +123,7 @@ struct VectorOrTensorTypeStorage : public TypeStorage {
 
   /// The hash key used for uniquing.
   using KeyTy = Type;
-
-  /// Convert to the key type.
-  KeyTy getKey() const { return elementType; }
+  bool operator==(const KeyTy &key) const { return key == elementType; }
 
   Type elementType;
 };
@@ -141,9 +137,9 @@ struct VectorTypeStorage : public VectorOrTensorTypeStorage {
 
   /// The hash key used for uniquing.
   using KeyTy = std::pair<ArrayRef<int>, Type>;
-
-  /// Convert to the key type.
-  KeyTy getKey() const { return KeyTy(getShape(), elementType); }
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(getShape(), elementType);
+  }
 
   /// Construction.
   static VectorTypeStorage *construct(TypeStorageAllocator &allocator,
@@ -171,9 +167,9 @@ struct RankedTensorTypeStorage : public VectorOrTensorTypeStorage {
 
   /// The hash key used for uniquing.
   using KeyTy = std::pair<ArrayRef<int>, Type>;
-
-  /// Convert to the key type.
-  KeyTy getKey() const { return KeyTy(getShape(), elementType); }
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(getShape(), elementType);
+  }
 
   /// Construction.
   static RankedTensorTypeStorage *construct(TypeStorageAllocator &allocator,
@@ -194,14 +190,14 @@ struct RankedTensorTypeStorage : public VectorOrTensorTypeStorage {
 };
 
 struct UnrankedTensorTypeStorage : public VectorOrTensorTypeStorage {
-  UnrankedTensorTypeStorage(Type elementTy)
-      : VectorOrTensorTypeStorage(elementTy) {}
+  using VectorOrTensorTypeStorage::KeyTy;
+  using VectorOrTensorTypeStorage::VectorOrTensorTypeStorage;
 
   /// Construction.
   static UnrankedTensorTypeStorage *construct(TypeStorageAllocator &allocator,
                                               Type elementTy) {
-    auto *result = allocator.allocate<UnrankedTensorTypeStorage>();
-    return new (result) UnrankedTensorTypeStorage(elementTy);
+    return new (allocator.allocate<UnrankedTensorTypeStorage>())
+        UnrankedTensorTypeStorage(elementTy);
   }
 };
 
@@ -217,10 +213,8 @@ struct MemRefTypeStorage : public TypeStorage {
   // MemRefs are uniqued based on their shape, element type, affine map
   // composition, and memory space.
   using KeyTy = std::tuple<ArrayRef<int>, Type, ArrayRef<AffineMap>, unsigned>;
-
-  /// Convert to the key type.
-  KeyTy getKey() const {
-    return KeyTy(getShape(), elementType, getAffineMaps(), memorySpace);
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(getShape(), elementType, getAffineMaps(), memorySpace);
   }
 
   /// Construction.

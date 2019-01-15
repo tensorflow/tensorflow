@@ -143,6 +143,9 @@ class TypeUniquer {
 public:
   /// Lookup key for storage types.
   struct TypeLookupKey {
+    /// The known derived kind for the storage.
+    unsigned kind;
+
     /// The known hash value of the key.
     unsigned hashValue;
 
@@ -170,18 +173,12 @@ public:
 
     // Generate an equality function for the derived storage.
     std::function<bool(const TypeStorage *)> isEqual =
-        [kind, &derivedKey](const TypeStorage *existing) {
-          // Check that these type storages have the same kind.
-          if (kind != existing->getKind())
-            return false;
-          // Generate a key from the derived storage and compare it to the
-          // current key.
-          auto *derivedStorage = static_cast<const ImplType *>(existing);
-          return derivedStorage->getKey() == derivedKey;
+        [&derivedKey](const TypeStorage *existing) {
+          return static_cast<const ImplType &>(*existing) == derivedKey;
         };
 
     // Lookup an existing type with the given key.
-    TypeStorage *storage = lookup(TypeLookupKey{hashValue, isEqual});
+    TypeStorage *storage = lookup(TypeLookupKey{kind, hashValue, isEqual});
     if (storage)
       return T(storage);
 

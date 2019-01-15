@@ -59,12 +59,10 @@ struct StorageTypeKeyInfo : DenseMapInfo<HashedStorageType> {
   using KeyTy = TypeUniquer::TypeLookupKey;
 
   static HashedStorageType getEmptyKey() {
-    return HashedStorageType{DenseMapInfo<unsigned>::getEmptyKey(),
-                             DenseMapInfo<TypeStorage *>::getEmptyKey()};
+    return HashedStorageType{0, DenseMapInfo<TypeStorage *>::getEmptyKey()};
   }
   static HashedStorageType getTombstoneKey() {
-    return HashedStorageType{DenseMapInfo<unsigned>::getTombstoneKey(),
-                             DenseMapInfo<TypeStorage *>::getTombstoneKey()};
+    return HashedStorageType{0, DenseMapInfo<TypeStorage *>::getTombstoneKey()};
   }
 
   static unsigned getHashValue(const HashedStorageType &key) {
@@ -79,8 +77,9 @@ struct StorageTypeKeyInfo : DenseMapInfo<HashedStorageType> {
   static bool isEqual(const KeyTy &lhs, const HashedStorageType &rhs) {
     if (isEqual(rhs, getEmptyKey()) || isEqual(rhs, getTombstoneKey()))
       return false;
-    // Invoke the equality function on the lookup key.
-    return lhs.isEqual(rhs.storage);
+    // If the lookup kind matches the kind of the storage, then invoke the
+    // equality function on the lookup key.
+    return lhs.kind == rhs.storage->getKind() && lhs.isEqual(rhs.storage);
   }
 };
 

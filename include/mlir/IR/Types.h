@@ -84,8 +84,8 @@ struct UnknownTypeStorage;
 ///      * The key type must have a llvm::DenseMapInfo specialization for
 ///        hashing.
 ///
-///    - Provide a method, 'KeyTy getKey() const', to construct the key type
-///      from an existing storage instance.
+///    - Provide a method, 'bool operator==(const KeyTy &) const', to
+///      compare the storage instance against an instance of the key type.
 ///
 ///    - Provide a construction method:
 ///        'DerivedStorage *construct(TypeStorageAllocator &, const KeyTy &key)'

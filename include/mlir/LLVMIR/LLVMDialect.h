@@ -43,7 +43,7 @@ namespace mlir {
 namespace LLVM {
 
 namespace detail {
-class LLVMTypeStorage;
+struct LLVMTypeStorage;
 }
 
 class LLVMType : public mlir::Type::TypeBase<LLVMType, mlir::Type,
