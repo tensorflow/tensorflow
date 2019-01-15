@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/subgraph_quantizer.h"
 
+#include <algorithm>
 #include <limits>
 
 #include "flatbuffers/flexbuffers.h"
@@ -33,6 +34,8 @@ namespace optimize {
 namespace internal {
 
 namespace {
+const int8_t kMinQuantizedValue = -127;
+const int8_t kMaxQuantizedValue = 127;
 
 TfLiteStatus AddQuantizationParams(const SymmetricPerChannelParams& params,
                                    const uint8_t* buffer_data,
@@ -131,9 +134,7 @@ TfLiteStatus SymmetricPerChannelQuantizeTensor(ModelT* model, TensorT* tensor,
   // Calculate scales per channel
   std::vector<float> scales(channel_dim_size);
   std::vector<float> scale_invs(channel_dim_size);
-  const int8_t kMinValue = -127;
-  const int8_t kMaxValue = 127;
-  const float half_scale = kMaxValue;
+  const float half_scale = kMaxQuantizedValue;
   for (size_t channel_idx = 0; channel_idx < channel_dim_size; channel_idx++) {
     const float half_range = std::max(std::abs(min_vals[channel_idx]),
                                       std::abs(max_vals[channel_idx]));
@@ -159,7 +160,8 @@ TfLiteStatus SymmetricPerChannelQuantizeTensor(ModelT* model, TensorT* tensor,
           const int32_t quantized_value =
               static_cast<int32_t>(TfLiteRound(val * scale_invs[channel_idx]));
           final_buffer[index] = std::min<int8_t>(
-              kMaxValue, std::max<int8_t>(kMinValue, quantized_value));
+              kMaxQuantizedValue,
+              std::max<int8_t>(kMinQuantizedValue, quantized_value));
         }
       }
     }
@@ -288,7 +290,9 @@ TfLiteStatus SubgraphQuantizer::QuantizeOpWithBias(BuiltinOperator op_code,
     return kTfLiteError;
   }
   auto input_tensor_idx = op->inputs[op_tensor_info->activation_input_index];
-  TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, input_tensor_idx));
+  if (IsSubgraphInput(input_tensor_idx)) {
+    TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, input_tensor_idx));
+  }
   auto weights_tensor_idx = op->inputs[op_tensor_info->weights_input_index];
 
   TensorT* weights_tensor = subgraph_->tensors[weights_tensor_idx].get();
@@ -317,12 +321,88 @@ TfLiteStatus SubgraphQuantizer::QuantizeOpWithBias(BuiltinOperator op_code,
   return kTfLiteOk;
 }
 
+TfLiteStatus SubgraphQuantizer::PropagateMinMaxForAvgAndMaxPool(
+    BuiltinOperator op_code, OperatorT* op) {
+  TF_LITE_ENSURE_EQ(this->error_reporter_, op->inputs.size(), 1);
+
+  if (IsSubgraphInput(op->inputs[0])) {
+    TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->inputs[0]));
+  }
+
+  auto output_tensor = subgraph_->tensors[op->outputs[0]].get();
+  if (output_tensor->type != TensorType_FLOAT32) {
+    return kTfLiteOk;
+  }
+  auto input_tensor = subgraph_->tensors[op->inputs[0]].get();
+  if (!input_tensor->quantization) {
+    error_reporter_->Report(
+        "Missing required min/max information for input of operation: %s",
+        EnumNameBuiltinOperator(op_code));
+    return kTfLiteError;
+  }
+  if (input_tensor->quantization->min.size() != 1 ||
+      input_tensor->quantization->max.size() != 1 ||
+      input_tensor->quantization->scale.size() != 1 ||
+      input_tensor->quantization->zero_point.size() != 1) {
+    error_reporter_->Report(
+        "Invalid quantization information for Op: %s, tensor: %s",
+        EnumNameBuiltinOperator(op_code), input_tensor->name.c_str());
+    return kTfLiteError;
+  }
+  auto quant_params = absl::make_unique<QuantizationParametersT>();
+  // Nudge min, max to include the floating point zero.
+  const float min = std::min(0.f, input_tensor->quantization->min[0]);
+  const float max = std::max(0.f, input_tensor->quantization->max[0]);
+  quant_params->min.push_back(min);
+  quant_params->max.push_back(max);
+  quant_params->scale.push_back(input_tensor->quantization->scale[0]);
+  quant_params->zero_point.push_back(input_tensor->quantization->zero_point[0]);
+  // TODO(shashishekhar): Log a warning here if overriding existing
+  // min/max/scales differ from input scales.
+  output_tensor->quantization = std::move(quant_params);
+  output_tensor->type = TensorType_INT8;
+  return kTfLiteOk;
+}
+
+TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSingleInputOutputOp(
+    BuiltinOperator op_code, OperatorT* op) {
+  TF_LITE_ENSURE_EQ(this->error_reporter_, op->inputs.size(), 1);
+  TF_LITE_ENSURE_EQ(this->error_reporter_, op->outputs.size(), 1);
+
+  if (IsSubgraphInput(op->inputs[0])) {
+    TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->inputs[0]));
+  }
+
+  auto output_tensor = subgraph_->tensors[op->outputs[0]].get();
+  if (output_tensor->type != TensorType_FLOAT32) {
+    return kTfLiteOk;
+  }
+  auto quant_params = absl::make_unique<QuantizationParametersT>();
+  TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->outputs[0]));
+  return kTfLiteOk;
+}
+
+bool SubgraphQuantizer::IsSubgraphInput(int32_t tensor_idx) const {
+  return std::find(subgraph_->inputs.begin(), subgraph_->inputs.end(),
+                   tensor_idx) != subgraph_->inputs.end();
+}
+
 TfLiteStatus SubgraphQuantizer::QuantizeOperator(int op_idx) {
   OperatorT* op = subgraph_->operators[op_idx].get();
   const BuiltinOperator op_code =
       model_->operator_codes[op->opcode_index]->builtin_code;
   if (OpHasOptionalBiasTensor(op_code)) {
     return QuantizeOpWithBias(op_code, op);
+  }
+  switch (op_code) {
+    case BuiltinOperator_AVERAGE_POOL_2D:
+    case BuiltinOperator_MAX_POOL_2D:
+      return PropagateMinMaxForAvgAndMaxPool(op_code, op);
+    case BuiltinOperator_SQUEEZE:
+    case BuiltinOperator_SOFTMAX:
+      return AsymmetricQuantizeSingleInputOutputOp(op_code, op);
+    default:
+      return kTfLiteError;
   }
 
   return kTfLiteError;

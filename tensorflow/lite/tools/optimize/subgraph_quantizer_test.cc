@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/subgraph_quantizer.h"
+#include <algorithm>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/optimize/subgraph_quantizer.h"
 #include "tensorflow/lite/tools/optimize/symmetric_per_channel_params.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
@@ -31,22 +33,31 @@ namespace optimize {
 namespace internal {
 namespace {
 
-std::unique_ptr<FlatBufferModel> ReadTestModel1() {
-  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir,
-                                             kModelWithMinus128Plus127Weights);
+std::unique_ptr<FlatBufferModel> ReadModel(const char* model) {
+  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir, model);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
-std::unique_ptr<FlatBufferModel> ReadTestModel2() {
-  auto model_path =
-      tensorflow::io::JoinPath(*g_test_model_dir, kModelWith0Plus10Weights);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+std::unique_ptr<FlatBufferModel> ReadConvModel1() {
+  return ReadModel(kConvModelWithMinus128Plus127Weights);
+}
+
+std::unique_ptr<FlatBufferModel> ReadConvModel2() {
+  return ReadModel(kConvModelWith0Plus10Weights);
+}
+
+std::unique_ptr<FlatBufferModel> ReadSoftmaxModel() {
+  return ReadModel(kSingleSoftmaxModelMinMinus5MaxPlus5);
+}
+
+std::unique_ptr<FlatBufferModel> ReadAvgPoolModel() {
+  return ReadModel(kSingleAvgPoolModelMinMinus5MaxPlus5);
 }
 
 TEST(SubgraphQuantizerTest, VerifyConvQuantizationWithUnitScale) {
   ASSERT_TRUE(g_test_model_dir);
   ASSERT_FALSE(g_test_model_dir->empty());
-  auto test_model = ReadTestModel1();
+  auto test_model = ReadConvModel1();
   ASSERT_TRUE(test_model);
   auto readonly_model = test_model->GetModel();
   ASSERT_TRUE(readonly_model);
@@ -145,7 +156,7 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantizationWithUnitScale) {
 TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
   ASSERT_TRUE(g_test_model_dir);
   ASSERT_FALSE(g_test_model_dir->empty());
-  auto test_model = ReadTestModel2();
+  auto test_model = ReadConvModel2();
   ASSERT_TRUE(test_model);
   auto readonly_model = test_model->GetModel();
   ASSERT_TRUE(readonly_model);
@@ -235,6 +246,129 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
                   scale / 2);
     }
   }
+}
+
+void VerifyAsymmetricQuantizationScale(
+    const QuantizationParameters& float_quant_params,
+    const QuantizationParametersT& quantized_quant_params) {
+  const float eps = 1e-7;
+  ASSERT_EQ(float_quant_params.min()->size(), 1);
+  ASSERT_EQ(float_quant_params.max()->size(), 1);
+  float float_min = std::min(0.f, float_quant_params.min()->Get(0));
+  float float_max = std::max(0.f, float_quant_params.max()->Get(0));
+
+  ASSERT_EQ(quantized_quant_params.scale.size(), 1);
+  ASSERT_EQ(quantized_quant_params.zero_point.size(), 1);
+
+  float scale = (float_max - float_min) / 255;
+  EXPECT_NEAR(scale, quantized_quant_params.scale[0], eps);
+}
+
+TEST(SubgraphQuantizerTest, VerifySoftmaxQuantization) {
+  ASSERT_TRUE(g_test_model_dir);
+  ASSERT_FALSE(g_test_model_dir->empty());
+  auto test_model = ReadSoftmaxModel();
+  ASSERT_TRUE(test_model);
+  auto readonly_model = test_model->GetModel();
+  ASSERT_TRUE(readonly_model);
+  ASSERT_TRUE(readonly_model->subgraphs());
+  ASSERT_GE(readonly_model->subgraphs()->size(), 1);
+  tflite::ModelT model;
+  readonly_model->UnPackTo(&model);
+  auto subgraph = model.subgraphs[0].get();
+  FailOnErrorReporter error_reporter;
+  SubgraphQuantizer quantizer(&model, subgraph, &error_reporter);
+  auto status = quantizer.QuantizeOperator(0);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  auto op = subgraph->operators[0].get();
+  // Model has a single softmax op.
+  ASSERT_EQ(op->opcode_index, 0);
+  ASSERT_EQ(model.operator_codes[0].get()->builtin_code,
+            BuiltinOperator_SOFTMAX);
+
+  ASSERT_EQ(op->inputs.size(), 1);
+  ASSERT_EQ(op->outputs.size(), 1);
+  auto float_graph = readonly_model->subgraphs()->Get(0);
+
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
+            TensorType_FLOAT32);
+  ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
+            TensorType_FLOAT32);
+
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+
+  auto float_input_quant_params =
+      float_graph->tensors()->Get(op->inputs[0])->quantization();
+  auto input_quant_params =
+      subgraph->tensors[op->inputs[0]]->quantization.get();
+  VerifyAsymmetricQuantizationScale(*float_input_quant_params,
+                                    *input_quant_params);
+
+  auto float_output_quant_params =
+      float_graph->tensors()->Get(op->outputs[0])->quantization();
+  auto output_quant_params =
+      subgraph->tensors[op->outputs[0]]->quantization.get();
+  VerifyAsymmetricQuantizationScale(*float_output_quant_params,
+                                    *output_quant_params);
+}
+
+TEST(SubgraphQuantizerTest, VerifyAvgPoolQuantization) {
+  ASSERT_TRUE(g_test_model_dir);
+  ASSERT_FALSE(g_test_model_dir->empty());
+  auto test_model = ReadAvgPoolModel();
+  ASSERT_TRUE(test_model);
+  auto readonly_model = test_model->GetModel();
+  ASSERT_TRUE(readonly_model);
+  ASSERT_TRUE(readonly_model->subgraphs());
+  ASSERT_GE(readonly_model->subgraphs()->size(), 1);
+  tflite::ModelT model;
+  readonly_model->UnPackTo(&model);
+  auto subgraph = model.subgraphs[0].get();
+  FailOnErrorReporter error_reporter;
+  SubgraphQuantizer quantizer(&model, subgraph, &error_reporter);
+  auto status = quantizer.QuantizeOperator(0);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  auto op = subgraph->operators[0].get();
+  // Model has a single AveragePool op.
+  ASSERT_EQ(op->opcode_index, 0);
+  ASSERT_EQ(model.operator_codes[0].get()->builtin_code,
+            BuiltinOperator_AVERAGE_POOL_2D);
+
+  ASSERT_EQ(op->inputs.size(), 1);
+  ASSERT_EQ(op->outputs.size(), 1);
+
+  auto float_graph = readonly_model->subgraphs()->Get(0);
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
+            TensorType_FLOAT32);
+  ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
+            TensorType_FLOAT32);
+
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+
+  auto float_input_quant_params =
+      float_graph->tensors()->Get(op->inputs[0])->quantization();
+  auto input_quant_params =
+      subgraph->tensors[op->inputs[0]]->quantization.get();
+  VerifyAsymmetricQuantizationScale(*float_input_quant_params,
+                                    *input_quant_params);
+
+  auto float_output_quant_params =
+      float_graph->tensors()->Get(op->outputs[0])->quantization();
+  auto output_quant_params =
+      subgraph->tensors[op->outputs[0]]->quantization.get();
+  ASSERT_EQ(float_output_quant_params->min()->size(), 1);
+  ASSERT_EQ(float_output_quant_params->max()->size(), 1);
+  ASSERT_EQ(output_quant_params->min.size(), 1);
+  ASSERT_EQ(output_quant_params->max.size(), 1);
+
+  // Make sure the input min/maxes are propagated to outputs.
+  EXPECT_EQ(input_quant_params->min[0], output_quant_params->min[0]);
+  EXPECT_EQ(input_quant_params->max[0], output_quant_params->max[0]);
+  EXPECT_EQ(input_quant_params->scale[0], output_quant_params->scale[0]);
 }
 
 }  // namespace
