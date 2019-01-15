@@ -35,7 +35,7 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import py_func
-from tensorflow.python.data.util import nest
+from tensorflow.python.util import nest
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
