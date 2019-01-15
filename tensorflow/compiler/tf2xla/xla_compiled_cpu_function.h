@@ -112,7 +112,7 @@ class XlaCompiledCpuFunction {
     RESULTS_PROFILES_AND_TEMPS_ONLY,
   };
 
-  XlaCompiledCpuFunction(
+  explicit XlaCompiledCpuFunction(
       const StaticData& static_data,
       AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS);
   virtual ~XlaCompiledCpuFunction();
