@@ -2989,7 +2989,7 @@ class ConvInputPaddingTest
     : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<ConvPaddingTestcase> {};
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ConvInputPaddingTestCases, ConvInputPaddingTest,
     ::testing::ValuesIn(std::vector<ConvPaddingTestcase>{
         // Merge this edge padding into the conv.
@@ -3097,7 +3097,7 @@ class ConvFilterPaddingTest
     : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<ConvPaddingTestcase> {};
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ConvFilterPaddingTestCases, ConvFilterPaddingTest,
     ::testing::ValuesIn(std::vector<ConvPaddingTestcase>{
         // Can only merge interior padding on the filter's spatial dimensions;
@@ -4197,7 +4197,7 @@ PadReduceWindowEffectiveBroadcastCases() {
   return *cases;
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     PadReduceWindowEffectiveBroadcastInstantiation,
     PadReduceWindowEffectiveBroadcastTest,
     ::testing::ValuesIn(PadReduceWindowEffectiveBroadcastCases()));
@@ -4248,7 +4248,7 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   EXPECT_EQ(has_no_dot, dot_should_be_transformed);
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
     ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
                        ::testing::Values(1, 2), ::testing::Values(F32, BF16)));
@@ -4305,7 +4305,7 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   EXPECT_EQ(has_no_dot, dot_should_be_transformed);
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     DotStrengthReductionTestInstantiation, DotStrengthReductionTest,
     ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
                        ::testing::Values(1, 2), ::testing::Bool(),
@@ -4479,9 +4479,9 @@ TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
   EXPECT_THAT(computation->root_instruction(), operand);
 }
 
-INSTANTIATE_TEST_CASE_P(DotOfConcatSimplificationTestInstantiation,
-                        DotOfConcatSimplificationTest,
-                        ::testing::ValuesIn(kDotOfConcatTestSpecs));
+INSTANTIATE_TEST_SUITE_P(DotOfConcatSimplificationTestInstantiation,
+                         DotOfConcatSimplificationTest,
+                         ::testing::ValuesIn(kDotOfConcatTestSpecs));
 
 struct DotOfGatherTestSpec {
   int64 m;
@@ -4687,7 +4687,7 @@ std::vector<DotOfGatherTestSpec> DotOfGatherPositiveNegativeTests() {
   return all;
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
 
