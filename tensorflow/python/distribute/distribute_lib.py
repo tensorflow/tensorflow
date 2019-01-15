@@ -505,33 +505,6 @@ class DistributionStrategy(object):
     """DEPRECATED: use extended.broadcast_to() instead."""
     return self._extended.broadcast_to(tensor, destinations)
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def run_steps_on_dataset(self, fn, iterator, iterations=1,
-                           initial_loop_values=None):
-    """DEPRECATED: use extended.experimental_run_steps_on_iterator() instead."""
-    return self._extended.experimental_run_steps_on_iterator(
-        fn, iterator, iterations, initial_loop_values)
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def call_for_each_replica(self, fn, *args, **kwargs):
-    """DEPRECATED: use extended.call_for_each_replica() instead."""
-    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
-    # allow transition.
-    a = kwargs.pop("args", None)
-    if a is not None:
-      if args:
-        raise ValueError(
-            "Can't pass *args and args=... to call_for_each_replica")
-      args = a
-    k = kwargs.pop("kwargs", None)
-    if k is not None:
-      if kwargs:
-        raise ValueError(
-            "Can't pass **kwargs and kwargs=... to call_for_each_replica")
-      kwargs = k
-    kwargs.pop("run_concurrently", None)  # Ignore old option.
-    return self._extended.call_for_each_replica(fn, args, kwargs)
-
   def reduce(self, reduce_op, value):
     """Reduce `value` across replicas.
 
@@ -545,58 +518,6 @@ class DistributionStrategy(object):
     """
     _require_cross_replica_context_extended(self._extended)
     return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def batch_reduce(self, aggregation, value_destination_pairs):
-    """DEPRECATED: use extended.batch_reduce_to() instead."""
-    return self._extended.batch_reduce_to(aggregation, value_destination_pairs)
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def update(self, var, fn, *args, **kwargs):
-    """DEPRECATED: use extended.update() instead."""
-    group = kwargs.pop("group", True)
-    # We temporarily support "grouped" in addition to "group" for backward-
-    # compatibility.
-    group = kwargs.pop("grouped", True) and group
-    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
-    # allow transition.
-    a = kwargs.pop("args", None)
-    if a is not None:
-      if args:
-        raise ValueError(
-            "Can't pass *args and args=... to update")
-      args = a
-    k = kwargs.pop("kwargs", None)
-    if k is not None:
-      if kwargs:
-        raise ValueError(
-            "Can't pass **kwargs and kwargs=... to update")
-      kwargs = k
-    return self._extended.update(var, fn, args, kwargs, group)
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def update_non_slot(self, colocate_with, fn, *args, **kwargs):
-    """DEPRECATED: use extended.update_non_slot() instead."""
-    group = kwargs.pop("group", True)
-    # We temporarily support "grouped" in addition to "group" for backward-
-    # compatibility.
-    group = kwargs.pop("grouped", True) and group
-    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
-    # allow transition.
-    a = kwargs.pop("args", None)
-    if a is not None:
-      if args:
-        raise ValueError(
-            "Can't pass *args and args=... to update_non_slot")
-      args = a
-    k = kwargs.pop("kwargs", None)
-    if k is not None:
-      if kwargs:
-        raise ValueError(
-            "Can't pass **kwargs and kwargs=... to update_non_slot")
-      kwargs = k
-    return self._extended.update_non_slot(
-        colocate_with, fn, args, kwargs, group)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
   def unwrap(self, value):
@@ -612,49 +533,15 @@ class DistributionStrategy(object):
     """
     return self._extended._unwrap(value)  # pylint: disable=protected-access
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def value_container(self, value):
-    """DEPRECATED: use extended.value_container() instead."""
-    return self._extended.value_container(value)
-
   @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
   def group(self, value, name=None):
     """Shortcut for `tf.group(self.unwrap(value))`."""
     return self._extended._group(value, name)  # pylint: disable=protected-access
 
   @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def require_static_shapes(self):
-    """DEPRECATED: use extended.require_static_shapes instead."""
-    return self._extended.experimental_require_static_shapes
-
-  @property
   def num_replicas_in_sync(self):
     """Returns number of replicas over which gradients are aggregated."""
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def worker_devices(self):
-    """DEPRECATED: use extended.worker_devices instead."""
-    return self._extended.worker_devices
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def parameter_devices(self):
-    """DEPRECATED: use extended.parameter_devices instead."""
-    return self._extended.parameter_devices
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def non_slot_devices(self, var_list):
-    """DEPRECATED: use extended.non_slot_devices instead."""
-    return self._extended.non_slot_devices(var_list)
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def between_graph(self):
-    """DEPRECATED: use extended.experimental_between_graph instead."""
-    return self._extended.experimental_between_graph
 
   @doc_controls.do_not_generate_docs  # DEPRECATED, being replaced by a new API.
   def configure(self,
@@ -690,24 +577,6 @@ class DistributionStrategy(object):
       The updated copy of the `config_proto`.
     """
     return self._extended._update_config_proto(config_proto)  # pylint: disable=protected-access
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def should_init(self):
-    """DEPRECATED: use extended.should_init instead."""
-    return self._extended.experimental_should_init
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def should_checkpoint(self):
-    """DEPRECATED: use extended.should_checkpoint instead."""
-    return self._extended.should_checkpoint
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def should_save_summary(self):
-    """DEPRECATED: use extended.should_save_summary instead."""
-    return self._extended.should_save_summary
 
   def __deepcopy__(self, memo):
     # First do a regular deepcopy of `self`.
@@ -1241,9 +1110,6 @@ class DistributionStrategyExtended(object):
 
     Args:
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-        DEPRECATED but still accepted values:
-        `tf.VariableAggregation.SUM`,
-        `tf.VariableAggregation.MEAN`,
       value: A per-replica value with one value per replica.
       destinations: A mirrored variable, a per-replica tensor, or a device
         string. The return value will be copied to all destination devices (or
@@ -1256,14 +1122,7 @@ class DistributionStrategyExtended(object):
     # TODO(josh11b): More docstring
     _require_cross_replica_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
-
-    # TODO(priyag): Remove this when all callers have been updated.
-    if isinstance(reduce_op, variable_scope.VariableAggregation):
-      assert reduce_op in (
-          variable_scope.VariableAggregation.SUM,
-          variable_scope.VariableAggregation.MEAN,
-      )
-      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(reduce_op)
+    assert not isinstance(reduce_op, variable_scope.VariableAggregation)
     assert (reduce_op == reduce_util.ReduceOp.SUM or
             reduce_op == reduce_util.ReduceOp.MEAN)
     return self._reduce_to(reduce_op, value, destinations)
@@ -1276,9 +1135,6 @@ class DistributionStrategyExtended(object):
 
     Args:
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-        DEPRECATED but still accepted values:
-        `tf.VariableAggregation.SUM`,
-        `tf.VariableAggregation.MEAN`,
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce_to()` for a description.
 
@@ -1287,14 +1143,7 @@ class DistributionStrategyExtended(object):
     """
     # TODO(josh11b): More docstring
     _require_cross_replica_context_extended(self)
-
-    # TODO(priyag): Remove this when all callers have been updated.
-    if isinstance(reduce_op, variable_scope.VariableAggregation):
-      assert reduce_op in [
-          variable_scope.VariableAggregation.SUM,
-          variable_scope.VariableAggregation.MEAN,
-      ]
-      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(reduce_op)
+    assert not isinstance(reduce_op, variable_scope.VariableAggregation)
     return self._batch_reduce_to(reduce_op, value_destination_pairs)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
@@ -1564,12 +1413,6 @@ class ReplicaContext(object):
     """Which replica is being defined, from 0 to `num_replicas_in_sync - 1`."""
     require_replica_context(self)
     return self._replica_id_in_sync_group
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, use `strategy`
-  def distribution_strategy(self):
-    """DEPRECATED: use `self.strategy` instead."""
-    return self._strategy
 
   @property
   def strategy(self):
