@@ -112,8 +112,8 @@ def optimize_loss(loss,
     clip_gradients: float, callable or `None`. If a float is provided, a global
       clipping is applied to prevent the norm of the gradient from exceeding
       this value. Alternatively, a callable can be provided, e.g.,
-      adaptive_clipping_fn().  This callable takes a `list` of 
-      `(gradients, variables)` `tuple`s and returns the same thing with the 
+      `adaptive_clipping_fn()`.  This callable takes a list of 
+      `(gradients, variables)` tuples and returns the same thing with the 
       gradients modified.
     learning_rate_decay_fn: function, takes `learning_rate` and `global_step`
                             `Tensor`s, returns `Tensor`.
