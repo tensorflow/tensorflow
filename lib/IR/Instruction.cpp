@@ -260,9 +260,26 @@ void Instruction::dropAllReferences() {
   for (auto &op : getInstOperands())
     op.drop();
 
-  if (isTerminator())
-    for (auto &dest : cast<OperationInst>(this)->getBlockOperands())
-      dest.drop();
+  switch (getKind()) {
+  case Kind::For:
+    // Make sure to drop references held by instructions within the body.
+    cast<ForInst>(this)->getBody()->dropAllReferences();
+    break;
+  case Kind::If: {
+    // Make sure to drop references held by instructions within the 'then' and
+    // 'else' blocks.
+    auto *ifInst = cast<IfInst>(this);
+    ifInst->getThen()->dropAllReferences();
+    if (auto *elseBlock = ifInst->getElse())
+      elseBlock->dropAllReferences();
+    break;
+  }
+  case Kind::OperationInst:
+    if (isTerminator())
+      for (auto &dest : cast<OperationInst>(this)->getBlockOperands())
+        dest.drop();
+    break;
+  }
 }
 
 //===----------------------------------------------------------------------===//
