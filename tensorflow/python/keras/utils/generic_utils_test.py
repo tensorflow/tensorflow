@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import marshal
+import sys
 import numpy as np
 
 from absl.testing import parameterized
@@ -80,6 +81,7 @@ class SerializeKerasObjectTest(test.TestCase):
 
 
 class FuncDumpAndLoadTest(test.TestCase, parameterized.TestCase):
+
   @parameterized.parameters(['simple_function', 'closured_function'])
   def test_func_dump_and_load(self, test_function_type):
     if test_function_type == 'simple_function':
@@ -124,6 +126,69 @@ class FuncDumpAndLoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(deserialized.__code__, test_func.__code__)
     self.assertEqual(deserialized.__closure__, test_func.__closure__)
     self.assertEqual(deserialized.__defaults__, test_func.__defaults__)
+
+
+class ProgbarTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters([0, 2])
+  def test_progbar(self, verbose):
+    bar = generic_utils.Progbar(
+        target=2, width=40, verbose=verbose, interval=0.95)
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      bar.update(0, None)
+      bar.update(1, [['key1', 1], ['key2', 1e-4]])
+      bar.update(2, [['key3', 1], ['key2', 1e-4]])
+      if verbose == 0:
+        self.assertEqual("", printed.contents())
+      if verbose == 2:
+        expected = "2/2 - 0s - key1: 1.0000 - key2: 1.0000e-04 - key3: 1.0000\n"
+        self.assertEqual(expected, printed.contents())
+
+
+class MakeBatchesTest(test.TestCase):
+
+  def test_make_batches(self):
+    batches = generic_utils.make_batches(100, 32)
+    self.assertEqual(len(batches), 4)
+    self.assertEqual(batches[0][1] - batches[0][0], 32)
+    self.assertEqual(batches[3][1] - batches[3][0], 4)
+
+
+class SliceArraysTest(test.TestCase):
+
+  def test_slice_arrays(self):
+    input_a = [None]
+    self.assertEqual(generic_utils.slice_arrays(input_a, 0), [None])
+    self.assertEqual(generic_utils.slice_arrays(input_a, 0, 1), [None])
+    self.assertEqual(generic_utils.slice_arrays(input_a, stop=2), [None])
+
+    input_a = None
+    self.assertEqual(generic_utils.slice_arrays(input_a, 0), [None])
+    self.assertEqual(generic_utils.slice_arrays(input_a, 0, 1), [None])
+    self.assertEqual(generic_utils.slice_arrays(input_a, stop=2), [None])
+
+    input_a = np.random.random((10))
+    self.assertEqual(generic_utils.slice_arrays(None), [None])
+    self.assertEqual(generic_utils.slice_arrays(input_a, start=0), [None])
+    self.assertEqual(generic_utils.slice_arrays(input_a, stop=3), [None])
+    self.assertEqual(generic_utils.slice_arrays(input_a, start=0, stop=1),
+                     [None])
+
+    input_a = [None, [1, 2, 3], None, [1, 2]]
+    self.assertEqual(generic_utils.slice_arrays(input_a, 0),
+                     [None, [1, 2, 3], None, [1, 2]])
+    self.assertEqual(generic_utils.slice_arrays(input_a, 0, 1),
+                     [None, [1], None, [1]])
+    self.assertEqual(generic_utils.slice_arrays(input_a, stop=2),
+                     [None, [1, 2], None, [1, 2]])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "None if the value of start is a list"):
+      generic_utils.slice_arrays(input_a, start=[0, 1], stop=1)
+    with self.assertRaisesRegexp(ValueError,
+                                 "None if the value of start is a list"):
+      generic_utils.slice_arrays(input_a, start=[[0]], stop=[1])
 
 
 if __name__ == '__main__':
