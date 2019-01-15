@@ -109,6 +109,8 @@ public:
   /// Copy the specified array of elements into memory managed by our bump
   /// pointer allocator.  This assumes the elements are all PODs.
   template <typename T> ArrayRef<T> copyInto(ArrayRef<T> elements) {
+    if (elements.empty())
+      return llvm::None;
     auto result = getAllocator().Allocate<T>(elements.size());
     std::uninitialized_copy(elements.begin(), elements.end(), result);
     return ArrayRef<T>(result, elements.size());
