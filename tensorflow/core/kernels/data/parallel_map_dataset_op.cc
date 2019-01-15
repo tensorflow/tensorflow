@@ -15,6 +15,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,6 +31,8 @@ namespace {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
+
+constexpr char kDatasetName[] = "ParallelMap";
 
 class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -63,6 +66,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
     std::vector<int> indices;
     OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
+
+    if (num_parallel_calls == model::kAutoTune) {
+      metrics::RecordTFDataAutotune(kDatasetName);
+    }
 
     *output =
         new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
@@ -108,7 +115,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
         parallel_map_functor = absl::make_unique<ShortCircuitFunctor>(this);
       }
       return NewParallelMapIterator(
-          {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
+          {this, strings::StrCat(prefix, "::", kDatasetName)}, input_,
           std::move(parallel_map_functor), num_parallel_calls_, sloppy_,
           preserve_cardinality_);
     }

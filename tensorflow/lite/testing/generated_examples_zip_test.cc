@@ -105,8 +105,6 @@ std::map<string, string> kBrokenTests = {
 
     // Strided Slice chooses the wrong dimension.
     {R"(^\/strided_slice_buggy)", "119786029"},
-
-    {R"(^\/conv2d_transpose_filter_shape=\[1,4,8,3\])", "122735908"},
 };
 
 // Allows test data to be unarchived into a temporary directory and makes
@@ -287,10 +285,10 @@ struct ZipPathParamName {
   }
 };
 
-INSTANTIATE_TEST_SUITE_P(tests, OpsTest,
-                         ::testing::ValuesIn(UnarchiveAndFindTestNames(
-                             *FLAGS_zip_file_path, *FLAGS_tar_file_path)),
-                         ZipPathParamName());
+INSTANTIATE_TEST_CASE_P(tests, OpsTest,
+                        ::testing::ValuesIn(UnarchiveAndFindTestNames(
+                            *FLAGS_zip_file_path, *FLAGS_tar_file_path)),
+                        ZipPathParamName());
 
 }  // namespace testing
 }  // namespace tflite

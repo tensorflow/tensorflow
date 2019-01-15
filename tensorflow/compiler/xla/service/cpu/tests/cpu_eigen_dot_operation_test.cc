@@ -102,10 +102,10 @@ std::vector<DotTestSpec> GetDotTestCases() {
   return result;
 }
 
-INSTANTIATE_TEST_CASE_P(CpuEigenDotOperationTestInstantiation,
-                        CpuEigenDotOperationTest,
-                        ::testing::ValuesIn(GetDotTestCases()),
-                        DotTestSpecToString);
+INSTANTIATE_TEST_SUITE_P(CpuEigenDotOperationTestInstantiation,
+                         CpuEigenDotOperationTest,
+                         ::testing::ValuesIn(GetDotTestCases()),
+                         DotTestSpecToString);
 
 }  // namespace
 }  // namespace cpu

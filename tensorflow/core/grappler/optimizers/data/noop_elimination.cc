@@ -70,8 +70,10 @@ bool IsNoOp(const NodeDef& node, const MutableGraphView& graph) {
 
 }  // namespace
 
-Status NoOpElimination::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output) {
+Status NoOpElimination::OptimizeAndCollectStats(Cluster* cluster,
+                                                const GrapplerItem& item,
+                                                GraphDef* output,
+                                                OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   std::set<string> nodes_to_delete;
@@ -82,6 +84,7 @@ Status NoOpElimination::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), parent->name()));
 
     nodes_to_delete.insert(node.name());
+    stats->num_changes++;
   }
 
   graph.DeleteNodes(nodes_to_delete);
@@ -95,5 +98,5 @@ void NoOpElimination::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(NoOpElimination, "noop_elimination");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

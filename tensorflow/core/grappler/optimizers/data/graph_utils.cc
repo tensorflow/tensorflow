@@ -293,6 +293,6 @@ Status EnsureNodeNamesUnique(Graph* g) {
 
   return Status::OK();
 }
-}  // end namespace graph_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace graph_utils
+}  // namespace grappler
+}  // namespace tensorflow

@@ -296,10 +296,6 @@ Building micro_speech_test binary
 
 Lauching Renode to test the binary, currently this set up is not automated.
 
--   Until https://github.com/renode/renode/pull/30 is in the Docker image, patch
-    the change manully: `sed -E -i 's/"rv32g"/"rv32imac"/g'
-    /opt/renode/platforms/cpus/sifive-fe310.repl`
-
 -   Execute the binary on Renode: `renode -P 5000 --disable-xwt -e 's
     @/workspace/tensorflow/lite/experimental/micro/testing/sifive_fe310.resc'`
 
@@ -389,3 +385,127 @@ This will create a folder in
 that contains the source and header files, some Mbed configuration files, and a
 README. You should then be able to copy this directory to another machine, and
 use it just like any other Mbed project.
+
+## How to Port TensorFlow Lite Micro to a New Platform
+
+Are you a hardware or operating system provider looking to run machine learning
+on your platform? We're keen to help, and we've had experience helping other
+teams do the same thing, so here are our recommendations.
+
+### Requirements
+
+Since the core neural network operations are pure arithmetic, and don't require
+any I/O or other system-specific functionality, the code doesn't have to have
+many dependencies. We've tried to enforce this, so that it's as easy as possible
+to get TensorFlow Lite Micro running even on 'bare metal' systems without an OS.
+Here are the core requirements that a platform needs to run the framework:
+
+-   C/C++ compiler capable of C++11 compatibility. This is probably the most
+    restrictive of the requirements, since C++11 is not as widely adopted in the
+    embedded world as it is elsewhere. We made the decision to require it since
+    one of the main goals of TFL Micro is to share as much code as possible with
+    the wider TensorFlow codebase, and since that relies on C++11 features, we
+    need compatibility to achieve it. We only use a small, sane, subset of C++
+    though, so don't worry about having to deal with template metaprogramming or
+    similar challenges!
+
+-   Debug logging. The core network operations don't need any I/O functions, but
+    to be able to run tests and tell if they've worked as expected, the
+    framework needs some way to write out a string to some kind of debug
+    console. This will vary from system to system, for example on Linux it could
+    just be `fprintf(stderr, debug_string)` whereas an embedded device might
+    write the string out to a specified UART. As long as there's some mechanism
+    for outputting debug strings, you should be able to use TFL Micro on that
+    platform.
+
+-   Math library. The C standard `libm.a` library is needed to handle some of
+    the mathematical operations used to calculate neural network results.
+
+-   Global variable initialization. We do use a pattern of relying on global
+    variables being set before `main()` is run in some places, so you'll need to
+    make sure your compiler toolchain
+
+And that's it! You may be wondering about some other common requirements that
+are needed by a lot of non-embedded software, so here's a brief list of things
+that aren't necessary to get started with TFL Micro on a new platform:
+
+-   Operating system. Since the only platform-specific function we need is
+    `DebugLog()`, there's no requirement for any kind of Posix or similar
+    functionality around files, processes, or threads.
+
+-   C or C++ standard libraries. The framework tries to avoid relying on any
+    standard library functions that require linker-time support. This includes
+    things like string functions, but still allows us to use headers like
+    `stdtypes.h` which typically just define constants and typedefs.
+    Unfortunately this distinction isn't officially defined by any standard, so
+    it's possible that different toolchains may decide to require linked code
+    even for the subset we use, but in practice we've found it's usually a
+    pretty obvious decision and stable over platforms and toolchains.
+
+-   Dynamic memory allocation. All the TFL Micro code avoids dynamic memory
+    allocation, instead relying on local variables on the stack in most cases,
+    or global variables for a few situations. These are all fixed-size, which
+    can mean some compile-time configuration to ensure there's enough space for
+    particular networks, but does avoid any need for a heap and the
+    implementation of `malloc\new` on a platform.
+
+-   Floating point. Eight-bit integer arithmetic is enough for inference on many
+    networks, so if a model sticks to these kind of quantized operations, no
+    floating point instructions should be required or executed by the framework.
+
+### Getting Started
+
+We recommend that you start trying to compile and run one of the simplest tests
+in the framework as your first step. The full TensorFlow codebase can seem
+overwhelming to work with at first, so instead you can begin with a collection
+of self-contained project folders that only include the source files needed for
+a particular test or executable. You can find a set of pre-generated projects
+[here](https://drive.google.com/open?id=1cawEQAkqquK_SO4crReDYqf_v7yAwOY8).
+
+As mentioned above, the one function you will need to implement for a completely
+new platform is debug logging. If your device is just a variation on an existing
+platform you may be able to reuse code that's already been written. To
+understand what's available, begin with the default reference implementation at
+[tensorflow/lite/experimental/micro/debug_log.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/debug_log.cc]),
+which uses fprintf and stderr. If your platform has this level of support for
+the C standard library in its toolchain, then you can just reuse this.
+Otherwise, you'll need to do some research into how your platform and device can
+communicate logging statements to the outside world. As another example, take a
+look at
+[the Mbed version of `DebugLog()`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/mbed/debug_log.cc),
+which creates a UART object and uses it to output strings to the host's console
+if it's connected.
+
+Begin by navigating to the micro_error_reporter_test folder in the pregenerated
+projects you downloaded. Inside here, you'll see a set of folders containing all
+the source code you need. If you look through them, you should find a total of
+around 60 C or C++ files that compiled together will create the test executable.
+There's an example makefile in the directory that lists all of the source files
+and include paths for the headers. If you're building on a Linux or MacOS host
+system, you may just be able to reuse that same makefile to cross-compile for
+your system, as long as you swap out the `CC` and `CXX` variables from their
+defaults, to point to your cross compiler instead (for example
+`arm-none-eabi-gcc` or `riscv64-unknown-elf-gcc`). Otherwise, set up a project
+in the build system you are using. It should hopefully be fairly
+straightforward, since all of the source files in the folder need to be
+compiled, so on many IDEs you can just drag the whole lot in. Then you need to
+make sure that C++11 compatibility is turned on, and that the right include
+paths (as mentioned in the makefile) have been added.
+
+You'll see the default `DebugLog()` implementation in
+'tensorflow/lite/experimental/micro/debug_log.cc' inside the
+micro_error_reporter_test folder. Modify that file to add the right
+implementation for your platform, and then you should be able to build the set
+of files into an executable. Transfer that executable to your target device (for
+example by flashing it), and then try running it. You should see output that
+looks something like this:
+
+```
+Number: 42
+Badly-formed format string
+Another  badly-formed  format string
+~~ALL TESTS PASSED~~~
+```
+
+If not, you'll need to debug what went wrong, but hopefully with this small
+starting project it should be manageable.

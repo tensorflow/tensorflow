@@ -69,6 +69,10 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "audio"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "autograph"
     mtype: "<type \'module\'>"
   }

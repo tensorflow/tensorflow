@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -415,6 +416,10 @@ def _ragged_expand_dims_v1(input, axis=None, name=None, dim=None):  # pylint: di
   return ragged_array_ops.expand_dims(input=input, axis=axis, name=name)
 
 
+def _ragged_size_v1(input, name=None, out_type=dtypes.int32):  # pylint: disable=redefined-builtin
+  return ragged_array_ops.size(input=input, out_type=out_type, name=name)
+
+
 # (original_op, ragged_op, ragged_args)
 _RAGGED_DISPATCH_OPS = [
     (array_ops.batch_gather, ragged_array_ops.batch_gather,
@@ -426,6 +431,8 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.gather_v2, ragged_array_ops.gather, ['params', 'indices']),
     (array_ops.gather_nd, ragged_array_ops.gather_nd, ['params', 'indices']),
     (array_ops.rank, ragged_array_ops.rank, ['input']),
+    (array_ops.size, _ragged_size_v1, ['input']),
+    (array_ops.size_v2, ragged_array_ops.size, ['input']),
     (array_ops.stack, ragged_array_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_array_ops.where, ['condition', 'x', 'y']),

@@ -334,6 +334,20 @@ Status Converter::GetTrtBroadcastShape(
   return Status::OK();
 }
 
+nvinfer1::ITensor* Converter::CreateConstantLayer(
+    const TRT_ShapedWeights& weights, const nvinfer1::Dims& dims) {
+  nvinfer1::Weights trt_weights = weights.GetTrtWeights();
+  nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
+  if (!layer) return nullptr;
+  const nvinfer1::DataType trt_dtype = trt_weights.type;
+  // NOTE(laigd): calling layer->setOutputType() does not work. This may be a
+  // bug and we should report to NVIDIA.
+  // layer->setOutputType(0, trt_dtype);
+  nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
+  trt_tensor->setType(trt_dtype);
+  return trt_tensor;
+}
+
 inline bool DimsEqual(const nvinfer1::Dims& dim_l,
                       const nvinfer1::Dims& dim_r) {
   if (dim_l.nbDims != dim_r.nbDims) {
@@ -1104,10 +1118,8 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
       *tensor = layer->getOutput(0);
     }
   } else {
-    nvinfer1::IConstantLayer* layer =
-        this->network()->addConstant(dims, input.weights().GetTrtWeights());
-    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
-    *tensor = layer->getOutput(0);
+    *tensor = CreateConstantLayer(input.weights(), dims);
+    TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, "TF-TRT Internal Reshape");
     if (precision_mode() == INT8MODE && !use_calibration()) {
       // If we are in int8 mode and not calibrating, we need to explicitly set a
       // quantization range for the output tensor of the IConstantLayer. Here we
@@ -2570,22 +2582,18 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   auto weights_ptr =
       static_cast<float*>(const_cast<void*>(weights.GetValues()));
   weights_ptr[0] = 6.0f;
-  nvinfer1::IConstantLayer* const6_layer =
-      params->converter->network()->addConstant(dims, weights.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_layer, node_def.name());
-  params->converter->ProvideQuantizationRange(const6_layer->getOutput(0), 0.0f,
-                                              6.0f);
+  nvinfer1::ITensor* const6_tensor =
+      params->converter->CreateConstantLayer(weights, dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_tensor, node_def.name());
+  params->converter->ProvideQuantizationRange(const6_tensor, 0.0f, 6.0f);
 
   // ElementWise Min Operation
   // Min op is a nop for INT8 execution path, as the input tensor
   // to this layer will only have values in range [0.f, 6.0f].
-  const nvinfer1::ITensor* tensor_l = relu_layer->getOutput(0);
-  const nvinfer1::ITensor* tensor_r = const6_layer->getOutput(0);
   nvinfer1::IElementWiseLayer* relu6_layer =
       params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r),
-          nvinfer1::ElementWiseOperation::kMIN);
+          *const_cast<nvinfer1::ITensor*>(relu_layer->getOutput(0)),
+          *const6_tensor, nvinfer1::ElementWiseOperation::kMIN);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu6_layer, node_def.name());
   nvinfer1::ITensor* output_tensor = relu6_layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
@@ -2989,18 +2997,15 @@ tensorflow::Status ConvertSquare(OpConverterParams* params) {
   auto weights_ptr =
       static_cast<float*>(const_cast<void*>(weights.GetValues()));
   weights_ptr[0] = 2.f;
-  nvinfer1::IConstantLayer* const2_layer =
-      params->converter->network()->addConstant(dims, weights.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const2_layer, node_def.name());
+  nvinfer1::ITensor* const2_tensor =
+      params->converter->CreateConstantLayer(weights, dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const2_tensor, node_def.name());
 
   // ElementWise Pow Operation
-  const nvinfer1::ITensor* tensor_l = inputs.at(0).tensor();
-  const nvinfer1::ITensor* tensor_r = const2_layer->getOutput(0);
   nvinfer1::IElementWiseLayer* layer =
       params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r),
-          nvinfer1::ElementWiseOperation::kPOW);
+          *const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor()),
+          *const2_tensor, nvinfer1::ElementWiseOperation::kPOW);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
