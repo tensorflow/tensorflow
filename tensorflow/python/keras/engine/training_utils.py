@@ -21,6 +21,8 @@ from __future__ import print_function
 import abc
 from collections import OrderedDict
 import copy
+import json
+import os
 
 import numpy as np
 import six
@@ -46,6 +48,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 
@@ -1492,3 +1495,10 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
+
+
+def should_run_multi_worker():
+  """Whether a model should be run using DistributedCoordinator."""
+  tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
+  cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
+  return tf_config and 'master' not in cluster_spec.jobs
