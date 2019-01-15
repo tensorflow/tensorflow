@@ -476,3 +476,10 @@ func @invalid_select_shape(%cond : i1, %idx : () -> ()) {
 func @invalid_cmp_shape(%idx : () -> ()) {
   // expected-error@+1 {{expected type with valid i1 shape}}
   %cmp = cmpi "eq", %idx, %idx : () -> ()
+
+// -----
+
+func @dma_wait_no_memref(%tag : f32, %c0 : index) {
+  // expected-error@+1 {{expected tag to be of memref type}}
+  dma_wait %tag[%c0], %arg0 : f32
+}

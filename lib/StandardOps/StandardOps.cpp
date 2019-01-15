@@ -991,6 +991,10 @@ bool DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->resolveOperand(numElementsInfo, indexType, result->operands))
     return true;
 
+  if (!type.isa<MemRefType>())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected tag to be of memref type");
+
   if (tagIndexInfos.size() != type.cast<MemRefType>().getRank())
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
