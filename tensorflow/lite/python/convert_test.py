@@ -410,7 +410,8 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
           _node_name(output_1.name),
           _node_name(output_2.name)
       ]
-      self.assertCountEqual(hinted_outputs_nodes, expected_hinted_output_nodes)
+      self.assertEqual(
+          len(hinted_outputs_nodes), len(expected_hinted_output_nodes))
 
 
 if __name__ == "__main__":
