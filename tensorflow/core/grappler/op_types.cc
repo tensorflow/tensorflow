@@ -561,6 +561,13 @@ bool MaybeHasRefInput(const NodeDef& node) {
   return false;
 }
 
+bool IsDataset(const NodeDef& node) {
+  const string& op = node.op();
+  // See `GetNodeClassForOp` in core/graph/graph.cc.
+  return op == "IteratorGetNext" || op == "IteratorGetNextSync" ||
+         op == "DatasetToSingleElement" || op == "ReduceDataset";
+}
+
 bool IsFreeOfSideEffect(const NodeDef& node,
                         const OpRegistryInterface* op_registry) {
   // Placeholders must be preserved to keep the graph feedable.
