@@ -1647,6 +1647,13 @@ class TensorFlowUnsupported : public BaseOperator {
             }
             fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
             has_valid_attr = true;
+          } else if (attr.list().f_size() > 0) {
+            auto start = fbb->StartVector(key);
+            for (const float v : attr.list().f()) {
+              fbb->Add(v);
+            }
+            fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
+            has_valid_attr = true;
           } else {
             LOG(WARNING)
                 << "Ignoring unsupported type in list attribute with key '"
@@ -1704,6 +1711,14 @@ class TensorFlowUnsupported : public BaseOperator {
           const auto& vector = value.AsTypedVector();
           for (size_t i = 0; i < vector.size(); i++) {
             list->add_i(vector[i].AsInt64());
+          }
+          break;
+        }
+        case 13: {  // flexbuffers::FBT_VECTOR_FLOAT: {
+          auto* list = (*attr)[key].mutable_list();
+          const auto& vector = value.AsTypedVector();
+          for (size_t i = 0; i < vector.size(); i++) {
+            list->add_f(vector[i].AsFloat());
           }
           break;
         }
