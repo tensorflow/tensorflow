@@ -196,10 +196,10 @@ TEST_P(SpeechTest, DISABLED_TtsTest) {
 // 200s just to bring up the Android emulator.)
 static const int kAllInvocations = -1;
 static const int kFirstFewInvocations = 10;
-INSTANTIATE_TEST_CASE_P(LongTests, SpeechTest,
-                        ::testing::Values(kAllInvocations));
-INSTANTIATE_TEST_CASE_P(ShortTests, SpeechTest,
-                        ::testing::Values(kFirstFewInvocations));
+INSTANTIATE_TEST_SUITE_P(LongTests, SpeechTest,
+                         ::testing::Values(kAllInvocations));
+INSTANTIATE_TEST_SUITE_P(ShortTests, SpeechTest,
+                         ::testing::Values(kFirstFewInvocations));
 
 }  // namespace
 }  // namespace tflite
