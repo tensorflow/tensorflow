@@ -1095,7 +1095,7 @@ class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testDistributeStrategy(self):
     v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int32)
-    self.assertIsNone(v.distribute_strategy)
+    self.assertIsNone(v._distribute_strategy)
 
 
 if __name__ == "__main__":

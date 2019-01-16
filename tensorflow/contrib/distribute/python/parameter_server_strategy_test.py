@@ -873,7 +873,10 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                              id(get_step), get_step.__class__.__name__)))
       self.assertIs(resource_variable_ops.ResourceVariable, type(created_step))
       self.assertIs(resource_variable_ops.ResourceVariable, type(get_step))
-      self.assertIs(strategy, created_step.distribute_strategy)
+      # All variables have an _distribute_strategy parameter. Only variable
+      # subclasses in distribution strategy expose it publicly.
+      self.assertFalse(hasattr(strategy, 'distribute_strategy'))
+      self.assertIs(strategy, created_step._distribute_strategy)
 
   @combinations.generate(
       combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
