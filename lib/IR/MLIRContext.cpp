@@ -46,43 +46,6 @@ using namespace mlir::detail;
 using namespace llvm;
 
 namespace {
-/// A utility wrapper object representing a hased storage type. This class
-/// contains a type storage object and an existing computed hash value.
-struct HashedStorageType {
-  unsigned hashValue;
-  TypeStorage *storage;
-};
-
-/// Storage info for storage types.
-struct StorageTypeKeyInfo : DenseMapInfo<HashedStorageType> {
-  /// Storage types use the lookup key with the type uniquer.
-  using KeyTy = TypeUniquer::TypeLookupKey;
-
-  static HashedStorageType getEmptyKey() {
-    return HashedStorageType{0, DenseMapInfo<TypeStorage *>::getEmptyKey()};
-  }
-  static HashedStorageType getTombstoneKey() {
-    return HashedStorageType{0, DenseMapInfo<TypeStorage *>::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const HashedStorageType &key) {
-    return key.hashValue;
-  }
-  static unsigned getHashValue(KeyTy key) { return key.hashValue; }
-
-  static bool isEqual(const HashedStorageType &lhs,
-                      const HashedStorageType &rhs) {
-    return lhs.storage == rhs.storage;
-  }
-  static bool isEqual(const KeyTy &lhs, const HashedStorageType &rhs) {
-    if (isEqual(rhs, getEmptyKey()) || isEqual(rhs, getTombstoneKey()))
-      return false;
-    // If the lookup kind matches the kind of the storage, then invoke the
-    // equality function on the lookup key.
-    return lhs.kind == rhs.storage->getKind() && lhs.isEqual(rhs.storage);
-  }
-};
-
 struct AffineMapKeyInfo : DenseMapInfo<AffineMap> {
   // Affine maps are uniqued based on their dim/symbol counts and affine
   // expressions.
@@ -380,12 +343,7 @@ public:
   DenseMap<int64_t, AffineConstantExprStorage *> constExprs;
 
   /// Type uniquing.
-  // Unique types with specific hashing or storage constraints.
-  using StorageTypeSet = DenseSet<HashedStorageType, StorageTypeKeyInfo>;
-  StorageTypeSet storageTypes;
-
-  // Unique types with just the kind.
-  DenseMap<unsigned, TypeStorage *> simpleTypes;
+  TypeUniquer typeUniquer;
 
   // Attribute uniquing.
   BoolAttributeStorage *boolAttrs[2] = {nullptr};
@@ -722,45 +680,22 @@ Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
 // Type uniquing
 //===----------------------------------------------------------------------===//
 
+/// Get the type uniquer for this context.
+TypeUniquer &MLIRContext::getTypeUniquer() const {
+  return getImpl().typeUniquer;
+}
+
 /// Get a reference to the internal allocator.
 llvm::BumpPtrAllocator &TypeStorageAllocator::getAllocator() {
   return ctx->getImpl().allocator;
 }
 
-/// Get or create a uniqued type by it's kind. This overload is used for
-/// simple types that are only uniqued by kind.
-TypeStorage *TypeUniquer::getSimple(const Dialect &dialect, unsigned kind) {
-  auto &impl = ctx->getImpl();
-
-  // Check for an existing instance with this kind.
-  auto *&result = impl.simpleTypes[kind];
-  if (result)
-    return result;
-
-  // Otherwise, create a new instance and return it.
-  result = impl.allocator.Allocate<DefaultTypeStorage>();
-  return new (result) DefaultTypeStorage{dialect, kind};
-}
-
 /// Get the dialect that registered the type with the provided typeid.
-const Dialect &TypeUniquer::lookupDialectForType(const void *const typeID) {
+const Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
+                                                 const void *const typeID) {
   auto &impl = ctx->getImpl();
   assert(impl.registeredTypes.count(typeID) && "typeID is not registered.");
   return *impl.registeredTypes[typeID];
-}
-
-/// Look up a uniqued type with a lookup key. This is used if the type defines
-/// a storage key.
-TypeStorage *TypeUniquer::lookup(const TypeLookupKey &key) {
-  auto &impl = ctx->getImpl();
-
-  auto existing = impl.storageTypes.find_as(key);
-  return existing != impl.storageTypes.end() ? existing->storage : nullptr;
-}
-
-/// Insert a pre hashed storage type into the context.
-void TypeUniquer::insert(unsigned hashValue, TypeStorage *storage) {
-  ctx->getImpl().storageTypes.insert(HashedStorageType{hashValue, storage});
 }
 
 //===----------------------------------------------------------------------===//

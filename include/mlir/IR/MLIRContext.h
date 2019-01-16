@@ -29,6 +29,10 @@ class MLIRContextImpl;
 class Location;
 class Dialect;
 
+namespace detail {
+class TypeUniquer;
+}
+
 /// MLIRContext is the top-level object for a collection of MLIR modules.  It
 /// holds immortal uniqued objects like types, and the tables used to unique
 /// them.
@@ -92,6 +96,9 @@ public:
   // This is effectively private given that only MLIRContext.cpp can see the
   // MLIRContextImpl type.
   MLIRContextImpl &getImpl() const { return *impl.get(); }
+
+  /// Get the type uniquer for this context.
+  detail::TypeUniquer &getTypeUniquer() const;
 
 private:
   const std::unique_ptr<MLIRContextImpl> impl;

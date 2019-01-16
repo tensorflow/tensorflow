@@ -22,8 +22,10 @@
 #ifndef MLIR_IR_TYPE_SUPPORT_H
 #define MLIR_IR_TYPE_SUPPORT_H
 
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
 #include <memory>
 
@@ -141,7 +143,21 @@ namespace detail {
 // MLIRContext. This class manages all creation and uniquing of types.
 class TypeUniquer {
 public:
-  /// Lookup key for storage types.
+  template <typename T, typename... Args>
+  static T get(MLIRContext *ctx, Args &&... args) {
+    TypeUniquer &instance = ctx->getTypeUniquer();
+    return instance.getImpl<T>(ctx, args...);
+  }
+
+private:
+  /// A utility wrapper object representing a hashed storage object. This class
+  /// contains a storage object and an existing computed hash value.
+  struct HashedStorageType {
+    unsigned hashValue;
+    TypeStorage *storage;
+  };
+
+  /// A lookup key for derived instances of TypeStorage objects.
   struct TypeLookupKey {
     /// The known derived kind for the storage.
     unsigned kind;
@@ -153,14 +169,12 @@ public:
     llvm::function_ref<bool(const TypeStorage *)> isEqual;
   };
 
-  TypeUniquer(MLIRContext *ctx) : ctx(ctx) {}
-
   /// Get an uniqued instance of a type T. This overload is used for derived
   /// types that have complex storage or uniquing constraints.
   template <typename T, typename... Args>
   typename std::enable_if<
       !std::is_same<typename T::ImplType, DefaultTypeStorage>::value, T>::type
-  get(unsigned kind, Args &&... args) {
+  getImpl(MLIRContext *ctx, unsigned kind, Args &&... args) {
     using ImplType = typename T::ImplType;
     using KeyTy = typename ImplType::KeyTy;
 
@@ -177,22 +191,20 @@ public:
           return static_cast<const ImplType &>(*existing) == derivedKey;
         };
 
-    // Lookup an existing type with the given key.
-    TypeStorage *storage = lookup(TypeLookupKey{kind, hashValue, isEqual});
-    if (storage)
-      return T(storage);
+    // Look to see if the type has been created already.
+    auto existing =
+        storageTypes.insert_as({}, TypeLookupKey{kind, hashValue, isEqual});
 
-    // Get the dialect this type was registered to.
-    auto &dialect = lookupDialectForType<T>();
+    // If it has been created, return it.
+    if (!existing.second)
+      return T(existing.first->storage);
 
     // Otherwise, construct and initialize the derived storage for this type
     // instance.
     TypeStorageAllocator allocator(ctx);
-    storage = ImplType::construct(allocator, derivedKey);
-    storage->initializeTypeInfo(dialect, kind);
-
-    // Insert the new type storage instance into the context.
-    insert(hashValue, storage);
+    TypeStorage *storage = ImplType::construct(allocator, derivedKey);
+    storage->initializeTypeInfo(lookupDialectForType<T>(ctx), kind);
+    *existing.first = HashedStorageType{hashValue, storage};
     return T(storage);
   }
 
@@ -202,23 +214,31 @@ public:
   template <typename T, typename... Args>
   typename std::enable_if<
       std::is_same<typename T::ImplType, DefaultTypeStorage>::value, T>::type
-  get(unsigned kind) {
-    auto &dialect = lookupDialectForType<T>();
-    return T(getSimple(dialect, kind));
+  getImpl(MLIRContext *ctx, unsigned kind) {
+    // Check for an existing instance with this kind.
+    auto *&result = simpleTypes[kind];
+    if (!result) {
+      // Otherwise, allocate and initialize one.
+      TypeStorageAllocator allocator(ctx);
+      result = new (allocator.allocate<DefaultTypeStorage>())
+          DefaultTypeStorage(lookupDialectForType<T>(ctx), kind);
+    }
+    return T(result);
   }
 
-private:
   /// Get the dialect that the type 'T' was registered with.
-  template <typename T> const Dialect &lookupDialectForType() {
-    return lookupDialectForType(&T::typeID);
+  template <typename T>
+  static const Dialect &lookupDialectForType(MLIRContext *ctx) {
+    return lookupDialectForType(ctx, &T::typeID);
   }
 
   /// Get the dialect that registered the type with the provided typeid.
-  const Dialect &lookupDialectForType(const void *const typeID);
+  static const Dialect &lookupDialectForType(MLIRContext *ctx,
+                                             const void *const typeID);
 
-  /// Get or create a uniqued type by its kind. This overload is used for
-  /// simple types that are only uniqued by kind.
-  TypeStorage *getSimple(const Dialect &dialect, unsigned kind);
+  //===--------------------------------------------------------------------===//
+  // Key Construction
+  //===--------------------------------------------------------------------===//
 
   /// Utilities for generating a derived storage key.
   /// Overload for if the key can be directly constructed from the provided
@@ -240,15 +260,45 @@ private:
     return ImplTy::getKey(args...);
   }
 
-  /// Look up a uniqued type with a lookup key. This is used if the type defines
-  /// a storage key.
-  TypeStorage *lookup(const TypeLookupKey &key);
+  //===--------------------------------------------------------------------===//
+  // Instance Storage
+  //===--------------------------------------------------------------------===//
 
-  /// Insert a new type storage into the context.
-  void insert(unsigned hashValue, TypeStorage *storage);
+  /// Storage info for derived TypeStorage objects.
+  struct StorageKeyInfo : DenseMapInfo<HashedStorageType> {
+    static HashedStorageType getEmptyKey() {
+      return HashedStorageType{0, DenseMapInfo<TypeStorage *>::getEmptyKey()};
+    }
+    static HashedStorageType getTombstoneKey() {
+      return HashedStorageType{0,
+                               DenseMapInfo<TypeStorage *>::getTombstoneKey()};
+    }
 
-  /// The current context that a type is being uniqued from.
-  MLIRContext *ctx;
+    static unsigned getHashValue(const HashedStorageType &key) {
+      return key.hashValue;
+    }
+    static unsigned getHashValue(TypeLookupKey key) { return key.hashValue; }
+
+    static bool isEqual(const HashedStorageType &lhs,
+                        const HashedStorageType &rhs) {
+      return lhs.storage == rhs.storage;
+    }
+    static bool isEqual(const TypeLookupKey &lhs,
+                        const HashedStorageType &rhs) {
+      if (isEqual(rhs, getEmptyKey()) || isEqual(rhs, getTombstoneKey()))
+        return false;
+      // If the lookup kind matches the kind of the storage, then invoke the
+      // equality function on the lookup key.
+      return lhs.kind == rhs.storage->getKind() && lhs.isEqual(rhs.storage);
+    }
+  };
+
+  // Unique types with specific hashing or storage constraints.
+  using StorageTypeSet = llvm::DenseSet<HashedStorageType, StorageKeyInfo>;
+  StorageTypeSet storageTypes;
+
+  // Unique types with just the kind.
+  DenseMap<unsigned, TypeStorage *> simpleTypes;
 };
 } // namespace detail
 

@@ -147,7 +147,7 @@ public:
       // Ensure that the invariants are correct for type construction.
       assert(!ConcreteType::verifyConstructionInvariants(llvm::None, context,
                                                          args...));
-      return detail::TypeUniquer(context).get<ConcreteType>(kind, args...);
+      return detail::TypeUniquer::get<ConcreteType>(context, kind, args...);
     }
 
     /// Get or create a new ConcreteType instance within the context, defined at
@@ -159,7 +159,7 @@ public:
       // If the construction invariants fail then we return a null type.
       if (ConcreteType::verifyConstructionInvariants(loc, context, args...))
         return ConcreteType();
-      return detail::TypeUniquer(context).get<ConcreteType>(kind, args...);
+      return detail::TypeUniquer::get<ConcreteType>(context, kind, args...);
     }
 
     /// Default implementation that just returns false for success.
