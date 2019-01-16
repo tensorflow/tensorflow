@@ -151,7 +151,7 @@ def _shape_tensor(shape):
 
 
 @tf_export("random.experimental.Generator")
-class Generator(tracking.Checkpointable):
+class Generator(tracking.AutoCheckpointable):
   """Random-number generator.
 
   It uses Variable to manage its internal state.

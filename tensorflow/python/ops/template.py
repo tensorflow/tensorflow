@@ -232,7 +232,7 @@ def _skip_common_stack_elements(stacktrace, base_case):
   return stacktrace[-1:]
 
 
-class Template(checkpointable.CheckpointableBase):
+class Template(checkpointable.Checkpointable):
   """Wrap a function to aid in variable sharing.
 
   Templates are functions that create variables the first time they are called

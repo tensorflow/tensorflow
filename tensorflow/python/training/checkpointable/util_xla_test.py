@@ -29,7 +29,7 @@ from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
-class NonLayerCheckpointable(tracking.Checkpointable):
+class NonLayerCheckpointable(tracking.AutoCheckpointable):
 
   def __init__(self):
     super(NonLayerCheckpointable, self).__init__()

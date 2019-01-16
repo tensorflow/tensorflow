@@ -87,12 +87,12 @@ REGISTER_GRAPH_OPTIMIZER(TestOptimizerWithParams);
 // Record various properties of the GrapplerItems passed for optimization.
 class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
  public:
-  static void SetAllowedOptimizations(
-      gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>*
-          allowed_optimizations) {
-    allowed_optimizations_ = allowed_optimizations;
+  static void SetOptimizationOptions(
+      gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
+          optimization_options) {
+    optimization_options_ = optimization_options;
   }
-  static void ResetAllowedOptimizations() { allowed_optimizations_ = nullptr; }
+  static void ResetOptimizationOptions() { optimization_options_ = nullptr; }
 
   GrapplerItemPropertiesAccumulator() {}
   string name() const override {
@@ -107,8 +107,8 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     *optimized_graph = item.graph;
-    if (allowed_optimizations_) {
-      allowed_optimizations_->insert({item.id, item.allowed_optimizations()});
+    if (optimization_options_) {
+      optimization_options_->insert({item.id, item.optimization_options()});
     }
     return Status::OK();
   }
@@ -117,12 +117,12 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
                 const GraphDef& optimized_graph, double result) override {}
 
  private:
-  static gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>*
-      allowed_optimizations_;
+  static gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
+      optimization_options_;
 };
 
-gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>*
-    GrapplerItemPropertiesAccumulator::allowed_optimizations_;
+gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
+    GrapplerItemPropertiesAccumulator::optimization_options_;
 
 REGISTER_GRAPH_OPTIMIZER(GrapplerItemPropertiesAccumulator);
 
@@ -602,10 +602,9 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
 
   // We will record what type of optimizations meta optimizer allows for each
   // GrapplerItem (main graph and graphs for each function).
-  gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>
-      allowed_optimizations;
-  GrapplerItemPropertiesAccumulator::SetAllowedOptimizations(
-      &allowed_optimizations);
+  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
+      &optimization_options);
 
   // Just record properties of optimized Grappler items.
   ConfigProto config_proto;
@@ -664,22 +663,23 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
 
   // Our custom optimizer must be called for the main graph and for the two
   // functions.
-  ASSERT_EQ(allowed_optimizations.size(), 3);
+  ASSERT_EQ(optimization_options.size(), 3);
 
-  auto allowed_optimizations_main =
-      gtl::FindOrNull(allowed_optimizations, "main");
-  ASSERT_NE(allowed_optimizations_main, nullptr);
-  EXPECT_TRUE(allowed_optimizations_main->non_differentiable_rewrites);
+  auto optimization_options_main =
+      gtl::FindOrNull(optimization_options, "main");
+  ASSERT_NE(optimization_options_main, nullptr);
+  EXPECT_TRUE(optimization_options_main->allow_non_differentiable_rewrites);
 
-  auto allowed_optimizations_my_mul_1 =
-      gtl::FindOrNull(allowed_optimizations, "MyMul1");
-  ASSERT_NE(allowed_optimizations_my_mul_1, nullptr);
-  EXPECT_TRUE(allowed_optimizations_my_mul_1->non_differentiable_rewrites);
+  auto optimization_options_my_mul_1 =
+      gtl::FindOrNull(optimization_options, "MyMul1");
+  ASSERT_NE(optimization_options_my_mul_1, nullptr);
+  EXPECT_TRUE(optimization_options_my_mul_1->allow_non_differentiable_rewrites);
 
-  auto allowed_optimizations_my_mul_2 =
-      gtl::FindOrNull(allowed_optimizations, "MyMul2");
-  ASSERT_NE(allowed_optimizations_my_mul_2, nullptr);
-  EXPECT_FALSE(allowed_optimizations_my_mul_2->non_differentiable_rewrites);
+  auto optimization_options_my_mul_2 =
+      gtl::FindOrNull(optimization_options, "MyMul2");
+  ASSERT_NE(optimization_options_my_mul_2, nullptr);
+  EXPECT_FALSE(
+      optimization_options_my_mul_2->allow_non_differentiable_rewrites);
 }
 
 class SleepingOptimizer : public CustomGraphOptimizer {
