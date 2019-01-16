@@ -471,9 +471,7 @@ class ConcreteFunction(object):
     """
     ctx = context.context()
 
-    for v in self._func_graph.variables:
-      if v.trainable:
-        tape.variable_accessed(v)
+    tape.variables_accessed(self._func_graph.variables)
 
     tensor_inputs = []
     for i, arg in enumerate(args):
@@ -568,6 +566,11 @@ class ConcreteFunction(object):
   def inputs(self):
     """Returns tensors in `self.graph` corresponding to arguments."""
     return self._func_graph.inputs
+
+  @property
+  def structured_input_signature(self):
+    """Returns structured signature of the original function."""
+    return self._func_graph.structured_input_signature
 
   @property
   def outputs(self):
@@ -823,37 +826,6 @@ class ConcreteFunction(object):
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
                                 outputs_list)
     return ret
-
-
-class UnknownArgument(object):
-  """Signifies an argument which is not currently handled."""
-  pass
-
-
-def convert_structure_to_signature(structure):
-  """Convert a potentially nested structure to a signature.
-
-  Args:
-    structure: Structure to convert.
-
-  Returns:
-    Identical structure that has TensorSpec objects instead of Tensors and
-    UknownArgument instead of any unsupported types.
-  """
-
-  def encode_arg(arg, name=None):
-    """A representation for this argument, for converting into signatures."""
-    if isinstance(arg, ops.Tensor):
-      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
-    if isinstance(arg, (int, float, bool, tensor_spec.TensorSpec)):
-      return arg
-    return UnknownArgument()
-
-  # We are using the flattened paths to name the TensorSpecs. We need an
-  # explicit name for them downstream.
-  flattened_with_paths = nest.flatten_with_joined_string_paths(structure)
-  mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
-  return nest.pack_sequence_as(structure, mapped)
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -1348,18 +1320,11 @@ class Function(object):
                 autograph=self._autograph,
                 arg_names=arg_names),
             self._function_attributes)
-        if self._input_signature:
-          python_call_signature = self._input_signature
-        else:
-          python_call_signature = tuple(convert_structure_to_signature(args))
         # pylint: disable=protected-access
-        # Save information about non-Tensor arguments with the concrete
-        # function. Used to serialize `Function`s.
-        graph_function._python_call_signature = python_call_signature
         # Tell the ConcreteFunction to clean up its graph once it goes out of
         # scope. ConcreteFunction does not do this in its constructor since it
-        # gets used in some places (like Keras) where the FuncGraph lives longer
-        # than the ConcreteFunction.
+        # gets used in some places (like Keras) where the FuncGraph lives
+        # longer than the ConcreteFunction.
         graph_function._garbage_collector = _ConcreteFunctionGarbageCollector(
             graph_function.graph)
         # pylint: enable=protected-access

@@ -57,8 +57,10 @@ NodeDef MakeFusedFilterNode(const NodeDef& first_filter_node,
 
 }  // namespace
 
-Status FilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
-                              GraphDef* output) {
+Status FilterFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                             const GrapplerItem& item,
+                                             GraphDef* output,
+                                             OptimizationStats* stats) {
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;
@@ -120,6 +122,7 @@ Status FilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     // they are not used anymore.
     nodes_to_delete.insert(first_filter_node->name());
     nodes_to_delete.insert(second_filter_node->name());
+    stats->num_changes++;
   }
 
   graph.DeleteNodes(nodes_to_delete);
@@ -133,5 +136,5 @@ void FilterFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(FilterFusion, "filter_fusion");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

@@ -108,7 +108,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'aggregation\', \'synchronization\', \'initializer\'], varargs=None, keywords=None, defaults=[\'()\', \'VariableAggregation.SUM\', \'VariableSynchronization.ON_READ\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'aggregation\', \'synchronization\', \'initializer\', \'dtype\'], varargs=None, keywords=None, defaults=[\'()\', \'VariableAggregation.SUM\', \'VariableSynchronization.ON_READ\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"

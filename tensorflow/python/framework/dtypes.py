@@ -560,6 +560,17 @@ _NP_TO_TF = {
     _np_qint32: qint32,
     _np_bfloat16: bfloat16,
 }
+
+# On Python 2.X `np.longlong` could be a distinct type used for long
+# integers e.g. 42L. See numpy/numpy#9799.
+for pdt in [
+    np.longlong,
+    np.ulonglong,
+]:
+  if pdt not in _NP_TO_TF:
+    _NP_TO_TF[pdt] = next(
+        _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)
+
 _TF_TO_NP = {
     types_pb2.DT_HALF:
         np.float16,

@@ -64,6 +64,9 @@ def initialize_all_tables(name="init_all_tables"):
 @tf_export(v1=["initializers.tables_initializer", "tables_initializer"])
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
+  
+  See the [Low Level Intro](https://www.tensorflow.org/guide/low_level_intro#feature_columns)
+  guide, for an example of usage.
 
   Args:
     name: Optional name for the initialization op.

@@ -38,7 +38,7 @@ namespace {
 
 std::unique_ptr<FlatBufferModel> ReadTestModel() {
   auto model_path = tensorflow::io::JoinPath(
-      *g_test_model_dir, internal::kModelWith0Plus10Weights);
+      *g_test_model_dir, internal::kConvModelWith0Plus10Weights);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 

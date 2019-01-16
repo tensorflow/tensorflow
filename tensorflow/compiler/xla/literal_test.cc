@@ -641,7 +641,7 @@ template <typename T>
 class LiteralUtilTestTemplated : public ::testing::Test {};
 
 using TestedTypes = ::testing::Types<float, int32, uint32, complex64>;
-TYPED_TEST_CASE(LiteralUtilTestTemplated, TestedTypes);
+TYPED_TEST_SUITE(LiteralUtilTestTemplated, TestedTypes);
 
 TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
   // Make a non-integer for floating point types.
