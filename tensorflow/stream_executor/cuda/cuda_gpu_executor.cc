@@ -1150,7 +1150,7 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
 
   int bpc;
   CUresult result = cuOccupancyMaxActiveBlocksPerMultiprocessor(
-      &bpc, blank_function, 1, (size_t)1);
+      &bpc, blank_function, 1, 1);
   builder.set_blocks_per_core_limit(bpc);
 
   auto built = builder.Build();
