@@ -61,9 +61,9 @@ class IdentityTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=['output1', 'output2', 'output3'],
-        expected_output_dims=[(100, 4), (100, 4), (100, 4)])
+        expected_output_dims=[[[100, 4]] * 3])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

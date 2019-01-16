@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_lru_cache.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -49,23 +50,9 @@ class TRTEngineOp : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
-  ~TRTEngineOp();
 
  private:
   // TODO(samikama): context should go to a resource manager!
-  struct EngineContext {
-    EngineContext() {}  // Creates an empty context.
-    EngineContext(
-        TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-        TrtUniquePtrType<nvinfer1::IExecutionContext>&& input_execution_context)
-        : cuda_engine(std::move(input_cuda_engine)),
-          execution_context(std::move(input_execution_context)) {}
-
-    mutex mu;
-    TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
-    TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context
-        GUARDED_BY(mu);
-  };
 
   // Execute calibration
   void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
@@ -78,27 +65,24 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Execute the tensorrt engine. Returns whether we need to retry by running
   // the native segment.
-  bool ExecuteTrtEngine(OpKernelContext* ctx, const int num_batch,
-                        EngineContext* engine_context);
+  bool ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context);
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
                                       TRTCalibrationResource** cr);
 
-  EngineContext* GetEngine(int batch_size, OpKernelContext* ctx);
+  // Get engine for the input shape
+  EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,
+                           OpKernelContext* ctx);
 
-  // Return engine batch closest to input batch.
-  int GetEngineBatch(OpKernelContext* ctx);
+  // Return engine batch in cached_engne_batch_sizes_ which is closest to input
+  // batch.
+  bool GetCompatibleCachedEngine(
+      const std::vector<TensorShape>& actual_input_shapes,
+      std::vector<TensorShape>* engine_input_shapes);
 
-  nvinfer1::IGpuAllocator* GetAllocator(OpKernelContext* ctx);
-
-  // map to keep engines and their execution context for given batch size.
-  std::unordered_map<int, std::unique_ptr<EngineContext>> engine_map_;
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
-
-  // keep device allocator for TRT.
-  std::unique_ptr<TRTBaseAllocator> allocator_;
 
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;
@@ -119,12 +103,8 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
 
-  // Whether non-batch ranks of the inputs are assumed to be fixed or not for
-  // engine construction.
-  bool fixed_input_size_;
-
   // Batches of the cached engines
-  std::vector<int> cached_engine_batches_;
+  std::vector<int> cached_engine_batch_sizes_;
 
   // Maximum number of cached engines
   int max_cached_engines_;

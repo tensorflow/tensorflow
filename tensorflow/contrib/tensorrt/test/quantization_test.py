@@ -60,9 +60,9 @@ def _GetParams(add_quantization_nodes, dtype=dtypes.float32):
   return trt_test.TfTrtIntegrationTestParams(
       gdef=g.as_graph_def(),
       input_names=[input_name],
-      input_dims=[input_dims],
+      input_dims=[[input_dims]],
       output_names=[output_name],
-      expected_output_dims=[(8, 1)])
+      expected_output_dims=[[[8, 1]]])
 
 
 class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):

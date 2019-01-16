@@ -103,9 +103,9 @@ class Conv2DNCHWTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=["input"],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=["output"],
-        expected_output_dims=[(13, 5, 7, 11)])
+        expected_output_dims=[[[13, 5, 7, 11]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -128,9 +128,9 @@ class Conv2DNHWCTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=["input"],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=["output"],
-        expected_output_dims=[(13, 7, 11, 5)])
+        expected_output_dims=[[[13, 7, 11, 5]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -178,9 +178,9 @@ class Conv2DStridedNCHWTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[(n, num_filters, h, w)])
+        expected_output_dims=[[[n, num_filters, h, w]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
