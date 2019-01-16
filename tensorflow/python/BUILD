@@ -4273,8 +4273,8 @@ genrule(
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
-    visibility = ["//visibility:public"],
     tools = ["@local_config_def_file_filter//:def_file_filter"],
+    visibility = ["//visibility:public"],
 )
 
 # Get the import library of _pywrap_tensorflow_internal.pyd

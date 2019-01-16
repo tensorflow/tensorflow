@@ -490,9 +490,9 @@ tf_cc_shared_object(
 
 SHARED_LIBRARY_NAME_PATTERN = [
     # prefix, extension
-    ("lib", ".so"),    # On Linux, shared libraries are usually named as libfoo.so
-    ("lib", ".dylib"), # On macos, shared libraries are usually named as libfoo.dylib
-    ("", ".dll"),      # On Windows, shared libraries are usually named as foo.dll
+    ("lib", ".so"),  # On Linux, shared libraries are usually named as libfoo.so
+    ("lib", ".dylib"),  # On macos, shared libraries are usually named as libfoo.dylib
+    ("", ".dll"),  # On Windows, shared libraries are usually named as foo.dll
 ]
 
 [
@@ -513,6 +513,11 @@ SHARED_LIBRARY_NAME_PATTERN = [
             ],
         }),
         visibility = ["//visibility:public"],
+        win_def_file = select({
+            # We need this DEF file to properly export symbols on Windows
+            "//tensorflow:windows": ":tensorflow_filtered_def_file",
+            "//conditions:default": None,
+        }),
         deps = [
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_experimental",
@@ -521,11 +526,6 @@ SHARED_LIBRARY_NAME_PATTERN = [
             "//tensorflow/c/eager:c_api",
             "//tensorflow/core:tensorflow",
         ],
-        win_def_file = select({
-            # We need this DEF file to properly export symbols on Windows
-            "//tensorflow:windows": ":tensorflow_filtered_def_file",
-            "//conditions:default": None,
-        }),
     )
     for prefix, extension in SHARED_LIBRARY_NAME_PATTERN
 ]
@@ -567,8 +567,8 @@ genrule(
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
-    visibility = ["//visibility:public"],
     tools = ["@local_config_def_file_filter//:def_file_filter"],
+    visibility = ["//visibility:public"],
 )
 
 # The interface library (tensorflow.dll.if.lib) for linking tensorflow DLL library (tensorflow.dll) on Windows.
@@ -594,7 +594,6 @@ genrule(
 )
 
 # ** Targets for Windows build (end) **
-
 
 tf_cc_shared_object(
     name = "libtensorflow_cc.so",

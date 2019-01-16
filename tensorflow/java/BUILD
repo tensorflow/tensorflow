@@ -379,9 +379,9 @@ LINKER_EXPORTED_SYMBOLS = ":config/exported_symbols.lds"
 # is resolved, perhaps this workaround rule can be removed.
 SHARED_LIBRARY_NAME_PATTERN = [
     # prefix, extension
-    ("lib", ".so"),    # On Linux, shared libraries are usually named as libfoo.so
-    ("lib", ".dylib"), # On macos, shared libraries are usually named as libfoo.dylib
-    ("", ".dll"),      # On Windows, shared libraries are usually named as foo.dll
+    ("lib", ".so"),  # On Linux, shared libraries are usually named as libfoo.so
+    ("lib", ".dylib"),  # On macos, shared libraries are usually named as libfoo.dylib
+    ("", ".dll"),  # On Windows, shared libraries are usually named as foo.dll
 ]
 
 [
@@ -429,4 +429,3 @@ tf_cc_binary(
     srcs = ["generate_pom.cc"],
     deps = ["//tensorflow/c:c_api"],
 )
-
