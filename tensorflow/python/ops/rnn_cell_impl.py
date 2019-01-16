@@ -1183,7 +1183,7 @@ class DropoutWrapper(RNNCell):
 
     # Set cell, variational_recurrent, seed before running the code below
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._variational_recurrent = variational_recurrent
     self._seed = seed
@@ -1424,7 +1424,7 @@ class ResidualWrapper(RNNCell):
     """
     super(ResidualWrapper, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._residual_fn = residual_fn
 
@@ -1482,7 +1482,7 @@ class DeviceWrapper(RNNCell):
     """
     super(DeviceWrapper, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._device = device
 
@@ -1551,7 +1551,7 @@ class MultiRNNCell(RNNCell):
     for cell_number, cell in enumerate(self._cells):
       # Add Checkpointable dependencies on these cells so their variables get
       # saved with this object when using object-based saving.
-      if isinstance(cell, checkpointable.CheckpointableBase):
+      if isinstance(cell, checkpointable.Checkpointable):
         # TODO(allenl): Track down non-Checkpointable callers.
         self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple

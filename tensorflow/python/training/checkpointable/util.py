@@ -1655,7 +1655,7 @@ def frozen_saver(root_checkpointable):
 
 
 @tf_export("train.Checkpoint")
-class Checkpoint(tracking.Checkpointable):
+class Checkpoint(tracking.AutoCheckpointable):
   """Groups checkpointable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
@@ -1757,7 +1757,7 @@ class Checkpoint(tracking.Checkpointable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.CheckpointableBase,
+      if not isinstance(v, (base.Checkpointable,
                             def_function.PolymorphicFunction)):
         raise ValueError(
             ("`Checkpoint` was expecting a checkpointable object (an object "

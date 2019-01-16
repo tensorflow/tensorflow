@@ -87,7 +87,7 @@ def _import_and_infer(
 class SaveTest(test.TestCase):
 
   def test_method_save_signature(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -99,7 +99,7 @@ class SaveTest(test.TestCase):
         _import_and_infer(save_dir, {"x": 1.}))
 
   def test_method_save_concrete(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(
         lambda z: {"out": 2. * z})
     root.f(constant_op.constant(1.))
@@ -115,7 +115,7 @@ class SaveTest(test.TestCase):
             save_dir, {"z": 1.}, signature_key="non_default_key"))
 
   def test_non_concrete_error(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(lambda x: 2. * x)
     root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -124,7 +124,7 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir, root.f)
 
   def test_nested_inputs(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(
         lambda x: 2. * x[0],
         input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
@@ -137,7 +137,7 @@ class SaveTest(test.TestCase):
       root.f.get_concrete_function()
 
   def test_nested_outputs(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(lambda x: (2. * x, (3. * x, 4. * x)))
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
@@ -158,7 +158,7 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir, to_save)
 
   def test_variable(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(
@@ -186,7 +186,7 @@ class SaveTest(test.TestCase):
   def test_trivial_save_exception(self):
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(ValueError, "signature"):
-      save.save(tracking.Checkpointable(), save_dir)
+      save.save(tracking.AutoCheckpointable(), save_dir)
 
   def test_single_method_default_signature(self):
     model = _ModelWithOptimizer()
@@ -200,7 +200,7 @@ class SaveTest(test.TestCase):
                                     {"x": [[3., 4.]], "y": [2.]}))
 
   def test_single_function_default_signature(self):
-    model = tracking.Checkpointable()
+    model = tracking.AutoCheckpointable()
     model.f = def_function.function(lambda: 3., input_signature=())
     model.f()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -369,7 +369,7 @@ class AssetTests(test.TestCase):
         _import_and_infer(second_dir, {"keys": ["gamma", "beta"]}))
 
   def test_unused_asset(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])

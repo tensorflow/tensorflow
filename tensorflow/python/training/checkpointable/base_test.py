@@ -29,13 +29,13 @@ from tensorflow.python.training.checkpointable import util
 class InterfaceTests(test.TestCase):
 
   def testOverwrite(self):
-    root = base.CheckpointableBase()
-    leaf = base.CheckpointableBase()
+    root = base.Checkpointable()
+    leaf = base.Checkpointable()
     root._track_checkpointable(leaf, name="leaf")
     (current_name, current_dependency), = root._checkpoint_dependencies
     self.assertIs(leaf, current_dependency)
     self.assertEqual("leaf", current_name)
-    duplicate_name_dep = base.CheckpointableBase()
+    duplicate_name_dep = base.Checkpointable()
     with self.assertRaises(ValueError):
       root._track_checkpointable(duplicate_name_dep, name="leaf")
     root._track_checkpointable(duplicate_name_dep, name="leaf", overwrite=True)
@@ -44,7 +44,7 @@ class InterfaceTests(test.TestCase):
     self.assertEqual("leaf", current_name)
 
   def testAddVariableOverwrite(self):
-    root = base.CheckpointableBase()
+    root = base.Checkpointable()
     a = root._add_variable_with_custom_getter(
         name="v", shape=[], getter=variable_scope.get_variable)
     self.assertEqual([root, a], util.list_objects(root))
@@ -61,15 +61,15 @@ class InterfaceTests(test.TestCase):
             getter=variable_scope.get_variable)
 
   def testAssertConsumedWithUnusedPythonState(self):
-    has_config = base.CheckpointableBase()
+    has_config = base.Checkpointable()
     has_config.get_config = lambda: {}
     saved = util.Checkpoint(obj=has_config)
     save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    restored = util.Checkpoint(obj=base.CheckpointableBase())
+    restored = util.Checkpoint(obj=base.Checkpointable())
     restored.restore(save_path).assert_consumed()
 
   def testAssertConsumedFailsWithUsedPythonState(self):
-    has_config = base.CheckpointableBase()
+    has_config = base.Checkpointable()
     attributes = {
         "foo_attr": functools.partial(
             base.PythonStringStateSaveable,
@@ -78,7 +78,7 @@ class InterfaceTests(test.TestCase):
     has_config._gather_saveables_for_checkpoint = lambda: attributes
     saved = util.Checkpoint(obj=has_config)
     save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    restored = util.Checkpoint(obj=base.CheckpointableBase())
+    restored = util.Checkpoint(obj=base.Checkpointable())
     status = restored.restore(save_path)
     with self.assertRaisesRegexp(AssertionError, "foo_attr"):
       status.assert_consumed()

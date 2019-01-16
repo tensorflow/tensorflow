@@ -57,7 +57,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.CheckpointableBase):
+class Layer(checkpointable.Checkpointable):
   """Base layer class.
 
   This is the class from which all layers inherit.

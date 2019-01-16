@@ -150,7 +150,7 @@ class _Loader(object):
       # individually callable by adding a `__call__` method to the classes of
       # the objects instances that have a `__call__` property.
 
-      class _UserObject(tracking.Checkpointable):
+      class _UserObject(tracking.AutoCheckpointable):
         pass
 
       return _UserObject(), setattr
@@ -200,4 +200,3 @@ def load(export_dir):
         "Currently only SavedModels exported with `tf.saved_model.save` may be "
         "imported. Other SavedModels may eventually be supported via load().")
   return root
-

@@ -43,17 +43,17 @@ class LoadTest(test.TestCase):
     return load.load(path)
 
   def test_structure_import(self):
-    root = tracking.Checkpointable()
-    root.dep_one = tracking.Checkpointable()
-    root.dep_two = tracking.Checkpointable()
-    root.dep_two.dep = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
+    root.dep_one = tracking.AutoCheckpointable()
+    root.dep_two = tracking.AutoCheckpointable()
+    root.dep_two.dep = tracking.AutoCheckpointable()
     root.dep_three = root.dep_two.dep
     imported = self.cycle(root)
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
 
   def test_variables(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.v1 = variables.Variable(1., trainable=True)
     root.v2 = variables.Variable(2., trainable=False)
     imported = self.cycle(root)
@@ -63,7 +63,7 @@ class LoadTest(test.TestCase):
     self.assertFalse(imported.v2.trainable)
 
   def test_capture_variables(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.weights = variables.Variable(2.)
     root.f = def_function.function(
         lambda x: root.weights * x,
@@ -83,7 +83,7 @@ class LoadTest(test.TestCase):
     file1 = self._make_asset("contents 1")
     file2 = self._make_asset("contents 2")
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.asset1 = tracking.TrackableAsset(file1)
     root.asset2 = tracking.TrackableAsset(file2)
 
@@ -102,7 +102,7 @@ class LoadTest(test.TestCase):
       self.assertEquals("contents 2", f.read())
 
   def test_capture_assets(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
     root.f = def_function.function(
         lambda: root.vocab.asset_path,
@@ -116,7 +116,7 @@ class LoadTest(test.TestCase):
 
   def test_dedup_assets(self):
     vocab = self._make_asset("contents")
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.asset1 = tracking.TrackableAsset(vocab)
     root.asset2 = tracking.TrackableAsset(vocab)
     imported = self.cycle(root)
@@ -128,7 +128,7 @@ class LoadTest(test.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = func
 
     # Add two traces.
@@ -146,7 +146,7 @@ class LoadTest(test.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = func
 
     imported = self.cycle(root)
@@ -157,7 +157,7 @@ class LoadTest(test.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = func
 
     imported = self.cycle(
@@ -173,7 +173,7 @@ class LoadTest(test.TestCase):
         lambda x: f(x) + 1.0,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.g = g
     imported = self.cycle(root)
     imported.g(constant_op.constant([1.0]))
@@ -186,7 +186,7 @@ class LoadTest(test.TestCase):
       else:
         return 7
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(func)
 
     self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
@@ -208,7 +208,7 @@ class LoadTest(test.TestCase):
       else:
         return 7
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(func)
 
     x = constant_op.constant(10)
@@ -240,7 +240,7 @@ class LoadTest(test.TestCase):
       named_tuple = named_tuple_type(a=input1 + input2, b=input1 * input2)
       return [named_tuple, input2, {"x": 0.5}]
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(func)
 
     result = root.f(constant_op.constant(2), constant_op.constant(3))
@@ -270,7 +270,7 @@ class LoadTest(test.TestCase):
       else:
         return 7
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = def_function.function(func)
 
     self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
@@ -285,7 +285,7 @@ class LoadTest(test.TestCase):
     self.assertEqual(6, imported.f(constant_op.constant(1), defg=7.0).numpy())
 
   def test_member_function(self):
-    class CheckpointableWithMember(tracking.Checkpointable):
+    class CheckpointableWithMember(tracking.AutoCheckpointable):
 
       def __init__(self):
         super(CheckpointableWithMember, self).__init__()
@@ -310,7 +310,7 @@ class LoadTest(test.TestCase):
     self.assertEqual(27, imported.f(constant_op.constant(2)).numpy())
 
   def test_side_effect_listing(self):
-    class M(tracking.Checkpointable):
+    class M(tracking.AutoCheckpointable):
 
       def __init__(self):
         super(M, self).__init__()
@@ -334,7 +334,7 @@ class LoadTest(test.TestCase):
         lambda x: x*weight + bias,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.weight = weight
     root.bias = bias
     root.g = g
@@ -346,16 +346,16 @@ class LoadTest(test.TestCase):
       self.assertAllClose(grad, [3.5, 1.0])
 
   def test_callable(self):
-    class M1(tracking.Checkpointable):
+    class M1(tracking.AutoCheckpointable):
 
       @def_function.function(
           input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
       def __call__(self, x):
         return x
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.m1 = M1()
-    root.m2 = tracking.Checkpointable()
+    root.m2 = tracking.AutoCheckpointable()
     root.m2.__call__ = def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
             lambda x: x*3.0)
@@ -378,9 +378,9 @@ class LoadTest(test.TestCase):
     func = def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
             lambda x: x*3.0)
-    root = tracking.Checkpointable()
-    root.__call__ = tracking.Checkpointable()
-    root.__call__.__call__ = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
+    root.__call__ = tracking.AutoCheckpointable()
+    root.__call__.__call__ = tracking.AutoCheckpointable()
     root.__call__.__call__.__call__ = func
 
     imported = self.cycle(root)
@@ -395,7 +395,7 @@ class LoadTest(test.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.f = func
 
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
@@ -419,7 +419,7 @@ class LoadTest(test.TestCase):
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
 
   def test_dict(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.variables = dict(a=variables.Variable(1.))
     root.variables["b"] = variables.Variable(2.)
     root.variables["c"] = 1
@@ -429,7 +429,7 @@ class LoadTest(test.TestCase):
     self.assertEqual(set(["a", "b"]), set(imported.variables.keys()))
 
   def test_list(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.variables = [variables.Variable(1.)]
     root.variables.append(1)
     root.variables.append(variables.Variable(3.))

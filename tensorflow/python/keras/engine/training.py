@@ -261,7 +261,7 @@ class Model(Network):
     self.optimizer = optimizer
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's checkpointable.
-    if isinstance(self.optimizer, checkpointable.CheckpointableBase):
+    if isinstance(self.optimizer, checkpointable.Checkpointable):
       self._track_checkpointable(
           self.optimizer, name='optimizer', overwrite=True)
     self.loss = loss
