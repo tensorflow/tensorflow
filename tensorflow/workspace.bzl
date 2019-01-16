@@ -317,17 +317,27 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "95160f778a62c7a60ddeadc7bf2d83f85a23a27359814aca12cf949e896fa82c",
-        strip_prefix = "abseil-py-pypi-v0.2.2",
+        sha256 = "595726be4bf3f7e6d64a1a255fa03717b693c01b913768abd52649cbb7ddf2bd",
+        strip_prefix = "abseil-py-pypi-v0.7.0",
         system_build_file = clean_dep("//third_party/systemlibs:absl_py.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
             "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
         },
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/pypi-v0.2.2.tar.gz",
-            "https://github.com/abseil/abseil-py/archive/pypi-v0.2.2.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/pypi-v0.7.0.tar.gz",
+            "https://github.com/abseil/abseil-py/archive/pypi-v0.7.0.tar.gz",
         ],
+    )
+
+    tf_http_archive(
+        name = "enum34_archive",
+        urls = [
+            "https://mirror.bazel.build/pypi.python.org/packages/bf/3e/31d502c25302814a7c2f1d3959d2a3b3f78e509002ba91aea64993936876/enum34-1.1.6.tar.gz",
+            "https://pypi.python.org/packages/bf/3e/31d502c25302814a7c2f1d3959d2a3b3f78e509002ba91aea64993936876/enum34-1.1.6.tar.gz",
+        ],
+        sha256 = "8ad8c4783bf61ded74527bffb48ed9b54166685e4230386a9ed9b1279e2df5b1",
+        build_file = clean_dep("//third_party/systemlibs:enum34.BUILD"),
     )
 
     tf_http_archive(
