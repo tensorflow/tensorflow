@@ -605,8 +605,8 @@ def validate_colocate(v, extended):
 
 def _apply_aggregation(strategy, value, aggregation, destinations):
   if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-    return strategy.broadcast(strategy.unwrap(value)[0],
-                              destinations=destinations)
+    return strategy.extended.broadcast_to(strategy.unwrap(value)[0],
+                                          destinations=destinations)
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
   return strategy.extended.reduce_to(reduce_op, value, destinations)
 

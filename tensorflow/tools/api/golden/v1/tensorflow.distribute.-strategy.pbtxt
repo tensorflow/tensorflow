@@ -16,7 +16,7 @@ tf_class {
   }
   member_method {
     name: "broadcast"
-    argspec: "args=[\'self\', \'tensor\', \'destinations\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "colocate_vars_with"
