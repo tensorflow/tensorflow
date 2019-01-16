@@ -2,6 +2,9 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
+load("@local_config_cuda//cuda:build_defs.bzl",
+    "if_cuda")
+
 toolchain(
     name = "toolchain-linux-x86_64",
     exec_compatible_with = [
@@ -87,10 +90,10 @@ filegroup(
 
 filegroup(
     name = "crosstool_wrapper_driver_is_not_gcc",
-    srcs = ["clang/bin/crosstool_wrapper_driver_is_not_gcc"],
+    srcs = ["clang/bin/crosstool_wrapper_driver_is_not_gcc"] + if_cuda(["@local_config_cuda//cuda:cuda-bin"]),
 )
 
 filegroup(
     name = "windows_msvc_wrapper_files",
-    srcs = glob(["windows/msvc_*"]),
+    srcs = glob(["windows/msvc_*"]) + if_cuda(["@local_config_cuda//cuda:cuda-bin"]),
 )
