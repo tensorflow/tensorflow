@@ -358,17 +358,17 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     x = keras.layers.Dropout(0.5)(x, training=True)
     model = keras.models.Model(inp, x)
     # Would be `dropout/cond/Merge` by default
-    self.assertTrue(model.output.op.name.endswith('dropout/mul'))
+    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
 
     # Test that argument is kept when applying the model
     inp2 = keras.layers.Input(shape=(2,))
     out2 = model(inp2)
-    self.assertTrue(out2.op.name.endswith('dropout/mul'))
+    self.assertTrue(out2.op.name.endswith('dropout/mul_1'))
 
     # Test that argument is kept after loading a model
     config = model.get_config()
     model = keras.models.Model.from_config(config)
-    self.assertTrue(model.output.op.name.endswith('dropout/mul'))
+    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
 
   def test_node_construction(self):
     # test basics

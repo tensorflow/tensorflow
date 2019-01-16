@@ -159,7 +159,7 @@ class TimeDistributedTest(test.TestCase):
       np.random.seed(1234)
       x = keras.layers.Input(shape=(3, 2))
       y = keras.layers.TimeDistributed(
-          keras.layers.Dropout(.999))(x, training=True)
+          keras.layers.Dropout(.9999))(x, training=True)
       model = keras.models.Model(x, y)
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
