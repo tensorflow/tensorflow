@@ -125,7 +125,6 @@ class OptimizationOptions(options.OptionsBase):
       # user explicitly disables them.
       optimizations_to_disable = [
           "map_and_batch_fusion",
-          "map_parallelization",
           "noop_elimination",
           "shuffle_and_repeat_fusion",
       ]

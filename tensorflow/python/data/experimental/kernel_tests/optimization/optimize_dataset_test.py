@@ -268,7 +268,6 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = dataset_ops.Options()
     expected_optimizations = [
         "map_and_batch_fusion",
-        "map_parallelization",
         "noop_elimination",
         "shuffle_and_repeat_fusion",
     ]
