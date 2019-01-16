@@ -267,7 +267,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     self.assertIs(strategy, var.distribute_strategy)
     for d in var.devices:
       self.assertEqual(d, var.get(d).device)
-      self.assertIs(strategy, var.get(d).distribute_strategy)
+      self.assertIs(strategy, var.get(d)._distribute_strategy)  # pylint: disable=protected-access
 
   def testVariableInFuncGraph(self, distribution):
     def model_fn():
