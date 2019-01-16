@@ -23,6 +23,7 @@ import os
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +31,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
+from tensorflow.python.keras import Model
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
@@ -1048,6 +1050,154 @@ class MeanIoUTest(test.TestCase):
     # iou = true_positives / (sum_row + sum_col - true_positives))
     expected_result = (0 + 1 / (1 + 1 - 1)) / 1
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+
+class MeanTensorTest(keras_parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_config(self):
+    m = metrics.MeanTensor(name='mean_by_element')
+
+    # check config
+    self.assertEqual(m.name, 'mean_by_element')
+    self.assertTrue(m.stateful)
+    self.assertEqual(m.dtype, dtypes.float32)
+    self.assertEqual(len(m.variables), 0)
+
+    with self.assertRaisesRegexp(ValueError, 'does not have any result yet'):
+      m.result()
+
+    self.evaluate(m([[3], [5], [3]]))
+    self.assertAllEqual(m._shape, [3, 1])
+
+    m2 = metrics.MeanTensor.from_config(m.get_config())
+    self.assertEqual(m2.name, 'mean_by_element')
+    self.assertTrue(m2.stateful)
+    self.assertEqual(m2.dtype, dtypes.float32)
+    self.assertEqual(len(m2.variables), 0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_unweighted(self):
+    m = metrics.MeanTensor(dtype=dtypes.float64)
+
+    # check __call__()
+    self.assertAllClose(self.evaluate(m([100, 40])), [100, 40])
+    self.assertAllClose(self.evaluate(m.total), [100, 40])
+    self.assertAllClose(self.evaluate(m.count), [1, 1])
+
+    # check update_state() and result() + state accumulation + tensor input
+    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+    self.evaluate(update_op)
+    self.assertAllClose(self.evaluate(m.result()), [50.5, 22.5])
+    self.assertAllClose(self.evaluate(m.total), [101, 45])
+    self.assertAllClose(self.evaluate(m.count), [2, 2])
+
+    # check reset_states()
+    m.reset_states()
+    self.assertAllClose(self.evaluate(m.total), [0, 0])
+    self.assertAllClose(self.evaluate(m.count), [0, 0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_weighted(self):
+    m = metrics.MeanTensor(dtype=dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float64)
+
+    # check scalar weight
+    result_t = m([100, 30], sample_weight=0.5)
+    self.assertAllClose(self.evaluate(result_t), [100, 30])
+    self.assertAllClose(self.evaluate(m.total), [50, 15])
+    self.assertAllClose(self.evaluate(m.count), [0.5, 0.5])
+
+    # check weights not scalar and weights rank matches values rank
+    result_t = m([1, 5], sample_weight=[1, 0.2])
+    result = self.evaluate(result_t)
+    self.assertAllClose(result, [51 / 1.5, 16 / 0.7], 2)
+    self.assertAllClose(self.evaluate(m.total), [51, 16])
+    self.assertAllClose(self.evaluate(m.count), [1.5, 0.7])
+
+    # check weights broadcast
+    result_t = m([1, 2], sample_weight=0.5)
+    self.assertAllClose(self.evaluate(result_t), [51.5 / 2, 17 / 1.2])
+    self.assertAllClose(self.evaluate(m.total), [51.5, 17])
+    self.assertAllClose(self.evaluate(m.count), [2, 1.2])
+
+    # check weights squeeze
+    result_t = m([1, 5], sample_weight=[[1], [0.2]])
+    self.assertAllClose(self.evaluate(result_t), [52.5 / 3, 18 / 1.4])
+    self.assertAllClose(self.evaluate(m.total), [52.5, 18])
+    self.assertAllClose(self.evaluate(m.count), [3, 1.4])
+
+    # check weights expand
+    m = metrics.MeanTensor((2, 1), dtype=dtypes.float64)
+    self.evaluate(variables.variables_initializer(m.variables))
+    result_t = m([[1], [5]], sample_weight=[1, 0.2])
+    self.assertAllClose(self.evaluate(result_t), [[1], [5]])
+    self.assertAllClose(self.evaluate(m.total), [[1], [1]])
+    self.assertAllClose(self.evaluate(m.count), [[1], [0.2]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_value_shape(self):
+    m = metrics.MeanTensor(dtype=dtypes.float64)
+    m([1])
+    with self.assertRaisesRegexp(
+        ValueError, 'MeanTensor input values must always have the same shape'):
+      m([1, 5])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_build_in_tf_function(self):
+    """Ensure that variables are created correctly in a tf function."""
+    m = metrics.MeanTensor(dtype=dtypes.float64)
+
+    @eager_function.defun
+    def call_metric(x):
+      return m(x)
+
+    self.assertAllClose(self.evaluate(call_metric([100, 40])), [100, 40])
+    self.assertAllClose(self.evaluate(m.total), [100, 40])
+    self.assertAllClose(self.evaluate(m.count), [1, 1])
+    self.assertAllClose(self.evaluate(call_metric([20, 2])), [60, 21])
+
+  def test_in_keras_model(self):
+    with context.eager_mode():
+      class ModelWithMetric(Model):
+
+        def __init__(self):
+          super(ModelWithMetric, self).__init__()
+          self.dense1 = layers.Dense(
+              3, activation='relu', kernel_initializer='ones')
+          self.dense2 = layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones')
+          self.mean_tensor = metrics.MeanTensor()
+
+        def call(self, x):
+          x = self.dense1(x)
+          x = self.dense2(x)
+          self.mean_tensor(self.dense1.kernel)
+          return x
+
+      model = ModelWithMetric()
+      model.compile(
+          loss='mae',
+          optimizer='rmsprop',
+          run_eagerly=True)
+
+      x = np.ones((100, 4))
+      y = np.zeros((100, 1))
+      model.evaluate(x, y, batch_size=50)
+      self.assertAllClose(self.evaluate(model.mean_tensor.result()),
+                          np.ones((4, 3)))
+      self.assertAllClose(self.evaluate(model.mean_tensor.total),
+                          np.full((4, 3), 2))
+      self.assertAllClose(self.evaluate(model.mean_tensor.count),
+                          np.full((4, 3), 2))
+
+      model.evaluate(x, y, batch_size=25)
+      self.assertAllClose(self.evaluate(model.mean_tensor.result()),
+                          np.ones((4, 3)))
+      self.assertAllClose(self.evaluate(model.mean_tensor.total),
+                          np.full((4, 3), 4))
+      self.assertAllClose(self.evaluate(model.mean_tensor.count),
+                          np.full((4, 3), 4))
 
 
 def _get_model(compile_metrics):
