@@ -94,6 +94,24 @@ py_test(
 )
 
 py_test(
+    name = "choose_fastest_dataset_serialization_test",
+    size = "small",
+    srcs = ["choose_fastest_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "concatenate_dataset_serialization_test",
     size = "small",
     srcs = ["concatenate_dataset_serialization_test.py"],
