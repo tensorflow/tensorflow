@@ -35,4 +35,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
     ],
+    tags = [
+        "oss_serial",
+    ],
 )
