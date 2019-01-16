@@ -71,7 +71,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     for key in [
         "minimum_segment_size", "max_batch_size", "is_dynamic_op",
         "max_workspace_size_bytes", "precision_mode", "maximum_cached_engines",
-        "cached_engine_batches"
+        "cached_engine_batch_sizes"
     ]:
       self.assertTrue(key in trt_optimizer.parameter_map)
     self.assertEqual(10, trt_optimizer.parameter_map["minimum_segment_size"].i)
@@ -85,7 +85,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, trt_optimizer.parameter_map["maximum_cached_engines"].i)
     self.assertEqual(
         [1, 128],
-        trt_optimizer.parameter_map["cached_engine_batches"].list.i)
+        trt_optimizer.parameter_map["cached_engine_batch_sizes"].list.i)
 
   def _GetConfigProto(self):
     """Get ConfigProto for session creation."""
@@ -239,8 +239,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         # Run with batch size 2, a new engine is created and cached.
         self._TestRun(sess, 2, True)
         # Run with batch size 3, since the number of cached engines has reached
-        # the max, it should fall back to TF function.
-        self._TestRun(sess, 3, False)
+        # the max, it should evict an old engine and create a new one.
+        self._TestRun(sess, 3, True)
 
     # Test the output SavedModel
     with ops.Graph().as_default():
@@ -251,8 +251,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         # Run with batch size 2, a new engine is created and cached.
         self._TestRun(sess, 2, True)
         # Run with batch size 3, since the number of cached engines has reached
-        # the max, it should fall back to TF function.
-        self._TestRun(sess, 3, False)
+        # the max, it should evict an old engine and create a new one.
+        self._TestRun(sess, 3, True)
 
   def testCreateInferenceGraph_StaticOp(self):
     if not trt_convert.is_tensorrt_enabled():

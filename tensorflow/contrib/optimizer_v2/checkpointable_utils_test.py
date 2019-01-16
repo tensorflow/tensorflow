@@ -48,7 +48,7 @@ from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 
 
-class NonLayerCheckpointable(tracking.Checkpointable):
+class NonLayerCheckpointable(tracking.AutoCheckpointable):
 
   def __init__(self):
     super(NonLayerCheckpointable, self).__init__()
@@ -440,7 +440,7 @@ class CheckpointingTests(test.TestCase):
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.var = util.add_variable(
         root, name="var", initializer=0.)
     optimizer = adam.AdamOptimizer(0.1)
@@ -463,7 +463,7 @@ class CheckpointingTests(test.TestCase):
                                    14.))
     slots_path = util.CheckpointableSaver(root).save(
         os.path.join(checkpoint_directory, "with_slots"))
-    new_root = tracking.Checkpointable()
+    new_root = tracking.AutoCheckpointable()
     # Load the slot-containing checkpoint (deferred), then immediately overwrite
     # the non-slot variable (also deferred).
     slot_status = util.CheckpointableSaver(
@@ -508,7 +508,7 @@ class CheckpointingTests(test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = tracking.Checkpointable()
+        obj = tracking.AutoCheckpointable()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
         obj.opt = adam.AdamOptimizer(0.1)
         obj.opt.minimize(obj.var.read_value())
@@ -526,7 +526,7 @@ class CheckpointingTests(test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = tracking.Checkpointable()
+        obj = tracking.AutoCheckpointable()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
         obj.opt = adam.AdamOptimizer(0.1)
         obj.opt.minimize(obj.var.read_value())

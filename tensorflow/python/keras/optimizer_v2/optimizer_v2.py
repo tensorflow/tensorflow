@@ -70,7 +70,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 @six.add_metaclass(abc.ABCMeta)
 @keras_export("keras.optimizers.Optimizer")
-class OptimizerV2(checkpointable.CheckpointableBase):
+class OptimizerV2(checkpointable.Checkpointable):
   """Updated base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this

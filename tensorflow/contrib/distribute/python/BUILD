@@ -1,6 +1,7 @@
 # Implementation of a prototype TF distributed computation library.
 
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -621,12 +622,10 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_test",
     srcs = ["keras_test.py"],
-    additional_deps = [
-        ":keras_test_lib",
-    ],
+    main = "keras_test.py",
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
@@ -634,6 +633,9 @@ cuda_py_test(
         "no_pip",
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":keras_test_lib",
     ],
 )
 
@@ -660,7 +662,9 @@ py_library(
     srcs = [
         "keras_correctness_test_base.py",
         "keras_dnn_correctness_test.py",
+        "keras_embedding_model_correctness_test.py",
         "keras_image_model_correctness_test.py",
+        "keras_lstm_model_correctness_test.py",
     ],
     deps = [
         ":combinations",
@@ -699,6 +703,44 @@ cuda_py_test(
     name = "keras_image_model_correctness_test",
     size = "medium",
     srcs = ["keras_image_model_correctness_test.py"],
+    additional_deps = [
+        ":keras_correctness_test_lib",
+    ],
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_embedding_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_embedding_model_correctness_test.py"],
+    additional_deps = [
+        ":keras_correctness_test_lib",
+    ],
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_lstm_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_lstm_model_correctness_test.py"],
     additional_deps = [
         ":keras_correctness_test_lib",
     ],

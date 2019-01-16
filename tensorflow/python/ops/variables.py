@@ -204,7 +204,7 @@ class VariableMetaclass(type):
 
 @tf_export("Variable", v1=[])
 class Variable(six.with_metaclass(VariableMetaclass,
-                                  checkpointable.CheckpointableBase)):
+                                  checkpointable.Checkpointable)):
   """See the [Variables Guide](https://tensorflow.org/guide/variables).
 
   A variable maintains state in the graph across calls to `run()`. You add a
@@ -1002,16 +1002,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
   @property
   def graph(self):
     """The `Graph` of this variable."""
-    raise NotImplementedError
-
-  @property
-  def distribute_strategy(self):
-    """The `tf.distribute.Strategy` that this variable was created under.
-
-    Returns:
-      A `tf.distribute.Strategy` or `None` if this variable was not created
-      inside the `scope()` of any strategy.
-    """
     raise NotImplementedError
 
   @property
@@ -2206,7 +2196,7 @@ class RefVariable(VariableV1):
     return self._variable.graph
 
   @property
-  def distribute_strategy(self):
+  def _distribute_strategy(self):
     """The `tf.distribute.Strategy` that this variable was created under."""
     return None   # Ref variables are never created inside a strategy.
 
@@ -2603,7 +2593,7 @@ class PartitionedVariable(object):
     return self.get_shape()
 
   @property
-  def distribute_strategy(self):
+  def _distribute_strategy(self):
     """The `tf.distribute.Strategy` that this variable was created under."""
     # NOTE(yuefengz): Today, no partitioned variables in a distribute strategy.
     return None

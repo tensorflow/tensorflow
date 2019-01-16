@@ -263,7 +263,6 @@ py_library(
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
         "//third_party/cloud_tpu/models/keras_colab:__subpackages__",
-        "//third_party/cloud_tpu/models/mnist_keras:__subpackages__",
         "//third_party/cloud_tpu/models/resnet50_keras:__subpackages__",
     ],
     deps = [

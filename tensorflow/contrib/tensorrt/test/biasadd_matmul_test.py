@@ -111,9 +111,9 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[(4, 6680)])
+        expected_output_dims=[[[4, 6680]]])
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""

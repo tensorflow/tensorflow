@@ -408,9 +408,10 @@ REGISTER_OP("AdjustContrast")
 
 // --------------------------------------------------------------------------
 REGISTER_OP("AdjustContrastv2")
-    .Input("images: float")
+    .Input("images: T")
     .Input("contrast_factor: float")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       // The contrast_factor should be scalar only.
       ShapeHandle unused;
@@ -420,18 +421,20 @@ REGISTER_OP("AdjustContrastv2")
 
 // --------------------------------------------------------------------------
 REGISTER_OP("AdjustHue")
-    .Input("images: float")
+    .Input("images: T")
     .Input("delta: float")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
 // --------------------------------------------------------------------------
 REGISTER_OP("AdjustSaturation")
-    .Input("images: float")
+    .Input("images: T")
     .Input("scale: float")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });

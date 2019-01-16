@@ -641,7 +641,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
   EXPECT_EQ(3, item.function_body().node_size());
   EXPECT_EQ(1, item.input_size());
   EXPECT_EQ(0, item.output_size());
-  EXPECT_EQ(false, item.allowed_optimizations().prune_ops_with_side_effects);
+  EXPECT_EQ(true, item.optimization_options().is_function_instantiation);
 }
 
 TEST_F(FunctionsTest, MakeFunctionDef) {

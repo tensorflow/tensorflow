@@ -17,6 +17,9 @@ limitations under the License.
 #include "unicode/uscript.h"  // TF:icu
 #include "tensorflow/core/framework/op_kernel.h"
 
+// ICU codemap data is linked statically.
+#define U_STATIC_IMPLEMENTATION
+
 namespace tensorflow {
 
 class UnicodeScriptOp : public OpKernel {

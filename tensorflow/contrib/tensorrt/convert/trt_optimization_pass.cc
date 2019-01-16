@@ -50,8 +50,8 @@ tensorflow::Status TRTOptimizationPass::Init(
   if (params.count("is_dynamic_op")) {
     is_dynamic_op_ = params.at("is_dynamic_op").b();
   }
-  if (params.count("cached_engine_batches")) {
-    auto batch_vec = params.at("cached_engine_batches").list();
+  if (params.count("cached_engine_batch_sizes")) {
+    auto batch_vec = params.at("cached_engine_batch_sizes").list();
     batches_.reserve(batch_vec.i_size());
     for (const auto i : batch_vec.i()) {
       batches_.push_back(i);
@@ -258,7 +258,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   cp.graph_properties = &static_graph_properties;
   cp.cluster = cluster;
   cp.is_dyn_op = is_dynamic_op_;
-  cp.cached_engine_batches = batches_;
+  cp.cached_engine_batch_sizes = batches_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
   auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(cp);

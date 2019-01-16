@@ -794,6 +794,19 @@ bool BatchnormSpatialPersistentEnabled() {
   return is_enabled;
 }
 
+// A helper function to decide whether to enable deterministic functionality.
+// TODO(pr/24355): Support all cuDNN functionality (currently only convolution).
+bool RequireDeterminism() {
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
+                                               /*default_val=*/false,
+                                               &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+}
+
 // Turns a ConvolutionDescriptor structure into a cudnn convolution handle
 // within a scope.
 class CudnnConvolutionDescriptor {
@@ -3118,9 +3131,22 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
   return port::Status::OK();
 }
 
+inline bool TensorOpMathAvailable(int cc_major) {
+  return cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled();
+}
+
 bool CudnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
+  out_algorithms->clear();
+
+  if (RequireDeterminism()) {
+    out_algorithms->push_back({CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+                               tensor_op_math_available});
+    return true;
+  }
+
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
     // clang-format off
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
@@ -3138,13 +3164,13 @@ bool CudnnSupport::GetConvolveAlgorithms(
     algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 
-  out_algorithms->clear();
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+    if (tensor_op_math_available) {
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
   }
+
   return true;
 }
 
@@ -3173,6 +3199,15 @@ bool CudnnSupport::GetRnnAlgorithms(
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
+  out_algorithms->clear();
+
+  if (RequireDeterminism()) {
+    out_algorithms->push_back(
+        {CUDNN_CONVOLUTION_BWD_DATA_ALGO_1, tensor_op_math_available});
+    return true;
+  }
+
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
       // clang-format off
     CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
@@ -3186,19 +3221,28 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
 
-  out_algorithms->clear();
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+    if (tensor_op_math_available) {
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
   }
+
   return true;
 }
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
+  out_algorithms->clear();
+
+  if (RequireDeterminism()) {
+    out_algorithms->push_back(
+        {CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1, tensor_op_math_available});
+    return true;
+  }
+
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
       // clang-format off
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
@@ -3217,13 +3261,13 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
 
-  out_algorithms->clear();
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+    if (tensor_op_math_available) {
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
   }
+
   return true;
 }
 

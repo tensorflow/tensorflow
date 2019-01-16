@@ -710,7 +710,7 @@ class Nadam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
+class TFOptimizer(Optimizer, checkpointable.Checkpointable):
   """Wrapper class for native TensorFlow optimizers.
   """
 
