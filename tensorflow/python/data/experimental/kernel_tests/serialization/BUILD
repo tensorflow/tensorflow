@@ -681,6 +681,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
