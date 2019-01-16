@@ -3,20 +3,21 @@
 ## Motivation
 
 MLIR allows pluggable dialects, and dialects contain, among others, a list of
-operations. This open and extensible ecosystem leads to "stringly" IRs problem,
-e.g., repetitive string comparisons during optimization and analysis passes,
-unintuitive accessor methods (e.g., generic/error prone `GetOperand(3)` vs
-`GetStride()`) with more generic return types, op verification is
+operations. This open and extensible ecosystem leads to the "stringly" type IR
+problem, e.g., repetitive string comparisons during optimization and analysis
+passes, unintuitive accessor methods (e.g., generic/error prone `GetOperand(3)`
+vs `GetStride()`) with more generic return types, constructors are verbose,
+generic, and don't have default arguments, the MLIR assembly format is verbose
+and unclear, and op verification is:
 
 1.  best case: a central string-to-verification-function map,
 1.  middle case: duplication of verification across the code base, or
-1.  worst case: no verification functions verbose constructors without ability
-    to specify defaults.
+1.  worst case: no verification functions.
 
-The fix is to support op descriptions, which (in one central place per dialect)
+The fix is to support op descriptions, which (in one central place per-dialect)
 contain everything you need to know about the op, its invariants, properties,
-etc. This description is also used to generate helper functions and classes to
-allow analysis/builder/verification/parsing/printing.
+textual formatting, etc. This description is also used to generate helper
+functions and classes to allow analysis/builder/verification/parsing/printing.
 
 ## Requirements
 
@@ -30,11 +31,11 @@ We considered the approaches of several contemporary systems and focused on
 requirements that were desirable:
 
 *   Ops registered using a registry separate from C++ code.
-    *   All ops need not be registered; unknown ops are allowed in MLIR. The
+    *   Unknown ops are allowed in MLIR, so ops need not be registered. The
         ability of the compiler to optimize those ops or graphs containing those
-        ops is constrained.
+        ops is constrained but correct.
     *   The current proposal does not include a runtime op description, but it
-        does not preclude such description, which could be added.
+        does not preclude such description, it can be added later.
     *   The op registry is essential for generating C++ classes that make
         manipulating ops, verifying correct construction etc. in C++ easier by
         providing a typed representation and accessors.
@@ -47,7 +48,8 @@ requirements that were desirable:
         decision and there are alternative ways of doing this. But the
         specification language is good for the requirements of modelling the
         traits (as seen from usage in LLVM processor backend modelling) and easy
-        to extend, so a practical choice.
+        to extend, so a practical choice. If another good option comes up, we
+        will consider it.
 *   MLIR allows both defined and undefined ops.
     *   Defined ops should have fixed semantics and could have a corresponding
         reference implementation defined using, for example, EDSC.
@@ -58,10 +60,11 @@ requirements that were desirable:
     *   The set of properties will be fixed and geared towards
         optimization/analysis passes (e.g., `HasSideEffects`).
 *   The op's operand/return type constraints are modelled along with the op in
-    the registry (see [Type constraints](#type-constraints) discussion below).
-*   Behavior of the op is documented along with the op by, following TensorFlow,
-    a summary and a description. The description is written in markdown and
-    extracted for inclusion in the generated LangRef section of the dialect.
+    the registry (see [Type constraints](#type-constraints) discussion below),
+    this allows (e.g.) optimized concise syntax in textual dumps.
+*   Behavior of the op is documented along with the op with a summary and a
+    description. The description is written in markdown and extracted for
+    inclusion in the generated LangRef section of the dialect.
 *   The verbose form of printing and parsing is available as normal, but a
     custom parser and printer can either be specified or automatically generated
     from an optional string representation showing the mapping of the "assembly"
@@ -82,9 +85,9 @@ requirements that were desirable:
 
 ## Operation definition
 
-As an example of the proposal to declare an operation (say `tf.Add)`. In general
-one would create a helper classes in the modelling of the operations that would
-abstract out common functionality (e.g., `TF_BinaryOp`).
+As an example of the proposal to declare an operation (say `tf.Add)`. This is
+intended to be a fully contained example, in practice one would create a helper
+classes that abstract out common functionality (e.g., `TF_BinaryOp`).
 
 ```tablegen
 def TF_AddOp : Op<"tf.Add", [NoSideEffect]>,
@@ -175,7 +178,7 @@ Operation definitions consists of:
 1.  Reference description.
 
     The description of the operation is encoded as C++ builder using EDSC. This
-    is still under active discussion and will be fleshed out post prototyping.
+    is still under active discussion and will be fleshed out post-prototyping.
 
 1.  Custom builder method (`builder`).
 
@@ -195,8 +198,8 @@ Operation definitions consists of:
 
 1.  hasCanonicalizer and hasConstantFolder.
 
-    These boolean fields indicate whether canonicalization patterns or
-    constant folding have been defined for this operation.
+    These boolean fields indicate whether canonicalization patterns or constant
+    folding have been defined for this operation.
 
 ### For custom parsing and printing
 
@@ -204,7 +207,9 @@ In the operation definition the user can specify custom functions to print or
 parse the operation.
 
 FIXME: Autogenerating printing/parsing has not been prototyped, and potentially
-just being able to specify custom printer/parser methods are sufficient.
+just being able to specify custom printer/parser methods are sufficient. This
+should presumably be influenced by the design of the assembler/disassembler
+logic that LLVM backends get for free for machine instructions.
 
 The short form/custom emitter form of the operation is specified using a string
 with matching operation name, operands and attributes. With the ability to
