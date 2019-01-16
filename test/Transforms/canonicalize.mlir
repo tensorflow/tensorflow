@@ -174,6 +174,33 @@ func @dead_alloc_fold() {
   return
 }
 
+// CHECK-LABEL: func @dead_dealloc_fold
+func @dead_dealloc_fold() {
+  // CHECK-NEXT: return
+  %a = alloc() : memref<4xf32>
+  dealloc %a: memref<4xf32>
+  return
+}
+
+// CHECK-LABEL: func @dead_dealloc_fold_multi_use
+func @dead_dealloc_fold_multi_use(%cond : i1) {
+  // CHECK-NEXT: cond_br
+  %a = alloc() : memref<4xf32>
+  cond_br %cond, ^bb1, ^bb2
+
+  // CHECK-LABEL: bb1:
+^bb1:
+  // CHECK-NEXT: return
+  dealloc %a: memref<4xf32>
+  return
+
+  // CHECK-LABEL: bb2:
+^bb2:
+  // CHECK-NEXT: return
+  dealloc %a: memref<4xf32>
+  return
+}
+
 // CHECK-LABEL: func @dyn_shape_fold(%arg0: index, %arg1: index)
 func @dyn_shape_fold(%L : index, %M : index) -> (memref<? x ? x i32>, memref<? x ? x f32>) {
   // CHECK: %c0 = constant 0 : index

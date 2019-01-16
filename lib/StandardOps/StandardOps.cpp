@@ -671,6 +671,37 @@ Attribute CmpIOp::constantFold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 // DeallocOp
 //===----------------------------------------------------------------------===//
+namespace {
+/// Fold Dealloc instructions that are deallocating an AllocOp that is only used
+/// by other Dealloc operations.
+struct SimplifyDeadDealloc : public RewritePattern {
+  SimplifyDeadDealloc(MLIRContext *context)
+      : RewritePattern(DeallocOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult match(OperationInst *op) const override {
+    auto dealloc = op->cast<DeallocOp>();
+
+    // Check that the memref operand's defining instruction is an AllocOp.
+    Value *memref = dealloc->getMemRef();
+    OperationInst *defOp = memref->getDefiningInst();
+    if (!defOp || !defOp->isa<AllocOp>())
+      return matchFailure();
+
+    // Check that all of the uses of the AllocOp are other DeallocOps.
+    for (auto &use : memref->getUses()) {
+      auto *user = dyn_cast<OperationInst>(use.getOwner());
+      if (!user || !user->isa<DeallocOp>())
+        return matchFailure();
+    }
+    return matchSuccess();
+  }
+
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
+    // Erase the dealloc operation.
+    op->erase();
+  }
+};
+} // end anonymous namespace.
 
 void DeallocOp::build(Builder *builder, OperationState *result, Value *memref) {
   result->addOperands(memref);
@@ -699,6 +730,7 @@ void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   /// dealloc(memrefcast) -> dealloc
   results.push_back(
       std::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.push_back(std::make_unique<SimplifyDeadDealloc>(context));
 }
 
 //===----------------------------------------------------------------------===//
