@@ -344,10 +344,14 @@ cuda_py_test(
     ],
 )
 
-py_library(
-    name = "minimize_loss_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "minimize_loss_test",
     srcs = ["minimize_loss_test.py"],
+    main = "minimize_loss_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         ":mirrored_strategy",
@@ -364,18 +368,6 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "minimize_loss_test",
-    srcs = ["minimize_loss_test.py"],
-    additional_deps = [
-        ":minimize_loss_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -501,10 +493,14 @@ py_library(
     ],
 )
 
-py_library(
-    name = "step_fn_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "step_fn_test",
     srcs = ["step_fn_test.py"],
+    main = "step_fn_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         ":single_loss_example",
@@ -514,18 +510,6 @@ py_library(
         "//tensorflow/python/eager:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "step_fn_test",
-    srcs = ["step_fn_test.py"],
-    additional_deps = [
-        ":step_fn_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -766,10 +750,14 @@ distribute_py_test(
     ],
 )
 
-py_library(
-    name = "metrics_v1_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "metrics_v1_test",
     srcs = ["metrics_v1_test.py"],
+    main = "metrics_v1_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         "//tensorflow/python:math_ops",
@@ -778,18 +766,6 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "metrics_v1_test",
-    srcs = ["metrics_v1_test.py"],
-    additional_deps = [
-        ":metrics_v1_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
