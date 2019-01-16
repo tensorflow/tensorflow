@@ -97,7 +97,6 @@ void FindAllUsers::FindUsers(HloInstruction* tgt, const InstructionList& stack,
             }
             case HloOpcode::kFusion: {
               if (IsPopOpsFusion(user)) {
-                path.push_back(user);
                 paths.insert(path);
               }
               break;
