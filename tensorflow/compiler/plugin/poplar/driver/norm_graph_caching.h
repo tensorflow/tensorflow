@@ -45,7 +45,7 @@ namespace norm_graph_caching {
 // * shape of scale
 // * shape of offset
 // * shape of mean
-// * shape of variance
+// * shape of variance_or_inv_std_dev
 // * epsilon
 // * num_groups for GroupNorm, 0 otherwise
 // * sharding device ID
@@ -59,7 +59,7 @@ poplar::Tensor DoCachedNormInference(
     const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
     const poplar::Tensor& operand, const poplar::Tensor& scale,
     const poplar::Tensor& offset, const poplar::Tensor& mean,
-    const poplar::Tensor& variance, const double epsilon,
+    const poplar::Tensor& variance_or_inv_std_dev, const double epsilon,
     absl::optional<uint32> optional_num_groups, const uint64 device,
     poplar::program::Sequence& prog, const std::string& debug_prefix);
 
@@ -88,7 +88,7 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormTraining(
 // * shape of operand
 // * shape of scale
 // * shape of mean
-// * shape of variance
+// * shape of variance_or_inv_std_dev
 // * shape of grad_output
 // * epsilon
 // * num_groups for GroupNorm, 0 otherwise
@@ -102,8 +102,24 @@ using NormGradGraphCache =
 std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
     const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
     const poplar::Tensor& operand, const poplar::Tensor& scale,
-    const poplar::Tensor& mean, const poplar::Tensor& variance,
+    const poplar::Tensor& mean, const poplar::Tensor& variance_or_inv_std_dev,
     const poplar::Tensor& grad_output, const double epsilon,
+    absl::optional<uint32> optional_num_groups, const uint64 device,
+    poplar::program::Sequence& prog, const std::string& debug_prefix);
+
+// The norm statistics key is:
+// * type of norm
+// * shape of operand
+// * epsilon
+// * num_groups for GroupNorm, 0 otherwise
+// * sharding device ID
+using NormStatisticsCacheKey =
+    std::tuple<NormType, PoplarTensorSignature, double, uint32, uint64>;
+using NormStatisticsGraphCache =
+    std::map<NormStatisticsCacheKey, poputil::graphfn::VoidFunction>;
+std::tuple<poplar::Tensor, poplar::Tensor> DoCachedNormStatistics(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const poplar::Tensor& operand, const double epsilon,
     absl::optional<uint32> optional_num_groups, const uint64 device,
     poplar::program::Sequence& prog, const std::string& debug_prefix);
 

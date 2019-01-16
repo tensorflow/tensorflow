@@ -73,6 +73,8 @@ struct CompilerResources {
 
   norm_graph_caching::NormGradGraphCache norm_grad_graph_cache;
 
+  norm_graph_caching::NormStatisticsGraphCache norm_statistics_graph_cache;
+
   CompilerResources(const poplar::Device& dev, uint64 seed,
                     poprand::RandomGenMode mode,
                     const poplar::OptionFlags& conv_options,

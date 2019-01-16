@@ -1080,8 +1080,9 @@ py_test(
 
 py_test(
     name = "group_norm_test",
-    size = "medium",
+    size = "large",
     srcs = ["tests/group_norm_test.py"],
+    shard_count = 5,
     deps = [
         ":test_utils_py",
         ":ipu_ops_py",

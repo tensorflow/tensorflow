@@ -382,12 +382,12 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
         gamma = constant_op.constant([0.5, 0.5], np.float32)
         beta = constant_op.constant([0.5, 0.5], np.float32)
         mean = constant_op.constant([0.5, 0.5], np.float32)
-        variance = constant_op.constant([0.5, 0.5], np.float32)
+        inv_std_dev = constant_op.constant([0.5, 0.5], np.float32)
         y = gen_popnn_ops.popnn_group_norm_inference(inputs=y,
                                                      gamma=gamma,
                                                      beta=beta,
                                                      mean=mean,
-                                                     variance=variance,
+                                                     inv_std_dev=inv_std_dev,
                                                      data_format="NHWC",
                                                      epsilon=0.0015,
                                                      num_groups=2)
@@ -397,7 +397,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
                                                      gamma=gamma,
                                                      beta=beta,
                                                      mean=mean,
-                                                     variance=variance,
+                                                     inv_std_dev=inv_std_dev,
                                                      data_format="NHWC",
                                                      epsilon=0.0015,
                                                      num_groups=2)
@@ -425,6 +425,66 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
             'vs/PopnnGroupNormInference/custom-call.*/']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
+  def testGroupNormalizeInferenceAndStatistics(self):
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer())
+        gamma = constant_op.constant([0.5, 0.5], np.float32)
+        beta = constant_op.constant([0.5, 0.5], np.float32)
+        mean, inv_std_dev = gen_popnn_ops.popnn_group_norm_statistics(inputs=y,
+                                                                   data_format="NHWC",
+                                                                   epsilon=0.0015,
+                                                                   num_groups=2)
+        y = gen_popnn_ops.popnn_group_norm_inference(inputs=y,
+                                                     gamma=gamma,
+                                                     beta=beta,
+                                                     mean=mean,
+                                                     inv_std_dev=inv_std_dev,
+                                                     data_format="NHWC",
+                                                     epsilon=0.0015,
+                                                     num_groups=2)
+        y = convolutional.conv2d(y, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer())
+        mean, inv_std_dev = gen_popnn_ops.popnn_group_norm_statistics(inputs=y,
+                                                                   data_format="NHWC",
+                                                                   epsilon=0.0015,
+                                                                   num_groups=2)
+        y = gen_popnn_ops.popnn_group_norm_inference(inputs=y,
+                                                     gamma=gamma,
+                                                     beta=beta,
+                                                     mean=mean,
+                                                     inv_std_dev=inv_std_dev,
+                                                     data_format="NHWC",
+                                                     epsilon=0.0015,
+                                                     num_groups=2)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      sess.run(y, {x: np.zeros([1,4,4,2])})
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      # Would fail if there were two batch norms in the graph
+      ok = ['progIdCopy',
+            'host-exchange-local-copy',
+            'Copy_',
+            'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
+            'vs/PopnnGroupNormStatistics/custom-call.*/',
+            'vs/PopnnGroupNormInference/custom-call.*/']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
   def testBatchNormAndGroupNormalizeMixedInference(self):
     with ops.device("/device:IPU:0"):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
@@ -435,12 +495,12 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
         gamma = constant_op.constant([0.5, 0.5], np.float32)
         beta = constant_op.constant([0.5, 0.5], np.float32)
         mean = constant_op.constant([0.5, 0.5], np.float32)
-        variance = constant_op.constant([0.5, 0.5], np.float32)
+        inv_std_dev = constant_op.constant([0.5, 0.5], np.float32)
         y = gen_popnn_ops.popnn_group_norm_inference(inputs=y,
                                                      gamma=gamma,
                                                      beta=beta,
                                                      mean=mean,
-                                                     variance=variance,
+                                                     inv_std_dev=inv_std_dev,
                                                      data_format="NHWC",
                                                      epsilon=0.0015,
                                                      num_groups=2)
@@ -470,6 +530,78 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
             'vs/PopnnGroupNormInference/custom-call.*/',
             'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
+  def testGroupNormsMatchFwdBwd(self):
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 name='conv1')
+        gamma = constant_op.constant([0.5, 0.5], np.float32)
+        beta = constant_op.constant([0.5, 0.5], np.float32)
+        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+                                                     gamma=gamma,
+                                                     beta=beta,
+                                                     data_format="NHWC",
+                                                     epsilon=0.0015,
+                                                     num_groups=2)
+        y = convolutional.conv2d(y, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 name='conv2')
+        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+                                                     gamma=gamma,
+                                                     beta=beta,
+                                                     data_format="NHWC",
+                                                     epsilon=0.0015,
+                                                     num_groups=2)
+        y = convolutional.conv2d(y, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 name='conv3')
+        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+                                                     gamma=gamma,
+                                                     beta=beta,
+                                                     data_format="NHWC",
+                                                     epsilon=0.0015,
+                                                     num_groups=2)
+
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+      train = optimizer.minimize(loss)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      sess.run([train,loss], {x: np.zeros([1,4,4,2])})
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      # One GN for forwards and one GN for grad
+      ok =  ['progIdCopy',
+             'host-exchange-local-copy-',
+             'Copy_',
+             'vs/conv1/Conv2D/convolution.8/Conv_1x1/Convolve/ExchangePre',
+             'vs/conv1/Conv2D/convolution.8/Conv_1x1/Convolve',
+             'vs/PopnnGroupNormTraining/custom-call.11/Norm',
+             'vs/PopnnGroupNormTraining/custom-call.11/iStdDev',
+             'vs/PopnnGroupNormTraining/custom-call.11/Whiten',
+             'Sum/reduce.*/*/Reduce',
+             'gradients/vs/PopnnGroupNormTraining_2_grad/PopnnGroupNormGrad/custom-call.39/',
+             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/convolution.*.clone',
+             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/',
+             'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/',
+            ]
+
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 if __name__ == "__main__":

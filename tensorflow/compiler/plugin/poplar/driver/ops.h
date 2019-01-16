@@ -320,6 +320,12 @@ StatusOr<poplar::program::Program> CreateNormGrad(
     const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
     TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateNormStatistics(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const HloInstruction* inst, const float epsilon,
+    const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map);
+
 /* Optimization tests */
 
 bool IsPoplibsPool(const HloInstruction*, const HloComputation*);

@@ -13,11 +13,15 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
+from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import gradient_descent
 
 class MultiIpuTest(test_util.TensorFlowTestCase):
 
@@ -131,6 +135,59 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
           self.assertTrue(0 in tiles)
           self.assertTrue(1216 in tiles)
 
+  def testMultiIpuTraining(self):
+    def my_graph(inp, lab):
+      with ops.device("/device:IPU:0"):
+        with ipu.ops.ipu_shard(0):
+          x = convolutional.conv2d(inp, 8, 3)
+
+        with ipu.ops.ipu_shard(1):
+          x = convolutional.conv2d(x, 8, 1)
+          x = math_ops.reduce_mean(x, axis=[1, 2])
+
+          loss = nn.softmax_cross_entropy_with_logits(logits=x, labels=lab)
+          loss = math_ops.reduce_mean(loss)
+          opt = gradient_descent.GradientDescentOptimizer(0.000001)
+          train = opt.minimize(loss)
+
+      return [loss, train]
+
+    with ops.device('cpu'):
+      inp = array_ops.placeholder(np.float32, [1, 32, 32, 4], name="data")
+      lab = array_ops.placeholder(np.float32, [1, 8], name="labels")
+      report = gen_ipu_ops.ipu_event_trace()
+
+    out = xla.compile(my_graph, [inp, lab])
+
+
+    cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2, True)
+    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+
+      sess.run(report)
+      sess.run(variables.global_variables_initializer())
+      sess.run(report)
+
+      fd = {inp: np.ones([1, 32, 32, 4]), lab: np.ones([1, 8])}
+      initial_loss = sess.run(out, fd)
+
+      for _ in range(200):
+        sess.run(out, fd)
+
+      final_loss = sess.run(out, fd)
+
+      #self.assertTrue(initial_loss > final_loss)
+
+      rep = sess.run(report)
+
+      num_compiles = 0
+      evts = ipu.utils.extract_all_events(rep)
+      for evt in evts:
+        if evt.type == IpuTraceEvent.COMPILE_END:
+          num_compiles = num_compiles + 1
+
+      self.assertEqual(num_compiles, 1)
 
 if __name__ == "__main__":
     googletest.main()
