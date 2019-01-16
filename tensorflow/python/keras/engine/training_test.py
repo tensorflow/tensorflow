@@ -22,6 +22,7 @@ import io
 import logging
 import sys
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -802,6 +803,34 @@ class TrainingTest(keras_parameterized.TestCase):
       test_model.set_weights(fixed_weights)
       test_model_loss = test_model.train_on_batch(train_x, train_y)
       self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(
+      ('default', 1, 4), ('integer_two', 2, 2), ('integer_four', 4, 1),
+      ('simple_list', [1, 3, 4], 3), ('duplicated_list', [4, 2, 2], 2))
+  def test_validation_freq(self, validation_freq, expected_runs):
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model = testing_utils.get_small_mlp(2, 1, 10)
+    model.compile('sgd', 'mse')
+
+    class ValCounter(keras.callbacks.Callback):
+
+      def __init__(self):
+        self.val_runs = 0
+
+      def on_test_begin(self, logs=None):
+        self.val_runs += 1
+
+    val_counter = ValCounter()
+    model.fit(
+        x,
+        y,
+        epochs=4,
+        validation_data=(x, y),
+        validation_freq=validation_freq,
+        callbacks=[val_counter])
+    self.assertEqual(val_counter.val_runs, expected_runs)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):

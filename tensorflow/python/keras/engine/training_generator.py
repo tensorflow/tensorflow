@@ -46,6 +46,7 @@ def model_iteration(model,
                     callbacks=None,
                     validation_data=None,
                     validation_steps=None,
+                    validation_freq=1,
                     class_weight=None,
                     max_queue_size=10,
                     workers=1,
@@ -74,6 +75,13 @@ def model_iteration(model,
         `keras.utils.data_utils.Sequence` object or Eager Iterator or Dataset.
       validation_steps: Total number of steps (batches of samples) before
         declaring validation finished.
+      validation_freq: Only relevant if validation data is provided. Integer or
+        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        integer, specifies how many training epochs to run before a new
+        validation run is performed, e.g. `validation_freq=2` runs
+        validation every 2 epochs. If a Container, specifies the epochs on
+        which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+        validation at the end of the 1st, 2nd, and 10th epochs.
       class_weight: Dictionary mapping class indices to a weight for the class.
       max_queue_size: Integer. Maximum size for the generator queue. If
         unspecified, `max_queue_size` will default to 10.
@@ -257,7 +265,9 @@ def model_iteration(model,
       results = results[0]
 
     # Run the test loop every epoch during training.
-    if do_validation and not callbacks.model.stop_training:
+    if (do_validation and
+        training_utils.should_run_validation(validation_freq, epoch) and
+        not callbacks.model.stop_training):
       val_results = model_iteration(
           model,
           validation_data,
