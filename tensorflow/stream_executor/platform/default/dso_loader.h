@@ -46,6 +46,8 @@ class DsoLoader {
   static port::Status GetCurandDsoHandle(void** dso_handle);
   static port::Status GetLibcudaDsoHandle(void** dso_handle);
   static port::Status GetLibcuptiDsoHandle(void** dso_handle);
+  static port::Status GetCudartDsoHandle(void** dso_handle);
+  static port::Status GetCusolverDsoHandle(void** dso_handle);
 
   // Registers a new binary-relative path to use as a dlopen search path.
   static void RegisterRpath(absl::string_view path);
@@ -101,6 +103,8 @@ class CachedDsoLoader {
   static port::StatusOr<void*> GetCurandDsoHandle();
   static port::StatusOr<void*> GetLibcudaDsoHandle();
   static port::StatusOr<void*> GetLibcuptiDsoHandle();
+  static port::StatusOr<void*> GetCudartDsoHandle();
+  static port::StatusOr<void*> GetCusolverDsoHandle();
 
  private:
   // Fetches a DSO handle via "load_dso" and returns the StatusOr form of the

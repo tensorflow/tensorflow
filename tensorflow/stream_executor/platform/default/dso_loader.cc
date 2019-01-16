@@ -117,6 +117,20 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 #endif
 }
 
+/* static */ port::Status DsoLoader::GetCudartDsoHandle(void** dso_handle) {
+  return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
+                                      "cudart", GetCudaVersion()),
+                                  GetCudaLibraryDirPath()),
+                      dso_handle);
+}
+
+/* static */ port::Status DsoLoader::GetCusolverDsoHandle(void** dso_handle) {
+  return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
+                                      "cusolver", GetCudaVersion()),
+                                  GetCudaLibraryDirPath()),
+                      dso_handle);
+}
+
 static mutex& GetRpathMutex() {
   static mutex* mu = new mutex;
   return *mu;
@@ -279,6 +293,18 @@ static std::vector<string>* CreatePrimordialRpaths() {
 /* static */ port::StatusOr<void*> CachedDsoLoader::GetLibcuptiDsoHandle() {
   static port::StatusOr<void*> result =
       FetchHandleResult(DsoLoader::GetLibcuptiDsoHandle);
+  return result;
+}
+
+/* static */ port::StatusOr<void*> CachedDsoLoader::GetCudartDsoHandle() {
+  static port::StatusOr<void*> result =
+      FetchHandleResult(DsoLoader::GetCudartDsoHandle);
+  return result;
+}
+
+/* static */ port::StatusOr<void*> CachedDsoLoader::GetCusolverDsoHandle() {
+  static port::StatusOr<void*> result =
+      FetchHandleResult(DsoLoader::GetCusolverDsoHandle);
   return result;
 }
 
