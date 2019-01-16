@@ -408,11 +408,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_google_googletest",
-        sha256 = "61eee610f136c1edc693d979647a4bb2ca253d60e6964724b61af85d32a41251",
-        strip_prefix = "googletest-6729a1361150131bc5d394d5cd2b4cdf0953ee7b",
+        sha256 = "ff7a82736e158c077e76188232eac77913a15dac0b22508c390ab3f88e6d6d86",
+        strip_prefix = "googletest-b6cd405286ed8635ece71c72f118e659f4ade3fb",
         urls = [
-            "https://mirror.bazel.build/github.com/google/googletest/archive/6729a1361150131bc5d394d5cd2b4cdf0953ee7b.zip",
-            "https://github.com/google/googletest/archive/6729a1361150131bc5d394d5cd2b4cdf0953ee7b.zip",
+            "https://mirror.bazel.build/github.com/google/googletest/archive/b6cd405286ed8635ece71c72f118e659f4ade3fb.zip",
+            "https://github.com/google/googletest/archive/b6cd405286ed8635ece71c72f118e659f4ade3fb.zip",
         ],
     )
 
