@@ -42,7 +42,7 @@ enum class PoplibsLib : uint32 {
   _NumLibs
 };
 std::string PoplibsLibToString(const PoplibsLib&);
-StatusOr<PoplibsLib> StringToPoplibsLib(const std::string&);
+absl::optional<PoplibsLib> StringToPoplibsLib(const std::string&);
 
 enum class PoplibsOp : uint32 {
   // Poplin:
@@ -60,12 +60,12 @@ enum class PoplibsOp : uint32 {
   _NumOps
 };
 std::string PoplibsOpToString(const PoplibsOp&);
-StatusOr<PoplibsOp> StringToPoplibsOp(const std::string&);
+absl::optional<PoplibsOp> StringToPoplibsOp(const std::string&);
 
 // Function used to get the string target for the kCustomCall
 std::string GetPoplibsCustomOpTargetString(const PoplibsLib&, const PoplibsOp&);
 // Tried to convert the string target for the kCustomCall
-StatusOr<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
+absl::optional<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
     const HloInstruction* inst);
 
 // Returns true if inst is a call to a custom op for Poplibs

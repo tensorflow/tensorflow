@@ -53,8 +53,12 @@ StatusOr<const CustomPoplibOpInfo> GetCustomPoplibOpInfo(
   // Mapping of getting the right Create function given the metadata.
   PoplibsLib poplibs_lib;
   PoplibsOp poplibs_op;
-  TF_ASSIGN_OR_RETURN(std::tie(poplibs_lib, poplibs_op),
-                      GetPoplibsCustomOp(inst));
+  auto ret = GetPoplibsCustomOp(inst);
+  if (ret == absl::nullopt) {
+    return xla::FailedPrecondition("Unknown poplibs library on %s.",
+                                   inst->name());
+  }
+  std::tie(poplibs_lib, poplibs_op) = ret.value();
 
   static absl::flat_hash_map<PoplibsLib, GetOpInfoMapFn> poplibs_info_map = {
       {PoplibsLib::Poplin, GetPoplinOpInfoMap},
