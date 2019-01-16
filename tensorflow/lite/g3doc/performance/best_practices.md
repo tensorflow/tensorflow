@@ -37,8 +37,34 @@ If your application is not careful, there can be redundant copies when feeding t
 Platform specific tools like [Android profiler](https://developer.android.com/studio/profile/android-profiler) and [Instruments](https://help.apple.com/instruments/mac/current/) provide a wealth of profiling information that can be used to debug your app. Sometimes the performance bug may be not in the model but in parts of application code that interact with the model. Make sure to familiarize yourself with platform specific profiling tools and best practices for your platform.
 
 ## Evaluate whether your model benefits from using hardware accelerators available on the device
-Tensorflow Lite is working on adding support for accelerators like GPU and provides acceleration through [Neural Networks API](https://developer.android.com/ndk/guides/neuralnetworks/) on Android.
-You can utilize these hardware accelerator backends to improve the speed and efficiency of your model. To enable Neural Networks API call [UseNNAPI](https://github.com/tensorflow/tensorflow/blob/6305a6d83552ba6a472cd72398b60d9241467f1f/tensorflow/lite/interpreter.h#L334) on the interpreter instance.
+
+TensorFlow Lite has added been new ways to accelerate models with faster
+hardware like GPUs, DSPs, and neural accelerators. Typically, these accelerators
+are exposed through *delegate* submodules that take over parts of the
+interpreter execution. TensorFlow Lite can use delegates by:
+
+*   Using Android's
+    [Neural Networks API](https://developer.android.com/ndk/guides/neuralnetworks/).
+    You can utilize these hardware accelerator backends to improve the speed and
+    efficiency of your model. To enable the Neural Networks API, call
+    [UseNNAPI](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L330)
+    on the interpreter instance.
+*   A binary-only GPU delegate has been released for Android and iOS—using
+    OpenGL and Metal, respectively. To try them out, see the
+    [GPU delegate tutorial](gpu.md) and [documentation](gpu_advanced.md).
+*   It is possible to create your own delegate if you have access to
+    non-standard hardware. View the NN API delegate in the source code as an
+    example.
+
+Be aware that some accelerators work better for different types of models. It is
+important to benchmark each delegate to see if it is a good choice for your
+application. For example, if you have a very small model, it may not be worth
+delegating the model to either the NN API or the GPU. Conversely, accelerators
+are a great choice for large models that have high arithmetic intensity.
 
 ## Need more help
-The Tensorflow team is happy to help diagnose and address specific performance issues you may be facing. Please file an issue on [GitHub](https://github.com/tensorflow/tensorflow/issues) with details of the issue.
+
+The Tensorflow team is happy to help diagnose and address specific performance
+issues you may be facing. Please file an issue on
+[GitHub](https://github.com/tensorflow/tensorflow/issues) with details of the
+issue.
