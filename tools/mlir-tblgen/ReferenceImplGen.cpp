@@ -39,25 +39,27 @@ static void emitReferenceImplementations(const RecordKeeper &recordKeeper,
   emitSourceFileHeader("Reference implementation file", os);
   const auto &defs = recordKeeper.getAllDerivedDefinitions("Op");
 
-  bool emitted = false;
+  os << "void printRefImplementation(StringRef opName, mlir::Function *f) {\n"
+     << "  using namespace ::mlir::edsc;\n"
+     << "  edsc::ScopedEDSCContext raiiContext;\n"
+     << "  Stmt block;\n"
+     << "  FuncBuilder builder(f);\n"
+     << "  if (false) {}";
   for (auto *def : defs) {
     Operator op(def);
     auto ref = def->getValueInit("referenceImplementation");
     if (!ref)
       continue;
-    if (emitted)
-      PrintFatalError("only one reference implementation supported");
-    os << "void printRefImplementation(mlir::Function *f) {\n"
-       << "  using namespace ::mlir::edsc;\n"
-       << "  edsc::ScopedEDSCContext raiiContext;\n"
-       << "  FuncBuilder builder(f);\n"
+    os << "else if (opName == \"" << op.getOperationName() << "\") {\n"
        << "  edsc::MLIREmitter emitter(&builder, f->getLoc());\n"
-       << "  Stmt block;\n"
        << ref->getAsUnquotedString() << "\n"
-       << "  block.print(llvm::outs());\n"
        << "}\n";
-    emitted = true;
   }
+  os << " else {"
+     << "  f->emitError(\"no reference implementation for \" + opName);\n"
+     << "  return;\n}\n";
+  os << "  block.print(llvm::outs());\n llvm::outs() << \"\\n\";\n"
+     << "}\n";
 }
 
 mlir::GenRegistration genRegister("gen-reference-implementations",

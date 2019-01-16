@@ -76,8 +76,18 @@ SmallVector<edsc::Bindable, 8> makeBoundSizes(edsc::MLIREmitter *emitter,
 
 PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
   f->walkOps([](OperationInst *op) {
-    if (op->getName().getStringRef() == "dump") {
-      printRefImplementation(op->getAttrOfType<FunctionAttr>("fn").getValue());
+    if (op->getName().getStringRef() == "print") {
+      auto opName = op->getAttrOfType<StringAttr>("op");
+      if (!opName) {
+        op->emitOpError("no 'op' attribute provided for print");
+        return;
+      }
+      auto function = op->getAttrOfType<FunctionAttr>("fn");
+      if (!function) {
+        op->emitOpError("no 'fn' attribute provided for print");
+        return;
+      }
+      printRefImplementation(opName.getValue(), function.getValue());
     }
   });
   return success();
