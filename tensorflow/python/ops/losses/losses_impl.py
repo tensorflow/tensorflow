@@ -794,7 +794,7 @@ def softmax_cross_entropy(
 
     if label_smoothing > 0:
       num_classes = math_ops.cast(
-          array_ops.shape(onehot_labels)[1], logits.dtype)
+          array_ops.shape(onehot_labels)[-1], logits.dtype)
       smooth_positives = 1.0 - label_smoothing
       smooth_negatives = label_smoothing / num_classes
       onehot_labels = onehot_labels * smooth_positives + smooth_negatives
