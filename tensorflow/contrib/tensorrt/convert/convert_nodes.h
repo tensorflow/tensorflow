@@ -468,6 +468,11 @@ class Converter {
                               nvinfer1::Dims* operand_l_new_dims,
                               nvinfer1::Dims* operand_r_new_dims) const;
 
+  // Creates an IConstantLayer using 'weights' whose dimensions are specified by
+  // 'dims', and returns the output ITensor.
+  nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
+                                         const nvinfer1::Dims& dims);
+
  private:
   // Verify the provided batch_size is consistent with batch_size_ and update it
   // if necessary.

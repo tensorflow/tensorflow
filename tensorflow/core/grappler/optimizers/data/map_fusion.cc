@@ -77,8 +77,10 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
 
 }  // namespace
 
-Status MapFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
-                           GraphDef* output) {
+Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                          const GrapplerItem& item,
+                                          GraphDef* output,
+                                          OptimizationStats* stats) {
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;
@@ -142,6 +144,7 @@ Status MapFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     // they are not used anymore.
     nodes_to_delete.insert(parent_map_node->name());
     nodes_to_delete.insert(map_node->name());
+    stats->num_changes++;
   }
 
   graph.DeleteNodes(nodes_to_delete);
@@ -155,5 +158,5 @@ void MapFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapFusion, "map_fusion");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

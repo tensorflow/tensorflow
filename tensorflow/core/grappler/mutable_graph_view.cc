@@ -388,6 +388,10 @@ Status MutableGraphView::AddRegularFanin(absl::string_view node_name,
         "Can't add$0 fanin '$1' as regular fanin to$2 node '$3'.", fanin_err,
         fanin.ToString(), node_err, node_name));
   }
+  if (node_name == fanin.node()) {
+    return errors::Internal(absl::Substitute(
+        "Can't add fanin '$0' as regular fanin to self.", fanin.ToString()));
+  }
 
   AddFaninInternal(node, {fanin_node, fanin.index()});
   return Status::OK();
@@ -405,6 +409,10 @@ Status MutableGraphView::AddControllingFanin(absl::string_view node_name,
     return errors::Internal(
         absl::Substitute("Can't add$0 controlling fanin '$1' to$2 node '$3'.",
                          fanin_err, fanin.ToString(), node_err, node_name));
+  }
+  if (node_name == fanin.node()) {
+    return errors::Internal(absl::Substitute(
+        "Can't add controlling fanin '$0' to self.", fanin.ToString()));
   }
 
   if (!IsSwitch(*fanin_node)) {
@@ -426,6 +434,12 @@ Status MutableGraphView::AddControllingFanin(absl::string_view node_name,
     for (auto fanout : fanouts) {
       if (IsIdentity(*fanout.node) || IsIdentityNSingleInput(*fanout.node)) {
         if (ParseTensorName(fanout.node->input(0)) == fanin) {
+          if (fanout.node->name() == node_name) {
+            return errors::Internal(absl::Substitute(
+                "Can't add found controlling fanin '$0' from fanin '$1' to "
+                "self.",
+                AsControlDependency(fanout.node->name()), fanin.ToString()));
+          }
           AddFaninInternal(node, {fanout.node, Graph::kControlSlot});
           return Status::OK();
         }
@@ -435,6 +449,11 @@ Status MutableGraphView::AddControllingFanin(absl::string_view node_name,
     // dependency: add a new identity node.
     string ctrl_dep_name = AddPrefixToNodeName(
         absl::StrCat(fanin.node(), "_", fanin.index()), kMutableGraphViewCtrl);
+    if (node_name == ctrl_dep_name) {
+      return errors::Internal(absl::Substitute(
+          "Can't add generated controlling fanin '$0' from fanin '$1' to self.",
+          AsControlDependency(ctrl_dep_name), fanin.ToString()));
+    }
 
     // Reuse a previously created node, if possible.
     NodeDef* ctrl_dep_node = GetNode(ctrl_dep_name);
@@ -515,6 +534,11 @@ Status MutableGraphView::RemoveRegularFanin(absl::string_view node_name,
         "Can't remove$0 fanin '$1' as regular fanin from$2 node '$3'.",
         fanin_err, fanin.ToString(), node_err, node_name));
   }
+  if (node_name == fanin.node()) {
+    return errors::Internal(
+        absl::Substitute("Can't remove fanin '$0' as regular fanin from self.",
+                         fanin.ToString()));
+  }
 
   RemoveRegularFaninInternal(node, {fanin_node, fanin.index()});
   return Status::OK();
@@ -549,6 +573,11 @@ Status MutableGraphView::RemoveControllingFanin(
     return errors::Internal(absl::Substitute(
         "Can't remove$0 controlling fanin '$1' from$2 node '$3'.", fanin_err,
         AsControlDependency(string(fanin_node_name)), node_err, node_name));
+  }
+  if (node_name == fanin_node_name) {
+    return errors::Internal(
+        absl::Substitute("Can't remove controlling fanin '$0' from self.",
+                         AsControlDependency(string(fanin_node_name))));
   }
 
   RemoveControllingFaninInternal(node, fanin_node);
@@ -613,6 +642,11 @@ Status MutableGraphView::UpdateFanin(absl::string_view node_name,
     return errors::Internal(absl::Substitute(
         "Can't update fanin '$0' to fanin '$1' in node '$2', to fanin is a "
         "Switch control dependency.",
+        from_fanin.ToString(), to_fanin.ToString(), node_name));
+  }
+  if (node_name == from_fanin.node() || node_name == to_fanin.node()) {
+    return errors::Internal(absl::Substitute(
+        "Can't update fanin '$0' to fanin '$1' in self '$2'.",
         from_fanin.ToString(), to_fanin.ToString(), node_name));
   }
 

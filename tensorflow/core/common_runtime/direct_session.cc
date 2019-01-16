@@ -719,7 +719,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
-  UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+  metrics::UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
 
   return Status::OK();
 }

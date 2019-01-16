@@ -101,8 +101,8 @@ int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
 void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
                                NodeDef* node);
 
-}  // end namespace function_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace function_utils
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_FUNCTION_UTILS_H_

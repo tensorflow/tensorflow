@@ -30,6 +30,10 @@ message CheckpointableObjectGraph {
       string full_name = 2;
       // The generated name of the Tensor in the checkpoint.
       string checkpoint_key = 3;
+      // Whether checkpoints should be considered as matching even without this
+      // value restored. Used for non-critical values which don't affect the
+      // TensorFlow graph, such as layer configurations.
+      bool optional_restore = 4;
     }
 
     message SlotVariableReference {

@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -33,6 +34,8 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
+
+constexpr char kDatasetName[] = "ParallelInterleaveV2";
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -87,6 +90,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
                                       &captured_func));
 
+    if (num_parallel_calls == model::kAutoTune) {
+      metrics::RecordTFDataAutotune(kDatasetName);
+    }
+
     *output =
         new Dataset(ctx, input, interleave_func_, std::move(captured_func),
                     cycle_length, block_length, num_parallel_calls, sloppy_,
@@ -121,7 +128,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       return absl::make_unique<ParallelInterleaveIterator>(
           ParallelInterleaveIterator::Params{
-              this, strings::StrCat(prefix, "::ParallelInterleaveV2")},
+              this, strings::StrCat(prefix, "::", kDatasetName)},
           sloppy_);
     }
 

@@ -28,6 +28,17 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.training import gradient_descent
 
 
+def all_strategy_combinations_with_eager_and_graph_modes():
+  return combinations.combine(distribution=keras_correctness_test_base.
+                              all_strategies,
+                              mode=['graph', 'eager'])
+
+
+def all_strategy_combinations_with_graph_mode():
+  return combinations.combine(distribution=keras_correctness_test_base.
+                              all_strategies, mode=['graph'])
+
+
 class TestDistributionStrategyDnnCorrectness(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
@@ -65,8 +76,7 @@ class TestDistributionStrategyDnnCorrectness(
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
-  @combinations.generate(keras_correctness_test_base.
-                         all_strategy_combinations_with_graph_mode())
+  @combinations.generate(all_strategy_combinations_with_graph_mode())
   def test_dnn_with_dynamic_learning_rate(self, distribution):
     self.run_dynamic_lr_test(distribution)
 
@@ -104,8 +114,7 @@ class TestDistributionStrategyDnnMetricCorrectness(
       history = model.fit(x=train_dataset, epochs=2, steps_per_epoch=10)
       self.assertEqual(history.history['binary_accuracy'], [1.0, 1.0])
 
-  @combinations.generate(keras_correctness_test_base.
-                         all_strategy_combinations_with_eager_and_graph_modes())
+  @combinations.generate(all_strategy_combinations_with_eager_and_graph_modes())
   def test_simple_dnn_metric_correctness(self, distribution):
     self.run_metric_correctness_test(distribution)
 
@@ -153,8 +162,7 @@ class TestDistributionStrategyDnnMetricEvalCorrectness(
       self.assertEqual(outs[1], 0.)
       self.assertEqual(outs[2], 0.)
 
-  @combinations.generate(keras_correctness_test_base.
-                         all_strategy_combinations_with_eager_and_graph_modes())
+  @combinations.generate(all_strategy_combinations_with_eager_and_graph_modes())
   def test_identity_model_metric_eval_correctness(self, distribution):
     self.run_eval_metrics_correctness_test(distribution)
 

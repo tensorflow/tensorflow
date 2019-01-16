@@ -268,8 +268,6 @@ class DeviceResDistTest : public ::testing::Test {
         EXPECT_EQ(cp_[idx].instance.device_names[idx], device_name);
         EXPECT_EQ(cp_[idx].instance.task_names[idx], task_name);
         if (idx > 0) {
-          EXPECT_EQ(cp_[0].instance.communicator_key,
-                    cp_[idx].instance.communicator_key);
           for (int i = 0; i < dev_count; ++i) {
             EXPECT_EQ(cp_[0].instance.device_names[i],
                       cp_[idx].instance.device_names[i]);

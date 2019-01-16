@@ -303,6 +303,20 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
         functools.partial(self._call_dataset_fn, dataset_fn),
         self._input_workers)
 
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    input_contexts = []
+    num_workers = self._input_workers.num_workers
+    for i in range(num_workers):
+      input_contexts.append(distribute_lib.InputContext(
+          num_input_pipelines=num_workers,
+          input_pipeline_id=i,
+          num_replicas_in_sync=self._num_replicas_in_sync))
+    return input_lib.InputFunctionIterator(
+        input_fn, self._input_workers, input_contexts)
+
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, numpy_dataset.SingleDevice(self.get_host_cpu_device(0)),

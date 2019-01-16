@@ -16,6 +16,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import os
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
@@ -57,5 +60,30 @@ class InterfaceTests(test.TestCase):
             name="v", shape=[], overwrite=False,
             getter=variable_scope.get_variable)
 
+  def testAssertConsumedWithUnusedPythonState(self):
+    has_config = base.CheckpointableBase()
+    has_config.get_config = lambda: {}
+    saved = util.Checkpoint(obj=has_config)
+    save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
+    restored = util.Checkpoint(obj=base.CheckpointableBase())
+    restored.restore(save_path).assert_consumed()
+
+  def testAssertConsumedFailsWithUsedPythonState(self):
+    has_config = base.CheckpointableBase()
+    attributes = {
+        "foo_attr": functools.partial(
+            base.PythonStringStateSaveable,
+            state_callback=lambda: "",
+            restore_callback=lambda x: None)}
+    has_config._gather_saveables_for_checkpoint = lambda: attributes
+    saved = util.Checkpoint(obj=has_config)
+    save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
+    restored = util.Checkpoint(obj=base.CheckpointableBase())
+    status = restored.restore(save_path)
+    with self.assertRaisesRegexp(AssertionError, "foo_attr"):
+      status.assert_consumed()
+
+
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

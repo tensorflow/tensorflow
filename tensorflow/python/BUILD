@@ -1834,6 +1834,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "stateful_random_ops_gen",
+    visibility = ["//learning/brain/python/ops:__pkg__"],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
         "//tensorflow/compiler/tf2xla:internal",
@@ -2769,6 +2774,32 @@ py_library(
 )
 
 py_library(
+    name = "stateful_random_ops",
+    srcs = ["ops/stateful_random_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":math_ops",
+        ":stateful_random_ops_gen",
+        ":variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "stateful_random_ops_test",
+    size = "medium",
+    srcs = ["ops/stateful_random_ops_test.py"],
+    additional_deps = [
+        ":stateful_random_ops",
+        ":client_testlib",
+        ":logging_ops",
+        ":random_ops_gen",
+    ],
+)
+
+py_library(
     name = "stateless_random_ops",
     srcs = ["ops/stateless_random_ops.py"],
     srcs_version = "PY2AND3",
@@ -3046,6 +3077,7 @@ py_library(
         ":special_math_ops",
         ":state_grad",
         ":state_ops",
+        ":stateful_random_ops",
         ":stateless_random_ops",
         ":string_ops",
         ":template",

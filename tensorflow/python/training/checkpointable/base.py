@@ -142,8 +142,10 @@ class PythonStringStateSaveable(PythonStateSaveable):
       state_callback: A function taking no arguments which returns a
         string. This function is run every time a checkpoint is written.
       restore_callback: A function taking a Python string, used to restore
-        state. Optional; defaults to doing nothing.
+        state. Optional; defaults to doing nothing, in which case it is ignored
+        by status assertions such as assert_consumed().
     """
+    self._has_trivial_state_callback = (restore_callback is None)
     def _state_callback_wrapper():
       with ops.init_scope():
         return state_callback()
@@ -155,6 +157,11 @@ class PythonStringStateSaveable(PythonStateSaveable):
         self._save_string, "", name, dtype=dtypes.string)
     super(PythonStringStateSaveable, self).__init__(
         self._save_string, [spec], name)
+
+  @property
+  def optional_restore(self):
+    """For values with no restore, relaxes assert_consumed()."""
+    return self._has_trivial_state_callback
 
   def feed_dict_additions(self):
     """When running a graph, indicates fresh state to feed."""
@@ -351,8 +358,9 @@ class _CheckpointPosition(object):
           # added or deleted. Stores unused attributes so an exception can be
           # raised if the user decides to check that everything in the
           # checkpoint was loaded.
-          self._checkpoint.unused_attributes.setdefault(
-              self.checkpointable, []).append(serialized_tensor.name)
+          if not serialized_tensor.optional_restore:
+            self._checkpoint.unused_attributes.setdefault(
+                self.checkpointable, []).append(serialized_tensor.name)
           continue
         if callable(saveable_factory):
           saveable = saveable_factory(name=serialized_tensor.checkpoint_key)

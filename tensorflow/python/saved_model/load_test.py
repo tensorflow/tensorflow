@@ -428,6 +428,17 @@ class LoadTest(test.TestCase):
     self.assertEqual(2., imported.variables["b"].numpy())
     self.assertEqual(set(["a", "b"]), set(imported.variables.keys()))
 
+  def test_list(self):
+    root = tracking.Checkpointable()
+    root.variables = [variables.Variable(1.)]
+    root.variables.append(1)
+    root.variables.append(variables.Variable(3.))
+    imported = self.cycle(root)
+    self.assertEqual(1., imported.variables[0].numpy())
+    self.assertEqual(3., imported.variables[2].numpy())
+    self.assertIs(None, imported.variables[1])
+    self.assertEqual(3, len(imported.variables))
+
 
 if __name__ == "__main__":
   test.main()

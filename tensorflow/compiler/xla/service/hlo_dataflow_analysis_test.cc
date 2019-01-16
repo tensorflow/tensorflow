@@ -1901,9 +1901,9 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   EXPECT_FALSE(analysis->ValueIsDefinedAt(root));
 }
 
-INSTANTIATE_TEST_CASE_P(HloDataflowAnalysisInstantiation,
-                        HloDataflowAnalysisTest,
-                        ::testing::Values(false, true));
+INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
+                         HloDataflowAnalysisTest,
+                         ::testing::Values(false, true));
 
 class HloDataflowAnalysisTestBase : public HloTestBase {
  protected:

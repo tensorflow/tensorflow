@@ -50,7 +50,6 @@ cc_library(
     ],
 )
 
-# TODO(b/118895218): Make this test compatible with oss.
 tf_cc_test(
     name = "predictor_test",
     srcs = ["predictor_test.cc"],
