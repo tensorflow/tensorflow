@@ -1,25 +1,6 @@
-// RUN: mlir-tblgen -gen-rewriters %s | FileCheck %s
+// RUN: mlir-tblgen -gen-rewriters -I %S/../../include %s | FileCheck %s
 
-// Extracted & simplified from op_base.td to do more directed testing.
-class TypeConstraint;
-class Type : TypeConstraint {
-  code builderCall = ?;
-}
-class Pattern<dag patternToMatch, list<dag> resultOps> {
-  dag PatternToMatch = patternToMatch;
-  list<dag> ResultOps = resultOps;
-}
-class Pat<dag pattern, dag result> : Pattern<pattern, [result]>;
-def ins;
-class Op<string mnemonic> {
-  string opName = mnemonic;
-  dag arguments = (ins);
-}
-class Attr<Type t> {
-  Type type = t;
-  code storageType = ?;
-  code returnType = ?;
-}
+include "mlir/IR/op_base.td"
 
 // Create a Type and Attribute.
 def YT : Type {
