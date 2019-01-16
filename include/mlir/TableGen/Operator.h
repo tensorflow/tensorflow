@@ -24,6 +24,7 @@
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/TableGen/Attribute.h"
+#include "mlir/TableGen/Type.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"

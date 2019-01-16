@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/TableGen/Attribute.h"
 #include "mlir/TableGen/GenInfo.h"
 #include "mlir/TableGen/Operator.h"
 #include "mlir/TableGen/Predicate.h"
@@ -93,24 +94,14 @@ private:
 void Pattern::emitAttributeValue(Record *constAttr) {
   Attribute attr(constAttr->getValueAsDef("attr"));
   auto value = constAttr->getValue("value");
-  Type type = attr.getType();
-  auto storageType = attr.getStorageType();
 
-  // For attributes stored as strings we do not need to query builder etc.
-  if (storageType == "StringAttr") {
-    os << formatv("rewriter.getStringAttr({0})",
-                  value->getValue()->getAsString());
-    return;
-  }
-
-  auto builder = type.getBuilderCall();
-  if (builder.empty())
+  if (!attr.isConstBuildable())
     PrintFatalError(pattern->getLoc(),
-                    "no builder specified for " + type.getTableGenDefName());
+                    "Attribute " + attr.getTableGenDefName() +
+                        " does not have the 'constBuilderCall' field");
 
-  // Construct the attribute based on storage type and builder.
   // TODO(jpienaar): Verify the constants here
-  os << formatv("{0}::get(rewriter.{1}, {2})", storageType, builder,
+  os << formatv(attr.getConstBuilderTemplate().str().c_str(), "rewriter",
                 value->getValue()->getAsUnquotedString());
 }
 

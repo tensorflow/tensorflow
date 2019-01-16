@@ -3,10 +3,8 @@
 include "mlir/IR/op_base.td"
 
 // Create a Type and Attribute.
-def YT : Type {
-  let builderCall = "buildYT()";
-}
-def Y_Attr : Attr<YT>;
+def YT : BuildableType<"buildYT">;
+def Y_Attr : TypeBasedAttr<YT, "Attribute">;
 def Y_Const_Attr {
   Attr attr = Y_Attr;
   string value = "attrValue";

@@ -70,11 +70,6 @@ public:
 
   // Returns the TableGen def name for this type.
   StringRef getTableGenDefName() const;
-
-  // Returns the method call to invoke upon a MLIR pattern rewriter to
-  // construct this type. Returns an empty StringRef if the method call
-  // is undefined or unset.
-  StringRef getBuilderCall() const;
 };
 
 } // end namespace tblgen

@@ -24,7 +24,6 @@
 #define MLIR_TABLEGEN_ATTRIBUTE_H_
 
 #include "mlir/Support/LLVM.h"
-#include "mlir/TableGen/Type.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace llvm {
@@ -48,9 +47,6 @@ public:
   // of `DrivedAttr`).
   bool isDerivedAttr() const;
 
-  // Returns the type of this attribute.
-  Type getType() const;
-
   // Returns true if this attribute has storage type set.
   bool hasStorageType() const;
 
@@ -65,6 +61,17 @@ public:
   // storage and returns the value as of the desired return type.
   // The call will contain a `{0}` which will be expanded to this attribute.
   StringRef getConvertFromStorageCall() const;
+
+  // Returns true if this attribute can be built from a constant value.
+  bool isConstBuildable() const;
+
+  // Returns the template that can be used to produce an instance of the
+  // attribute.
+  // Syntax: {0} should be replaced with a builder, {1} should be replaced with
+  // the constant value.
+  StringRef getConstBuilderTemplate() const;
+
+  StringRef getTableGenDefName() const;
 
   // Returns the code body for derived attribute. Aborts if this is not a
   // derived attribute.

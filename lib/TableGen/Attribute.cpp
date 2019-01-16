@@ -47,10 +47,6 @@ bool tblgen::Attribute::isDerivedAttr() const {
   return def.isSubClassOf("DerivedAttr");
 }
 
-tblgen::Type tblgen::Attribute::getType() const {
-  return Type(def.getValueAsDef("type"));
-}
-
 bool tblgen::Attribute::hasStorageType() const {
   const auto *init = def.getValueInit("storageType");
   return !getValueAsString(init).empty();
@@ -72,6 +68,20 @@ StringRef tblgen::Attribute::getReturnType() const {
 StringRef tblgen::Attribute::getConvertFromStorageCall() const {
   const auto *init = def.getValueInit("convertFromStorage");
   return getValueAsString(init);
+}
+
+bool tblgen::Attribute::isConstBuildable() const {
+  const auto *init = def.getValueInit("constBuilderCall");
+  return !getValueAsString(init).empty();
+}
+
+StringRef tblgen::Attribute::getConstBuilderTemplate() const {
+  const auto *init = def.getValueInit("constBuilderCall");
+  return getValueAsString(init);
+}
+
+StringRef tblgen::Attribute::getTableGenDefName() const {
+  return def.getName();
 }
 
 StringRef tblgen::Attribute::getDerivedCodeBody() const {

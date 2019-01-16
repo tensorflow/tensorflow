@@ -62,13 +62,3 @@ tblgen::Type::Type(const llvm::Record &record) : TypeConstraint(record) {
 tblgen::Type::Type(const llvm::DefInit *init) : Type(*init->getDef()) {}
 
 StringRef tblgen::Type::getTableGenDefName() const { return def.getName(); }
-
-StringRef tblgen::Type::getBuilderCall() const {
-  const auto *val = def.getValue("builderCall");
-  assert(val && "TableGen 'Type' class should have 'builderCall' field");
-
-  if (const auto *builder = dyn_cast<llvm::CodeInit>(val->getValue()))
-    return builder->getValue();
-  return {};
-}
-

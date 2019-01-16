@@ -84,12 +84,20 @@ class TypeConstraint<CPred condition, string descr = ""> {
   string description = descr;
 }
 
-// A specific type that can be constructed.  Also carries type constraints, but
-// accepts any type by default.
-class Type<CPred condition = CPred<"true">, string descr = ""> : TypeConstraint<condition, descr> {
-  // The builder call to invoke (if specified) to construct the Type.
+// A type, carries type constraints, but accepts any type by default.
+class Type<CPred condition = CPred<"true">, string descr = "">
+    : TypeConstraint<condition, descr>;
+
+// A type that can be constructed using MLIR::Builder.
+// Note that this does not "inherit" from Type because it would require
+// duplicating Type subclasses for buildable and non-buildable cases to avoid
+// diamond "inheritance".
+// TODO(zinenko): we may extend this to a more general 'Buildable' trait,
+// making some Types and some Attrs buildable.
+class BuildableType<code builder> {
+  // The builder call to invoke (if specified) to construct the BuildableType.
   // Format: this will be affixed to the builder.
-  code builderCall = ?;
+  code builderCall = builder;
 }
 
 // Integer types.
@@ -103,9 +111,9 @@ def Index : IntegerBase<CPred<"{0}.isa<IndexType>()">, "index">;
 
 // Integer type of a specific width.
 class I<int width>
-    : IntegerBase<CPred<"{0}.isInteger(" # width # ")">, "i" # width> {
+    : IntegerBase<CPred<"{0}.isInteger(" # width # ")">, "i" # width>,
+      BuildableType<"getIntegerType(" # width # ")"> {
   int bitwidth = width;
-  let builderCall = "getIntegerType(" # bitwidth # ")";
 }
 def I1  : I<1>;
 def I32 : I<32>;
@@ -118,9 +126,9 @@ def Float : FloatBase<CPred<"{0}.isa<FloatType>()">, "floating point">;
 
 // Float type of a specific width.
 class F<int width>
-    : FloatBase<CPred<"{0}.isF" # width # "()">, "f" # width> {
+    : FloatBase<CPred<"{0}.isF" # width # "()">, "f" # width>,
+      BuildableType<"getF" # width # "Type()"> {
   int bitwidth = width;
-  let builderCall = "getF" # width # "Type()";
 }
 
 def F32 : F<32>;
@@ -180,12 +188,6 @@ class TypedTensor<Type t>
 
 def F32Tensor : TypedTensor<F32>;
 
-// String type.
-def String : Type;
-
-// Type corresponding to derived attribute.
-def DerivedAttrBody : Type;
-
 // Type constraint for integer-like types: integers, indices, vectors of
 // integers, tensors of integers.
 def IntegerLike : TypeConstraint<AnyOf<[Integer.predicate, Index.predicate,
@@ -202,9 +204,7 @@ def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
 //===----------------------------------------------------------------------===//
 
 // Base class for all attributes.
-class Attr<Type t> {
-  Type type = t;
-
+class Attr {
   code storageType = ?; // The backing mlir::Attribute type
   code returnType = ?;  // The underlying C++ value type
 
@@ -216,36 +216,65 @@ class Attr<Type t> {
   // '{0}.getValue().convertToFloat()' for 'FloatAttr val' will expand to
   // 'getAttrOfType<FloatAttr>("val").getValue().convertToFloat()'.
   code convertFromStorage = "{0}.getValue()";
+
+  // The call expression that builds an attribute from a constant value.
+  //
+  // Format: {0} will be expanded to an instance of mlir::Builder, {1} will be
+  // expanded to the constant value of the attribute.  For example,
+  // '{0}.getStringAttr("{1}")' for 'StringAttr:"foo"' will expand to
+  // 'builder.getStringAttr("foo")'.
+  code constBuilderCall = ?;
 }
 
-def BoolAttr : Attr<I1> {
+// A generic attribute that must be constructed around a specific type.
+// Backed by a C++ class "attrName".
+class TypeBasedAttr<BuildableType t, string attrName> : Attr {
+  let constBuilderCall =
+      "{0}.get" # attrName # "({0}." # t.builderCall # ", {1})";
+  let storageType = attrName;
+}
+
+// An attribute backed by a string type.
+class StringBasedAttr : Attr {
+  let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
+  let storageType = [{ StringAttr }];
+}
+
+// Base class for instantiating float attributes of fixed width.
+class FloatAttrBase<BuildableType t> : TypeBasedAttr<t, "FloatAttr">;
+
+// Base class for instantiating integer attributes of fixed width.
+class IntegerAttrBase<BuildableType t> : TypeBasedAttr<t, "IntegerAttr">;
+
+def BoolAttr : Attr {
   let storageType = [{ BoolAttr }];
   let returnType = [{ bool }];
+  let constBuilderCall = [{ {0}.getBoolAttr({1})" }];
 }
-def ElementsAttr : Attr<?> {
+def ElementsAttr : Attr {
   let storageType = [{ ElementsAttr }];
   let returnType = [{ ElementsAttr }];
-  code convertFromStorage = "{0}";
+  let convertFromStorage = "{0}";
 }
-def F32Attr : Attr<F32> {
-  let storageType = [{ FloatAttr }];
+def F32Attr : FloatAttrBase<F32> {
   let returnType = [{ float }];
   let convertFromStorage = [{ {0}.getValue().convertToFloat() }];
 }
-def I32Attr : Attr<I32> {
+def I32Attr : IntegerAttrBase<I32> {
   let storageType = [{ IntegerAttr }];
   let returnType = [{ int }];
   let convertFromStorage = [{ {0}.getValue().getSExtValue() }];
 }
-def StrAttr : Attr<String> {
+def StrAttr : StringBasedAttr {
   let storageType = [{ StringAttr }];
   let returnType = [{ StringRef }];
+  let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
 }
 
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
 // materialized as needed.
-class DerivedAttr<code ReturnType, code Body> : Attr<DerivedAttrBody> {
+class DerivedAttr<code ReturnType, code Body> : Attr {
   let returnType = ReturnType;
   code body = Body;
 }
