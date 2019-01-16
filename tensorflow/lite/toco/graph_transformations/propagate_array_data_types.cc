@@ -252,6 +252,12 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
       SetDataTypeForAllOutputs(model, op, data_type);
       break;
     }
+    case OperatorType::kUnidirectionalSequenceRnn: {
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      if (data_type != ArrayDataType::kFloat) return ::tensorflow::Status::OK();
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
     case OperatorType::kUnique: {
       CHECK_EQ(op->outputs.size(), 2);
       const UniqueOperator* unique_op = static_cast<UniqueOperator*>(op);

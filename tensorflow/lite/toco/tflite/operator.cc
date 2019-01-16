@@ -1509,6 +1509,39 @@ class Unique : public BuiltinOperator<UniqueOperator, ::tflite::UniqueOptions,
   }
 };
 
+class UnidirectionalSequenceRnn
+    : public BuiltinOperator<UnidirectionalSequenceRnnOperator,
+                             ::tflite::SequenceRNNOptions,
+                             ::tflite::BuiltinOptions_SequenceRNNOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSequenceRNNOptions(
+        *builder, /*time_major=*/true,
+        /*fused_activation_function=*/
+        ::tflite::ActivationFunctionType_TANH);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    // Only support tanh actication, so check that tflite type is tanh.
+    DCHECK(options.fused_activation_function() ==
+           ::tflite::ActivationFunctionType_TANH);
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+
+  std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const override {
+    std::vector<bool> mutating_input_variables(op.inputs.size(), false);
+    mutating_input_variables[4] = true;
+    return mutating_input_variables;
+  }
+};
+
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -1847,6 +1880,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                       OperatorType::kMirrorPad));
   ops.push_back(MakeUnique<Unique>(::tflite::BuiltinOperator_UNIQUE,
                                    OperatorType::kUnique));
+  ops.push_back(MakeUnique<UnidirectionalSequenceRnn>(
+      ::tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
+      OperatorType::kUnidirectionalSequenceRnn));
 
   // Custom Operators.
   ops.push_back(
