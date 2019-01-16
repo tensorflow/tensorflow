@@ -43,7 +43,7 @@ int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc) {
   auto threads_per_core = device_desc.threads_per_core_limit();
   auto blocks_per_core = device_desc.blocks_per_core_limit();
   int64 threads_per_block;
-  if (threads_per_core != 0 && blocks_per_core != 0) {
+  if (threads_per_core > 0 && blocks_per_core > 0) {
     threads_per_block = device_desc.threads_per_core_limit() /
                         device_desc.blocks_per_core_limit();
   } else {
