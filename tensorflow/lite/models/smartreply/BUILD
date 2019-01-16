@@ -50,8 +50,6 @@ cc_library(
     ],
 )
 
-<<<<<<< HEAD
-=======
 # TODO(b/118895218): Make this test compatible with oss.
 tf_cc_test(
     name = "predictor_test",
@@ -71,7 +69,6 @@ tf_cc_test(
     ],
 )
 
->>>>>>> 309a383fbf... Enable some smartreply tests in oss
 tf_cc_test(
     name = "extract_feature_op_test",
     size = "small",
