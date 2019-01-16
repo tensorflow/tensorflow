@@ -547,7 +547,8 @@ class Model(Network):
       # Validate all variables were correctly created in distribution scope.
       if self._distribution_strategy and not self._compile_distribution:
         for v in self.variables:
-          if v.distribute_strategy is not self._distribution_strategy:
+          strategy = self._distribution_strategy
+          if not strategy.extended.variable_created_in_scope(v):
             raise ValueError(
                 'Variable (%s) was not created in the distribution strategy '
                 'scope of (%s). It is most likely due to not all layers or '
@@ -556,7 +557,7 @@ class Model(Network):
                 'to the following.\n'
                 'with strategy.scope():\n'
                 '  model=_create_model()\n'
-                '  model.compile(...)'% (v, self._distribution_strategy))
+                '  model.compile(...)'% (v, strategy))
 
   @property
   def metrics(self):

@@ -593,7 +593,7 @@ class ResourceVariable(variables.VariableV1):
         constraint=self._constraint,
         dtype=self._dtype,
         name=self._shared_name + "_copy",
-        distribute_strategy=self.distribute_strategy)
+        distribute_strategy=self._distribute_strategy)
     memo[self._unique_id] = copied_variable
     return copied_variable
 
@@ -621,11 +621,6 @@ class ResourceVariable(variables.VariableV1):
   def shape(self):
     """The shape of this variable."""
     return self._shape
-
-  @property
-  def distribute_strategy(self):
-    """The `tf.distribute.Strategy` that this variable was created under."""
-    return self._distribute_strategy
 
   def _shape_as_list(self):
     if self.shape.ndims is None:
@@ -933,7 +928,7 @@ class ResourceVariable(variables.VariableV1):
         name=self._shared_name,
         dtype=self.dtype,
         constraint=self.constraint,
-        distribute_strategy=self.distribute_strategy), ()
+        distribute_strategy=self._distribute_strategy), ()
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
