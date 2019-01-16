@@ -41,9 +41,8 @@ namespace {
 // The store to load forwarding relies on three conditions:
 //
 // 1) there has to be a dependence from the store to the load satisfied at the
-// block immediately within the innermost common surrounding loop of the load op
-// and the store op, and such a dependence should associate with a single  load
-// location for a given source store iteration.
+// block* immediately within the innermost loop enclosing both the load op and
+// the store op,
 //
 // 2) the store op should dominate the load op,
 //
@@ -52,10 +51,18 @@ namespace {
 // provably the last writer to the particular memref location being loaded from
 // by the load op, and its store value can be forwarded to the load.
 //
+// 4) the load should touch a single location in the memref for a given
+// iteration of the innermost loop enclosing both the store op and the load op.
+//
+// (* A dependence being satisfied at a block: a dependence that is satisfied by
+// virtue of the destination instruction appearing textually / lexically after
+// the source instruction within the body of a 'for' instruction; thus, a
+// dependence is always either satisfied by a loop or by a block).
+//
 // The above conditions are simple to check, sufficient, and powerful for most
 // cases in practice - condition (1) and (3) are precise and necessary, while
 // condition (2) is a sufficient one but not necessary (since it doesn't reason
-// about loops that are guaranteed to execute at least one).
+// about loops that are guaranteed to execute at least once).
 //
 // TODO(mlir-team): more forwarding can be done when support for
 // loop/conditional live-out SSA values is available.
@@ -126,7 +133,7 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
   // conditions listed at the top.
   SmallVector<OperationInst *, 8> fwdingCandidates;
   // Store ops that have a dependence into the load (even if they aren't
-  // forwarding candidates). Each fwding candidate will be checked for a
+  // forwarding candidates). Each forwarding candidate will be checked for a
   // post-dominance on these. 'fwdingCandidates' are a subset of depSrcStores.
   SmallVector<OperationInst *, 8> depSrcStores;
   for (auto *storeOpInst : storeOps) {
@@ -243,7 +250,7 @@ PassResult MemRefDataFlowOpt::runOnFunction(Function *f) {
     OperationInst *defInst = memref->getDefiningInst();
     if (!defInst || !defInst->isa<AllocOp>())
       // TODO(mlir-team): if the memref was returned by a 'call' instruction, we
-      // could still erase it if the call has no side-effects.
+      // could still erase it if the call had no side-effects.
       continue;
     if (std::any_of(memref->use_begin(), memref->use_end(),
                     [&](InstOperand &use) {

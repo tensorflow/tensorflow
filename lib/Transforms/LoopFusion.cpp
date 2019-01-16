@@ -80,11 +80,6 @@ struct FusionCandidate {
       : srcAccess(MemRefAccess(src)), dstAccess(MemRefAccess(dst)) {}
 };
 
-static FusionCandidate buildFusionCandidate(OperationInst *srcStoreOpInst,
-                                            OperationInst *dstLoadOpInst) {
-  return FusionCandidate(srcStoreOpInst, dstLoadOpInst);
-}
-
 namespace {
 
 // LoopNestStateCollector walks loop nests and collects load and store
@@ -807,8 +802,7 @@ public:
           // Get unique 'srcNode' store op.
           auto *srcStoreOpInst = srcNode->stores.front();
           // Build fusion candidate out of 'srcStoreOpInst' and 'dstLoadOpInst'.
-          FusionCandidate candidate =
-              buildFusionCandidate(srcStoreOpInst, dstLoadOpInst);
+          FusionCandidate candidate(srcStoreOpInst, dstLoadOpInst);
           // Check if fusion would be profitable.
           unsigned srcLoopDepth;
           unsigned dstLoopDepth;
