@@ -173,23 +173,23 @@ struct ComputationSliceState {
 /// Returns true on success, false otherwise.
 bool getBackwardComputationSliceState(const MemRefAccess &srcAccess,
                                       const MemRefAccess &dstAccess,
+                                      unsigned dstLoopDepth,
                                       ComputationSliceState *sliceState);
 
 /// Creates a clone of the computation contained in the loop nest surrounding
-/// 'srcAccess', slices the iteration space of the first 'srcLoopDepth' src loop
-/// IVs, and inserts the computation slice at the beginning of the instruction
-/// block of the loop at 'dstLoopDepth' in the loop nest surrounding
-/// 'dstAccess'. Returns the top-level loop of the computation slice on
+/// 'srcOpInst', slices the iteration space of src loop based on slice bounds
+/// in 'sliceState', and inserts the computation slice at the beginning of the
+/// instruction block of the loop at 'dstLoopDepth' in the loop nest surrounding
+/// 'dstOpInst'. Returns the top-level loop of the computation slice on
 /// success, returns nullptr otherwise.
 // Loop depth is a crucial optimization choice that determines where to
 // materialize the results of the backward slice - presenting a trade-off b/w
 // storage and redundant computation in several cases.
 // TODO(andydavis) Support computation slices with common surrounding loops.
-ForInst *insertBackwardComputationSlice(MemRefAccess *srcAccess,
-                                        MemRefAccess *dstAccess,
-                                        ComputationSliceState *sliceState,
-                                        unsigned srcLoopDepth,
-                                        unsigned dstLoopDepth);
+ForInst *insertBackwardComputationSlice(OperationInst *srcOpInst,
+                                        OperationInst *dstOpInst,
+                                        unsigned dstLoopDepth,
+                                        ComputationSliceState *sliceState);
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_UTILS_H

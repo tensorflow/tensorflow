@@ -1101,8 +1101,21 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
       (*lbMaps)[pos] = AffineMap::get(numMapDims, numMapSymbols, expr, {});
       (*ubMaps)[pos] = AffineMap::get(numMapDims, numMapSymbols, expr + 1, {});
     } else {
-      (*lbMaps)[pos] = AffineMap::Null();
-      (*ubMaps)[pos] = AffineMap::Null();
+      // TODO(andydavis, bondhugula) Add support for computing slice bounds
+      // symbolic in the identifies [num, numIds).
+      auto lbConst = getConstantLowerBound(pos);
+      auto ubConst = getConstantUpperBound(pos);
+      if (lbConst.hasValue() && ubConst.hasValue()) {
+        (*lbMaps)[pos] = AffineMap::get(
+            numMapDims, numMapSymbols,
+            getAffineConstantExpr(lbConst.getValue(), context), {});
+        (*ubMaps)[pos] = AffineMap::get(
+            numMapDims, numMapSymbols,
+            getAffineConstantExpr(ubConst.getValue() + 1, context), {});
+      } else {
+        (*lbMaps)[pos] = AffineMap::Null();
+        (*ubMaps)[pos] = AffineMap::Null();
+      }
     }
     LLVM_DEBUG(llvm::dbgs() << "lb map for pos = " << Twine(pos) << ", expr: ");
     LLVM_DEBUG(expr.dump(););

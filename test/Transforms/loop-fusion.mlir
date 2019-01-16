@@ -95,13 +95,18 @@ func @should_fuse_loop_nests_with_shifts() {
     }
   }
 
+  // The cost of fusing the src loop nest at dst loop depth 1 is less expensive
+  // than fusing at dst loop depth 2, because at dst loop depth 1, we are
+  // able to reduce the trip count around the %i1 loop by one (because the
+  // dst loop never reads the last element written by the src loop).
   // CHECK:      for %i0 = 0 to 10 {
-  // CHECK-NEXT:   for %i1 = 0 to 10 {
-  // CHECK-NEXT:     %1 = affine_apply [[MAP_SHIFT_MINUS_ONE]](%i0)
-  // CHECK-NEXT:     %2 = affine_apply [[MAP_SHIFT_MINUS_ONE]](%i1)
-  // CHECK-NEXT:     %3 = affine_apply [[MAP_SHIFT_BY_ONE]](%1, %2)
-  // CHECK-NEXT:     store %cst, %0[%3#0, %3#1] : memref<10x10xf32>
-  // CHECK-NEXT:     %4 = load %0[%i0, %i1] : memref<10x10xf32>
+  // CHECK-NEXT:   %1 = affine_apply [[MAP_SHIFT_MINUS_ONE]](%i0)
+  // CHECK-NEXT:   for %i1 = 0 to 9 {
+  // CHECK-NEXT:     %2 = affine_apply [[MAP_SHIFT_BY_ONE]](%1, %i1)
+  // CHECK-NEXT:     store %cst, %0[%2#0, %2#1] : memref<10x10xf32>
+  // CHECK-NEXT:   }
+  // CHECK-NEXT:   for %i2 = 0 to 10 {
+  // CHECK-NEXT:     %3 = load %0[%i0, %i2] : memref<10x10xf32>
   // CHECK-NEXT:   }
   // CHECK-NEXT: }
   // CHECK-NEXT: return
@@ -849,6 +854,7 @@ func @should_fuse_src_depth1_at_dst_depth2() {
 }
 
 // -----
+// CHECK: #map0 = ()[s0] -> (s0)
 
 // CHECK-LABEL: func @fusion_at_depth0_not_currently_supported
 func @fusion_at_depth0_not_currently_supported() {
@@ -862,10 +868,9 @@ func @fusion_at_depth0_not_currently_supported() {
     %1 = load %0[%c0] : memref<10xf32>
   }
   // CHECK:for    %i0 = 0 to 10 {
-  // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
-  // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
-  // CHECK-NEXT:    %1 = load %0[%c0] : memref<10xf32>
+  // CHECK-NEXT:    %1 = affine_apply #map0()[%c0]
+  // CHECK-NEXT:    store %cst, %0[%1] : memref<10xf32>
+  // CHECK-NEXT:    %2 = load %0[%c0] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
   return
@@ -975,5 +980,130 @@ func @should_fuse_deep_loop_nests() {
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
+  return
+}
+
+// -----
+// CHECK: #map0 = (d0) -> (d0)
+
+// CHECK-LABEL: func @should_fuse_at_depth1_and_reduce_slice_trip_count
+func @should_fuse_at_depth1_and_reduce_slice_trip_count() {
+  %a = alloc() : memref<4x256xf32>
+  %b = alloc() : memref<4x256xf32>
+
+  %c0 = constant 0 : index
+  %cf0 = constant 0.0 : f32
+
+  for %i0 = 0 to 4 {
+    for %i1 = 0 to 256 {
+      %v0 = load %b[%i0, %i1] : memref<4x256xf32>
+    }
+    for %i2 = 0 to 256 {
+      store %cf0, %a[%i0, %i2] : memref<4x256xf32>
+    }
+  }
+
+  for %d0 = 0 to 4 {
+    for %d1 = 0 to 16 {
+      %v1 = load %a[%d0, %d1] : memref<4x256xf32>
+    }
+  }
+  // The cost of fusing at depth 2 is greater than the cost of fusing at depth 1
+  // for two reasons:
+  // 1) Inserting the unsliceable src loop %i1 to a higher depth removes
+  //    redundant computation and reduces costs.
+  // 2) Inserting the sliceable src loop %i2 at depth 1, we can still reduce
+  //    its trip count to 16 (from 256) reducing costs.
+  // CHECK:       for %i0 = 0 to 4 {
+  // CHECK-NEXT:    %2 = affine_apply #map0(%i0)
+  // CHECK-NEXT:    for %i1 = 0 to 256 {
+  // CHECK-NEXT:      %3 = load %1[%2, %i1] : memref<4x256xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:    for %i2 = 0 to 16 {
+  // CHECK-NEXT:      store %cst, %0[%2, %i2] : memref<4x256xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:    for %i3 = 0 to 16 {
+  // CHECK-NEXT:      %4 = load %0[%i0, %i3] : memref<4x256xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @should_fuse_at_depth1_with_trip_count_20
+func @should_fuse_at_depth1_with_trip_count_20() {
+  %a = alloc() : memref<100xf32>
+  %c0 = constant 0 : index
+  %cf0 = constant 0.0 : f32
+
+  for %i0 = 0 to 100 {
+    store %cf0, %a[%i0]: memref<100xf32>
+  }
+
+  for %i1 = 0 to 5 {
+    for %i2 = 0 to 10 {
+      %v0 = load %a[%i2]: memref<100xf32>
+    }
+    for %i3 = 0 to 10 {
+      for %i4 = 0 to 20 {
+        %v1 = load %a[%i4]: memref<100xf32>
+      }
+    }
+  }
+  // CHECK:       for %i0 = 0 to 5 {
+  // CHECK-NEXT:    for %i1 = 0 to 20 {
+  // CHECK-NEXT:      store %cst, %0[%i1] : memref<100xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:    for %i2 = 0 to 10 {
+  // CHECK-NEXT:      %1 = load %0[%i2] : memref<100xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:    for %i3 = 0 to 10 {
+  // CHECK-NEXT:      for %i4 = 0 to 20 {
+  // CHECK-NEXT:        %2 = load %0[%i4] : memref<100xf32>
+  // CHECK-NEXT:      }
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @should_fuse_at_depth1_with_trip_count_19
+func @should_fuse_at_depth1_with_trip_count_19() {
+  %a = alloc() : memref<100xf32>
+  %c0 = constant 0 : index
+  %cf0 = constant 0.0 : f32
+
+  for %i0 = 0 to 100 {
+    store %cf0, %a[%i0]: memref<100xf32>
+  }
+
+  for %i1 = 0 to 5 {
+    for %i2 = 0 to 19 {
+      %v0 = load %a[%i2]: memref<100xf32>
+    }
+    for %i3 = 0 to 10 {
+      for %i4 = 0 to 10 {
+        %v1 = load %a[%i4]: memref<100xf32>
+      }
+    }
+  }
+  // CHECK:       for %i0 = 0 to 5 {
+  // CHECK-NEXT:    for %i1 = 0 to 19 {
+  // CHECK-NEXT:      store %cst, %0[%i1] : memref<100xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:    for %i2 = 0 to 19 {
+  // CHECK-NEXT:      %1 = load %0[%i2] : memref<100xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:    for %i3 = 0 to 10 {
+  // CHECK-NEXT:      for %i4 = 0 to 10 {
+  // CHECK-NEXT:        %2 = load %0[%i4] : memref<100xf32>
+  // CHECK-NEXT:      }
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
   return
 }
