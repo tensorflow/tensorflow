@@ -149,7 +149,7 @@ def assert_same_structure(nest1, nest2, check_types=True):
 
   Note that namedtuples with identical name and fields are always considered
   to have the same shallow structure (even with `check_types=True`).
-  For intance, this code will print `True`:
+  For instance, this code will print `True`:
 
   ```python
   def nt(a, b):
