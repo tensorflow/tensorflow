@@ -3516,7 +3516,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "nn_fused_batchnorm_test",
-    size = "large",
+    size = "medium",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     additional_deps = [
         ":array_ops",
