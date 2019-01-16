@@ -5,8 +5,8 @@
 // CHECK-LABEL: @broadcast_scalar_scalar_scalar
 func @broadcast_scalar_scalar_scalar(tensor<i32>, tensor<i32>) -> tensor<i32> {
 ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
-  // CHECK: %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "RELU6"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "RELU6"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK: %0 = tfl.add %arg0, %arg1 {fused_activation_function: "RELU6"} : tensor<i32>
+  %0 = tfl.add %arg0, %arg1 {fused_activation_function: "RELU6"} : tensor<i32>
   return %0 : tensor<i32>
 }
 

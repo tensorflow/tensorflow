@@ -345,9 +345,22 @@ bool impl::parseBinaryOp(OpAsmParser *parser, OperationState *result) {
 }
 
 void impl::printBinaryOp(const OperationInst *op, OpAsmPrinter *p) {
+  assert(op->getNumOperands() == 2 && "binary op should have two operands");
+  assert(op->getNumResults() == 1 && "binary op should have one result");
+
+  // If not all the operand and result types are the same, just use the
+  // canonical form to avoid omitting information in printing.
+  auto resultType = op->getResult(0)->getType();
+  if (op->getOperand(0)->getType() != resultType ||
+      op->getOperand(1)->getType() != resultType) {
+    p->printDefaultOp(op);
+    return;
+  }
+
   *p << op->getName() << ' ' << *op->getOperand(0) << ", "
      << *op->getOperand(1);
   p->printOptionalAttrDict(op->getAttrs());
+  // Now we can output only one type for all operands and the result.
   *p << " : " << op->getResult(0)->getType();
 }
 

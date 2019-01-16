@@ -895,6 +895,8 @@ namespace impl {
 void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
                    Value *rhs);
 bool parseBinaryOp(OpAsmParser *parser, OperationState *result);
+// Prints the given binary `op` in short-hand notion if both the two operands
+// and the result have the same time. Otherwise, prints the long-hand notion.
 void printBinaryOp(const OperationInst *op, OpAsmPrinter *p);
 } // namespace impl
 
