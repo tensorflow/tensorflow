@@ -5,24 +5,32 @@ hardware accelerators.  This document describes how to use the GPU backend using
 the TensorFlow Lite delegate APIs on Android (requires OpenGL ES 3.1 or higher)
 and iOS (requires iOS 8 or later).
 
+## Benefits of GPU Acceleration
+
+### Speed
+
 GPUs are designed to have high throughput for massively parallelizable
-workloads.  Thus, they are well-suited for deep neural nets which consists of a
+workloads. Thus, they are well-suited for deep neural nets, which consist of a
 huge number of operators, each working on some input tensor(s) that can be
-easily divided into smaller workloads and carried out in parallel, typically
-resulting in lower latency.  In the best scenario, inference on the GPU may now
-run fast enough and now become suitable for real-time applications if it was not
-before.
+easily divided into smaller workloads and carried out in parallel. This
+parallelism typically results in lower latency. In the best scenario, inference
+on the GPU may run fast enough to become suitable for real-time applications
+that were not previously possible.
 
-GPUs do their computation with 16-bit or 32-bit floating point numbers and do
-not require quantization for optimal performance unlike the CPUs.  If
-quantization of your neural network was not an option due to lower accuracy
-caused by lost precision, such concern can be discarded when running deep neural
-net models on the GPU.
+### Accuracy
 
-Another benefit that comes with GPU inference is its power efficiency.  GPUs
-carry out the computations in a very efficient and optimized way, so that they
-consume less power and generate less heat than when the same task is run on the
-CPUs.
+GPUs do their computation with 16-bit or 32-bit floating point numbers and
+(unlike the CPUs) do not require quantization for optimal performance. If
+decreased accuracy made quantization untenable for your models, running your
+neural network on a GPU may eliminate this concern.
+
+### Energy Efficiency
+
+Another benefit that comes with GPU inference is its power efficiency. A GPU
+carries out computations in a very efficient and optimized way, consuming less
+power and generating less heat than the same task run on a CPU.
+
+## Supported Ops
 
 TensorFlow Lite on GPU supports the following ops in 16-bit and 32-bit float
 precision:
@@ -51,8 +59,8 @@ precision:
 
 ### Android
 
-Using TensorFlow Lite on GPU is achieved via `TfLiteDelegate`.  In Java, you can
-specify the GpuDelegate through `Interpreter.Options`.
+Run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify the
+GpuDelegate through `Interpreter.Options`.
 
 ```java
 // NEW: Prepare GPU delegate.
@@ -73,10 +81,9 @@ delegate.close();
 
 ### iOS
 
-Using TensorFlow Lite on GPU is as simple as getting the GPU delegate via
-`NewGpuDelegate()` and then passing it to
-`Interpreter::ModifyGraphWithDelegate()` instead of calling
-`Interpreter::AllocateTensors()`:
+To use TensorFlow Lite on GPU, get the GPU delegate via `NewGpuDelegate()` and
+then pass it to `Interpreter::ModifyGraphWithDelegate()` (instead of calling
+`Interpreter::AllocateTensors()`).
 
 ```c++
 // Set up interpreter.
@@ -87,7 +94,13 @@ std::unique_ptr<Interpreter> interpreter;
 InterpreterBuilder(*model, op_resolver)(&interpreter);
 
 // NEW: Prepare GPU delegate.
-auto* delegate = NewGpuDelegate(nullptr);  // default config
+
+const GpuDelegateOptions options = {
+  .allow_precision_loss = false,
+  .wait_type = kGpuDelegateOptions::WaitType::Passive,
+};
+
+auto* delegate = NewGpuDelegate(options);
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 
 // Run inference.
@@ -99,17 +112,19 @@ ReadFromOutputTensor(interpreter->typed_output_tensor<float>(0));
 DeleteGpuDelegate(delegate);
 ```
 
-*IMPORTANT:* When calling `Interpreter::ModifyGraphWithDelegate()` or
-`Interpreter::Invoke()`, the caller must have a `EGLContext` in the current
-thread and `Interpreter::Invoke()` must be called from the same `EGLContext`.
-If such `EGLContext` does not exist, the delegate will internally create one,
-but then the developer must ensure that `Interpreter::Invoke()` is always called
-from the same thread `Interpreter::ModifyGraphWithDelegate()` was called.
+Note: When calling `Interpreter::ModifyGraphWithDelegate()` or
+`Interpreter::Invoke()`, the caller must have an `EGLContext` in the current
+thread and `Interpreter::Invoke()` must be called from the same `EGLContext`. If
+an `EGLContext` does not exist, the delegate will internally create one, but
+then the developer must ensure that `Interpreter::Invoke()` is always called
+from the same thread in which `Interpreter::ModifyGraphWithDelegate()` was
+called.
 
-## Advanced: Delegate Options for iOS
+## Advanced Usage
 
-There are a couple of GPU options that can be set and passed on to
-`NewGpuDelegate()`:
+### Delegate Options for iOS
+
+`NewGpuDelegate()` accepts a `struct` of options.
 
 ```c++
 struct GpuDelegateOptions {
@@ -130,45 +145,53 @@ struct GpuDelegateOptions {
 };
 ```
 
-When option is set to `nullptr` as shown in the Basic Usage, it translates to:
+Passing `nullptr` into `NewGpuDelegate()` sets the default options (which are
+explicated in the Basic Usage example above).
 
 ```c++
+
+// THIS:
 const GpuDelegateOptions options = {
   .allow_precision_loss = false,
   .wait_type = kGpuDelegateOptions::WaitType::Passive,
 };
+
+auto* delegate = NewGpuDelegate(options);
+
+// IS THE SAME AS THIS:
+auto* delegate = NewGpuDelegate(nullptr);
+
 ```
 
-While it is convenient to just supply `nullptr`, it is recommended to explicitly
-set the options to avoid any unexpected artifacts in case default values are
-changed.
+While it is convenient to use `nullptr`, we recommend that you explicitly set
+the options, to avoid any unexpected behavior if default values are changed in
+the future.
 
-## Advanced: Input/Output Buffers
+### Input/Output Buffers
 
-To do computation on the GPU, data must be made available to the GPU which often
-translates to performing a memory copy.  It is desirable not to cross the
-CPU/GPU memory boundary if possible, as this can take up a significant amount of
-time.  Usually, such crossing is inevitable, but in some special cases, one or
-the other can be omitted.
+To do computation on the GPU, data must be made available to the GPU. This often
+requires performing a memory copy. It is desirable not to cross the CPU/GPU
+memory boundary if possible, as this can take up a significant amount of time.
+Usually, such crossing is inevitable, but in some special cases, one or the
+other can be omitted.
 
-If the network's input is an image already loaded in the GPU memory, e.g. a GPU
-texture containing the camera feed, it can stay in the GPU memory without ever
-entering the CPU memory.  Similarly, if the network's output is in the form of a
-renderable image, e.g.
-[image style transfer](https://www.cv-foundation.org/openaccess/content_cvpr_2016/papers/Gatys_Image_Style_Transfer_CVPR_2016_paper.pdf),
+If the network's input is an image already loaded in the GPU memory (for
+example, a GPU texture containing the camera feed) it can stay in the GPU memory
+without ever entering the CPU memory. Similarly, if the network's output is in
+the form of a renderable image (for example,
+[image style transfer](https://www.cv-foundation.org/openaccess/content_cvpr_2016/papers/Gatys_Image_Style_Transfer_CVPR_2016_paper.pdf)_)
 it can be directly displayed on the screen.
 
-To let users achieve best performance, TensorFlow Lite makes it possible for
-them to directly read from/write to the TensorFlow hardware buffer and bypass
+To achieve best performance, TensorFlow Lite makes it possible for users to
+directly read from and write to the TensorFlow hardware buffer and bypass
 avoidable memory copies.
 
-### Android
+#### Android
 
-Assuming the image input is in the GPU memory, it must be first converted to a
-OpenGL Shader Storage Buffer Object (SSBO).  One can associate a TfLiteTensor
-with user-prepared SSBO with `Interpreter.bindGlBufferToTensor()`.
-
-*IMPORTANT:* `Interpreter.bindGlBufferToTensor()` must be called before
+Assuming the image input is in the GPU memory, it must first be converted to an
+OpenGL Shader Storage Buffer Object (SSBO). You can associate a TfLiteTensor to
+a user-prepared SSBO with `Interpreter.bindGlBufferToTensor()`. Note that
+`Interpreter.bindGlBufferToTensor()` must be called before
 `Interpreter.modifyGraphWithDelegate()`.
 
 ```java
@@ -176,7 +199,7 @@ with user-prepared SSBO with `Interpreter.bindGlBufferToTensor()`.
 EGLContext eglContext = eglGetCurrentContext();
 if (eglContext.equals(EGL_NO_CONTEXT)) return false;
 
-// Create a SSBO.
+// Create an SSBO.
 int[] id = new int[1];
 glGenBuffers(id.length, id, 0);
 glBindBuffer(GL_SHADER_STORAGE_BUFFER, id[0]);
@@ -198,9 +221,10 @@ float[] outputArray = new float[outputSize];
 interpreter.runInference(null, outputArray);
 ```
 
-Similar approach can be applied to the output tensor.  In that case,
+A similar approach can be applied to the output tensor. In that case,
 `Interpreter.Options.setAllowBufferHandleOutput(true)` should be passed on, to
-disable the default copying the network's output from GPU memory to CPU memory.
+disable the default copying of the network's output from GPU memory to CPU
+memory.
 
 ```java
 // Ensure a valid EGL rendering context.
@@ -230,21 +254,16 @@ interpreter.runInference(input, null);
 renderOutputSsbo(outputSsboId);
 ```
 
-### iOS
+#### iOS
 
-Assuming the image input is in the GPU memory, it must be first converted to a
-`MTLBuffer` object for Metal.  One can associate a TfLiteTensor with a
-user-prepared `MTLBuffer` with `BindMetalBufferToTensor()`.
-
-*IMPORTANT:* `BindMetalBufferToTensor()` must be called before
-`Interpreter::ModifyGraphWithDelegate()`.
-
-*IMPORTANT:* By default, the inference output is copied from GPU memory to CPU
-memory implicitly by the framework.  This behavior can be turned off by calling
-`Interpreter::SetAllowBufferHandleOutput(true)` during initialization.  To copy
-the inference output from GPU memory to CPU memory, explicit
-`Interpreter::EnsureTensorDataIsReadable()` calls are required for each output
-tensor.
+Assuming the image input is in GPU memory, it must first be converted to a
+`MTLBuffer` object for Metal. You can associate a TfLiteTensor to a
+user-prepared `MTLBuffer` with `BindMetalBufferToTensor()`. Note that
+`BindMetalBufferToTensor()` must be called before
+`Interpreter::ModifyGraphWithDelegate()`. Additionally, the inference output is,
+by default, copied from GPU memory to CPU memory. This behavior can be turned
+off by calling `Interpreter::SetAllowBufferHandleOutput(true)` during
+initialization.
 
 ```c++
 // Prepare GPU delegate.
@@ -258,22 +277,27 @@ if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 if (interpreter->Invoke() != kTfLiteOk) return false;
 ```
 
+Note: Once the default behavior is turned off, copying the inference output from
+GPU memory to CPU memory requires an explicit call to
+`Interpreter::EnsureTensorDataIsReadable()` for each output tensor.
+
 ## Tips and Tricks
 
-* Some operations that are trivial on CPU side may be high cost in GPU land.
-  One class of such operation is various forms of reshape operations (including
-  `BATCH_TO_SPACE`, `SPACE_TO_BATCH`, `SPACE_TO_DEPTH`, etc.).  If those ops
-  are inserted into the network just for the network architect's logical
-  thinking, it is worth removing them for performance.
+*   Some operations that are trivial on the CPU may be high cost on a GPU. One
+    class of such operation includes various forms of reshape operations
+    (including `BATCH_TO_SPACE`, `SPACE_TO_BATCH`, `SPACE_TO_DEPTH`, and similar
+    operation). If these operations are not required (for example, they were
+    inserted to help the network architect reason about the system but do not
+    otherwise affect output), it is worth removing them for performance.
 
-* On GPU, tensor data is sliced into 4-channels.  Thus, a computation on a
-  tensor of shape `[B, H, W, 5]` will perform about the same on a tensor of
-  shape `[B, H, W, 8]`, but significantly worse than `[B, H, W, 4]`.
+*   On a GPU, tensor data is sliced into 4-channels. Thus, a computation on a
+    tensor of shape `[B, H, W, 5]` will perform about the same on a tensor of
+    shape `[B, H, W, 8]`, but significantly worse than `[B, H, W, 4]`.
 
-* In that sense, if the camera hardware supports image frames in RGBA, feeding
-  that 4-channel input is significantly faster as a memory copy (from 3-channel
-  RGB to 4-channel RGBX) can be avoided.
+    *   For example, if the camera hardware supports image frames in RGBA,
+        feeding that 4-channel input is significantly faster, because a memory
+        copy (from 3-channel RGB to 4-channel RGBX) can be avoided.
 
-* For best performance, do not hesitate to re-train your classifier with
-  mobile-optimized network architecture.  That is a significant part of
-  optimization for on-device inference.
+*   For best performance, do not hesitate to re-train your classifier with
+    mobile-optimized network architecture. That is a significant part of
+    optimization for on-device inference.
