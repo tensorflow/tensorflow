@@ -370,19 +370,17 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                      num_parallel_calls)
     self.assertDatasetsEqual(unoptimized, optimized)
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
-  def testSkipEagerOptimizationBadMapFn(self):
+  def testOptimizationBadMapFn(self):
     # Test map functions that give an error
     def map_fn(x):
       # x has leading dimension 5, this will raise an error
       return array_ops.gather(x, 10)
-
-    base_dataset = dataset_ops.Dataset.range(5).repeat(5).batch(
-        5, drop_remainder=True)
-    _, optimized = self._get_test_datasets(base_dataset, map_fn)
-    nxt = dataset_ops.make_one_shot_iterator(optimized).get_next()
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r"indices = 10 is not in \[0, 5\)"):
+      base_dataset = dataset_ops.Dataset.range(5).repeat(5).batch(
+          5, drop_remainder=True)
+      _, optimized = self._get_test_datasets(base_dataset, map_fn)
+      nxt = dataset_ops.make_one_shot_iterator(optimized).get_next()
       self.evaluate(nxt)
 
   def testOptimizationWithCapturedInputs(self):
