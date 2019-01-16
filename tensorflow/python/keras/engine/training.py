@@ -636,6 +636,7 @@ class Model(Network):
           initial_epoch=0,
           steps_per_epoch=None,
           validation_steps=None,
+          validation_freq=1,
           max_queue_size=10,
           workers=1,
           use_multiprocessing=False,
@@ -740,6 +741,13 @@ class Model(Network):
             is a dataset or dataset iterator. Total number of steps (batches of
             samples) to draw before stopping when performing validation
             at the end of every epoch.
+        validation_freq: Only relevant if validation data is provided. Integer
+            or `collections.Container` instance (e.g. list, tuple, etc.). If an
+            integer, specifies how many training epochs to run before a new
+            validation run is performed, e.g. `validation_freq=2` runs
+            validation every 2 epochs. If a Container, specifies the epochs on
+            which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+            validation at the end of the 1st, 2nd, and 10th epochs.
         max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
             input only. Maximum size for the generator queue.
             If unspecified, `max_queue_size` will default to 10.
@@ -846,6 +854,7 @@ class Model(Network):
           callbacks=callbacks,
           validation_data=validation_data,
           validation_steps=validation_steps,
+          validation_freq=validation_freq,
           class_weight=class_weight,
           max_queue_size=max_queue_size,
           workers=workers,
@@ -868,6 +877,7 @@ class Model(Network):
           callbacks=callbacks,
           validation_data=validation_data,
           validation_steps=validation_steps,
+          validation_freq=validation_freq,
           class_weight=class_weight,
           workers=0,
           shuffle=shuffle,
@@ -930,6 +940,7 @@ class Model(Network):
           callbacks=callbacks,
           validation_data=validation_data,
           validation_steps=validation_steps,
+          validation_freq=validation_freq,
           workers=0,
           shuffle=shuffle,
           initial_epoch=initial_epoch,
@@ -951,6 +962,7 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps,
+          validation_freq=validation_freq,
           steps_name='steps_per_epoch')
 
   def evaluate(self,
@@ -1426,6 +1438,7 @@ class Model(Network):
                     callbacks=None,
                     validation_data=None,
                     validation_steps=None,
+                    validation_freq=1,
                     class_weight=None,
                     max_queue_size=10,
                     workers=1,
@@ -1480,6 +1493,13 @@ class Model(Network):
             to yield from `generator` before stopping.
             Optional for `Sequence`: if unspecified, will use
             the `len(validation_data)` as a number of steps.
+        validation_freq: Only relevant if validation data is provided. Integer
+            or `collections.Container` instance (e.g. list, tuple, etc.). If an
+            integer, specifies how many training epochs to run before a new
+            validation run is performed, e.g. `validation_freq=2` runs
+            validation every 2 epochs. If a Container, specifies the epochs on
+            which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+            validation at the end of the 1st, 2nd, and 10th epochs.
         class_weight: Dictionary mapping class indices to a weight
             for the class.
         max_queue_size: Integer. Maximum size for the generator queue.
@@ -1535,6 +1555,7 @@ class Model(Network):
         callbacks=callbacks,
         validation_data=validation_data,
         validation_steps=validation_steps,
+        validation_freq=validation_freq,
         class_weight=class_weight,
         max_queue_size=max_queue_size,
         workers=workers,

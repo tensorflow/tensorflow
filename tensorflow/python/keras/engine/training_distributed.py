@@ -30,6 +30,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.engine import training_arrays
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -51,7 +52,8 @@ def fit_distributed(model,
                     sample_weight=None,
                     initial_epoch=0,
                     steps_per_epoch=None,
-                    validation_steps=None):
+                    validation_steps=None,
+                    validation_freq=1):
   """Fit loop for Distribution Strategies."""
   distributed_training_utils.validate_callbacks(callbacks, model.optimizer)
   distributed_training_utils.validate_inputs(
@@ -111,7 +113,8 @@ def fit_distributed(model,
         val_dataset=val_dataset,
         initial_epoch=initial_epoch,
         steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps)
+        validation_steps=validation_steps,
+        validation_freq=1)
   else:
     return training_arrays.fit_loop(
         model,
@@ -124,7 +127,8 @@ def fit_distributed(model,
         shuffle=shuffle,
         initial_epoch=initial_epoch,
         steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps)
+        validation_steps=validation_steps,
+        validation_freq=validation_freq)
 
 
 def evaluate_distributed(model,
@@ -206,7 +210,8 @@ def experimental_tpu_fit_loop(model,
                               initial_epoch=0,
                               steps_per_epoch=None,
                               val_dataset=None,
-                              validation_steps=None):
+                              validation_steps=None,
+                              validation_freq=1):
   """Fit loop for training with TPU DistributionStrategy.
 
   Arguments:
@@ -224,6 +229,13 @@ def experimental_tpu_fit_loop(model,
       validation_steps: Number of steps to run validation for
           (only if doing validation from data tensors).
           Ignored with the default value of `None`.
+      validation_freq: Only relevant if validation data is provided. Integer or
+          `collections.Container` instance (e.g. list, tuple, etc.). If an
+          integer, specifies how many training epochs to run before a new
+          validation run is performed, e.g. `validation_freq=2` runs
+          validation every 2 epochs. If a Container, specifies the epochs on
+          which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+          validation at the end of the 1st, 2nd, and 10th epochs.
 
   Returns:
       Returns `None`.
@@ -363,7 +375,8 @@ def experimental_tpu_fit_loop(model,
       if callbacks.model.stop_training:
         break
 
-    if do_validation:
+    if (do_validation and
+        training_utils.should_run_validation(validation_freq, epoch)):
       logging.info('Running validation at fit epoch: %s', epoch)
 
       if model._compile_distribution:
