@@ -306,7 +306,7 @@ void OpEmitter::emitBuilder() {
 }
 
 void OpEmitter::emitCanonicalizationPatterns() {
-  if (!def.getValueAsBit("hasCanonicalizationPatterns"))
+  if (!def.getValueAsBit("hasCanonicalizer"))
     return;
   OUT(2) << "static void getCanonicalizationPatterns("
          << "OwningRewritePatternList &results, MLIRContext* context);\n";

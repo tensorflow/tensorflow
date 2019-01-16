@@ -193,10 +193,10 @@ Operation definitions consists of:
     Additional verification to perform in addition to those generated due to
     operands, attributes, properties and traits.
 
-1.  hasCanonicalizationPatterns and hasConstantFolder.
+1.  hasCanonicalizer and hasConstantFolder.
 
-    These boolean fields indicate whether constant folding or canonicalization
-    patterns have been defined for this operation.
+    These boolean fields indicate whether canonicalization patterns or
+    constant folding have been defined for this operation.
 
 ### For custom parsing and printing
 

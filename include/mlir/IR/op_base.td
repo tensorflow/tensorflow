@@ -338,7 +338,7 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // TODO(b/120163349): figure out a better way to write canonicalization
   // patterns in TableGen rules directly instead of using this marker
   // and C++ implementations.
-  bit hasCanonicalizationPatterns = 0b0;
+  bit hasCanonicalizer = 0b0;
 
   // Whether this op has a constant folder.
   bit hasConstantFolder = 0b0;

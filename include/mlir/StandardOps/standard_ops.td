@@ -89,7 +89,7 @@ def AddFOp : FloatArithmeticOp<"addf"> {
 
 def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
   let summary = "integer addition operation";
-  let hasCanonicalizationPatterns = 0b1;
+  let hasCanonicalizer = 0b1;
   let hasConstantFolder = 0b1;
 }
 
@@ -110,7 +110,7 @@ def MulFOp : FloatArithmeticOp<"mulf"> {
 
 def MulIOp : IntArithmeticOp<"muli", [Commutative]> {
   let summary = "integer multiplication operation";
-  let hasCanonicalizationPatterns = 0b1;
+  let hasCanonicalizer = 0b1;
   let hasConstantFolder = 0b1;
 }
 
@@ -132,7 +132,7 @@ def SubFOp : FloatArithmeticOp<"subf"> {
 def SubIOp : IntArithmeticOp<"subi"> {
   let summary = "integer subtraction operation";
   let hasConstantFolder = 0b1;
-  let hasCanonicalizationPatterns = 0b1;
+  let hasCanonicalizer = 0b1;
 }
 
 #endif // STANDARD_OPS
