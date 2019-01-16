@@ -337,9 +337,9 @@ GrapplerFunctionItem::GrapplerFunctionItem(
     }
   }
 
-  // It's unsafe to prune side-effectful ops from the graph instantiated from a
-  // function definition (see inlining in function_optimizer.cc).
-  allowed_optimizations().prune_ops_with_side_effects = false;
+  // Tensorflow functions execution semantics is different from the main graph,
+  // and we need to preserve it when we do graph optimizations.
+  optimization_options().is_function_instantiation = true;
 }
 
 const string& GrapplerFunctionItem::description() const { return description_; }

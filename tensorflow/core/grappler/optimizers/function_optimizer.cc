@@ -260,7 +260,7 @@ class FunctionOptimizerContext {
       : grappler_item_id_(item.id),
         graph_version_(item.graph.versions().producer()),
         opt_level_(opt_level),
-        allowed_optimizations_(item.allowed_optimizations()),
+        optimization_options_(item.optimization_options()),
         function_library_(OpRegistry::Global(), item.graph.library()),
         available_device_names_(item.devices().begin(), item.devices().end()),
         graph_view_(&item.graph) {
@@ -272,8 +272,8 @@ class FunctionOptimizerContext {
 
   const RewriterConfig::Toggle opt_level() const { return opt_level_; }
 
-  const GrapplerItem::AllowedOptimizations& allowed_optimizations() const {
-    return allowed_optimizations_;
+  const GrapplerItem::OptimizationOptions& optimization_options() const {
+    return optimization_options_;
   }
 
   const FunctionLibraryDefinition& function_library() const {
@@ -409,7 +409,7 @@ class FunctionOptimizerContext {
   const string grappler_item_id_;
   const int graph_version_;
   const RewriterConfig::Toggle opt_level_;
-  const GrapplerItem::AllowedOptimizations allowed_optimizations_;
+  const GrapplerItem::OptimizationOptions optimization_options_;
   FunctionLibraryDefinition function_library_;
 
   // These fields initialized lazily only if needed.
@@ -1620,21 +1620,25 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   // edges from inlined side-effectful ops.
   std::vector<string> side_effectful_nodes;
 
-  // We have to make sure that all side-effectful nodes inside a function body
-  // will be executed after function inlining.
+  // We have to make sure that all side-effectful and dataset-output nodes
+  // inside a function body will be executed after function inlining.
   for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
-    if (!IsFreeOfSideEffect(func_body_node, &ctx->function_library())) {
+    const bool node_must_execute =
+        !IsFreeOfSideEffect(func_body_node, &ctx->function_library()) ||
+        IsDataset(func_body_node);
+
+    if (node_must_execute) {
       int num_fanouts = placed_graph_view.NumFanouts(
           func_body_node, /*include_controlled_nodes=*/true);
 
       // If the node doesn't have any outgoing edges and we do not have any
       // nodes in the `happens_after` set, we can't inline a function and
-      // guarantee that side-effects will be executed. The only exception if we
-      // do function library optimization, and the GrapplerItem was constructed
-      // for the function body, because functions have strict semantics.
+      // guarantee that it will be executed. The only exception if we do
+      // function library optimization, and the GrapplerItem was instantiated
+      // for the function body, because functions do not prune these ops.
 
       if (num_fanouts == 0 && happens_after.empty() &&
-          ctx->allowed_optimizations().prune_ops_with_side_effects) {
+          !ctx->optimization_options().is_function_instantiation) {
         return errors::Internal(
             "Can't inline a function with a side-effectful op with empty "
             "fanouts and empty output control edge set. Function body node: ",
