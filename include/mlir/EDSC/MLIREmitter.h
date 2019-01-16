@@ -114,6 +114,15 @@ struct MLIREmitter {
   /// Prerequisite: it must exist.
   Value *getValue(Expr expr) { return ssaBindings.lookup(expr); }
 
+  /// Returns a list of `Bindable` that are bound to the dimensions of the
+  /// memRef. The proper DimOp and ConstantOp are constructed at the current
+  /// insertion point in `builder`. They can be later hoisted and simplified in
+  /// a separate pass.
+  ///
+  /// Prerequisite:
+  /// `memRef` is a Value of type MemRefType.
+  SmallVector<edsc::Bindable, 8> makeBoundSizes(Value *memRef);
+
 private:
   FuncBuilder *builder;
   Location location;

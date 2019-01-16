@@ -334,7 +334,6 @@ void MLIREmitter::emitStmt(const Stmt &stmt) {
   if (stmt.getRHS().getKind() != ExprKind::Block) {
     auto *val = emit(stmt.getRHS());
     if (!val) {
-      llvm::errs() << "\n" << stmt.getRHS();
       assert((stmt.getRHS().getKind() == ExprKind::Dealloc ||
               stmt.getRHS().getKind() == ExprKind::Store) &&
              "dealloc or store expected as the only 0-result ops");
@@ -354,6 +353,63 @@ void MLIREmitter::emitStmts(ArrayRef<Stmt> stmts) {
   for (auto &stmt : stmts) {
     emitStmt(stmt);
   }
+}
+
+static bool isDynamicSize(int size) { return size < 0; }
+
+/// This function emits the proper Value* at the place of insertion of b,
+/// where each value is the proper ConstantOp or DimOp. Returns a vector with
+/// these Value*. Note this function does not concern itself with hoisting of
+/// constants and will produce redundant IR. Subsequent MLIR simplification
+/// passes like LICM and CSE are expected to clean this up.
+///
+/// More specifically, a MemRefType has a shape vector in which:
+///   - constant ranks are embedded explicitly with their value;
+///   - symbolic ranks are represented implicitly by -1 and need to be recovered
+///     with a DimOp operation.
+///
+/// Example:
+/// When called on:
+///
+/// ```mlir
+///    memref<?x3x4x?x5xf32>
+/// ```
+///
+/// This emits MLIR similar to:
+///
+/// ```mlir
+///    %d0 = dim %0, 0 : memref<?x3x4x?x5xf32>
+///    %c3 = constant 3 : index
+///    %c4 = constant 4 : index
+///    %d3 = dim %0, 3 : memref<?x3x4x?x5xf32>
+///    %c5 = constant 5 : index
+/// ```
+///
+/// and returns the vector with {%d0, %c3, %c4, %d3, %c5}.
+static SmallVector<Value *, 8> getMemRefSizes(FuncBuilder *b, Location loc,
+                                              Value *memRef) {
+  auto memRefType = memRef->getType().template cast<MemRefType>();
+  SmallVector<Value *, 8> res;
+  res.reserve(memRefType.getShape().size());
+  const auto &shape = memRefType.getShape();
+  for (unsigned idx = 0, n = shape.size(); idx < n; ++idx) {
+    if (isDynamicSize(shape[idx])) {
+      res.push_back(b->create<DimOp>(loc, memRef, idx));
+    } else {
+      res.push_back(b->create<ConstantIndexOp>(loc, shape[idx]));
+    }
+  }
+  return res;
+}
+
+SmallVector<edsc::Bindable, 8> MLIREmitter::makeBoundSizes(Value *memRef) {
+  assert(memRef->getType().isa<MemRefType>() && "Expected a MemRef value");
+  MemRefType memRefType = memRef->getType().cast<MemRefType>();
+  auto memRefSizes = edsc::makeBindables(memRefType.getShape().size());
+  auto memrefSizeValues = getMemRefSizes(getBuilder(), getLocation(), memRef);
+  assert(memrefSizeValues.size() == memRefSizes.size());
+  bindZipRange(llvm::zip(memRefSizes, memrefSizeValues));
+  return memRefSizes;
 }
 
 } // namespace edsc

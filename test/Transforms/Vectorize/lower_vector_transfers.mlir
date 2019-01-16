@@ -26,6 +26,31 @@ func @materialize_read_1d() {
   return
 }
 
+// CHECK-LABEL: func @materialize_read_1d_partially_specialized
+func @materialize_read_1d_partially_specialized(%dyn1 : index, %dyn2 : index, %dyn4 : index) {
+  %A = alloc (%dyn1, %dyn2, %dyn4) : memref<7x?x?x42x?xf32>
+  for %i0 = 0 to 7 {
+    for %i1 = 0 to %dyn1 {
+      for %i2 = 0 to %dyn2 {
+        for %i3 = 0 to 42 step 2 {
+          for %i4 = 0 to %dyn4 {
+            %f1 = vector_transfer_read %A, %i0, %i1, %i2, %i3, %i4 {permutation_map: (d0, d1, d2, d3, d4) -> (d3)} : ( memref<7x?x?x42x?xf32>, index, index, index, index, index) -> vector<4xf32>
+            %i3p1 = affine_apply (d0) -> (d0 + 1) (%i3)
+            %f2 = vector_transfer_read %A, %i0, %i1, %i2, %i3p1, %i4 {permutation_map: (d0, d1, d2, d3, d4) -> (d3)} : ( memref<7x?x?x42x?xf32>, index, index, index, index, index) -> vector<4xf32>
+          }
+        }
+      }
+    }
+  }
+  // CHECK: %[[tensor:[0-9]+]] = alloc
+  // CHECK-NOT: {{.*}} dim %[[tensor]], 0
+  // CHECK: {{.*}} dim %[[tensor]], 1
+  // CHECK: {{.*}} dim %[[tensor]], 2
+  // CHECK-NOT: {{.*}} dim %[[tensor]], 3
+  // CHECK: {{.*}} dim %[[tensor]], 4
+  return
+}
+
 // CHECK-LABEL: func @materialize_read(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
 func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:  %0 = alloc(%arg0, %arg1, %arg2, %arg3) : memref<?x?x?x?xf32>

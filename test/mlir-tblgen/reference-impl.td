@@ -16,7 +16,7 @@ def X_AddOp : Op<"x.add">,
     auto *resultMemRef = *(f->getArguments().begin() + 2);
 
     Bindable lhs, rhs, result;
-    auto lhsShape = makeBoundSizes(&emitter, lhsMemRef);
+    auto lhsShape = emitter.makeBoundSizes(lhsMemRef);
 
     auto ivs = makeBindables(lhsShape.size());
     Bindable zero, one;

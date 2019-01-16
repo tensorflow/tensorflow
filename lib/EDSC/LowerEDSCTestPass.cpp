@@ -42,36 +42,6 @@ struct LowerEDSCTestPass : public FunctionPass {
 
 char LowerEDSCTestPass::passID = 0;
 
-// TODO: These should be in a common library.
-static bool isDynamicSize(int size) { return size < 0; }
-
-static SmallVector<Value *, 8> getMemRefSizes(FuncBuilder *b, Location loc,
-                                              Value *memRef) {
-  auto memRefType = memRef->getType().cast<MemRefType>();
-  SmallVector<Value *, 8> res;
-  res.reserve(memRefType.getShape().size());
-  unsigned countSymbolicShapes = 0;
-  for (int size : memRefType.getShape()) {
-    if (isDynamicSize(size)) {
-      res.push_back(b->create<DimOp>(loc, memRef, countSymbolicShapes++));
-    } else {
-      res.push_back(b->create<ConstantIndexOp>(loc, size));
-    }
-  }
-  return res;
-}
-
-SmallVector<edsc::Bindable, 8> makeBoundSizes(edsc::MLIREmitter *emitter,
-                                              Value *memRef) {
-  MemRefType memRefType = memRef->getType().cast<MemRefType>();
-  auto memRefSizes = edsc::makeBindables(memRefType.getShape().size());
-  auto memrefSizeValues =
-      getMemRefSizes(emitter->getBuilder(), emitter->getLocation(), memRef);
-  assert(memrefSizeValues.size() == memRefSizes.size());
-  emitter->bindZipRange(llvm::zip(memRefSizes, memrefSizeValues));
-  return memRefSizes;
-}
-
 #include "mlir/EDSC/reference-impl.inc"
 
 PassResult LowerEDSCTestPass::runOnFunction(Function *f) {

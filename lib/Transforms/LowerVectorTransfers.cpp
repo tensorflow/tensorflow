@@ -62,52 +62,6 @@ using namespace mlir;
 
 #define DEBUG_TYPE "lower-vector-transfers"
 
-/// This function emits the proper Value* at the place of insertion of b,
-/// where each value is the proper ConstantOp or DimOp. Returns a vector with
-/// these Value*. Note this function does not concern itself with hoisting of
-/// constants and will produce redundant IR. Subsequent MLIR simplification
-/// passes like LICM and CSE are expected to clean this up.
-///
-/// More specifically, a MemRefType has a shape vector in which:
-///   - constant ranks are embedded explicitly with their value;
-///   - symbolic ranks are represented implicitly by -1 and need to be recovered
-///     with a DimOp operation.
-///
-/// Example:
-/// When called on:
-///
-/// ```mlir
-///    memref<?x3x4x?x5xf32>
-/// ```
-///
-/// This emits MLIR similar to:
-///
-/// ```mlir
-///    %d0 = dim %0, 0 : memref<?x3x4x?x5xf32>
-///    %c3 = constant 3 : index
-///    %c4 = constant 4 : index
-///    %d1 = dim %0, 0 : memref<?x3x4x?x5xf32>
-///    %c5 = constant 5 : index
-/// ```
-///
-/// and returns the vector with {%d0, %c3, %c4, %d1, %c5}.
-bool isDynamicSize(int size) { return size < 0; }
-SmallVector<Value *, 8> getMemRefSizes(FuncBuilder *b, Location loc,
-                                       Value *memRef) {
-  auto memRefType = memRef->getType().template cast<MemRefType>();
-  SmallVector<Value *, 8> res;
-  res.reserve(memRefType.getShape().size());
-  unsigned countSymbolicShapes = 0;
-  for (int size : memRefType.getShape()) {
-    if (isDynamicSize(size)) {
-      res.push_back(b->create<DimOp>(loc, memRef, countSymbolicShapes++));
-    } else {
-      res.push_back(b->create<ConstantIndexOp>(loc, size));
-    }
-  }
-  return res;
-}
-
 namespace {
 /// Helper structure to hold information about loop nest, clipped accesses to
 /// the original scalar MemRef as well as full accesses to temporary MemRef in
@@ -215,12 +169,7 @@ VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
   auto ivs = makeBindables(vectorShape.size());
 
   // Create and bind Bindables to refer to the Value for memref sizes.
-  auto memRefSizes = makeBindables(memrefShape.size());
-  auto memrefSizeValues = getMemRefSizes(
-      emitter.getBuilder(), emitter.getLocation(), transfer->getMemRef());
-  assert(memrefSizeValues.size() == memRefSizes.size());
-  // Bind
-  emitter.bindZipRange(llvm::zip(memRefSizes, memrefSizeValues));
+  auto memRefSizes = emitter.makeBoundSizes(transfer->getMemRef());
 
   // Create the edsc::Expr for the clipped and transposes access expressions
   // using the permutationMap. Additionally, capture the index accessing the
