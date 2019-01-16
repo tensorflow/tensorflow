@@ -48,7 +48,7 @@ public:
   // Returns the condition template that can be used to check if a type
   // satisfies this type constraint.  The template may contain "{0}" that must
   // be substituted with an expression returning an mlir::Type.
-  StringRef getConditionTemplate() const;
+  std::string getConditionTemplate() const;
 
   // Returns the user-readable description of the constraint.  If the
   // description is not provided, returns an empty string.

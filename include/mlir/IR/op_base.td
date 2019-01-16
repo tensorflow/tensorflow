@@ -27,33 +27,49 @@
 // Predicates.
 //===----------------------------------------------------------------------===//
 
+// A logical predicate.
+class Pred;
+
 // Logical predicate wrapping a C expression.
-class CPred<code pred> {
+class CPred<code pred> : Pred {
   code predCall = "(" # pred # ")";
+}
+
+// Kinds of combined logical predicates.  These must closesly match the
+// predicates implemented by the C++ backend (tblgen::PredCombinerKind).
+class PredCombinerKind;
+def PredCombinerAnd : PredCombinerKind;
+def PredCombinerOr : PredCombinerKind;
+def PredCombinerNot : PredCombinerKind;
+def PredCombinerSubstLeaves : PredCombinerKind;
+
+// A predicate that combines other predicates as defined by PredCombinerKind.
+// Instantiated below.
+class CombinedPred<PredCombinerKind k, list<Pred> c> : Pred {
+  PredCombinerKind kind = k;
+  list<Pred> children = c;
 }
 
 // A predicate that holds if all of its children hold.  Always holds for zero
 // children.
-class AllOf<list<CPred> children> : CPred<
-  !if(
-    !empty(children),
-    "true",
-    !foldl(!head(children).predCall, !tail(children), acc, elem,
-           !cast<code>(acc # " && " # elem.predCall))
-  )>;
+class AllOf<list<Pred> children> : CombinedPred<PredCombinerAnd, children>;
 
 // A predicate that holds if any of its children hold.  Never holds for zero
 // children.
-class AnyOf<list<CPred> children> : CPred<
-  !if(
-    !empty(children),
-    "false",
-    !foldl(!head(children).predCall, !tail(children), acc, elem,
-           !cast<code>(acc # " || " # elem.predCall))
-  )>;
+class AnyOf<list<Pred> children> : CombinedPred<PredCombinerOr, children>;
 
-// A predicate that hold if its child does not.
-class NotCPred<CPred child> : CPred<"!" # child>;
+// A predicate that holds if its child does not.
+class Neg<Pred child> : CombinedPred<PredCombinerNot, [child]>;
+
+// A predicate that substitutes "pat" with "repl" in predicate calls of the
+// leaves of the predicate tree (i.e., not CombinedPredicates).  This is plain
+// string substitution without regular expressions or captures, new predicates
+// with more complex logical can be introduced should the need arise.
+class SubstLeaves<string pat, string repl, Pred child>
+    : CombinedPred<PredCombinerSubstLeaves, [child]> {
+  string pattern = pat;
+  string replacement = repl;
+}
 
 //===----------------------------------------------------------------------===//
 // Type predicates.  ({0} is replaced by an instance of mlir::Type)
@@ -75,17 +91,17 @@ def IsStaticShapeTensorTypePred :
 
 // A constraint on types.  This can be used to check the validity of
 // instruction arguments.
-class TypeConstraint<CPred condition, string descr = ""> {
+class TypeConstraint<Pred condition, string descr = ""> {
   // The predicates that this type satisfies.
   // Format: {0} will be expanded to the type.
-  CPred predicate = condition;
+  Pred predicate = condition;
   // User-readable description used, e.g., for error reporting.  If empty, a
   // generic message will be used instead.
   string description = descr;
 }
 
 // A type, carries type constraints, but accepts any type by default.
-class Type<CPred condition = CPred<"true">, string descr = "">
+class Type<Pred condition = CPred<"true">, string descr = "">
     : TypeConstraint<condition, descr>;
 
 // A type that can be constructed using MLIR::Builder.
@@ -134,14 +150,13 @@ class F<int width>
 def F32 : F<32>;
 
 // A container type is a type that has another type embedded within it.
-class ContainerType<Type etype, CPred containerPred, code elementTypeCall,
+class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
                     string descr> :
     // First, check the container predicate.  Then, substitute the extracted
     // element into the element type checker.
     Type<AllOf<[containerPred,
-                   CPred<!subst("{0}",
-                                !cast<string>(elementTypeCall),
-                                !cast<string>(etype.predicate.predCall))>]>,
+                SubstLeaves<"{0}", !cast<string>(elementTypeCall),
+		            etype.predicate>]>,
 	 descr # "<" # etype.description # ">" > {
   // The type of elements in the container.
   Type elementType = etype;

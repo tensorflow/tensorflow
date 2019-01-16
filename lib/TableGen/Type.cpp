@@ -32,13 +32,14 @@ tblgen::TypeConstraint::TypeConstraint(const llvm::Record &record)
 
 tblgen::Pred tblgen::TypeConstraint::getPredicate() const {
   auto *val = def.getValue("predicate");
-  assert(val && "TableGen 'Type' class should have 'predicate' field");
+  assert(val &&
+         "TableGen 'TypeConstraint' class should have 'predicate' field");
 
   const auto *pred = dyn_cast<llvm::DefInit>(val->getValue());
   return Pred(pred);
 }
 
-llvm::StringRef tblgen::TypeConstraint::getConditionTemplate() const {
+std::string tblgen::TypeConstraint::getConditionTemplate() const {
   return getPredicate().getCondition();
 }
 

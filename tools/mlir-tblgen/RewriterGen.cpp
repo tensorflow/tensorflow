@@ -180,7 +180,7 @@ void Pattern::matchOp(DagInit *tree, int depth) {
         auto constraint = tblgen::TypeConstraint(*defInit);
         os.indent(indent)
             << "if (!("
-            << formatv(constraint.getConditionTemplate().str().c_str(),
+            << formatv(constraint.getConditionTemplate().c_str(),
                        formatv("op{0}->getOperand({1})->getType()", depth, i))
             << ")) return matchFailure();\n";
       }
@@ -193,7 +193,7 @@ void Pattern::matchOp(DagInit *tree, int depth) {
               tblgen::Pred(defInit->getDef()->getValueInit("predicate"));
           os.indent(indent)
               << "if (!("
-              << formatv(pred.getCondition().str().c_str(),
+              << formatv(pred.getCondition().c_str(),
                          formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
                                  namedAttr->attr.getStorageType(),
                                  namedAttr->getName()))
