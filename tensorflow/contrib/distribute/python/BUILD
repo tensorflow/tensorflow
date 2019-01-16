@@ -640,12 +640,11 @@ distribute_py_test(
 )
 
 # TODO(b/121200287): Remove this in 2.0
-cuda_py_test(
+distribute_py_test(
     name = "keras_backward_compat_test",
     srcs = ["keras_backward_compat_test.py"],
-    additional_deps = [
-        ":keras_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_backward_compat_test.py",
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
@@ -653,6 +652,9 @@ cuda_py_test(
         "no_pip",
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":keras_test_lib",
     ],
 )
 
@@ -680,13 +682,12 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_dnn_correctness_test",
     size = "medium",
     srcs = ["keras_dnn_correctness_test.py"],
-    additional_deps = [
-        ":keras_correctness_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_dnn_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 19,
@@ -697,15 +698,17 @@ cuda_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_image_model_correctness_test",
     size = "medium",
     srcs = ["keras_image_model_correctness_test.py"],
-    additional_deps = [
-        ":keras_correctness_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_image_model_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 31,
@@ -716,15 +719,17 @@ cuda_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_embedding_model_correctness_test",
     size = "medium",
     srcs = ["keras_embedding_model_correctness_test.py"],
-    additional_deps = [
-        ":keras_correctness_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_embedding_model_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 31,
@@ -734,16 +739,18 @@ cuda_py_test(
         "no_pip",
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_lstm_model_correctness_test",
     size = "medium",
     srcs = ["keras_lstm_model_correctness_test.py"],
-    additional_deps = [
-        ":keras_correctness_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_lstm_model_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 31,
@@ -753,6 +760,9 @@ cuda_py_test(
         "no_pip",
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
     ],
 )
 
