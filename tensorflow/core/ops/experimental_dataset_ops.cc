@@ -453,6 +453,13 @@ REGISTER_OP("ExperimentalLMDBDataset")
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ExperimentalChooseFastestDataset")
+    .Input("input_datasets: N * variant")
+    .Output("handle: variant")
+    .Attr("N: int >= 2")
+    .Attr("num_experiments: int")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalIdentityIndexedDataset")
     .Input("size: uint64")
     .Output("handle: variant")
