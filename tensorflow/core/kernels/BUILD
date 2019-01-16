@@ -4011,6 +4011,7 @@ tf_cuda_cc_test(
         ":nn",
         ":ops_testutil",
         ":ops_util",
+        ":pooling_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:core_cpu",
