@@ -251,5 +251,45 @@ StatusOr<poplar::program::Program> CreateNormGrad(
   return seq;
 }
 
+StatusOr<poplar::program::Program> CreateNormStatistics(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const HloInstruction* inst, const float epsilon,
+    const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
+  TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
+
+  // Special case - zero sized array
+  if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
+    poplar::Tensor mean = graph.addConstant(operand.elementType(), {1}, 0);
+    graph.setTileMapping(mean, 0);
+    TF_ASSIGN_OR_RETURN(mean,
+                        BroadcastTensor(mean, inst->operand(0)->shape(), {}));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, mean));
+    poplar::Tensor variance = graph.addConstant(operand.elementType(), {1}, 0);
+    graph.setTileMapping(variance, 0);
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, variance));
+    return seq;
+  }
+
+  // Reshape the input
+  std::vector<std::size_t> non_broadcast_dims;
+
+  poplar::Tensor operand_view, grad_output_view;
+  std::tie(operand_view, non_broadcast_dims) =
+      ShuffleNormInputToPoplar(operand, feature_dimension);
+
+  poplar::Tensor mean, variance;
+  std::tie(mean, variance) = norm_graph_caching::DoCachedNormStatistics(
+      norm_type, graph, res, operand_view, epsilon, optional_num_groups,
+      GetShardingDeviceId(inst), seq, GetDebugName(inst));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, mean));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, variance));
+  return seq;
+}
+
 }  // namespace poplarplugin
 }  // namespace xla

@@ -42,7 +42,7 @@ from tensorflow.python.training import gradient_descent
 # These tests are implemented based on the Layers implementation of the group
 # norm - tensorflow/contrib/layers/python/layers/normalization.py.
 
-NAMED_GROUP_NORM_INF_TESTCASES = (
+NAMED_GROUP_NORM_TESTCASES = (
 {
     "testcase_name": "xsmall",
     "batch_size": 1,
@@ -70,7 +70,7 @@ NAMED_GROUP_NORM_INF_TESTCASES = (
 {
     "testcase_name": "large",
     "batch_size": 4,
-    "num_channels": 32,
+    "num_channels": 16,
     "num_groups": 4,
     "epsilon": 0.0015,
     "dims": [256,256]
@@ -78,10 +78,10 @@ NAMED_GROUP_NORM_INF_TESTCASES = (
 {
     "testcase_name": "number_of_groups_equals_channels",
     "batch_size": 4,
-    "num_channels": 32,
-    "num_groups": 32,
+    "num_channels": 8,
+    "num_groups": 8,
     "epsilon": 0.0015,
-    "dims": [256,256]
+    "dims": [128,128]
 },
 {
     "testcase_name": "number_of_groups_is_one",
@@ -169,6 +169,47 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
             np.reshape(np.squeeze(mean), (mean.size)),
             np.reshape(np.squeeze(variance), (variance.size)))
 
+  def _refGroupNormStatistics(self, inputs, groups, epsilon=0.0015, data_format="NHWC"):
+    if data_format == "NHWC":
+      feature_index = 3
+    elif data_format == "NCHW":
+      feature_index = 1
+    else:
+      raise Exception("Unsupported data format " + data_format)
+
+    num_channels = inputs.shape[feature_index]
+    group_size = num_channels // groups
+    original_shape = inputs.shape
+
+    # Implementation detail - in Poplibs group norm, the groups are not
+    # contiguous, but strided - we replicate that here
+    # Move the channels to the first dimension for inputs, gamma and beta
+    inputs = np.swapaxes(inputs, 0, feature_index)
+
+    reshuffled_inputs = np.empty(inputs.shape, inputs.dtype)
+
+    for from_idx in range(num_channels):
+      to_idx = (from_idx % groups) * group_size + from_idx // groups
+      reshuffled_inputs[to_idx] = inputs[from_idx]
+    inputs = np.swapaxes(reshuffled_inputs, 0, feature_index)
+
+    if feature_index == 1:
+      N, C, H, W = inputs.shape
+      inputs = np.reshape(inputs, [N, groups, C // groups, H, W])
+      moments_axes = (feature_index + 1, 3, 4)
+
+    else:
+      N, H, W, C = inputs.shape
+      inputs = np.reshape(inputs, [N, H, W, groups, C // groups])
+      moments_axes = (1, 2, feature_index + 1)
+
+    mean = np.mean(inputs, moments_axes, dtype=np.float32, keepdims=True)
+    variance = np.mean(np.power(inputs - mean, 2), moments_axes,
+                          dtype=np.float32, keepdims=True)
+
+    return (np.reshape(np.squeeze(mean), (mean.size)),
+            np.reshape(np.squeeze(variance), (variance.size)))
+
   def _implGroupNormInf(self, inputs, gamma, beta, groups,  mean, variance, epsilon=0.0015, data_format="NHWC"):
     if data_format != "NHWC" and data_format != "NCHW":
       raise Exception("Unsupported data format " + data_format)
@@ -218,7 +259,25 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       }
       return sess.run((norm, mean, variance), fd)
 
-  @parameterized.named_parameters(*NAMED_GROUP_NORM_INF_TESTCASES)
+  def _implGroupNormStatistics(self, inputs, groups, epsilon=0.0015, data_format="NHWC"):
+    if data_format != "NHWC" and data_format != "NCHW":
+      raise Exception("Unsupported data format " + data_format)
+
+    with ops.device("/device:IPU:0"):
+      pinputs = array_ops.placeholder(dataType, inputs.shape, name="inputs")
+      mean, variance = gen_popnn_ops.popnn_group_norm_statistics(
+                                                       inputs=pinputs,
+                                                       data_format=data_format,
+                                                       epsilon=epsilon,
+                                                       num_groups=groups)
+
+    with session_lib.Session() as sess:
+      fd = {
+        pinputs : inputs,
+      }
+      return sess.run((mean, variance), fd)
+
+  @parameterized.named_parameters(*NAMED_GROUP_NORM_TESTCASES)
   def testGroupNormInference(self, batch_size, num_channels, num_groups, dims, epsilon):
     np.random.seed(12)
     for data_format in ["NHWC","NCHW"]:
@@ -247,7 +306,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
 
       self.assertAllClose(expected, result)
 
-  @parameterized.named_parameters(*NAMED_GROUP_NORM_INF_TESTCASES)
+  @parameterized.named_parameters(*NAMED_GROUP_NORM_TESTCASES)
   def testGroupNormTraining(self, batch_size, num_channels, num_groups, dims, epsilon):
     np.random.seed(48)
     for data_format in ["NHWC","NCHW"]:
@@ -277,6 +336,31 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
                             rtol=training_rel_tolerance,
                             atol=training_abs_tolerance)
       self.assertAllClose(expected_norm, norm,
+                            rtol=training_rel_tolerance,
+                            atol=training_abs_tolerance)
+
+  @parameterized.named_parameters(*NAMED_GROUP_NORM_TESTCASES)
+  def testGroupNormStatistics(self, batch_size, num_channels, num_groups, dims, epsilon):
+    np.random.seed(48)
+    for data_format in ["NHWC","NCHW"]:
+      if data_format == "NHWC":
+        acts_shape = [batch_size, dims[0], dims[1], num_channels]
+      elif data_format == "NCHW":
+        acts_shape = [batch_size, num_channels, dims[0], dims[1]]
+      else:
+        raise Exception("Unsupported data format " + data_format)
+
+      activations = np.random.rand(*acts_shape).astype(dataType)
+
+      mean, variance = self._implGroupNormStatistics(
+          activations, num_groups, epsilon=epsilon, data_format=data_format)
+
+      expected_mean, expected_variance = self._refGroupNormStatistics(
+          activations, num_groups, epsilon=epsilon, data_format=data_format)
+      self.assertAllClose(expected_mean, mean,
+                            rtol=training_rel_tolerance,
+                            atol=training_abs_tolerance)
+      self.assertAllClose(expected_variance, variance,
                             rtol=training_rel_tolerance,
                             atol=training_abs_tolerance)
 

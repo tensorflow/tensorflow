@@ -78,6 +78,15 @@ NormGradCacheKey GetNormGradCacheKey(
       optional_num_groups ? *optional_num_groups : 0, device_id);
 }
 
+NormStatisticsCacheKey GetNormStatisticsCacheKey(
+    const NormType& norm_type, const poplar::Tensor& operand_shuffled,
+    const double epsilon, absl::optional<uint32> optional_num_groups,
+    const uint64 device_id) {
+  return std::make_tuple(
+      norm_type, graph_caching_util::GetPoplarTensorSignature(operand_shuffled),
+      epsilon, optional_num_groups ? *optional_num_groups : 0, device_id);
+}
+
 poplar::Tensor ConvertVarianceToInvStdDev(poplar::Graph& graph,
                                           const poplar::Tensor& variance,
                                           const float epsilon,
@@ -296,6 +305,50 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
   res.norm_grad_graph_cache.emplace(key, f);
   f(args, prog);
   return std::make_tuple(args[5], args[6], args[7]);
+}
+
+std::tuple<poplar::Tensor, poplar::Tensor> DoCachedNormStatistics(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const poplar::Tensor& operand, const double epsilon,
+    absl::optional<uint32> optional_num_groups, const uint64 device_id,
+    poplar::program::Sequence& prog, const std::string& debug_prefix) {
+  auto key = GetNormStatisticsCacheKey(norm_type, operand, epsilon,
+                                       optional_num_groups, device_id);
+  poplar::Tensor mean, variance;
+  std::vector<poplar::Tensor> args = {operand, mean, variance};
+  auto it = res.norm_statistics_graph_cache.find(key);
+  if (it != res.norm_statistics_graph_cache.end() &&
+      !res.disable_graph_convolution_caching) {
+    auto& f = it->second;
+    f(args, prog);
+    return std::make_tuple(args[1], args[2]);
+  }
+
+  using namespace poputil::graphfn;
+  auto f = VoidFunction(
+      graph, {input(operand, "operand"), created("mean"), created("variance")},
+      [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
+        poplar::Tensor inv_sd;
+        switch (norm_type) {
+          case NormType::BatchNorm: {
+            std::tie(args[1], inv_sd) = popnn::bn::batchNormStatistics(
+                graph, args[0], epsilon, seq, false, poplar::FLOAT,
+                debug_prefix);
+            break;
+          }
+          case NormType::GroupNorm: {
+            std::tie(args[1], inv_sd) = popnn::gn::groupNormStatistics(
+                graph, args[0], epsilon, seq, *optional_num_groups, false,
+                poplar::FLOAT, debug_prefix);
+            break;
+          }
+        }
+        args[2] = ConvertInvStdDevToVariance(graph, inv_sd, epsilon, seq,
+                                             debug_prefix);
+      });
+  res.norm_statistics_graph_cache.emplace(key, f);
+  f(args, prog);
+  return std::make_tuple(args[1], args[2]);
 }
 
 }  // namespace norm_graph_caching

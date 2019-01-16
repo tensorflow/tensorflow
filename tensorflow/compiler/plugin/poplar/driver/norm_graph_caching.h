@@ -107,6 +107,22 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
     absl::optional<uint32> optional_num_groups, const uint64 device,
     poplar::program::Sequence& prog, const std::string& debug_prefix);
 
+// The norm statistics key is:
+// * type of norm
+// * shape of operand
+// * epsilon
+// * num_groups for GroupNorm, 0 otherwise
+// * sharding device ID
+using NormStatisticsCacheKey =
+    std::tuple<NormType, PoplarTensorSignature, double, uint32, uint64>;
+using NormStatisticsGraphCache =
+    std::map<NormStatisticsCacheKey, poputil::graphfn::VoidFunction>;
+std::tuple<poplar::Tensor, poplar::Tensor> DoCachedNormStatistics(
+    const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
+    const poplar::Tensor& operand, const double epsilon,
+    absl::optional<uint32> optional_num_groups, const uint64 device,
+    poplar::program::Sequence& prog, const std::string& debug_prefix);
+
 }  // namespace norm_graph_caching
 
 }  // namespace poplarplugin

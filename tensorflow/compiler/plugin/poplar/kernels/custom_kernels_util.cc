@@ -64,6 +64,7 @@ std::string PoplibsOpToString(const PoplibsOp& poplibs_op) {
                                            "GroupNormInference",
                                            "GroupNormTraining",
                                            "GroupNormGrad",
+                                           "GroupNormStatistics",
                                            "Sqrt",
                                            "Rsqrt"};
   if (names.size() != static_cast<uint32>(PoplibsOp::_NumOps)) {
@@ -81,6 +82,7 @@ absl::optional<PoplibsOp> StringToPoplibsOp(const std::string& name) {
       {"GroupNormInference", PoplibsOp::GroupNormInference},
       {"GroupNormTraining", PoplibsOp::GroupNormTraining},
       {"GroupNormGrad", PoplibsOp::GroupNormGrad},
+      {"GroupNormStatistics", PoplibsOp::GroupNormStatistics},
       // Popops:
       {"Sqrt", PoplibsOp::Sqrt},
       {"Rsqrt", PoplibsOp::Rsqrt},

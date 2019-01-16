@@ -425,6 +425,66 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
             'vs/PopnnGroupNormInference/custom-call.*/']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
+  def testGroupNormalizeInferenceAndStatistics(self):
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer())
+        gamma = constant_op.constant([0.5, 0.5], np.float32)
+        beta = constant_op.constant([0.5, 0.5], np.float32)
+        mean, variance = gen_popnn_ops.popnn_group_norm_statistics(inputs=y,
+                                                                   data_format="NHWC",
+                                                                   epsilon=0.0015,
+                                                                   num_groups=2)
+        y = gen_popnn_ops.popnn_group_norm_inference(inputs=y,
+                                                     gamma=gamma,
+                                                     beta=beta,
+                                                     mean=mean,
+                                                     variance=variance,
+                                                     data_format="NHWC",
+                                                     epsilon=0.0015,
+                                                     num_groups=2)
+        y = convolutional.conv2d(y, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer())
+        mean, variance = gen_popnn_ops.popnn_group_norm_statistics(inputs=y,
+                                                                   data_format="NHWC",
+                                                                   epsilon=0.0015,
+                                                                   num_groups=2)
+        y = gen_popnn_ops.popnn_group_norm_inference(inputs=y,
+                                                     gamma=gamma,
+                                                     beta=beta,
+                                                     mean=mean,
+                                                     variance=variance,
+                                                     data_format="NHWC",
+                                                     epsilon=0.0015,
+                                                     num_groups=2)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      sess.run(y, {x: np.zeros([1,4,4,2])})
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      # Would fail if there were two batch norms in the graph
+      ok = ['progIdCopy',
+            'host-exchange-local-copy',
+            'Copy_',
+            'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
+            'vs/PopnnGroupNormStatistics/custom-call.*/',
+            'vs/PopnnGroupNormInference/custom-call.*/']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
   def testBatchNormAndGroupNormalizeMixedInference(self):
     with ops.device("/device:IPU:0"):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])

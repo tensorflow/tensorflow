@@ -19,6 +19,28 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
+namespace {
+Status GetMeanAndVarianceSize(shape_inference::InferenceContext* c,
+                              int64& num_groups_time_batches) {
+  auto in_shape = c->input(0);
+  // Get the number of batches.
+  std::string data_format_str;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+  TensorFormat data_format;
+  if (!FormatFromString(data_format_str, &data_format)) {
+    return tensorflow::errors::Unknown("Unknown format %s.",
+                                       data_format_str.c_str());
+  }
+  const int batch_index =
+      GetTensorBatchDimIndex(c->Rank(in_shape), data_format);
+  auto batch_size = c->Value(c->Dim(in_shape, batch_index));
+
+  int32 num_groups;
+  TF_RETURN_IF_ERROR(c->GetAttr("num_groups", &num_groups));
+  num_groups_time_batches = num_groups * batch_size;
+  return Status::OK();
+}
+}  // namespace
 
 REGISTER_OP("PopnnLstmLayer")
     .Input("inputs: dtype")
@@ -126,25 +148,13 @@ REGISTER_OP("PopnnGroupNormTraining")
     .Attr("dtype: {float16, float32}")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       auto in_shape = c->input(0);
-      // Get the number of batches.
-      std::string data_format_str;
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
-      TensorFormat data_format;
-      if (!FormatFromString(data_format_str, &data_format)) {
-        return tensorflow::errors::Unknown("Unknown format %s.",
-                                           data_format_str.c_str());
-      }
-      const int batch_index =
-          GetTensorBatchDimIndex(c->Rank(in_shape), data_format);
-      auto batch_size = c->Value(c->Dim(in_shape, batch_index));
 
-      int32 num_groups;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_groups", &num_groups));
-
+      int64 num_groups_time_batch;
+      TF_RETURN_IF_ERROR(GetMeanAndVarianceSize(c, num_groups_time_batch));
       shape_inference::DimensionOrConstant doc_num_groups_time_batch(
-          num_groups * batch_size);
-
+          num_groups_time_batch);
       auto mean_variance_shape = c->MakeShape({doc_num_groups_time_batch});
+
       c->set_output(0, in_shape);
       c->set_output(1, mean_variance_shape);
       c->set_output(2, mean_variance_shape);
@@ -177,6 +187,29 @@ REGISTER_OP("PopnnGroupNormGrad")
     })
     .Doc(R"doc(
 Internal implementation of PopnnGroupNormTraining.
+)doc");
+
+REGISTER_OP("PopnnGroupNormStatistics")
+    .Input("inputs: dtype")
+    .Output("mean: dtype")
+    .Output("variance: dtype")
+    .Attr("data_format: string")
+    .Attr("epsilon: float")
+    .Attr("num_groups: int")
+    .Attr("dtype: {float16, float32}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      int64 num_groups_time_batch;
+      TF_RETURN_IF_ERROR(GetMeanAndVarianceSize(c, num_groups_time_batch));
+      shape_inference::DimensionOrConstant doc_num_groups_time_batch(
+          num_groups_time_batch);
+      auto mean_variance_shape = c->MakeShape({doc_num_groups_time_batch});
+
+      c->set_output(0, mean_variance_shape);
+      c->set_output(1, mean_variance_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Internal implementation of PopnnGroupNormStatistics.
 )doc");
 
 }  // namespace tensorflow

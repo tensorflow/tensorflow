@@ -52,6 +52,7 @@ enum class PoplibsOp : uint32 {
   GroupNormInference,
   GroupNormTraining,
   GroupNormGrad,
+  GroupNormStatistics,
   // Popops:
   Sqrt,
   Rsqrt,

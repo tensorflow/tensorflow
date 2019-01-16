@@ -122,6 +122,8 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
       {PoplibsOp::GroupNormTraining,
        {AllocateNormInferenceAndTrainingOp, CreateGroupNormTrainingOp}},
       {PoplibsOp::GroupNormGrad, {AllocateNormGradOp, CreateGroupNormGradOp}},
+      {PoplibsOp::GroupNormStatistics,
+       {AllocateNormStatisticsOp, CreateGroupNormStatisticsOp}},
   };
   return info_map;
 }
@@ -230,6 +232,17 @@ StatusOr<poplar::Tensor> AllocateNormGradOp(
     const TensorMap& tensor_map) {
   return xla::FailedPrecondition(
       "Gradient of a Norm operation should not be allocating.");
+}
+
+StatusOr<poplar::Tensor> AllocateNormStatisticsOp(
+    poplar::Graph& graph, CompilerResources& res, const std::string& name,
+    const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map,
+    const TensorMap& tensor_map) {
+  return xla::FailedPrecondition(
+      "Statistics of a Norm operation should not be allocating.");
 }
 
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
@@ -419,6 +432,19 @@ StatusOr<poplar::program::Program> CreateGroupNormGradOp(
                       GetNormOpts(attribute_map));
   return CreateNormGrad(NormType::GroupNorm, graph, res, inst, epsilon,
                         feature_index, num_groups, tensor_map);
+}
+
+StatusOr<poplar::program::Program> CreateGroupNormStatisticsOp(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  uint32 feature_index;
+  uint32 num_groups;
+  float epsilon;
+  TF_ASSIGN_OR_RETURN(std::tie(feature_index, num_groups, epsilon),
+                      GetNormOpts(attribute_map));
+  return CreateNormStatistics(NormType::GroupNorm, graph, res, inst, epsilon,
+                              feature_index, num_groups, tensor_map);
 }
 
 }  // namespace poplarplugin
