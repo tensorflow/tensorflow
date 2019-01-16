@@ -447,50 +447,41 @@ class PolymorphicFunction(object):
     return initialize_variables.get_concrete_function()
 
   def _list_all_concrete_functions_for_serialization(self):
-    """Returns all of the concrete functions.
+    """Returns all concrete functions for serialization.
 
     Returns:
-      A list of tuples in the form (signature, concrete_function), where
-      concrete function is an instance of `Function`.
+      A list of instances of `Function`.
     """
-    input_signature = self._input_signature
-    if input_signature is not None:
+    if self._input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
-    for signature in self._cached_input_signatures:
+    # pylint: disable=protected-access
+    if self._stateful_fn:
+      concrete_functions.extend(self._stateful_fn._function_cache.values())
+    if self._stateless_fn:
+      concrete_functions.extend(self._stateless_fn._function_cache.values())
+    # pylint: enable=protected-access
+    deduplicated_concrete_functions = list()
+    seen_signatures = list()
+    # We are using a list so that:
+    #  - the returned collection is deterministic, and
+    #  - we can use a custom equality operator (is_same_structure).
+    # This is run only at serialization time on likely very small inputs so we
+    # are not concerned about O(n^2) runtime.
+    for concrete_function in concrete_functions:
+      signature, _ = concrete_function.structured_input_signature
       flattened = nest.flatten(signature)
       if any(
           isinstance(arg, func_graph_module.UnknownArgument)
           for arg in flattened):
         logging.info("Unsupported signature for serialization: %s.", signature)
         continue
-      concrete_function = self.get_concrete_function(*signature)
-      concrete_functions.append((signature, concrete_function))
-    return concrete_functions
-
-  @property
-  def _cached_input_signatures(self):
-    """All input signatures used to call this PolymorphicFunction."""
-    seen = list()
-    # We are using a list so that:
-    #  - the returned collection is deterministic, and
-    #  - we can use a custom equality operator (is_same_structure).
-    # This is run only at serialization time on likely very small inputs so we
-    # are not concerned about O(n^2) runtime.
-    # pylint: disable=protected-access
-    concrete_functions = []
-    if self._stateful_fn:
-      concrete_functions.extend(self._stateful_fn._function_cache.values())
-    if self._stateless_fn:
-      concrete_functions.extend(self._stateless_fn._function_cache.values())
-    for concrete_function in concrete_functions:
-      signature, _ = concrete_function.structured_input_signature
       equal_to_signature = functools.partial(
           function_lib.is_same_structure, signature, check_values=True)
-      if not any(equal_to_signature(s) for s in seen):
-        yield signature
-        seen.append(signature)
-    # pylint: enable=protected-access
+      if not any(equal_to_signature(s) for s in seen_signatures):
+        deduplicated_concrete_functions.append(concrete_function)
+        seen_signatures.append(signature)
+    return deduplicated_concrete_functions
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `Function` object specialized to inputs and execution context.

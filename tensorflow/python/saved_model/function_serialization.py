@@ -48,7 +48,7 @@ def serialize_polymorphic_function(polymorphic_function, node_ids):
   proto.function_spec.CopyFrom(function_spec_proto)
   all_concrete_functions = \
       polymorphic_function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-  for signature, concrete_function in all_concrete_functions:
+  for concrete_function in all_concrete_functions:
     bound_inputs = []
     try:
       for capture in concrete_function.captured_inputs:
@@ -60,10 +60,13 @@ def serialize_polymorphic_function(polymorphic_function, node_ids):
           "captures tensor %s which is unsupported or not reachable from root.",
           concrete_function.name, capture)
       continue
+    signature_args, signature_kwargs = \
+        concrete_function.structured_input_signature
+    del signature_kwargs
     function_proto = proto.monomorphic_function.add()
     function_proto.concrete_function = concrete_function.name
     function_proto.canonicalized_input_signature.CopyFrom(
-        coder.encode_structure(signature))
+        coder.encode_structure(signature_args))
     structured_outputs = func_graph_module.convert_structure_to_signature(
         concrete_function.structured_outputs)
     function_proto.output_signature.CopyFrom(
