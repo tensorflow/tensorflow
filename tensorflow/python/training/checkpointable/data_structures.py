@@ -58,7 +58,7 @@ def _wrap_or_unwrap(value):
   """Wraps basic data structures, unwraps NoDependency objects."""
   if isinstance(value, NoDependency):
     return value.value
-  if isinstance(value, base.CheckpointableBase):
+  if isinstance(value, base.Checkpointable):
     return value  # Skip conversion for already checkpointable objects.
   elif isinstance(value, dict):
     return _DictWrapper(value)
@@ -99,7 +99,7 @@ def sticky_attribute_assignment(checkpointable, name, value):
   value = _wrap_or_unwrap(value)
   if not add_dependency:
     return value
-  if isinstance(value, base.CheckpointableBase):
+  if isinstance(value, base.Checkpointable):
     checkpointable._track_checkpointable(  # pylint: disable=protected-access
         value, name=name,
         # Allow the user to switch the Checkpointable which is tracked by this
@@ -109,7 +109,7 @@ def sticky_attribute_assignment(checkpointable, name, value):
   return value
 
 
-class CheckpointableDataStructure(base.CheckpointableBase):
+class CheckpointableDataStructure(base.Checkpointable):
   """Base class for data structures which contain checkpointable objects."""
 
   def __init__(self):
@@ -122,11 +122,11 @@ class CheckpointableDataStructure(base.CheckpointableBase):
         checkpointable=self, value=value, name=name)
     if isinstance(value, variables.Variable):
       self._extra_variables.append(value)
-    if not isinstance(value, base.CheckpointableBase):
+    if not isinstance(value, base.Checkpointable):
       raise ValueError(
           ("Only checkpointable objects (such as Layers or Optimizers) may be "
            "stored in a List object. Got %s, which does not inherit from "
-           "CheckpointableBase.") % (value,))
+           "Checkpointable.") % (value,))
     if hasattr(value, "_use_resource_variables"):
       # In subclassed models, legacy layers (tf.layers) must always use
       # resource variables.
@@ -410,7 +410,7 @@ class _ListWrapper(List, collections.MutableSequence,
 
   def __setitem__(self, key, value):
     self._check_external_modification()
-    if isinstance(self._storage[key], base.CheckpointableBase):
+    if isinstance(self._storage[key], base.Checkpointable):
       self._non_append_mutation = True
     self._storage[key] = self._track_value(value, self._name_element(key))
     self._update_snapshot()
@@ -693,14 +693,14 @@ class _DictWrapper(Mapping, collections.MutableMapping):
     else:
       value = _wrap_or_unwrap(value)
       existing_dependency = None
-      if not no_dep and isinstance(value, base.CheckpointableBase):
+      if not no_dep and isinstance(value, base.Checkpointable):
         # Non-string keys are OK as long as we have no reason to add a
         # dependency on the value (either because the value is not
         # checkpointable, or because it was wrapped in a NoDependency object).
         self._non_string_key = True
     current_value = self._storage.setdefault(key, value)
     if current_value is not value:
-      if ((not no_dep and isinstance(value, base.CheckpointableBase))
+      if ((not no_dep and isinstance(value, base.Checkpointable))
           # We don't want to just check that the existing object is
           # checkpointable, since it may have been wrapped in a NoDependency
           # object.
@@ -716,7 +716,7 @@ class _DictWrapper(Mapping, collections.MutableMapping):
   def __delitem__(self, key):
     self._check_external_modification()
     existing_value = self[key]
-    if isinstance(existing_value, base.CheckpointableBase):
+    if isinstance(existing_value, base.Checkpointable):
       # Deleting tracked checkpointable values means restoring is problematic,
       # so we'll throw an exception on save.
       self._non_append_mutation = True

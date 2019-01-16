@@ -3175,7 +3175,7 @@ def _raise_shared_embedding_column_error():
                    '`DenseFeatures` or `LinearModel` instead.')
 
 
-class SharedEmbeddingColumnCreator(tracking.Checkpointable):
+class SharedEmbeddingColumnCreator(tracking.AutoCheckpointable):
 
   def __init__(self,
                dimension,

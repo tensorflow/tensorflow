@@ -626,7 +626,7 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
 
 
 class MirroredVariable(DistributedVariable, Mirrored,
-                       checkpointable.CheckpointableBase):
+                       checkpointable.Checkpointable):
   """Holds a map from device to variables whose values are kept in sync."""
 
   def __init__(
@@ -748,7 +748,7 @@ def _enclosing_tpu_context():
 # tpu.replicate() because it assumes that you're in a device context where you
 # can operate on a single version of the variable, but a tpu.replicate()
 # operates on all variables and is replicated during a rewrite pass.
-class TPUMirroredVariable(checkpointable.CheckpointableBase):
+class TPUMirroredVariable(checkpointable.Checkpointable):
   """Holds a map from device to TPU variables whose values are kept in sync."""
 
   def __init__(
@@ -1201,7 +1201,7 @@ def _assert_replica_context(strategy):
 
 
 class ReplicaLocalVariable(DistributedVariable, PerReplica,
-                           checkpointable.CheckpointableBase):
+                           checkpointable.Checkpointable):
   """Holds a map from device to variables whose values are reduced on save."""
 
   def __init__(
@@ -1432,7 +1432,7 @@ def value_container(val):
 
 
 # TODO(josh11b): Descend from Variable.
-class AggregatingVariable(checkpointable.CheckpointableBase):
+class AggregatingVariable(checkpointable.Checkpointable):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):

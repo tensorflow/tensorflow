@@ -1434,7 +1434,7 @@ class Network(base_layer.Layer):
         session = backend.get_session()
       optimizer = getattr(self, 'optimizer', None)
       if (optimizer
-          and not isinstance(optimizer, checkpointable.CheckpointableBase)):
+          and not isinstance(optimizer, checkpointable.Checkpointable)):
         logging.warning(
             ('This model was compiled with a Keras optimizer (%s) but is being '
              'saved in TensorFlow format with `save_weights`. The model\'s '
