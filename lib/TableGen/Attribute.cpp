@@ -35,25 +35,27 @@ static StringRef getValueAsString(const llvm::Init *init) {
   return {};
 }
 
-tblgen::Attribute::Attribute(const llvm::Record &def) : def(def) {
-  assert(def.isSubClassOf("Attr") &&
+tblgen::Attribute::Attribute(const llvm::Record *def) : def(def) {
+  assert(def->isSubClassOf("Attr") &&
          "must be subclass of TableGen 'Attr' class");
 }
+
+tblgen::Attribute::Attribute(const llvm::Record &def) : Attribute(&def) {}
 
 tblgen::Attribute::Attribute(const llvm::DefInit *init)
     : Attribute(*init->getDef()) {}
 
 bool tblgen::Attribute::isDerivedAttr() const {
-  return def.isSubClassOf("DerivedAttr");
+  return def->isSubClassOf("DerivedAttr");
 }
 
 bool tblgen::Attribute::hasStorageType() const {
-  const auto *init = def.getValueInit("storageType");
+  const auto *init = def->getValueInit("storageType");
   return !getValueAsString(init).empty();
 }
 
 StringRef tblgen::Attribute::getStorageType() const {
-  const auto *init = def.getValueInit("storageType");
+  const auto *init = def->getValueInit("storageType");
   auto type = getValueAsString(init);
   if (type.empty())
     return "Attribute";
@@ -61,30 +63,30 @@ StringRef tblgen::Attribute::getStorageType() const {
 }
 
 StringRef tblgen::Attribute::getReturnType() const {
-  const auto *init = def.getValueInit("returnType");
+  const auto *init = def->getValueInit("returnType");
   return getValueAsString(init);
 }
 
 StringRef tblgen::Attribute::getConvertFromStorageCall() const {
-  const auto *init = def.getValueInit("convertFromStorage");
+  const auto *init = def->getValueInit("convertFromStorage");
   return getValueAsString(init);
 }
 
 bool tblgen::Attribute::isConstBuildable() const {
-  const auto *init = def.getValueInit("constBuilderCall");
+  const auto *init = def->getValueInit("constBuilderCall");
   return !getValueAsString(init).empty();
 }
 
 StringRef tblgen::Attribute::getConstBuilderTemplate() const {
-  const auto *init = def.getValueInit("constBuilderCall");
+  const auto *init = def->getValueInit("constBuilderCall");
   return getValueAsString(init);
 }
 
 StringRef tblgen::Attribute::getTableGenDefName() const {
-  return def.getName();
+  return def->getName();
 }
 
 StringRef tblgen::Attribute::getDerivedCodeBody() const {
   assert(isDerivedAttr() && "only derived attribute has 'body' field");
-  return def.getValueAsString("body");
+  return def->getValueAsString("body");
 }

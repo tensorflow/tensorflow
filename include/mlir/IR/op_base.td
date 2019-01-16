@@ -224,6 +224,9 @@ class Attr {
   // '{0}.getStringAttr("{1}")' for 'StringAttr:"foo"' will expand to
   // 'builder.getStringAttr("foo")'.
   code constBuilderCall = ?;
+
+  // TODO(jpienaar): Add predicate to verify the validity of Attr so
+  // that verification can be generated.
 }
 
 // A generic attribute that must be constructed around a specific type.
@@ -249,7 +252,12 @@ class IntegerAttrBase<BuildableType t> : TypeBasedAttr<t, "IntegerAttr">;
 def BoolAttr : Attr {
   let storageType = [{ BoolAttr }];
   let returnType = [{ bool }];
-  let constBuilderCall = [{ {0}.getBoolAttr({1})" }];
+  let constBuilderCall = [{ {0}.getBoolAttr({1}) }];
+}
+def ArrayAttr : Attr {
+  let storageType = [{ ArrayAttr }];
+  let returnType = [{ ArrayAttr }];
+  code convertFromStorage = "{0}";
 }
 def ElementsAttr : Attr {
   let storageType = [{ ElementsAttr }];
@@ -406,5 +414,22 @@ class Pattern<dag patternToMatch, list<dag> resultOps> {
 
 // Form of a pattern which produces a single result.
 class Pat<dag pattern, dag result> : Pattern<pattern, [result]>;
+
+// Attribute matcher. This is the base class to specify a predicate
+// that has to match. Used on the input attributes of a rewrite rule.
+class mAttr<CPred pred> {
+  // Code to match the attribute.
+  // Format: {0} represents the attribute.
+  CPred predicate = pred;
+}
+
+// Attribute transforms. This is the base class to specify a
+// transformation of a matched attribute. Used on the output of a rewrite
+// rule.
+class tAttr<code transform> {
+  // Code to transform the attribute.
+  // Format: {0} represents the attribute.
+  code attrTransform = transform;
+}
 
 #endif // OP_BASE

@@ -190,7 +190,7 @@ void OpEmitter::emitAttrGetters() {
     OUT(2) << attr.getReturnType() << ' ' << name << "() const {\n";
 
     // Return the queried attribute with the correct return type.
-    std::string attrVal = formatv("this->getAttrOfType<{0}>(\"{1}\")",
+    std::string attrVal = formatv("this->getAttr(\"{1}\").dyn_cast<{0}>()",
                                   attr.getStorageType(), name);
     OUT(4) << "return " << formatv(attr.getConvertFromStorageCall(), attrVal)
            << ";\n  }\n";

@@ -338,6 +338,9 @@ single output.
     (e.g., bias add rule only matches the case where both Tensors have F32
     elements).
 
+    1.  Attributes can be transformed by transform rules to produce an attribute
+        of a type different than the type matched.
+
 TODO: Add constraints on the matching rules.
 
 TODO: Describe the generation of benefit metric given pattern.

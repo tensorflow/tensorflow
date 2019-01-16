@@ -44,21 +44,19 @@ using mlir::tblgen::Type;
 
 namespace {
 
-// Wrapper around dag argument.
+// Wrapper around DAG argument.
 struct DagArg {
-  DagArg(Init *init) : init(init) {}
+  DagArg(mlir::tblgen::Operator::Argument arg, Init *constraintInit)
+      : arg(arg), constraintInit(constraintInit) {}
   bool isAttr();
 
-  Init *init;
+  mlir::tblgen::Operator::Argument arg;
+  Init *constraintInit;
 };
 
 } // end namespace
 
-bool DagArg::isAttr() {
-  if (auto defInit = dyn_cast<DefInit>(init))
-    return defInit->getDef()->isSubClassOf("Attr");
-  return false;
-}
+bool DagArg::isAttr() { return arg.is<Operator::NamedAttribute *>(); }
 
 namespace {
 class Pattern {
@@ -80,8 +78,17 @@ private:
   // Collect bound arguments.
   void collectBoundArguments(DagInit *tree);
 
+  // Helper function to match patterns.
+  void matchOp(DagInit *tree, int depth);
+
+  // Returns the Operator stored for the given record.
+  Operator &getOperator(const llvm::Record *record);
+
   // Map from bound argument name to DagArg.
   StringMap<DagArg> boundArguments;
+
+  // Map from Record* to Operator.
+  DenseMap<const llvm::Record *, Operator> opMap;
 
   // Number of the operations in the input pattern.
   int numberOfOpsMatched = 0;
@@ -90,6 +97,11 @@ private:
   raw_ostream &os;
 };
 } // end namespace
+
+// Returns the Operator stored for the given record.
+auto Pattern::getOperator(const llvm::Record *record) -> Operator & {
+  return opMap.try_emplace(record, record).first->second;
+}
 
 void Pattern::emitAttributeValue(Record *constAttr) {
   Attribute attr(constAttr->getValueAsDef("attr"));
@@ -107,6 +119,7 @@ void Pattern::emitAttributeValue(Record *constAttr) {
 
 void Pattern::collectBoundArguments(DagInit *tree) {
   ++numberOfOpsMatched;
+  Operator &op = getOperator(cast<DefInit>(tree->getOperator())->getDef());
   // TODO(jpienaar): Expand to multiple matches.
   for (int i = 0, e = tree->getNumArgs(); i != e; ++i) {
     auto arg = tree->getArg(i);
@@ -117,14 +130,13 @@ void Pattern::collectBoundArguments(DagInit *tree) {
     auto name = tree->getArgNameStr(i);
     if (name.empty())
       continue;
-    boundArguments.try_emplace(name, arg);
+    boundArguments.try_emplace(name, op.getArg(i), arg);
   }
 }
 
 // Helper function to match patterns.
-static void matchOp(Record *pattern, DagInit *tree, int depth,
-                    raw_ostream &os) {
-  Operator op(cast<DefInit>(tree->getOperator())->getDef());
+void Pattern::matchOp(DagInit *tree, int depth) {
+  Operator &op = getOperator(cast<DefInit>(tree->getOperator())->getDef());
   int indent = 4 + 2 * depth;
   // Skip the operand matching at depth 0 as the pattern rewriter already does.
   if (depth != 0) {
@@ -148,7 +160,7 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
       os.indent(indent + 2) << formatv(
           "auto op{0} = op{1}->getOperand({2})->getDefiningInst();\n",
           depth + 1, depth, i);
-      matchOp(pattern, argTree, depth + 1, os);
+      matchOp(argTree, depth + 1);
       os.indent(indent) << "}\n";
       continue;
     }
@@ -174,7 +186,19 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
       }
 
       // TODO(jpienaar): Verify attributes.
-      if (auto *attr = opArg.dyn_cast<Operator::NamedAttribute *>()) {
+      if (auto *namedAttr = opArg.dyn_cast<Operator::NamedAttribute *>()) {
+        // TODO(jpienaar): move to helper class.
+        if (defInit->getDef()->isSubClassOf("mAttr")) {
+          auto pred =
+              tblgen::Pred(defInit->getDef()->getValueInit("predicate"));
+          os.indent(indent)
+              << "if (!("
+              << formatv(pred.getCondition().str().c_str(),
+                         formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
+                                 namedAttr->attr.getStorageType(),
+                                 namedAttr->getName()))
+              << ")) return matchFailure();\n";
+        }
       }
     }
 
@@ -202,7 +226,7 @@ void Pattern::emitMatcher(DagInit *tree) {
     if (op0->getNumResults() != 1) return matchFailure();
     auto state = std::make_unique<MatchedState>();)"
      << "\n";
-  matchOp(pattern, tree, 0, os);
+  matchOp(tree, 0);
   os.indent(4) << "return matchSuccess(std::move(state));\n  }\n";
 }
 
@@ -224,9 +248,9 @@ void Pattern::emit(StringRef rewriteName) {
   // Emit matched state.
   os << "  struct MatchedState : public PatternState {\n";
   for (auto &arg : boundArguments) {
-    if (arg.second.isAttr()) {
-      DefInit *defInit = cast<DefInit>(arg.second.init);
-      os.indent(4) << Attribute(defInit).getStorageType() << " " << arg.first()
+    if (auto namedAttr =
+            arg.second.arg.dyn_cast<Operator::NamedAttribute *>()) {
+      os.indent(4) << namedAttr->attr.getStorageType() << " " << arg.first()
                    << ";\n";
     } else {
       os.indent(4) << "Value* " << arg.first() << ";\n";
@@ -247,7 +271,7 @@ void Pattern::emit(StringRef rewriteName) {
   }
 
   DefInit *resultRoot = cast<DefInit>(resultTree->getOperator());
-  Operator resultOp(*resultRoot->getDef());
+  Operator &resultOp = getOperator(resultRoot->getDef());
   auto resultOperands = resultRoot->getDef()->getValueAsDag("arguments");
 
   os << formatv(R"(
@@ -296,8 +320,19 @@ void Pattern::emit(StringRef rewriteName) {
       if (boundArguments.find(name) == boundArguments.end())
         PrintFatalError(pattern->getLoc(),
                         Twine("referencing unbound variable '") + name + "'");
-      os << "/*" << opName << "=*/"
-         << "s." << name;
+      auto result = "s." + name;
+      os << "/*" << opName << "=*/";
+      if (defInit) {
+        auto transform = defInit->getDef();
+        if (transform->isSubClassOf("tAttr")) {
+          // TODO(jpienaar): move to helper class.
+          os << formatv(
+              transform->getValueAsString("attrTransform").str().c_str(),
+              result);
+          continue;
+        }
+      }
+      os << result;
       continue;
     }
 

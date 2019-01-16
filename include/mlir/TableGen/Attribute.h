@@ -40,7 +40,7 @@ namespace tblgen {
 class Attribute {
 public:
   explicit Attribute(const llvm::Record &def);
-  explicit Attribute(const llvm::Record *def) : Attribute(*def) {}
+  explicit Attribute(const llvm::Record *def);
   explicit Attribute(const llvm::DefInit *init);
 
   // Returns true if this attribute is a derived attribute (i.e., a subclass
@@ -79,7 +79,7 @@ public:
 
 private:
   // The TableGen definition of this attribute.
-  const llvm::Record &def;
+  const llvm::Record *def;
 };
 
 } // end namespace tblgen
