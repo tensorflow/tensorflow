@@ -44,36 +44,36 @@
 // (The error is that input-only arrays are bound to parameter types
 // "const T**" instead of the correct "const T* const*".)
 extern "C" {
-using getrs_S = cublasStatus_t(cublasContext*, cublasOperation_t, int, int,
-                               const float* const*, int, const int*, float**,
-                               int, int*, int);
-using getrs_D = cublasStatus_t(cublasContext*, cublasOperation_t, int, int,
-                               const double* const*, int, const int*, double**,
-                               int, int*, int);
-using getrs_C = cublasStatus_t(cublasContext*, cublasOperation_t, int, int,
-                               const float2* const*, int, const int*, float2**,
-                               int, int*, int);
-using getrs_Z = cublasStatus_t(cublasContext*, cublasOperation_t, int, int,
-                               const double2* const*, int, const int*,
-                               double2**, int, int*, int);
+using getrs_S = cublasStatus_t(*)(cublasContext*, cublasOperation_t, int, int,
+                                  const float* const*, int, const int*, float**,
+                                  int, int*, int);
+using getrs_D = cublasStatus_t(*)(cublasContext*, cublasOperation_t, int, int,
+                                  const double* const*, int, const int*, double**,
+                                  int, int*, int);
+using getrs_C = cublasStatus_t(*)(cublasContext*, cublasOperation_t, int, int,
+                                  const float2* const*, int, const int*, float2**,
+                                  int, int*, int);
+using getrs_Z = cublasStatus_t(*)(cublasContext*, cublasOperation_t, int, int,
+                                  const double2* const*, int, const int*,
+                                  double2**, int, int*, int);
 
-using getri_S = cublasStatus_t(cublasContext*, int, const float* const*, int,
-                               const int*, float**, int, int*, int);
-using getri_D = cublasStatus_t(cublasContext*, int, const double* const*, int,
-                               const int*, double**, int, int*, int);
-using getri_C = cublasStatus_t(cublasContext*, int, const float2* const*, int,
-                               const int*, float2**, int, int*, int);
-using getri_Z = cublasStatus_t(cublasContext*, int, const double2* const*, int,
-                               const int*, double2**, int, int*, int);
+using getri_S = cublasStatus_t(*)(cublasContext*, int, const float* const*, int,
+                                  const int*, float**, int, int*, int);
+using getri_D = cublasStatus_t(*)(cublasContext*, int, const double* const*, int,
+                                  const int*, double**, int, int*, int);
+using getri_C = cublasStatus_t(*)(cublasContext*, int, const float2* const*, int,
+                                  const int*, float2**, int, int*, int);
+using getri_Z = cublasStatus_t(*)(cublasContext*, int, const double2* const*, int,
+                                  const int*, double2**, int, int*, int);
 
-using matinv_S = cublasStatus_t(cublasContext*, int, const float* const*, int,
-                                float**, int, int*, int);
-using matinv_D = cublasStatus_t(cublasContext*, int, const double* const*, int,
-                                double**, int, int*, int);
-using matinv_C = cublasStatus_t(cublasContext*, int, const float2* const*, int,
-                                float2**, int, int*, int);
-using matinv_Z = cublasStatus_t(cublasContext*, int, const double2* const*, int,
-                                double2**, int, int*, int);
+using matinv_S = cublasStatus_t(*)(cublasContext*, int, const float* const*, int,
+                                   float**, int, int*, int);
+using matinv_D = cublasStatus_t(*)(cublasContext*, int, const double* const*, int,
+                                   double**, int, int*, int);
+using matinv_C = cublasStatus_t(*)(cublasContext*, int, const float2* const*, int,
+                                   float2**, int, int*, int);
+using matinv_Z = cublasStatus_t(*)(cublasContext*, int, const double2* const*, int,
+                                   double2**, int, int*, int);
 }
 
 namespace tensorflow {
@@ -175,6 +175,65 @@ namespace dynload {
 
 LIBCUSOLVER_ROUTINE_EACH(LIBCUSOLVER_WRAP)
 #undef LIBCUSOLVER_ROUTINE_EACH
+
+#define LIBCUBLAS_WRAP(__name, __cast)                                    \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = se::internal::CachedDsoLoader::GetCublasDsoHandle();       \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static __cast LoadOrDie() {                                           \
+      void* f;                                                            \
+      auto s = se::port::Env::Default()->GetSymbolFromLibrary(            \
+              GetDsoHandle(), kName, &f);                                 \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in cublas DSO; dlerror: " << s.error_message();  \
+      return reinterpret_cast<__cast>(f);                                 \
+    }                                                                     \
+    static __cast DynLoad() {                                             \
+      static __cast f = LoadOrDie();                                      \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    cublasStatus_t operator()(Args... args) {                             \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
+
+// clang-format off
+
+#define LIBCUBLAS_ROUTINE_EACH(__macro)      \
+    __macro(cublasCgeam, FuncPtrT)           \
+    __macro(cublasCgetrfBatched, FuncPtrT)   \
+    __macro(cublasCgetriBatched, getri_C)    \
+    __macro(cublasCgetrsBatched, getrs_C)    \
+    __macro(cublasCmatinvBatched, matinv_C)  \
+    __macro(cublasCreate_v2, FuncPtrT)       \
+    __macro(cublasDestroy_v2, FuncPtrT)      \
+    __macro(cublasDgeam, FuncPtrT)           \
+    __macro(cublasDgetrfBatched, FuncPtrT)   \
+    __macro(cublasDgetriBatched, getri_D)    \
+    __macro(cublasDgetrsBatched, getrs_D)    \
+    __macro(cublasDmatinvBatched, matinv_D)  \
+    __macro(cublasSetStream_v2, FuncPtrT)    \
+    __macro(cublasSgeam, FuncPtrT)           \
+    __macro(cublasSgetrfBatched, FuncPtrT)   \
+    __macro(cublasSgetriBatched, getri_S)    \
+    __macro(cublasSgetrsBatched, getrs_S)    \
+    __macro(cublasSmatinvBatched, matinv_S)  \
+    __macro(cublasZgeam, FuncPtrT)           \
+    __macro(cublasZgetrfBatched, FuncPtrT)   \
+    __macro(cublasZgetriBatched, getri_Z)    \
+    __macro(cublasZgetrsBatched, getrs_Z)    \
+    __macro(cublasZmatinvBatched, matinv_Z)
+
+// clang-format on
+
+LIBCUBLAS_ROUTINE_EACH(LIBCUBLAS_WRAP)
+#undef LIBCUBLAS_ROUTINE_EACH
 }  // namespace dynload
 
 namespace {
@@ -197,14 +256,14 @@ struct CudaSolverHandles {
     CHECK(dynload::cusolverDnSetStream(cusolver_dn_handle, stream) ==
           CUSOLVER_STATUS_SUCCESS)
         << "Failed to set cuSolverDN stream.";
-    CHECK(cublasCreate(&cublas_handle) == CUBLAS_STATUS_SUCCESS)
+    CHECK(dynload::cublasCreate(&cublas_handle) == CUBLAS_STATUS_SUCCESS)
         << "Failed to create cuBlas instance.";
-    CHECK(cublasSetStream(cublas_handle, stream) == CUBLAS_STATUS_SUCCESS)
+    CHECK(dynload::cublasSetStream(cublas_handle, stream) == CUBLAS_STATUS_SUCCESS)
         << "Failed to set cuBlas stream.";
   }
 
   ~CudaSolverHandles() {
-    CHECK(cublasDestroy(cublas_handle) == CUBLAS_STATUS_SUCCESS)
+    CHECK(dynload::cublasDestroy(cublas_handle) == CUBLAS_STATUS_SUCCESS)
         << "Failed to destroy cuBlas instance.";
     CHECK(dynload::cusolverDnDestroy(cusolver_dn_handle) == CUSOLVER_STATUS_SUCCESS)
         << "Failed to destroy cuSolverDN instance.";
@@ -406,7 +465,8 @@ Status CudaSolver::forward_input_or_allocate_scoped_tensor(
   dynload::cusolverDn##type_prefix##method##_bufferSize
 
 // Macros to construct cublas method names.
-#define BLAS_SOLVER_FN(method, type_prefix) cublas##type_prefix##method
+#define BLAS_SOLVER_FN(method, type_prefix) \
+  dynload::cublas##type_prefix##method
 #define BLAS_SOLVER_NAME(method, type_prefix) "cublas" #type_prefix #method
 
 //=============================================================================
@@ -827,8 +887,7 @@ static inline Status GetrsBatchedImpl(
       const Scalar* const host_a_dev_ptrs[], int lda, const int* dev_pivots,   \
       const Scalar* const host_b_dev_ptrs[], int ldb, int* host_lapack_info,   \
       int batch_size) {                                                        \
-    return GetrsBatchedImpl(reinterpret_cast<getrs_##type_prefix*>(            \
-                                BLAS_SOLVER_FN(getrsBatched, type_prefix)),    \
+    return GetrsBatchedImpl(BLAS_SOLVER_FN(getrsBatched, type_prefix),         \
                             this, context_, cublas_handle_, trans, n, nrhs,    \
                             host_a_dev_ptrs, lda, dev_pivots, host_b_dev_ptrs, \
                             ldb, host_lapack_info, batch_size);                \
@@ -871,8 +930,7 @@ static inline Status GetriBatchedImpl(
       const int* dev_pivots, const Scalar* const host_a_inv_dev_ptrs[],      \
       int ldainv, DeviceLapackInfo* dev_lapack_info, int batch_size) {       \
     return GetriBatchedImpl(                                                 \
-        reinterpret_cast<getri_##type_prefix*>(                              \
-            BLAS_SOLVER_FN(getriBatched, type_prefix)),                      \
+        BLAS_SOLVER_FN(getriBatched, type_prefix),                           \
         this, context_, cublas_handle_, n, host_a_dev_ptrs, lda, dev_pivots, \
         host_a_inv_dev_ptrs, ldainv, dev_lapack_info, batch_size);           \
   }
@@ -912,8 +970,7 @@ static inline Status MatInvBatchedImpl(
       int n, const Scalar* const host_a_dev_ptrs[], int lda,                  \
       const Scalar* const host_a_inv_dev_ptrs[], int ldainv,                  \
       DeviceLapackInfo* dev_lapack_info, int batch_size) {                    \
-    return MatInvBatchedImpl(reinterpret_cast<matinv_##type_prefix*>(         \
-                                 BLAS_SOLVER_FN(matinvBatched, type_prefix)), \
+    return MatInvBatchedImpl(BLAS_SOLVER_FN(matinvBatched, type_prefix),      \
                              this, context_, cublas_handle_, n,               \
                              host_a_dev_ptrs, lda, host_a_inv_dev_ptrs,       \
                              ldainv, dev_lapack_info, batch_size);            \
