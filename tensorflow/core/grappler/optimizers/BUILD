@@ -181,7 +181,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:grappler_test",
-        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
