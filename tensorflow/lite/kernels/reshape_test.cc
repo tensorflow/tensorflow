@@ -236,9 +236,9 @@ TEST_P(ReshapeOpTest, Strings) {
               ElementsAreArray({"1", "2", "3", "4", "5", "6", "7", "8"}));
 }
 
-INSTANTIATE_TEST_CASE_P(VariedShapeSpec, ReshapeOpTest,
-                        ::testing::Values(kAsReshapeOption, kAsConstantTensor,
-                                          kAsTensor));
+INSTANTIATE_TEST_SUITE_P(VariedShapeSpec, ReshapeOpTest,
+                         ::testing::Values(kAsReshapeOption, kAsConstantTensor,
+                                           kAsTensor));
 }  // namespace
 }  // namespace tflite
 
