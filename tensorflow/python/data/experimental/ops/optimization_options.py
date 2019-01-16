@@ -132,4 +132,4 @@ class OptimizationOptions(options.OptionsBase):
       for optimization in optimizations_to_disable:
         if getattr(self, optimization) is not False:
           result.add(optimization)
-    return list(result)
+    return sorted(list(result))
