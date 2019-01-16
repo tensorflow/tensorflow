@@ -29,6 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
@@ -2298,6 +2299,116 @@ class MeanIoU(Metric):
     config = {'num_classes': self.num_classes}
     base_config = super(MeanIoU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+
+class MeanTensor(Metric):
+  """Computes the element-wise (weighted) mean of the given tensors.
+
+  `MeanTensor` returns a tensor with the same shape of the input tensors. The
+  mean value is updated by keeping local variables `total` and `count`. The
+  `total` tracks the sum of the weighted values, and `count` stores the sum of
+  the weighted counts.
+
+  Usage:
+
+  ```python
+  m = tf.metrics.MeanTensor()
+  m.update_state([0, 1, 2, 3])
+  m.update_state([4, 5, 6, 7])
+  print('Result: ', m.result().numpy())  # Result: [2, 3, 4, 5]
+  m.update_state([12, 10, 8, 6], sample_weights= [0, 0.2, 0.5, 1])
+  print('Result: ', m.result().numpy())  # Result: [2, 3.636, 4.8, 5.333]
+  ```
+  """
+
+  def __init__(self, name='mean_tensor', dtype=None):
+    """Creates a `MeanTensor` instance.
+
+    Args:
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(MeanTensor, self).__init__(name=name, dtype=dtype)
+    self._shape = None
+    self._total = None
+    self._count = None
+    self._built = False
+
+  def _build(self, shape):
+    self._shape = tensor_shape.TensorShape(shape)
+    # Create new state variables
+    self._total = self.add_weight(
+        'total', shape=shape, initializer=init_ops.zeros_initializer)
+    self._count = self.add_weight(
+        'count', shape=shape, initializer=init_ops.zeros_initializer)
+    with ops.init_scope():
+      if not context.executing_eagerly():
+        K._initialize_variables(K._get_session())  # pylint: disable=protected-access
+    self._built = True
+
+  @property
+  def total(self):
+    return self._total if self._built else None
+
+  @property
+  def count(self):
+    return self._count if self._built else None
+
+  def update_state(self, values, sample_weight=None):
+    """Accumulates statistics for computing the element-wise mean.
+
+    Args:
+      values: Per-example value.
+      sample_weight: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      Update op.
+    """
+    values = math_ops.cast(values, self._dtype)
+    if not self._built:
+      self._build(values.shape)
+    elif values.shape != self._shape:
+      raise ValueError('MeanTensor input values must always have the same '
+                       'shape. Expected shape (set during the first call): {}. '
+                       'Got: {}'.format(self._shape, values.get_shape()))
+
+    num_values = array_ops.ones_like(values)
+    if sample_weight is not None:
+      sample_weight = math_ops.cast(sample_weight, self._dtype)
+
+      # Update dimensions of weights to match with values if possible.
+      values, _, sample_weight = squeeze_or_expand_dimensions(
+          values, None, sample_weight)
+      try:
+        # Broadcast weights if possible.
+        sample_weight = weights_broadcast_ops.broadcast_weights(
+            sample_weight, values)
+      except ValueError:
+        # Reduce values to same ndim as weight array
+        ndim = K.ndim(values)
+        weight_ndim = K.ndim(sample_weight)
+        values = math_ops.reduce_mean(
+            values, axis=list(range(weight_ndim, ndim)))
+
+      num_values = math_ops.multiply(num_values, sample_weight)
+      values = math_ops.multiply(values, sample_weight)
+
+    update_total_op = state_ops.assign_add(self._total, values)
+    with ops.control_dependencies([update_total_op]):
+      return state_ops.assign_add(self._count, num_values)
+
+  def result(self):
+    if not self._built:
+      raise ValueError(
+          'MeanTensor does not have any result yet. Please call the MeanTensor '
+          'instance or use `.update_state(value)` before retrieving the result.'
+          )
+    return math_ops.div_no_nan(self.total, self.count)
+
+  def reset_states(self):
+    if self._built:
+      for v in self.variables:
+        K.set_value(v, np.zeros(self._shape.as_list()))
 
 
 def accuracy(y_true, y_pred):
