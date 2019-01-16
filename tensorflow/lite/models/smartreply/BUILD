@@ -1,5 +1,6 @@
 package(default_visibility = ["//visibility:public"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
 licenses(["notice"])  # Apache 2.0
