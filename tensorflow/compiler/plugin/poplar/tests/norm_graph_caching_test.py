@@ -382,12 +382,12 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
         gamma = constant_op.constant([0.5, 0.5], np.float32)
         beta = constant_op.constant([0.5, 0.5], np.float32)
         mean = constant_op.constant([0.5, 0.5], np.float32)
-        variance = constant_op.constant([0.5, 0.5], np.float32)
+        inv_std_dev = constant_op.constant([0.5, 0.5], np.float32)
         y = gen_popnn_ops.popnn_group_norm_inference(inputs=y,
                                                      gamma=gamma,
                                                      beta=beta,
                                                      mean=mean,
-                                                     variance=variance,
+                                                     inv_std_dev=inv_std_dev,
                                                      data_format="NHWC",
                                                      epsilon=0.0015,
                                                      num_groups=2)
@@ -397,7 +397,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
                                                      gamma=gamma,
                                                      beta=beta,
                                                      mean=mean,
-                                                     variance=variance,
+                                                     inv_std_dev=inv_std_dev,
                                                      data_format="NHWC",
                                                      epsilon=0.0015,
                                                      num_groups=2)
@@ -434,7 +434,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
                                  kernel_initializer=init_ops.ones_initializer())
         gamma = constant_op.constant([0.5, 0.5], np.float32)
         beta = constant_op.constant([0.5, 0.5], np.float32)
-        mean, variance = gen_popnn_ops.popnn_group_norm_statistics(inputs=y,
+        mean, inv_std_dev = gen_popnn_ops.popnn_group_norm_statistics(inputs=y,
                                                                    data_format="NHWC",
                                                                    epsilon=0.0015,
                                                                    num_groups=2)
@@ -442,13 +442,13 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
                                                      gamma=gamma,
                                                      beta=beta,
                                                      mean=mean,
-                                                     variance=variance,
+                                                     inv_std_dev=inv_std_dev,
                                                      data_format="NHWC",
                                                      epsilon=0.0015,
                                                      num_groups=2)
         y = convolutional.conv2d(y, 2, 1, use_bias=False,
                                  kernel_initializer=init_ops.ones_initializer())
-        mean, variance = gen_popnn_ops.popnn_group_norm_statistics(inputs=y,
+        mean, inv_std_dev = gen_popnn_ops.popnn_group_norm_statistics(inputs=y,
                                                                    data_format="NHWC",
                                                                    epsilon=0.0015,
                                                                    num_groups=2)
@@ -456,7 +456,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
                                                      gamma=gamma,
                                                      beta=beta,
                                                      mean=mean,
-                                                     variance=variance,
+                                                     inv_std_dev=inv_std_dev,
                                                      data_format="NHWC",
                                                      epsilon=0.0015,
                                                      num_groups=2)
@@ -495,12 +495,12 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
         gamma = constant_op.constant([0.5, 0.5], np.float32)
         beta = constant_op.constant([0.5, 0.5], np.float32)
         mean = constant_op.constant([0.5, 0.5], np.float32)
-        variance = constant_op.constant([0.5, 0.5], np.float32)
+        inv_std_dev = constant_op.constant([0.5, 0.5], np.float32)
         y = gen_popnn_ops.popnn_group_norm_inference(inputs=y,
                                                      gamma=gamma,
                                                      beta=beta,
                                                      mean=mean,
-                                                     variance=variance,
+                                                     inv_std_dev=inv_std_dev,
                                                      data_format="NHWC",
                                                      epsilon=0.0015,
                                                      num_groups=2)
@@ -595,7 +595,6 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
              'vs/PopnnGroupNormTraining/custom-call.11/Norm',
              'vs/PopnnGroupNormTraining/custom-call.11/iStdDev',
              'vs/PopnnGroupNormTraining/custom-call.11/Whiten',
-             'vs/PopnnGroupNormTraining/custom-call.11/InvStdDevToVar',
              'Sum/reduce.*/*/Reduce',
              'gradients/vs/PopnnGroupNormTraining_2_grad/PopnnGroupNormGrad/custom-call.39/',
              'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/convolution.*.clone',

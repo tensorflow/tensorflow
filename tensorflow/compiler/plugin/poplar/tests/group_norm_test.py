@@ -99,7 +99,7 @@ dataType = np.float32
 
 class GroupNormTest(test.TestCase, parameterized.TestCase):
 
-  def _refGroupNormFwd(self, inputs, gamma, beta, groups, mean=None, variance=None, epsilon=0.0015, data_format="NHWC"):
+  def _refGroupNormFwd(self, inputs, gamma, beta, groups, mean=None, inv_std_dev=None, epsilon=0.0015, data_format="NHWC"):
     if data_format == "NHWC":
       feature_index = 3
     elif data_format == "NCHW":
@@ -136,9 +136,9 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       beta = np.reshape(beta, [1, C, 1, 1])
       moments_axes = (feature_index + 1, 3, 4)
 
-      if mean is not None and variance is not None:
+      if mean is not None and inv_std_dev is not None:
         mean = np.reshape(mean, [N, groups, 1, 1, 1])
-        variance = np.reshape(variance, [N, groups, 1, 1, 1])
+        inv_std_dev = np.reshape(inv_std_dev, [N, groups, 1, 1, 1])
     else:
       N, H, W, C = inputs.shape
       inputs = np.reshape(inputs, [N, H, W, groups, C // groups])
@@ -146,14 +146,16 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       beta = np.reshape(beta, [1, 1, 1, C])
       moments_axes = (1, 2, feature_index + 1)
 
-      if mean is not None and variance is not None:
+      if mean is not None and inv_std_dev is not None:
         mean = np.reshape(mean, [N, 1, 1, groups, 1])
-        variance = np.reshape(variance, [N, 1, 1, groups, 1])
+        inv_std_dev = np.reshape(inv_std_dev, [N, 1, 1, groups, 1])
 
-    if mean is None and variance is None:
+    if mean is None and inv_std_dev is None:
       mean = np.mean(inputs, moments_axes, dtype=np.float32, keepdims=True)
       variance = np.mean(np.power(inputs - mean, 2), moments_axes,
                             dtype=np.float32, keepdims=True)
+    else:
+      variance = np.power(inv_std_dev, -2) - epsilon
 
     output = (inputs - mean) * np.power(variance + epsilon, -0.5)
     output = np.reshape(output, original_shape)
@@ -165,9 +167,10 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
     for to_idx in range(num_channels):
       from_idx = (to_idx % groups) * group_size + to_idx // groups
       reshuffled_output[to_idx] = output[from_idx]
+    inv_std_dev = np.power(variance + epsilon, -0.5)
     return (np.swapaxes(reshuffled_output, 0, feature_index),
             np.reshape(np.squeeze(mean), (mean.size)),
-            np.reshape(np.squeeze(variance), (variance.size)))
+            np.reshape(np.squeeze(inv_std_dev), (inv_std_dev.size)))
 
   def _refGroupNormStatistics(self, inputs, groups, epsilon=0.0015, data_format="NHWC"):
     if data_format == "NHWC":
@@ -206,11 +209,12 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
     mean = np.mean(inputs, moments_axes, dtype=np.float32, keepdims=True)
     variance = np.mean(np.power(inputs - mean, 2), moments_axes,
                           dtype=np.float32, keepdims=True)
+    inv_std_dev = np.power(variance + epsilon, -0.5)
 
     return (np.reshape(np.squeeze(mean), (mean.size)),
-            np.reshape(np.squeeze(variance), (variance.size)))
+            np.reshape(np.squeeze(inv_std_dev), (inv_std_dev.size)))
 
-  def _implGroupNormInf(self, inputs, gamma, beta, groups,  mean, variance, epsilon=0.0015, data_format="NHWC"):
+  def _implGroupNormInf(self, inputs, gamma, beta, groups,  mean, inv_std_dev, epsilon=0.0015, data_format="NHWC"):
     if data_format != "NHWC" and data_format != "NCHW":
       raise Exception("Unsupported data format " + data_format)
 
@@ -219,12 +223,12 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       pgamma = array_ops.placeholder(dataType, gamma.shape, name="gamma")
       pbeta = array_ops.placeholder(dataType, beta.shape, name="beta")
       pmean = array_ops.placeholder(dataType, mean.shape, name="mean")
-      pvariance = array_ops.placeholder(dataType, variance.shape, name="variance")
+      pinv_std_dev = array_ops.placeholder(dataType, inv_std_dev.shape, name="inv_std_dev")
       output = gen_popnn_ops.popnn_group_norm_inference(inputs=pinputs,
                                                          gamma=pgamma,
                                                          beta=pbeta,
                                                          mean=pmean,
-                                                         variance=pvariance,
+                                                         inv_std_dev=pinv_std_dev,
                                                          data_format=data_format,
                                                          epsilon=epsilon,
                                                          num_groups=groups)
@@ -235,7 +239,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
         pgamma : gamma,
         pbeta : beta,
         pmean : mean,
-        pvariance : variance,
+        pinv_std_dev : inv_std_dev,
       }
       return sess.run(output, fd)
 
@@ -247,7 +251,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       pinputs = array_ops.placeholder(dataType, inputs.shape, name="inputs")
       pgamma = array_ops.placeholder(dataType, gamma.shape, name="gamma")
       pbeta = array_ops.placeholder(dataType, beta.shape, name="beta")
-      norm, mean, variance = gen_popnn_ops.popnn_group_norm_training(
+      norm, mean, inv_std_dev = gen_popnn_ops.popnn_group_norm_training(
         inputs=pinputs, gamma=pgamma, beta=pbeta, data_format=data_format,
         epsilon=epsilon, num_groups=groups)
 
@@ -257,7 +261,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
         pgamma : gamma,
         pbeta : beta,
       }
-      return sess.run((norm, mean, variance), fd)
+      return sess.run((norm, mean, inv_std_dev), fd)
 
   def _implGroupNormStatistics(self, inputs, groups, epsilon=0.0015, data_format="NHWC"):
     if data_format != "NHWC" and data_format != "NCHW":
@@ -265,7 +269,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
 
     with ops.device("/device:IPU:0"):
       pinputs = array_ops.placeholder(dataType, inputs.shape, name="inputs")
-      mean, variance = gen_popnn_ops.popnn_group_norm_statistics(
+      mean, inv_std_dev = gen_popnn_ops.popnn_group_norm_statistics(
                                                        inputs=pinputs,
                                                        data_format=data_format,
                                                        epsilon=epsilon,
@@ -275,7 +279,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       fd = {
         pinputs : inputs,
       }
-      return sess.run((mean, variance), fd)
+      return sess.run((mean, inv_std_dev), fd)
 
   @parameterized.named_parameters(*NAMED_GROUP_NORM_TESTCASES)
   def testGroupNormInference(self, batch_size, num_channels, num_groups, dims, epsilon):
@@ -289,19 +293,19 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
         raise Exception("Unsupported data format " + data_format)
 
       gamma_beta_shape = [num_channels]
-      mean_variance_shape = [batch_size * num_groups]
+      mean_inv_std_dev_shape = [batch_size * num_groups]
 
       activations = np.random.rand(*acts_shape).astype(dataType)
       gamma = np.random.rand(*gamma_beta_shape).astype(dataType)
       beta = np.random.rand(*gamma_beta_shape).astype(dataType)
-      mean = np.random.rand(*mean_variance_shape).astype(dataType)
-      variance = np.random.rand(*mean_variance_shape).astype(dataType)
+      mean = np.random.rand(*mean_inv_std_dev_shape).astype(dataType)
+      inv_std_dev = np.random.rand(*mean_inv_std_dev_shape).astype(dataType)
       result = self._implGroupNormInf(
-          activations, gamma, beta, num_groups, mean, variance,
+          activations, gamma, beta, num_groups, mean, inv_std_dev,
           epsilon=epsilon, data_format=data_format)
 
       expected, _, _ = self._refGroupNormFwd(
-          activations, gamma, beta, num_groups, mean=mean, variance=variance,
+          activations, gamma, beta, num_groups, mean=mean, inv_std_dev=inv_std_dev,
           epsilon=epsilon, data_format=data_format)
 
       self.assertAllClose(expected, result)
@@ -322,17 +326,17 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       activations = np.random.rand(*acts_shape).astype(dataType)
       gamma = np.random.rand(*gamma_beta_shape).astype(dataType)
       beta = np.random.rand(*gamma_beta_shape).astype(dataType)
-      norm, mean, variance = self._implGroupNormTraining(
+      norm, mean, inv_std_dev = self._implGroupNormTraining(
           activations, gamma, beta, num_groups,
           epsilon=epsilon, data_format=data_format)
 
-      expected_norm, expected_mean, expected_variance = self._refGroupNormFwd(
+      expected_norm, expected_mean, expected_inv_std_dev = self._refGroupNormFwd(
           activations, gamma, beta, num_groups,
           epsilon=epsilon, data_format=data_format)
       self.assertAllClose(expected_mean, mean,
                             rtol=training_rel_tolerance,
                             atol=training_abs_tolerance)
-      self.assertAllClose(expected_variance, variance,
+      self.assertAllClose(expected_inv_std_dev, inv_std_dev,
                             rtol=training_rel_tolerance,
                             atol=training_abs_tolerance)
       self.assertAllClose(expected_norm, norm,
@@ -352,15 +356,15 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
 
       activations = np.random.rand(*acts_shape).astype(dataType)
 
-      mean, variance = self._implGroupNormStatistics(
+      mean, inv_std_dev = self._implGroupNormStatistics(
           activations, num_groups, epsilon=epsilon, data_format=data_format)
 
-      expected_mean, expected_variance = self._refGroupNormStatistics(
+      expected_mean, expected_inv_std_dev = self._refGroupNormStatistics(
           activations, num_groups, epsilon=epsilon, data_format=data_format)
       self.assertAllClose(expected_mean, mean,
                             rtol=training_rel_tolerance,
                             atol=training_abs_tolerance)
-      self.assertAllClose(expected_variance, variance,
+      self.assertAllClose(expected_inv_std_dev, inv_std_dev,
                             rtol=training_rel_tolerance,
                             atol=training_abs_tolerance)
 

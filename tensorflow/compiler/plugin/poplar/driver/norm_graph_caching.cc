@@ -39,7 +39,7 @@ namespace {
 NormInferenceCacheKey GetNormInferenceCacheKey(
     const NormType& norm_type, const poplar::Tensor& operand_shuffled,
     const poplar::Tensor& scale, const poplar::Tensor& offset,
-    const poplar::Tensor& mean, const poplar::Tensor& variance,
+    const poplar::Tensor& mean, const poplar::Tensor& variance_or_inv_std_dev,
     const double epsilon, absl::optional<uint32> optional_num_groups,
     const uint64 device_id) {
   return std::make_tuple(
@@ -47,8 +47,8 @@ NormInferenceCacheKey GetNormInferenceCacheKey(
       graph_caching_util::GetPoplarTensorSignature(scale),
       graph_caching_util::GetPoplarTensorSignature(offset),
       graph_caching_util::GetPoplarTensorSignature(mean),
-      graph_caching_util::GetPoplarTensorSignature(variance), epsilon,
-      optional_num_groups ? *optional_num_groups : 0, device_id);
+      graph_caching_util::GetPoplarTensorSignature(variance_or_inv_std_dev),
+      epsilon, optional_num_groups ? *optional_num_groups : 0, device_id);
 }
 
 NormTrainingCacheKey GetNormTrainingCacheKey(
@@ -66,14 +66,14 @@ NormTrainingCacheKey GetNormTrainingCacheKey(
 NormGradCacheKey GetNormGradCacheKey(
     const NormType& norm_type, const poplar::Tensor& operand_shuffled,
     const poplar::Tensor& scale, const poplar::Tensor& mean,
-    const poplar::Tensor& variance, const poplar::Tensor& grad_output,
-    const double epsilon, absl::optional<uint32> optional_num_groups,
-    const uint64 device_id) {
+    const poplar::Tensor& variance_or_inv_std_dev,
+    const poplar::Tensor& grad_output, const double epsilon,
+    absl::optional<uint32> optional_num_groups, const uint64 device_id) {
   return std::make_tuple(
       norm_type, graph_caching_util::GetPoplarTensorSignature(operand_shuffled),
       graph_caching_util::GetPoplarTensorSignature(scale),
       graph_caching_util::GetPoplarTensorSignature(mean),
-      graph_caching_util::GetPoplarTensorSignature(variance),
+      graph_caching_util::GetPoplarTensorSignature(variance_or_inv_std_dev),
       graph_caching_util::GetPoplarTensorSignature(grad_output), epsilon,
       optional_num_groups ? *optional_num_groups : 0, device_id);
 }
@@ -139,13 +139,14 @@ poplar::Tensor DoCachedNormInference(
     const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
     const poplar::Tensor& operand, const poplar::Tensor& scale,
     const poplar::Tensor& offset, const poplar::Tensor& mean,
-    const poplar::Tensor& variance, const double epsilon,
+    const poplar::Tensor& variance_or_inv_std_dev, const double epsilon,
     absl::optional<uint32> optional_num_groups, const uint64 device_id,
     poplar::program::Sequence& prog, const std::string& debug_prefix) {
   auto key = GetNormInferenceCacheKey(norm_type, operand, scale, offset, mean,
-                                      variance, epsilon, optional_num_groups,
-                                      device_id);
-  std::vector<poplar::Tensor> args = {operand, scale, offset, mean, variance};
+                                      variance_or_inv_std_dev, epsilon,
+                                      optional_num_groups, device_id);
+  std::vector<poplar::Tensor> args = {operand, scale, offset, mean,
+                                      variance_or_inv_std_dev};
   auto it = res.norm_inf_graph_cache.find(key);
   if (it != res.norm_inf_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
@@ -157,20 +158,24 @@ poplar::Tensor DoCachedNormInference(
   auto f = TensorFunction(
       graph, {input(operand, "operand"), input(scale, "scale"),
               input(offset, "offset"), input(mean, "mean"),
-              input(variance, "variance")},
+              input(variance_or_inv_std_dev, "variance_or_inv_std_dev")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
-        poplar::Tensor inv_sd = ConvertVarianceToInvStdDev(
-            graph, args[4], epsilon, seq, debug_prefix);
         poplar::Tensor out;
         switch (norm_type) {
           case NormType::BatchNorm: {
+            // For batch norm variance_or_inv_std_dev is variance, so we need to
+            // convert it.
+            poplar::Tensor inv_sd = ConvertVarianceToInvStdDev(
+                graph, args[4], epsilon, seq, debug_prefix);
             out = BatchNormalise(graph, args[0], args[1], args[2], args[3],
                                  inv_sd, seq, debug_prefix);
             break;
           }
           case NormType::GroupNorm: {
+            // For group norm variance_or_inv_std_dev is inv_std_dev, so we
+            // don't need to convert it.
             out = popnn::gn::groupNormalise(graph, args[0], args[1], args[2],
-                                            args[3], inv_sd, seq, debug_prefix)
+                                            args[3], args[4], seq, debug_prefix)
                       .first;
             break;
           }
@@ -189,9 +194,9 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormTraining(
     poplar::program::Sequence& prog, const std::string& debug_prefix) {
   auto key = GetNormTrainingCacheKey(norm_type, operand, scale, offset, epsilon,
                                      optional_num_groups, device_id);
-  poplar::Tensor output, mean, variance;
+  poplar::Tensor output, mean, variance_or_inv_std_dev;
   std::vector<poplar::Tensor> args = {operand, scale, offset,
-                                      output,  mean,  variance};
+                                      output,  mean,  variance_or_inv_std_dev};
   auto it = res.norm_tr_graph_cache.find(key);
   if (it != res.norm_tr_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
@@ -204,34 +209,38 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormTraining(
   auto f = VoidFunction(
       graph, {input(operand, "operand"), input(scale, "scale"),
               input(offset, "offset"), created("output"), created("mean"),
-              created("variance")},
+              created("variance_or_inv_std_dev")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
-        poplar::Tensor inv_sd;
         switch (norm_type) {
           case NormType::BatchNorm: {
+            poplar::Tensor inv_sd;
             std::tie(args[4], inv_sd) = popnn::bn::batchNormStatistics(
                 graph, args[0], epsilon, seq, false, poplar::FLOAT,
                 debug_prefix);
 
             args[3] = BatchNormalise(graph, args[0], args[1], args[2], args[4],
                                      inv_sd, seq, debug_prefix);
+            // For batch norm variance_or_inv_std_dev is variance, so we need to
+            // convert it.
+            args[5] = ConvertInvStdDevToVariance(graph, inv_sd, epsilon, seq,
+                                                 debug_prefix);
             break;
           }
           case NormType::GroupNorm: {
-            std::tie(args[4], inv_sd) = popnn::gn::groupNormStatistics(
+            // For group norm variance_or_inv_std_dev is inv_std_dev, so we
+            // don't need to convert it.
+            std::tie(args[4], args[5]) = popnn::gn::groupNormStatistics(
                 graph, args[0], epsilon, seq, *optional_num_groups, false,
                 poplar::FLOAT, debug_prefix);
 
             args[3] =
                 popnn::gn::groupNormalise(graph, args[0], args[1], args[2],
-                                          args[4], inv_sd, seq, debug_prefix)
+                                          args[4], args[5], seq, debug_prefix)
                     .first;
             break;
           }
         }
 
-        args[5] = ConvertInvStdDevToVariance(graph, inv_sd, epsilon, seq,
-                                             debug_prefix);
       });
   res.norm_tr_graph_cache.emplace(key, f);
   f(args, prog);
@@ -241,17 +250,17 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormTraining(
 std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
     const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
     const poplar::Tensor& operand, const poplar::Tensor& scale,
-    const poplar::Tensor& mean, const poplar::Tensor& variance,
+    const poplar::Tensor& mean, const poplar::Tensor& variance_or_inv_std_dev,
     const poplar::Tensor& grad_output, const double epsilon,
     absl::optional<uint32> optional_num_groups, const uint64 device_id,
     poplar::program::Sequence& prog, const std::string& debug_prefix) {
-  auto key =
-      GetNormGradCacheKey(norm_type, operand, scale, mean, variance,
-                          grad_output, epsilon, optional_num_groups, device_id);
+  auto key = GetNormGradCacheKey(norm_type, operand, scale, mean,
+                                 variance_or_inv_std_dev, grad_output, epsilon,
+                                 optional_num_groups, device_id);
   poplar::Tensor operand_grad, scale_grad, offset_grad;
-  std::vector<poplar::Tensor> args = {operand,    scale,       mean,
-                                      variance,   grad_output, operand_grad,
-                                      scale_grad, offset_grad};
+  std::vector<poplar::Tensor> args = {
+      operand,     scale,        mean,       variance_or_inv_std_dev,
+      grad_output, operand_grad, scale_grad, offset_grad};
   auto it = res.norm_grad_graph_cache.find(key);
   if (it != res.norm_grad_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
@@ -263,14 +272,17 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
   auto f = VoidFunction(
       graph,
       {input(operand, "operand"), input(scale, "scale"), input(mean, "mean"),
-       input(variance, "variance"), input(grad_output, "grad_output"),
-       created("operand_grad"), created("scale_grad"), created("offset_grad")},
+       input(variance_or_inv_std_dev, "variance_or_inv_std_dev"),
+       input(grad_output, "grad_output"), created("operand_grad"),
+       created("scale_grad"), created("offset_grad")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
-        poplar::Tensor inv_sd = ConvertVarianceToInvStdDev(
-            graph, args[3], epsilon, seq, debug_prefix);
 
         switch (norm_type) {
           case NormType::BatchNorm: {
+            // For batch norm variance_or_inv_std_dev is variance, so we need to
+            // convert it.
+            poplar::Tensor inv_sd = ConvertVarianceToInvStdDev(
+                graph, args[3], epsilon, seq, debug_prefix);
             poplar::Tensor operand_whitened =
                 popnn::bn::batchNormWhiten(graph, args[0], args[2], inv_sd, seq,
                                            debug_prefix + "/WhitenedActs");
@@ -286,13 +298,15 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
             break;
           }
           case NormType::GroupNorm: {
+            // For group norm variance_or_inv_std_dev is inv_std_dev, so we
+            // don't need to convert it.
             poplar::Tensor operand_whitened =
-                popnn::gn::groupNormWhiten(graph, args[0], args[2], inv_sd, seq,
-                                           debug_prefix + "/WhitenedActs");
+                popnn::gn::groupNormWhiten(graph, args[0], args[2], args[3],
+                                           seq, debug_prefix + "/WhitenedActs");
 
             // Compute the grad for the operand.
             args[5] = popnn::gn::groupNormGradients(
-                graph, operand_whitened, args[4], inv_sd, args[1], seq,
+                graph, operand_whitened, args[4], args[3], args[1], seq,
                 poplar::FLOAT, debug_prefix + "/OperandGrad");
             // Compute the grads for the scale and offset.
             std::tie(args[6], args[7]) = popnn::gn::groupNormParamGradients(
@@ -314,8 +328,8 @@ std::tuple<poplar::Tensor, poplar::Tensor> DoCachedNormStatistics(
     poplar::program::Sequence& prog, const std::string& debug_prefix) {
   auto key = GetNormStatisticsCacheKey(norm_type, operand, epsilon,
                                        optional_num_groups, device_id);
-  poplar::Tensor mean, variance;
-  std::vector<poplar::Tensor> args = {operand, mean, variance};
+  poplar::Tensor mean, variance_or_inv_std_dev;
+  std::vector<poplar::Tensor> args = {operand, mean, variance_or_inv_std_dev};
   auto it = res.norm_statistics_graph_cache.find(key);
   if (it != res.norm_statistics_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
@@ -326,7 +340,8 @@ std::tuple<poplar::Tensor, poplar::Tensor> DoCachedNormStatistics(
 
   using namespace poputil::graphfn;
   auto f = VoidFunction(
-      graph, {input(operand, "operand"), created("mean"), created("variance")},
+      graph, {input(operand, "operand"), created("mean"),
+              created("variance_or_inv_std_dev")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd;
         switch (norm_type) {
@@ -334,17 +349,21 @@ std::tuple<poplar::Tensor, poplar::Tensor> DoCachedNormStatistics(
             std::tie(args[1], inv_sd) = popnn::bn::batchNormStatistics(
                 graph, args[0], epsilon, seq, false, poplar::FLOAT,
                 debug_prefix);
+            // For batch norm variance_or_inv_std_dev is variance, so we need to
+            // convert it.
+            args[2] = ConvertInvStdDevToVariance(graph, inv_sd, epsilon, seq,
+                                                 debug_prefix);
             break;
           }
           case NormType::GroupNorm: {
-            std::tie(args[1], inv_sd) = popnn::gn::groupNormStatistics(
+            // For group norm variance_or_inv_std_dev is inv_std_dev, so we
+            // don't need to convert it.
+            std::tie(args[1], args[2]) = popnn::gn::groupNormStatistics(
                 graph, args[0], epsilon, seq, *optional_num_groups, false,
                 poplar::FLOAT, debug_prefix);
             break;
           }
         }
-        args[2] = ConvertInvStdDevToVariance(graph, inv_sd, epsilon, seq,
-                                             debug_prefix);
       });
   res.norm_statistics_graph_cache.emplace(key, f);
   f(args, prog);

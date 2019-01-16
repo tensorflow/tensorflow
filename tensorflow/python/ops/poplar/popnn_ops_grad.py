@@ -56,7 +56,7 @@ def _popnn_group_norm_backward(op, *grads):
       inputs=op.inputs[0],
       gamma=op.inputs[1],
       mean=op.outputs[1],
-      variance=op.outputs[2],
+      inv_std_dev=op.outputs[2],
       output_backprop=grads[0],
       data_format=op.get_attr("data_format"),
       epsilon=op.get_attr("epsilon"),

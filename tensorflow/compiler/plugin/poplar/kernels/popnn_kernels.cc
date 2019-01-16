@@ -303,18 +303,18 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
 
     if (ctx->num_inputs() == 5) {
       // Inference
-      // Validate mean/variance shape is per group
-      TensorShape expected_mean_variance_shape;
+      // Validate mean/inv_std_dev shape is per group
+      TensorShape expected_mean_inv_std_dev_shape;
       TensorShapeUtils::MakeShape(
           std::vector<int64>({num_groups_ * num_batches}),
-          &expected_mean_variance_shape);
-      OP_REQUIRES(ctx, ctx->InputShape(3) == expected_mean_variance_shape,
+          &expected_mean_inv_std_dev_shape);
+      OP_REQUIRES(ctx, ctx->InputShape(3) == expected_mean_inv_std_dev_shape,
                   errors::InvalidArgument(absl::StrFormat(
                       "The mean tensor needs to be of shape [%u].",
                       num_groups_ * num_batches)));
-      OP_REQUIRES(ctx, ctx->InputShape(4) == expected_mean_variance_shape,
+      OP_REQUIRES(ctx, ctx->InputShape(4) == expected_mean_inv_std_dev_shape,
                   errors::InvalidArgument(absl::StrFormat(
-                      "The variance tensor needs to be of shape [%u].",
+                      "The inv_std_dev tensor needs to be of shape [%u].",
                       num_groups_ * num_batches)));
       xla::Shape output_shape = TensorShapeToXLAShape(input_type, input_shape);
       xla::XlaOp call_output = xla::CustomCall(
@@ -325,22 +325,22 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
     } else if (ctx->num_inputs() == 3) {
       // Training
       xla::Shape output_shape = TensorShapeToXLAShape(input_type, input_shape);
-      xla::Shape mean_variance_shape =
+      xla::Shape mean_inv_std_dev_shape =
           xla::ShapeUtil::MakeShape(input_type, {num_groups_ * num_batches});
 
       xla::Shape output_tuple_shape = xla::ShapeUtil::MakeTupleShape(
-          {output_shape, mean_variance_shape, mean_variance_shape});
+          {output_shape, mean_inv_std_dev_shape, mean_inv_std_dev_shape});
       xla::XlaOp call_output = xla::CustomCall(
           &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
                                              PoplibsOp::GroupNormTraining),
           args, output_tuple_shape, attribute_map_.Serialise());
       xla::XlaOp output = xla::GetTupleElement(call_output, 0);
       xla::XlaOp mean = xla::GetTupleElement(call_output, 1);
-      xla::XlaOp variance = xla::GetTupleElement(call_output, 2);
+      xla::XlaOp inv_std_dev = xla::GetTupleElement(call_output, 2);
 
       ctx->SetOutput(0, output);
       ctx->SetOutput(1, mean);
-      ctx->SetOutput(2, variance);
+      ctx->SetOutput(2, inv_std_dev);
     } else {
       LOG(FATAL) << "Unsupported use of PopnnGroupNorm.";
     }
@@ -461,20 +461,20 @@ class PopnnGroupNormStatistics : public XlaOpKernel, IpuOpKernel {
       args.push_back(ctx->Input(idx));
     }
 
-    xla::Shape mean_variance_shape =
+    xla::Shape mean_inv_std_dev_shape =
         xla::ShapeUtil::MakeShape(input_type, {num_groups_ * num_batches});
 
     xla::Shape output_tuple_shape = xla::ShapeUtil::MakeTupleShape(
-        {mean_variance_shape, mean_variance_shape});
+        {mean_inv_std_dev_shape, mean_inv_std_dev_shape});
     xla::XlaOp call_output = xla::CustomCall(
         &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
                                            PoplibsOp::GroupNormStatistics),
         args, output_tuple_shape, attribute_map_.Serialise());
     xla::XlaOp mean = xla::GetTupleElement(call_output, 0);
-    xla::XlaOp variance = xla::GetTupleElement(call_output, 1);
+    xla::XlaOp inv_std_dev = xla::GetTupleElement(call_output, 1);
 
     ctx->SetOutput(0, mean);
-    ctx->SetOutput(1, variance);
+    ctx->SetOutput(1, inv_std_dev);
   }
 
  protected:

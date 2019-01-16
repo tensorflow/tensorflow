@@ -80,7 +80,7 @@ StatusOr<poplar::program::Program> CreateNormInference(
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor mean,
                       FindInstructionInput(tensor_map, res, inst, 3, seq));
-  TF_ASSIGN_OR_RETURN(poplar::Tensor variance,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor variance_or_inv_std_dev,
                       FindInstructionInput(tensor_map, res, inst, 4, seq));
 
   // Special case - zero sized array
@@ -99,9 +99,9 @@ StatusOr<poplar::program::Program> CreateNormInference(
       ShuffleNormInputToPoplar(operand, feature_dimension);
 
   auto out = norm_graph_caching::DoCachedNormInference(
-      norm_type, graph, res, operand_view, scale, offset, mean, variance,
-      epsilon, optional_num_groups, GetShardingDeviceId(inst), seq,
-      GetDebugName(inst));
+      norm_type, graph, res, operand_view, scale, offset, mean,
+      variance_or_inv_std_dev, epsilon, optional_num_groups,
+      GetShardingDeviceId(inst), seq, GetDebugName(inst));
 
   out =
       ShuffleNormOutputToTensorflow(out, feature_dimension, non_broadcast_dims);
@@ -147,10 +147,10 @@ StatusOr<poplar::program::Program> CreateNormTraining(
     poplar::Tensor mean = graph.addConstant(operand.elementType(), {1}, NAN);
     graph.setTileMapping(mean, 0);
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, mean));
-    poplar::Tensor variance =
+    poplar::Tensor variance_or_inv_std_dev =
         graph.addConstant(operand.elementType(), {1}, NAN);
-    graph.setTileMapping(variance, 0);
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, variance));
+    graph.setTileMapping(variance_or_inv_std_dev, 0);
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, variance_or_inv_std_dev));
     return seq;
   }
 
@@ -160,17 +160,19 @@ StatusOr<poplar::program::Program> CreateNormTraining(
   std::tie(operand_view, non_broadcast_dims) =
       ShuffleNormInputToPoplar(operand, feature_dimension);
 
-  poplar::Tensor out, mean, variance;
-  std::tie(out, mean, variance) = norm_graph_caching::DoCachedNormTraining(
-      norm_type, graph, res, operand_view, scale, offset, epsilon,
-      optional_num_groups, GetShardingDeviceId(inst), seq, GetDebugName(inst));
+  poplar::Tensor out, mean, variance_or_inv_std_dev;
+  std::tie(out, mean, variance_or_inv_std_dev) =
+      norm_graph_caching::DoCachedNormTraining(
+          norm_type, graph, res, operand_view, scale, offset, epsilon,
+          optional_num_groups, GetShardingDeviceId(inst), seq,
+          GetDebugName(inst));
 
   out =
       ShuffleNormOutputToTensorflow(out, feature_dimension, non_broadcast_dims);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, mean));
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, variance));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, variance_or_inv_std_dev));
 
   return seq;
 }
@@ -201,7 +203,7 @@ StatusOr<poplar::program::Program> CreateNormGrad(
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor mean,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
-  TF_ASSIGN_OR_RETURN(poplar::Tensor variance,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor variance_or_inv_std_dev,
                       FindInstructionInput(tensor_map, res, inst, 3, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor grad_output,
                       FindInstructionInput(tensor_map, res, inst, 4, seq));
@@ -238,9 +240,10 @@ StatusOr<poplar::program::Program> CreateNormGrad(
 
   std::tie(operand_grad, scale_grad, offset_grad) =
       norm_graph_caching::DoCachedNormGrad(
-          norm_type, graph, res, operand_view, scale, mean, variance,
-          grad_output_view, epsilon, optional_num_groups,
-          GetShardingDeviceId(inst), seq, GetDebugName(inst));
+          norm_type, graph, res, operand_view, scale, mean,
+          variance_or_inv_std_dev, grad_output_view, epsilon,
+          optional_num_groups, GetShardingDeviceId(inst), seq,
+          GetDebugName(inst));
 
   operand_grad = ShuffleNormOutputToTensorflow(operand_grad, feature_dimension,
                                                non_broadcast_dims);
@@ -268,9 +271,10 @@ StatusOr<poplar::program::Program> CreateNormStatistics(
     TF_ASSIGN_OR_RETURN(mean,
                         BroadcastTensor(mean, inst->operand(0)->shape(), {}));
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, mean));
-    poplar::Tensor variance = graph.addConstant(operand.elementType(), {1}, 0);
-    graph.setTileMapping(variance, 0);
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, variance));
+    poplar::Tensor variance_or_inv_std_dev =
+        graph.addConstant(operand.elementType(), {1}, 0);
+    graph.setTileMapping(variance_or_inv_std_dev, 0);
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, variance_or_inv_std_dev));
     return seq;
   }
 
@@ -281,13 +285,14 @@ StatusOr<poplar::program::Program> CreateNormStatistics(
   std::tie(operand_view, non_broadcast_dims) =
       ShuffleNormInputToPoplar(operand, feature_dimension);
 
-  poplar::Tensor mean, variance;
-  std::tie(mean, variance) = norm_graph_caching::DoCachedNormStatistics(
-      norm_type, graph, res, operand_view, epsilon, optional_num_groups,
-      GetShardingDeviceId(inst), seq, GetDebugName(inst));
+  poplar::Tensor mean, variance_or_inv_std_dev;
+  std::tie(mean, variance_or_inv_std_dev) =
+      norm_graph_caching::DoCachedNormStatistics(
+          norm_type, graph, res, operand_view, epsilon, optional_num_groups,
+          GetShardingDeviceId(inst), seq, GetDebugName(inst));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, mean));
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, variance));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, variance_or_inv_std_dev));
   return seq;
 }
 

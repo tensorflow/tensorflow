@@ -120,7 +120,7 @@ REGISTER_OP("PopnnGroupNormInference")
     .Input("gamma: dtype")
     .Input("beta: dtype")
     .Input("mean: dtype")
-    .Input("variance: dtype")
+    .Input("inv_std_dev: dtype")
     .Output("output: dtype")
     .Attr("data_format: string")
     .Attr("epsilon: float")
@@ -141,7 +141,7 @@ REGISTER_OP("PopnnGroupNormTraining")
     .Input("beta: dtype")
     .Output("output: dtype")
     .Output("mean: dtype")
-    .Output("variance: dtype")
+    .Output("inv_std_dev: dtype")
     .Attr("data_format: string")
     .Attr("epsilon: float")
     .Attr("num_groups: int")
@@ -153,11 +153,11 @@ REGISTER_OP("PopnnGroupNormTraining")
       TF_RETURN_IF_ERROR(GetMeanAndVarianceSize(c, num_groups_time_batch));
       shape_inference::DimensionOrConstant doc_num_groups_time_batch(
           num_groups_time_batch);
-      auto mean_variance_shape = c->MakeShape({doc_num_groups_time_batch});
+      auto mean_inv_std_dev_shape = c->MakeShape({doc_num_groups_time_batch});
 
       c->set_output(0, in_shape);
-      c->set_output(1, mean_variance_shape);
-      c->set_output(2, mean_variance_shape);
+      c->set_output(1, mean_inv_std_dev_shape);
+      c->set_output(2, mean_inv_std_dev_shape);
       return Status::OK();
     })
     .Doc(R"doc(
@@ -168,7 +168,7 @@ REGISTER_OP("PopnnGroupNormGrad")
     .Input("inputs: dtype")
     .Input("gamma: dtype")
     .Input("mean: dtype")
-    .Input("variance: dtype")
+    .Input("inv_std_dev: dtype")
     .Input("output_backprop: dtype")
     .Output("inputs_backprop: dtype")
     .Output("gamma_backprop: dtype")
@@ -192,7 +192,7 @@ Internal implementation of PopnnGroupNormTraining.
 REGISTER_OP("PopnnGroupNormStatistics")
     .Input("inputs: dtype")
     .Output("mean: dtype")
-    .Output("variance: dtype")
+    .Output("inv_std_dev: dtype")
     .Attr("data_format: string")
     .Attr("epsilon: float")
     .Attr("num_groups: int")
@@ -202,10 +202,10 @@ REGISTER_OP("PopnnGroupNormStatistics")
       TF_RETURN_IF_ERROR(GetMeanAndVarianceSize(c, num_groups_time_batch));
       shape_inference::DimensionOrConstant doc_num_groups_time_batch(
           num_groups_time_batch);
-      auto mean_variance_shape = c->MakeShape({doc_num_groups_time_batch});
+      auto mean_inv_std_dev_shape = c->MakeShape({doc_num_groups_time_batch});
 
-      c->set_output(0, mean_variance_shape);
-      c->set_output(1, mean_variance_shape);
+      c->set_output(0, mean_inv_std_dev_shape);
+      c->set_output(1, mean_inv_std_dev_shape);
       return Status::OK();
     })
     .Doc(R"doc(
