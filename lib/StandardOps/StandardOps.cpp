@@ -302,11 +302,30 @@ struct SimplifyAllocConst : public RewritePattern {
     rewriter.replaceOp(op, {resultCast}, droppedOperands);
   }
 };
+
+/// Fold alloc instructions with no uses. Alloc has side effects on the heap,
+/// but can still be deleted if it has zero uses.
+struct SimplifyDeadAlloc : public RewritePattern {
+  SimplifyDeadAlloc(MLIRContext *context)
+      : RewritePattern(AllocOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult match(OperationInst *op) const override {
+    auto alloc = op->cast<AllocOp>();
+    // Check if the alloc'ed value has no uses.
+    return alloc->use_empty() ? matchSuccess() : matchFailure();
+  }
+
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
+    // Erase the alloc operation.
+    op->erase();
+  }
+};
 } // end anonymous namespace.
 
 void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.push_back(std::make_unique<SimplifyAllocConst>(context));
+  results.push_back(std::make_unique<SimplifyDeadAlloc>(context));
 }
 
 //===----------------------------------------------------------------------===//
