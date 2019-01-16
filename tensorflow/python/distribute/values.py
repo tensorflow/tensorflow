@@ -562,6 +562,9 @@ class DistributedVariable(DistributedDelegate):
   def read_value(self):
     return self._distribute_strategy.extended.read_var(self)
 
+  def value(self):
+    return self._get_closest().value()
+
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
