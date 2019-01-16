@@ -575,9 +575,21 @@ genrule(
 # To learn more about import library (called interface library in Bazel):
 #     https://docs.microsoft.com/en-us/cpp/build/linking-an-executable-to-a-dll?view=vs-2017#linking-implicitly
 filegroup(
-    name = "tensorflow_dll_import_lib",
+    name = "get_tensorflow_dll_import_lib",
     srcs = ["//tensorflow:tensorflow.dll"],
     output_group = "interface_library",
+    visibility = ["//visibility:public"],
+)
+
+# Rename the import library for tensorflow.dll from tensorflow.dll.if.lib to tensorflow.lib
+genrule(
+    name = "tensorflow_dll_import_lib",
+    srcs = [":get_tensorflow_dll_import_lib"],
+    outs = ["tensorflow.lib"],
+    cmd = select({
+        "//tensorflow:windows": "cp -f $< $@",
+        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
+    }),
     visibility = ["//visibility:public"],
 )
 
