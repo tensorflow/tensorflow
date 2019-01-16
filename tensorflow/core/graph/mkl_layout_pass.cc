@@ -259,6 +259,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv3d_grad_input = "Conv3DBackpropInputV2";
     csinfo_.conv3d_grad_filter = "Conv3DBackpropFilterV2";
     csinfo_.depthwise_conv2d = "DepthwiseConv2dNative";
+    csinfo_.depthwise_conv2d_grad_input = "DepthwiseConv2dNativeBackpropInput";
+    csinfo_.depthwise_conv2d_grad_filter =
+        "DepthwiseConv2dNativeBackpropFilter";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_conv2d = "_FusedConv2D";
@@ -278,6 +281,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_conv2d_with_bias = "_MklConv2DWithBias";
     csinfo_.mkl_conv2d_grad_filter_with_bias =
         "_MklConv2DBackpropFilterWithBias";
+    csinfo_.mkl_depthwise_conv2d_grad_input =
+        "_MklDepthwiseConv2dNativeBackpropInput";
+    csinfo_.mkl_depthwise_conv2d_grad_filter =
+        "_MklDepthwiseConv2dNativeBackpropFilter";
     csinfo_.mkl_fused_conv2d = "_MklFusedConv2D";
     csinfo_.mkl_pad_with_conv2d = "_MklPadWithConv2D";
     csinfo_.pad = "Pad";
@@ -381,6 +388,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.depthwise_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d),
                       CopyAttrsConv2DDepthwise, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.depthwise_conv2d_grad_input,
+         mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_input),
+         CopyAttrsConv2DDepthwise, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.depthwise_conv2d_grad_filter,
+         mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_filter),
+         CopyAttrsConv2DDepthwise, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
@@ -680,6 +695,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string conv3d_grad_input;
     string conv3d_grad_filter;
     string depthwise_conv2d;
+    string depthwise_conv2d_grad_input;
+    string depthwise_conv2d_grad_filter;
     string fused_batch_norm;
     string fused_batch_norm_grad;
     string fused_conv2d;
@@ -699,6 +716,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_conv2d_grad_filter;
     string mkl_conv2d_grad_filter_with_bias;
     string mkl_conv2d_with_bias;
+    string mkl_depthwise_conv2d_grad_input;
+    string mkl_depthwise_conv2d_grad_filter;
     string mkl_fused_conv2d;
     string mkl_pad_with_conv2d;
     string mul;

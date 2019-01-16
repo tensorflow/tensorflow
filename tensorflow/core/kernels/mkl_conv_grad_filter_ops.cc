@@ -357,12 +357,12 @@ class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-template <typename Device, class T, bool bias_enabled>
+template <typename Device, class T, bool bias_enabled, bool is_depthwise>
 class MklConvCustomBackpropFilterOp
-    : public MklConvBackpropCommonOp<Device, T> {
+    : public MklConvBackpropCommonOp<Device, T, is_depthwise> {
  public:
   explicit MklConvCustomBackpropFilterOp(OpKernelConstruction* context)
-      : MklConvBackpropCommonOp<Device, T>(context) {}
+      : MklConvBackpropCommonOp<Device, T, is_depthwise>(context) {}
 
   ~MklConvCustomBackpropFilterOp() {}
 
@@ -432,7 +432,7 @@ class MklConvCustomBackpropFilterOp
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &fwd_src_dims, &fwd_filter_dims,
           &strides, &dilations, &fwd_dst_dims_tf_order, &fwd_dst_dims,
-          &padding_left, &padding_right, false);
+          &padding_left, &padding_right, false, is_depthwise);
       if (!context->status().ok()) return;
 
       auto tf_fmt = is_conv2d
@@ -485,13 +485,27 @@ class MklConvCustomBackpropFilterOp
       diff_filter_mkl_shape.SetMklTensor(false);
 
       if (is_conv2d) {
-        // Conv2D: output_dims_mkl_order is in OIHW format.
-        TensorShape diff_filter_tf_shape({bwd_output_dims[MklDnnDims::Dim_H],
-                                          bwd_output_dims[MklDnnDims::Dim_W],
-                                          bwd_output_dims[MklDnnDims::Dim_I],
-                                          bwd_output_dims[MklDnnDims::Dim_O]});
-        AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
-                                  diff_filter_tf_shape, diff_filter_mkl_shape);
+        if (!is_depthwise) {
+          // Conv2D: output_dims_mkl_order is in OIHW format.
+          TensorShape diff_filter_tf_shape(
+              {bwd_output_dims[MklDnnDims::Dim_H],
+               bwd_output_dims[MklDnnDims::Dim_W],
+               bwd_output_dims[MklDnnDims::Dim_I],
+               bwd_output_dims[MklDnnDims::Dim_O]});
+          AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
+                                    diff_filter_tf_shape,
+                                    diff_filter_mkl_shape);
+        } else {
+          // Depthwise Conv2d: bwd_output_dims is GOIHW format
+          TensorShape diff_filter_tf_shape(
+              {bwd_output_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_H],
+               bwd_output_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_W],
+               bwd_output_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_G],
+               bwd_output_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_O]});
+          AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
+                                    diff_filter_tf_shape,
+                                    diff_filter_mkl_shape);
+        }
       } else {
         // Conv3D: output_dims_mkl_order is in OIDHW format.
         TensorShape diff_filter_tf_shape(
@@ -568,9 +582,9 @@ class MklConvCustomBackpropFilterOp
       // delete primitive since it is not cached.
       if (do_not_cache) delete conv_bwd_filter;
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -628,10 +642,11 @@ class MklConvCustomBackpropFilterOp
   }
 
   // Output layout is Tensorflow's filter layout
-  //   Conv2D: HWIO;  Conv3D: DHWIO
+  //   Conv2D: HWIO;  Conv3D: DHWIO; Depthwise Conv: HWIGO
   memory::format GetOutputFormat(const memory::format data_format) {
-    return (this->strides_.size() == 4) ? memory::format::hwio
-                                        : memory::format::dhwio;
+    return is_depthwise ? memory::format::hwigo : ((this->strides_.size() == 4)
+                                                       ? memory::format::hwio
+                                                       : memory::format::dhwio);
   }
 
   // Allocate output tensor.
@@ -673,27 +688,36 @@ class MklConvCustomBackpropFilterOp
   }
 };
 
-#define REGISTER_MKL_FILTER_KERNELS(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")                     \
-                              .Device(DEVICE_CPU)                              \
-                              .TypeConstraint<T>("T")                          \
-                              .Label(mkl_op_registry::kMklOpLabel),            \
-                          MklConvCustomBackpropFilterOp<CPUDevice, T, false>); \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilterWithBias")             \
-                              .Device(DEVICE_CPU)                              \
-                              .TypeConstraint<T>("T")                          \
-                              .Label(mkl_op_registry::kMklOpLabel),            \
-                          MklConvCustomBackpropFilterOp<CPUDevice, T, true>);  \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DBackpropFilterWithBias")       \
-                              .Device(DEVICE_CPU)                              \
-                              .TypeConstraint<T>("T")                          \
-                              .Label(mkl_op_registry::kMklOpLabel),            \
-                          MklDummyOp<CPUDevice, T>);                           \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv3DBackpropFilterV2")                   \
-                              .Device(DEVICE_CPU)                              \
-                              .TypeConstraint<T>("T")                          \
-                              .Label(mkl_op_registry::kMklOpLabel),            \
-                          MklConvCustomBackpropFilterOp<CPUDevice, T, false>);
+#define REGISTER_MKL_FILTER_KERNELS(T)                                   \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklConv2DBackpropFilter")                                   \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklOpLabel),                          \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false>);        \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklConv2DBackpropFilterWithBias")                           \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklOpLabel),                          \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, true, false>);         \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklDepthwiseConv2dNativeBackpropFilter")                    \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklOpLabel),                          \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, true>);         \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DBackpropFilterWithBias") \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<T>("T")                    \
+                              .Label(mkl_op_registry::kMklOpLabel),      \
+                          MklDummyOp<CPUDevice, T>);                     \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklConv3DBackpropFilterV2")                                 \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklOpLabel),                          \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 #undef REGISTER_MKL_FILTER_KERNELS
