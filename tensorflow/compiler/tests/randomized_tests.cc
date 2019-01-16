@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -769,8 +770,22 @@ Status TensorsAreEqualImpl(const Tensor& x, const Tensor& y) {
   for (int i = 0; i < Tx.size(); ++i) {
     if (Tx(i) != Ty(i)) {
       return errors::InvalidArgument(absl::StrCat(
-          i, "-th tensor element isn't equal: ", Tx(i), " vs. ", Ty(i),
-          ". x = ", x.DebugString(), "y = ", y.DebugString()));
+          i, "-th tensor element isn't equal: ", Str(Tx(i)), " vs. ",
+          Str(Ty(i)), ". x = ", x.DebugString(), "y = ", y.DebugString()));
+    }
+  }
+  return Status::OK();
+}
+
+Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
+  auto Tx = x.flat<bfloat16>();
+  auto Ty = y.flat<bfloat16>();
+  for (int i = 0; i < Tx.size(); ++i) {
+    if (Tx(i) != Ty(i)) {
+      return errors::InvalidArgument(absl::StrCat(
+          i, "-th tensor element isn't equal: ", static_cast<float>(Tx(i)),
+          " vs. ", static_cast<float>(Ty(i)), ". x = ", x.DebugString(),
+          "y = ", y.DebugString()));
     }
   }
   return Status::OK();
@@ -806,6 +821,8 @@ Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
       return TensorsAreEqualImpl<int64>(a, b);
     case DT_BOOL:
       return TensorsAreEqualImpl<bool>(a, b);
+    case DT_BFLOAT16:
+      return TensorsAreEqualImplBfloat16(a, b);
     default:
       LOG(FATAL) << "Unexpected type : " << DataTypeString(a.dtype());
   }
@@ -1377,6 +1394,19 @@ TEST_F(OpTest, Cast) {
                                              .RandomInput(src_type)
                                              .Attr("SrcT", src_type)
                                              .Attr("DstT", dst_type));
+  });
+}
+
+TEST_F(OpTest, CastBF16) {
+  Repeatedly([this]() {
+    DataType src_type, dst_type;
+    src_type = Choose<DataType>({DT_FLOAT});
+    dst_type = Choose<DataType>({DT_BFLOAT16});
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Cast")
+                                             .RandomInput(src_type)
+                                             .Attr("SrcT", src_type)
+                                             .Attr("DstT", dst_type)
+                                             .Attr("Truncate", true));
   });
 }
 
