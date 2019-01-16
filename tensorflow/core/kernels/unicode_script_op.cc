@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// ICU codemap data is linked statically.
+#define U_STATIC_IMPLEMENTATION
+
 #include "unicode/errorcode.h"  // TF:icu
 #include "unicode/uscript.h"  // TF:icu
 #include "tensorflow/core/framework/op_kernel.h"
