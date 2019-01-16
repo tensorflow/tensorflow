@@ -2869,10 +2869,19 @@ class LayerNormTest(test.TestCase):
                    tol=1e-5,
                    begin_norm_axis=1,
                    dtype=dtypes.float64):
+    eps = 1e-12 if dtype != dtypes.float16 else 1e-3
     expected_mean = np.zeros(input_shape[:begin_norm_axis])
-    expected_var = np.ones(input_shape[:begin_norm_axis])
-    for mu in [0.0, 1e2]:
-      for sigma in [1.0, 0.1]:
+    expected_var_uncorrected = np.ones(input_shape[:begin_norm_axis])
+    sigma_list = [1.0, 0.1]
+    if dtype == dtypes.float16:
+      # This causes the variance to underflow in float16, and requires that
+      # variance_epsilon be set appropriately to avoid NaNs in the output.
+      sigma_list.append(1e-4)
+    # Note that the mean:variance ratio must be limited to the representable
+    # range for float16.
+    for mu in [0.0, 1e2 if dtype != dtypes.float16 else 1e1]:
+      for sigma in sigma_list:
+        expected_var = expected_var_uncorrected / (1.0 + eps / sigma**2)
         input_values = np.random.randn(*input_shape) * sigma + mu
         with ops.Graph().as_default() as g:
           with self.session(graph=g) as sess:
@@ -2893,10 +2902,13 @@ class LayerNormTest(test.TestCase):
             outputs, beta, gamma = sess.run((output_t, beta_var, gamma_var))
             # Make sure that there are no NaNs
             self.assertFalse(np.isnan(outputs).any())
+            if outputs.dtype != np.float64:
+              # Cast to float64 before computing mean/variance to avoid
+              # overflow and precision issues.
+              outputs = outputs.astype(np.float64)
             mean = np.mean(outputs, axis=moments_axis)
             var = np.var(outputs, axis=moments_axis)
             # Layer-norm implemented in numpy
-            eps = 1e-12
             expected_out = (
                 (gamma * (input_values - np.mean(
                     input_values, axis=moments_axis, keepdims=True)) /
@@ -2932,6 +2944,12 @@ class LayerNormTest(test.TestCase):
 
   def testOutputBigInput(self):
     self.doOutputTest((1, 100, 100, 1))
+
+  def testOutputBigInputFloat32(self):
+    self.doOutputTest((1, 100, 1000, 1), tol=1e-4, dtype=dtypes.float32)
+
+  def testOutputBigInputFloat16(self):
+    self.doOutputTest((1, 100, 1000, 1), tol=5e-2, dtype=dtypes.float16)
 
 
 class GDNTest(test.TestCase):
