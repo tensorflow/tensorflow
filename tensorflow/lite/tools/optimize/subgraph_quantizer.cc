@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
-#include "tensorflow/lite/tools/optimize/symmetric_per_channel_params.h"
 
 namespace tflite {
 namespace optimize {
@@ -37,11 +36,14 @@ namespace {
 const int8_t kMinQuantizedValue = -127;
 const int8_t kMaxQuantizedValue = 127;
 
-TfLiteStatus AddQuantizationParams(const SymmetricPerChannelParams& params,
+TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
+                                   int quantized_dimension,
                                    const uint8_t* buffer_data,
                                    size_t buffer_size, TensorType output_type,
                                    ModelT* model, TensorT* tensor) {
-  params.AddToTensor(tensor);
+  tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  tensor->quantization->scale.assign(scales.begin(), scales.end());
+  tensor->quantization->quantized_dimension = quantized_dimension;
   model->buffers[tensor->buffer]->data.assign(buffer_data,
                                               buffer_data + buffer_size);
   // Update the tensor type.
@@ -94,10 +96,6 @@ TfLiteStatus SymmetricPerChannelQuantizeTensor(ModelT* model, TensorT* tensor,
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
   const uint64_t num_elements_per_channel = num_elements / channel_dim_size;
-
-  if (tensor->quantization == nullptr) {
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
-  }
 
   std::vector<float> min_vals(channel_dim_size);
   std::vector<float> max_vals(channel_dim_size);
@@ -170,9 +168,8 @@ TfLiteStatus SymmetricPerChannelQuantizeTensor(ModelT* model, TensorT* tensor,
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
   size_t buffer_size = num_elements * sizeof(int8_t);
-  SymmetricPerChannelParams symmetric_params(scales, channel_dim_index);
-  return AddQuantizationParams(symmetric_params, uint8_buffer, buffer_size,
-                               TensorType_INT8, model, tensor);
+  return AddQuantizationParams(scales, channel_dim_index, uint8_buffer,
+                               buffer_size, TensorType_INT8, model, tensor);
 }
 
 // Symmetrically quantizes the bias for ops like Conv and DepthwiseConv.
@@ -204,10 +201,8 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(const TensorT* input_tensor,
     error_reporter->Report("Input tensor missing quantization information");
     return kTfLiteError;
   }
-  std::unique_ptr<SymmetricPerChannelParams> weight_params;
-  TF_LITE_ENSURE_STATUS(SymmetricPerChannelParams::ReadFromTensor(
-      *weight_tensor, &weight_params));
-  const auto& weight_scales = weight_params->scales();
+  TF_LITE_ENSURE(error_reporter, weight_tensor->quantization);
+  const std::vector<float>& weight_scales = weight_tensor->quantization->scale;
 
   if (weight_scales.size() != channel_dim_size) {
     error_reporter->Report("Mismatch weight scale dimension: %d",
@@ -226,9 +221,6 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(const TensorT* input_tensor,
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
 
-  if (tensor->quantization == nullptr) {
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
-  }
   std::vector<int32_t> final_buffer(num_elements);
   const int32_t kScale = std::numeric_limits<int32_t>::max();
 
@@ -244,9 +236,14 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(const TensorT* input_tensor,
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
   size_t buffer_size = num_elements * sizeof(int32_t);
-  SymmetricPerChannelParams symmetric_params(scales, channel_dim_index);
-  return AddQuantizationParams(symmetric_params, uint8_buffer, buffer_size,
-                               TensorType_INT32, model, tensor);
+  // For Bias we only set the quantized values, the scale and quantized
+  // dimension is implicit.
+  tensor->quantization = nullptr;
+  model->buffers[tensor->buffer]->data.assign(uint8_buffer,
+                                              uint8_buffer + buffer_size);
+
+  tensor->type = TensorType_INT32;
+  return kTfLiteOk;
 }
 }  // namespace
 

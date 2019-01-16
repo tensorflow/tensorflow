@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/subgraph_quantizer.h"
-#include "tensorflow/lite/tools/optimize/symmetric_per_channel_params.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
 namespace {
@@ -91,31 +90,22 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantizationWithUnitScale) {
 
   ASSERT_TRUE(weights_tensor->quantization);
   const int out_channel_size = weights_tensor->shape[0];
-  std::unique_ptr<SymmetricPerChannelParams> bias_params;
-  std::unique_ptr<SymmetricPerChannelParams> weights_params;
-  ASSERT_EQ(kTfLiteOk, SymmetricPerChannelParams::ReadFromTensor(
-                           *weights_tensor, &weights_params));
-  ASSERT_EQ(kTfLiteOk, SymmetricPerChannelParams::ReadFromTensor(*bias_tensor,
-                                                                 &bias_params));
 
-  ASSERT_EQ(bias_params->scales().size(), out_channel_size);
-  ASSERT_EQ(weights_params->scales().size(), out_channel_size);
+  // Bias tensor doesn't contain quantization info.
+  ASSERT_FALSE(bias_tensor->quantization);
+
+  const std::vector<float>& weights_scales =
+      weights_tensor->quantization->scale;
+
+  ASSERT_EQ(weights_scales.size(), out_channel_size);
   ASSERT_EQ(input_tensor->quantization->scale.size(), 1);
   ASSERT_EQ(output_tensor->quantization->scale.size(), 1);
 
-  const float eps = 1e-7;
 
-  // Bias scale should be input * per_channel_weight_scale.
   for (size_t i = 0; i < out_channel_size; i++) {
-    EXPECT_NEAR(
-        bias_params->scales()[i],
-        input_tensor->quantization->scale[0] * weights_params->scales()[i],
-        eps);
+    EXPECT_EQ(weights_scales[i], 1);
   }
-  for (size_t i = 0; i < out_channel_size; i++) {
-    EXPECT_EQ(weights_params->scales()[i], 1);
-    EXPECT_EQ(bias_params->scales()[i], 1);
-  }
+
   EXPECT_EQ(input_tensor->quantization->scale[0], 1);
   EXPECT_EQ(output_tensor->quantization->scale[0], 1);
 
@@ -128,8 +118,11 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantizationWithUnitScale) {
   const float* bias_float_buffer =
       reinterpret_cast<const float*>(original_bias_buffer->data()->data());
 
+  const float eps = 1e-7;
   for (size_t i = 0; i < bias_tensor->shape[0]; i++) {
-    auto dequantized_value = bias_values[i] * bias_params->scales()[i];
+    const float bias_scale =
+        input_tensor->quantization->scale[0] * weights_scales[i];
+    auto dequantized_value = bias_values[i] * bias_scale;
     EXPECT_NEAR(dequantized_value, bias_float_buffer[i], eps);
   }
 
@@ -147,7 +140,7 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantizationWithUnitScale) {
     for (size_t j = 0; j < num_values_in_channel; j++) {
       size_t element_idx = channel_idx * out_channel_size + j;
       auto dequantized_value =
-          weight_values[element_idx] * weights_params->scales()[channel_idx];
+          weight_values[element_idx] * weights_scales[channel_idx];
       EXPECT_NEAR(dequantized_value, weights_float_buffer[element_idx], eps);
     }
   }
@@ -190,27 +183,17 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
 
   ASSERT_TRUE(weights_tensor->quantization);
   const int out_channel_size = weights_tensor->shape[0];
-  std::unique_ptr<SymmetricPerChannelParams> bias_params;
-  std::unique_ptr<SymmetricPerChannelParams> weights_params;
-  ASSERT_EQ(kTfLiteOk, SymmetricPerChannelParams::ReadFromTensor(
-                           *weights_tensor, &weights_params));
-  ASSERT_EQ(kTfLiteOk, SymmetricPerChannelParams::ReadFromTensor(*bias_tensor,
-                                                                 &bias_params));
 
-  ASSERT_EQ(bias_params->scales().size(), out_channel_size);
-  ASSERT_EQ(weights_params->scales().size(), out_channel_size);
+  // Bias tensor doesn't contain quantization info.
+  ASSERT_FALSE(bias_tensor->quantization);
+
+  ASSERT_TRUE(weights_tensor->quantization);
+  const std::vector<float>& weights_scales =
+      weights_tensor->quantization->scale;
+
+  ASSERT_EQ(weights_scales.size(), out_channel_size);
   ASSERT_EQ(input_tensor->quantization->scale.size(), 1);
   ASSERT_EQ(output_tensor->quantization->scale.size(), 1);
-
-  const float eps = 1e-7;
-
-  // Bias scale should be input * per_channel_weight_scale.
-  for (size_t i = 0; i < out_channel_size; i++) {
-    EXPECT_NEAR(
-        bias_params->scales()[i],
-        input_tensor->quantization->scale[0] * weights_params->scales()[i],
-        eps);
-  }
 
   const auto bias_buffer = model.buffers[bias_tensor->buffer].get();
   ASSERT_EQ(bias_buffer->data.size(), sizeof(int32_t) * bias_tensor->shape[0]);
@@ -221,10 +204,11 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
   const float* bias_float_buffer =
       reinterpret_cast<const float*>(original_bias_buffer->data()->data());
 
-  for (size_t i = 0; i < bias_tensor->shape[0]; i++) {
-    auto scale = bias_params->scales()[i];
-    auto dequantized_value = bias_values[i] * scale;
-    EXPECT_NEAR(dequantized_value, bias_float_buffer[i], scale / 2);
+  for (size_t i = 0; i < out_channel_size; i++) {
+    const float bias_scale =
+        input_tensor->quantization->scale[0] * weights_scales[i];
+    auto dequantized_value = bias_values[i] * bias_scale;
+    EXPECT_NEAR(dequantized_value, bias_float_buffer[i], bias_scale / 2);
   }
 
   const auto weights_buffer = model.buffers[weights_tensor->buffer].get();
@@ -240,7 +224,7 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
   for (size_t channel_idx = 0; channel_idx < out_channel_size; channel_idx++) {
     for (size_t j = 0; j < num_values_in_channel; j++) {
       size_t element_idx = channel_idx * out_channel_size + j;
-      auto scale = weights_params->scales()[channel_idx];
+      auto scale = weights_scales[channel_idx];
       auto dequantized_value = weight_values[element_idx] * scale;
       EXPECT_NEAR(dequantized_value, weights_float_buffer[element_idx],
                   scale / 2);
