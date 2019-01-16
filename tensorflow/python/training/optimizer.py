@@ -218,7 +218,7 @@ class Optimizer(
     # Optimizers inherit from CheckpointableBase rather than Checkpointable
     # since they do most of their dependency management themselves (slot
     # variables are special-cased, and non-slot variables are keyed to graphs).
-    checkpointable.CheckpointableBase):
+    checkpointable.Checkpointable):
   """Base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this

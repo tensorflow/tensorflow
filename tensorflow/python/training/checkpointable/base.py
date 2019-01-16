@@ -460,16 +460,16 @@ def no_automatic_dependency_tracking(method):
       target=method, decorator_func=_method_wrapper)
 
 
-class CheckpointableBase(object):
+class Checkpointable(object):
   """Base class for `Checkpointable` objects without automatic dependencies.
 
   This class has no __setattr__ override for performance reasons. Dependencies
   must be added explicitly. Unless attribute assignment is performance-critical,
-  use `Checkpointable` instead. Use `CheckpointableBase` for `isinstance`
+  use `AutoCheckpointable` instead. Use `Checkpointable` for `isinstance`
   checks.
   """
 
-  # CheckpointableBase does not do automatic dependency tracking, but uses the
+  # Checkpointable does not do automatic dependency tracking, but uses the
   # no_automatic_dependency_tracking decorator so it can avoid adding
   # dependencies if a subclass is Checkpointable / inherits from Model (both of
   # which have __setattr__ overrides).
@@ -623,7 +623,7 @@ class CheckpointableBase(object):
     # assign again. It will add this variable to our dependencies, and if there
     # is a non-trivial restoration queued, it will handle that. This also
     # handles slot variables.
-    if not overwrite or isinstance(new_variable, CheckpointableBase):
+    if not overwrite or isinstance(new_variable, Checkpointable):
       return self._track_checkpointable(new_variable, name=name,
                                         overwrite=overwrite)
     else:
@@ -695,7 +695,7 @@ class CheckpointableBase(object):
       ValueError: If another object is already tracked by this name.
     """
     self._maybe_initialize_checkpointable()
-    if not isinstance(checkpointable, CheckpointableBase):
+    if not isinstance(checkpointable, Checkpointable):
       raise TypeError(
           ("Checkpointable._track_checkpointable() passed type %s, not a "
            "Checkpointable.") % (type(checkpointable),))
@@ -742,7 +742,7 @@ class CheckpointableBase(object):
       name: The name of the dependency within this object (`self`), used to
         match `checkpointable` with values saved in a checkpoint.
       checkpointable: The Checkpointable object to restore (inheriting from
-        `CheckpointableBase`).
+        `Checkpointable`).
     """
     self._maybe_initialize_checkpointable()
     checkpointable._maybe_initialize_checkpointable()  # pylint: disable=protected-access

@@ -152,7 +152,7 @@ class _Loader(object):
       # individually callable by adding a `__call__` method to the classes of
       # the objects instances that have a `__call__` property.
 
-      class _UserObject(tracking.Checkpointable):
+      class _UserObject(tracking.AutoCheckpointable):
         pass
 
       return _UserObject(), setattr
