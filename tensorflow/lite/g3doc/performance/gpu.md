@@ -24,6 +24,9 @@ The easiest way to try out the experimental GPU delegate is to follow the below 
 
 ### Android (with Android Studio)
 
+For a step-by-step tutorial, watch the
+[Experimental GPU Delegate for Android](https://youtu.be/Xkhgre8r5G0) video.
+
 Note: This requires OpenGL ES 3.1 or higher.
 
 #### Step 1. Clone the TensorFlow source code and open it in Android Studio
@@ -54,6 +57,9 @@ run on the GPU.
 ![running android gpu demo and switch to gpu](images/android_gpu_demo.gif)
 
 ### iOS (with XCode)
+
+For a step-by-step tutorial, watch the
+[Experimental GPU Delegate for iOS](https://youtu.be/a5H4Zwjp49c) video.
 
 Note: This requires XCode v10.1 or later.
 
