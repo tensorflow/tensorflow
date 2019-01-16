@@ -44,55 +44,57 @@ class _Loader(object):
     self._asset_file_def = meta_graph.asset_file_def
     self._proto = object_graph_proto
     self._export_dir = export_dir
-    self._functions = function_deserialization.load_function_def_library(
-        meta_graph.graph_def.library)
+    self._concrete_functions = (
+        function_deserialization.load_function_def_library(
+            meta_graph.graph_def.library))
     self._load_all()
     self._setup_concrete_functions()
     self._restore_checkpoint()
 
   def _setup_concrete_functions(self):
-    """Setup captured tensors and output structure in restored functions."""
-    seen_functions = set()
+    """Setup captures and output structure in restored concrete functions."""
+    seen_concrete_functions = set()
     coder = nested_structure_coder.StructureCoder()
     for object_proto in self._proto.nodes:
       if object_proto.WhichOneof("kind") == "function":
-        for monomorphic_function in object_proto.function.monomorphic_function:
-          name = monomorphic_function.concrete_function
+        for concrete_function in object_proto.function.concrete_function:
+          name = concrete_function.name
           bound_inputs = [
               self._get_tensor_from_node(node_id)
-              for node_id in monomorphic_function.bound_inputs]
+              for node_id in concrete_function.bound_inputs
+          ]
           bound_variables = [
               self._nodes[node_id]
-              for node_id in monomorphic_function.bound_inputs
+              for node_id in concrete_function.bound_inputs
               if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
           ]
-          if name in seen_functions:
+          if name in seen_concrete_functions:
             raise RuntimeError(
-                "Monomorphic function with a duplicate name: %s." % name)
+                "Concrete function with a duplicate name: %s." % name)
           else:
-            seen_functions.add(name)
+            seen_concrete_functions.add(name)
             # TODO(andresp): This is only injecting the captured inputs into the
             # concrete function, note that we did not modify the FuncGraph
             # itself.
-            function = self._functions[name]
-            function._captured_inputs = bound_inputs  # pylint: disable=protected-access
-            function._func_graph.variables = bound_variables  # pylint: disable=protected-access
+            revived_function = self._concrete_functions[name]
+            revived_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
+            revived_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
             # By setting the structured_outputs directly, we can rely on this
-            # function_lib.Function object to perform the output repacking
-            # logic. The only limitation of that logic is that it only works
-            # with output that is convertible to Tensors and the conversion
-            # always happens. For example tf.TensorShape([2, 3]) will be
-            # converted to Tensor representing [2, 3].
+            # function_lib.ConcreteFunction object to perform the output
+            # repacking logic. The only limitation of that logic is that it only
+            # works with output that is convertible to Tensors and the
+            # conversion always happens. For example tf.TensorShape([2, 3])
+            # will be converted to Tensor representing [2, 3].
             original_outputs = coder.decode_proto(
-                monomorphic_function.output_signature)
+                concrete_function.output_signature)
             # The original_outputs here had Tensors converted to TensorSpecs, so
-            # the restored function's structured_outputs field will not be
-            # exactly the same. Fortunately the repacking logic cares only about
-            # the structure.
+            # the restored concrete function's structured_outputs field will not
+            # be exactly the same. Fortunately the repacking logic cares only
+            # about the structure.
             # TODO(vbardiovsky): Should we just replicate the structures, with
             # Nones instead of real objects? Decide when we start solving
             # idempotency.
-            function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
+            revived_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
     obj = self._nodes[node_id]
@@ -163,8 +165,8 @@ class _Loader(object):
     return tracking.TrackableAsset(filename), setattr
 
   def _recreate_function(self, proto):
-    return function_deserialization.recreate_polymorphic_function(
-        proto, self._functions), setattr
+    return function_deserialization.recreate_function(
+        proto, self._concrete_functions), setattr
 
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?

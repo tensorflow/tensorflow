@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tools for serializing PolymorphicFunctions."""
+"""Tools for serializing `Function`s."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -38,16 +38,15 @@ def _serialize_function_spec(function_spec, coder):
   return proto
 
 
-def serialize_polymorphic_function(polymorphic_function, node_ids):
-  """Build a SavedPolymorphicProto."""
+def serialize_function(function, node_ids):
+  """Build a SavedFunction proto."""
   coder = nested_structure_coder.StructureCoder()
-  proto = saved_object_graph_pb2.SavedPolymorphicFunction()
+  proto = saved_object_graph_pb2.SavedFunction()
 
-  function_spec_proto = _serialize_function_spec(
-      polymorphic_function.function_spec, coder)
+  function_spec_proto = _serialize_function_spec(function.function_spec, coder)
   proto.function_spec.CopyFrom(function_spec_proto)
   all_concrete_functions = \
-      polymorphic_function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+      function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
   for concrete_function in all_concrete_functions:
     bound_inputs = []
     try:
@@ -63,13 +62,13 @@ def serialize_polymorphic_function(polymorphic_function, node_ids):
     signature_args, signature_kwargs = \
         concrete_function.structured_input_signature
     del signature_kwargs
-    function_proto = proto.monomorphic_function.add()
-    function_proto.concrete_function = concrete_function.name
-    function_proto.canonicalized_input_signature.CopyFrom(
+    concrete_function_proto = proto.concrete_function.add()
+    concrete_function_proto.name = concrete_function.name
+    concrete_function_proto.canonicalized_input_signature.CopyFrom(
         coder.encode_structure(signature_args))
     structured_outputs = func_graph_module.convert_structure_to_signature(
         concrete_function.structured_outputs)
-    function_proto.output_signature.CopyFrom(
+    concrete_function_proto.output_signature.CopyFrom(
         coder.encode_structure(structured_outputs))
-    function_proto.bound_inputs.extend(bound_inputs)
+    concrete_function_proto.bound_inputs.extend(bound_inputs)
   return proto
