@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#include "tensorflow/stream_executor/cuda/cuda_driver_wrapper.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
@@ -501,7 +502,7 @@ int CUDAExecutor::CalculateOccupancy(
     CUfunction func) {
   int suggested_blocks = 0;
   int suggested_threads = 0;
-  CUresult err = cuOccupancyMaxPotentialBlockSize(
+  CUresult err = tensorflow::wrap::cuOccupancyMaxPotentialBlockSize(
       &suggested_blocks, &suggested_threads, func, nullptr,
       shared_memory_per_block, 0);
   CHECK_EQ(err, CUDA_SUCCESS);
@@ -518,7 +519,7 @@ int CUDAExecutor::CompareOccupancy(int *initial_blocks,
                                    CUfunction func) {
   int suggested_blocks = 0;
   int suggested_threads = 0;
-  CUresult err = cuOccupancyMaxPotentialBlockSize(
+  CUresult err = tensorflow::wrap::cuOccupancyMaxPotentialBlockSize(
       &suggested_blocks, &suggested_threads, func, nullptr,
       shared_memory_per_block, 0);
   CHECK_EQ(err, CUDA_SUCCESS);
