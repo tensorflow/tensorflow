@@ -87,8 +87,8 @@ class Sequential(Model):
   model.add(Dense(32))
   model.weights  # returns list of length 4
 
-  When using the delayed-build pattern (no input shape specified), you can
-  choose to manually build your model by calling `build(batch_input_shape)`:
+  # When using the delayed-build pattern (no input shape specified), you can
+  # choose to manually build your model by calling `build(batch_input_shape)`:
   model = Sequential()
   model.add(Dense(32))
   model.add(Dense(32))
