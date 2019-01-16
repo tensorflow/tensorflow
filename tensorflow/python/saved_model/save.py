@@ -796,7 +796,7 @@ def save(obj, export_dir, signatures=None):
             "tf.enable_eager_execution() must run first when calling it from "
             "TensorFlow 1.x.")
   # pylint: enable=line-too-long
-  if not isinstance(obj, base.CheckpointableBase):
+  if not isinstance(obj, base.Checkpointable):
     raise ValueError(
         "Expected a Checkpointable object for export, got {}.".format(obj))
 

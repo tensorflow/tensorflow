@@ -24,6 +24,8 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import distribute_coordinator as dc
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -128,6 +130,7 @@ class Model(Network):
     # passing distribution strategy to compile rather than creating the model
     # under distribution strategy scope.
     self._compile_distribution = False
+    self._distributed_session_is_configured = False
 
     self.run_eagerly = None
 
@@ -216,6 +219,7 @@ class Model(Network):
                       'create the model under the distribution strategy scope.')
       self._distribution_strategy = distribute
       self._compile_distribution = True
+      self._distributed_session_is_configured = False
     else:
       if distribution_strategy_context.has_strategy():
         # When the user builds the model in the DS scope and cross replica
@@ -257,7 +261,7 @@ class Model(Network):
     self.optimizer = optimizer
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's checkpointable.
-    if isinstance(self.optimizer, checkpointable.CheckpointableBase):
+    if isinstance(self.optimizer, checkpointable.Checkpointable):
       self._track_checkpointable(
           self.optimizer, name='optimizer', overwrite=True)
     self.loss = loss
@@ -273,9 +277,6 @@ class Model(Network):
 
     # Set DistributionStrategy specific parameters.
     self._distributed_model = None
-    if self._distribution_strategy is not None:
-      distributed_training_utils.configure_and_create_session(
-          self._distribution_strategy)
     # Initialize model metric attributes.
     self._init_metric_attributes()
     if not self.built:
@@ -546,7 +547,8 @@ class Model(Network):
       # Validate all variables were correctly created in distribution scope.
       if self._distribution_strategy and not self._compile_distribution:
         for v in self.variables:
-          if v.distribute_strategy is not self._distribution_strategy:
+          strategy = self._distribution_strategy
+          if not strategy.extended.variable_created_in_scope(v):
             raise ValueError(
                 'Variable (%s) was not created in the distribution strategy '
                 'scope of (%s). It is most likely due to not all layers or '
@@ -555,7 +557,7 @@ class Model(Network):
                 'to the following.\n'
                 'with strategy.scope():\n'
                 '  model=_create_model()\n'
-                '  model.compile(...)'% (v, self._distribution_strategy))
+                '  model.compile(...)'% (v, strategy))
 
   @property
   def metrics(self):
@@ -781,22 +783,52 @@ class Model(Network):
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      return training_distributed.fit_distributed(
-          self,
-          x=x,
-          y=y,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_split=validation_split,
-          validation_data=validation_data,
-          shuffle=shuffle,
-          class_weight=class_weight,
-          sample_weight=sample_weight,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps)
+      if training_utils.should_run_multi_worker():
+        # Multi-Worker mode runs the Keras training loop on multiple
+        # servers via the Distribute Coordinator.
+        def _worker_fn(_):
+          """Run training inside the distributed coordinator."""
+          self._configure_distributed_session()
+          return training_distributed.fit_distributed(
+              self,
+              x=x,
+              y=y,
+              batch_size=batch_size,
+              epochs=epochs,
+              verbose=verbose,
+              callbacks=callbacks,
+              validation_split=validation_split,
+              validation_data=validation_data,
+              shuffle=shuffle,
+              class_weight=class_weight,
+              sample_weight=sample_weight,
+              initial_epoch=initial_epoch,
+              steps_per_epoch=steps_per_epoch,
+              validation_steps=validation_steps)
+
+        # Independent worker only for now.
+        return dc.run_distribute_coordinator(
+            _worker_fn,
+            self._distribution_strategy,
+            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+      else:
+        self._configure_distributed_session()
+        return training_distributed.fit_distributed(
+            self,
+            x=x,
+            y=y,
+            batch_size=batch_size,
+            epochs=epochs,
+            verbose=verbose,
+            callbacks=callbacks,
+            validation_split=validation_split,
+            validation_data=validation_data,
+            shuffle=shuffle,
+            class_weight=class_weight,
+            sample_weight=sample_weight,
+            initial_epoch=initial_epoch,
+            steps_per_epoch=steps_per_epoch,
+            validation_steps=validation_steps)
 
     batch_size = self._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
@@ -1007,6 +1039,7 @@ class Model(Network):
     """
     # Case 1: distribution strategy.
     if self._distribution_strategy:
+      self._configure_distributed_session()
       return training_distributed.evaluate_distributed(
           self,
           x=x,
@@ -1134,6 +1167,7 @@ class Model(Network):
     """
     # Case 1: distribution strategy.
     if self._distribution_strategy:
+      self._configure_distributed_session()
       return training_distributed.predict_distributed(self,
                                                       x=x,
                                                       batch_size=batch_size,
@@ -2643,6 +2677,26 @@ class Model(Network):
     self.outputs = outputs
     self.output_names = training_utils.generic_output_names(outputs)
     self.built = True
+
+  def _configure_distributed_session(self):
+    """Configure a Session for use with Distribution Strategies.
+
+    Raises:
+      ValueError: If a non-distributed Session has already been created.
+    """
+    if not self._distributed_session_is_configured:
+      if (dc_context.get_current_worker_context() is not None and
+          getattr(K._SESSION, 'session', None) is not None):  # pylint: disable=protected-access
+        raise ValueError('Session was created before `fit`, `evaluate`, '
+                         'or `predict` was called. With Multi-Worker '
+                         'mode, this is not allowed. Please avoid '
+                         'creating a Session outside of these methods. '
+                         'The Session may have been created by a call '
+                         'to `keras.backend.get_session()` or '
+                         'functions that use Sessions, like `load_weights`.')
+      distributed_training_utils.configure_and_create_session(
+          self._distribution_strategy)
+      self._distributed_session_is_configured = True
 
 
 class DistributedCallbackModel(Model):

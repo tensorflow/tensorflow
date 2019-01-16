@@ -57,21 +57,24 @@ Simply run `pip install tf-nightly` or `pip install tf-nightly-gpu` in a clean
 environment to install the nightly TensorFlow build. We support CPU and GPU
 packages on Linux, Mac, and Windows.
 
-
 #### *Try your first TensorFlow program*
+
 ```shell
 $ python
 ```
+
 ```python
 >>> import tensorflow as tf
 >>> tf.enable_eager_execution()
->>> tf.add(1, 2)
+>>> tf.add(1, 2).numpy()
 3
 >>> hello = tf.constant('Hello, TensorFlow!')
 >>> hello.numpy()
 'Hello, TensorFlow!'
 ```
-Learn more examples about how to do specific tasks in TensorFlow at the [tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
+
+Learn more examples about how to do specific tasks in TensorFlow at the
+[tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
 

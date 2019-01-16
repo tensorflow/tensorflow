@@ -25,7 +25,7 @@ from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.training.checkpointable import tracking
 
 
-class CustomTestClass(tracking.Checkpointable):
+class CustomTestClass(tracking.AutoCheckpointable):
 
   def __init__(self, version):
     self.version = version
@@ -56,7 +56,7 @@ revived_types.register_revived_type(
 class RegistrationMatchingTest(test.TestCase):
 
   def test_save_typecheck(self):
-    self.assertIs(revived_types.serialize(tracking.Checkpointable()), None)
+    self.assertIs(revived_types.serialize(tracking.AutoCheckpointable()), None)
 
   def test_load_identifier_not_found(self):
     nothing_matches = revived_types.deserialize(

@@ -2,7 +2,7 @@ path: "tensorflow.keras.optimizers.Adamax"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.optimizer_v2.adamax.Adamax\'>"
   is_instance: "<class \'tensorflow.python.keras.optimizer_v2.optimizer_v2.OptimizerV2\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.Checkpointable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "iterations"

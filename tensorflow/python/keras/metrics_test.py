@@ -967,6 +967,89 @@ class MeanRelativeErrorTest(test.TestCase):
     self.assertEqual(self.evaluate(result), 0)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class MeanIoUTest(test.TestCase):
+
+  def test_config(self):
+    m_obj = metrics.MeanIoU(num_classes=2, name='mean_iou')
+    self.assertEqual(m_obj.name, 'mean_iou')
+    self.assertEqual(m_obj.num_classes, 2)
+
+    m_obj2 = metrics.MeanIoU.from_config(m_obj.get_config())
+    self.assertEqual(m_obj2.name, 'mean_iou')
+    self.assertEqual(m_obj2.num_classes, 2)
+
+  def test_unweighted(self):
+    y_pred = constant_op.constant([0, 1, 0, 1], dtype=dtypes.float32)
+    y_true = constant_op.constant([0, 0, 1, 1])
+
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred)
+
+    # cm = [[1, 1],
+    #       [1, 1]]
+    # sum_row = [2, 2], sum_col = [2, 2], true_positives = [1, 1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (1 / (2 + 2 - 1) + 1 / (2 + 2 - 1)) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+  def test_weighted(self):
+    y_pred = constant_op.constant([0, 1, 0, 1], dtype=dtypes.float32)
+    y_true = constant_op.constant([0, 0, 1, 1])
+    sample_weight = constant_op.constant([0.2, 0.3, 0.4, 0.1])
+
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # cm = [[0.2, 0.3],
+    #       [0.4, 0.1]]
+    # sum_row = [0.6, 0.4], sum_col = [0.5, 0.5], true_positives = [0.2, 0.1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (0.2 / (0.6 + 0.5 - 0.2) + 0.1 / (0.4 + 0.5 - 0.1)) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+  def test_multi_dim_input(self):
+    y_pred = constant_op.constant([[0, 1], [0, 1]], dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 0], [1, 1]])
+    sample_weight = constant_op.constant([[0.2, 0.3], [0.4, 0.1]])
+
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # cm = [[0.2, 0.3],
+    #       [0.4, 0.1]]
+    # sum_row = [0.6, 0.4], sum_col = [0.5, 0.5], true_positives = [0.2, 0.1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (0.2 / (0.6 + 0.5 - 0.2) + 0.1 / (0.4 + 0.5 - 0.1)) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+  def test_zero_valid_entries(self):
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+    self.assertAllClose(self.evaluate(m_obj.result()), 0, atol=1e-3)
+
+  def test_zero_and_non_zero_entries(self):
+    y_pred = constant_op.constant([1], dtype=dtypes.float32)
+    y_true = constant_op.constant([1])
+
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+    result = m_obj(y_true, y_pred)
+
+    # cm = [[0, 0],
+    #       [0, 1]]
+    # sum_row = [0, 1], sum_col = [0, 1], true_positives = [0, 1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (0 + 1 / (1 + 1 - 1)) / 1
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+
 def _get_model(compile_metrics):
   model_layers = [
       layers.Dense(3, activation='relu', kernel_initializer='ones'),
@@ -1093,6 +1176,19 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(auc_obj.false_positives[1]), 25.)
       self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
       self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
+
+  def test_reset_states_mean_iou(self):
+    m_obj = metrics.MeanIoU(num_classes=2)
+    model = _get_model([m_obj])
+    x = np.asarray([[0, 0, 0, 0], [1, 1, 1, 1], [1, 0, 1, 0], [0, 1, 0, 1]],
+                   dtype=np.float32)
+    y = np.asarray([[0], [1], [1], [1]], dtype=np.float32)
+    model.evaluate(x, y)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
+    model.evaluate(x, y)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
 
 
 if __name__ == '__main__':

@@ -181,10 +181,6 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
                           ir->WaitForOutMu(l);
                           response->set_instance_key(cp->instance.instance_key);
                           response->set_source_rank(ir->source_rank);
-                          if (!cp->instance.communicator_key.empty()) {
-                            response->set_communicator_key(
-                                cp->instance.communicator_key);
-                          }
                           done_and_cleanup(fi_status);
                         } else {
                           done_and_cleanup(fi_status);
@@ -287,10 +283,8 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
   using InstanceRecPointer = InstanceRec*;
   InstanceRecPointer* irp = new InstanceRecPointer(nullptr);
   int32 source_rank = resp.source_rank();
-  string communicator_key = resp.communicator_key();
 
-  auto continue_with_ir = [cp, irp, source_rank, communicator_key,
-                           done](const Status& s) {
+  auto continue_with_ir = [this, cp, irp, source_rank, done](const Status& s) {
     if (!s.ok()) {
       done(s);
       delete irp;
@@ -311,19 +305,6 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
           break;
         }
         ir->source_rank = source_rank;
-      }
-      if (ir->communicator_key != communicator_key) {
-        if (!ir->communicator_key.empty()) {
-          ir->status = errors::Internal(
-              "UpdateInstanceCache: CompleteInstanceResponse for instance ",
-              cp->instance.instance_key,
-              " gives communicator_key with size =", communicator_key.size(),
-              " but cache already holds communicator_key with size=",
-              ir->communicator_key.size());
-          status = ir->status;
-          break;
-        }
-        ir->communicator_key = communicator_key;
       }
       if (ir->known_count < cp->group.group_size) {
         ir->known_count = cp->group.group_size;
