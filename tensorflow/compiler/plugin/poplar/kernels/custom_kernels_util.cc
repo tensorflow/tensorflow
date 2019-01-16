@@ -43,7 +43,7 @@ std::string PoplibsLibToString(const PoplibsLib& poplibs_lib) {
   return names[static_cast<uint32>(poplibs_lib)];
 }
 
-StatusOr<PoplibsLib> StringToPoplibsLib(const std::string& name) {
+absl::optional<PoplibsLib> StringToPoplibsLib(const std::string& name) {
   static absl::flat_hash_map<std::string, PoplibsLib> mapping = {
       {"Poplin", PoplibsLib::Poplin},
       {"Popnn", PoplibsLib::Popnn},
@@ -51,6 +51,9 @@ StatusOr<PoplibsLib> StringToPoplibsLib(const std::string& name) {
       {"Poprand", PoplibsLib::Poprand}};
   if (mapping.size() != static_cast<uint32>(PoplibsLib::_NumLibs)) {
     LOG(FATAL) << "The number of Poplibs libraries does not match.";
+  }
+  if (mapping.count(name) == 0) {
+    return absl::nullopt;
   }
   return mapping.at(name);
 }
@@ -64,7 +67,7 @@ std::string PoplibsOpToString(const PoplibsOp& poplibs_op) {
   return names[static_cast<uint32>(poplibs_op)];
 }
 
-StatusOr<PoplibsOp> StringToPoplibsOp(const std::string& name) {
+absl::optional<PoplibsOp> StringToPoplibsOp(const std::string& name) {
   static absl::flat_hash_map<std::string, PoplibsOp> mapping = {
       // Poplin:
       // Popnn:
@@ -81,6 +84,9 @@ StatusOr<PoplibsOp> StringToPoplibsOp(const std::string& name) {
   if (mapping.size() != static_cast<uint32>(PoplibsOp::_NumOps)) {
     LOG(FATAL) << "The number of Poplibs Custom Ops does not match.";
   }
+  if (mapping.count(name) == 0) {
+    return absl::nullopt;
+  }
   return mapping.at(name);
 }
 
@@ -89,47 +95,42 @@ std::string GetPoplibsCustomOpTargetString(const PoplibsLib& poplibs_lib,
   return PoplibsLibToString(poplibs_lib) + "::" + PoplibsOpToString(poplibs_op);
 }
 
-StatusOr<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
+absl::optional<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
     const HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kCustomCall) {
     std::vector<std::string> split =
         absl::StrSplit(inst->custom_call_target(), "::");
     if (split.size() != 2) {
-      return xla::FailedPrecondition("Call target %s is not a PoplibsCustomOp.",
-                                     inst->custom_call_target().c_str());
+      return absl::nullopt;
     }
-    auto statusor_poplibs_lib = StringToPoplibsLib(split[0]);
-    if (!statusor_poplibs_lib.ok()) {
-      return xla::FailedPrecondition(
-          "Call target %s is not a custom call to a Poplibs library.",
-          inst->custom_call_target().c_str());
+    auto poplibs_lib = StringToPoplibsLib(split[0]);
+    if (poplibs_lib == absl::nullopt) {
+      return absl::nullopt;
     }
-    auto statusor_poplibs_op = StringToPoplibsOp(split[1]);
-    if (!statusor_poplibs_op.ok()) {
-      return xla::FailedPrecondition(
-          "Call target %s is not a custom call to a Poplibs op.",
-          inst->custom_call_target().c_str());
+    auto poplibs_op = StringToPoplibsOp(split[1]);
+    if (poplibs_op == absl::nullopt) {
+      return absl::nullopt;
     }
-    return std::make_pair(statusor_poplibs_lib.ValueOrDie(),
-                          statusor_poplibs_op.ValueOrDie());
+    return std::make_pair(poplibs_lib.value(), poplibs_op.value());
   }
-  return xla::FailedPrecondition(
-      "Instruction %s is not a HloInstruction::kCustomCall.",
-      inst->name().c_str());
+  return absl::nullopt;
 }
 
 const bool IsPoplibsCustomOp(const HloInstruction* inst) {
-  return GetPoplibsCustomOp(inst).ok();
+  return GetPoplibsCustomOp(inst) != absl::nullopt;
 }
 
 const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst) {
-  auto statusor = GetPoplibsCustomOp(inst);
-  if (!statusor.ok()) {
+  if (!IsPoplibsCustomOp(inst)) {
+    return false;
+  }
+  auto ret = GetPoplibsCustomOp(inst);
+  if (ret == absl::nullopt) {
     return false;
   }
   PoplibsLib poplibs_lib;
   PoplibsOp poplibs_op;
-  std::tie(poplibs_lib, poplibs_op) = statusor.ValueOrDie();
+  std::tie(poplibs_lib, poplibs_op) = ret.value();
   switch (poplibs_lib) {
     case PoplibsLib::Popops: {
       switch (poplibs_op) {
@@ -179,7 +180,7 @@ template <>
 Json::Value GetAsJsonValue(const uint64& val) {
   return Json::Value(Json::Value::UInt64(val));
 }
-}
+}  // namespace
 
 void AttributeMap::AddAttribute(const std::string& field_name,
                                 const absl::any& attr) {

@@ -23,8 +23,12 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFnForCustomOp(
     const HloInstruction* inst) {
   PoplibsLib poplibs_lib;
   PoplibsOp poplibs_op;
-  TF_ASSIGN_OR_RETURN(std::tie(poplibs_lib, poplibs_op),
-                      GetPoplibsCustomOp(inst));
+  auto ret = GetPoplibsCustomOp(inst);
+  if (ret == absl::nullopt) {
+    return tensorflow::errors::Unknown(absl::StrCat(
+        "[Poplar] Invalid opcode lookup on instruction ", inst->name()));
+  }
+  std::tie(poplibs_lib, poplibs_op) = ret.value();
 
   switch (poplibs_op) {
     case PoplibsOp::Sqrt:
