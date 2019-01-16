@@ -99,31 +99,13 @@ def TF_AddOp : Op<"tf.Add", [NoSideEffect]>,
     The inputs and result must be of the same elemental type.
   }];
 
-  // FIXME: This is very much not the final form! There is a lot of boilerplate
-  // that will be removed in future iterations.
   let reference = [{
-    // Different Bindable ivs, one per loop in the loop nest.
-    auto ivs = makeBindables(shapeA.size());
-    Bindable zero, one;
-    // Same bindable, all equal to `zero`.
-    SmallVector<Bindable, 8> zeros(ivs.size(), zero);
-    // Same bindable, all equal to `one`.
-    SmallVector<Bindable, 8> ones(ivs.size(), one);
-    Bindable A, B, C;
-    Stmt scalarA, scalarB, tmp;
+    auto ivs = makeBindables(lhsShape.size());
     block = edsc::Block({
-      ForNest(ivs, zeros, shapeA, ones, {
-        scalarA = load(A, ivs),
-        scalarB = load(B, ivs),
-        tmp = scalarA + scalarB,
-        store(tmp, C, ivs)
-      }),
-    });
-    emitter.bindConstant<ConstantIndexOp>(zero, 0)
-      .bindConstant<ConstantIndexOp>(one, 1)
-      .bind(A, memRefA)
-      .bind(B, memRefB)
-      .bind(C, memRefC);
+      ForNest(ivs, 0, lhsShape, 1, {
+        result[ivs] = lhs[ivs] + rhs[ivs]
+      })});
+    }
   }];
 }
 ```
