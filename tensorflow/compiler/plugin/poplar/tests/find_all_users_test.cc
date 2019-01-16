@@ -135,6 +135,46 @@ HloModule top
   EXPECT_EQ(finder.PathFor(m2).size(), 1);
 }
 
+TEST_F(FindAddUsersTest, FindMultipleFusionUsers) {
+  std::string hlo_string = R"(
+HloModule top
+
+_pop_op_special {
+  p0 = f16[4] parameter(0)
+  ROOT ad0 = f16[4] negate(p0)
+}
+
+%cluster_1  {
+  a0 = f16[4] parameter(0)
+  s0 = f16[4] fusion(a0), kind=kCustom, calls=_pop_op_special
+  s1 = f16[4] fusion(a0), kind=kCustom, calls=_pop_op_special
+  ROOT %tuple = (f16[4], f16[4]) tuple(s0, s1)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+
+  auto* comp = module->entry_computation();
+  auto* s0 = comp->GetInstructionWithName("s0");
+  auto* s1 = comp->GetInstructionWithName("s1");
+  auto* p0 = comp->GetInstructionWithName("a0");
+
+  FindAllUsers finder;
+  finder.Find(p0);
+  auto users0 = finder.Users();
+  ASSERT_EQ(users0.size(), 2);
+  EXPECT_TRUE(users0.count(s0) == 1);
+  EXPECT_TRUE(users0.count(s1) == 1);
+  EXPECT_EQ(finder.PathFor(s0).size(), 1);
+  EXPECT_EQ(finder.PathFor(s1).size(), 1);
+}
+
 // Through a kTuple/kGetTupleElement pair
 TEST_F(FindAddUsersTest, FindUsersThroughTuple) {
   std::string hlo_string = R"(
