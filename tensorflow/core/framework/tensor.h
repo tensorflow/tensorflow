@@ -529,7 +529,8 @@ class Tensor {
   // `num_values` is the number of actual data values in the tensor
   // included in the message. If the tensor might be resident in
   // GPU/TPU memory use DeviceSafeDebugString instead.
-  string DebugString(int num_values = 3) const;
+  string DebugString(int num_values) const;
+  string DebugString() const { return DebugString(3); }
 
   // Variant of DebugString() that should be used for possibly non-CPU tensors.
   // If the tensor is not resident on CPU, we can't read its values as
