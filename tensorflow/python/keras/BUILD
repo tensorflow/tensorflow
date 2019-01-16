@@ -868,6 +868,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "layer_utils_test",
+    size = "small",
+    srcs = ["utils/layer_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "image_test",
     size = "medium",
     srcs = ["preprocessing/image_test.py"],
