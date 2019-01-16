@@ -150,6 +150,7 @@ tensorflow/third_party/systemlibs/cython.BUILD
 tensorflow/third_party/systemlibs/double_conversion.BUILD
 tensorflow/third_party/systemlibs/zlib.BUILD
 tensorflow/third_party/systemlibs/jsoncpp.BUILD
+tensorflow/third_party/systemlibs/enum34.BUILD
 tensorflow/third_party/systemlibs/re2.BUILD
 tensorflow/third_party/systemlibs/lmdb.BUILD
 tensorflow/third_party/systemlibs/googleapis.BUILD
