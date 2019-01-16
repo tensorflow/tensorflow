@@ -409,11 +409,13 @@ class ResourceVariable(variables.VariableV1):
         # Use attr_scope and device(None) to simulate the behavior of
         # colocate_with when the variable we want to colocate with doesn't
         # yet exist.
+        device_context_manager = (
+            ops.device if self._in_graph_mode else ops.NullContextmanager)
         attr = attr_value_pb2.AttrValue(
             list=attr_value_pb2.AttrValue.ListValue(
                 s=[compat.as_bytes("loc:@%s" % handle_name)]))
         with ops.get_default_graph()._attr_scope({"_class": attr}):
-          with ops.name_scope("Initializer"), ops.device(None):
+          with ops.name_scope("Initializer"), device_context_manager(None):
             initial_value = ops.convert_to_tensor(
                 initial_value() if init_from_fn else initial_value,
                 name="initial_value", dtype=dtype)
