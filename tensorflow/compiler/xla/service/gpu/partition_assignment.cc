@@ -40,8 +40,13 @@ std::ostream& operator<<(std::ostream& out,
 }
 
 int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc) {
-  int64 threads_per_block = device_desc.threads_per_block_limit();
-  if (threads_per_block == 0) {
+  auto threads_per_core = device_desc.threads_per_core_limit();
+  auto blocks_per_core = device_desc.blocks_per_core_limit();
+  int64 threads_per_block;
+  if (threads_per_core != 0 && blocks_per_core != 0) {
+    threads_per_block = device_desc.threads_per_core_limit() /
+                        device_desc.blocks_per_core_limit();
+  } else {
     static std::atomic<int64> log_count{0};
     if (log_count.fetch_add(1) < 8) {
       LOG(WARNING) << "Attempting to calculate launch dimensions for GPU "
