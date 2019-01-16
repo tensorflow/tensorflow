@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
@@ -36,17 +38,20 @@ from tensorflow.python.platform import test
 # / V2 mode, we should remove this annotation and the run_v1_only annotations
 # as well.
 @test_util.run_all_in_graph_and_eager_modes
-class MultiDeviceIteratorTest(test_base.DatasetTestBase):
+class MultiDeviceIteratorTest(test_base.DatasetTestBase,
+                              parameterized.TestCase):
 
   @test_util.run_v1_only
-  def testNoGetNext(self):
+  @parameterized.parameters(0, 1, 42,)
+  def testInitOnly(self, num_inits):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
         dataset, ["/cpu:1", "/cpu:2"])
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
+      for _ in range(num_inits):
+        self.evaluate(multi_device_iterator.initializer)
 
   @test_util.run_v1_only
   def testBasic(self):
