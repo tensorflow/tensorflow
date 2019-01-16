@@ -33,6 +33,7 @@
 #include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/core/platform/types.h"
 
 // The CUDA cublas_api.h API contains const-correctness errors. Instead of
@@ -76,6 +77,106 @@ using matinv_Z = cublasStatus_t(cublasContext*, int, const double2* const*, int,
 }
 
 namespace tensorflow {
+
+namespace dynload {
+
+#define LIBCUSOLVER_WRAP(__name)                                          \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = se::internal::CachedDsoLoader::GetCusolverDsoHandle();     \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void* f;                                                            \
+      auto s = se::port::Env::Default()->GetSymbolFromLibrary(            \
+              GetDsoHandle(), kName, &f);                                 \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in libcuda DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    cusolverStatus_t operator()(Args... args) {                           \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
+
+// clang-format off
+
+#define LIBCUSOLVER_ROUTINE_EACH(__macro) \
+  __macro(cusolverDnCgeqrf)               \
+  __macro(cusolverDnCgeqrf_bufferSize)    \
+  __macro(cusolverDnCgetrf)               \
+  __macro(cusolverDnCgetrf_bufferSize)    \
+  __macro(cusolverDnCgetrs)               \
+  __macro(cusolverDnCheevd)               \
+  __macro(cusolverDnCheevd_bufferSize)    \
+  __macro(cusolverDnCpotrf)               \
+  __macro(cusolverDnCpotrf_bufferSize)    \
+  __macro(cusolverDnCreate)               \
+  __macro(cusolverDnCungqr)               \
+  __macro(cusolverDnCungqr_bufferSize)    \
+  __macro(cusolverDnCunmqr)               \
+  __macro(cusolverDnCunmqr_bufferSize)    \
+  __macro(cusolverDnDestroy)              \
+  __macro(cusolverDnDgeqrf)               \
+  __macro(cusolverDnDgeqrf_bufferSize)    \
+  __macro(cusolverDnDgesvd)               \
+  __macro(cusolverDnDgesvd_bufferSize)    \
+  __macro(cusolverDnDgetrf)               \
+  __macro(cusolverDnDgetrf_bufferSize)    \
+  __macro(cusolverDnDgetrs)               \
+  __macro(cusolverDnDorgqr)               \
+  __macro(cusolverDnDorgqr_bufferSize)    \
+  __macro(cusolverDnDormqr)               \
+  __macro(cusolverDnDormqr_bufferSize)    \
+  __macro(cusolverDnDpotrf)               \
+  __macro(cusolverDnDpotrf_bufferSize)    \
+  __macro(cusolverDnDsyevd)               \
+  __macro(cusolverDnDsyevd_bufferSize)    \
+  __macro(cusolverDnSetStream)            \
+  __macro(cusolverDnSgeqrf)               \
+  __macro(cusolverDnSgeqrf_bufferSize)    \
+  __macro(cusolverDnSgesvd)               \
+  __macro(cusolverDnSgesvd_bufferSize)    \
+  __macro(cusolverDnSgetrf)               \
+  __macro(cusolverDnSgetrf_bufferSize)    \
+  __macro(cusolverDnSgetrs)               \
+  __macro(cusolverDnSorgqr)               \
+  __macro(cusolverDnSorgqr_bufferSize)    \
+  __macro(cusolverDnSormqr)               \
+  __macro(cusolverDnSormqr_bufferSize)    \
+  __macro(cusolverDnSpotrf)               \
+  __macro(cusolverDnSpotrf_bufferSize)    \
+  __macro(cusolverDnSsyevd)               \
+  __macro(cusolverDnSsyevd_bufferSize)    \
+  __macro(cusolverDnZgeqrf)               \
+  __macro(cusolverDnZgeqrf_bufferSize)    \
+  __macro(cusolverDnZgetrf)               \
+  __macro(cusolverDnZgetrf_bufferSize)    \
+  __macro(cusolverDnZgetrs)               \
+  __macro(cusolverDnZheevd)               \
+  __macro(cusolverDnZheevd_bufferSize)    \
+  __macro(cusolverDnZpotrf)               \
+  __macro(cusolverDnZpotrf_bufferSize)    \
+  __macro(cusolverDnZungqr)               \
+  __macro(cusolverDnZungqr_bufferSize)    \
+  __macro(cusolverDnZunmqr)               \
+  __macro(cusolverDnZunmqr_bufferSize)
+
+
+// clang-format on
+
+LIBCUSOLVER_ROUTINE_EACH(LIBCUSOLVER_WRAP)
+#undef LIBCUSOLVER_ROUTINE_EACH
+}  // namespace dynload
+
 namespace {
 
 using se::cuda::ScopedActivateExecutorContext;
@@ -91,9 +192,9 @@ inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
 // CudaSolver. We maintain one such set of handles per unique stream.
 struct CudaSolverHandles {
   explicit CudaSolverHandles(cudaStream_t stream) {
-    CHECK(cusolverDnCreate(&cusolver_dn_handle) == CUSOLVER_STATUS_SUCCESS)
+    CHECK(dynload::cusolverDnCreate(&cusolver_dn_handle) == CUSOLVER_STATUS_SUCCESS)
         << "Failed to create cuSolverDN instance.";
-    CHECK(cusolverDnSetStream(cusolver_dn_handle, stream) ==
+    CHECK(dynload::cusolverDnSetStream(cusolver_dn_handle, stream) ==
           CUSOLVER_STATUS_SUCCESS)
         << "Failed to set cuSolverDN stream.";
     CHECK(cublasCreate(&cublas_handle) == CUBLAS_STATUS_SUCCESS)
@@ -105,7 +206,7 @@ struct CudaSolverHandles {
   ~CudaSolverHandles() {
     CHECK(cublasDestroy(cublas_handle) == CUBLAS_STATUS_SUCCESS)
         << "Failed to destroy cuBlas instance.";
-    CHECK(cusolverDnDestroy(cusolver_dn_handle) == CUSOLVER_STATUS_SUCCESS)
+    CHECK(dynload::cusolverDnDestroy(cusolver_dn_handle) == CUSOLVER_STATUS_SUCCESS)
         << "Failed to destroy cuSolverDN instance.";
   }
   cublasHandle_t cublas_handle;
@@ -298,10 +399,11 @@ Status CudaSolver::forward_input_or_allocate_scoped_tensor(
 #define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, S) m(double, D)
 
 // Macros to construct cusolverDn method names.
-#define DN_SOLVER_FN(method, type_prefix) cusolverDn##type_prefix##method
+#define DN_SOLVER_FN(method, type_prefix) \
+  dynload::cusolverDn##type_prefix##method
 #define DN_SOLVER_NAME(method, type_prefix) "cusolverDn" #type_prefix #method
 #define DN_BUFSIZE_FN(method, type_prefix) \
-  cusolverDn##type_prefix##method##_bufferSize
+  dynload::cusolverDn##type_prefix##method##_bufferSize
 
 // Macros to construct cublas method names.
 #define BLAS_SOLVER_FN(method, type_prefix) cublas##type_prefix##method
