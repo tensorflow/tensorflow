@@ -401,8 +401,8 @@ class LoadTest(test.TestCase):
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
     self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
 
-    concrete_functions = root.f._list_all_concrete_functions_for_serialization()
-    self.assertEqual(1, len(concrete_functions))  # pylint: disable=protected-access
+    concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+    self.assertEqual(1, len(concrete_functions))
 
     imported = self.cycle(root)
 
