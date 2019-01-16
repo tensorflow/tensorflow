@@ -37,12 +37,17 @@ const int8_t kMinQuantizedValue = -127;
 const int8_t kMaxQuantizedValue = 127;
 
 TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
+                                   const std::vector<int64_t>& zero_point,
                                    int quantized_dimension,
                                    const uint8_t* buffer_data,
                                    size_t buffer_size, TensorType output_type,
                                    ModelT* model, TensorT* tensor) {
   tensor->quantization = absl::make_unique<QuantizationParametersT>();
   tensor->quantization->scale.assign(scales.begin(), scales.end());
+  if (zero_point.size() != scales.size()) {
+    return kTfLiteError;
+  }
+  tensor->quantization->zero_point.assign(zero_point.begin(), zero_point.end());
   tensor->quantization->quantized_dimension = quantized_dimension;
   model->buffers[tensor->buffer]->data.assign(buffer_data,
                                               buffer_data + buffer_size);
@@ -168,8 +173,10 @@ TfLiteStatus SymmetricPerChannelQuantizeTensor(ModelT* model, TensorT* tensor,
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
   size_t buffer_size = num_elements * sizeof(int8_t);
-  return AddQuantizationParams(scales, channel_dim_index, uint8_buffer,
-                               buffer_size, TensorType_INT8, model, tensor);
+  std::vector<int64_t> zero_point(scales.size(), 0);
+  return AddQuantizationParams(scales, zero_point, channel_dim_index,
+                               uint8_buffer, buffer_size, TensorType_INT8,
+                               model, tensor);
 }
 
 // Symmetrically quantizes the bias for ops like Conv and DepthwiseConv.
