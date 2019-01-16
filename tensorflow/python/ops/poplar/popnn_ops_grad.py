@@ -24,7 +24,6 @@ from tensorflow.compiler.plugin.poplar.ops import gen_popnn_ops
     These gradient function should *never* be called directly.
 """
 
-
 @ops.RegisterGradient("PopnnLstmLayer")
 def _popnn_lstm_layer_backward(op, *grads):
   """Gradients for the PopnnLstmLayer op."""
@@ -48,3 +47,17 @@ def _popnn_lstm_layer_backward(op, *grads):
       num_channels=op.get_attr("num_channels"),
       partials_dtype=op.get_attr("partials_dtype"),
       is_training=op.get_attr("is_training"))
+
+
+@ops.RegisterGradient("PopnnGroupNormTraining")
+def _popnn_group_norm_backward(op, *grads):
+  """Gradients for the PopnnGroupNormTraining op."""
+  return gen_popnn_ops.popnn_group_norm_grad(
+      inputs=op.inputs[0],
+      gamma=op.inputs[1],
+      mean=op.outputs[1],
+      variance=op.outputs[2],
+      output_backprop=grads[0],
+      data_format=op.get_attr("data_format"),
+      epsilon=op.get_attr("epsilon"),
+      num_groups=op.get_attr("num_groups"))

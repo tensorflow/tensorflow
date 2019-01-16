@@ -93,11 +93,13 @@ NAMED_GROUP_NORM_INF_TESTCASES = (
 },
 )
 
+training_abs_tolerance = 0.01
+training_rel_tolerance = 1.0
 dataType = np.float32
 
 class GroupNormTest(test.TestCase, parameterized.TestCase):
 
-  def _refGroupNormInf(self, inputs, gamma, beta, mean, variance, groups, epsilon, data_format="NHWC"):
+  def _refGroupNormFwd(self, inputs, gamma, beta, groups, mean=None, variance=None, epsilon=0.0015, data_format="NHWC"):
     if data_format == "NHWC":
       feature_index = 3
     elif data_format == "NCHW":
@@ -132,15 +134,26 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       inputs = np.reshape(inputs, [N, groups, C // groups, H, W])
       gamma = np.reshape(gamma, [1, C, 1, 1])
       beta = np.reshape(beta, [1, C, 1, 1])
-      mean = np.reshape(mean, [N, groups, 1, 1, 1])
-      variance = np.reshape(variance, [N, groups, 1, 1, 1])
+      moments_axes = (feature_index + 1, 3, 4)
+
+      if mean is not None and variance is not None:
+        mean = np.reshape(mean, [N, groups, 1, 1, 1])
+        variance = np.reshape(variance, [N, groups, 1, 1, 1])
     else:
       N, H, W, C = inputs.shape
       inputs = np.reshape(inputs, [N, H, W, groups, C // groups])
-      mean = np.reshape(mean, [N, 1, 1, groups, 1])
-      variance = np.reshape(variance, [N, 1, 1, groups, 1])
       gamma = np.reshape(gamma, [1, 1, 1, C])
       beta = np.reshape(beta, [1, 1, 1, C])
+      moments_axes = (1, 2, feature_index + 1)
+
+      if mean is not None and variance is not None:
+        mean = np.reshape(mean, [N, 1, 1, groups, 1])
+        variance = np.reshape(variance, [N, 1, 1, groups, 1])
+
+    if mean is None and variance is None:
+      mean = np.mean(inputs, moments_axes, dtype=np.float32, keepdims=True)
+      variance = np.mean(np.power(inputs - mean, 2), moments_axes,
+                            dtype=np.float32, keepdims=True)
 
     output = (inputs - mean) * np.power(variance + epsilon, -0.5)
     output = np.reshape(output, original_shape)
@@ -152,9 +165,11 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
     for to_idx in range(num_channels):
       from_idx = (to_idx % groups) * group_size + to_idx // groups
       reshuffled_output[to_idx] = output[from_idx]
-    return np.swapaxes(reshuffled_output, 0, feature_index)
+    return (np.swapaxes(reshuffled_output, 0, feature_index),
+            np.reshape(np.squeeze(mean), (mean.size)),
+            np.reshape(np.squeeze(variance), (variance.size)))
 
-  def _implGroupNormInf(self, inputs, gamma, beta, mean, variance, groups, epsilon, data_format="NHWC"):
+  def _implGroupNormInf(self, inputs, gamma, beta, groups,  mean, variance, epsilon=0.0015, data_format="NHWC"):
     if data_format != "NHWC" and data_format != "NCHW":
       raise Exception("Unsupported data format " + data_format)
 
@@ -183,6 +198,26 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       }
       return sess.run(output, fd)
 
+  def _implGroupNormTraining(self, inputs, gamma, beta, groups, epsilon=0.0015, data_format="NHWC"):
+    if data_format != "NHWC" and data_format != "NCHW":
+      raise Exception("Unsupported data format " + data_format)
+
+    with ops.device("/device:IPU:0"):
+      pinputs = array_ops.placeholder(dataType, inputs.shape, name="inputs")
+      pgamma = array_ops.placeholder(dataType, gamma.shape, name="gamma")
+      pbeta = array_ops.placeholder(dataType, beta.shape, name="beta")
+      norm, mean, variance = gen_popnn_ops.popnn_group_norm_training(
+        inputs=pinputs, gamma=pgamma, beta=pbeta, data_format=data_format,
+        epsilon=epsilon, num_groups=groups)
+
+    with session_lib.Session() as sess:
+      fd = {
+        pinputs : inputs,
+        pgamma : gamma,
+        pbeta : beta,
+      }
+      return sess.run((norm, mean, variance), fd)
+
   @parameterized.named_parameters(*NAMED_GROUP_NORM_INF_TESTCASES)
   def testGroupNormInference(self, batch_size, num_channels, num_groups, dims, epsilon):
     np.random.seed(12)
@@ -202,15 +237,48 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       beta = np.random.rand(*gamma_beta_shape).astype(dataType)
       mean = np.random.rand(*mean_variance_shape).astype(dataType)
       variance = np.random.rand(*mean_variance_shape).astype(dataType)
-      expected = self._implGroupNormInf(
-          activations, gamma, beta, mean, variance, num_groups,
+      result = self._implGroupNormInf(
+          activations, gamma, beta, num_groups, mean, variance,
           epsilon=epsilon, data_format=data_format)
 
-      result = self._refGroupNormInf(
-          activations, gamma, beta, mean, variance, num_groups,
+      expected, _, _ = self._refGroupNormFwd(
+          activations, gamma, beta, num_groups, mean=mean, variance=variance,
           epsilon=epsilon, data_format=data_format)
 
       self.assertAllClose(expected, result)
+
+  @parameterized.named_parameters(*NAMED_GROUP_NORM_INF_TESTCASES)
+  def testGroupNormTraining(self, batch_size, num_channels, num_groups, dims, epsilon):
+    np.random.seed(48)
+    for data_format in ["NHWC","NCHW"]:
+      if data_format == "NHWC":
+        acts_shape = [batch_size, dims[0], dims[1], num_channels]
+      elif data_format == "NCHW":
+        acts_shape = [batch_size, num_channels, dims[0], dims[1]]
+      else:
+        raise Exception("Unsupported data format " + data_format)
+
+      gamma_beta_shape = [num_channels]
+
+      activations = np.random.rand(*acts_shape).astype(dataType)
+      gamma = np.random.rand(*gamma_beta_shape).astype(dataType)
+      beta = np.random.rand(*gamma_beta_shape).astype(dataType)
+      norm, mean, variance = self._implGroupNormTraining(
+          activations, gamma, beta, num_groups,
+          epsilon=epsilon, data_format=data_format)
+
+      expected_norm, expected_mean, expected_variance = self._refGroupNormFwd(
+          activations, gamma, beta, num_groups,
+          epsilon=epsilon, data_format=data_format)
+      self.assertAllClose(expected_mean, mean,
+                            rtol=training_rel_tolerance,
+                            atol=training_abs_tolerance)
+      self.assertAllClose(expected_variance, variance,
+                            rtol=training_rel_tolerance,
+                            atol=training_abs_tolerance)
+      self.assertAllClose(expected_norm, norm,
+                            rtol=training_rel_tolerance,
+                            atol=training_abs_tolerance)
 
 if __name__ == "__main__":
   googletest.main()

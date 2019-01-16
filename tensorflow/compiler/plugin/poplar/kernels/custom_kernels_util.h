@@ -50,8 +50,8 @@ enum class PoplibsOp : uint32 {
   LstmLayerFwd = 0,
   LstmLayerBwd,
   GroupNormInference,
-  // GroupNormTraining,
-  // GroupNormGrad,
+  GroupNormTraining,
+  GroupNormGrad,
   // Popops:
   Sqrt,
   Rsqrt,

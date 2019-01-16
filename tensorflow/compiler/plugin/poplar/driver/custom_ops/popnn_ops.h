@@ -57,11 +57,11 @@ StatusOr<poplar::Tensor> AllocateNormInferenceAndTrainingOp(
     const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
     absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
     const TensorMap&);
-// StatusOr<poplar::Tensor> AllocateNormGradOp(
-//     poplar::Graph&, CompilerResources&, const std::string&,
-//     const HloInstruction*, const int64, absl::optional<const
-//     HloInstruction*>,
-//     absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&);
+StatusOr<poplar::Tensor> AllocateNormGradOp(
+    poplar::Graph&, CompilerResources&, const std::string&,
+    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
+    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
+    const TensorMap&);
 
 // Creating functions.
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
@@ -71,6 +71,12 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 StatusOr<poplar::program::Program> CreateGroupNormInferenceOp(
+    poplar::Graph&, CompilerResources&, const HloInstruction*,
+    const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
+StatusOr<poplar::program::Program> CreateGroupNormTrainingOp(
+    poplar::Graph&, CompilerResources&, const HloInstruction*,
+    const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
+StatusOr<poplar::program::Program> CreateGroupNormGradOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 }  // namespace poplarplugin

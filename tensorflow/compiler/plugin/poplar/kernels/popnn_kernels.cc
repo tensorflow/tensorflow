@@ -225,7 +225,7 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
   }
 
  protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() { return {}; }
+  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
 
   const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
     return {};
@@ -257,12 +257,11 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
  public:
   ~PopnnGroupNorm() override{};
 
-  void Compile(XlaOpKernelContext* ctx) override {
+  virtual void Compile(XlaOpKernelContext* ctx) {
     xla::PrimitiveType input_type;
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
 
-    xla::XlaOp input = ctx->Input(0);
     TensorShape input_shape = ctx->InputShape(0);
 
     const int feature_index =
@@ -311,19 +310,37 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
                       "The variance tensor needs to be of shape [%u].",
                       num_groups_ * num_batches)));
       xla::Shape output_shape = TensorShapeToXLAShape(input_type, input_shape);
-      xla::XlaOp normalized = xla::CustomCall(
+      xla::XlaOp call_output = xla::CustomCall(
           &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
                                              PoplibsOp::GroupNormInference),
           args, output_shape, attribute_map_.Serialise());
-      ctx->SetOutput(0, normalized);
+      ctx->SetOutput(0, call_output);
+    } else if (ctx->num_inputs() == 3) {
+      // Training
+      xla::Shape output_shape = TensorShapeToXLAShape(input_type, input_shape);
+      xla::Shape mean_variance_shape =
+          xla::ShapeUtil::MakeShape(input_type, {num_groups_ * num_batches});
 
+      xla::Shape output_tuple_shape = xla::ShapeUtil::MakeTupleShape(
+          {output_shape, mean_variance_shape, mean_variance_shape});
+      xla::XlaOp call_output = xla::CustomCall(
+          &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
+                                             PoplibsOp::GroupNormTraining),
+          args, output_tuple_shape, attribute_map_.Serialise());
+      xla::XlaOp output = xla::GetTupleElement(call_output, 0);
+      xla::XlaOp mean = xla::GetTupleElement(call_output, 1);
+      xla::XlaOp variance = xla::GetTupleElement(call_output, 2);
+
+      ctx->SetOutput(0, output);
+      ctx->SetOutput(1, mean);
+      ctx->SetOutput(2, variance);
     } else {
       LOG(FATAL) << "Unsupported use of PopnnGroupNorm.";
     }
   }
 
  protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() { return {}; }
+  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
 
   const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
     // Scale and offset layouts depend on the passed in activations.
@@ -338,6 +355,80 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(PopnnGroupNorm);
 };
 REGISTER_IPU_OP("PopnnGroupNormInference", PopnnGroupNorm);
-// REGISTER_IPU_OP("PopnnGroupNormTraining", PopnnGroupNorm);
+REGISTER_IPU_OP("PopnnGroupNormTraining", PopnnGroupNorm);
+
+class PopnnGroupNormGrad : public XlaOpKernel, IpuOpKernel {
+ public:
+  explicit PopnnGroupNormGrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    AddRequiredAttributesToMap();
+    int32 num_groups;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_groups", &num_groups));
+    attribute_map_.AddAttribute("num_groups", num_groups);
+    float epsilon;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon));
+    attribute_map_.AddAttribute("epsilon", epsilon);
+    std::string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(
+        ctx, FormatFromString(data_format_str, &data_format_),
+        errors::InvalidArgument("Invalid data format: ", data_format_str));
+  }
+
+ public:
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::PrimitiveType input_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
+
+    TensorShape input_shape = ctx->InputShape(0);
+    xla::Shape input_backprop_shape =
+        TensorShapeToXLAShape(input_type, input_shape);
+    TensorShape gamma_beta_shape = ctx->InputShape(1);
+    xla::Shape gamma_beta_backprop_shape =
+        TensorShapeToXLAShape(input_type, gamma_beta_shape);
+    // Don't need to validate shapes as they are coming from the training op.
+
+    const int feature_index =
+        GetTensorFeatureDimIndex(input_shape.dims(), data_format_);
+    attribute_map_.AddAttribute("feature_index", feature_index);
+
+    xla::XlaBuilder& b = *ctx->builder();
+
+    // All the inputs are arguments.
+    std::vector<xla::XlaOp> args;
+    for (unsigned idx = 0; idx < ctx->num_inputs(); idx++) {
+      args.push_back(ctx->Input(idx));
+    }
+
+    xla::Shape output_tuple_shape = xla::ShapeUtil::MakeTupleShape(
+        {input_backprop_shape, gamma_beta_backprop_shape,
+         gamma_beta_backprop_shape});
+    xla::XlaOp call_output =
+        xla::CustomCall(&b, GetPoplibsCustomOpTargetString(
+                                PoplibsLib::Popnn, PoplibsOp::GroupNormGrad),
+                        args, output_tuple_shape, attribute_map_.Serialise());
+    xla::XlaOp input_backprop = xla::GetTupleElement(call_output, 0);
+    xla::XlaOp gamma_backprop = xla::GetTupleElement(call_output, 1);
+    xla::XlaOp beta_backprop = xla::GetTupleElement(call_output, 2);
+
+    ctx->SetOutput(0, input_backprop);
+    ctx->SetOutput(1, gamma_backprop);
+    ctx->SetOutput(2, beta_backprop);
+  }
+
+ protected:
+  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
+
+  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
+    return {};
+  };
+
+  const uint64 NumberOfInplaceOperands() override { return 0; }
+
+ private:
+  TensorFormat data_format_;
+  TF_DISALLOW_COPY_AND_ASSIGN(PopnnGroupNormGrad);
+};
+REGISTER_IPU_OP("PopnnGroupNormGrad", PopnnGroupNormGrad);
 
 }  // namespace tensorflow

@@ -119,6 +119,9 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
       {PoplibsOp::LstmLayerBwd, {AllocateLstmLayerBwdOp, CreateLstmLayerBwdOp}},
       {PoplibsOp::GroupNormInference,
        {AllocateNormInferenceAndTrainingOp, CreateGroupNormInferenceOp}},
+      {PoplibsOp::GroupNormTraining,
+       {AllocateNormInferenceAndTrainingOp, CreateGroupNormTrainingOp}},
+      {PoplibsOp::GroupNormGrad, {AllocateNormGradOp, CreateGroupNormGradOp}},
   };
   return info_map;
 }
@@ -216,6 +219,17 @@ StatusOr<poplar::Tensor> AllocateNormInferenceAndTrainingOp(
           inst->name().c_str(), target_idx);
     }
   }
+}
+
+StatusOr<poplar::Tensor> AllocateNormGradOp(
+    poplar::Graph& graph, CompilerResources& res, const std::string& name,
+    const HloInstruction* inst, const int64 target_idx,
+    absl::optional<const HloInstruction*> optional_layout,
+    absl::optional<int64> optional_layout_output_idx,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map,
+    const TensorMap& tensor_map) {
+  return xla::FailedPrecondition(
+      "Gradient of a Norm operation should not be allocating.");
 }
 
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
@@ -343,9 +357,8 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateGroupNormInferenceOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map,
+namespace {
+StatusOr<std::tuple<uint32, uint32, float>> GetNormOpts(
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   TF_ASSIGN_OR_RETURN(int32 feature_index_int32,
                       attribute_map.GetAttributeAsInt("feature_index"));
@@ -365,8 +378,47 @@ StatusOr<poplar::program::Program> CreateGroupNormInferenceOp(
 
   TF_ASSIGN_OR_RETURN(float epsilon,
                       attribute_map.GetAttributeAsFloat("epsilon"));
+  return std::make_tuple(feature_index, num_groups, epsilon);
+};
+}  // namespace
+
+StatusOr<poplar::program::Program> CreateGroupNormInferenceOp(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  uint32 feature_index;
+  uint32 num_groups;
+  float epsilon;
+  TF_ASSIGN_OR_RETURN(std::tie(feature_index, num_groups, epsilon),
+                      GetNormOpts(attribute_map));
   return CreateNormInference(NormType::GroupNorm, graph, res, inst, epsilon,
                              feature_index, num_groups, tensor_map);
+}
+
+StatusOr<poplar::program::Program> CreateGroupNormTrainingOp(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  uint32 feature_index;
+  uint32 num_groups;
+  float epsilon;
+  TF_ASSIGN_OR_RETURN(std::tie(feature_index, num_groups, epsilon),
+                      GetNormOpts(attribute_map));
+  return CreateNormTraining(NormType::GroupNorm, graph, res, inst, epsilon,
+                            feature_index, num_groups, tensor_map);
+}
+
+StatusOr<poplar::program::Program> CreateGroupNormGradOp(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  uint32 feature_index;
+  uint32 num_groups;
+  float epsilon;
+  TF_ASSIGN_OR_RETURN(std::tie(feature_index, num_groups, epsilon),
+                      GetNormOpts(attribute_map));
+  return CreateNormGrad(NormType::GroupNorm, graph, res, inst, epsilon,
+                        feature_index, num_groups, tensor_map);
 }
 
 }  // namespace poplarplugin

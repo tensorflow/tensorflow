@@ -152,15 +152,21 @@ poplar::Tensor DoCachedNormInference(
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd = ConvertVarianceToInvStdDev(
             graph, args[4], epsilon, seq, debug_prefix);
+        poplar::Tensor out;
         switch (norm_type) {
-          case NormType::BatchNorm:
-            return BatchNormalise(graph, args[0], args[1], args[2], args[3],
-                                  inv_sd, seq, debug_prefix);
-          case NormType::GroupNorm:
-            return popnn::gn::groupNormalise(graph, args[0], args[1], args[2],
-                                             args[3], inv_sd, seq, debug_prefix)
-                .first;
+          case NormType::BatchNorm: {
+            out = BatchNormalise(graph, args[0], args[1], args[2], args[3],
+                                 inv_sd, seq, debug_prefix);
+            break;
+          }
+          case NormType::GroupNorm: {
+            out = popnn::gn::groupNormalise(graph, args[0], args[1], args[2],
+                                            args[3], inv_sd, seq, debug_prefix)
+                      .first;
+            break;
+          }
         }
+        return out;
       });
   res.norm_inf_graph_cache.emplace(key, f);
   return f(args, prog);
@@ -203,7 +209,14 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormTraining(
             break;
           }
           case NormType::GroupNorm: {
-            // TODO
+            std::tie(args[4], inv_sd) = popnn::gn::groupNormStatistics(
+                graph, args[0], epsilon, seq, *optional_num_groups, false,
+                poplar::FLOAT, debug_prefix);
+
+            args[3] =
+                popnn::gn::groupNormalise(graph, args[0], args[1], args[2],
+                                          args[4], inv_sd, seq, debug_prefix)
+                    .first;
             break;
           }
         }
@@ -264,7 +277,18 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
             break;
           }
           case NormType::GroupNorm: {
-            // TODO
+            poplar::Tensor operand_whitened =
+                popnn::gn::groupNormWhiten(graph, args[0], args[2], inv_sd, seq,
+                                           debug_prefix + "/WhitenedActs");
+
+            // Compute the grad for the operand.
+            args[5] = popnn::gn::groupNormGradients(
+                graph, operand_whitened, args[4], inv_sd, args[1], seq,
+                poplar::FLOAT, debug_prefix + "/OperandGrad");
+            // Compute the grads for the scale and offset.
+            std::tie(args[6], args[7]) = popnn::gn::groupNormParamGradients(
+                graph, operand_whitened, args[4], seq, poplar::FLOAT,
+                debug_prefix + "/ScaleOffsetGrads");
             break;
           }
         }
