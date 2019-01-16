@@ -82,7 +82,7 @@ struct ConversionParams {
   bool fixed_input_size;   // Assume non-batch ranks of input tensors are fixed
   int max_cached_engines;  // maximum number of cached engines
   bool use_calibration;
-  std::vector<int> cached_engine_batches;  // list of cached engines
+  std::vector<int> cached_engine_batch_sizes;  // list of cached engines
 };
 
 // This method extracts calibration information from the resource managers
@@ -101,7 +101,8 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
     int precision_mode = 1, int minimum_segment_size = 3,
     bool is_dyn_op = false, int max_cached_engines = 1,
-    std::vector<int> cached_engine_batches = {}, bool use_calibration = true);
+    std::vector<int> cached_engine_batch_sizes = {},
+    bool use_calibration = true);
 
 // Method to call from optimization pass
 tensorflow::Status ConvertAfterShapes(ConversionParams& params);

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Model script to test TF-TensorRT integration."""
+"""Test LRUCache by running different input batch sizes on same network."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,45 +30,48 @@ from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
 
-class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
+class LRUCacheTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
-    """Neighboring node wiring tests in TF-TRT conversion."""
     dtype = dtypes.float32
     input_name = "input"
-    input_dims = [2, 3, 7, 5]
+    input_dims = [[[1, 10, 10, 2]], [[2, 10, 10, 2]], [[4, 10, 10, 2]],
+                  [[2, 10, 10, 2]]]
+    expected_output_dims = [[[1, 10, 10, 1]], [[2, 10, 10, 1]], [[4, 10, 10,
+                                                                  1]],
+                            [[2, 10, 10, 1]]]
     output_name = "output"
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      e = constant_op.constant(
-          np.random.normal(.3, 0.05, [3, 2, 3, 4]), name="weights", dtype=dtype)
-      conv = nn.conv2d(
+      x = array_ops.placeholder(
+          dtype=dtype, shape=[None, 10, 10, 2], name=input_name)
+      conv_filter = constant_op.constant(
+          np.random.randn(3, 3, 2, 1), dtype=dtypes.float32)
+      x = nn.conv2d(
           input=x,
-          filter=e,
-          data_format="NCHW",
+          filter=conv_filter,
           strides=[1, 1, 1, 1],
-          padding="VALID",
+          padding="SAME",
           name="conv")
-      b = constant_op.constant(
-          np.random.normal(1.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
-      t = math_ops.mul(conv, b, name="mul")
-      e = self.trt_incompatible_op(conv, name="incompatible")
-      t = math_ops.sub(t, e, name="sub")
-      array_ops.squeeze(t, name=output_name)
+      bias = constant_op.constant(
+          np.random.randn(1, 10, 10, 1), dtype=dtypes.float32)
+      x = math_ops.add(x, bias)
+      x = nn.relu(x)
+      x = array_ops.identity(x, name="output")
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[[input_dims]],
+        input_dims=input_dims,
         output_names=[output_name],
-        expected_output_dims=[[[2, 4, 5, 4]]])
+        expected_output_dims=expected_output_dims)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {
-        "TRTEngineOp_0": ["bias", "mul", "sub"],
-        "TRTEngineOp_1": ["weights", "conv"]
-    }
+    return ["TRTEngineOp_0"]
+
+  def ShouldRunTest(self, run_params):
+    return (run_params.dynamic_engine and
+            not trt_test.IsQuantizationMode(run_params.precision_mode))
 
 
 if __name__ == "__main__":

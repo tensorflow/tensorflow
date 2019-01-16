@@ -221,6 +221,7 @@ tf_cuda_library(
     ],
     hdrs = [
         "resources/trt_int8_calibrator.h",
+        "resources/trt_lru_cache.h",
         "resources/trt_resource_manager.h",
         "resources/trt_resources.h",
     ],
@@ -259,6 +260,21 @@ tf_cc_test(
     ],
     deps = [
         ":trt_allocator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "trt_lru_cache_test",
+    size = "small",
+    srcs = ["resources/trt_lru_cache_test.cc"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_resources",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -493,8 +509,10 @@ cuda_py_tests(
         "test/concatenation_test.py",
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",
+        "test/dynamic_input_shapes_test.py",
         "test/identity_output_test.py",
         "test/int32_test.py",
+        "test/lru_cache_test.py",
         "test/manual_test.py",
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
@@ -549,6 +567,7 @@ cc_library(
     hdrs = ["convert/utils.h"],
     copts = tf_copts(),
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
 )
