@@ -1266,7 +1266,7 @@ class MirroredStrategyDefunTest(test.TestCase):
                             self.evaluate(device_result))
 
       for defun in defuns:
-        # PolymorphicFunctions are specialized to the current device stack, so
+        # `Function`s are specialized to the current device stack, so
         # call_for_each has one trace per device. To check that the expected set
         # of variables was accessed on each trace, we first retrieve each
         # device-specific graph function.

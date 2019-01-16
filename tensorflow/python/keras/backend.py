@@ -3138,7 +3138,7 @@ class EagerExecutionFunction(object):
     # the relevant subgraph?
     graph.inputs = self.inputs + list(graph.captures.values())
     graph.outputs = self.outputs
-    graph_fn = eager_function.Function(graph)
+    graph_fn = eager_function.ConcreteFunction(graph)
     graph_fn._num_positional_args = len(self.inputs)
     graph_fn._arg_keywords = []
     self._graph_fn = graph_fn

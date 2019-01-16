@@ -52,7 +52,7 @@ message SavedObject {
   oneof kind {
     SavedUserObject user_object = 4;
     SavedAsset asset = 5;
-    SavedPolymorphicFunction function = 6;
+    SavedFunction function = 6;
     SavedVariable variable = 7;
   }
 }
@@ -84,14 +84,14 @@ message SavedAsset {
 }
 
 // A function with multiple signatures, possibly with non-Tensor arguments.
-message SavedPolymorphicFunction {
-  repeated SavedMonomorphicFunction monomorphic_function = 1;
+message SavedFunction {
+  repeated SavedConcreteFunction concrete_function = 1;
   FunctionSpec function_spec = 2;
 }
 
-message SavedMonomorphicFunction {
+message SavedConcreteFunction {
   // A reference to a TensorFlow function in the MetaGraph's FunctionDefLibrary
-  string concrete_function = 1;
+  string name = 1;
 
   // Bound inputs to the function. The SavedObjects identified by the node ids
   // given here are appended as extra inputs to the caller-supplied inputs.
@@ -117,8 +117,8 @@ message SavedVariable {
   // TODO(andresp): Add save_slice_info_def?
 }
 
-// Represents FunctionSpec used in PolymorphicFunction. This represents a
-// function that has been wrapped as a PolymorphicFunction.
+// Represents `FunctionSpec` used in `Function`. This represents a
+// function that has been wrapped as a TensorFlow `Function`.
 message FunctionSpec {
   // Full arg spec from inspect.getfullargspec().
   StructuredValue fullargspec = 1;
