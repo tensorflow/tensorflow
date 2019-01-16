@@ -97,13 +97,18 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantizationWithUnitScale) {
   const std::vector<float>& weights_scales =
       weights_tensor->quantization->scale;
 
+  const std::vector<int64_t>& weights_zero_points =
+      weights_tensor->quantization->zero_point;
+
   ASSERT_EQ(weights_scales.size(), out_channel_size);
+  ASSERT_EQ(weights_zero_points.size(), out_channel_size);
   ASSERT_EQ(input_tensor->quantization->scale.size(), 1);
   ASSERT_EQ(output_tensor->quantization->scale.size(), 1);
 
 
   for (size_t i = 0; i < out_channel_size; i++) {
     EXPECT_EQ(weights_scales[i], 1);
+    EXPECT_EQ(weights_zero_points[i], 0);
   }
 
   EXPECT_EQ(input_tensor->quantization->scale[0], 1);
@@ -190,8 +195,11 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
   ASSERT_TRUE(weights_tensor->quantization);
   const std::vector<float>& weights_scales =
       weights_tensor->quantization->scale;
+  const std::vector<int64_t>& weights_zero_points =
+      weights_tensor->quantization->zero_point;
 
   ASSERT_EQ(weights_scales.size(), out_channel_size);
+  ASSERT_EQ(weights_zero_points.size(), out_channel_size);
   ASSERT_EQ(input_tensor->quantization->scale.size(), 1);
   ASSERT_EQ(output_tensor->quantization->scale.size(), 1);
 
@@ -225,9 +233,11 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
     for (size_t j = 0; j < num_values_in_channel; j++) {
       size_t element_idx = channel_idx * out_channel_size + j;
       auto scale = weights_scales[channel_idx];
+      auto zero_point = weights_zero_points[channel_idx];
       auto dequantized_value = weight_values[element_idx] * scale;
       EXPECT_NEAR(dequantized_value, weights_float_buffer[element_idx],
                   scale / 2);
+      EXPECT_EQ(zero_point, 0);
     }
   }
 }
