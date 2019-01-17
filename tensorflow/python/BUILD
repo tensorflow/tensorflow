@@ -178,6 +178,7 @@ py_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:profiler",
         "//tensorflow/python/eager:remote",
+        "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/losses",
