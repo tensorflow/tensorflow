@@ -786,13 +786,19 @@ void DumpGraph(StringPiece label, const Graph* g) {
   }
 }
 
-void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,
+                   const GraphOptimizer::Options& graph_optimizer_options) {
   OptimizerOptions opts;
   opts.set_do_common_subexpression_elimination(true);
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(lib, lib->env(), lib->device(), g, /*shape_map=*/nullptr);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g,
+                     graph_optimizer_options);
+}
+
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
+  OptimizeGraph(lib, g, GraphOptimizer::Options());
 }
 
 namespace {

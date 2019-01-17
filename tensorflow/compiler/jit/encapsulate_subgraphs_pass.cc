@@ -2535,7 +2535,33 @@ Status EncapsulateSubgraphsPass::Run(
             std::vector<int>* input_permutation,
             std::vector<int>* output_permutation, NodeDef* node) {
         // Optimize the subgraph.
-        OptimizeGraph(flr, subgraph);
+        // Do not constant fold nodes that output DT_VARIANT type tensors.
+        // XLA does not support Const nodes of Variant type since it needs
+        // to know the original ops to be able to compile them to the relevant
+        // XLA form.
+        // TODO(srbs): This filter is a little conservative. E.g. a subgraph of
+        // the form:
+        //                          Const
+        //                            |
+        // EmptyTensorList -> TensorListPushBack -> TensorListPopBack -> Op
+        //                                                  |
+        //                                        (Discard popped list)
+        //
+        // Would have been reduced to "Const -> Op" without this filter.
+        // However since we are only allowed to specify the filter at the "Node"
+        // level there is no good way to allow the above behavior. So we
+        // disallow any sort of constant folding on Variant nodes for now.
+        auto cf_consider_fn = [](const Node* n) {
+          for (const auto& output_arg : n->op_def().output_arg()) {
+            if (output_arg.type() == DT_VARIANT) {
+              return false;
+            }
+          }
+          return true;
+        };
+        GraphOptimizer::Options graph_optimizer_options;
+        graph_optimizer_options.cf_consider_fn = cf_consider_fn;
+        OptimizeGraph(flr, subgraph, graph_optimizer_options);
 
         const int num_args = input_permutation->size();
         std::vector<bool> const_args(num_args);
