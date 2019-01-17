@@ -533,8 +533,10 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
 
       hist_1 = model_v1.fit(x, y, batch_size=5, epochs=1, shuffle=False)
       hist_2 = model_v2.fit(x, y, batch_size=5, epochs=1, shuffle=False)
-      self.assertAllClose(model_v1.get_weights(), model_v2.get_weights())
-      self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'])
+      self.assertAllClose(model_v1.get_weights(), model_v2.get_weights(),
+                          rtol=1e-5, atol=1e-5)
+      self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'],
+                          rtol=1e-5, atol=1e-5)
 
   def testAdadeltaCompatibility(self):
     opt_v1 = optimizers.Adadelta(lr=0.01)
