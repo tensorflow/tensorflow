@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
-#include "tensorflow/core/framework/iterator.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -277,12 +276,19 @@ class IteratorResource : public ResourceBase {
 
 namespace {
 
+constexpr char kDelimiter[] = "@@";
+
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
  public:
   explicit VariantTensorDataReader(const VariantTensorData* data)
       : data_(data) {
-    PreProcess();
+    string metadata;
+    data_->get_metadata(&metadata);
+    auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+    for (size_t i = 0; i < keys.size(); ++i) {
+      map_[keys[i]] = i;
+    }
   }
 
   // Returns OK iff the initialization was successful, i.e.,
@@ -306,21 +312,6 @@ class VariantTensorDataReader : public IteratorStateReader {
   }
 
  private:
-  void PreProcess() {
-    string metadata;
-    data_->get_metadata(&metadata);
-    IteratorStateMetadata proto;
-    if (!proto.ParseFromString(metadata)) {
-      status_ = errors::Internal("Error parsing IteratorStateMetadata.");
-      return;
-    }
-    size_t num_entries = proto.keys_size();
-    CHECK_EQ(num_entries, data_->tensors_size());
-    for (size_t i = 0; i < num_entries; i++) {
-      map_[proto.keys(i)] = i;
-    }
-  }
-
   template <typename T>
   Status ReadScalarInternal(StringPiece key, T* val) {
     if (map_.find(string(key)) == map_.end()) {
@@ -361,11 +352,10 @@ class VariantTensorDataWriter : public IteratorStateWriter {
     return WriteTensorInternal(key, val);
   }
 
-  // Writes the metadata to `data_`.
   Status Flush() {
     string metadata;
-    if (!metadata_proto_.SerializeToString(&metadata)) {
-      return errors::Internal("Unable to serialize IteratorStateMetadata.");
+    for (size_t i = 0; i < keys_.size(); ++i) {
+      strings::StrAppend(&metadata, kDelimiter, keys_[i]);
     }
     data_->set_metadata(metadata);
     return Status::OK();
@@ -380,19 +370,14 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   }
 
   Status WriteTensorInternal(StringPiece key, const Tensor& val) {
-    // Write key to the metadata proto. This gets written to `data_`
-    // when `Flush()` is called. We do this lazily to avoid multiple
-    // serialization calls.
-    metadata_proto_.add_keys(string(key));
-
-    // Update tensors.
+    DCHECK_EQ(key.find(kDelimiter), string::npos);
+    keys_.push_back(string(key));
     *(data_->add_tensors()) = val;
     return Status::OK();
   }
 
   VariantTensorData* data_;
-  // TODO(srbs): Set the version string.
-  IteratorStateMetadata metadata_proto_;
+  std::vector<string> keys_;
 };
 
 // Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
