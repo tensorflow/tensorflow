@@ -67,7 +67,10 @@ class AdagradOptimizer(optimizer.Optimizer):
     self._initial_accumulator_value = initial_accumulator_value
     # Created in Initialize.
     self._learning_rate_tensor = None
-
+  
+    # Created in SparseApply if needed.
+    self._updated_lr = None
+    
   def _create_slots(self, var_list):
     for v in var_list:
       dtype = v.dtype.base_dtype
