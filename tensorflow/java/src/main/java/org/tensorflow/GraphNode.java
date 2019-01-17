@@ -30,8 +30,8 @@ public final class GraphNode extends AbstractOperation {
   // TF_Operation object.  The handle is valid only as long as g has not been closed, hence it is
   // called unsafeHandle.  Graph.ref() is used to safely use the unsafeHandle.
   GraphNode(Graph g, long unsafeNativeHandle) {
-    super(unsafeNativeHandle);
     this.graph = g;
+    this.unsafeNativeHandle = unsafeNativeHandle;
   }
 
   @Override
@@ -153,7 +153,13 @@ public final class GraphNode extends AbstractOperation {
     }
   }
 
+  long getUnsafeNativeHandle() {
+    return unsafeNativeHandle;
+  }
+
   private final Graph graph;
+  
+  private final long unsafeNativeHandle;
 
   private static native String name(long handle);
 
