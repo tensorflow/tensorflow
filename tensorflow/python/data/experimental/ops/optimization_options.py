@@ -125,11 +125,10 @@ class OptimizationOptions(options.OptionsBase):
       # user explicitly disables them.
       optimizations_to_disable = [
           "map_and_batch_fusion",
-          "map_parallelization",
           "noop_elimination",
           "shuffle_and_repeat_fusion",
       ]
       for optimization in optimizations_to_disable:
         if getattr(self, optimization) is not False:
           result.add(optimization)
-    return list(result)
+    return sorted(list(result))

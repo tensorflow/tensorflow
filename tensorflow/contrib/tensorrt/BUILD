@@ -54,8 +54,9 @@ tf_cuda_cc_test(
 )
 
 tf_custom_op_library(
-    name = "python/ops/_trt_engine_op.so",
+    name = "python/ops/_trt_ops.so",
     srcs = [
+        "ops/get_serialized_resource_op.cc",
         "ops/trt_engine_op.cc",
     ],
     deps = [
@@ -80,8 +81,9 @@ tf_cuda_library(
 )
 
 cc_library(
-    name = "trt_engine_op_kernel",
+    name = "trt_op_kernels",
     srcs = [
+        "kernels/get_serialized_resource_op.cc",
         "kernels/trt_engine_op.cc",
     ],
     hdrs = [
@@ -109,9 +111,33 @@ cc_library(
     alwayslink = 1,  # buildozer: disable=alwayslink-with-hdrs
 )
 
+tf_cuda_cc_test(
+    name = "get_serialized_resource_op_test",
+    size = "small",
+    srcs = ["kernels/get_serialized_resource_op_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":get_serialized_resource_op_op_lib",
+        ":trt_op_kernels",
+        ":trt_resources",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
 tf_gen_op_libs(
     op_lib_names = [
         "trt_engine_op",
+        "get_serialized_resource_op",
     ],
 )
 
@@ -128,8 +154,9 @@ tf_cuda_library(
 )
 
 tf_gen_op_wrapper_py(
-    name = "trt_engine_op",
+    name = "trt_ops",
     deps = [
+        ":get_serialized_resource_op_op_lib",
         ":trt_engine_op_op_lib",
         ":trt_logging",
         ":trt_shape_function",
@@ -137,16 +164,17 @@ tf_gen_op_wrapper_py(
 )
 
 tf_custom_op_py_library(
-    name = "trt_engine_op_loader",
-    srcs = ["python/ops/trt_engine_op.py"],
+    name = "trt_ops_loader",
+    srcs = ["python/ops/trt_ops.py"],
     dso = [
-        ":python/ops/_trt_engine_op.so",
+        ":python/ops/_trt_ops.so",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),
     kernels = [
-        ":trt_engine_op_kernel",
+        ":trt_op_kernels",
         ":trt_engine_op_op_lib",
+        ":get_serialized_resource_op_op_lib",
         ":trt_shape_function",
     ],
     srcs_version = "PY2AND3",
@@ -176,8 +204,8 @@ py_library(
     name = "trt_ops_py",
     srcs_version = "PY2AND3",
     deps = [
-        ":trt_engine_op",
-        ":trt_engine_op_loader",
+        ":trt_ops",
+        ":trt_ops_loader",
     ],
 )
 
@@ -208,7 +236,7 @@ tf_py_wrap_cc(
     deps = [
         ":test_utils",
         ":trt_conversion",
-        ":trt_engine_op_kernel",
+        ":trt_op_kernels",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -218,9 +246,11 @@ tf_cuda_library(
     srcs = [
         "resources/trt_int8_calibrator.cc",
         "resources/trt_resource_manager.cc",
+        "resources/trt_resources.cc",
     ],
     hdrs = [
         "resources/trt_int8_calibrator.h",
+        "resources/trt_lru_cache.h",
         "resources/trt_resource_manager.h",
         "resources/trt_resources.h",
     ],
@@ -259,6 +289,21 @@ tf_cc_test(
     ],
     deps = [
         ":trt_allocator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "trt_lru_cache_test",
+    size = "small",
+    srcs = ["resources/trt_lru_cache_test.cc"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_resources",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -493,8 +538,10 @@ cuda_py_tests(
         "test/concatenation_test.py",
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",
+        "test/dynamic_input_shapes_test.py",
         "test/identity_output_test.py",
         "test/int32_test.py",
+        "test/lru_cache_test.py",
         "test/manual_test.py",
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
@@ -549,6 +596,7 @@ cc_library(
     hdrs = ["convert/utils.h"],
     copts = tf_copts(),
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
 )

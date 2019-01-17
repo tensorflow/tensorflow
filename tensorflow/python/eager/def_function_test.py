@@ -247,7 +247,7 @@ class DefFunctionTest(test.TestCase):
     concrete = compute.get_concrete_function(
         tensor_spec.TensorSpec(None, dtypes.float32))
     self.assertAllClose(4., concrete(constant_op.constant(2.)))
-    input_signature, = compute._cached_input_signatures
+    input_signature, _ = concrete.structured_input_signature
     self.assertEqual(
         tuple(input_signature),
         (tensor_spec.TensorSpec(None, dtypes.float32),))
@@ -260,8 +260,13 @@ class DefFunctionTest(test.TestCase):
 
     f(constant_op.constant([[3., 4.]]), constant_op.constant([2.]))
     f(constant_op.constant([[3, 4, 5]]), constant_op.constant([2]))
+
+    concrete_functions = f._list_all_concrete_functions_for_serialization()
+    signatures_for_serialization = [
+        c.structured_input_signature[0] for c in concrete_functions
+    ]
     self.assertEqual(
-        set(f._cached_input_signatures),
+        set(signatures_for_serialization),
         set(((tensor_spec.TensorSpec([1, 2], dtypes.float32),
               tensor_spec.TensorSpec([1], dtypes.float32)),
              (tensor_spec.TensorSpec([1, 3], dtypes.int32),

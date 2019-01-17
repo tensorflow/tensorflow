@@ -409,11 +409,13 @@ class ResourceVariable(variables.VariableV1):
         # Use attr_scope and device(None) to simulate the behavior of
         # colocate_with when the variable we want to colocate with doesn't
         # yet exist.
+        device_context_manager = (
+            ops.device if self._in_graph_mode else ops.NullContextmanager)
         attr = attr_value_pb2.AttrValue(
             list=attr_value_pb2.AttrValue.ListValue(
                 s=[compat.as_bytes("loc:@%s" % handle_name)]))
         with ops.get_default_graph()._attr_scope({"_class": attr}):
-          with ops.name_scope("Initializer"), ops.device(None):
+          with ops.name_scope("Initializer"), device_context_manager(None):
             initial_value = ops.convert_to_tensor(
                 initial_value() if init_from_fn else initial_value,
                 name="initial_value", dtype=dtype)
@@ -593,7 +595,7 @@ class ResourceVariable(variables.VariableV1):
         constraint=self._constraint,
         dtype=self._dtype,
         name=self._shared_name + "_copy",
-        distribute_strategy=self.distribute_strategy)
+        distribute_strategy=self._distribute_strategy)
     memo[self._unique_id] = copied_variable
     return copied_variable
 
@@ -621,11 +623,6 @@ class ResourceVariable(variables.VariableV1):
   def shape(self):
     """The shape of this variable."""
     return self._shape
-
-  @property
-  def distribute_strategy(self):
-    """The `tf.distribute.Strategy` that this variable was created under."""
-    return self._distribute_strategy
 
   def _shape_as_list(self):
     if self.shape.ndims is None:
@@ -933,7 +930,7 @@ class ResourceVariable(variables.VariableV1):
         name=self._shared_name,
         dtype=self.dtype,
         constraint=self.constraint,
-        distribute_strategy=self.distribute_strategy), ()
+        distribute_strategy=self._distribute_strategy), ()
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.

@@ -2317,6 +2317,27 @@ tensorflow::Status ConvertLeakyReluOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertUnidirectionalSequenceRnn(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  DCHECK_EQ(node.op(), "UnidirectionalSequenceRnn");
+
+  auto* op = new UnidirectionalSequenceRnnOperator();
+  const auto& indices = GetListAttr(node, "_tflite_input_indices");
+  if (indices.i_size() != node.input().size()) {
+    return tensorflow::errors::InvalidArgument("Input size does not match.");
+  }
+
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  // Only use the last one as input.
+  op->outputs.push_back(node.name() + ":1");
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -2454,6 +2475,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Unpack", ConvertUnpackOperator},
       {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1, 1>},
       {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
+      {"UnidirectionalSequenceRnn", ConvertUnidirectionalSequenceRnn},
       {"MirrorPad", ConvertMirrorPadOperator},
       {"Unique", ConvertSimpleOperator<UniqueOperator, 1, 2>},
   });

@@ -151,7 +151,7 @@ class MultiDeviceIterator : public ResourceBase {
     void Reset() LOCKS_EXCLUDED(mu_) {
       {
         mutex_lock l(mu_);
-        if (!background_thread_finished_) {
+        if (background_thread_ && !background_thread_finished_) {
           cancelled_ = true;
           // Wake up the background thread.
           for (int i = 0; i < size_; ++i) {

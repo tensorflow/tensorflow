@@ -19,11 +19,17 @@ limitations under the License.
 namespace tflite {
 namespace optimize {
 namespace internal {
-const char* kModelWithMinus128Plus127Weights =
+const char* kConvModelWithMinus128Plus127Weights =
     "single_conv_weights_min_minus_127_max_plus_127.tflite";
 
-const char* kModelWith0Plus10Weights =
+const char* kConvModelWith0Plus10Weights =
     "single_conv_weights_min_0_max_plus_10.tflite";
+
+const char* kSingleSoftmaxModelMinMinus5MaxPlus5 =
+    "single_softmax_min_minus_5_max_plus_5.tflite";
+
+const char* kSingleAvgPoolModelMinMinus5MaxPlus5 =
+    "single_avg_pool_min_minus_5_max_plus_5.tflite";
 
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];

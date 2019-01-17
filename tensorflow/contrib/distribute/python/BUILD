@@ -1,6 +1,7 @@
 # Implementation of a prototype TF distributed computation library.
 
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -343,10 +344,14 @@ cuda_py_test(
     ],
 )
 
-py_library(
-    name = "minimize_loss_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "minimize_loss_test",
     srcs = ["minimize_loss_test.py"],
+    main = "minimize_loss_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         ":mirrored_strategy",
@@ -363,18 +368,6 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "minimize_loss_test",
-    srcs = ["minimize_loss_test.py"],
-    additional_deps = [
-        ":minimize_loss_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -500,10 +493,14 @@ py_library(
     ],
 )
 
-py_library(
-    name = "step_fn_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "step_fn_test",
     srcs = ["step_fn_test.py"],
+    main = "step_fn_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         ":single_loss_example",
@@ -513,18 +510,6 @@ py_library(
         "//tensorflow/python/eager:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "step_fn_test",
-    srcs = ["step_fn_test.py"],
-    additional_deps = [
-        ":step_fn_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -621,12 +606,10 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_test",
     srcs = ["keras_test.py"],
-    additional_deps = [
-        ":keras_test_lib",
-    ],
+    main = "keras_test.py",
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
@@ -634,16 +617,18 @@ cuda_py_test(
         "no_pip",
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":keras_test_lib",
     ],
 )
 
 # TODO(b/121200287): Remove this in 2.0
-cuda_py_test(
+distribute_py_test(
     name = "keras_backward_compat_test",
     srcs = ["keras_backward_compat_test.py"],
-    additional_deps = [
-        ":keras_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_backward_compat_test.py",
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
@@ -651,6 +636,9 @@ cuda_py_test(
         "no_pip",
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":keras_test_lib",
     ],
 )
 
@@ -660,7 +648,9 @@ py_library(
     srcs = [
         "keras_correctness_test_base.py",
         "keras_dnn_correctness_test.py",
+        "keras_embedding_model_correctness_test.py",
         "keras_image_model_correctness_test.py",
+        "keras_lstm_model_correctness_test.py",
     ],
     deps = [
         ":combinations",
@@ -676,13 +666,12 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_dnn_correctness_test",
     size = "medium",
     srcs = ["keras_dnn_correctness_test.py"],
-    additional_deps = [
-        ":keras_correctness_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_dnn_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 19,
@@ -693,15 +682,17 @@ cuda_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_image_model_correctness_test",
     size = "medium",
     srcs = ["keras_image_model_correctness_test.py"],
-    additional_deps = [
-        ":keras_correctness_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_image_model_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 31,
@@ -712,12 +703,61 @@ cuda_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
 )
 
-py_library(
-    name = "metrics_v1_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "keras_embedding_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_embedding_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_embedding_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_lstm_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_lstm_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_lstm_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "metrics_v1_test",
     srcs = ["metrics_v1_test.py"],
+    main = "metrics_v1_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         "//tensorflow/python:math_ops",
@@ -726,18 +766,6 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "metrics_v1_test",
-    srcs = ["metrics_v1_test.py"],
-    additional_deps = [
-        ":metrics_v1_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 

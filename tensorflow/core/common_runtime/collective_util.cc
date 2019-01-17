@@ -79,36 +79,5 @@ string SubdivPermDebugString(const CollectiveParams& col_params) {
   return buf;
 }
 
-SubContext::SubContext(OpKernelContext* ctx, OpKernelContext::Params* params,
-                       OpKernel* op, Tensor* output, Tensor* input)
-    : sub_params_(*params),
-      sub_inputs_({output, input}),
-      sub_input_attr_({ctx->input_alloc_attr(0), ctx->input_alloc_attr(0)}),
-      sub_input_dc_(
-          {ctx->input_device_context(0), ctx->input_device_context(0)}) {
-  sub_params_.op_kernel = op;
-  sub_params_.inputs = &sub_inputs_;
-  sub_params_.input_alloc_attrs = &sub_input_attr_;
-  sub_params_.input_device_contexts = &sub_input_dc_;
-  sub_params_.eigen_gpu_device = nullptr;
-  sub_params_.ensure_eigen_gpu_device();
-  sub_params_.forward_from_array = &forward_from_;
-  sub_ctx_.reset(new OpKernelContext(&sub_params_, 1));
-}
-
-Status ComputeBinOp(OpKernelContext* op_ctx, OpKernelContext::Params* params,
-                    Device* device, OpKernel* op, Tensor* output,
-                    Tensor* input) {
-  // Prepare an OpKernelContext that is identical to that of the original Op
-  // (i.e. the collective), except for the input output sizes and identities and
-  // the Op itself.
-  // TODO(ayushd, tucker): Is it possible to cache and reuse these objects?
-  // They're mostly identical inside one device execution.
-  std::unique_ptr<SubContext> sub_ctx(
-      new SubContext(op_ctx, params, op, output, input));
-  device->Compute(op, sub_ctx->sub_ctx_.get());
-  return sub_ctx->sub_ctx_->status();
-}
-
 }  // namespace collective_util
 }  // namespace tensorflow

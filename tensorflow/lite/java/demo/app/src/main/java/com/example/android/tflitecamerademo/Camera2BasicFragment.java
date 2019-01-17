@@ -190,6 +190,8 @@ public class Camera2BasicFragment extends Fragment
 
   int currentModel = -1;
 
+  int currentNumThreads = -1;
+
   /** An additional thread for running tasks that shouldn't block the UI. */
   private HandlerThread backgroundThread;
 
@@ -323,13 +325,16 @@ public class Camera2BasicFragment extends Fragment
     // Get UI information before delegating to background
     final int modelIndex = modelView.getCheckedItemPosition();
     final int deviceIndex = deviceView.getCheckedItemPosition();
+    final int numThreads = np.getValue();
 
     backgroundHandler.post(() -> {
-      if (modelIndex == currentModel && deviceIndex == currentDevice) {
+      if (modelIndex == currentModel && deviceIndex == currentDevice
+              && numThreads == currentNumThreads) {
         return;
       }
       currentModel = modelIndex;
       currentDevice = deviceIndex;
+      currentNumThreads = numThreads;
 
       // Disable classifier while updating
       if (classifier != null) {
@@ -357,7 +362,11 @@ public class Camera2BasicFragment extends Fragment
         classifier = null;
       }
 
-      // Customzie the interpreter to the type of device we want to use.
+      // Customize the interpreter to the type of device we want to use.
+      if (classifier == null) {
+        return;
+      }
+      classifier.setNumThreads(numThreads);
       if (device.equals(cpu)) {
       } else if (device.equals(gpu)) {
         if (!GpuDelegateHelper.isGpuDelegateAvailable()) {
@@ -437,7 +446,7 @@ public class Camera2BasicFragment extends Fragment
         new NumberPicker.OnValueChangeListener() {
           @Override
           public void onValueChange(NumberPicker picker, int oldVal, int newVal) {
-            backgroundHandler.post(() -> classifier.setNumThreads(newVal));
+            updateActiveModel();
           }
         });
 
@@ -807,7 +816,9 @@ public class Camera2BasicFragment extends Fragment
   /** Classifies a frame from the preview stream. */
   private void classifyFrame() {
     if (classifier == null || getActivity() == null || cameraDevice == null) {
-      showToast("Uninitialized Classifier or invalid context.");
+      // It's important to not call showToast every frame, or else the app will starve and
+      // hang. updateActiveModel() already puts a error message up with showToast.
+      // showToast("Uninitialized Classifier or invalid context.");
       return;
     }
     SpannableStringBuilder textToShow = new SpannableStringBuilder();

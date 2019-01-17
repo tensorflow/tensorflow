@@ -102,6 +102,9 @@ class _UserDeviceSpec(object):
 
 class NullContextmanager(object):
 
+  def __init__(self, *args, **kwargs):
+    pass
+
   def __enter__(self):
     pass
 

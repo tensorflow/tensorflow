@@ -267,7 +267,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     self.assertIs(strategy, var.distribute_strategy)
     for d in var.devices:
       self.assertEqual(d, var.get(d).device)
-      self.assertIs(strategy, var.get(d).distribute_strategy)
+      self.assertIs(strategy, var.get(d)._distribute_strategy)  # pylint: disable=protected-access
 
   def testVariableInFuncGraph(self, distribution):
     def model_fn():
@@ -1266,7 +1266,7 @@ class MirroredStrategyDefunTest(test.TestCase):
                             self.evaluate(device_result))
 
       for defun in defuns:
-        # PolymorphicFunctions are specialized to the current device stack, so
+        # `Function`s are specialized to the current device stack, so
         # call_for_each has one trace per device. To check that the expected set
         # of variables was accessed on each trace, we first retrieve each
         # device-specific graph function.

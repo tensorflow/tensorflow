@@ -1067,10 +1067,10 @@ def _create_dummy_repository(repository_ctx):
 
   # Create dummy files for the CUDA toolkit since they are still required by
   # tensorflow/core/platform/default/build_config:cuda.
-  repository_ctx.file("cuda/cuda/include/cuda.h", "")
-  repository_ctx.file("cuda/cuda/include/cublas.h", "")
-  repository_ctx.file("cuda/cuda/include/cudnn.h", "")
-  repository_ctx.file("cuda/cuda/extras/CUPTI/include/cupti.h", "")
+  repository_ctx.file("cuda/cuda/include/cuda.h")
+  repository_ctx.file("cuda/cuda/include/cublas.h")
+  repository_ctx.file("cuda/cuda/include/cudnn.h")
+  repository_ctx.file("cuda/cuda/extras/CUPTI/include/cupti.h")
   repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cuda", cpu_value))
   repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cudart", cpu_value))
   repository_ctx.file(
@@ -1409,9 +1409,11 @@ def _create_local_cuda_repository(repository_ctx):
     # bazel's header check failing.
     cuda_defines["%{extra_no_canonical_prefixes_flags}"] = (
         "flag: \"-fno-canonical-system-headers\"")
-    nvcc_path = "cuda/bin/nvcc"
-    if _is_windows(repository_ctx):
-      nvcc_path += ".exe"
+    nvcc_path = str(
+        repository_ctx.path("%s/bin/nvcc%s" % (
+            cuda_config.cuda_toolkit_path,
+            ".exe" if _is_windows(repository_ctx) else "",
+        )))
     _tpl(
         repository_ctx,
         "crosstool:BUILD",

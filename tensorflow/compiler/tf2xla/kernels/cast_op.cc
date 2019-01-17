@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/tf2xla/lib/util.h"
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -19,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -31,6 +33,20 @@ class CastOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &dst_dtype_));
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(src_dtype_, &src_type_));
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Truncate", &use_truncation_));
+  }
+
+  xla::PrimitiveType GetUnsignedIntTypeOfSameWidth(int64 src_bitwidth) {
+    switch (src_bitwidth) {
+      case 16:
+        return xla::U16;
+      case 32:
+        return xla::U32;
+      case 64:
+        return xla::U64;
+      default:
+        return xla::PRIMITIVE_TYPE_INVALID;
+    }
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -48,6 +64,36 @@ class CastOp : public XlaOpKernel {
       // imaginary part.
       output = xla::ConvertElementType(xla::Real(input), dst_type_);
     } else {
+      if (use_truncation_) {
+        OP_REQUIRES(
+            ctx,
+            xla::primitive_util::IsFloatingPointType(src_type_) &&
+                xla::primitive_util::IsFloatingPointType(dst_type_),
+            errors::Unimplemented("Truncate attribute is only "
+                                  "implemented for floating point datatypes."));
+        int mantissa_difference =
+            xla::primitive_util::SignificandWidth(src_type_) -
+            xla::primitive_util::SignificandWidth(dst_type_);
+        OP_REQUIRES(ctx, mantissa_difference > 0,
+                    errors::Unimplemented(
+                        "Truncate attribute is only implemented in cases where "
+                        "dst datatype "
+                        "has fewer mantissa bits than the src datatype"));
+        int src_bitwidth = xla::primitive_util::BitWidth(src_type_);
+
+        // Bitcast to same-width integer, mask off the LSBs, bitcast back to the
+        // source datatype.
+        int64 mask = ~((1L << mantissa_difference) - 1);
+        xla::PrimitiveType same_width_int =
+            GetUnsignedIntTypeOfSameWidth(src_bitwidth);
+        OP_REQUIRES(ctx, same_width_int != xla::PRIMITIVE_TYPE_INVALID,
+                    errors::Unimplemented("Unexpected type bitwidth"));
+        input = xla::BitcastConvertType(
+            xla::And(
+                xla::BitcastConvertType(input, same_width_int),
+                ::tensorflow::IntegerLiteral(builder, same_width_int, mask)),
+            src_type_);
+      }
       output = xla::ConvertElementType(input, dst_type_);
     }
 
@@ -57,6 +103,7 @@ class CastOp : public XlaOpKernel {
  protected:
   DataType src_dtype_, dst_dtype_;
   xla::PrimitiveType src_type_, dst_type_;
+  bool use_truncation_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CastOp);
 };

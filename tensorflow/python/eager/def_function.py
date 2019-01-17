@@ -25,6 +25,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -204,13 +205,13 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
     self._cached_shape_as_list = None
 
 
-class PolymorphicFunction(object):
+class Function(object):
   """Wrapper class for the graph functions defined for a Python function.
 
   See the documentation for `tf.function` for more information on the semantics
   of defined functions.
 
-  PolymorphicFunction is thread-compatible.
+  `Function` is thread-compatible.
   """
 
   def __init__(self,
@@ -219,7 +220,7 @@ class PolymorphicFunction(object):
                input_signature=None,
                autograph=True,
                experimental_autograph_options=None):
-    """Initializes a polymorphic function.
+    """Initializes a `Function`.
 
     Args:
       python_function: the function to be wrapped.
@@ -282,10 +283,10 @@ class PolymorphicFunction(object):
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
 
-    Creates two polymorphic functions, one that will allow creation of variables
+    Creates two `Function`s, one that will allow creation of variables
     and one that won't.
 
-    Additionally runs a trace for the polymorphic function that allows creation
+    Additionally runs a trace for the `Function` that allows creation
     of variables.
 
     Args:
@@ -410,7 +411,7 @@ class PolymorphicFunction(object):
     return self._function_spec
 
   def get_initialization_function(self, *args, **kwargs):
-    """Returns a `Function` object which initializes this function's variables.
+    """Returns a `ConcreteFunction` which initializes this function's variables.
 
     Requires that this function hasn't been accessed yet through either calling
     it or calling get_concrete_function. Fails if we cannot build an initializer
@@ -422,7 +423,8 @@ class PolymorphicFunction(object):
       **kwargs: keyword arguments to the python callable.
 
     Returns:
-      A `Function` object which initializes the variables of this function.
+      A `ConcreteFunction` object which initializes the variables of this
+      function.
 
     Raises:
       RuntimeError: if called after the variables have been initialized.
@@ -446,62 +448,54 @@ class PolymorphicFunction(object):
     return initialize_variables.get_concrete_function()
 
   def _list_all_concrete_functions_for_serialization(self):
-    """Returns all of the concrete functions.
+    """Returns all concrete functions for serialization.
 
     Returns:
-      A list of tuples in the form (signature, concrete_function), where
-      concrete function is an instance of `Function`.
+      A list of instances of `Function`.
     """
-    input_signature = self._input_signature
-    if input_signature is not None:
+    if self._input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
-    for signature in self._cached_input_signatures:
-      flattened = nest.flatten(signature)
-      if any(
-          isinstance(arg, function_lib.UnknownArgument) for arg in flattened):
-        logging.info("Unsupported signature for serialization: %s.", signature)
-        continue
-      concrete_function = self.get_concrete_function(*signature)
-      concrete_functions.append((signature, concrete_function))
-    return concrete_functions
-
-  @property
-  def _cached_input_signatures(self):
-    """All input signatures used to call this PolymorphicFunction."""
-    seen = list()
+    # pylint: disable=protected-access
+    if self._stateful_fn:
+      concrete_functions.extend(self._stateful_fn._function_cache.values())
+    if self._stateless_fn:
+      concrete_functions.extend(self._stateless_fn._function_cache.values())
+    # pylint: enable=protected-access
+    deduplicated_concrete_functions = list()
+    seen_signatures = list()
     # We are using a list so that:
     #  - the returned collection is deterministic, and
     #  - we can use a custom equality operator (is_same_structure).
     # This is run only at serialization time on likely very small inputs so we
     # are not concerned about O(n^2) runtime.
-    # pylint: disable=protected-access
-    concrete_functions = []
-    if self._stateful_fn:
-      concrete_functions.extend(self._stateful_fn._function_cache.values())
-    if self._stateless_fn:
-      concrete_functions.extend(self._stateless_fn._function_cache.values())
     for concrete_function in concrete_functions:
-      signature = concrete_function._python_call_signature
+      signature, _ = concrete_function.structured_input_signature
+      flattened = nest.flatten(signature)
+      if any(
+          isinstance(arg, func_graph_module.UnknownArgument)
+          for arg in flattened):
+        logging.info("Unsupported signature for serialization: %s.", signature)
+        continue
       equal_to_signature = functools.partial(
           function_lib.is_same_structure, signature, check_values=True)
-      if not any(equal_to_signature(s) for s in seen):
-        yield signature
-        seen.append(signature)
-    # pylint: enable=protected-access
+      if not any(equal_to_signature(s) for s in seen_signatures):
+        deduplicated_concrete_functions.append(concrete_function)
+        seen_signatures.append(signature)
+    return deduplicated_concrete_functions
 
   def get_concrete_function(self, *args, **kwargs):
-    """Returns a `Function` object specialized to inputs and execution context.
+    """Returns a `ConcreteFunction` specialized to inputs and execution context.
 
-    If this `PolymorphicFunction` was created with an `input_signature`, `args`
-    and `kwargs` may be omitted. With an input signature there is only one
-    concrete function associated with this `PolymorphicFunction`.
+    If this `Function` was created with an `input_signature`, `args` and
+    `kwargs` may be omitted. With an input signature there is only one
+    concrete function associated with this `Function`.
 
     If there is no fixed `input_signature` associated with this
-    `PolymorphicFunction`, positional and keyword arguments to
-    `get_concrete_function` follow the same rules as input signature
-    specification, with `tf.TensorSpec` objects describing `tf.Tensor`s which
-    will be passed to the concrete function.
+    `Function`, positional and keyword arguments to `get_concrete_function`
+    follow the same rules as input signature specification, with `tf.TensorSpec`
+    objects describing `tf.Tensor`s which will be passed to the concrete
+    function.
 
     Each `tf.Tensor` argument to the concrete function must have a unique name,
     either because it is the only one associated with a named argument of the
@@ -586,8 +580,8 @@ class PolymorphicFunction(object):
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
-    # `instance` here is the instance that this `PolymorphicFunction` was
-    # accessed through; e.g., for
+    # `instance` here is the instance that this `Function` was accessed through
+    # e.g., for
     #
     #   class Foo(object):
     #
@@ -596,10 +590,10 @@ class PolymorphicFunction(object):
     #       ...
     #
     #   foo = Foo()
-    #   foo.bar()  # `foo.bar` is a `PolymorphicFunction` instance
+    #   foo.bar()  # `foo.bar` is a `Function` instance
     #
     # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of PolymorphicFunction here to allow different instances each
+    # new instance of `Function` here to allow different instances each
     # to create variables once, thereby allowing methods to be decorated with
     # tf.function. Keeps a cache to avoid retracing the function every time the
     # descriptor is accessed.
@@ -855,7 +849,7 @@ def function(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         inner_function,
-        PolymorphicFunction(
+        Function(
             inner_function,
             name,
             input_signature=input_signature,

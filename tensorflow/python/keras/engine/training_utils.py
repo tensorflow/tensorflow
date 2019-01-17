@@ -19,8 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 from collections import OrderedDict
 import copy
+import json
+import os
 
 import numpy as np
 import six
@@ -46,6 +49,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 
@@ -1492,3 +1496,40 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
+
+
+def should_run_multi_worker():
+  """Whether a model should be run using DistributedCoordinator."""
+  tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
+  cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
+  return tf_config and 'master' not in cluster_spec.jobs
+
+
+def should_run_validation(validation_freq, epoch):
+  """Checks if validation should be run this epoch.
+
+  Arguments:
+    validation_freq: Integer or list. If an integer, specifies how many training
+      epochs to run before a new validation run is performed. If a list,
+      specifies the epochs on which to run validation.
+    epoch: Integer, the number of the training epoch just completed.
+
+  Returns:
+    Bool, True if validation should be run.
+
+  Raises:
+    ValueError: if `validation_freq` is an Integer and less than 1, or if
+    it is neither an Integer nor a Sequence.
+  """
+  # `epoch` is 0-indexed internally but 1-indexed in the public API.
+  one_indexed_epoch = epoch + 1
+
+  if isinstance(validation_freq, int):
+    if validation_freq < 1:
+      raise ValueError('`validation_freq` can not be less than 1.')
+    return one_indexed_epoch % validation_freq == 0
+
+  if not isinstance(validation_freq, collections.Container):
+    raise ValueError('`validation_freq` must be an Integer or '
+                     '`collections.Container` (e.g. list, tuple, etc.)')
+  return one_indexed_epoch in validation_freq

@@ -14,14 +14,14 @@
 # ==============================================================================
 """Module that encodes (decodes) nested structures into (from) protos.
 
-The intended use is to serialize everything needed to restore a
-PolymorphicFunction that was saved into a SavedModel. This may include concrete
-function inputs and outputs, signatures, function specs, etc.
+The intended use is to serialize everything needed to restore a `Function` that
+was saved into a SavedModel. This may include concrete function inputs and
+outputs, signatures, function specs, etc.
 
 Example use:
 coder = nested_structure_coder.StructureCoder()
 # Encode into proto.
-signature_proto = coder.encode_structure(polymorphic_function.input_signature)
+signature_proto = coder.encode_structure(function.input_signature)
 # Decode into a Python object.
 restored_signature = coder.decode_proto(signature_proto)
 """

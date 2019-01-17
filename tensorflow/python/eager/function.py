@@ -256,13 +256,16 @@ class _EagerDefinedFunction(object):
     self._graph = graph
     self._stateful_ops = tuple(op for op in operations if op.op_def.is_stateful)
 
-  def add_to_graph(self, g):
+  def add_to_graph(self, g=None):
     # pylint: disable=protected-access
-    if self.name not in g._functions:
-      g._add_function(self)
-    for f in self._graph._functions.values():
-      if f.name not in g._functions:
-        g._add_function(f)
+    if not g and context.executing_eagerly():
+      context.context().add_function_def(self.definition)
+    else:
+      if self.name not in g._functions:
+        g._add_function(self)
+      for f in self._graph._functions.values():
+        if f.name not in g._functions:
+          g._add_function(f)
     # pylint: enable=protected-access
 
   @property
@@ -272,8 +275,8 @@ class _EagerDefinedFunction(object):
   def call(self, ctx, args):
     """Calls this function with `args` as inputs.
 
-    Function execution respects device annotations only if the function won't
-    be compiled with xla.
+    `ConcreteFunction` execution respects device annotations only if the
+    function won't be compiled with xla.
 
     Args:
       ctx: a Context object
@@ -350,15 +353,15 @@ class _EagerDefinedFunction(object):
       return outputs
 
 
-class Function(object):
+class ConcreteFunction(object):
   """Callable object encapsulating a function definition and its gradient.
 
-  `Function` is a callable that encapsulates a function definition and
+  `ConcreteFunction` is a callable that encapsulates a function definition and
   is differentiable under `tf.GradientTape` objects.
   """
 
   def __init__(self, func_graph, attrs=None, signature=None):
-    """Initialize a Function.
+    """Initialize a `ConcreteFunction`.
 
     Args:
       func_graph: An instance of FuncGraph: the function body to wrap.
@@ -367,6 +370,7 @@ class Function(object):
         definition.
      signature: a nested sequence of `TensorSpec` objects specifying the input
        signature of this function.
+
     Raises:
       ValueError: If number of input_placeholders is not equal to the number
         of function inputs.
@@ -394,8 +398,8 @@ class Function(object):
       *args: Tensors or Variables. Positional arguments are only accepted when
         they correspond one-to-one with arguments of the traced Python function.
       **kwargs: Tensors or Variables specified by name. When
-        `get_concrete_function` was called to create this `Function`, each
-        Tensor input was given a name, defaulting to the name of the Python
+        `get_concrete_function` was called to create this `ConcreteFunction`,
+        each Tensor input was given a name, defaulting to the name of the Python
         function's argument but possibly overridden by the `name=` argument to
         `tf.TensorSpec`. These names become the argument names for the concrete
         function.
@@ -404,7 +408,7 @@ class Function(object):
       The result of applying the TF function on the given Tensors.
 
     Raises:
-      AssertionError: If this `Function` was not created through
+      AssertionError: If this `ConcreteFunction` was not created through
         `get_concrete_function`.
       ValueError: If arguments contains anything other than Tensors or
         Variables.
@@ -471,9 +475,7 @@ class Function(object):
     """
     ctx = context.context()
 
-    for v in self._func_graph.variables:
-      if v.trainable:
-        tape.variable_accessed(v)
+    tape.variables_accessed(self._func_graph.variables)
 
     tensor_inputs = []
     for i, arg in enumerate(args):
@@ -488,7 +490,7 @@ class Function(object):
         tensor_inputs.append(
             ops.convert_to_tensor(arg, self._signature[i].dtype))
       else:
-        raise ValueError("All inputs to `Function`s must be Tensors; "
+        raise ValueError("All inputs to `ConcreteFunction`s must be Tensors; "
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + self._captured_inputs
@@ -514,7 +516,7 @@ class Function(object):
     return self._build_call_outputs(outputs)
 
   def _register_gradient(self, name):
-    """Registers the gradient for the current Function under the given name.
+    """Registers the gradient for this `ConcreteFunction` under the given name.
 
     The gradient rewrites an inference call op to a forward call op, but does
     not modify a pre-existing forward call op. It then computes the gradient
@@ -555,7 +557,7 @@ class Function(object):
 
   @property
   def name(self):
-    """Function name."""
+    """`ConcreteFunction` name."""
     return self._inference_function.name
 
   @property
@@ -567,6 +569,11 @@ class Function(object):
   def inputs(self):
     """Returns tensors in `self.graph` corresponding to arguments."""
     return self._func_graph.inputs
+
+  @property
+  def structured_input_signature(self):
+    """Returns structured signature of the original function."""
+    return self._func_graph.structured_input_signature
 
   @property
   def outputs(self):
@@ -631,27 +638,26 @@ class Function(object):
     # method's functionality better. Remove register_gradient_functions argument
     # and figure out if these needs to be registered.
 
-    if not context.executing_eagerly() or g:
-      if not g:
-        g = ops.get_default_graph()
-      self._inference_function.add_to_graph(g)  # pylint: disable=protected-access
+    if not context.executing_eagerly() and not g:
+      g = ops.get_default_graph()
+    self._inference_function.add_to_graph(g)  # pylint: disable=protected-access
 
-      # pylint: disable=protected-access
-      if register_gradient_functions:
-        # There are two situations for the actual call of a defun:
-        # 1. If none of the input args are resource variables or watch by any
-        #   tape, and it will run the _inference_function of concrete_func for
-        #   forward pass, the gradient will be generated by standard mechanism.
-        # 2. Otherwise, defun will create two functions, one for forward pass,
-        #   and the backward pass will be created via tape.
-        #   When registering the function, we register both cases.
-        if self._backward_graph_function is None:
-          self._construct_backprop_function()
-        forward_function = self._forward_function
-        backward_function = self._backward_graph_function._inference_function
-        # pylint: enable=protected-access
-        forward_function.add_to_graph(g)
-        backward_function.add_to_graph(g)
+    # pylint: disable=protected-access
+    if register_gradient_functions:
+      # There are two situations for the actual call of a defun:
+      # 1. If none of the input args are resource variables or watch by any
+      #   tape, and it will run the _inference_function of concrete_func for
+      #   forward pass, the gradient will be generated by standard mechanism.
+      # 2. Otherwise, defun will create two functions, one for forward pass,
+      #   and the backward pass will be created via tape.
+      #   When registering the function, we register both cases.
+      if self._backward_graph_function is None:
+        self._construct_backprop_function()
+      forward_function = self._forward_function
+      backward_function = self._backward_graph_function._inference_function
+      # pylint: enable=protected-access
+      forward_function.add_to_graph(g)
+      backward_function.add_to_graph(g)
 
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
@@ -687,7 +693,7 @@ class Function(object):
         grad for grad in func_graph_module.flatten(gradients_wrt_inputs)
         if grad is not None)
     backwards_graph.structured_outputs = gradients_wrt_inputs
-    self._backward_graph_function = Function(
+    self._backward_graph_function = ConcreteFunction(
         backwards_graph, attrs=backward_function_attr)
 
     forward_function_attr = _parse_func_attrs({
@@ -822,37 +828,6 @@ class Function(object):
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
                                 outputs_list)
     return ret
-
-
-class UnknownArgument(object):
-  """Signifies an argument which is not currently handled."""
-  pass
-
-
-def convert_structure_to_signature(structure):
-  """Convert a potentially nested structure to a signature.
-
-  Args:
-    structure: Structure to convert.
-
-  Returns:
-    Identical structure that has TensorSpec objects instead of Tensors and
-    UknownArgument instead of any unsupported types.
-  """
-
-  def encode_arg(arg, name=None):
-    """A representation for this argument, for converting into signatures."""
-    if isinstance(arg, ops.Tensor):
-      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
-    if isinstance(arg, (int, float, bool, tensor_spec.TensorSpec)):
-      return arg
-    return UnknownArgument()
-
-  # We are using the flattened paths to name the TensorSpecs. We need an
-  # explicit name for them downstream.
-  flattened_with_paths = nest.flatten_with_joined_string_paths(structure)
-  mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
-  return nest.pack_sequence_as(structure, mapped)
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -1041,16 +1016,16 @@ class FunctionSpec(object):
       return inputs, {}
 
 
-class PolymorphicFunction(object):
+class Function(object):
   """Wrapper class for the graph functions defined for a Python function.
 
   See the documentation for `defun` for more information on the semantics of
   defined functions.
 
-  PolymorphicFunction class is thread-compatible meaning that minimal
-  usage of defuns (defining and calling) is thread-safe, but if users call other
-  methods or invoke the base `python_function` themselves, external
-  synchronization is necessary.
+  `Function` class is thread-compatible meaning that minimal usage of defuns
+  (defining and calling) is thread-safe, but if users call other methods or
+  invoke the base `python_function` themselves, external synchronization is
+  necessary.
   """
 
   def __init__(self,
@@ -1059,7 +1034,7 @@ class PolymorphicFunction(object):
                input_signature=None,
                attributes=None,
                autograph=True):
-    """Initializes a polymorphic function.
+    """Initializes a `Function`.
 
     Args:
       python_function: the function to be wrapped.
@@ -1071,7 +1046,7 @@ class PolymorphicFunction(object):
         of the function.
       autograph: whether to use autograph to compile
         `python_function`. See https://www.tensorflow.org/guide/autograph for
-        more information.
+          more information.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -1086,14 +1061,13 @@ class PolymorphicFunction(object):
     self._name = name
     self._autograph = autograph
     self._function_cache = collections.OrderedDict()
-    self._garbage_collector = _PolymorphicFunctionGarbageCollector(
-        self._function_cache)
+    self._garbage_collector = _FunctionGarbageCollector(self._function_cache)
     self._function_attributes = attributes or {}
 
     self._lock = threading.Lock()
     # _descriptor_cache is a of instance of a class to an instance-specific
-    # PolymorphicFunction, used to make sure defun-decorated methods create
-    # different functions for each instance.
+    # `Function`, used to make sure defun-decorated methods create different
+    # functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
 
   def __call__(self, *args, **kwargs):
@@ -1132,14 +1106,14 @@ class PolymorphicFunction(object):
     graph_function = self._get_concrete_function_internal_garbage_collected(
         *args, **kwargs)
     # We're returning this concrete function to someone, and they may keep a
-    # reference to the FuncGraph without keeping a reference to the Function
-    # object. So we won't clean up the reference cycles manually and instead
-    # will leave them to Python's garbage collector.
+    # reference to the FuncGraph without keeping a reference to the
+    # ConcreteFunction object. So we won't clean up the reference cycles
+    # manually and instead will leave them to Python's garbage collector.
     graph_function._garbage_collector.release()  # pylint: disable=protected-access
     return graph_function
 
   def get_concrete_function(self, *args, **kwargs):
-    """Returns a `Function` object specialized to inputs and execution context.
+    """Returns a `ConcreteFunction` specialized to inputs and execution context.
 
     Args:
       *args: inputs to specialize on.
@@ -1212,8 +1186,8 @@ class PolymorphicFunction(object):
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
-    # `instance` here is the instance that this `PolymorphicFunction` was
-    # accessed through; e.g., for
+    # `instance` here is the instance that this `Function` was accessed through
+    # e.g., for
     #
     #   class Foo(object):
     #
@@ -1222,26 +1196,25 @@ class PolymorphicFunction(object):
     #       ...
     #
     #   foo = Foo()
-    #   foo.bar()  # `foo.bar` is a `PolymorphicFunction` instance
+    #   foo.bar()  # `foo.bar` is a `Function` instance
     #
     # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of PolymorphicFunction here to allow different instances each
+    # new instance of `Function` here to allow different instances each
     # to create variables once, thereby allowing methods to be decorated with
     # defun. Keeps a cache to avoid retracing the function every time the
     # descriptor is accessed.
     if instance not in self._descriptor_cache:
       if instance is None:
         return self
-      # If there is no instance-specific polymorphic func in the cache,
-      # we construct an instance-specific polymorphic function
-      # that uses a weak reference to the instance (so that the instance will
-      # be correctly gc'd).
+      # If there is no instance-specific `Function` in the cache, we construct
+      # an instance-specific `Function` that uses a weak reference to the
+      # instance (so that the instance will be correctly gc'd).
 
       # And finally add the wrapped function to the description cache
       self._descriptor_cache[instance] = class_method_to_instance_method(
           self, instance)
 
-    # Return the cached polymorphic function for the instance
+    # Return the cached `Function` for the instance
     return self._descriptor_cache[instance]
 
   def _cache_key(self, args, kwargs):
@@ -1299,8 +1272,8 @@ class PolymorphicFunction(object):
   def _maybe_define_function(self, args, kwargs):
     """Gets a function for these inputs, defining it if necessary.
 
-    `args` and `kwargs` can be None if this `PolymorphicFunction` was created
-    with an `input_signature`.
+    `args` and `kwargs` can be None if this `Function` was created with an
+    `input_signature`.
 
     Args:
       args: The varargs for the Python function.
@@ -1337,7 +1310,7 @@ class PolymorphicFunction(object):
             self._function_spec.arg_names[:arglen]
             + [self._function_spec.vararg_name] *
             (arglen - len(self._function_spec.arg_names)))
-        graph_function = Function(
+        graph_function = ConcreteFunction(
             func_graph_module.func_graph_from_py_func(
                 self._name,
                 self._python_function,
@@ -1345,21 +1318,13 @@ class PolymorphicFunction(object):
                 kwargs,
                 self._input_signature,
                 autograph=self._autograph,
-                arg_names=arg_names),
-            self._function_attributes)
-        if self._input_signature:
-          python_call_signature = self._input_signature
-        else:
-          python_call_signature = tuple(convert_structure_to_signature(args))
+                arg_names=arg_names), self._function_attributes)
         # pylint: disable=protected-access
-        # Save information about non-Tensor arguments with the concrete
-        # function. Used to serialize PolymorphicFunctions.
-        graph_function._python_call_signature = python_call_signature
-        # Tell the Function to clean up its graph once it goes out of
-        # scope. Function does not do this in its constructor since it gets used
-        # in some places (like Keras) where the FuncGraph lives longer than the
-        # Function.
-        graph_function._garbage_collector = _FunctionGarbageCollector(
+        # Tell the ConcreteFunction to clean up its graph once it goes out of
+        # scope. ConcreteFunction does not do this in its constructor since it
+        # gets used in some places (like Keras) where the FuncGraph lives
+        # longer than the ConcreteFunction.
+        graph_function._garbage_collector = _ConcreteFunctionGarbageCollector(
             graph_function.graph)
         # pylint: enable=protected-access
         self._function_cache[cache_key] = graph_function
@@ -1367,24 +1332,24 @@ class PolymorphicFunction(object):
 
 
 def register(func, *args, **kwargs):
-  """Register a specialization of a PolymorphicFunction into the graph.
+  """Register a specialization of a `Function` into the graph.
 
   This won't actually call the function with the inputs, and only put the
   function definition into graph. Register function with different input param
   will result into multiple version of functions registered in graph.
 
   Args:
-    func: the PolymorphicFunction instance that generated by a @defun
+    func: the `Function` instance that generated by a @defun
     *args: input arguments for the Python function.
     **kwargs: input keyword arguments for the Python function.
 
   Returns:
-    a `Function` object specialized to inputs and execution context.
+    a `ConcreteFunction` object specialized to inputs and execution context.
 
   Raises:
     ValueError: When the input function is not a defun wrapped python function.
   """
-  if not isinstance(func, PolymorphicFunction):
+  if not isinstance(func, Function):
     raise ValueError("Only defun function is allowed to be registered. "
                      "Got type: %s" % type(func))
   concrete_func = func.get_concrete_function(*args, **kwargs)
@@ -1750,7 +1715,7 @@ def defun_with_attributes(func=None,
       whitelisted attribute name is allowed. Unwhitelisted attribute name or
       unsupported value will result into ValueError. `func_name` is also one of
       the whitelisted argument which is a python string, and sets the name for
-      this `Function` in the graph.
+      this `ConcreteFunction` in the graph.
     autograph: same as defun()'s autograph.
 
   Returns:
@@ -1771,7 +1736,7 @@ def defun_with_attributes(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         function,
-        PolymorphicFunction(
+        Function(
             function,
             name,
             input_signature=input_signature,
@@ -1803,7 +1768,7 @@ class _WeakrefSelf(object):
 
 
 def class_method_to_instance_method(original_function, instance):
-  """Constructs a new PolymorphicFunction with `self` bound."""
+  """Constructs a new `Function` with `self` bound."""
   weak_instance = weakref.ref(instance)
 
   # Note: while we could bind to a weakref proxy instead, that causes the
@@ -1811,8 +1776,8 @@ def class_method_to_instance_method(original_function, instance):
   bound_method = types_lib.MethodType(original_function.python_function,
                                       _WeakrefSelf(weak_instance))
 
-  # original_function is expected to be of one of the two PolymorphicFunction
-  # types (defined either in function.py or def_function.py).
+  # original_function is expected to be of one of the two `Function` types
+  # (defined either in function.py or def_function.py).
   assert hasattr(original_function, "_name")
   assert hasattr(original_function, "_autograph")
   assert hasattr(original_function, "_input_signature")
@@ -1854,7 +1819,7 @@ def class_method_to_instance_method(original_function, instance):
   return wrapped_instance_func
 
 
-class _PolymorphicFunctionGarbageCollector(object):
+class _FunctionGarbageCollector(object):
   """Cleans up cycles when a defun goes out of scope."""
 
   def __init__(self, cache):
@@ -1871,8 +1836,8 @@ class _PolymorphicFunctionGarbageCollector(object):
       pass
 
 
-class _FunctionGarbageCollector(object):
-  """Cleans up reference cycles when a Function goes out of scope."""
+class _ConcreteFunctionGarbageCollector(object):
+  """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
 
   def __init__(self, func_graph):
     self._func_graph = func_graph

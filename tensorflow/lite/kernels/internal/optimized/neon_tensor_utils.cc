@@ -90,20 +90,28 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, int result_stride) {
   const int kWeightsPerUint32 = 4;
   const int kWeightsPerNeonLane = 16;
-  // If the number of rows is not divisible by kWeightsPerUint32, we set a
-  // flag and allocate an aligned memory block. The flag is used to use the
-  // aligned memory block later in the kernel loop.
+  // Assuming *matrix is kWeightsPerUint32-byte aligned,
+  // every row of the matrix is also
+  // kWeightsPerUint32-byte aligned as long as cols is
+  // a multiple of kWeightsPerUint32. The assumption
+  // is currently satisfied by TFLite's 16-byte memory
+  // alignment scheme.
+  //
+  // Otherwise, we allocate an aligned memory block and set
+  // a flag to later copy rows from matrix to the block
+  // for aligned multiplication.
   bool unaligned = false;
-  int8* aligned_row = nullptr;
+  int8_t* aligned_row = nullptr;
   void* aligned_row_free = nullptr;
   if ((m_cols & (kWeightsPerUint32 - 1)) != 0) {
     unaligned = true;
-    aligned_row = (int8*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
-                                       &aligned_row_free);
+    aligned_row = (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+                                         &aligned_row_free);
   }
   void* aligned_vec_free = nullptr;
-  int8* aligned_vec = (int8*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
-                                           &aligned_vec_free);
+  int8_t* aligned_vec =
+      (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+                             &aligned_vec_free);
 
   // If m_cols is not at least kWeightsPerNeonLane, we cannot use the main
   // vectorized loop, and we need to process sequentially. postamble_start shows
@@ -114,13 +122,13 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   for (batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
     // Copy the vector data to an aligned vector.
-    memcpy(aligned_vec, vectors + batch * m_cols, sizeof(int8) * m_cols);
+    memcpy(aligned_vec, vectors + batch * m_cols, sizeof(int8_t) * m_cols);
     // Compute dot-product for every column.
     for (row = 0; row < m_rows; ++row, result += result_stride) {
       // Get the address of the first element of the row.
-      int8* row_ptr = (int8*)matrix + row * m_cols;  // NOLINT
+      int8_t* row_ptr = (int8_t*)matrix + row * m_cols;  // NOLINT
       if (unaligned) {
-        memcpy(aligned_row, row_ptr, sizeof(int8) * m_cols);
+        memcpy(aligned_row, row_ptr, sizeof(int8_t) * m_cols);
         row_ptr = aligned_row;
       }
 
@@ -135,7 +143,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
       col = 0;
       for (; col < postamble_start; col += kWeightsPerNeonLane) {
         // Load 16 8-bit values from the row and vector, each, to operate on.
-        // Here the assumption is that each buffer is 4-byte aligned.
+        // Here the assumption is that each buffer is 4-byte aligned. Otherwise,
+        // performance may suffer significantly.
         TFLITE_CHECK_EQ((uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1),
                         0);
         const int8x16_t s1_8x16 = vld1q_s8((const int8_t*)(aligned_vec + col));
@@ -164,6 +173,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
         if ((m_cols - postamble_start) >= (kWeightsPerNeonLane >> 1)) {
           // Load 8 8-bit values from the row and column each to operate on.
           // Here the assumption is that each buffer is 4-bytes aligned.
+          // Otherwise, performance may suffer significantly.
           TFLITE_CHECK_EQ((uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1),
                           0);
           const int8x8_t s1_8x8 = vld1_s8((const int8_t*)(aligned_vec + col));

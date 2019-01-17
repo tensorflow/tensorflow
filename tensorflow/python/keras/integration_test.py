@@ -35,7 +35,7 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
   def test_vector_classification(self):
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
-        train_samples=150,
+        train_samples=100,
         test_samples=0,
         input_shape=(10,),
         num_classes=2)
@@ -47,10 +47,10 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
          keras.layers.Dense(y_train.shape[-1], activation='softmax')],
         input_shape=x_train.shape[1:])
     model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.01),
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
                   metrics=['accuracy'],
                   run_eagerly=testing_utils.should_run_eagerly())
-    history = model.fit(x_train, y_train, epochs=10, batch_size=16,
+    history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
     self.assertGreater(history.history['val_acc'][-1], 0.7)
@@ -64,7 +64,7 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
     # and internal losses can be shared.
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
-        train_samples=150,
+        train_samples=100,
         test_samples=0,
         input_shape=(10,),
         num_classes=2)
@@ -82,13 +82,13 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
     y = keras.layers.Dense(y_train.shape[-1], activation='softmax')(y)
     model = keras.models.Model(x, y)
     model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.01),
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
                   metrics=['accuracy'],
                   run_eagerly=testing_utils.should_run_eagerly())
     if not testing_utils.should_run_eagerly():
       self.assertEqual(len(model.losses), 2)
       self.assertEqual(len(model.updates), 2)
-    history = model.fit(x_train, y_train, epochs=10, batch_size=16,
+    history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
     self.assertGreater(history.history['val_acc'][-1], 0.7)
@@ -106,7 +106,7 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
   def test_timeseries_classification(self):
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
-        train_samples=250,
+        train_samples=100,
         test_samples=0,
         input_shape=(4, 10),
         num_classes=2)
@@ -119,22 +119,22 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
     model = testing_utils.get_model_from_layers(
         layers, input_shape=x_train.shape[1:])
     model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.01),
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
                   metrics=['accuracy'],
                   run_eagerly=testing_utils.should_run_eagerly())
-    history = model.fit(x_train, y_train, epochs=15, batch_size=16,
+    history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
     self.assertGreater(history.history['val_acc'][-1], 0.7)
     _, val_acc = model.evaluate(x_train, y_train)
     self.assertAlmostEqual(history.history['val_acc'][-1], val_acc)
     predictions = model.predict(x_train)
-    self.assertEqual(predictions.shape, (250, 2))
+    self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
   def test_timeseries_classification_sequential_tf_rnn(self):
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
-        train_samples=150,
+        train_samples=100,
         test_samples=0,
         input_shape=(4, 10),
         num_classes=2)
@@ -147,17 +147,17 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
                                                 activation='softmax',
                                                 dtype=dtypes.float32)))
     model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.01),
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
                   metrics=['accuracy'],
                   run_eagerly=testing_utils.should_run_eagerly())
-    history = model.fit(x_train, y_train, epochs=15, batch_size=16,
+    history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
     self.assertGreater(history.history['val_acc'][-1], 0.7)
     _, val_acc = model.evaluate(x_train, y_train)
     self.assertAlmostEqual(history.history['val_acc'][-1], val_acc)
     predictions = model.predict(x_train)
-    self.assertEqual(predictions.shape, (150, 2))
+    self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
 
 @keras_parameterized.run_with_all_model_types
@@ -167,7 +167,7 @@ class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
   def test_image_classification(self):
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
-        train_samples=250,
+        train_samples=100,
         test_samples=0,
         input_shape=(10, 10, 3),
         num_classes=2)
@@ -184,17 +184,17 @@ class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
     model = testing_utils.get_model_from_layers(
         layers, input_shape=x_train.shape[1:])
     model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.01),
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
                   metrics=['accuracy'],
                   run_eagerly=testing_utils.should_run_eagerly())
-    history = model.fit(x_train, y_train, epochs=10, batch_size=16,
+    history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
     self.assertGreater(history.history['val_acc'][-1], 0.7)
     _, val_acc = model.evaluate(x_train, y_train)
     self.assertAlmostEqual(history.history['val_acc'][-1], val_acc)
     predictions = model.predict(x_train)
-    self.assertEqual(predictions.shape, (250, 2))
+    self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
 
 if __name__ == '__main__':

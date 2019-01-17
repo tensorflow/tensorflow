@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -186,19 +187,20 @@ class AdjustContrastOpV2 : public XlaOpKernel {
                                         factor_shape.DebugString()));
 
     xla::XlaBuilder* b = context->builder();
-    xla::XlaOp input = context->Input(0);
-    xla::XlaOp factor = context->Input(1);
-
     DataType type = context->input_type(0);
+
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp factor = XlaHelpers::ConvertElementType(context->Input(1), type);
 
     const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
     auto converted = XlaHelpers::ConvertElementType(input, accumulation_type);
     auto reduce = xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
                               *context->GetOrCreateAdd(accumulation_type),
                               {height_dim, width_dim});
-    auto output = XlaHelpers::ConvertElementType(reduce, type);
-    output =
-        xla::Div(output, XlaHelpers::FloatLiteral(b, type, height * width));
+
+    auto output = xla::Div(
+        reduce, XlaHelpers::FloatLiteral(b, accumulation_type, height * width));
+    output = XlaHelpers::ConvertElementType(output, type);
 
     std::vector<int64> broadcast_dims(input_shape.dims() - 2);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
@@ -234,8 +236,10 @@ class AdjustSaturationOp : public XlaOpKernel {
                                 channels, " channels."));
 
     xla::XlaBuilder* b = context->builder();
-    xla::XlaOp input = context->Input(0);
-    xla::XlaOp scale = context->Input(1);
+    xla::XlaOp input =
+        XlaHelpers::ConvertElementType(context->Input(0), DT_FLOAT);
+    xla::XlaOp scale =
+        XlaHelpers::ConvertElementType(context->Input(1), DT_FLOAT);
 
     DataType type = context->input_type(0);
 
@@ -250,15 +254,17 @@ class AdjustSaturationOp : public XlaOpKernel {
                                       /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
     channel_shape.set_dim(channel_dim, 1);
-    auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),
-                        channel_shape);
+    auto hsv =
+        RGBToHSV(context, b, {red, green, blue}, DT_FLOAT, channel_shape);
 
-    hsv[1] = xla::Clamp(XlaHelpers::Zero(b, type), xla::Mul(hsv[1], scale),
-                        XlaHelpers::One(b, type));
+    hsv[1] = xla::Clamp(XlaHelpers::Zero(b, DT_FLOAT), xla::Mul(hsv[1], scale),
+                        XlaHelpers::One(b, DT_FLOAT));
 
-    auto rgb = HSVToRGB(context->builder(), hsv, context->input_type(0));
+    auto rgb = HSVToRGB(context->builder(), hsv, DT_FLOAT);
 
-    context->SetOutput(0, xla::ConcatInDim(b, rgb, channel_dim));
+    auto output = XlaHelpers::ConvertElementType(
+        xla::ConcatInDim(b, rgb, channel_dim), type);
+    context->SetOutput(0, output);
   }
 };
 REGISTER_XLA_OP(Name("AdjustSaturation"), AdjustSaturationOp);
@@ -284,8 +290,10 @@ class AdjustHueOp : public XlaOpKernel {
                                 channels, " channels."));
 
     xla::XlaBuilder* b = context->builder();
-    xla::XlaOp input = context->Input(0);
-    xla::XlaOp delta = context->Input(1);
+    xla::XlaOp input =
+        XlaHelpers::ConvertElementType(context->Input(0), DT_FLOAT);
+    xla::XlaOp delta =
+        XlaHelpers::ConvertElementType(context->Input(1), DT_FLOAT);
 
     DataType type = context->input_type(0);
 
@@ -300,20 +308,22 @@ class AdjustHueOp : public XlaOpKernel {
                                       /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
     channel_shape.set_dim(channel_dim, 1);
-    auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),
-                        channel_shape);
+    auto hsv =
+        RGBToHSV(context, b, {red, green, blue}, DT_FLOAT, channel_shape);
 
-    auto zero = XlaHelpers::Zero(b, type);
-    auto one = XlaHelpers::One(b, type);
+    auto zero = XlaHelpers::Zero(b, DT_FLOAT);
+    auto one = XlaHelpers::One(b, DT_FLOAT);
 
     auto& hue = hsv[0];
     hue = xla::Rem(xla::Add(hsv[0], delta), one);
     hue =
         xla::Select(xla::Lt(hue, zero), xla::Rem(xla::Add(one, hue), one), hue);
 
-    auto rgb = HSVToRGB(context->builder(), hsv, context->input_type(0));
+    auto rgb = HSVToRGB(context->builder(), hsv, DT_FLOAT);
 
-    context->SetOutput(0, xla::ConcatInDim(b, rgb, channel_dim));
+    auto output = XlaHelpers::ConvertElementType(
+        xla::ConcatInDim(b, rgb, channel_dim), type);
+    context->SetOutput(0, output);
   }
 };
 REGISTER_XLA_OP(Name("AdjustHue"), AdjustHueOp);

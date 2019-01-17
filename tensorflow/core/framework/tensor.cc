@@ -1174,10 +1174,15 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
          buf_->root_buffer() == b.buf_->root_buffer();
 }
 
-string Tensor::DebugString() const {
+string Tensor::DebugString(int num_values) const {
   return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
                          " shape: ", shape().DebugString(),
-                         " values: ", SummarizeValue(3), ">");
+                         " values: ", SummarizeValue(num_values), ">");
+}
+
+string Tensor::DeviceSafeDebugString() const {
+  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
+                         " shape: ", shape().DebugString(), ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

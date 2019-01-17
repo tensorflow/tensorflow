@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/host_buffer.h"
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -94,8 +93,6 @@ string ToVlogString(const void *ptr) {
   out << ptr;
   return out.str();
 }
-
-string ToVlogString(const HostBuffer &buffer) { return buffer.AsString(); }
 
 template <class T>
 string ToVlogString(const std::complex<T> &c) {
@@ -2096,36 +2093,6 @@ Stream &Stream::ThenMemcpyH2DQuantized(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoMemcpyH2DQuantized(this, host_src, size, mode,
                                            gpu_unquantized_dst));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-  return *this;
-}
-
-Stream &Stream::ThenCopyHostBuffer2Device(
-    HostBuffer *buffer_src, DeviceMemory<float> *gpu_unquantized_dst) {
-  VLOG_CALL(PARAM(*buffer_src), PARAM(gpu_unquantized_dst));
-
-  if (ok()) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      CheckError(
-          dnn->DoCopyHostBuffer2Device(this, buffer_src, gpu_unquantized_dst));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-  return *this;
-}
-
-Stream &Stream::ThenCopyDevice2HostBuffer(
-    const DeviceMemory<float> &gpu_unquantized_src, HostBuffer *buffer_dst) {
-  VLOG_CALL(PARAM(gpu_unquantized_src), PARAM(*buffer_dst));
-
-  if (ok()) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      CheckError(
-          dnn->DoCopyDevice2HostBuffer(this, gpu_unquantized_src, buffer_dst));
     } else {
       SetErrorAndLogNoDnnSupport();
     }

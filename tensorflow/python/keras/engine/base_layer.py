@@ -57,7 +57,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.CheckpointableBase):
+class Layer(checkpointable.Checkpointable):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -256,7 +256,7 @@ class Layer(checkpointable.CheckpointableBase):
                  synchronization=tf_variables.VariableSynchronization.AUTO,
                  aggregation=tf_variables.VariableAggregation.NONE,
                  **kwargs):
-    """Adds a new variable to the layer, or gets an existing one; returns it.
+    """Adds a new variable to the layer.
 
     Arguments:
       name: variable name.

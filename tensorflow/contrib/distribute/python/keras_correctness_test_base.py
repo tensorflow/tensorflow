@@ -51,22 +51,46 @@ all_strategies = [
 ]
 
 
-def all_strategy_combinations_with_eager_and_graph_modes():
-  return combinations.combine(distribution=all_strategies,
-                              mode=['graph', 'eager'])
+def eager_mode_test_configuration():
+  return combinations.combine(mode='eager',
+                              use_numpy=False,
+                              use_validation_data=False)
 
 
-def all_strategy_combinations_with_graph_mode():
-  return combinations.combine(distribution=all_strategies, mode=['graph'])
+def graph_mode_test_configuration():
+  return combinations.combine(mode='graph',
+                              use_numpy=[True, False],
+                              use_validation_data=[True, False])
 
 
 def all_strategy_and_input_config_combinations():
   return (
       combinations.times(
           combinations.combine(distribution=all_strategies),
-          combinations.combine(mode=['graph', 'eager'],
-                               use_numpy=[True, False],
-                               use_validation_data=[True, False])))
+          eager_mode_test_configuration() + graph_mode_test_configuration()))
+
+
+def strategies_for_embedding_models():
+  """Returns distribution strategies to test for embedding models.
+
+  Since embedding models take longer to train, we disregard OneDeviceStrategy
+  and DefaultStrategy in order to prevent testing timeouts.
+  """
+
+  strategies = [s for s in all_strategies
+                if not s.required_tpu and s.required_gpus is not None]
+  strategies.append(combinations.tpu_strategy_loop_on_device)
+  strategies.append(combinations.tpu_strategy_one_step_loop_on_device)
+  return strategies
+
+
+def test_combinations_for_embedding_model():
+  return (
+      combinations.times(
+          combinations.combine(distribution=
+                               strategies_for_embedding_models()),
+          (graph_mode_test_configuration() +
+           eager_mode_test_configuration())))
 
 
 class MaybeDistributionScope(object):
@@ -391,6 +415,41 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           distribution=None)
       compare_results(results_with_ds, results_without_ds, distribution,
                       testcase=self)
+
+
+class TestDistributionStrategyEmbeddingModelCorrectnessBase(
+    TestDistributionStrategyCorrectnessBase):
+  """Base class to test correctness of Keras models with embedding layers."""
+
+  def get_data(self,
+               count=(_GLOBAL_BATCH_SIZE * _EVAL_STEPS),
+               min_words=5,
+               max_words=10,
+               max_word_id=19,
+               num_classes=2):
+    distribution = []
+    for _ in range(num_classes):
+      dist = np.abs(np.random.randn(max_word_id))
+      dist /= np.sum(dist)
+      distribution.append(dist)
+
+    features = []
+    labels = []
+    for _ in range(count):
+      label = np.random.randint(0, num_classes, size=1)[0]
+      num_words = np.random.randint(min_words, max_words, size=1)[0]
+      word_ids = np.random.choice(
+          max_word_id, size=num_words, replace=True, p=distribution[label])
+      word_ids = word_ids
+      labels.append(label)
+      features.append(word_ids)
+
+    features = keras.preprocessing.sequence.pad_sequences(
+        features, maxlen=max_words)
+    x_train = np.asarray(features, dtype=np.float32)
+    y_train = np.asarray(labels, dtype=np.int32).reshape((count, 1))
+    x_predict = x_train
+    return x_train, y_train, x_predict
 
 
 if __name__ == '__main__':

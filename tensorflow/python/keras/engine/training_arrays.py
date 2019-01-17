@@ -56,6 +56,7 @@ def model_iteration(model,
                     initial_epoch=0,
                     steps_per_epoch=None,
                     validation_steps=None,
+                    validation_freq=1,
                     mode=ModeKeys.TRAIN,
                     validation_in_fit=False,
                     steps_name='steps',
@@ -84,6 +85,13 @@ def model_iteration(model,
         the default value of `None`.
       validation_steps: Number of steps to run validation for (only if doing
         validation from data tensors). Ignored with the default value of `None`.
+      validation_freq: Only relevant if validation data is provided. Integer or
+        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        integer, specifies how many training epochs to run before a new
+        validation run is performed, e.g. `validation_freq=2` runs
+        validation every 2 epochs. If a Container, specifies the epochs on
+        which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+        validation at the end of the 1st, 2nd, and 10th epochs.
       mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
       validation_in_fit: DEPRECATED: if true, then this method is invoked from
         within training iteration (for validation). In this case, do not copy
@@ -320,8 +328,10 @@ def model_iteration(model,
     if len(results) == 1:
       results = results[0]
 
-    # Run the test loop every epoch during training.
-    if do_validation and not callbacks.model.stop_training:
+    # Run the test loop every `validation_freq` epochs during training.
+    if (do_validation and
+        training_utils.should_run_validation(validation_freq, epoch) and
+        not callbacks.model.stop_training):
       val_results = model_iteration(
           model,
           val_inputs,

@@ -22,13 +22,13 @@ import platform
 
 if platform.system() != "Windows":
   # pylint: disable=wildcard-import,unused-import,g-import-not-at-top
-  from tensorflow.contrib.tensorrt.ops.gen_trt_engine_op import *
+  from tensorflow.contrib.tensorrt.ops.gen_trt_ops import *
 
   from tensorflow.contrib.util import loader
   from tensorflow.python.platform import resource_loader
   # pylint: enable=wildcard-import,unused-import,g-import-not-at-top
 
-  _trt_engine_op = loader.load_op_library(
-      resource_loader.get_path_to_datafile("_trt_engine_op.so"))
+  _trt_ops = loader.load_op_library(
+      resource_loader.get_path_to_datafile("_trt_ops.so"))
 else:
   raise RuntimeError("Windows platforms are not supported")

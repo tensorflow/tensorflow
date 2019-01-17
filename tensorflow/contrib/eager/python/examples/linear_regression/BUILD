@@ -23,7 +23,10 @@ cuda_py_test(
         ":linear_regression",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "oss_serial",
+    ],
 )
 
 cuda_py_test(
