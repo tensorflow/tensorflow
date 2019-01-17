@@ -29,7 +29,7 @@ from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
 
 
-class AutographParseError(SyntaxError):
+class AutoGraphParseError(SyntaxError):
   pass
 
 
@@ -495,8 +495,8 @@ class Base(gast.NodeTransformer):
       # In other words, we need to find how to suppress the "During handling
       # of the above exception, another exception occurred" message.
       six.reraise(
-          AutographParseError,
-          AutographParseError(msg, (original_file_path, original_line_number,
+          AutoGraphParseError,
+          AutoGraphParseError(msg, (original_file_path, original_line_number,
                                     original_col_offset, original_source_line)),
           sys.exc_info()[2])
     finally:
