@@ -1306,10 +1306,15 @@ class Function(object):
           arglen = len(args)
         else:
           arglen = len(self._input_signature)
-        arg_names = (
-            self._function_spec.arg_names[:arglen]
-            + [self._function_spec.vararg_name] *
-            (arglen - len(self._function_spec.arg_names)))
+        base_arg_names = self._function_spec.arg_names[:arglen]
+        num_missing_args = arglen - len(self._function_spec.arg_names)
+        missing_arg_names = [self._function_spec.vararg_name] * num_missing_args
+        # Produce a list of missing args of the form ["arg_0", "arg_1", ...],
+        # where arg is based on the self._function_spec.vararg_name.
+        missing_arg_names = [
+            "%s_%d" % (arg, i) for i, arg in enumerate(missing_arg_names)
+        ]
+        arg_names = base_arg_names + missing_arg_names
         graph_function = ConcreteFunction(
             func_graph_module.func_graph_from_py_func(
                 self._name,

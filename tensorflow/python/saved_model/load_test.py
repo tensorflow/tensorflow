@@ -284,6 +284,28 @@ class LoadTest(test.TestCase):
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
     self.assertEqual(6, imported.f(constant_op.constant(1), defg=7.0).numpy())
 
+  def test_additional_kwargs(self):
+    def func(x, training=False, **options):
+      del options
+      if training:
+        return 2 * x
+      else:
+        return 7
+
+    root = tracking.AutoCheckpointable()
+    root.f = def_function.function(func)
+
+    x = constant_op.constant(10)
+    self.assertEqual(7, root.f(x, learning_rate=0.5, epochs=3).numpy())
+
+    imported = self.cycle(root)
+
+    with self.assertRaisesRegexp(AssertionError,
+                                 "Could not find matching function to call.*"):
+      imported.f(x, learning_rate=0.5, epochs=4)
+
+    self.assertEqual(7, imported.f(x, learning_rate=0.5, epochs=3).numpy())
+
   def test_member_function(self):
     class CheckpointableWithMember(tracking.AutoCheckpointable):
 
@@ -437,6 +459,23 @@ class LoadTest(test.TestCase):
                         imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
+
+  def test_concrete_function_arg_names(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)])
+    def func(x):
+      return 2 * x
+
+    root = tracking.AutoCheckpointable()
+    root.f = func.get_concrete_function()
+
+    self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
+
+    imported = self.cycle(root)
+
+    self.assertAllEqual([2, 4, 6],
+                        imported.f(x=constant_op.constant([1, 2, 3])).numpy())
 
   def test_concrete_function_no_signature(self):
     @def_function.function
