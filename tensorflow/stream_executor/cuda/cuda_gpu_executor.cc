@@ -1129,18 +1129,20 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
           CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, device_)
           .ValueOrDie());
 
-  const char* blank_ptx =
-      ".version 6.0\n"
-      ".target sm_30\n"
-      ".address_size 64\n"
-      "\n"
-      "        // .globl       _Z6ValAddPf\n"
-      ".visible .entry _Z6ValAddPf(\n"
-      ")\n"
-      "{\n"
-      "        ret;\n"
-      "}\n";
-  const char* kernel_name = "_Z6ValAddPf";
+  // We are loading a dummy ptx kernel to set the device description's
+  // blocks_per_core_limit by calling the CUDA occupancy calculator.  This
+  // value is currently required XLA GPU's CalculateLaunchDimensions()
+  const char* blank_ptx = R"(
+.version 6.0
+.target sm_30
+.address_size 64
+
+        // .globl       testkernel
+.visible .entry testkernel()
+{
+        ret;
+})";
+  const char* kernel_name = "testkernel";
 
   CUmodule blank_module;
   CUfunction blank_function;
@@ -1151,7 +1153,12 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
   int bpc;
   CUresult result = cuOccupancyMaxActiveBlocksPerMultiprocessor(
       &bpc, blank_function, 1, 1);
+  if (result != CUDA_SUCCESS) {
+    VLOG(1) << "Failed to calculate max blocks per SM using dummy kernel.";
+    bpc = -1;
+  }
   builder.set_blocks_per_core_limit(bpc);
+  CUDADriver::UnloadModule(context_, blank_module);
 
   auto built = builder.Build();
   return built.release();
