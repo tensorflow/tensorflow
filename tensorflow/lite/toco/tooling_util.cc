@@ -173,7 +173,7 @@ bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
   return false;
 }
 
-void DeleteOpAndArraysIfUnused(Model* model, Operator* op) {
+void DeleteOpAndArraysIfUnused(Model* model, const Operator* op) {
   for (const string& array_name : op->inputs) {
     DeleteArrayIfUsedOnce(array_name, model);
   }

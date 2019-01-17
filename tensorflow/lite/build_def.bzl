@@ -253,6 +253,7 @@ def generated_test_models():
         "greater_equal",
         "sum",
         "l2norm",
+        "l2norm_shared_epsilon",
         "l2_pool",
         "leaky_relu",
         "less",
