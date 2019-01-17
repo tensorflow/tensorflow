@@ -70,7 +70,7 @@ StatusOr<DynamicParameterBinding> DynamicParameterBinding::CreateFromProto(
     int64 target_param_num = binding.target_param_num();
     ShapeIndex target_param_index(binding.target_param_index().begin(),
                                   binding.target_param_index().end());
-    int64 target_dim_num = binding.target_param_num();
+    int64 target_dim_num = binding.target_param_dim_num();
 
     TF_RETURN_IF_ERROR(
         result.Bind(DynamicParameter{dynamic_param_num, dynamic_param_index},
