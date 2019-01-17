@@ -27,6 +27,12 @@
 // Affine maps for test case: arg_used_as_dim_and_symbol
 // CHECK: [[MAP14:#map[0-9]+]] = (d0, d1, d2, d3)[s0, s1] -> (d2, d0 * -1 - d1 + d3 + s0 + s1)
 
+// Affine maps for test case: zero_map
+// CHECK: [[MAP15:#map[0-9]+]] = ()[s0] -> (s0)
+
+// Affine maps for test case: zero_map
+// CHECK: [[MAP16:#map[0-9]+]] = () -> (0)
+
 // CHECK-LABEL: func @compose_affine_maps_1dto2d_no_symbols() {
 func @compose_affine_maps_1dto2d_no_symbols() {
   %0 = alloc() : memref<4x4xf32>
@@ -210,6 +216,25 @@ func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
       // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I0]]#0, [[I0]]#1{{\]}}
       %5 = load %1[%4#0, %4#1] : memref<100x100xf32, 1>
     }
+  }
+  return
+}
+
+// CHECK-LABEL: func @trivial_maps
+func @trivial_maps() {
+  %0 = alloc() : memref<10xf32>
+  %c0 = constant 0 : index
+  %cst = constant 0.000000e+00 : f32
+  for %i1 = 0 to 10 {
+    %1 = affine_apply ()[s0] -> (s0)()[%c0]
+    // CHECK: {{.*}} = affine_apply [[MAP15]]()[%c0]
+    store %cst, %0[%1] : memref<10xf32>
+    %2 = load %0[%c0] : memref<10xf32>
+
+    %3 = affine_apply ()[] -> (0)()[]
+    // CHECK: {{.*}} = affine_apply [[MAP16]]()
+    store %cst, %0[%3] : memref<10xf32>
+    %4 = load %0[%c0] : memref<10xf32>
   }
   return
 }

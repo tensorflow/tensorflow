@@ -389,16 +389,19 @@ private:
   explicit ReturnOp(const OperationInst *state) : Op(state) {}
 };
 
-// Prints dimension and symbol list.
+/// Prints dimension and symbol list.
 void printDimAndSymbolList(OperationInst::const_operand_iterator begin,
                            OperationInst::const_operand_iterator end,
                            unsigned numDims, OpAsmPrinter *p);
 
-// Parses dimension and symbol list and returns true if parsing failed.
+/// Parses dimension and symbol list and returns true if parsing failed.
 bool parseDimAndSymbolList(OpAsmParser *parser,
                            SmallVector<Value *, 4> &operands,
                            unsigned &numDims);
 
+/// Modifies both `map` and `operands` in-place so as to:
+/// 1. drop duplicate operands
+/// 2. drop unused dims and symbols from map
 void canonicalizeMapAndOperands(AffineMap *map,
                                 llvm::SmallVectorImpl<Value *> *operands);
 

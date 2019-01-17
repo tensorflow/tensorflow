@@ -1353,10 +1353,10 @@ bool mlir::checkMemrefAccessDependence(
 
 namespace {
 
-/// An `AffineNormalizer` is a helper class that is not visible to the user and
-/// supports renumbering operands of AffineApplyOp.
-/// This acts as a reindexing map of Value* to positional dims or symbols and
-/// allows simplifications such as:
+/// An `AffineApplyNormalizer` is a helper class that is not visible to the user
+/// and supports renumbering operands of AffineApplyOp. This acts as a
+/// reindexing map of Value* to positional dims or symbols and allows
+/// simplifications such as:
 ///
 /// ```mlir
 ///    %1 = affine_apply (d0, d1) -> (d0 - d1) (%0, %0)
@@ -1367,8 +1367,8 @@ namespace {
 /// ```mlir
 ///    %1 = affine_apply () -> (0)
 /// ```
-struct AffineNormalizer {
-  AffineNormalizer(AffineMap map, ArrayRef<Value *> operands);
+struct AffineApplyNormalizer {
+  AffineApplyNormalizer(AffineMap map, ArrayRef<Value *> operands);
 
   /// Returns the AffineMap resulting from normalization.
   AffineMap getAffineMap() { return affineMap; }
@@ -1381,18 +1381,18 @@ struct AffineNormalizer {
 
 private:
   /// Helper function to insert `v` into the coordinate system of the current
-  /// AffineNormalizer. Returns the AffineDimExpr with the corresponding
+  /// AffineApplyNormalizer. Returns the AffineDimExpr with the corresponding
   /// renumbered position.
   AffineDimExpr applyOneDim(Value *v);
 
   /// Given an `other` normalizer, this rewrites `other.affineMap` in the
-  /// coordinate system of the current AffineNormalizer.
+  /// coordinate system of the current AffineApplyNormalizer.
   /// Returns the rewritten AffineMap and updates the dims and symbols of
   /// `this`.
-  AffineMap renumber(const AffineNormalizer &other);
+  AffineMap renumber(const AffineApplyNormalizer &other);
 
   /// Given an `app`, rewrites `app.getAffineMap()` in the coordinate system of
-  /// the current AffineNormalizer.
+  /// the current AffineApplyNormalizer.
   /// Returns the rewritten AffineMap and updates the dims and symbols of
   /// `this`.
   AffineMap renumber(const AffineApplyOp &app);
@@ -1418,15 +1418,15 @@ private:
   }
   static constexpr unsigned kMaxAffineApplyDepth = 1;
 
-  AffineNormalizer() { affineApplyDepth()++; }
+  AffineApplyNormalizer() { affineApplyDepth()++; }
 
 public:
-  ~AffineNormalizer() { affineApplyDepth()--; }
+  ~AffineApplyNormalizer() { affineApplyDepth()--; }
 };
 
 } // namespace
 
-AffineDimExpr AffineNormalizer::applyOneDim(Value *v) {
+AffineDimExpr AffineApplyNormalizer::applyOneDim(Value *v) {
   DenseMap<Value *, unsigned>::iterator iterPos;
   bool inserted = false;
   std::tie(iterPos, inserted) =
@@ -1438,7 +1438,7 @@ AffineDimExpr AffineNormalizer::applyOneDim(Value *v) {
       .cast<AffineDimExpr>();
 }
 
-AffineMap AffineNormalizer::renumber(const AffineNormalizer &other) {
+AffineMap AffineApplyNormalizer::renumber(const AffineApplyNormalizer &other) {
   SmallVector<AffineExpr, 8> dimRemapping;
   for (auto *v : other.reorderedDims) {
     auto kvp = other.dimValueToPosition.find(v);
@@ -1461,15 +1461,15 @@ AffineMap AffineNormalizer::renumber(const AffineNormalizer &other) {
                                    dimRemapping.size(), symRemapping.size());
 }
 
-AffineMap AffineNormalizer::renumber(const AffineApplyOp &app) {
+AffineMap AffineApplyNormalizer::renumber(const AffineApplyOp &app) {
   assert(app.getAffineMap().getRangeSizes().empty() && "Non-empty range sizes");
 
-  // Create the AffineNormalizer for the operands of this
-  // AffineApplyOp and combine it with the current AffineNormalizer.
+  // Create the AffineApplyNormalizer for the operands of this
+  // AffineApplyOp and combine it with the current AffineApplyNormalizer.
   SmallVector<Value *, 8> operands(
       const_cast<AffineApplyOp &>(app).getOperands().begin(),
       const_cast<AffineApplyOp &>(app).getOperands().end());
-  AffineNormalizer normalizer(app.getAffineMap(), operands);
+  AffineApplyNormalizer normalizer(app.getAffineMap(), operands);
   return renumber(normalizer);
 }
 
@@ -1484,15 +1484,12 @@ static unsigned getIndexOf(Value *v, const AffineApplyOp &op) {
   return static_cast<unsigned>(-1);
 }
 
-AffineNormalizer::AffineNormalizer(AffineMap map, ArrayRef<Value *> operands)
-    : AffineNormalizer() {
+AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
+                                             ArrayRef<Value *> operands)
+    : AffineApplyNormalizer() {
   assert(map.getRangeSizes().empty() && "Unbounded map expected");
   assert(map.getNumInputs() == operands.size() &&
          "number of operands does not match the number of map inputs");
-
-  if (operands.empty()) {
-    return;
-  }
 
   SmallVector<AffineExpr, 8> exprs;
   for (auto en : llvm::enumerate(operands)) {
@@ -1505,6 +1502,9 @@ AffineNormalizer::AffineNormalizer(AffineMap map, ArrayRef<Value *> operands)
       if (en.index() < map.getNumDims()) {
         exprs.push_back(applyOneDim(t));
       } else {
+        // Composition of mathematical symbols must occur by concatenation.
+        // A subsequent canonicalization will drop duplicates. Duplicates are
+        // not dropped here because it would just amount to code duplication.
         concatenatedSymbols.push_back(t);
       }
     } else {
@@ -1516,14 +1516,21 @@ AffineNormalizer::AffineNormalizer(AffineMap map, ArrayRef<Value *> operands)
     }
   }
 
+  // Map is already composed.
+  if (exprs.empty()) {
+    affineMap = map;
+    return;
+  }
+
   auto numDims = dimValueToPosition.size();
   auto numSymbols = concatenatedSymbols.size() - map.getNumSymbols();
   auto exprsMap = AffineMap::get(numDims, numSymbols, exprs, {});
   LLVM_DEBUG(map.print(dbgs() << "\nCompose map: "));
   LLVM_DEBUG(exprsMap.print(dbgs() << "\nWith map: "));
+  LLVM_DEBUG(map.compose(exprsMap).print(dbgs() << "\nResult: "));
 
   affineMap = simplifyAffineMap(map.compose(exprsMap));
-  LLVM_DEBUG(affineMap.print(dbgs() << "\nResult: "));
+  LLVM_DEBUG(affineMap.print(dbgs() << "\nSimplified result: "));
 }
 
 /// Implements `map` and `operands` composition and simplification to support
@@ -1532,7 +1539,7 @@ AffineNormalizer::AffineNormalizer(AffineMap map, ArrayRef<Value *> operands)
 /// immediately deleted.
 static void composeAffineMapAndOperands(AffineMap *map,
                                         SmallVectorImpl<Value *> *operands) {
-  AffineNormalizer normalizer(*map, *operands);
+  AffineApplyNormalizer normalizer(*map, *operands);
   auto normalizedMap = normalizer.getAffineMap();
   auto normalizedOperands = normalizer.getOperands();
   canonicalizeMapAndOperands(&normalizedMap, &normalizedOperands);
