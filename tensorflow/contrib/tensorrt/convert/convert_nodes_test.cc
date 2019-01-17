@@ -364,9 +364,6 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
       EXPECT_EQ(false, ptr->is_tensor());
       EXPECT_EQ(true, ptr->is_weights());
       EXPECT_TRUE(TrtShapedWeightsEquals(weights, ptr->weights()));
-
-      nvinfer1::Dims dims;
-      dims.nbDims = 0;
       ExpectTrtDimsEqualsArray({}, ptr->GetTrtDims());
     }
   }
