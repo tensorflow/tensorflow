@@ -21,11 +21,11 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
 
 
