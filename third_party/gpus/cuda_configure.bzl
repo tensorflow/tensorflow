@@ -1067,10 +1067,10 @@ def _create_dummy_repository(repository_ctx):
 
   # Create dummy files for the CUDA toolkit since they are still required by
   # tensorflow/core/platform/default/build_config:cuda.
-  repository_ctx.file("cuda/cuda/include/cuda.h", "")
-  repository_ctx.file("cuda/cuda/include/cublas.h", "")
-  repository_ctx.file("cuda/cuda/include/cudnn.h", "")
-  repository_ctx.file("cuda/cuda/extras/CUPTI/include/cupti.h", "")
+  repository_ctx.file("cuda/cuda/include/cuda.h")
+  repository_ctx.file("cuda/cuda/include/cublas.h")
+  repository_ctx.file("cuda/cuda/include/cudnn.h")
+  repository_ctx.file("cuda/cuda/extras/CUPTI/include/cupti.h")
   repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cuda", cpu_value))
   repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cudart", cpu_value))
   repository_ctx.file(
