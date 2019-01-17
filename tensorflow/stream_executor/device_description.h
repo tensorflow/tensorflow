@@ -78,7 +78,7 @@ class DeviceDescription {
   // legitimate kernel launch request.
   const BlockDim &block_dim_limit() const { return block_dim_limit_; }
 
-  // Returns the limit on the number of simultaneously resident blocks
+  // Returns the maximum number of simultaneously resident blocks
   // on a multiprocessor.
   uint64 blocks_per_core_limit() const { return blocks_per_core_limit_; }
 
