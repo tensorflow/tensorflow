@@ -82,6 +82,7 @@ from tensorflow.python import distribute
 from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
+from tensorflow.python.module import module
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
