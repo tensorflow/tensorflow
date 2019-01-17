@@ -91,11 +91,13 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
 @ops.RegisterGradient("If")
 def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of an If op produced by cond_v2."""
-  true_graph, false_graph = _get_func_graphs(op)
+  # Get the if operator (this logic handles the case where op is a MockOp)
+  if_op = op.outputs[0].op
+  true_graph, false_graph = _get_func_graphs(if_op)
   # Note: op.graph != ops.get_default_graph() when we are computing the gradient
   # of a nested cond.
-  assert true_graph.outer_graph == op.graph
-  assert false_graph.outer_graph == op.graph
+  assert true_graph.outer_graph == if_op.graph
+  assert false_graph.outer_graph == if_op.graph
 
   # Create grad functions that compute the gradient of the true/false forward
   # graphs. These functions will capture tensors from the forward pass
@@ -140,11 +142,12 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
     true_graph.name += "_rewritten"
     false_graph.name += "_rewritten"
 
-    op._set_func_attr("then_branch", util.create_new_tf_function(true_graph))
-    op._set_func_attr("else_branch", util.create_new_tf_function(false_graph))
-    op._set_type_list_attr("Tout", true_graph.output_types)
-    op._set_shape_list_attr("output_shapes", true_graph.output_shapes)
-    op._add_outputs(
+    if_op._set_func_attr("then_branch", util.create_new_tf_function(true_graph))
+    if_op._set_func_attr("else_branch",
+                         util.create_new_tf_function(false_graph))
+    if_op._set_type_list_attr("Tout", true_graph.output_types)
+    if_op._set_shape_list_attr("output_shapes", true_graph.output_shapes)
+    if_op._add_outputs(
         [t.dtype for t in extra_true_outputs],
         [t.shape for t in extra_true_outputs])
 
@@ -153,7 +156,7 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   true_grad_inputs = _resolve_grad_inputs(true_graph, true_grad_graph)
   false_grad_inputs = _resolve_grad_inputs(false_graph, false_grad_graph)
 
-  outputs = _build_cond(op.inputs[0], true_grad_graph, false_grad_graph,
+  outputs = _build_cond(if_op.inputs[0], true_grad_graph, false_grad_graph,
                         true_grad_inputs, false_grad_inputs)
 
   # The predicate has no gradient.
