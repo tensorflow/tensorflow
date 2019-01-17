@@ -29,33 +29,6 @@ tf_cc_binary(
     ],
 )
 
-cc_library(
-    name = "dumped_computation_to_graphviz_library",
-    srcs = ["dumped_computation_to_graphviz.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service",
-        "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_binary(
-    name = "dumped_computation_to_graphviz",
-    deps = [
-        ":dumped_computation_to_graphviz_library",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
-    ],
-)
-
 tf_cc_binary(
     name = "show_signature",
     srcs = ["show_signature.cc"],
