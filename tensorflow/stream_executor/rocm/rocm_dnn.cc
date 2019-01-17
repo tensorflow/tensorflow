@@ -388,7 +388,6 @@ miopenConvBwdDataAlgorithm_t ToConvBackwardDataAlgo(
     case miopenConvolutionBwdDataAlgoDirect:
     case miopenConvolutionBwdDataAlgoFFT:
     case miopenConvolutionBwdDataAlgoWinograd:
-    case miopenTransposeBwdDataAlgoGEMM:
       return algo;
     default:
       LOG(FATAL)
@@ -2777,7 +2776,6 @@ bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
       dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoDirect, false),
       dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoFFT, false),
       dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoWinograd, false),
-      dnn::AlgorithmDesc(miopenTransposeBwdDataAlgoGEMM, false),
       // clang-format on
   });
   return true;
