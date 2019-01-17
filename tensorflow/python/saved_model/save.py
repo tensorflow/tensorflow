@@ -73,18 +73,24 @@ class _SaveableView(object):
     self.functions = util.ObjectIdentityDictionary()
 
     # Also add `Function`s as nodes.
-    for obj in self.nodes:
+    nodes_without_functions = list(self.nodes)
+    for obj in nodes_without_functions:
       self.functions[obj] = self._list_functions(obj)
       for function in self.functions[obj].values():
         if function not in self.node_ids:
           self.node_ids[function] = len(self.nodes)
           self.nodes.append(function)
-        # Force listing the concrete functions for the side effects:
-        #  - populate the cache for `Function`s that have an
-        #  input_signature and have not been called.
-        #  - force side effects of creation of concrete functions, e.g. create
-        #  variables on first run.
-        function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+          # Avoids recursing into functions to see if other functions are
+          # assigned to attributes. This is sometimes true for concrete
+          # functions but not helpful.
+          self.functions[function] = {}
+        if isinstance(function, def_function.Function):
+          # Force listing the concrete functions for the side effects:
+          #  - populate the cache for functions that have an input_signature
+          #  and have not been called.
+          #  - force side effects of creation of concrete functions, e.g. create
+          #  variables on first run.
+          function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
 
   @property
   def root(self):
@@ -96,7 +102,7 @@ class _SaveableView(object):
       assert self.node_ids[node] == node_id
       object_proto = proto.nodes.add()
       object_proto.slot_variables.extend(self.slot_variables.get(node, ()))
-      if isinstance(node, def_function.Function):
+      if isinstance(node, (def_function.Function, defun.ConcreteFunction)):
         continue
       for child in node._checkpoint_dependencies:  # pylint: disable=protected-access
         child_proto = object_proto.children.add()
@@ -117,7 +123,8 @@ class _SaveableView(object):
         # We really don't want to throw an exception just because some object's
         # attribute accessor is broken.
         attribute_value = None
-      if isinstance(attribute_value, def_function.Function):
+      if isinstance(attribute_value, (def_function.Function,
+                                      defun.ConcreteFunction)):
         functions[attribute_name] = attribute_value
     return functions
 
@@ -554,8 +561,11 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   concrete_functions = []
   for obj in accessible_objects:
     for function in saveable_view.functions[obj].values():
-      concrete_functions.extend(
-          function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
+      if isinstance(function, defun.ConcreteFunction):
+        concrete_functions.append(function)
+      else:
+        concrete_functions.extend(
+            function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
 
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
@@ -617,6 +627,9 @@ def _write_object_proto(obj, proto, asset_file_def_index, node_ids):
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(
         function_serialization.serialize_function(obj, node_ids))
+  elif isinstance(obj, defun.ConcreteFunction):
+    proto.concrete_function.CopyFrom(
+        function_serialization.serialize_concrete_function(obj, node_ids))
   else:
     registered_type_proto = revived_types.serialize(obj)
     if registered_type_proto is None:

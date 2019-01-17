@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
@@ -38,6 +39,46 @@ def _serialize_function_spec(function_spec, coder):
   return proto
 
 
+def _serialize_concrete_function_with_signature(
+    concrete_function, node_ids, signature_args, coder):
+  """Build a SavedConcreteFunction."""
+  bound_inputs = []
+  try:
+    for capture in concrete_function.captured_inputs:
+      bound_inputs.append(node_ids[capture])
+  except KeyError:
+    # TODO(andresp): Would it better to throw an exception?
+    logging.warning(
+        "Concrete function %s not added to object based saved model as it "
+        "captures tensor %s which is unsupported or not reachable from root.",
+        concrete_function.name, capture)
+    return None
+  concrete_function_proto = saved_object_graph_pb2.SavedConcreteFunction()
+  concrete_function_proto.name = concrete_function.name
+  concrete_function_proto.canonicalized_input_signature.CopyFrom(
+      coder.encode_structure(signature_args))
+  structured_outputs = func_graph_module.convert_structure_to_signature(
+      concrete_function.structured_outputs)
+  concrete_function_proto.output_signature.CopyFrom(
+      coder.encode_structure(structured_outputs))
+  concrete_function_proto.bound_inputs.extend(bound_inputs)
+  return concrete_function_proto
+
+
+def serialize_concrete_function(concrete_function, node_ids):
+  """Build a standalone SavedConcreteFunction."""
+  coder = nested_structure_coder.StructureCoder()
+  signature = []
+  # Construct a flat list of TensorSpecs for this concrete function. On load
+  # we'll parse them and recreate the call metadata.
+  for input_tensor, input_keyword in zip(
+      concrete_function.inputs, concrete_function._arg_keywords):  # pylint: disable=protected-access
+    signature.append(tensor_spec.TensorSpec(
+        input_tensor.shape, input_tensor.dtype, name=input_keyword))
+  return _serialize_concrete_function_with_signature(
+      concrete_function, node_ids, signature, coder)
+
+
 def serialize_function(function, node_ids):
   """Build a SavedFunction proto."""
   coder = nested_structure_coder.StructureCoder()
@@ -48,27 +89,11 @@ def serialize_function(function, node_ids):
   all_concrete_functions = \
       function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
   for concrete_function in all_concrete_functions:
-    bound_inputs = []
-    try:
-      for capture in concrete_function.captured_inputs:
-        bound_inputs.append(node_ids[capture])
-    except KeyError:
-      # TODO(andresp): Would it better to throw an exception?
-      logging.warning(
-          "Concrete function %s not added to object based saved model as it "
-          "captures tensor %s which is unsupported or not reachable from root.",
-          concrete_function.name, capture)
-      continue
     signature_args, signature_kwargs = \
         concrete_function.structured_input_signature
     del signature_kwargs
-    concrete_function_proto = proto.concrete_function.add()
-    concrete_function_proto.name = concrete_function.name
-    concrete_function_proto.canonicalized_input_signature.CopyFrom(
-        coder.encode_structure(signature_args))
-    structured_outputs = func_graph_module.convert_structure_to_signature(
-        concrete_function.structured_outputs)
-    concrete_function_proto.output_signature.CopyFrom(
-        coder.encode_structure(structured_outputs))
-    concrete_function_proto.bound_inputs.extend(bound_inputs)
+    concrete_function_proto = _serialize_concrete_function_with_signature(
+        concrete_function, node_ids, signature_args, coder)
+    if concrete_function_proto is not None:
+      proto.concrete_function.add().CopyFrom(concrete_function_proto)
   return proto
