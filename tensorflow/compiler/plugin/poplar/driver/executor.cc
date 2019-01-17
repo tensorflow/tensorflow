@@ -306,6 +306,7 @@ bool PoplarExecutor::HostCallback(se::Stream* stream,
 bool PoplarExecutor::HostCallback(se::Stream* stream,
                                   std::function<Status()> callback) {
   AsPoplarStream(stream)->EnqueueTask(callback);
+  return true;
 }
 
 bool PoplarExecutor::CreateStreamDependency(se::Stream* dependent,
@@ -375,9 +376,6 @@ Status PoplarExecutor::ConfigurePoplarDevice(
   if (!DeviceConfigurationsEqual(cfg, current_config_) || !device_open_) {
     current_config_ = cfg;
     try {
-      static poplar::DeviceManager device_mgr =
-          poplar::DeviceManager::getDeviceManager();
-
       if (device_open_) {
         VLOG(1) << "Detaching ordinal " << ordinal_
                 << " from poplar device: type " << GetDeviceTargetName();
@@ -393,7 +391,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       bool have_ipu_hardware = false;
 
       if (getenv(s_force_ipu_model) == nullptr) {
-        auto device_list = device_mgr.getDevices();
+        auto device_list = GetDeviceManager().getDevices();
         for (const auto& d : device_list) {
           if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
             have_ipu_hardware = true;
@@ -404,7 +402,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
       if (have_ipu_hardware) {
         // Hardware devices
-        auto device_list = device_mgr.getDevices();
+        auto device_list = GetDeviceManager().getDevices();
 
         if (current_config_.device_config_size() == 0) {
           // Default case - 1 single TF device with one single IPU
@@ -1201,6 +1199,12 @@ void PoplarExecutor::AboutToFreeEngine(poplar::Engine* engine) {
 }
 
 const int PoplarExecutor::device_ordinal() const { return ordinal_; }
+
+poplar::DeviceManager& PoplarExecutor::GetDeviceManager() {
+  static poplar::DeviceManager device_mgr =
+      poplar::DeviceManager::createDeviceManager();
+  return device_mgr;
+}
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,
