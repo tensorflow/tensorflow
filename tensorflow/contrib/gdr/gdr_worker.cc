@@ -44,13 +44,13 @@ GdrWorker::GdrWorker(WorkerEnv* worker_env, const ConfigProto& config,
                      RemoteMemoryManager* remote_memory_manager)
     : GrpcWorker(worker_env, config),
       remote_memory_manager_(remote_memory_manager),
-      recv_tensor_recent_request_ids_(100000) {}
+      recent_request_ids_(100000) {}
 
 void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                     const RecvTensorRequest* request,
                                     ::grpc::ByteBuffer* response,
                                     StatusCallback done) {
-  Status s = recv_tensor_recent_request_ids_.TrackUnique(
+  Status s = recent_request_ids_.TrackUnique(
       request->request_id(), "RecvTensor (GdrWorker)", *request);
   if (!s.ok()) {
     done(s);
@@ -152,7 +152,7 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
 void GdrWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                              RecvBufResponse* response, StatusCallback done) {
   // This is an RDMA enabled implementation augmenting grpc.
-  Status s = recv_tensor_recent_request_ids_.TrackUnique(
+  Status s = recent_request_ids_.TrackUnique(
       request->request_id(), "RecvBuf (GdrWorker)", *request);
   if (!s.ok()) {
     done(s);
