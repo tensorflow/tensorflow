@@ -52,8 +52,8 @@ auto* load_latency_by_stage = monitoring::Sampler<2>::New(
         "model_path",
         "stage",
     },
-    // Scale of 10, power of 1.5 with bucket count 36 (~20 minutes).
-    monitoring::Buckets::Exponential(10, 1.5, 36));
+    // Scale of 10, power of 1.8 with bucket count 33 (~20 minutes).
+    monitoring::Buckets::Exponential(10, 1.8, 33));
 
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
