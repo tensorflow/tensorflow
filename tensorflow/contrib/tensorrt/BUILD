@@ -49,7 +49,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -63,7 +63,7 @@ tf_custom_op_library(
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -76,7 +76,7 @@ tf_cuda_library(
         ":trt_logging",
         ":trt_plugins",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
 )
 
@@ -105,7 +105,7 @@ cc_library(
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core/grappler/costs:graph_properties",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
     # TODO(laigd): fix this by merging header file in cc file.
     alwayslink = 1,  # buildozer: disable=alwayslink-with-hdrs
@@ -149,7 +149,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -169,7 +169,7 @@ tf_custom_op_py_library(
     dso = [
         ":python/ops/_trt_ops.so",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
     kernels = [
         ":trt_op_kernels",
@@ -262,7 +262,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -275,7 +275,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -347,7 +347,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
 )
 
@@ -377,7 +377,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -409,7 +409,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
     ] + if_tensorrt([
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -468,7 +468,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -488,7 +488,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 

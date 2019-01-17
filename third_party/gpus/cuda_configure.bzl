@@ -643,9 +643,7 @@ def _cudnn_version(repository_ctx, cudnn_install_basedir, cpu_value):
     auto_configure_fail(("cuDNN version detected from %s (%s) does not match " +
                          "TF_CUDNN_VERSION (%s)") %
                         (str(cudnn_h_path), full_version, environ_version),)
-
-  # We only use the major version since we use the libcudnn libraries that are
-  # only versioned with the major version (e.g. libcudnn.so.5).
+  # Only use the major version to match the SONAME of the library.
   version = major_version
   if cpu_value == "Windows":
     version = "64_" + version
@@ -691,11 +689,11 @@ def _is_windows(repository_ctx):
   return get_cpu_value(repository_ctx) == "Windows"
 
 
-def _lib_name(lib, cpu_value, version = "", static = False):
+def lib_name(base_name, cpu_value, version = None, static = False):
   """Constructs the platform-specific name of a library.
 
     Args:
-      lib: The name of the library, such as "cudart"
+      base_name: The name of the library, such as "cudart"
       cpu_value: The name of the host operating system.
       version: The version of the library.
       static: True the library is static or False if it is a shared object.
@@ -703,23 +701,47 @@ def _lib_name(lib, cpu_value, version = "", static = False):
     Returns:
       The platform-specific name of the library.
     """
+  version = "" if not version else "." + version
   if cpu_value in ("Linux", "FreeBSD"):
     if static:
-      return "lib%s.a" % lib
-    else:
-      if version:
-        version = ".%s" % version
-      return "lib%s.so%s" % (lib, version)
+      return "lib%s.a" % base_name
+    return "lib%s.so%s" % (base_name, version)
   elif cpu_value == "Windows":
-    return "%s.lib" % lib
+    return "%s.lib" % base_name
   elif cpu_value == "Darwin":
     if static:
-      return "lib%s.a" % lib
-    elif version:
-      version = ".%s" % version
-    return "lib%s%s.dylib" % (lib, version)
+      return "lib%s.a" % base_name
+    return "lib%s%s.dylib" % (base_name, version)
   else:
     auto_configure_fail("Invalid cpu_value: %s" % cpu_value)
+
+def find_lib(repository_ctx, paths, check_soname = True):
+  """
+    Finds a library among a list of potential paths.
+
+    Args:
+      paths: List of paths to inspect.
+
+    Returns:
+      Returns the first path in paths that exist.
+  """
+  objdump = repository_ctx.which("objdump")
+  mismatches = []
+  for path in [repository_ctx.path(path) for path in paths]:
+    if not path.exists:
+      continue
+    if check_soname and objdump != None:
+      output = repository_ctx.execute([objdump, "-p", str(path)]).stdout
+      output = [line for line in output.splitlines() if "SONAME" in line]
+      sonames = [line.strip().split(" ")[-1] for line in output]
+      if not any([soname == path.basename for soname in sonames]):
+        mismatches.append(str(path))
+        continue
+    return path
+  if mismatches:
+    auto_configure_fail(
+        "None of the libraries match their SONAME: " + ", ".join(mismatches))
+  auto_configure_fail("No library found under: " + ", ".join(paths))
 
 
 def _find_cuda_lib(
@@ -727,7 +749,7 @@ def _find_cuda_lib(
         repository_ctx,
         cpu_value,
         basedir,
-        version = "",
+        version,
         static = False):
   """Finds the given CUDA or cuDNN library on the system.
 
@@ -740,16 +762,12 @@ def _find_cuda_lib(
       static: True if static library, False if shared object.
 
     Returns:
-      Returns a struct with the following fields:
-        file_name: The basename of the library found on the system.
-        path: The full path to the library.
+      Returns the path to the library.
     """
-  file_name = _lib_name(lib, cpu_value, version, static)
-  for relative_path in CUDA_LIB_PATHS:
-    path = repository_ctx.path("%s/%s%s" % (basedir, relative_path, file_name))
-    if path.exists:
-      return struct(file_name=file_name, path=str(path.realpath))
-  auto_configure_fail("Cannot find cuda library %s" % file_name)
+  file_name = lib_name(lib, cpu_value, version, static)
+  return find_lib(repository_ctx, [
+      "%s/%s%s" % (basedir, path, file_name) for path in CUDA_LIB_PATHS
+  ], check_soname = version and not static)
 
 
 def _find_cupti_header_dir(repository_ctx, cuda_config):
@@ -785,23 +803,17 @@ def _find_cupti_lib(repository_ctx, cuda_config):
       cuda_config: The cuda configuration as returned by _get_cuda_config.
 
     Returns:
-      Returns a struct with the following fields:
-        file_name: The basename of the library found on the system.
-        path: The full path to the library.
+      Returns the path to the library.
     """
-  file_name = _lib_name(
+  file_name = lib_name(
       "cupti",
       cuda_config.cpu_value,
       cuda_config.cuda_version,
   )
-  cuda_toolkit_path = cuda_config.cuda_toolkit_path
-  for relative_path in CUPTI_LIB_PATHS:
-    path = repository_ctx.path(
-        "%s/%s%s" % (cuda_toolkit_path, relative_path, file_name),)
-    if path.exists:
-      return struct(file_name=file_name, path=str(path.realpath))
-
-  auto_configure_fail("Cannot find cupti library %s" % file_name)
+  basedir = cuda_config.cuda_toolkit_path
+  return find_lib(repository_ctx, [
+      "%s/%s%s" % (basedir, path, file_name) for path in CUPTI_LIB_PATHS
+  ])
 
 
 def _find_libs(repository_ctx, cuda_config):
@@ -817,8 +829,12 @@ def _find_libs(repository_ctx, cuda_config):
   cpu_value = cuda_config.cpu_value
   return {
       "cuda":
-          _find_cuda_lib("cuda", repository_ctx, cpu_value,
-                         cuda_config.cuda_toolkit_path),
+          _find_cuda_lib(
+              "cuda",
+              repository_ctx,
+              cpu_value,
+              cuda_config.cuda_toolkit_path,
+              None),
       "cudart":
           _find_cuda_lib(
               "cudart",
@@ -1035,9 +1051,9 @@ def _create_dummy_repository(repository_ctx):
       "cuda:BUILD",
       {
           "%{cuda_driver_lib}":
-              _lib_name("cuda", cpu_value),
+              lib_name("cuda", cpu_value),
           "%{cudart_static_lib}":
-              _lib_name(
+              lib_name(
                   "cudart_static",
                   cpu_value,
                   static=True,
@@ -1045,19 +1061,19 @@ def _create_dummy_repository(repository_ctx):
           "%{cudart_static_linkopt}":
               _cudart_static_linkopt(cpu_value),
           "%{cudart_lib}":
-              _lib_name("cudart", cpu_value),
+              lib_name("cudart", cpu_value),
           "%{cublas_lib}":
-              _lib_name("cublas", cpu_value),
+              lib_name("cublas", cpu_value),
           "%{cusolver_lib}":
-              _lib_name("cusolver", cpu_value),
+              lib_name("cusolver", cpu_value),
           "%{cudnn_lib}":
-              _lib_name("cudnn", cpu_value),
+              lib_name("cudnn", cpu_value),
           "%{cufft_lib}":
-              _lib_name("cufft", cpu_value),
+              lib_name("cufft", cpu_value),
           "%{curand_lib}":
-              _lib_name("curand", cpu_value),
+              lib_name("curand", cpu_value),
           "%{cupti_lib}":
-              _lib_name("cupti", cpu_value),
+              lib_name("cupti", cpu_value),
           "%{copy_rules}":
               "",
           "%{cuda_headers}":
@@ -1071,16 +1087,16 @@ def _create_dummy_repository(repository_ctx):
   repository_ctx.file("cuda/cuda/include/cublas.h")
   repository_ctx.file("cuda/cuda/include/cudnn.h")
   repository_ctx.file("cuda/cuda/extras/CUPTI/include/cupti.h")
-  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cuda", cpu_value))
-  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cudart", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cuda", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cudart", cpu_value))
   repository_ctx.file(
-      "cuda/cuda/lib/%s" % _lib_name("cudart_static", cpu_value))
-  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cublas", cpu_value))
-  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cusolver", cpu_value))
-  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cudnn", cpu_value))
-  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("curand", cpu_value))
-  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cufft", cpu_value))
-  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cupti", cpu_value))
+      "cuda/cuda/lib/%s" % lib_name("cudart_static", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cublas", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cusolver", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cudnn", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % lib_name("curand", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cufft", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cupti", cpu_value))
 
   # Set up cuda_config.h, which is used by
   # tensorflow/stream_executor/dso_loader.cc.
@@ -1269,9 +1285,9 @@ def _create_local_cuda_repository(repository_ctx):
   cuda_libs = _find_libs(repository_ctx, cuda_config)
   cuda_lib_srcs = []
   cuda_lib_outs = []
-  for lib in cuda_libs.values():
-    cuda_lib_srcs.append(lib.path)
-    cuda_lib_outs.append("cuda/lib/" + lib.file_name)
+  for path in cuda_libs.values():
+    cuda_lib_srcs.append(str(path))
+    cuda_lib_outs.append("cuda/lib/" + path.basename)
   copy_rules.append(make_copy_files_rule(
       repository_ctx,
       name = "cuda-lib",
@@ -1317,25 +1333,25 @@ def _create_local_cuda_repository(repository_ctx):
       "cuda:BUILD.windows" if _is_windows(repository_ctx) else "cuda:BUILD",
       {
           "%{cuda_driver_lib}":
-              cuda_libs["cuda"].file_name,
+              cuda_libs["cuda"].basename,
           "%{cudart_static_lib}":
-              cuda_libs["cudart_static"].file_name,
+              cuda_libs["cudart_static"].basename,
           "%{cudart_static_linkopt}":
               _cudart_static_linkopt(cuda_config.cpu_value,),
           "%{cudart_lib}":
-              cuda_libs["cudart"].file_name,
+              cuda_libs["cudart"].basename,
           "%{cublas_lib}":
-              cuda_libs["cublas"].file_name,
+              cuda_libs["cublas"].basename,
           "%{cusolver_lib}":
-              cuda_libs["cusolver"].file_name,
+              cuda_libs["cusolver"].basename,
           "%{cudnn_lib}":
-              cuda_libs["cudnn"].file_name,
+              cuda_libs["cudnn"].basename,
           "%{cufft_lib}":
-              cuda_libs["cufft"].file_name,
+              cuda_libs["cufft"].basename,
           "%{curand_lib}":
-              cuda_libs["curand"].file_name,
+              cuda_libs["curand"].basename,
           "%{cupti_lib}":
-              cuda_libs["cupti"].file_name,
+              cuda_libs["cupti"].basename,
           "%{copy_rules}":
               "\n".join(copy_rules),
           "%{cuda_headers}": ('":cuda-include",\n' + '        ":cudnn-include",'
