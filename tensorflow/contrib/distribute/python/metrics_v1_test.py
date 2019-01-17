@@ -95,8 +95,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
 
   def _test_metric(self, distribution, dataset_fn, metric_fn, expected_fn):
     with ops.Graph().as_default(), distribution.scope():
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_initializable_iterator()
+      iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
           value, update = distribution.extended.call_for_each_replica(
@@ -121,7 +120,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
         # replace "distribution.num_replicas_in_sync" with "1".
         batches_per_update = distribution.num_replicas_in_sync
 
-      self.evaluate(iterator.initializer)
+      self.evaluate(iterator.initialize())
       self.evaluate(variables.local_variables_initializer())
 
       batches_consumed = 0
