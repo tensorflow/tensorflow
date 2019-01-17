@@ -1146,19 +1146,25 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
 
   CUmodule blank_module;
   CUfunction blank_function;
-  CUDADriver::LoadPtx(context_, blank_ptx, &blank_module);
-  CUDADriver::GetModuleFunction(context_, blank_module, kernel_name,
-                                &blank_function);
-
-  int bpc;
-  CUresult result = cuOccupancyMaxActiveBlocksPerMultiprocessor(
-      &bpc, blank_function, 1, 1);
-  if (result != CUDA_SUCCESS) {
+  int bpc = -1;
+  bool ptx_success = CUDADriver::LoadPtx(context_, blank_ptx, &blank_module);
+  if (ptx_success) {
+    ptx_success = CUDADriver::GetModuleFunction(context_, blank_module,
+                                                kernel_name, &blank_function);
+    if (ptx_success) {
+      CUresult result = cuOccupancyMaxActiveBlocksPerMultiprocessor(
+          &bpc, blank_function, 1, 1);
+      if (result != CUDA_SUCCESS) {
+        bpc = -1;
+        ptx_success = false;
+      }
+    }
+    CUDADriver::UnloadModule(context_, blank_module);
+  }
+  if (!ptx_success) {
     LOG(ERROR) << "Failed to calculate max blocks per SM using dummy kernel.";
-    bpc = -1;
   }
   builder.set_blocks_per_core_limit(bpc);
-  CUDADriver::UnloadModule(context_, blank_module);
 
   auto built = builder.Build();
   return built.release();
