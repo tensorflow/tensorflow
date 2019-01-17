@@ -256,7 +256,7 @@ class Layer(checkpointable.Checkpointable):
                  synchronization=tf_variables.VariableSynchronization.AUTO,
                  aggregation=tf_variables.VariableAggregation.NONE,
                  **kwargs):
-    """Adds a new variable to the layer, or gets an existing one; returns it.
+    """Adds a new variable to the layer.
 
     Arguments:
       name: variable name.
