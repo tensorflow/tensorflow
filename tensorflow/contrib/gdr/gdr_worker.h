@@ -44,7 +44,7 @@ class GdrWorker : public GrpcWorker {
 
  private:
   RemoteMemoryManager* remote_memory_manager_;  // Not owned
-  RecentRequestIds recv_tensor_recent_request_ids_;
+  RecentRequestIds recent_request_ids_;
 };
 
 }  // namespace tensorflow
