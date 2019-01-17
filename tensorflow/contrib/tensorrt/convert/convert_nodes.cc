@@ -340,10 +340,11 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
   if (!layer) return nullptr;
   const nvinfer1::DataType trt_dtype = trt_weights.type;
-  // NOTE(laigd): calling layer->setOutputType() does not work. This may be a
-  // bug and we should report to NVIDIA.
-  // layer->setOutputType(0, trt_dtype);
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
+  // TODO(laigd): there is a bug in TensorRT 5.0 library that, if we don't set
+  // the data type below, it will always be kFLOAT regardless what the data type
+  // of the weights is. Once NVIDIA fixes this bug, we should remove the data
+  // type setting logic below and test should still pass.
   trt_tensor->setType(trt_dtype);
   return trt_tensor;
 }
