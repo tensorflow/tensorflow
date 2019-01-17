@@ -174,7 +174,7 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     TensorReference abnormal_detected_ref(abnormal_detected);
     auto check_cb = [this, stream, abnormal_detected_ref,
                      abnormal_detected_host, context, done]() {
-      se::cuda::ScopedActivateExecutorContext scoped_activation{
+      se::gpu::ScopedActivateExecutorContext scoped_activation{
           stream->parent()};
       auto abnormal_detected_host_flat = abnormal_detected_host.flat<int>();
       int is_nan = abnormal_detected_host_flat(0);

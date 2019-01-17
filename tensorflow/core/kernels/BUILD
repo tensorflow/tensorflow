@@ -3844,7 +3844,7 @@ tf_kernel_library(
         ":reduction_ops",
         "@cub_archive//:cub",
         "//tensorflow/core:stream_executor",
-        "//tensorflow/stream_executor/cuda:cuda_stream",
+        "//tensorflow/stream_executor/gpu:gpu_stream",
     ]),
 )
 

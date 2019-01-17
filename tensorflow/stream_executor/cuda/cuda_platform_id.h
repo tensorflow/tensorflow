@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 // Opaque and unique identifier for the cuda platform.
 // This is needed so that plugins can refer to/identify this platform without
@@ -28,7 +28,7 @@ namespace cuda {
 // and CudaExecutor.
 extern const Platform::Id kCudaPlatformId;
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_

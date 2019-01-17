@@ -13,36 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines the CUDAStream type - the CUDA-specific implementation of the generic
+// Defines the GpuStream type - the CUDA-specific implementation of the generic
 // StreamExecutor Stream interface.
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
-#define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
+#define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
-class CUDAExecutor;
+class GpuExecutor;
 
-// Wraps a CUstream in order to satisfy the platform-independent
+// Wraps a GpuStreamHandle in order to satisfy the platform-independent
 // StreamInterface.
 //
 // Thread-safe post-initialization.
-class CUDAStream : public internal::StreamInterface {
+class GpuStream : public internal::StreamInterface {
  public:
-  explicit CUDAStream(CUDAExecutor *parent)
-      : parent_(parent), cuda_stream_(nullptr), completed_event_(nullptr) {}
+  explicit GpuStream(GpuExecutor* parent)
+      : parent_(parent), gpu_stream_(nullptr), completed_event_(nullptr) {}
 
   // Note: teardown is handled by a parent's call to DeallocateStream.
-  ~CUDAStream() override {}
+  ~GpuStream() override {}
 
-  void *GpuStreamHack() override { return cuda_stream_; }
-  void **GpuStreamMemberHack() override {
-    return reinterpret_cast<void **>(&cuda_stream_);
+  void* GpuStreamHack() override { return gpu_stream_; }
+  void** GpuStreamMemberHack() override {
+    return reinterpret_cast<void**>(&gpu_stream_);
   }
 
   // Explicitly initialize the CUDA resources associated with this stream, used
@@ -59,35 +59,35 @@ class CUDAStream : public internal::StreamInterface {
   // Retrieves an event which indicates that all work enqueued into the stream
   // has completed. Ownership of the event is not transferred to the caller, the
   // event is owned by this stream.
-  CUevent* completed_event() { return &completed_event_; }
+  GpuEventHandle* completed_event() { return &completed_event_; }
 
-  // Returns the CUstream value for passing to the CUDA API.
+  // Returns the GpuStreamHandle value for passing to the CUDA API.
   //
-  // Precond: this CUDAStream has been allocated (otherwise passing a nullptr
+  // Precond: this GpuStream has been allocated (otherwise passing a nullptr
   // into the NVIDIA library causes difficult-to-understand faults).
-  CUstream cuda_stream() const {
-    DCHECK(cuda_stream_ != nullptr);
-    return const_cast<CUstream>(cuda_stream_);
+  GpuStreamHandle gpu_stream() const {
+    DCHECK(gpu_stream_ != nullptr);
+    return const_cast<GpuStreamHandle>(gpu_stream_);
   }
 
-  CUDAExecutor *parent() const { return parent_; }
+  GpuExecutor* parent() const { return parent_; }
 
  private:
-  CUDAExecutor *parent_;  // Executor that spawned this stream.
-  CUstream cuda_stream_;  // Wrapped CUDA stream handle.
+  GpuExecutor* parent_;         // Executor that spawned this stream.
+  GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.
 
   // Event that indicates this stream has completed.
-  CUevent completed_event_ = nullptr;
+  GpuEventHandle completed_event_ = nullptr;
 };
 
 // Helper functions to simplify extremely common flows.
-// Converts a Stream to the underlying CUDAStream implementation.
-CUDAStream *AsCUDAStream(Stream *stream);
+// Converts a Stream to the underlying GpuStream implementation.
+GpuStream* AsGpuStream(Stream* stream);
 
-// Extracts a CUstream from a CUDAStream-backed Stream object.
-CUstream AsCUDAStreamValue(Stream *stream);
+// Extracts a GpuStreamHandle from a GpuStream-backed Stream object.
+GpuStreamHandle AsGpuStreamValue(Stream* stream);
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_

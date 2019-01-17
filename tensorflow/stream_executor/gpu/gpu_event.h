@@ -13,24 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_EVENT_H_
-#define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_EVENT_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_EVENT_H_
+#define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_EVENT_H_
 
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/event.h"
+#include "tensorflow/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/lib/status.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
-// CUDAEvent wraps a CUevent in the platform-independent EventInterface
+// GpuEvent wraps a GpuEventHandle in the platform-independent EventInterface
 // interface.
-class CUDAEvent : public internal::EventInterface {
+class GpuEvent : public internal::EventInterface {
  public:
-  explicit CUDAEvent(CUDAExecutor* parent);
+  explicit GpuEvent(GpuExecutor* parent);
 
-  ~CUDAEvent() override;
+  ~GpuEvent() override;
 
   // Populates the CUDA-platform-specific elements of this object.
   port::Status Init();
@@ -40,23 +40,23 @@ class CUDAEvent : public internal::EventInterface {
   port::Status Destroy();
 
   // Inserts the event at the current position into the specified stream.
-  port::Status Record(CUDAStream* stream);
+  port::Status Record(GpuStream* stream);
 
   // Polls the CUDA platform for the event's current status.
   Event::Status PollForStatus();
 
   // The underlying CUDA event element.
-  const CUevent& cuda_event();
+  GpuEventHandle gpu_event();
 
  private:
-  // The Executor used to which this object and CUevent are bound.
-  CUDAExecutor* parent_;
+  // The Executor used to which this object and GpuEventHandle are bound.
+  GpuExecutor* parent_;
 
   // The underlying CUDA event element.
-  CUevent cuda_event_;
+  GpuEventHandle gpu_event_;
 };
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_EVENT_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_EVENT_H_

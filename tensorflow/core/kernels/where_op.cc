@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/cuda.h"
 
-using stream_executor::cuda::ScopedActivateExecutorContext;
+using stream_executor::gpu::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {

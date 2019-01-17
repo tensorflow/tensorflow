@@ -78,7 +78,7 @@ using matinv_Z = cublasStatus_t(cublasContext*, int, const double2* const*, int,
 namespace tensorflow {
 namespace {
 
-using se::cuda::ScopedActivateExecutorContext;
+using se::gpu::ScopedActivateExecutorContext;
 
 inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
                              const void* src, uint64 bytes) {

@@ -163,7 +163,7 @@ static bool InitModule() {
   xla::ComputationPlacer::RegisterComputationPlacer(
       stream_executor::host::kHostPlatformId, &CreateComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::cuda::kCudaPlatformId, &CreateComputationPlacer);
+      stream_executor::gpu::kCudaPlatformId, &CreateComputationPlacer);
   return true;
 }
 static bool module_initialized = InitModule();

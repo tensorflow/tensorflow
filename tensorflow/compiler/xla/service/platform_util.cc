@@ -187,7 +187,7 @@ PlatformUtil::GetSupportedPlatforms() {
 // by XLA.
 static bool IsDeviceSupported(se::StreamExecutor* executor) {
   const auto& description = executor->GetDeviceDescription();
-  if (executor->platform()->id() == se::cuda::kCudaPlatformId) {
+  if (executor->platform()->id() == se::gpu::kCudaPlatformId) {
     // CUDA devices must have a minimum compute capability.
     int major_version, minor_version;
     if (description.cuda_compute_capability(&major_version, &minor_version)) {

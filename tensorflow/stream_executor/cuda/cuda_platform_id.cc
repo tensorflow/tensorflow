@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 PLATFORM_DEFINE_ID(kCudaPlatformId);
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor

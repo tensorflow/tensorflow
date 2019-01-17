@@ -99,7 +99,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 
 namespace xla {
 namespace gpu {
@@ -462,12 +462,12 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
 void WarnIfBadDriverJITVersion() {
   static std::once_flag run_once;
   std::call_once(run_once, [] {
-    auto version_or_status = se::cuda::Diagnostician::FindKernelDriverVersion();
+    auto version_or_status = se::gpu::Diagnostician::FindKernelDriverVersion();
     if (!version_or_status.ok()) {
       LOG(WARNING) << "Couldn't read CUDA driver version.";
       return;
     }
-    se::cuda::DriverVersion version = version_or_status.ValueOrDie();
+    se::gpu::DriverVersion version = version_or_status.ValueOrDie();
 
     // The following versions of the driver JIT miscompile some address
     // calculations with large offsets (e.g. "load ptr + large_constant"),
@@ -482,7 +482,7 @@ void WarnIfBadDriverJITVersion() {
     if (version < std::make_tuple(396, 20, 0)) {
       LOG(WARNING)
           << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
-          << se::cuda::DriverVersionToString(version)
+          << se::gpu::DriverVersionToString(version)
           << ", which is older than 396.20.0. These versions are known to "
              "miscompile XLA code, leading to incorrect results or "
              "invalid-address errors.\nXLA only uses the driver JIT if it "
@@ -876,7 +876,7 @@ NVPTXCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 }
 
 se::Platform::Id NVPTXCompiler::PlatformId() const {
-  return se::cuda::kCudaPlatformId;
+  return se::gpu::kCudaPlatformId;
 }
 
 }  // namespace gpu
@@ -884,7 +884,7 @@ se::Platform::Id NVPTXCompiler::PlatformId() const {
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
-      stream_executor::cuda::kCudaPlatformId,
+      stream_executor::gpu::kCudaPlatformId,
       []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
   return true;
 }

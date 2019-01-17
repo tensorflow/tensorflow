@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 
 #if !defined(PLATFORM_WINDOWS)
 #include <dirent.h>
@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 #ifdef __APPLE__
 static const CFStringRef kDriverKextIdentifier = CFSTR("com.nvidia.CUDA");
@@ -387,6 +387,5 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
 #endif
 }
 
-
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor

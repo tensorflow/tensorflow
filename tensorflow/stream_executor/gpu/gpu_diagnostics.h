@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DIAGNOSTICS_H_
-#define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DIAGNOSTICS_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_DIAGNOSTICS_H_
+#define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_DIAGNOSTICS_H_
 
-#include "tensorflow/stream_executor/platform/port.h"
 #include <tuple>
+#include "tensorflow/stream_executor/platform/port.h"
 
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 // e.g. DriverVersion{346, 3, 4}
 using DriverVersion = std::tuple<int, int, int>;
@@ -35,7 +35,7 @@ string DriverVersionToString(DriverVersion version);
 string DriverVersionStatusToString(port::StatusOr<DriverVersion> version);
 
 // Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-port::StatusOr<DriverVersion> StringToDriverVersion(const string &value);
+port::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
 
 class Diagnostician {
  public:
@@ -57,7 +57,7 @@ class Diagnostician {
   // This is solely used for more informative log messages when the user is
   // running on a machine that happens to have a libcuda/kernel driver mismatch.
   static port::StatusOr<DriverVersion> FindKernelModuleVersion(
-      const string &driver_version_file_contents);
+      const string& driver_version_file_contents);
 
   // Extracts the kernel driver version from the current host.
   static port::StatusOr<DriverVersion> FindKernelDriverVersion();
@@ -71,7 +71,6 @@ class Diagnostician {
   static void LogDriverVersionInformation();
 
  private:
-
   // Given the DSO version number and the driver version file contents, extracts
   // the driver version and compares, warning the user in the case of
   // incompatibility.
@@ -91,7 +90,7 @@ class Diagnostician {
   SE_DISALLOW_COPY_AND_ASSIGN(Diagnostician);
 };
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DIAGNOSTICS_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_DIAGNOSTICS_H_
