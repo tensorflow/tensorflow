@@ -13421,7 +13421,7 @@ func StaticRegexReplaceReplaceGlobal(value bool) StaticRegexReplaceAttr {
 // Arguments:
 //	input: The text to be processed.
 //	pattern: The regular expression to match the input.
-//	rewrite: The rewrite to be applied to the matched expresion.
+//	rewrite: The rewrite to be applied to the matched expression.
 //
 // Returns The text after applying pattern and rewrite.
 func StaticRegexReplace(scope *Scope, input tf.Output, pattern string, rewrite string, optional ...StaticRegexReplaceAttr) (output tf.Output) {
