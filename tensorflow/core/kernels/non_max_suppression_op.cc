@@ -243,8 +243,6 @@ void BatchedNonMaxSuppressionOp(
   std::vector<std::vector<float>> nmsed_classes(num_batches);
   // [num_batches]
   std::vector<int> final_valid_detections;
-  // [num_batches, per_batch_size]
-  std::vector<std::vector<int>> selected_indices(num_batches);
 
   int per_batch_size = total_size_per_batch;
 
@@ -389,14 +387,12 @@ void BatchedNonMaxSuppressionOp(
                    clip_window[1]));
       nmsed_scores[batch].push_back(next_candidate.score);
       nmsed_classes[batch].push_back(next_candidate.class_idx);
-      selected_indices[batch].push_back(next_candidate.box_index);
       curr_total_size--;
     }
 
     nmsed_boxes[batch].resize(per_batch_size * 4, 0);
     nmsed_scores[batch].resize(per_batch_size, 0);
     nmsed_classes[batch].resize(per_batch_size, 0);
-    selected_indices[batch].resize(per_batch_size, 0);
   }
 
   Tensor* nmsed_boxes_t = nullptr;
@@ -422,16 +418,11 @@ void BatchedNonMaxSuppressionOp(
                                                    &valid_detections_t));
   auto valid_detections_flat = valid_detections_t->template flat<int>();
 
-  Tensor* selected_indices_t = nullptr;
-  OP_REQUIRES_OK(
-      context, context->allocate_output(4, scores_shape, &selected_indices_t));
-  auto selected_indices_flat = selected_indices_t->template flat<int>();
   for (int i = 0; i < num_batches; ++i) {
     valid_detections_flat(i) = final_valid_detections[i];
     for (int j = 0; j < per_batch_size; ++j) {
       nmsed_scores_flat(i * per_batch_size + j) = nmsed_scores[i][j];
       nmsed_classes_flat(i * per_batch_size + j) = nmsed_classes[i][j];
-      selected_indices_flat(i * per_batch_size + j) = selected_indices[i][j];
       for (int k = 0; k < 4; ++k) {
         nmsed_boxes_flat(i * per_batch_size * 4 + j * 4 + k) =
             nmsed_boxes[i][j * 4 + k];

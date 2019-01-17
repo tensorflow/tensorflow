@@ -895,7 +895,6 @@ REGISTER_OP("CombinedNonMaxSuppression")
     .Output("nmsed_scores: float")
     .Output("nmsed_classes: float")
     .Output("valid_detections: int32")
-    .Output("selected_indices: int32")
     .Attr("pad_per_class: bool = false")
     .SetShapeFn(CombinedNMSShapeFn);
 

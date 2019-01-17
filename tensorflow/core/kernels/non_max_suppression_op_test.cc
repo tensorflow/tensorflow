@@ -907,11 +907,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest, TestEmptyInput) {
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({0}));
   test::FillValues<int>(&expected_valid_d, {});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({0, 10}));
-  test::FillValues<int>(&expected_indices, {});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectFromThreeClusters) {
@@ -945,10 +940,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectFromThreeClusters) {
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
   test::FillValues<int>(&expected_valid_d, {3});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({1, 3}));
-  test::FillValues<int>(&expected_indices, {3, 0, 5});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest,
@@ -983,10 +974,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
   test::FillValues<int>(&expected_valid_d, {2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({1, 3}));
-  test::FillValues<int>(&expected_indices, {3, 0, 0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest,
@@ -1026,10 +1013,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
   test::FillValues<int>(&expected_valid_d, {2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({1, 5}));
-  test::FillValues<int>(&expected_indices, {3, 0, 0, 0, 0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectSingleBox) {
@@ -1058,10 +1041,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectSingleBox) {
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
   test::FillValues<int>(&expected_valid_d, {1});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({1, 1}));
-  test::FillValues<int>(&expected_indices, {0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest,
@@ -1100,10 +1079,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {2, 2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 3}));
-  test::FillValues<int>(&expected_indices, {3, 0, 0, 3, 0, 0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectFromTwoBatchesTwoClasses) {
@@ -1143,10 +1118,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectFromTwoBatchesTwoClasses) {
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {3, 3});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 3}));
-  test::FillValues<int>(&expected_indices, {3, 0, 1, 3, 0, 1});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest,
@@ -1186,10 +1157,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {2, 2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 3}));
-  test::FillValues<int>(&expected_indices, {3, 0, 0, 3, 0, 0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest,
@@ -1229,10 +1196,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {2, 2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 3}));
-  test::FillValues<int>(&expected_indices, {3, 0, 0, 3, 0, 0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest,
@@ -1273,10 +1236,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {2, 2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 4}));
-  test::FillValues<int>(&expected_indices, {3, 0, 0, 0, 3, 0, 0, 0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest,
@@ -1320,10 +1279,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {5, 5});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 5}));
-  test::FillValues<int>(&expected_indices, {3, 0, 1, 4, 5, 3, 0, 1, 4, 5});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 TEST_F(CombinedNonMaxSuppressionOpTest,
@@ -1371,10 +1326,6 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {3, 3});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
-  // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 3}));
-  test::FillValues<int>(&expected_indices, {3, 0, 1, 3, 0, 1});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
 }  // namespace tensorflow
