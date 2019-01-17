@@ -553,6 +553,10 @@ def _slice_helper(tensor, slice_spec, var=None):
   print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+
+  # masks
+  foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
+  print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
   ```
 
   Notes:
@@ -575,6 +579,8 @@ def _slice_helper(tensor, slice_spec, var=None):
     TypeError: If the slice indices aren't int, slice, ellipsis,
       tf.newaxis or scalar int32/int64 tensors.
   """
+  if isinstance(slice_spec, (np.ndarray, ops.Tensor)):
+      return boolean_mask(tensor=tensor, mask=slice_spec)
 
   if not isinstance(slice_spec, (list, tuple)):
     slice_spec = [slice_spec]
@@ -1324,11 +1330,11 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     axis = 0 if axis is None else axis
     shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
 
-    leading_size = gen_math_ops.prod(shape(tensor)[axis:axis + ndims_mask], [0])
+    leading_size = gen_math_ops.prod(shape_tensor[axis:axis + ndims_mask], [0])
     tensor = reshape(tensor,
                      concat([
-                         shape(tensor)[:axis], [leading_size],
-                         shape(tensor)[axis + ndims_mask:]
+                         shape_tensor[:axis], [leading_size],
+                         shape_tensor[axis + ndims_mask:]
                      ], 0))
     first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
     tensor.set_shape(

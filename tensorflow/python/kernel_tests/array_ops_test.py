@@ -507,6 +507,19 @@ class StridedSliceChecker(object):
 
   def __getitem__(self, spec):
     op = self.x.__getitem__(spec)
+
+    def eval_if_tensor(x):
+      try:
+        return x.eval()
+      except AttributeError:
+        return x
+
+    if isinstance(spec, (np.ndarray, ops.Tensor)):
+      tensor = op.eval()
+      np_specs = eval_if_tensor(spec)
+      self.test.assertAllEqual(self.x_np[np_specs], tensor)
+      return tensor
+
     if not isinstance(spec, (list, tuple)):
       spec = [spec]
 
@@ -514,12 +527,6 @@ class StridedSliceChecker(object):
 
     # Make a numpy spec that pre-evals the tensors
     np_specs = []
-
-    def eval_if_tensor(x):
-      try:
-        return x.eval()
-      except AttributeError:
-        return x
 
     for s in spec:
       if isinstance(s, slice):
@@ -722,6 +729,21 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # First axis slice
       _ = checker[np.newaxis, 1:]
 
+  @test_util.run_deprecated_v1
+  def testMasks(self):
+    with self.session(use_gpu=True):
+      # Test tensor type mask
+      checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
+      _ = checker[checker.x > 2]
+      _ = checker[checker.x <= 5]
+
+      # Test numpy array type mask
+      raw = np.array([[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
+        [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]])
+      checker1 = StridedSliceChecker(self, raw)
+      _ = checker1[raw >= 4]
+      _ = checker1[raw < 19]
+
 
 class StridedSliceShapeChecker(object):
 
@@ -807,7 +829,7 @@ class GradSliceChecker(object):
     analytic_grad2 = 2 * slice_val
 
     dy = variables.Variable(
-        array_ops.ones(shape=slice_var.get_shape(), dtype=dtypes.float32))
+        array_ops.ones_like(slice_var, dtype=dtypes.float32))
     assign = dy.assign(slice_var)
     slice_val_grad, = gradients_impl.gradients(slice_val, self.var, grad_ys=dy)
     slice_val_grad2, = gradients_impl.gradients(
@@ -821,6 +843,8 @@ class GradSliceChecker(object):
     # compute analytic gradient for slice
     np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
+    if isinstance(spec, ops.Tensor):
+        spec = self.sess.run([spec])
     np_sliceval_grad[spec] = np_val_grad[spec]
     # verify gradient
     self.test.assertAllEqual(slice_val_grad_evaled, np_sliceval_grad)
@@ -838,8 +862,8 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       init = variables.global_variables_initializer()
       sess.run(init)
 
-      grad = GradSliceChecker(self, sess, var,
-                              np.array(range(1, 97, 1)).reshape((6, 4, 4)))
+      raw = np.array(range(1, 97, 1)).reshape((6, 4, 4))
+      grad = GradSliceChecker(self, sess, var, raw)
       _ = grad[2:6:2, 1:3, 1:3]
       _ = grad[3:0:-2, 1:3, 1:3]
       _ = grad[3:0:-2, array_ops.newaxis, 1:3, 2, array_ops.newaxis]
@@ -850,6 +874,11 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         _ = grad[:, -200, :]
       with self.assertRaisesRegexp(ValueError, "out of bounds"):
         _ = grad[:, 200, :]
+
+      # Test numpy array type mask
+      _ = grad[raw > 51]
+      # Test tensor type mask
+      _ = grad[ops.convert_to_tensor(raw) <= 76]
 
   def testGradientZero(self):
     with self.session(use_gpu=True) as sess:
