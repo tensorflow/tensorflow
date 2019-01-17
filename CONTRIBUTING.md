@@ -158,7 +158,10 @@ There are two ways to run TensorFlow unit tests.
    for the required packages. Alternatively, use the said
    [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
    `tensorflow/tensorflow:nightly-devel` and `tensorflow/tensorflow:nightly-devel-gpu`
-   for development to avoid installing the packages directly on your system.
+   for development to avoid installing the packages directly on your system (in
+   which case remember to change directory from `/root` to `/tensorflow` once
+   you get into the running container so `bazel` can find the `tensorflow`
+   workspace).
 
    Once you have the packages installed, you can run a specific unit test in
    bazel by doing as follows:
