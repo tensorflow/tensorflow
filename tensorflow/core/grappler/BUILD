@@ -211,6 +211,7 @@ cc_library(
         ":utils",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/hoist_random_uniform.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -227,7 +228,7 @@ Status HoistRandomUniform::OptimizeAndCollectStats(Cluster* cluster,
   *output = item.graph;
 
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
 
@@ -277,7 +278,7 @@ Status HoistRandomUniform::OptimizeAndCollectStats(Cluster* cluster,
     stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
