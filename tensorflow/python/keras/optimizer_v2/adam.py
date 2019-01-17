@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -131,6 +132,8 @@ class Adam(optimizer_v2.OptimizerV2):
         compatibility, recommended to use `learning_rate` instead.
     """
 
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
     super(Adam, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
