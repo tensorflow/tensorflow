@@ -82,6 +82,7 @@ py_library(
     srcs = ["backend.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":backend_config",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -115,6 +116,12 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
+)
+
+py_library(
+    name = "backend_config",
+    srcs = ["backend_config.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -1102,6 +1109,18 @@ tf_py_test(
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+    ],
+)
+
+tf_py_test(
+    name = "backend_config_test",
+    size = "medium",
+    srcs = ["backend_config_test.py"],
+    additional_deps = [
+        ":keras",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",

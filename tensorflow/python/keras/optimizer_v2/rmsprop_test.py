@@ -471,6 +471,15 @@ class RMSpropOptimizerTest(test.TestCase):
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
+  def testConstructRMSpropWithEpsilonValues(self):
+    opt = rmsprop.RMSprop(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = rmsprop.RMSprop(epsilon=1e-8)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-8)
+
 
 if __name__ == "__main__":
   test.main()
