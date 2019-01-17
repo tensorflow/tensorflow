@@ -185,7 +185,7 @@ Inputs {
   1: a tensor
 }
 Outputs {
-  0: A tensor of indices of minium values.
+  0: A tensor of indices of minimum values.
 }
 ```
 
