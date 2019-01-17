@@ -143,64 +143,64 @@ class VariableTrackingTest(test.TestCase):
 
   def test_variables(self):
     m = RecursiveModule(3)
-    self.assertEqual(m.variables, (m.w, m.child.w, m.child.child.w))
-    self.assertEqual(m.child.variables, (m.child.w, m.child.child.w))
-    self.assertEqual(m.child.child.variables, (m.child.child.w,))
+    self.assertCountEqual(m.variables, (m.w, m.child.w, m.child.child.w))
+    self.assertCountEqual(m.child.variables, (m.child.w, m.child.child.w))
+    self.assertCountEqual(m.child.child.variables, (m.child.child.w,))
 
   def test_owned_variables(self):
     m = RecursiveModule(3)
-    self.assertEqual(m.owned_variables, (m.w,))
-    self.assertEqual(m.child.owned_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_variables, (m.child.child.w,))
+    self.assertCountEqual(m.owned_variables, (m.w,))
+    self.assertCountEqual(m.child.owned_variables, (m.child.w,))
+    self.assertCountEqual(m.child.child.owned_variables, (m.child.child.w,))
 
   def test_trainable_variables(self):
     m = RecursiveModule(3)
-    self.assertEqual(m.trainable_variables,
-                     (m.w, m.child.w, m.child.child.w))
-    self.assertEqual(m.child.trainable_variables,
-                     (m.child.w, m.child.child.w))
-    self.assertEqual(m.child.child.trainable_variables, (m.child.child.w,))
+    self.assertCountEqual(m.trainable_variables,
+                          (m.w, m.child.w, m.child.child.w))
+    self.assertCountEqual(m.child.trainable_variables,
+                          (m.child.w, m.child.child.w))
+    self.assertCountEqual(m.child.child.trainable_variables, (m.child.child.w,))
 
   def test_trainable_variables_ignores_non_trainable(self):
     m = RecursiveModule(3, trainable=False)
-    self.assertEqual(len(m.trainable_variables), 0)
-    self.assertEqual(len(m.child.trainable_variables), 0)
-    self.assertEqual(len(m.child.child.trainable_variables), 0)
+    self.assertEmpty(m.trainable_variables)
+    self.assertEmpty(m.child.trainable_variables)
+    self.assertEmpty(m.child.child.trainable_variables)
 
   def test_owned_trainable_variables(self):
     m = RecursiveModule(3)
-    self.assertEqual(m.owned_trainable_variables, (m.w,))
-    self.assertEqual(m.child.owned_trainable_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_trainable_variables,
-                     (m.child.child.w,))
+    self.assertCountEqual(m.owned_trainable_variables, (m.w,))
+    self.assertCountEqual(m.child.owned_trainable_variables, (m.child.w,))
+    self.assertCountEqual(m.child.child.owned_trainable_variables,
+                          (m.child.child.w,))
 
   def test_owned_trainable_variables_ignores_non_trainable(self):
     m = RecursiveModule(3, trainable=False)
-    self.assertEqual(len(m.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.child.owned_trainable_variables), 0)
+    self.assertEmpty(m.owned_trainable_variables)
+    self.assertEmpty(m.child.owned_trainable_variables)
+    self.assertEmpty(m.child.child.owned_trainable_variables)
 
 
 class ModuleTrackingTest(test.TestCase):
 
   def test_owned_submodules(self):
     m = RecursiveModule(3)
-    self.assertEqual(list(m.owned_submodules), [m.child])
-    self.assertEqual(list(m.child.owned_submodules), [m.child.child])
-    self.assertEqual(list(m.child.child.owned_submodules), [])
+    self.assertCountEqual(m.owned_submodules, [m.child])
+    self.assertCountEqual(m.child.owned_submodules, [m.child.child])
+    self.assertEmpty(list(m.child.child.owned_submodules))
 
   def test_submodules(self):
     m = RecursiveModule(3)
-    self.assertEqual(list(m.submodules), [m.child, m.child.child])
-    self.assertEqual(list(m.child.submodules), [m.child.child])
-    self.assertEqual(list(m.child.child.submodules), [])
+    self.assertCountEqual(m.submodules, [m.child, m.child.child])
+    self.assertCountEqual(m.child.submodules, [m.child.child])
+    self.assertEmpty(list(m.child.child.submodules))
 
   def test_non_ctor_submodule(self):
     m = TreeModule()
     leaf1 = m.new_leaf()
-    self.assertEqual(set(m.submodules), {leaf1})
+    self.assertCountEqual(m.submodules, (leaf1,))
     leaf2 = m.new_leaf()
-    self.assertEqual(set(m.submodules), {leaf1, leaf2})
+    self.assertCountEqual(m.submodules, (leaf1, leaf2))
 
 
 class CommonErrorsTest(test.TestCase):
@@ -323,12 +323,12 @@ class WalkTest(test.TestCase):
     parent = SimpleModule()
     child = parent.c
 
-    self.assertEqual(
-        list(module.walk(parent, predicate=IS_MEMBER)),
+    self.assertCountEqual(
+        module.walk(parent, predicate=IS_MEMBER),
         [parent.a[0], parent.a[1], parent.z])
 
-    self.assertEqual(
-        list(module.walk(parent, recurse_if=IS_MODULE, predicate=IS_MEMBER)),
+    self.assertCountEqual(
+        module.walk(parent, recurse_if=IS_MODULE, predicate=IS_MEMBER),
         [parent.a[0], parent.a[1], parent.z, child.a[0], child.a[1], child.z])
 
 
