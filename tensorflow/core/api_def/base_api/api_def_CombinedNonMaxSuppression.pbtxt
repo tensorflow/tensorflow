@@ -47,9 +47,9 @@ END
     description: <<END
 If false, the output nmsed boxes, scores and classes
 are padded/clipped to `max_total_size`. If true, the
-output nmsed boxes, scores and classes are
-padded/clipped to be of length `max_size_per_class` or `max_total_size`
-(smaller of the two). Defaults to false.
+output nmsed boxes, scores and classes are padded to be of length
+`max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
+which case it is clipped to `max_total_size`. Defaults to false.
 END
   }
   out_arg {
