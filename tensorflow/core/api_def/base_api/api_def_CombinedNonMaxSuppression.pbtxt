@@ -45,9 +45,9 @@ END
   attr {
     name: "pad_per_class"
     description: <<END
-If false, the output nmsed boxes, scores, classes and
-selected_indices are padded/clipped to `max_total_size`. If true, the
-output nmsed boxes, scores, classes and selected_indices are
+If false, the output nmsed boxes, scores and classes
+are padded/clipped to `max_total_size`. If true, the
+output nmsed boxes, scores and classes are
 padded/clipped to be of length `max_size_per_class` or `max_total_size`
 (smaller of the two). Defaults to false.
 END
@@ -80,13 +80,6 @@ A [batch_size] int32 tensor indicating the number of
 valid detections per batch item. Only the top num_detections[i] entries in
 nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
 entries are zero paddings.
-END
-  }
-  out_arg {
-    name: "selected_indices"
-    description: <<END
-A [batch_size, max_detections] int32 tensor
-containing the indices of the selected boxes
 END
   }
   summary: "Greedily selects a subset of bounding boxes in descending order of score,"

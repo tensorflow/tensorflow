@@ -3250,11 +3250,11 @@ def combined_non_max_suppression(boxes,
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
       remove boxes based on score.
-    pad_per_class: If false, the output nmsed boxes, scores, classes and
-      selected_indices are padded/clipped to `max_total_size`. If true, the
-      output nmsed boxes, scores, classes and selected_indices are
-      padded/clipped to be of length `max_size_per_class` or `max_total_size`
-      (smaller of the two). Defaults to false.
+    pad_per_class: If false, the output nmsed boxes, scores and classes
+      are padded/clipped to `max_total_size`. If true, the
+      output nmsed boxes, scores and classes are padded/clipped to be of length
+      `max_size_per_class` or `max_total_size` (smaller of the two).
+      Defaults to false.
     name: A name for the operation (optional).
 
   Returns:
@@ -3268,8 +3268,6 @@ def combined_non_max_suppression(boxes,
       valid detections per batch item. Only the top valid_detections[i] entries
       in nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
       entries are zero paddings.
-    'selected_indices':  A [batch_size, max_detections] int32 tensor
-      containing the indices of the selected boxes
   """
   with ops.name_scope(name, 'combined_non_max_suppression'):
     iou_threshold = ops.convert_to_tensor(
