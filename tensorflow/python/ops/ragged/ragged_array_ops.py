@@ -448,7 +448,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
 
     # Get static rank of mask.
     if mask.shape.ndims is None:
-      raise ValueError('mask.shape.ndims must be kown statically.')
+      raise ValueError('mask.shape.ndims must be known statically.')
     elif mask.shape.ndims == 0:
       raise ValueError('mask cannot be scalar.')
 
