@@ -45,6 +45,7 @@ load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
+
 def register_extension_info(**kwargs):
     pass
 
@@ -391,9 +392,9 @@ def tf_binary_dynamic_kernel_deps(kernels):
 # TODO(pcloudy): Remove this workaround when https://github.com/bazelbuild/bazel/issues/4570
 # is done and cc_shared_library is available.
 SHARED_LIBRARY_NAME_PATTERNS = [
-    "lib%s.so",    # On Linux, shared libraries are usually named as libfoo.so
-    "lib%s.dylib", # On macos, shared libraries are usually named as libfoo.dylib
-    "%s.dll",      # On Windows, shared libraries are usually named as foo.dll
+    "lib%s.so",  # On Linux, shared libraries are usually named as libfoo.so
+    "lib%s.dylib",  # On macos, shared libraries are usually named as libfoo.dylib
+    "%s.dll",  # On Windows, shared libraries are usually named as foo.dll
 ]
 
 def tf_cc_shared_object(
@@ -427,7 +428,8 @@ def tf_cc_shared_object(
                 ],
             }),
             **kwargs
-        ) for name in names
+        )
+        for name in names
     ]
 
 register_extension_info(
@@ -466,7 +468,8 @@ def tf_cc_binary(
             data = data + tf_binary_dynamic_kernel_dsos(kernels),
             linkopts = linkopts + _rpath_linkopts(name),
             **kwargs
-        ) for name in names
+        )
+        for name in names
     ]
 
 register_extension_info(
@@ -1465,7 +1468,7 @@ def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kw
 
 def tf_custom_op_library_additional_deps():
     return [
-      "@protobuf_archive//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
         clean_dep("//third_party/eigen3"),
         clean_dep("//tensorflow/core:framework_headers_lib"),
     ] + if_windows(["//tensorflow/python:pywrap_tensorflow_import_lib"])
@@ -1475,8 +1478,8 @@ def tf_custom_op_library_additional_deps():
 # exporting symbols from _pywrap_tensorflow.dll on Windows.
 def tf_custom_op_library_additional_deps_impl():
     return [
-      "@protobuf_archive//:protobuf",
-      "@nsync//:nsync_cpp",
+        "@protobuf_archive//:protobuf",
+        "@nsync//:nsync_cpp",
         # for //third_party/eigen3
         clean_dep("//third_party/eigen3"),
         # for //tensorflow/core:framework_headers_lib

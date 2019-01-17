@@ -394,13 +394,13 @@ tf_cc_binary(
     }),
     linkshared = 1,
     linkstatic = 1,
+    use_name_pattern = True,
     deps = [
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/java/src/main/native",
         LINKER_VERSION_SCRIPT,
         LINKER_EXPORTED_SYMBOLS,
     ],
-    use_name_pattern = True,
 )
 
 genrule(

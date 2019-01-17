@@ -504,7 +504,13 @@ tf_cc_shared_object(
             "$(location //tensorflow/c:version_script.lds)",
         ],
     }),
+    use_name_pattern = True,
     visibility = ["//visibility:public"],
+    win_def_file = select({
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        "//conditions:default": None,
+    }),
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -513,12 +519,6 @@ tf_cc_shared_object(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
     ],
-    win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
-        "//tensorflow:windows": ":tensorflow_filtered_def_file",
-        "//conditions:default": None,
-    }),
-    use_name_pattern = True,
 )
 
 # ** Targets for Windows build (start) **
