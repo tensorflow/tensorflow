@@ -134,6 +134,7 @@ def _nccl_configure_impl(repository_ctx):
     nccl_version = ""
     if _TF_NCCL_VERSION in repository_ctx.os.environ:
         nccl_version = repository_ctx.os.environ[_TF_NCCL_VERSION].strip()
+        nccl_version = nccl_version.split(".")[0]
 
     if nccl_version == "":
         # Alias to open source build from @nccl_archive.

@@ -12,6 +12,8 @@ load(
     "auto_configure_fail",
     "get_cpu_value",
     "find_cuda_define",
+    "find_lib",
+    "lib_name",
     "matches_version",
     "make_copy_dir_rule",
     "make_copy_files_rule",
@@ -94,10 +96,11 @@ def _trt_lib_version(repository_ctx, trt_install_path):
         ("TensorRT library version detected from %s/%s (%s) does not match " +
          "TF_TENSORRT_VERSION (%s). To fix this rerun configure again.") %
         (trt_header_dir, "NvInfer.h", full_version, environ_version))
-  return environ_version
+  # Only use the major version to match the SONAME of the library.
+  return major_version
 
 
-def _find_trt_libs(repository_ctx, trt_install_path, trt_lib_version):
+def _find_trt_libs(repository_ctx, cpu_value, trt_install_path, trt_lib_version):
   """Finds the given TensorRT library on the system.
 
   Adapted from code contributed by Sami Kama (https://github.com/samikama).
@@ -109,30 +112,13 @@ def _find_trt_libs(repository_ctx, trt_install_path, trt_lib_version):
       by _trt_lib_version.
 
   Returns:
-    Map of library names to structs with the following fields:
-      src_file_path: The full path to the library found on the system.
-      dst_file_name: The basename of the target library.
+    The path to the library.
   """
-  objdump = repository_ctx.which("objdump")
   result = {}
   for lib in _TF_TENSORRT_LIBS:
-    dst_file_name = "lib%s.so.%s" % (lib, trt_lib_version)
-    src_file_path = repository_ctx.path("%s/%s" % (trt_install_path,
-                                                   dst_file_name))
-    if not src_file_path.exists:
-      auto_configure_fail(
-          "Cannot find TensorRT library %s" % str(src_file_path))
-    if objdump != None:
-      objdump_out = repository_ctx.execute([objdump, "-p", str(src_file_path)])
-      for line in objdump_out.stdout.splitlines():
-        if "SONAME" in line:
-          dst_file_name = line.strip().split(" ")[-1]
-    result.update({
-        lib:
-            struct(
-                dst_file_name=dst_file_name,
-                src_file_path=str(src_file_path.realpath))
-    })
+    file_name = lib_name("nvinfer", cpu_value, trt_lib_version)
+    path = find_lib(repository_ctx, ["%s/%s" % (trt_install_path, file_name)])
+    result[file_name] = path
   return result
 
 
@@ -144,15 +130,12 @@ def _tpl(repository_ctx, tpl, substitutions):
 def _create_dummy_repository(repository_ctx):
   """Create a dummy TensorRT repository."""
   _tpl(repository_ctx, "build_defs.bzl", {"%{if_tensorrt}": "if_false"})
-  substitutions = {
-      "%{tensorrt_genrules}": "",
-      "%{tensorrt_headers}": "",
-  }
-  for lib in _TF_TENSORRT_LIBS:
-    k = "%%{%s}" % lib.replace("nv", "nv_")
-    substitutions.update({k: ""})
-  _tpl(repository_ctx, "BUILD", substitutions)
 
+  _tpl(repository_ctx, "BUILD", {
+      "%{tensorrt_genrules}": "",
+      "%{tensorrt_headers}": "[]",
+      "%{tensorrt_libs}": "[]"
+  })
 
 def _tensorrt_configure_impl(repository_ctx):
   """Implementation of the tensorrt_configure repository rule."""
@@ -168,7 +151,8 @@ def _tensorrt_configure_impl(repository_ctx):
     _create_dummy_repository(repository_ctx)
     return
 
-  if (get_cpu_value(repository_ctx) != "Linux"):
+  cpu_value = get_cpu_value(repository_ctx)
+  if (cpu_value != "Linux"):
     auto_configure_fail("TensorRT is supported only on Linux.")
   if _TF_TENSORRT_VERSION not in repository_ctx.os.environ:
     auto_configure_fail("TensorRT library (libnvinfer) version is not set.")
@@ -179,12 +163,12 @@ def _tensorrt_configure_impl(repository_ctx):
 
   # Copy the library files.
   trt_lib_version = _trt_lib_version(repository_ctx, trt_install_path)
-  trt_libs = _find_trt_libs(repository_ctx, trt_install_path, trt_lib_version)
+  trt_libs = _find_trt_libs(repository_ctx, cpu_value, trt_install_path, trt_lib_version)
   trt_lib_srcs = []
   trt_lib_outs = []
-  for lib in trt_libs.values():
-    trt_lib_srcs.append(lib.src_file_path)
-    trt_lib_outs.append("tensorrt/lib/" + lib.dst_file_name)
+  for path in trt_libs.values():
+    trt_lib_srcs.append(str(path))
+    trt_lib_outs.append("tensorrt/lib/" + path.basename)
   copy_rules = [make_copy_files_rule(
       repository_ctx,
       name = "tensorrt_lib",
@@ -212,15 +196,11 @@ def _tensorrt_configure_impl(repository_ctx):
   _tpl(repository_ctx, "build_defs.bzl", {"%{if_tensorrt}": "if_true"})
 
   # Set up BUILD file.
-  substitutions = {
+  _tpl(repository_ctx, "BUILD", {
       "%{copy_rules}": "\n".join(copy_rules),
       "%{tensorrt_headers}": '":tensorrt_include"',
-  }
-  for lib in _TF_TENSORRT_LIBS:
-    k = "%%{%s}" % lib.replace("nv", "nv_")
-    v = '"tensorrt/lib/%s"' % trt_libs[lib].dst_file_name
-    substitutions.update({k: v})
-  _tpl(repository_ctx, "BUILD", substitutions)
+      "%{tensorrt_libs}": str(trt_lib_outs),
+  })
 
 
 tensorrt_configure = repository_rule(

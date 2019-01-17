@@ -17,7 +17,7 @@ cc_library(
 )
 
 cc_library(
-    name = "nv_infer",
+    name = "tensorrt",
     srcs = ["tensorrt/lib/libnvinfer.so.5"],
     copts = cuda_default_copts(),
     data = ["tensorrt/lib/libnvinfer.so.5"],
