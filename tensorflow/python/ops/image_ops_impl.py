@@ -3252,8 +3252,9 @@ def combined_non_max_suppression(boxes,
       remove boxes based on score.
     pad_per_class: If false, the output nmsed boxes, scores and classes
       are padded/clipped to `max_total_size`. If true, the
-      output nmsed boxes, scores and classes are padded/clipped to be of length
-      `max_size_per_class` or `max_total_size` (smaller of the two).
+      output nmsed boxes, scores and classes are padded to be of length
+      `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
+      which case it is clipped to `max_total_size`.
       Defaults to false.
     name: A name for the operation (optional).
 
