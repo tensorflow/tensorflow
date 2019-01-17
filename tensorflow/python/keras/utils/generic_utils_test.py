@@ -81,5 +81,18 @@ class SerializeKerasObjectTest(test.TestCase):
     self.assertEqual(deserialized, None)
 
 
+class SliceArraysTest(test.TestCase):
+
+  def test_slice_arrays(self):
+    input_a = list([1, 2, 3])
+    self.assertEqual(keras.utils.generic_utils.slice_arrays(input_a, start=0),
+                     [None, None, None])
+    self.assertEqual(keras.utils.generic_utils.slice_arrays(input_a, stop=3),
+                     [None, None, None])
+    self.assertEqual(keras.utils.generic_utils.slice_arrays(
+        input_a, start=0, stop=1),
+                     [None, None, None])
+
+
 if __name__ == '__main__':
   test.main()

@@ -140,8 +140,7 @@ def serialize_keras_object(instance):
                                             instance.get_config())
   if hasattr(instance, '__name__'):
     return instance.__name__
-  else:
-    raise ValueError('Cannot serialize', instance)
+  raise ValueError('Cannot serialize', instance)
 
 
 def class_and_config_for_serialized_keras_object(
@@ -272,8 +271,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
     cell_value = dummy_fn.__closure__[0]
     if not isinstance(value, type(cell_value)):
       return cell_value
-    else:
-      return value
+    return value
 
   if closure is not None:
     closure = tuple(ensure_value_to_cell(_) for _ in closure)
@@ -526,17 +524,17 @@ def slice_arrays(arrays, start=None, stop=None):
       if hasattr(start, 'shape'):
         start = start.tolist()
       return [None if x is None else x[start] for x in arrays]
-    else:
-      return [None if x is None else x[start:stop] for x in arrays]
+    return [None if x is None
+            else None if not hasattr(x, '__getitem__')
+            else x[start:stop] for x in arrays]
   else:
     if hasattr(start, '__len__'):
       if hasattr(start, 'shape'):
         start = start.tolist()
       return arrays[start]
-    elif hasattr(start, '__getitem__'):
+    if hasattr(start, '__getitem__'):
       return arrays[start:stop]
-    else:
-      return [None]
+    return [None]
 
 
 def to_list(x):
