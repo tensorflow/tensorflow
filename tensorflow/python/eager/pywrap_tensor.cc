@@ -501,9 +501,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
 void EagerTensor_dealloc(EagerTensor* self) {
   // Clear weak references to self.
   // Needs to happen before any actual destruction.
-  if (self->weakreflist != nullptr) {
-    PyObject_ClearWeakRefs((PyObject*)self);
-  }
+  PyObject_ClearWeakRefs((PyObject*)self);
 
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);
