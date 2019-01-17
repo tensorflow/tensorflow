@@ -506,26 +506,25 @@ class ConcreteFunction(object):
     if context.executing_eagerly() or not self.outputs:
       outputs = self._inference_function.call(ctx, args)
     else:
-      if not self._gradient_name:
-        self._gradient_name = "PartitionedCall-%s" % ops.uid()
-        self._register_gradient(self._gradient_name)
+      self._register_gradient()
       with ops.get_default_graph().gradient_override_map(
           {"PartitionedCall": self._gradient_name,
            "StatefulPartitionedCall": self._gradient_name}):
         outputs = self._inference_function.call(ctx, args)
     return self._build_call_outputs(outputs)
 
-  def _register_gradient(self, name):
-    """Registers the gradient for this `ConcreteFunction` under the given name.
+  def _register_gradient(self):
+    """Registers the gradient for this `ConcreteFunction`.
 
     The gradient rewrites an inference call op to a forward call op, but does
     not modify a pre-existing forward call op. It then computes the gradient
     from the output's gradients and the side outputs of the forward op.
-
-    Args:
-      name: The name to register the gradient as.
     """
-    @ops.RegisterGradient(name)
+    if self._gradient_name:
+      return
+    self._gradient_name = "PartitionedCall-%s" % ops.uid()
+
+    @ops.RegisterGradient(self._gradient_name)
     def _registered_grad_fn(op, *doutputs):  # pylint: disable=unused-variable
       return self._grad_fn(op, *doutputs)
 
@@ -724,9 +723,7 @@ class ConcreteFunction(object):
 
     ctx = context.context()
 
-    if not self._gradient_name:
-      self._gradient_name = "PartitionedCall-%s" % ops.uid()
-      self._register_gradient(self._gradient_name)
+    self._register_gradient()
     with ops.get_default_graph().gradient_override_map(
         {"PartitionedCall": self._gradient_name,
          "StatefulPartitionedCall": self._gradient_name}):
@@ -773,9 +770,7 @@ class ConcreteFunction(object):
     """
     ctx = context.context()
 
-    if not self._gradient_name:
-      self._gradient_name = "PartitionedCall-%s" % ops.uid()
-      self._register_gradient(self._gradient_name)
+    self._register_gradient()
     with ops.get_default_graph().gradient_override_map(
         {"PartitionedCall": self._gradient_name,
          "StatefulPartitionedCall": self._gradient_name}):
