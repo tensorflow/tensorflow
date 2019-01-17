@@ -2069,22 +2069,6 @@ class DnnSupport {
       QuantizedActivationMode mode,
       DeviceMemory<float>* gpu_unquantized_dst) = 0;
 
-  // Enqueues an asynchronous copy of the contents of buffer_src to
-  // gpu_unquantized_dst.
-  virtual bool DoCopyHostBuffer2Device(
-      Stream* stream, HostBuffer* buffer_src,
-      DeviceMemory<float>* gpu_unquantized_dst) {
-    return false;
-  }
-
-  // Enqueues an asynchronous copy of the contents of gpu_unquantized_src to
-  // buffer_dst.
-  virtual bool DoCopyDevice2HostBuffer(
-      Stream* stream, const DeviceMemory<float>& gpu_unquantized_src,
-      HostBuffer* buffer_dst) {
-    return false;
-  }
-
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
   //
