@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -154,7 +155,7 @@ TEST(MutableGraphViewTest, AddAndUpdateFanouts) {
 
   NodeDef* new_bar = graph.AddNode(NDef("new_bar", "NotImportant", {}, {}));
 
-  EXPECT_TRUE(graph.UpdateFanouts("bar", new_bar->name()).ok());
+  TF_EXPECT_OK(graph.UpdateFanouts("bar", new_bar->name()));
 
   // Fanins and fanouts must be updated.
   CheckNode(graph, "bar", "NotImportant", "", {}, {}, {});
@@ -184,7 +185,7 @@ TEST(MutableGraphViewTest, AddAndUpdateFanoutsKeepControls) {
 
   NodeDef* new_bar = graph.AddNode(NDef("new_bar", "Identity", {"bar_1:2"}));
 
-  EXPECT_TRUE(graph.UpdateFanouts("bar_2", new_bar->name()).ok());
+  TF_EXPECT_OK(graph.UpdateFanouts("bar_2", new_bar->name()));
 
   // Fanins and fanouts must be updated.
   CheckNode(graph, "bar_1", "Switch", "", {}, {}, {"bar_2", "new_bar"});
@@ -213,7 +214,7 @@ TEST(MutableGraphViewTest, AddAndUpdateFanoutsWithoutSelfLoops) {
   // `new_bar` reads the output of an original `bar` node.
   NodeDef* new_bar = graph.AddNode(NDef("new_bar", "NewBar", {"bar"}, {}));
 
-  EXPECT_TRUE(graph.UpdateFanouts("bar", new_bar->name()).ok());
+  TF_EXPECT_OK(graph.UpdateFanouts("bar", new_bar->name()));
 
   // Fanins and fanouts must be updated.
   CheckNode(graph, "bar", "NotImportant", "", {}, {}, {"new_bar"});
@@ -266,7 +267,7 @@ TEST(MutableGraphViewTest, UpdateFanoutsToSwitchWithNoControlFromSwitch) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.UpdateFanouts("c", "b").ok());
+  TF_EXPECT_OK(graph.UpdateFanouts("c", "b"));
 
   EXPECT_EQ(graph.graph()->node_size(), 5);
 
@@ -882,10 +883,10 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddRegularFanin("b", {"a", 2}).ok());
+  TF_EXPECT_OK(graph.AddRegularFanin("b", {"a", 2}));
   CheckNode(graph, "b", "NotImportant", "", {}, {"a:2"}, {});
 
-  EXPECT_TRUE(graph.AddControllingFanin("c", {"a", Graph::kControlSlot}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("c", {"a", Graph::kControlSlot}));
   CheckNode(graph, "c", "NotImportant", "", {}, {"a:1"}, {});
 
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b:0", "c:0"});
@@ -901,16 +902,16 @@ TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddRegularFanin("c", {"b", 2}).ok());
+  TF_EXPECT_OK(graph.AddRegularFanin("c", {"b", 2}));
   CheckNode(graph, "c", "", "", {}, {"b:2"}, {});
-  EXPECT_TRUE(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}));
   CheckNode(graph, "c", "", "", {}, {"b:2", "^b"}, {});
-  EXPECT_TRUE(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}));
   CheckNode(graph, "c", "", "", {}, {"b:2", "^b"}, {});
 
-  EXPECT_TRUE(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
   CheckNode(graph, "d", "", "", {}, {"^b"}, {});
-  EXPECT_TRUE(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
   CheckNode(graph, "d", "", "", {}, {"^b"}, {});
 
   CheckGraph(graph);
@@ -925,7 +926,7 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnUpdateFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.UpdateFanin("c", {"a", 1}, {"b", 2}).ok());
+  TF_EXPECT_OK(graph.UpdateFanin("c", {"a", 1}, {"b", 2}));
 
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {});
   CheckNode(graph, "b", "NotImportant", "", {}, {}, {"c"});
@@ -943,17 +944,14 @@ TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnUpdateFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph
-                  .UpdateFanin("d", {"b", Graph::kControlSlot},
-                               {"c", Graph::kControlSlot})
-                  .ok());
+  TF_EXPECT_OK(graph.UpdateFanin("d", {"b", Graph::kControlSlot},
+                                 {"c", Graph::kControlSlot}));
   CheckNode(graph, "d", "NotImportant", "", {}, {"c", "^c"}, {});
 
-  EXPECT_TRUE(graph.UpdateFanin("e", {"b", 0}, {"c", 3}).ok());
+  TF_EXPECT_OK(graph.UpdateFanin("e", {"b", 0}, {"c", 3}));
   CheckNode(graph, "e", "NotImportant", "", {}, {"c:3", "^c"}, {});
 
-  EXPECT_TRUE(
-      graph.UpdateFanin("e", {"c", 3}, {"c", Graph::kControlSlot}).ok());
+  TF_EXPECT_OK(graph.UpdateFanin("e", {"c", 3}, {"c", Graph::kControlSlot}));
   CheckNode(graph, "e", "NotImportant", "", {}, {"^c"}, {});
 
   CheckGraph(graph);
@@ -968,7 +966,7 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnAddFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddRegularFanin("c", {"a", 3}).ok());
+  TF_EXPECT_OK(graph.AddRegularFanin("c", {"a", 3}));
 
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b", "c"});
   CheckNode(graph, "b", "NotImportant", "", {}, {"a:1"}, {"^c"});
@@ -986,7 +984,7 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnRemoveFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveRegularFanin("c", {"a", 2}).ok());
+  TF_EXPECT_OK(graph.RemoveRegularFanin("c", {"a", 2}));
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b"});
   CheckNode(graph, "b", "NotImportant", "", {}, {"a:1"}, {});
   CheckNode(graph, "c", "NotImportant", "", {}, {}, {});
@@ -1003,7 +1001,7 @@ TEST(MutableGraphViewTest, KeepMaxRegularOutputPortOnRemoveFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveRegularFanin("b", {"a", 1}).ok());
+  TF_EXPECT_OK(graph.RemoveRegularFanin("b", {"a", 1}));
 
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {"c"});
   CheckNode(graph, "b", "NotImportant", "", {}, {}, {});
@@ -1021,7 +1019,7 @@ TEST(MutableGraphViewTest, UpdateMaxRegularOutputPortOnUpdateFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.UpdateFanin("c", {"a", 2}, {"b", 3}).ok());
+  TF_EXPECT_OK(graph.UpdateFanin("c", {"a", 2}, {"b", 3}));
 
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b"});
   CheckNode(graph, "b", "NotImportant", "", {}, {"a:1"}, {"c"});
@@ -1069,8 +1067,8 @@ TEST(MutableGraphViewTest, AddControllingFaninExistingControl) {
       /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}).ok());
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}));
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}));
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
 
@@ -1087,8 +1085,8 @@ TEST(MutableGraphViewTest, AddControllingFaninNotSwitch) {
       /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", 2}).ok());
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", 2}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"b", 2}));
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"b", 2}));
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
 
@@ -1127,8 +1125,8 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithIdentity) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"switch", 0}));
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"switch", 0}));
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
 
@@ -1148,8 +1146,8 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithNoExistingIdentity) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"switch", 0}));
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"switch", 0}));
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
 
@@ -1171,8 +1169,8 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitchWithExistingAddedIdentity) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
-  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}).ok());
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"switch", 0}));
+  TF_EXPECT_OK(graph.AddControllingFanin("a", {"switch", 0}));
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
 
@@ -1279,7 +1277,7 @@ TEST(MutableGraphViewTest, RemoveControllingFaninMissing) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveControllingFanin("d", "c").ok());
+  TF_EXPECT_OK(graph.RemoveControllingFanin("d", "c"));
 
   ASSERT_EQ(graph.graph()->node_size(), 4);
 
@@ -1301,8 +1299,8 @@ TEST(MutableGraphViewTest, RemoveControllingFaninExisting) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveControllingFanin("d", "a").ok());
-  EXPECT_TRUE(graph.RemoveControllingFanin("d", "a").ok());
+  TF_EXPECT_OK(graph.RemoveControllingFanin("d", "a"));
+  TF_EXPECT_OK(graph.RemoveControllingFanin("d", "a"));
 
   ASSERT_EQ(graph.graph()->node_size(), 4);
 
@@ -1323,8 +1321,8 @@ TEST(MutableGraphViewTest, RemoveControllingFaninOnRegularFanin) {
 
   MutableGraphView graph(&graph_def);
 
-  EXPECT_TRUE(graph.RemoveControllingFanin("c", "a").ok());
-  EXPECT_TRUE(graph.RemoveControllingFanin("c", "b").ok());
+  TF_EXPECT_OK(graph.RemoveControllingFanin("c", "a"));
+  TF_EXPECT_OK(graph.RemoveControllingFanin("c", "b"));
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
 
@@ -1370,7 +1368,7 @@ TEST(MutableGraphViewTest, DeleteNodes) {
   MutableGraphView graph(&graph_def);
 
   EXPECT_NE(graph.GetNode("foo_1"), nullptr);
-  graph.DeleteNodes({"foo_1"});
+  TF_EXPECT_OK(graph.DeleteNodes({"foo_1"}));
 
   EXPECT_EQ(graph.graph()->node_size(), 3);
   EXPECT_EQ(graph.GetNode("foo_1"), nullptr);
@@ -1378,6 +1376,148 @@ TEST(MutableGraphViewTest, DeleteNodes) {
   CheckNode(graph, "bar", "NotImportant", "", {}, {}, {"foo_2:1"});
   CheckNode(graph, "other", "NotImportant", "", {}, {}, {"foo_2"});
   CheckNode(graph, "foo_2", "NotImportant", "", {}, {"other:1", "bar:2"}, {});
+
+  CheckGraph(graph);
+}
+
+GraphDef SimpleDeleteNodeGraph() {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {"a:2"}),
+       NDef("c", "NotImportant", {"a:5", "^b"}), NDef("d", "NotImportant", {}),
+       NDef("e", "NotImportant", {"d:2"}),
+       NDef("f", "NotImportant", {"d:3", "^e"})},
+      /*funcs=*/{});
+  return graph_def;
+}
+
+TEST(MutableGraphViewTest, DeleteNodesWithFanoutsBeingDeleted) {
+  GraphDef graph_def = SimpleDeleteNodeGraph();
+
+  MutableGraphView graph(&graph_def);
+  EXPECT_NE(graph.GetNode("a"), nullptr);
+  EXPECT_NE(graph.GetNode("b"), nullptr);
+  EXPECT_NE(graph.GetNode("c"), nullptr);
+  TF_EXPECT_OK(graph.DeleteNodes({"c", "a", "b"}));
+
+  EXPECT_EQ(graph.graph()->node_size(), 3);
+  EXPECT_EQ(graph.GetNode("a"), nullptr);
+  EXPECT_EQ(graph.GetNode("b"), nullptr);
+  EXPECT_EQ(graph.GetNode("c"), nullptr);
+
+  CheckNode(graph, "d", "NotImportant", "", {}, {}, {"e", "f"});
+  CheckNode(graph, "e", "NotImportant", "", {}, {"d:2"}, {"^f"});
+  CheckNode(graph, "f", "NotImportant", "", {}, {"d:3", "^e"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, DeleteMissingNodes) {
+  GraphDef graph_def = SimpleDeleteNodeGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_EQ(graph.GetNode("g"), nullptr);
+  EXPECT_EQ(graph.GetNode("h"), nullptr);
+  TF_EXPECT_OK(graph.DeleteNodes({"g", "h"}));
+
+  EXPECT_EQ(graph.graph()->node_size(), 6);
+  EXPECT_EQ(graph.GetNode("g"), nullptr);
+  EXPECT_EQ(graph.GetNode("h"), nullptr);
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b", "c"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {"a:2"}, {"^c"});
+  CheckNode(graph, "c", "NotImportant", "", {}, {"a:5", "^b"}, {});
+  CheckNode(graph, "d", "NotImportant", "", {}, {}, {"e", "f"});
+  CheckNode(graph, "e", "NotImportant", "", {}, {"d:2"}, {"^f"});
+  CheckNode(graph, "f", "NotImportant", "", {}, {"d:3", "^e"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, DeleteMissingNodesAndNodesWithFanoutsBeingDeleted) {
+  GraphDef graph_def = SimpleDeleteNodeGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_NE(graph.GetNode("d"), nullptr);
+  EXPECT_NE(graph.GetNode("e"), nullptr);
+  EXPECT_NE(graph.GetNode("f"), nullptr);
+  TF_EXPECT_OK(graph.DeleteNodes({"d", "e", "f", "g", "h"}));
+
+  EXPECT_EQ(graph.graph()->node_size(), 3);
+  EXPECT_EQ(graph.GetNode("d"), nullptr);
+  EXPECT_EQ(graph.GetNode("e"), nullptr);
+  EXPECT_EQ(graph.GetNode("f"), nullptr);
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b", "c"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {"a:2"}, {"^c"});
+  CheckNode(graph, "c", "NotImportant", "", {}, {"a:5", "^b"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, DeleteNodesWithError) {
+  GraphDef graph_def = SimpleDeleteNodeGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  Status s = graph.DeleteNodes({"b", "a"});
+  EXPECT_FALSE(s.ok());
+  string error_msg =
+      "Can't delete node(s) with retained fanout(s) [a, b] from node(s) [a, "
+      "b].";
+  EXPECT_EQ(s.error_message(), error_msg);
+
+  EXPECT_EQ(graph.graph()->node_size(), 6);
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b", "c"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {"a:2"}, {"^c"});
+  CheckNode(graph, "c", "NotImportant", "", {}, {"a:5", "^b"}, {});
+  CheckNode(graph, "d", "NotImportant", "", {}, {}, {"e", "f"});
+  CheckNode(graph, "e", "NotImportant", "", {}, {"d:2"}, {"^f"});
+  CheckNode(graph, "f", "NotImportant", "", {}, {"d:3", "^e"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, DeleteNodesWithLargeError) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {"a:2"}),
+       NDef("c", "NotImportant", {"^b"}), NDef("d", "NotImportant", {"c:6"}),
+       NDef("e", "NotImportant", {"d:2"}),
+       NDef("f", "NotImportant", {"d:3", "^e"}),
+       NDef("g", "NotImportant", {"f"}), NDef("h", "NotImportant", {"a"}),
+       NDef("i", "NotImportant", {"b"}), NDef("j", "NotImportant", {"c"}),
+       NDef("k", "NotImportant", {"d"}), NDef("l", "NotImportant", {"e"}),
+       NDef("m", "NotImportant", {"f"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  Status s = graph.DeleteNodes({"a", "b", "c", "d", "e", "f"});
+  EXPECT_FALSE(s.ok());
+  string error_msg =
+      "Can't delete node(s) with retained fanout(s) [a, b, c, d, e, ...] from "
+      "node(s) [a, b, c, d, e, ...].";
+  EXPECT_EQ(s.error_message(), error_msg);
+
+  EXPECT_EQ(graph.graph()->node_size(), 13);
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b", "h"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {"a:2"}, {"^c", "i"});
+  CheckNode(graph, "c", "NotImportant", "", {}, {"^b"}, {"d", "j"});
+  CheckNode(graph, "d", "NotImportant", "", {}, {"c:6"}, {"e", "f", "k"});
+  CheckNode(graph, "e", "NotImportant", "", {}, {"d:2"}, {"^f", "l"});
+  CheckNode(graph, "f", "NotImportant", "", {}, {"d:3", "^e"}, {"g", "m"});
+  CheckNode(graph, "g", "NotImportant", "", {}, {"f"}, {});
+  CheckNode(graph, "h", "NotImportant", "", {}, {"a"}, {});
+  CheckNode(graph, "i", "NotImportant", "", {}, {"b"}, {});
+  CheckNode(graph, "j", "NotImportant", "", {}, {"c"}, {});
+  CheckNode(graph, "k", "NotImportant", "", {}, {"d"}, {});
+  CheckNode(graph, "l", "NotImportant", "", {}, {"e"}, {});
+  CheckNode(graph, "m", "NotImportant", "", {}, {"f"}, {});
 
   CheckGraph(graph);
 }

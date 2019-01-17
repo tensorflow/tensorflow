@@ -101,6 +101,10 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // end up with:
   //
   //   fanin -> Identity{N} -^> target node.
+  //
+  // If the control dependency being added is redundant (control dependency
+  // already exists or control dependency can be deduped from regular fanins),
+  // this will not result in an error and the node will not be modified.
   Status AddControllingFanin(absl::string_view node_name,
                              const TensorId& fanin);
 
@@ -108,29 +112,41 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // do not exist in the graph, nothing will be modified in the graph. If there
   // are multiple inputs that match the fanin, all of them will be removed. To
   // remove controlling fanins, use RemoveControllingFanin.
+  //
+  // If the fanin being removed doesn't exist in the node's inputs, this will
+  // not result in an error and the node will not be modified.
   Status RemoveRegularFanin(absl::string_view node_name, const TensorId& fanin);
 
   // Removes control dependency `fanin_node_name` from the target node named
   // `node_name`. If the node or fanin do not exist in the graph, nothing will
   // be modified in the graph. To remove regular fanins, use RemoveRegualrFanin.
+  //
+  // If the fanin being removed doesn't exist in the node's inputs, this will
+  // not result in an error and the node will not be modified.
   Status RemoveControllingFanin(absl::string_view node_name,
                                 absl::string_view fanin_node_name);
 
   // Removes all fanins from node `node_name`. Control dependencies will be
   // retained if keep_controlling_fanins is true.
+  //
+  // If no fanins are removed, this will not result in an error and the node
+  // will not be modified.
   Status RemoveAllFanins(absl::string_view node_name,
                          bool keep_controlling_fanins);
 
   // Replaces all fanins `from_fanin` with `to_fanin` in node `node_name`. If
   // the fanins or node do not exist, nothing will be modified in the graph.
   // Control dependencies will be deduped.
+  //
+  // If the fanin being updated doesn't exist in the node's inputs, this will
+  // not result in an error and the node will not be modified.
   Status UpdateFanin(absl::string_view node_name, const TensorId& from_fanin,
                      const TensorId& to_fanin);
 
-  // Deletes nodes from the graph.
-  // TODO(lyandy): Check if nodes have fanouts before deleting and return
-  // Status.
-  void DeleteNodes(const std::set<string>& nodes_to_delete);
+  // Deletes nodes from the graph. If a node can't be safely removed,
+  // specifically if a node still has fanouts, an error will be returned. Nodes
+  // that can't be found are ignored.
+  Status DeleteNodes(const absl::flat_hash_set<string>& nodes_to_delete);
 
  private:
   // Adds fanouts for fanins of node to graph, while deduping control
@@ -163,11 +179,6 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // behavior is undefined.
   Status UpdateFanoutsInternal(NodeDef* from_node, NodeDef* to_node);
 
-  // Removes fanins of the deleted node from internal state. Control
-  // dependencies are retained iff keep_controlling_fanins is true.
-  void RemoveFaninsInternal(NodeDef* deleted_node,
-                            bool keep_controlling_fanins);
-
   // Adds fanin to node. If fanin is a control dependency, existing control
   // dependencies will be checked first before adding. Otherwise fanin will be
   // added after existing non control dependency inputs.
@@ -179,6 +190,20 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // Removes controlling fanin `fanin_node` from node if such controlling fanin
   // exists.
   bool RemoveControllingFaninInternal(NodeDef* node, NodeDef* fanin_node);
+
+  // Checks if nodes to be deleted are missing or have any fanouts that will
+  // remain in the graph. If node is removed in either case, the graph will
+  // enter an invalid state.
+  Status CheckNodesCanBeDeleted(
+      const absl::flat_hash_set<string>& nodes_to_delete);
+
+  // Removes fanins of the deleted node from internal state. Control
+  // dependencies are retained iff keep_controlling_fanins is true.
+  void RemoveFaninsInternal(NodeDef* deleted_node,
+                            bool keep_controlling_fanins);
+
+  // Removes fanouts of the deleted node from internal state.
+  void RemoveFanoutsInternal(NodeDef* deleted_node);
 };
 
 }  // end namespace grappler
