@@ -63,11 +63,20 @@ class UnknownArgument(object):
   pass
 
 
-def convert_structure_to_signature(structure):
+# TODO(vbardiovsky): Remove this when nest is updated with new
+# flatten_with_tuple_paths.
+def flatten_with_tuple_paths(structure):
+  return list(zip(nest.yield_flat_paths(structure), nest.flatten(structure)))
+
+
+def convert_structure_to_signature(structure, arg_names=None):
   """Convert a potentially nested structure to a signature.
 
   Args:
-    structure: Structure to convert.
+    structure: Structure to convert, where top level collection is a list or a
+      tuple.
+    arg_names: Optional list of arguments that has equal number of elements as
+      `structure` and is used for naming corresponding TensorSpecs.
 
   Returns:
     Identical structure that has TensorSpec objects instead of Tensors and
@@ -84,8 +93,19 @@ def convert_structure_to_signature(structure):
 
   # We are using the flattened paths to name the TensorSpecs. We need an
   # explicit name for them downstream.
-  flattened_with_paths = nest.flatten_with_joined_string_paths(structure)
-  mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
+  flattened = flatten_with_tuple_paths(structure)
+  if arg_names:
+    if len(arg_names) != len(structure):
+      raise ValueError(
+          "Passed in arg_names don't match actual signature (%s)." % arg_names)
+    # Replace all top-level names with their actual arg_names. If a path before
+    # was "(2,'a',1)", it will become "(arg_names[2],'a',1)".
+    flattened = [((arg_names[0],) + path[1:], arg) for path, arg in flattened]
+
+  mapped = [
+      encode_arg(arg, "/".join([str(p) for p in path]))
+      for path, arg in flattened
+  ]
   return nest.pack_sequence_as(structure, mapped)
 
 
@@ -100,9 +120,9 @@ class FuncGraph(ops.Graph):
       inputs coming first.
     outputs: Tensors that will be returned by this function. The tensors are in
       this FuncGraph.
-    structured_input_signature: A possibly-nested python object that was
-      received by this function. Note that this structure might contain Python
-      `None`s.
+    structured_input_signature: A tuple of (args, kwargs), which are both
+      possibly-nested python objects that were received by this function. Note
+      that these structures might contain Python `None`s.
     structured_outputs: A possibly-nested python object which will be returned
       by this function. The Tensors in this structure are the same as those of
       self.outputs. Note that this structure might contain Python `None`s.
@@ -443,8 +463,11 @@ def func_graph_from_py_func(name,
     func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
 
     # Convert all Tensors into TensorSpecs before saving the structured inputs.
+    # If storing pure concrete functions that are not called through polymorphic
+    # functions, we don't have access to FunctionSpec, so we need to call the
+    # TensorSpecs by their `arg_names` for later binding.
     func_graph.structured_input_signature = (
-        convert_structure_to_signature(func_args),
+        convert_structure_to_signature(func_args, arg_names),
         convert_structure_to_signature(func_kwargs))
 
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
