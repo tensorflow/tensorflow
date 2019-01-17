@@ -71,6 +71,24 @@ def _deserialize_function_spec(function_spec_proto, coder):
                                    kwargs_to_include, input_signature)
 
 
+def recreate_concrete_function(saved_concrete_function, concrete_functions):
+  """Recreates a user-facing concrete function."""
+  concrete_function = concrete_functions[saved_concrete_function.name]
+  input_signature = (saved_concrete_function.canonicalized_input_signature
+                     .list_value.values)
+  # pylint: disable=protected-access
+  # Set metadata required for the concrete function to accept keyword and
+  # positional arguments in __call__. Normally this is set in
+  # get_concrete_function.
+  concrete_function._arg_keywords = [
+      spec.tensor_spec_value.name for spec in input_signature]
+  # TODO(allenl): Should we preserve the number of allowed positional arguments?
+  concrete_function._num_positional_args = len(input_signature)
+  # pylint: enable=protected-access
+  concrete_function.add_to_graph()
+  return concrete_function
+
+
 def recreate_function(saved_function, concrete_functions):
   """Creates a `Function` from a `SavedFunction`.
 

@@ -54,6 +54,7 @@ message SavedObject {
     SavedAsset asset = 5;
     SavedFunction function = 6;
     SavedVariable variable = 7;
+    SavedConcreteFunction concrete_function = 8;
   }
 }
 

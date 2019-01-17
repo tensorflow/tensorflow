@@ -418,6 +418,57 @@ class LoadTest(test.TestCase):
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
 
+  def test_concrete_function(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)])
+    def func(x):
+      return 2 * x
+
+    root = tracking.AutoCheckpointable()
+    root.f = func.get_concrete_function()
+
+    self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
+    self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
+
+    imported = self.cycle(root)
+
+    self.assertAllEqual([2, 4, 6, 8],
+                        imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
+    self.assertAllEqual([2, 4, 6],
+                        imported.f(constant_op.constant([1, 2, 3])).numpy())
+
+  def test_concrete_function_no_signature(self):
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    root = tracking.AutoCheckpointable()
+    root.f = func.get_concrete_function(constant_op.constant([1]))
+    self.assertAllEqual([4], root.f(constant_op.constant([2])).numpy())
+    imported = self.cycle(root)
+    self.assertAllEqual([6],
+                        imported.f(constant_op.constant([3])).numpy())
+
+  def test_concrete_function_backprop(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.float32)])
+    def func(x):
+      return x ** 2.
+    root = tracking.AutoCheckpointable()
+    root.f = func.get_concrete_function()
+
+    def _compute_gradient(function):
+      with backprop.GradientTape() as tape:
+        inp = constant_op.constant(1.)
+        tape.watch(inp)
+        output = function(inp)
+      return tape.gradient(output, inp)
+
+    self.assertEqual(2., _compute_gradient(root.f).numpy())
+    imported = self.cycle(root)
+    self.assertEqual(2., _compute_gradient(imported.f).numpy())
+
   def test_dict(self):
     root = tracking.AutoCheckpointable()
     root.variables = dict(a=variables.Variable(1.))
