@@ -90,3 +90,18 @@ StringRef tblgen::Attribute::getDerivedCodeBody() const {
   assert(isDerivedAttr() && "only derived attribute has 'body' field");
   return def->getValueAsString("body");
 }
+
+tblgen::Pred tblgen::Attribute::getPredicate() const {
+  auto *val = def->getValue("predicate");
+  // If no predicate is specified, then return the null predicate (which
+  // corresponds to true).
+  if (!val)
+    return Pred();
+
+  const auto *pred = dyn_cast<llvm::DefInit>(val->getValue());
+  return Pred(pred);
+}
+
+std::string tblgen::Attribute::getConditionTemplate() const {
+  return getPredicate().getCondition();
+}

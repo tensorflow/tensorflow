@@ -40,6 +40,8 @@ namespace tblgen {
 // TableGen class 'Pred'.
 class Pred {
 public:
+  // Constructs the null Predicate (e.g., always true).
+  explicit Pred() : def(nullptr) {}
   // Construct a Predicate from a record.
   explicit Pred(const llvm::Record *record);
   // Construct a Predicate from an initializer.

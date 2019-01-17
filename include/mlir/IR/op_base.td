@@ -218,8 +218,16 @@ def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
 // Attributes
 //===----------------------------------------------------------------------===//
 
+// A constraint on attributes. This can be used to check the validity of
+// instruction attributes.
+class AttrConstraint<Pred condition> {
+  // The predicates that this type satisfies.
+  // Format: {0} will be expanded to the attribute.
+  Pred predicate = condition;
+}
+
 // Base class for all attributes.
-class Attr {
+class Attr<Pred condition = CPred<"true">> : AttrConstraint<condition> {
   code storageType = ?; // The backing mlir::Attribute type
   code returnType = ?;  // The underlying C++ value type
 

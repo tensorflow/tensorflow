@@ -24,6 +24,7 @@
 #define MLIR_TABLEGEN_ATTRIBUTE_H_
 
 #include "mlir/Support/LLVM.h"
+#include "mlir/TableGen/Predicate.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace llvm {
@@ -76,6 +77,15 @@ public:
   // Returns the code body for derived attribute. Aborts if this is not a
   // derived attribute.
   StringRef getDerivedCodeBody() const;
+
+  // Returns the predicate that can be used to check if a attribute satisfies
+  // this attribute's constraint.
+  Pred getPredicate() const;
+
+  // Returns the template that can be used to verify that an attribute satisfies
+  // the constraints for its declared attribute type.
+  // Syntax: {0} should be replaced with the attribute.
+  std::string getConditionTemplate() const;
 
 private:
   // The TableGen definition of this attribute.

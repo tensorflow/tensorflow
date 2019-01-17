@@ -369,6 +369,15 @@ void OpEmitter::emitVerifier() {
     OUT(4) << "if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
            << attr.getStorageType() << ">()) return emitOpError(\"requires "
            << attr.getReturnType() << " attribute '" << name << "'\");\n";
+
+    auto attrPred = attr.getPredicate();
+    if (!attrPred.isNull()) {
+      OUT(4) << formatv("if (!({0})) return emitOpError(\"attribute '{1}' "
+                        "failed to satisfy constraint of {2}\");\n",
+                        formatv(attrPred.getCondition(),
+                                formatv("this->getAttr(\"{0}\")", name)),
+                        name, attr.getTableGenDefName());
+    }
   }
 
   // TODO: Handle variadic.
