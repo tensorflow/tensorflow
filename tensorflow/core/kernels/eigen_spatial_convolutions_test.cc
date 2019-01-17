@@ -1605,11 +1605,11 @@ static void PackLhsHelper(int iters,
       /*inner_dim_reordered*/ false,                  //
       /*Alignment*/ 0>;
 
-  using Traits = typename Eigen::internal::gebp_traits<float, float>;
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
   using PackLhsImpl = Eigen::internal::mkldnn_gemm_pack<float, Eigen::Index,
                                                         SubMapper, ColMajor>;
 #else
+  using Traits = typename Eigen::internal::gebp_traits<float, float>;
   using PackLhsImpl =
       Eigen::internal::gemm_pack_lhs<float, Eigen::Index, SubMapper,      //
                                      Traits::mr,                          //
