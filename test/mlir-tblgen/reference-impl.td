@@ -11,13 +11,6 @@ def X_AddOp : Op<"x.add">,
     // TODO: extract referenceImplementation to Op.
     // TODO: shrink the reference implementation
   code referenceImplementation = [{
-    auto *lhsMemRef = *(f->getArguments().begin());
-    auto *rhsMemRef = *(f->getArguments().begin() + 1);
-    auto *resultMemRef = *(f->getArguments().begin() + 2);
-
-    Bindable lhs, rhs, result;
-    auto lhsShape = emitter.makeBoundSizes(lhsMemRef);
-
     auto ivs = makeBindables(lhsShape.size());
     Bindable zero, one;
     // Same bindable, all equal to `zero`.

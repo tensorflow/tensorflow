@@ -44,16 +44,45 @@ static void emitReferenceImplementations(const RecordKeeper &recordKeeper,
      << "  edsc::ScopedEDSCContext raiiContext;\n"
      << "  Stmt block;\n"
      << "  FuncBuilder builder(f);\n"
-     << "  if (false) {}";
+     << "if (false) {}";
   for (auto *def : defs) {
     Operator op(def);
     auto ref = def->getValueInit("referenceImplementation");
     if (!ref)
       continue;
-    os << "else if (opName == \"" << op.getOperationName() << "\") {\n"
-       << "  edsc::MLIREmitter emitter(&builder, f->getLoc());\n"
-       << ref->getAsUnquotedString() << "\n"
-       << "}\n";
+    os << " else if (opName == \"" << op.getOperationName() << "\") {\n"
+       << "  edsc::MLIREmitter emitter(&builder, f->getLoc());\n";
+
+    // Create memrefs for the operands. Operand $x has variable name xMemRef.
+    for (auto arg : op.getOperands()) {
+      if (!arg.name)
+        PrintFatalError(def->getLoc(), "all operands must be named");
+      os << formatv("  mlir::BlockArgument* {0}MemRef;\n",
+                    arg.name->getAsUnquotedString());
+    }
+    os << "  mlir::BlockArgument* resultMemRef;\n";
+    os << "  {\n    auto opIt = f->getArguments().begin();\n";
+    for (auto arg : op.getOperands()) {
+      os.indent(4) << arg.name->getAsUnquotedString() << "MemRef = *opIt++;\n";
+    }
+    os.indent(4) << "resultMemRef = *opIt++;\n";
+    os << "  }\n";
+
+    for (auto arg : op.getOperands()) {
+      os << formatv("  Bindable {0}; (void){0};\n",
+                    arg.name->getAsUnquotedString());
+    }
+    os << "  Bindable result;\n";
+
+    for (auto arg : op.getOperands()) {
+      os.indent(2) << formatv(
+          "auto {0}Shape = emitter.makeBoundSizes({0}MemRef); "
+          "(void){0}Shape;\n",
+          arg.name->getAsUnquotedString());
+    }
+
+    // Print the EDSC.
+    os << ref->getAsUnquotedString() << "\n}";
   }
   os << " else {"
      << "  f->emitError(\"no reference implementation for \" + opName);\n"

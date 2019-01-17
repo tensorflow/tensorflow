@@ -10,20 +10,20 @@ func @fn() {
 }
 
 // CHECK: block {
-// CHECK-NEXT:   for(idx($8)=$12 to $4 step $13) {
-// CHECK-NEXT:     for(idx($9)=$12 to $5 step $13) {
-// CHECK-NEXT:       for(idx($10)=$12 to $6 step $13) {
-// CHECK-NEXT:         for(idx($11)=$12 to $7 step $13) {
-// CHECK-NEXT:           lhs($14) = store( ... );
-// CHECK-NEXT:         };
-// CHECK-NEXT:       };
-// CHECK-NEXT:     };
-// CHECK-NEXT:   }
-// CHECK-NEXT: }
+// CHECK:   for(idx($12)=$16 to $4 step $17) {
+// CHECK:     for(idx($13)=$16 to $5 step $17) {
+// CHECK:       for(idx($14)=$16 to $6 step $17) {
+// CHECK:         for(idx($15)=$16 to $7 step $17) {
+// CHECK:           lhs($18) = store( ... );
+// CHECK:         };
+// CHECK:       };
+// CHECK:     };
+// CHECK:   }
+// CHECK: }
 // CHECK: block {
-// CHECK-NEXT:   for(idx($21)=$23 to $19 step $24) {
-// CHECK-NEXT:     for(idx($22)=$23 to $20 step $24) {
-// CHECK-NEXT:       lhs($25) = store( ... );
-// CHECK-NEXT:     };
-// CHECK-NEXT:   }
-// CHECK-NEXT: }
+// CHECK:   for(idx($27)=$29 to $23 step $30) {
+// CHECK:     for(idx($28)=$29 to $24 step $30) {
+// CHECK:       lhs($31) = store( ... );
+// CHECK:     };
+// CHECK:   }
+// CHECK: }
