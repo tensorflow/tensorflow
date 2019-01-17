@@ -94,8 +94,8 @@ uint8* Decode(const void* srcdata, int datasize,
   }
 
   const int num_frames = gif_file->ImageCount;
-  const int width = max_frame_width;    // gif_file->SWidth;
-  const int height = max_frame_height;  // gif_file->SHeight;
+  const int width = max_frame_width;
+  const int height = max_frame_height;
   const int channel = 3;
 
   uint8* const dstdata = allocate_output(num_frames, width, height, channel);
