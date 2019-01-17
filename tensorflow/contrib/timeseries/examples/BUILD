@@ -105,6 +105,7 @@ py_binary(
     data = ["data/multivariate_periods.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
+    visibility = ["//visibility:public"],
     deps = select({
         ":empty_condition": [],
         "//conditions:default": [],
@@ -113,6 +114,7 @@ py_binary(
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/timeseries/python/timeseries:estimators",
         "//tensorflow/contrib/timeseries/python/timeseries:model",
+        "//tensorflow/contrib/timeseries/python/timeseries:state_management",
     ],
 )
 
