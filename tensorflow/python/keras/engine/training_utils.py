@@ -1232,6 +1232,19 @@ def is_dataset_or_iterator(data):
                            iterator_ops.Iterator))
 
 
+def get_iterator(dataset):
+  """Create and initialize an iterator from a dataset."""
+  iterator = dataset_ops.make_initializable_iterator(dataset)
+  initialize_iterator(iterator)
+  return iterator
+
+
+def initialize_iterator(iterator):
+  init_op = iterator.initializer
+  if not context.executing_eagerly():
+    K.get_session().run(init_op)
+
+
 def extract_tensors_from_dataset(dataset):
   """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
 
@@ -1241,10 +1254,7 @@ def extract_tensors_from_dataset(dataset):
   Returns:
     Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
   """
-  iterator = dataset_ops.make_initializable_iterator(dataset)
-  init_op = iterator.initializer
-  if not context.executing_eagerly():
-    K.get_session().run(init_op)
+  iterator = get_iterator(dataset)
   inputs, targets, sample_weight = unpack_iterator_input(iterator)
   return inputs, targets, sample_weight
 
