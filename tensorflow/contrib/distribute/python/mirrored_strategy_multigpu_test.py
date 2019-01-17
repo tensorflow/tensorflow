@@ -366,14 +366,9 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
                 (layer2.kernel, layer2.bias),
                 (layer3.kernel, layer3.bias)]
 
-    ds = distribution.distribute_dataset(
-        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
-    if context.executing_eagerly():
-      iterator = ds.make_one_shot_iterator()
-    else:
-      iterator = ds.make_initializable_iterator()
-      self.evaluate([iterator.initializer])
-
+    iterator = distribution.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
+    self.evaluate(iterator.initialize())
     features = iterator.get_next()
 
     with distribution.scope():

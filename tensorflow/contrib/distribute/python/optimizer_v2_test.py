@@ -41,12 +41,7 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
-
-      ds = distribution.distribute_dataset(dataset_fn)
-      if context.executing_eagerly():
-        iterator = ds.make_one_shot_iterator()
-      else:
-        iterator = ds.make_initializable_iterator()
+      iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
 
       def run_step():
         return control_flow_ops.group(
@@ -56,7 +51,7 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
       if not context.executing_eagerly():
         with self.cached_session() as sess:
-          sess.run(iterator.initializer)
+          sess.run(iterator.initialize())
           run_step = sess.make_callable(run_step())
         self.evaluate(variables.global_variables_initializer())
 
