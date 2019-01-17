@@ -410,7 +410,9 @@ def convert_to_generator_like(data,
       and may be `None` or `[None]`.
     batch_size: Used when creating a generator out of tuples of NumPy arrays or
       EagerTensors.
-    steps_per_epoch: Steps of the generator to run each epoch.
+    steps_per_epoch: Steps of the generator to run each epoch. If `None` the
+      number of steps will be read from the data (for
+      `keras.utils.data_utils.Sequence` types).
     epochs: Total number of epochs to run.
     shuffle: Whether the data should be shuffled.
 
@@ -431,7 +433,8 @@ def convert_to_generator_like(data,
   if data_utils.is_generator_or_sequence(data) or isinstance(
       data, iterator_ops.EagerIterator):
     if isinstance(data, data_utils.Sequence):
-      steps_per_epoch = len(data)
+      if steps_per_epoch is None:
+        steps_per_epoch = len(data)
     return data, steps_per_epoch
   if isinstance(data, dataset_ops.DatasetV2):
     return dataset_ops.make_one_shot_iterator(data), steps_per_epoch
