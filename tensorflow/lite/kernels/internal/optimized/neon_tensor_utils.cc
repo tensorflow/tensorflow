@@ -145,8 +145,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
         // Load 16 8-bit values from the row and vector, each, to operate on.
         // Here the assumption is that each buffer is 4-byte aligned. Otherwise,
         // performance may suffer significantly.
-        TFLITE_CHECK_EQ((uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1),
-                        0);
+        TFLITE_DCHECK_EQ(  // NOLINT
+            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
         const int8x16_t s1_8x16 = vld1q_s8((const int8_t*)(aligned_vec + col));
         const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr + col));
         // Multiply the low bits (i.e. the lower 8 8bit numbers in the
@@ -174,8 +174,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
           // Load 8 8-bit values from the row and column each to operate on.
           // Here the assumption is that each buffer is 4-bytes aligned.
           // Otherwise, performance may suffer significantly.
-          TFLITE_CHECK_EQ((uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1),
-                          0);
+          TFLITE_DCHECK_EQ(  // NOLINT
+              (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
           const int8x8_t s1_8x8 = vld1_s8((const int8_t*)(aligned_vec + col));
           const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + col));
           const int16x8_t prod_16x8 = vmull_s8(s1_8x8, s2_8x8);
