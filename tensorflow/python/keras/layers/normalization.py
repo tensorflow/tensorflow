@@ -413,15 +413,6 @@ class BatchNormalizationV2(Layer):
   def _assign_moving_average(self, variable, value, momentum):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, momentum]) as scope:
-      # TODO(b/120571621): We want to avoid colocating the variables here
-      # since TPUStrategy does not implement replica local variables.
-      # Remove this hack once we support TPULocalVariables.
-      is_tpu_strategy = False
-      if distribution_strategy_context.has_strategy():
-        distribute = distribution_strategy_context.get_strategy()
-        if distribute.__class__.__name__ == 'TPUStrategy':
-          is_tpu_strategy = True
-
       with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
