@@ -1154,7 +1154,7 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
   CUresult result = cuOccupancyMaxActiveBlocksPerMultiprocessor(
       &bpc, blank_function, 1, 1);
   if (result != CUDA_SUCCESS) {
-    VLOG(1) << "Failed to calculate max blocks per SM using dummy kernel.";
+    LOG(ERROR) << "Failed to calculate max blocks per SM using dummy kernel.";
     bpc = -1;
   }
   builder.set_blocks_per_core_limit(bpc);
