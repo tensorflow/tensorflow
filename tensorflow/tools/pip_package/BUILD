@@ -159,7 +159,6 @@ filegroup(
         "@curl//:COPYING",
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
-        "@enum34_archive//:LICENSE",
         "@farmhash_archive//:COPYING",
         "@fft2d//:fft/readme.txt",
         "@flatbuffers//:LICENSE.txt",
