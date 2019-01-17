@@ -27,7 +27,6 @@ from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import test
 
@@ -593,74 +592,132 @@ class BinaryCrossentropyTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
   def test_unweighted(self):
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
     bce_obj = keras.losses.BinaryCrossentropy()
-    y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
-    y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
     loss = bce_obj(y_true, y_pred)
-    self.assertAlmostEqual(self.evaluate(loss), 8.0004, 3)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Loss = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #      = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #         -log(Y_MAX + EPSILON), -log(1)]
+    #      = [0, 15.33, 0, 0]
+    # Reduced loss = 15.33 / 4
+
+    self.assertAlmostEqual(self.evaluate(loss), 3.833, 3)
 
     # Test with logits.
-    logits = constant_op.constant([10., 10., 10., -10., 10, -10],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    logits = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
     bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits)
-    self.assertAlmostEqual(self.evaluate(loss), 5., 3)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    #      = [((100 - 100 * 1 + log(1 + exp(-100))) +
+    #          (0 + 100 * 0 + log(1 + exp(-100))) +
+    #          (100 - 100 * 1 + log(1 + exp(-100))),
+    #         ((100 - 100 * 0 + log(1 + exp(-100))) +
+    #          (100 - 100 * 1 + log(1 + exp(-100))) +
+    #          (0 + 100 * 1 + log(1 + exp(-100))))]
+    #      = [(0 + 0 + 0) / 3, 200 / 3]
+    # Reduced loss = (0 + 66.666) / 2
+
+    self.assertAlmostEqual(self.evaluate(loss), 33.333, 3)
 
   def test_scalar_weighted(self):
     bce_obj = keras.losses.BinaryCrossentropy()
-    y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
-    y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
     loss = bce_obj(y_true, y_pred, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), 18.4010, 3)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Loss = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #      = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #         -log(Y_MAX + EPSILON), -log(1)]
+    #      = [0, 15.33, 0, 0]
+    # Weighted loss = [0, 15.33 * 2.3, 0, 0]
+    # Reduced loss = 15.33 * 2.3 / 4
+
+    self.assertAlmostEqual(self.evaluate(loss), 8.817, 3)
 
     # Test with logits.
-    y_true = array_ops.ones((32, 1))
-    logits = array_ops.ones((32, 1), dtype=dtypes.float32)
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    logits = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
     bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), 0.7205, 3)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [(0 + 0 + 0) / 3, 200 / 3]
+    # Weighted loss = [0 * 2.3, 66.666 * 2.3]
+    # Reduced loss = (0 + 66.666 * 2.3) / 2
+
+    self.assertAlmostEqual(self.evaluate(loss), 76.667, 3)
 
   def test_sample_weighted(self):
     bce_obj = keras.losses.BinaryCrossentropy()
-    y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
-    y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float64)
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
     loss = bce_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), 21.4907, 3)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Loss = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #      = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #         -log(Y_MAX + EPSILON), -log(1)]
+    #      = [0, 15.33, 0, 0]
+    # Reduced loss = 15.33 * 1.2 / 4
+
+    self.assertAlmostEqual(self.evaluate(loss), 4.6, 3)
 
     # Test with logits.
-    y_true = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
-    logits = constant_op.constant(
-        [[100.0, -100.0, -100.0], [-100.0, 100.0, -100.0],
-         [-100.0, -100.0, 100.0]],
-        dtype=dtypes.float64)
-    weights = constant_op.constant([3, 2, 8])
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    logits = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
+    weights = constant_op.constant([4, 3])
     bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits, sample_weight=weights)
-    self.assertAlmostEqual(self.evaluate(loss), 288.8888, 3)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [(0 + 0 + 0)/3, 200 / 3]
+    # Weighted loss = [0 * 4, 66.666 * 3]
+    # Reduced loss = (0 + 66.666 * 3) / 2
+
+    self.assertAlmostEqual(self.evaluate(loss), 100, 3)
 
   def test_no_reduction(self):
-    y_true = constant_op.constant(((1, 0, 1), (1, 1, 0), (0, 1, 1)))
-    logits = constant_op.constant(((100.0, -100.0, 100.0),
-                                   (100.0, -100.0, 100.0),
-                                   (100.0, 100.0, -100.0)))
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    logits = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
     bce_obj = keras.losses.BinaryCrossentropy(
         from_logits=True, reduction=losses_impl.ReductionV2.NONE)
     loss = bce_obj(y_true, logits)
-    self.assertAllClose((0., 66.6666, 66.6666), self.evaluate(loss), 3)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [(0 + 0 + 0)/3, (200)/3]
+
+    self.assertAllClose((0., 66.6666), self.evaluate(loss), 3)
 
   def test_label_smoothing(self):
     logits = constant_op.constant([[100.0, -100.0, -100.0]])
     y_true = constant_op.constant([[1, 0, 1]])
     label_smoothing = 0.1
     # Loss: max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
     # Label smoothing: z' = z * (1 - L) + 0.5L
     #                  1  = 1 - 0.5L
     #                  0  = 0.5L

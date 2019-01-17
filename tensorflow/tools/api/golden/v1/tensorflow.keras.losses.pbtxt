@@ -62,11 +62,11 @@ tf_module {
   }
   member_method {
     name: "binary_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'False\', \'0\'], "
   }
   member_method {
     name: "categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'False\', \'0\'], "
   }
   member_method {
     name: "categorical_hinge"

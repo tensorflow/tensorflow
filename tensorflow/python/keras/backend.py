@@ -3866,7 +3866,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       axis = axis % len(output.shape)
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
-      # manual computation of crossentropy
+
+      # Compute cross entropy from probabilities.
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
       return -math_ops.reduce_sum(target * math_ops.log(output), axis)
@@ -3948,10 +3949,13 @@ def binary_crossentropy(target, output, from_logits=False):
   """
   if not from_logits:
     if context.executing_eagerly() or output.op.type != 'Sigmoid':
-      # transform back to logits
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
-      output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
-      output = math_ops.log(output / (1 - output))
+      output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
+
+      # Compute cross entropy from probabilities.
+      bce = target * math_ops.log(output + epsilon())
+      bce += (1 - target) * math_ops.log(1 - output + epsilon())
+      return -bce
     else:
       # When sigmoid activation function is used for output operation, we
       # use logits from the sigmoid function directly to compute loss in order
