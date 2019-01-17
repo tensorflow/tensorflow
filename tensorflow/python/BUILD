@@ -213,7 +213,6 @@ py_library(
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/core:protos_all_py",
-        "@absl_py//absl:app",
         "@absl_py//absl/flags",
         "@six_archive//:six",
     ],
@@ -234,10 +233,7 @@ py_library(
     name = "platform_test",
     srcs = ["platform/googletest.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":platform_benchmark",
-        "@absl_py//absl/testing:absltest",
-    ],
+    deps = [":platform_benchmark"],
 )
 
 tf_py_test(

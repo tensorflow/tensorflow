@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Imports absltest as a replacement for testing.pybase.googletest."""
+"""Imports unittest as a replacement for testing.pybase.googletest."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,7 +26,7 @@ import tempfile
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from absl.testing.absltest import *
+from unittest import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.framework import errors
@@ -41,7 +41,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 Benchmark = benchmark.TensorFlowBenchmark  # pylint: disable=invalid-name
 
-absltest_main = main
+unittest_main = main
 
 # We keep a global variable in this module to make sure we create the temporary
 # directory only once per test binary invocation.
@@ -51,7 +51,7 @@ _googletest_temp_dir = ''
 # pylint: disable=invalid-name
 # pylint: disable=undefined-variable
 def g_main(argv):
-  """Delegate to absltest.main after redefining testLoader."""
+  """Delegate to unittest.main after redefining testLoader."""
   if 'TEST_SHARD_STATUS_FILE' in os.environ:
     try:
       f = None
@@ -67,7 +67,7 @@ def g_main(argv):
 
   if ('TEST_TOTAL_SHARDS' not in os.environ or
       'TEST_SHARD_INDEX' not in os.environ):
-    return absltest_main(argv=argv)
+    return unittest_main(argv=argv)
 
   total_shards = int(os.environ['TEST_TOTAL_SHARDS'])
   shard_index = int(os.environ['TEST_SHARD_INDEX'])
@@ -87,7 +87,7 @@ def g_main(argv):
   # Override getTestCaseNames
   base_loader.getTestCaseNames = getShardedTestCaseNames
 
-  absltest_main(argv=argv, testLoader=base_loader)
+  unittest_main(argv=argv, testLoader=base_loader)
 
 
 # Redefine main to allow running benchmarks
