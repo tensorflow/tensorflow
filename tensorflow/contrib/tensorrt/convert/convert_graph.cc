@@ -239,7 +239,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
     int precision_mode, int minimum_segment_size, bool is_dyn_op,
-    int max_cached_engines, std::vector<int> cached_engine_batch_sizes,
+    int max_cached_engines, std::vector<int> cached_engine_batches,
     bool use_calibration) {
   // Create GrapplerItem.
   tensorflow::grappler::GrapplerItem item;
@@ -301,9 +301,9 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   TF_RETURN_IF_ERROR(GetPrecisionModeName(
       precision_mode, parameters["precision_mode"].mutable_s()));
   parameters["maximum_cached_engines"].set_i(max_cached_engines);
-  if (!cached_engine_batch_sizes.empty()) {
-    auto list = parameters["cached_engine_batch_sizes"].mutable_list();
-    for (const int batch : cached_engine_batch_sizes) {
+  if (!cached_engine_batches.empty()) {
+    auto list = parameters["cached_engine_batches"].mutable_list();
+    for (const int batch : cached_engine_batches) {
       list->add_i(batch);
     }
   }
@@ -689,7 +689,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
   }
 
   if (info.engine_type == EngineInfo::EngineType::TRTStatic &&
-      !info.cached_engine_batch_sizes.empty()) {
+      !info.cached_engine_batches.empty()) {
     LOG(WARNING) << "Cached engine batches are ignored for static engines";
   }
   tensorflow::NodeDef trt_node;
@@ -983,7 +983,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                    ? EngineInfo::EngineType::TRTDynamic
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
-    curr_engine.cached_engine_batch_sizes = params.cached_engine_batch_sizes;
+    curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     StrAppend(&curr_engine.engine_name, "TRTEngineOp_", t);
     status = RegisterSegmentFunctionToFunctionLibrary(

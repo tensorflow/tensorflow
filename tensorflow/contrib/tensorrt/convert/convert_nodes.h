@@ -108,7 +108,7 @@ struct EngineInfo {
   EngineType engine_type;
   int64 max_workspace_size_bytes;
   int maximum_cached_engines;
-  std::vector<int> cached_engine_batch_sizes;
+  std::vector<int> cached_engine_batches;
   int precision_mode;
   bool use_calibration;
 };
