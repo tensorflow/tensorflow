@@ -632,7 +632,7 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
   %in = alloc() : memref<2x2x3x3x16x1xi32>
   %out = alloc() : memref<64x9xi32>
 
-  // Initialize input with a different value for each 8x128 chunk.
+  // Initialize input.
   for %i0 = 0 to 2 {
     for %i1 = 0 to 2 {
       for %i2 = 0 to 3 {

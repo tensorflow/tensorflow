@@ -900,9 +900,9 @@ void DmaStartOp::print(OpAsmPrinter *p) const {
 // Ex:
 //   %dma_id = dma_start %src[%i, %j], %dst[%k, %l], %size,
 //                             %tag[%index] :
-//    memref<3 x vector<8x128xf32>, (d0) -> (d0), 0>,
-//    memref<1 x vector<8x128xf32>, (d0) -> (d0), 2>,
-//    memref<1 x i32, (d0) -> (d0), 4>
+//    memref<3076 x f32, 0>,
+//    memref<1024 x f32, 2>,
+//    memref<1 x i32>
 //
 bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType srcMemRefInfo;
