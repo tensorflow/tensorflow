@@ -25,6 +25,8 @@ import copy
 import functools
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.contrib.tpu.python.tpu import topology
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
@@ -58,6 +60,8 @@ def initialize_tpu_system(cluster_resolver=None):
   Args:
     cluster_resolver: A tf.contrib.cluster_resolver.TPUClusterResolver,
         which provides information about the TPU cluster.
+  Returns:
+    The tf.contrib.tpu.Topology object for the topology of the TPU cluster.
   """
   if cluster_resolver is None:
     cluster_resolver = resolver_lib.TPUClusterResolver("")
@@ -68,8 +72,9 @@ def initialize_tpu_system(cluster_resolver=None):
 
   with ops.Graph().as_default():
     with session_lib.Session(config=session_config, target=master) as sess:
-      sess.run([tpu.initialize_system()])
+      serialized_topology = sess.run(tpu.initialize_system())
   logging.info("Finished initializing TPU system.")
+  return topology.Topology(serialized=serialized_topology)
 
 
 def get_tpu_system_metadata(tpu_cluster_resolver):
@@ -149,6 +154,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   def __init__(self,
                tpu_cluster_resolver=None,
                steps_per_run=None,
+               device_assignment=None,
                **kwargs):
     """Initializes the TPUStrategy object.
 
@@ -160,10 +166,13 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
           metrics, summaries etc.
           This parameter is only used when Distribution Strategy is used with
           estimator or keras.
+      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
+          the placement of replicas on the TPU cluster. Currently only supports
+          the usecase of using a single core within a TPU cluster.
       **kwargs: Additional experimental flags. Will be removed in future.
     """
     super(TPUStrategy, self).__init__(TPUExtended(
-        self, tpu_cluster_resolver, steps_per_run))
+        self, tpu_cluster_resolver, steps_per_run, device_assignment))
 
     self._disable_training_loop_on_host = False
     if len(kwargs) > 1:
@@ -188,7 +197,8 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   def __init__(self,
                container_strategy,
                tpu_cluster_resolver=None,
-               steps_per_run=None):
+               steps_per_run=None,
+               device_assignment=None):
     super(TPUExtended, self).__init__(container_strategy)
 
     if tpu_cluster_resolver is None:
@@ -201,6 +211,21 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
+    self._device_assignment = device_assignment
+
+    # Device assignment is currently only supported for 1 core case.
+    if self._device_assignment:
+      assert isinstance(self._device_assignment,
+                        device_assignment_lib.DeviceAssignment)
+      if self._device_assignment.num_replicas != 1:
+        raise ValueError("Device assignment is only supported for a single "
+                         "core single replica case currently.")
+      if self._device_assignment.num_cores_per_replica != 1:
+        raise ValueError("Device assignment is only supported for a single "
+                         "core single replica case currently.")
+      if not all(self._device_assignment.core_assignment[0][0] == [0, 0, 0]):
+        raise ValueError("Device assignment is only supported for a single "
+                         "core single replica case currently.")
 
     # TODO(jhseu): Switch to DeviceAssignment to support pods and model
     # parallelism.
@@ -604,15 +629,34 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
   @property
   def num_hosts(self):
-    return self._tpu_metadata.num_hosts
+    if self._device_assignment is None:
+      return self._tpu_metadata.num_hosts
+
+    return len(set([self._device_assignment.host_device(r)
+                    for r in range(self._device_assignment.num_replicas)]))
 
   @property
   def num_replicas_per_host(self):
-    return self._tpu_metadata.num_of_cores_per_host
+    if self._device_assignment is None:
+      return self._tpu_metadata.num_of_cores_per_host
+
+    # TODO(sourabhbajaj): Remove this method we use inputs and remove infeed
+    # as the computation of num_replicas_per_host is not a constant
+    # when using device_assignment. This is a temporary workaround to support
+    # StatefulRNN as everything is 1 in that case.
+    # This method needs to take host_id as input for correct computation.
+    max_models_per_host = (self._tpu_metadata.num_of_cores_per_host //
+                           self._device_assignment.num_cores_per_replica)
+    models_per_host = min(self._device_assignment.num_replicas,
+                          max_models_per_host)
+    return models_per_host * self._device_assignment.num_cores_per_replica
 
   @property
   def _num_replicas_in_sync(self):
-    return self._tpu_metadata.num_cores
+    if self._device_assignment is None:
+      return self._tpu_metadata.num_cores
+    return (self._device_assignment.num_replicas *
+            self._device_assignment.num_cores_per_replica)
 
   @property
   def experimental_between_graph(self):
