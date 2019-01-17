@@ -124,6 +124,16 @@ def _is_iterable(obj):
     return False
 
 
+class CatchInvalidHostcallFunctions(control_flow_ops.XLAControlFlowContext):
+
+  def AddOp(self, op):
+    if op.type in [
+        'AudioSummary', 'AudioSummaryV2', 'HistogramSummary', 'ImageSummary',
+        'MergeSummary', 'ScalarSummary', 'TensorSummary', 'TensorSummaryV2'
+    ]:
+      raise ValueError('Use tf.contrib.summary inside of host_calls.')
+
+
 def _create_global_step(graph):
   graph = graph or ops.get_default_graph()
   if training.get_global_step(graph) is not None:
@@ -1802,12 +1812,24 @@ class _OutfeedHostCall(object):
           dequeue_ops[j].append(item)
 
     # Deconstruct dequeue ops.
+    flat_dequeue_ops = []
+    for l in dequeue_ops:
+      flat_dequeue_ops.extend(l)
+
     dequeue_ops_by_name = {}
     pos = 0
     for name in self._names:
       dequeue_ops_by_name[name] = dequeue_ops[pos:pos +
                                               len(self._tensors[name])]
       pos += len(self._tensors[name])
+
+    def _call_host_fn(fn, *args, **kw):
+      context = CatchInvalidHostcallFunctions()
+      context.Enter()
+      result = fn(*args, **kw)
+      context.Exit()
+      context.ExitResult(result)
+      return result
 
     # It is assumed evaluation always happens on single host TPU system. So,
     # place all ops on tpu host if possible.
@@ -1842,7 +1864,7 @@ class _OutfeedHostCall(object):
           # The user-provided eval_metrics[1] is a dict.
           dequeue_ops = dict(zip(self._tensor_keys[name], dequeue_ops))
           try:
-            ret[name] = self._host_fns[name](**dequeue_ops)
+            ret[name] = _call_host_fn(self._host_fns[name], **dequeue_ops)
           except TypeError as e:
             logging.warning(
                 'Exception while calling %s: %s. It is likely the tensors '
@@ -1850,8 +1872,10 @@ class _OutfeedHostCall(object):
                 'function\'s arguments', name, e, name)
             raise
         else:
-          ret[name] = self._host_fns[name](*dequeue_ops)
+          ret[name] = _call_host_fn(self._host_fns[name], *dequeue_ops)
 
+    # force all dequeue operations to be run if not consumed by the host calls
+    ret['__force_dequeue'] = control_flow_ops.group(*flat_dequeue_ops)
     return ret
 
 
