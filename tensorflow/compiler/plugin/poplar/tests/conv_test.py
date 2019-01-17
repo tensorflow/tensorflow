@@ -205,7 +205,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_',
-            'Conv2DBackpropInput/convolution.*clone/Conv_2x2']
+            'Conv2DBackpropInput/fusion*/Conv_2x2']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
@@ -357,8 +357,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/WeightTranspose',
-            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/Conv_3x3',
+            'DepthwiseConv2dNativeBackpropInput/fusion*/WeightTranspose',
+            'DepthwiseConv2dNativeBackpropInput/fusion*/Conv_3x3',
             'Copy_']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -393,8 +393,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/WeightTranspose',
-            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/Conv_1x1',
+            'DepthwiseConv2dNativeBackpropInput/fusion*/WeightTranspose',
+            'DepthwiseConv2dNativeBackpropInput/fusion*/Conv_1x1',
             'Copy_']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -428,7 +428,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_',
-            'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6']
+            'DepthwiseConv2dNativeBackpropFilter/fusion*/Conv_6x6']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testDepthwiseConvBackpropFilter1x1(self):
@@ -461,7 +461,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_',
-            'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6']
+            'DepthwiseConv2dNativeBackpropFilter/fusion*/Conv_6x6']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testDepthwiseConvBackpropFilter1x1WithRelu(self):
@@ -494,7 +494,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6',
+            'DepthwiseConv2dNativeBackpropFilter/fusion*/Conv_6x6',
             'Copy_',
             'Relu/fusion.*/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))

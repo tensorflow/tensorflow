@@ -72,8 +72,7 @@ Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
                                          const std::exception& e);
 
 StatusOr<poplin::ConvParams> GetConvolutionParameters(
-    const HloInstruction* operand_op, const HloInstruction* conv_op,
-    int64 input_index, int64 kernel_index);
+    const HloInstruction* operand_op, int64 input_index, int64 kernel_index);
 
 poplar::Tensor ShuffleConvolutionInputToTensorflow(
     const HloInstruction* inst, const poplar::Tensor& tensor);

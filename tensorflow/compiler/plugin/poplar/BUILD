@@ -9,6 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 
 # Rule for creating the vertex program pre-compiled object
 genrule(
@@ -28,6 +29,12 @@ tf_proto_library(
     cc_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
+)
+
+xla_proto_library(
+    name = "backend_config",
+    srcs = ["driver/backend_config.proto"],
+    deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
 cc_library(
@@ -119,6 +126,7 @@ cc_library(
         "driver/wide_const_finder.h",
     ],
     deps = [
+        ":backend_config",
         ":custom_kernels_util",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:call_inliner",
