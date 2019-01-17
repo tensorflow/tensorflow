@@ -35,9 +35,9 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import py_func
-from tensorflow.python.util import nest
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -263,7 +263,7 @@ def converted_call(f, owner, options, *args, **kwargs):
     partial_types = (f.__class__,)
 
   else:
-    NotImplementedError('unknown callable type "%s"' % type(f))
+    raise NotImplementedError('unknown callable type "%s"' % type(f))
 
   arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
   arg_types = {}
