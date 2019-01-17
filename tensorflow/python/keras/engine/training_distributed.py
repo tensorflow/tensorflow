@@ -314,10 +314,9 @@ def experimental_tpu_fit_loop(model,
       dtype='int32',
       name='steps_per_run')
 
-  with current_strategy.scope():
-    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
-        step_fn, iterator, iterations=steps_per_run,
-        initial_loop_values=initial_loop_values)
+  ctx = current_strategy.extended.experimental_run_steps_on_iterator(
+      step_fn, iterator, iterations=steps_per_run,
+      initial_loop_values=initial_loop_values)
 
   train_op = ctx.run_op
   output_tensors = ctx.last_step_outputs
@@ -325,9 +324,8 @@ def experimental_tpu_fit_loop(model,
   do_validation = bool(validation_steps)
 
   if model._compile_distribution:
-    with current_strategy.scope():
-      distributed_training_utils._copy_weights_to_distributed_model(
-          model, model._distributed_model_train)
+    distributed_training_utils._copy_weights_to_distributed_model(
+        model, model._distributed_model_train)
 
   callbacks = cbks.configure_callbacks(
       callbacks,
@@ -346,9 +344,8 @@ def experimental_tpu_fit_loop(model,
 
   callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
-    with current_strategy.scope():
-      distributed_training_utils._reset_metrics(
-          model, model._distributed_model_train)
+    distributed_training_utils._reset_metrics(
+        model, model._distributed_model_train)
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     step_index = 0
@@ -382,9 +379,8 @@ def experimental_tpu_fit_loop(model,
       if model._compile_distribution:
         # Since we create a new clone from the original model we need to copy
         # the weights back to the original model before we can run validation.
-        with current_strategy.scope():
-          distributed_training_utils._copy_weights_to_original_model(
-              model, model._distributed_model_train, ModeKeys.TRAIN)
+        distributed_training_utils._copy_weights_to_original_model(
+            model, model._distributed_model_train, ModeKeys.TRAIN)
 
       val_outs = experimental_tpu_test_loop(  # pylint: disable=undefined-variable
           model,
@@ -404,9 +400,8 @@ def experimental_tpu_fit_loop(model,
 
   if model._compile_distribution:
     # Copy the weights back from the replicated model to the original model.
-    with current_strategy.scope():
-      distributed_training_utils._copy_weights_to_original_model(
-          model, model._distributed_model_train, ModeKeys.TRAIN)
+    distributed_training_utils._copy_weights_to_original_model(
+        model, model._distributed_model_train, ModeKeys.TRAIN)
   scope.__exit__(None, None, None)
   return model.history
 
@@ -491,12 +486,11 @@ def experimental_tpu_test_loop(model,
     tensor = model._all_stateful_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
-  with current_strategy.scope():
-    # TODO(priyag): Use steps_per_run when we use new metrics as they will
-    # allow handling metric computation at each step using variables.
-    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
-        step_fn, iterator, iterations=1,
-        initial_loop_values=initial_loop_values)
+  # TODO(priyag): Use steps_per_run when we use new metrics as they will
+  # allow handling metric computation at each step using variables.
+  ctx = current_strategy.extended.experimental_run_steps_on_iterator(
+      step_fn, iterator, iterations=1,
+      initial_loop_values=initial_loop_values)
 
   test_op = ctx.run_op
   output_tensors = ctx.last_step_outputs
@@ -505,12 +499,11 @@ def experimental_tpu_test_loop(model,
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
-    with current_strategy.scope():
-      distributed_training_utils._copy_weights_to_distributed_model(
-          model, model._distributed_model_test)
-  with current_strategy.scope():
-    distributed_training_utils._reset_metrics(
+    distributed_training_utils._copy_weights_to_distributed_model(
         model, model._distributed_model_test)
+
+  distributed_training_utils._reset_metrics(
+      model, model._distributed_model_test)
 
   assert steps is not None
   outs = [0.] * len(model.metrics_names)
@@ -609,11 +602,10 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
     shape.dims = [batch_dimension] + shape.dims[1:]
     initial_loop_values[name] = array_ops.zeros(shape, tensor.dtype)
 
-  with current_strategy.scope():
-    # TODO(priyag, sourabhbajaj): Support steps_per_run if/when we add outfeed.
-    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
-        step_fn, iterator, iterations=1,
-        initial_loop_values=initial_loop_values)
+  # TODO(priyag, sourabhbajaj): Support steps_per_run if/when we add outfeed.
+  ctx = current_strategy.extended.experimental_run_steps_on_iterator(
+      step_fn, iterator, iterations=1,
+      initial_loop_values=initial_loop_values)
 
   predict_op = ctx.run_op
   output_tensors = ctx.last_step_outputs
@@ -622,12 +614,11 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
-    with current_strategy.scope():
-      distributed_training_utils._copy_weights_to_distributed_model(
-          model, model._distributed_model_predict)
-  with current_strategy.scope():
-    distributed_training_utils._reset_metrics(
+    distributed_training_utils._copy_weights_to_distributed_model(
         model, model._distributed_model_predict)
+
+  distributed_training_utils._reset_metrics(
+      model, model._distributed_model_predict)
 
   assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate
