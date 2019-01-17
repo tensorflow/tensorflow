@@ -57,8 +57,8 @@ void ConstantFold::visitOperationInst(OperationInst *op) {
     return;
   }
 
-  // Check to see if each of the operands is a trivial constant.  If so, get
-  // the value.  If not, ignore the instruction.
+  // Get values for operands that are trivial constants. nullptr is used as
+  // placeholder for non-constant operands.
   SmallVector<Attribute, 8> operandConstants;
   for (auto *operand : op->getOperands()) {
     Attribute operandCst = nullptr;
