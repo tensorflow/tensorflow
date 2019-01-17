@@ -22,10 +22,6 @@ package org.tensorflow;
  * therefore its usage is limited to internal purposes only.
  */
 abstract class AbstractOperation implements Operation {
-  
-  AbstractOperation(long unsafeNativeHandle) {
-    this.unsafeNativeHandle = unsafeNativeHandle;
-  }
 
   @Override
   public String toString() {
@@ -62,10 +58,4 @@ abstract class AbstractOperation implements Operation {
    * @return output tensor datatype
    */
   abstract DataType dtype(int outputIdx);
-
-  long getUnsafeNativeHandle() {
-    return unsafeNativeHandle;
-  }
-  
-  private final long unsafeNativeHandle;
 }

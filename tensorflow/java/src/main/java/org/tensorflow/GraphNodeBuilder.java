@@ -51,9 +51,12 @@ public final class GraphNodeBuilder implements OperationBuilder {
 
   @Override
   public GraphNodeBuilder addControlInput(Operation control) {
+    if (!(control instanceof GraphNode)) {
+      throw new IllegalArgumentException("Only GraphNode operations can be used as control input");
+    }
     Graph.Reference r = graph.ref();
     try {
-      addControlInput(unsafeNativeHandle, ((AbstractOperation)control).getUnsafeNativeHandle());
+      addControlInput(unsafeNativeHandle, ((GraphNode)control).getUnsafeNativeHandle());
     } finally {
       r.close();
     }
