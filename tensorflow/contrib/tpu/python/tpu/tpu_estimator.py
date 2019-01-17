@@ -2143,6 +2143,7 @@ class TPUEstimator(estimator_lib.Estimator):
                batch_axis=None,
                eval_on_tpu=True,
                export_to_tpu=True,
+               export_to_cpu=True,
                warm_start_from=None,
                experimental_exported_model_uses_all_cores=False):
     """Constructs an `TPUEstimator` instance.
@@ -2187,9 +2188,11 @@ class TPUEstimator(estimator_lib.Estimator):
       eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
         model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
       export_to_tpu: If True, `export_savedmodel()` exports a metagraph for
-        serving on TPU besides the one on CPU. Note that unsupported export
-        modes such as EVAL will be ignored. For those modes, only a CPU model
-        will be exported. Currently, export_to_tpu only supports PREDICT.
+        serving on TPU. Note that unsupported export modes such as EVAL will be
+        ignored. For those modes, only a CPU model will be exported.
+        Currently, export_to_tpu only supports PREDICT.
+      export_to_cpu: If True, `export_savedmodel()` exports a metagraph for
+        serving on CPU.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
         warm-start from, or a `tf.estimator.WarmStartSettings` object to fully
         configure warm-starting.  If the string filepath is provided instead of
@@ -2264,6 +2267,7 @@ class TPUEstimator(estimator_lib.Estimator):
         self._config, train_batch_size, eval_batch_size, predict_batch_size,
         use_tpu, eval_on_tpu)
 
+    self._export_to_cpu = export_to_cpu
     self._export_to_tpu = export_to_tpu
     self._experimental_exported_model_uses_all_cores = (
         experimental_exported_model_uses_all_cores)
@@ -2284,14 +2288,18 @@ class TPUEstimator(estimator_lib.Estimator):
                       'when `export_to_tpu` is `True`; Mode {} will be ignored '
                       'for TPU.'.format(mode))
 
-    (super(TPUEstimator, self)._add_meta_graph_for_mode(
-        builder,
-        input_receiver_fn_map,
-        checkpoint_path,
-        save_variables,
-        mode=mode,
-        export_tags=export_tags,
-        check_variables=check_variables))
+    if not self._export_to_cpu and not self._export_to_tpu:
+      raise ValueError('One of export_to_cpu and export_to_tpu must be true.')
+
+    if self._export_to_cpu:
+      (super(TPUEstimator, self)._add_meta_graph_for_mode(
+          builder,
+          input_receiver_fn_map,
+          checkpoint_path,
+          save_variables,
+          mode=mode,
+          export_tags=export_tags,
+          check_variables=check_variables))
 
     if self._export_to_tpu and mode == model_fn_lib.ModeKeys.PREDICT:
       input_receiver_fn_map = {
@@ -2299,15 +2307,20 @@ class TPUEstimator(estimator_lib.Estimator):
       }
       export_tags = [tag_constants.SERVING, tag_constants.TPU]
       mode = _REWRITE_FOR_INFERENCE_MODE
+
       # See b/110052256 for why `check_variables` is `False`.
+      if not self._export_to_cpu:
+        check_variables = save_variables = True
+      else:
+        check_variables = save_variables = False
       (super(TPUEstimator, self)._add_meta_graph_for_mode(
           builder,
           input_receiver_fn_map,
           checkpoint_path,
-          save_variables=False,
+          save_variables=save_variables,
           mode=mode,
           export_tags=export_tags,
-          check_variables=False))
+          check_variables=check_variables))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
