@@ -136,13 +136,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   native_func_ = tensorflow::kInvalidHandle;
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
-  OP_REQUIRES_OK(context, context->GetAttr("cached_engine_batch_sizes",
-                                           &cached_engine_batch_sizes_));
-  std::sort(cached_engine_batch_sizes_.begin(),
-            cached_engine_batch_sizes_.end());
+  OP_REQUIRES_OK(context, context->GetAttr("cached_engine_batches",
+                                           &cached_engine_batches_));
+  std::sort(cached_engine_batches_.begin(), cached_engine_batches_.end());
   if (VLOG_IS_ON(1)) {
     string s("Engine Batches= ");
-    for (auto i : cached_engine_batch_sizes_) {
+    for (auto i : cached_engine_batches_) {
       StrAppend(&s, i, " ");
     }
     VLOG(1) << s;
@@ -247,7 +246,7 @@ bool TRTEngineOp::GetCompatibleCachedEngine(
   // Output shape will always be the same as the input but we will overwrite the
   // batch size.
   *engine_input_shapes = actual_input_shapes;
-  for (const int cached_batch_size : cached_engine_batch_sizes_) {
+  for (const int cached_batch_size : cached_engine_batches_) {
     // Check if compatible: batch <= cached batch.
     //
     // TODO(laigd): here it only compare the first dim a.k.a the batch size,
@@ -495,12 +494,12 @@ EngineContext* TRTEngineOp::GetEngine(
   // exact shape and possibly create a new engine if it is not in cache.
   if (!matched_successfully) {
     engine_input_shapes = input_shapes;
-    if (!cached_engine_batch_sizes_.empty()) {
-      // If user has explicitly defined cached_engine_batch_sizes, we should
+    if (!cached_engine_batches_.empty()) {
+      // If user has explicitly defined cached_engine_batches, we should
       // warn them that their input was non-compatible (batch size too high)
       LOG(WARNING) << "No compatible cached engine was found for batch size: "
                    << batch_size << ". A new engine will be created.";
-      cached_engine_batch_sizes_.push_back(batch_size);
+      cached_engine_batches_.push_back(batch_size);
     }
   }
 

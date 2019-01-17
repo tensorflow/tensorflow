@@ -57,7 +57,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         minimum_segment_size=10,
         is_dynamic_op=True,
         maximum_cached_engines=2,
-        cached_engine_batch_sizes=[1, 128])
+        cached_engine_batches=[1, 128])
     self.assertEqual(["constfold", "layout", "constfold"],
                      rewriter_cfg.optimizers)
     self.assertEqual(rewriter_config_pb2.RewriterConfig.ONE,
@@ -71,7 +71,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     for key in [
         "minimum_segment_size", "max_batch_size", "is_dynamic_op",
         "max_workspace_size_bytes", "precision_mode", "maximum_cached_engines",
-        "cached_engine_batch_sizes"
+        "cached_engine_batches"
     ]:
       self.assertTrue(key in trt_optimizer.parameter_map)
     self.assertEqual(10, trt_optimizer.parameter_map["minimum_segment_size"].i)
@@ -84,8 +84,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         trt_optimizer.parameter_map["precision_mode"].s)
     self.assertEqual(2, trt_optimizer.parameter_map["maximum_cached_engines"].i)
     self.assertEqual(
-        [1, 128],
-        trt_optimizer.parameter_map["cached_engine_batch_sizes"].list.i)
+        [1, 128], trt_optimizer.parameter_map["cached_engine_batches"].list.i)
 
   def _GetConfigProto(self):
     """Get ConfigProto for session creation."""

@@ -104,7 +104,7 @@ class TRTEngineOp : public AsyncOpKernel {
   bool calibration_mode_;
 
   // Batches of the cached engines
-  std::vector<int> cached_engine_batch_sizes_;
+  std::vector<int> cached_engine_batches_;
 
   // Maximum number of cached engines
   int max_cached_engines_;
