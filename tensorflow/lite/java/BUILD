@@ -145,6 +145,9 @@ java_test(
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.InterpreterTest",
     visibility = ["//visibility:private"],
     deps = [
