@@ -20,9 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-# pylint: disable=unused-import
-from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
-# pylint: enable=unused-import
 from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

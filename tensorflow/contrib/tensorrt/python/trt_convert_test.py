@@ -22,7 +22,7 @@ import os
 
 from tensorflow.contrib.tensorrt.python import trt_convert
 # pylint: disable=unused-import
-from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
+from tensorflow.contrib.tensorrt.python.ops import trt_ops
 # pylint: enable=unused-import
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
