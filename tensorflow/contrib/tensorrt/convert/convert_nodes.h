@@ -158,7 +158,10 @@ class OutputEdgeValidator {
   bool operator()(const tensorflow::Edge* out_edge) const;
 };
 
+string DebugString(const nvinfer1::DimensionType type);
+string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Dims& dims);
+string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
 int64_t TrtDimsNumElements(const nvinfer1::Dims& dims);
 
