@@ -521,6 +521,40 @@ tf_cc_shared_object(
     ],
 )
 
+tf_cc_shared_object(
+    name = "tensorflow_cc",
+    linkopts = select({
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
+            "$(location //tensorflow:tf_exported_symbols.lds)",
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-z defs",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "$(location //tensorflow:tf_version_script.lds)",
+        ],
+    }),
+    use_name_pattern = True,
+    visibility = ["//visibility:public"],
+    win_def_file = select({
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        "//conditions:default": None,
+    }),
+    deps = [
+        "//tensorflow:tf_exported_symbols.lds",
+        "//tensorflow:tf_version_script.lds",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/core:tensorflow",
+    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]),
+)
+
 # ** Targets for Windows build (start) **
 
 # Build a shared library (DLL) by cc_binary from tf_custom_op_library_additional_deps_impl,
@@ -584,35 +618,29 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
-# ** Targets for Windows build (end) **
+# The interface library (tensorflow_cc.dll.if.lib) for linking tensorflow DLL library (tensorflow_cc.dll) on Windows.
+# To learn more about import library (called interface library in Bazel):
+#     https://docs.microsoft.com/en-us/cpp/build/linking-an-executable-to-a-dll?view=vs-2017#linking-implicitly
+filegroup(
+    name = "get_tensorflow_cc_dll_import_lib",
+    srcs = ["//tensorflow:tensorflow_cc.dll"],
+    output_group = "interface_library",
+    visibility = ["//visibility:public"],
+)
 
-tf_cc_shared_object(
-    name = "libtensorflow_cc.so",
-    linkopts = select({
-        "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow:tf_exported_symbols.lds)",
-        ],
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow:tf_version_script.lds)",
-        ],
+# Rename the import library for tensorflow.dll from tensorflow_cc.dll.if.lib to tensorflow.lib
+genrule(
+    name = "tensorflow_cc_dll_import_lib",
+    srcs = [":get_tensorflow_cc_dll_import_lib"],
+    outs = ["tensorflow_cc.lib"],
+    cmd = select({
+        "//tensorflow:windows": "cp -f $< $@",
+        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow:tf_exported_symbols.lds",
-        "//tensorflow:tf_version_script.lds",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c/eager:c_api",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc/profiler",
-        "//tensorflow/core:tensorflow",
-    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]),
 )
+
+# ** Targets for Windows build (end) **
 
 exports_files(
     [
