@@ -146,6 +146,9 @@ HloInstruction* ConvertConstant(HloInstruction* constant,
   auto* new_inst = constant->parent()->AddInstruction(
       HloInstruction::CreateConstant(std::move(literal_new_type.ValueOrDie())));
 
+  new_inst->set_raw_backend_config_string(
+      constant->raw_backend_config_string());
+
   new_inst->set_metadata(constant->metadata());
   if (constant->has_sharding()) {
     new_inst->set_sharding(constant->sharding());

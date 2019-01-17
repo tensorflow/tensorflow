@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 
+#include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
@@ -437,7 +438,16 @@ OutlinedInfo HloMatcher::OutlineExpressionFromComputation(
   fusion_computation->SetFusionInstruction(fusion);
 
   auto* old = instructions_to_outline[metadata_index];
-  annotations_.fusion_map[fusion_computation] = outlined.at(old);
+
+  PoplarBackendConfig backend_config;
+  if (old->opcode() == HloOpcode::kConvolution) {
+    auto* cfg = backend_config.mutable_fusion_config();
+    *(cfg->mutable_window()) = old->window();
+    *(cfg->mutable_dimension_numbers()) = old->convolution_dimension_numbers();
+    cfg->set_feature_group_count(old->feature_group_count());
+    cfg->set_batch_group_count(old->batch_group_count());
+  }
+  fusion->set_backend_config(backend_config);
 
   fusion->set_metadata(old->metadata());
   if (old->has_sharding()) {

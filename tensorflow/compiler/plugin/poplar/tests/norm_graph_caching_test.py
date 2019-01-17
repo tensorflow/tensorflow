@@ -300,8 +300,9 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
             'GradientDescent/update_vs/batch_normalization/',
             'GradientDescent/update_vs/batch_normalization_1/',
             'GradientDescent/update_vs/batch_normalization_2/',
-            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/WeightTranspose',
-            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/convolution.*.clone/Conv_4x4/Convolve',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/WeightTranspose',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4/Convolve',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/DeltasPartialTranspose',
             'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo'
             ]
 
@@ -363,11 +364,13 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
             'GradientDescent/update_vs/batch_normalization/',
             'GradientDescent/update_vs/batch_normalization_1/',
             'GradientDescent/update_vs/batch_normalization_2/',
-            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/WeightTranspose',
-            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/convolution.*.clone/Conv_4x4',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/WeightTranspose',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/DeltasPartialTranspose',
             'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo',
-            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropInput/convolution.89.clone/WeightTranspose',
-            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/convolution.87.clone/Conv_4x4',
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropInput/fusion*/WeightTranspose',
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4',
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion*/DeltasPartialTranspose',
             'GradientDescent/update_vs/conv2/kernel/ResourceApplyGradientDescent/subtract.93.clone/AddTo']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -597,8 +600,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
              'vs/PopnnGroupNormTraining/custom-call.11/Whiten',
              'Sum/reduce.*/*/Reduce',
              'gradients/vs/PopnnGroupNormTraining_2_grad/PopnnGroupNormGrad/custom-call.39/',
-             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/convolution.*.clone',
-             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/',
+             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*',
+             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/',
              'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/',
             ]
 

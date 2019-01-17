@@ -366,26 +366,22 @@ StatusOr<poplar::Tensor> AddDynamicSliceTensor(
 
 static StatusOr<poplar::Tensor> AddConvolutionInput(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* op_target, const HloInstruction* conv_target,
-    CompilerResources& resources) {
+    const HloInstruction* target, CompilerResources& resources) {
   poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params,
-                      GetConvolutionParameters(op_target, conv_target, 0, 1));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, 0, 1));
 
   auto name = StrCat(debug_name, "_input");
   poplar::OptionFlags opts;
   poplar::Tensor out = poplin::createInput(graph, params, name, opts,
                                            &resources.convolution_cache);
-  return ShuffleConvolutionInputToTensorflow(conv_target, out);
+  return ShuffleConvolutionInputToTensorflow(target, out);
 }
 
 static StatusOr<poplar::Tensor> AddConvolutionWeights(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* op_target, const HloInstruction* conv_target,
-    CompilerResources& resources) {
+    const HloInstruction* target, CompilerResources& resources) {
   poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params,
-                      GetConvolutionParameters(op_target, conv_target, 0, 1));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, 0, 1));
 
   auto name = StrCat(debug_name, "_weights");
   poplar::OptionFlags opts;
@@ -394,7 +390,7 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
 
   out = RemoveGroupsDimensionFromWeights(params, out, false);
 
-  return ShuffleConvolutionWeightsToTensorflow(conv_target, out);
+  return ShuffleConvolutionWeightsToTensorflow(target, out);
 }
 
 static StatusOr<poplar::Tensor> AddConvAddBiasTensor(
@@ -608,12 +604,12 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
           switch (target->second.input_index) {
             case 0: {
               TF_ASSIGN_OR_RETURN(
-                  out, AddConvolutionInput(graph, name, tgt, tgt, resources));
+                  out, AddConvolutionInput(graph, name, tgt, resources));
               break;
             }
             case 1: {
               TF_ASSIGN_OR_RETURN(
-                  out, AddConvolutionWeights(graph, name, tgt, tgt, resources));
+                  out, AddConvolutionWeights(graph, name, tgt, resources));
               break;
             }
             default:
@@ -666,18 +662,15 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
           const HloComputation* comp = tgt->fused_instructions_computation();
           if (IsPopOpsFusion(comp)) {
             if (IsPopOpsFusion(comp, "depthwise_conv")) {
-              const HloInstruction* conv_inst = comp->root_instruction();
               switch (target->second.input_index) {
                 case 0: {
                   TF_ASSIGN_OR_RETURN(
-                      out, AddConvolutionInput(graph, name, tgt, conv_inst,
-                                               resources));
+                      out, AddConvolutionInput(graph, name, tgt, resources));
                   break;
                 }
                 case 1: {
                   TF_ASSIGN_OR_RETURN(
-                      out, AddConvolutionWeights(graph, name, tgt, conv_inst,
-                                                 resources));
+                      out, AddConvolutionWeights(graph, name, tgt, resources));
                   break;
                 }
                 default:

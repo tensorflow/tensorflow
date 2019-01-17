@@ -180,7 +180,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_',
-            'Conv3DBackpropInputV2/convolution.*/Conv_2x2x2']
+            'Conv3DBackpropInputV2/fusion*/Conv_2x2x2']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
