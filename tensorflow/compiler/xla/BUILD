@@ -826,6 +826,7 @@ cc_library(
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
+    visibility = [":friends"],
     deps =
         [
             ":parse_flags_from_env",
