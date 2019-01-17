@@ -857,6 +857,18 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "vis_utils_test",
+    size = "small",
+    srcs = ["utils/vis_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "conv_utils_test",
     size = "small",
     srcs = ["utils/conv_utils_test.py"],
