@@ -93,18 +93,26 @@ class ListOpsTest(xla_test.XLATestCase):
       result = sess.run([e11, [e21, e22], [e31, e32]])
       self.assertEqual(result, [1.0, [2.0, 1.0], [3.0, 1.0]])
 
-  def testEmptyTensorList(self):
-    dim = 7
+  def testEmptyTensorListNoMax(self):
     with self.cached_session() as sess, self.test_scope():
-      p = array_ops.placeholder(dtypes.int32)
       l = list_ops.empty_tensor_list(
-          element_shape=(p, 15), element_dtype=dtypes.float32)
+          element_shape=(7, 15), element_dtype=dtypes.float32)
       l = list_ops.tensor_list_push_back(
-          l, constant_op.constant(1.0, shape=(dim, 15)))
+          l, constant_op.constant(1.0, shape=(7, 15)))
       _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Use TensorListReserve instead"):
-        self.assertEqual(sess.run(e, {p: dim}), 1.0 * np.ones((dim, 15)))
+                                   "Set the max number of elements"):
+        self.assertEqual(sess.run(e), 1.0 * np.ones((7, 15)))
+
+  def testEmptyTensorListMax(self):
+    with self.cached_session() as sess, self.test_scope():
+      l = list_ops.empty_tensor_list(
+          element_shape=(10, 15), element_dtype=dtypes.float32,
+          max_num_elements=2)
+      l = list_ops.tensor_list_push_back(
+          l, array_ops.fill(value=3.0, dims=(10, 15)))
+      _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
+      self.assertAllEqual(sess.run(e), 3.0 * np.ones((10, 15)))
 
 
 if __name__ == "__main__":
