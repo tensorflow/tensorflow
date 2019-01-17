@@ -488,47 +488,38 @@ tf_cc_shared_object(
 # an "-exported_symbols_list" command.  -z defs disallows undefined
 # symbols in object files.
 
-SHARED_LIBRARY_NAME_PATTERN = [
-    # prefix, extension
-    ("lib", ".so"),  # On Linux, shared libraries are usually named as libfoo.so
-    ("lib", ".dylib"),  # On macos, shared libraries are usually named as libfoo.dylib
-    ("", ".dll"),  # On Windows, shared libraries are usually named as foo.dll
-]
-
-[
-    tf_cc_shared_object(
-        name = prefix + "tensorflow" + extension,
-        linkopts = select({
-            "//tensorflow:darwin": [
-                "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-                "$(location //tensorflow/c:exported_symbols.lds)",
-                "-Wl,-install_name,@rpath/libtensorflow.so",
-            ],
-            "//tensorflow:windows": [
-            ],
-            "//conditions:default": [
-                "-z defs",
-                "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-                "$(location //tensorflow/c:version_script.lds)",
-            ],
-        }),
-        visibility = ["//visibility:public"],
-        win_def_file = select({
-            # We need this DEF file to properly export symbols on Windows
-            "//tensorflow:windows": ":tensorflow_filtered_def_file",
-            "//conditions:default": None,
-        }),
-        deps = [
-            "//tensorflow/c:c_api",
-            "//tensorflow/c:c_api_experimental",
-            "//tensorflow/c:exported_symbols.lds",
-            "//tensorflow/c:version_script.lds",
-            "//tensorflow/c/eager:c_api",
-            "//tensorflow/core:tensorflow",
+tf_cc_shared_object(
+    name = "tensorflow",
+    linkopts = select({
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
+            "$(location //tensorflow/c:exported_symbols.lds)",
+            "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
-    )
-    for prefix, extension in SHARED_LIBRARY_NAME_PATTERN
-]
+        "//tensorflow:windows": [
+        ],
+        "//conditions:default": [
+            "-z defs",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "$(location //tensorflow/c:version_script.lds)",
+        ],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:exported_symbols.lds",
+        "//tensorflow/c:version_script.lds",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/core:tensorflow",
+    ],
+    win_def_file = select({
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        "//conditions:default": None,
+    }),
+    use_name_pattern = True,
+)
 
 # ** Targets for Windows build (start) **
 
