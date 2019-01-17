@@ -345,6 +345,27 @@ class TestImage(test.TestCase):
     x = keras.preprocessing.image.img_to_array(img, data_format='channels_last')
     self.assertEqual(x.shape, (height, width, 1))
 
+    # Test invalid usage
+    # not 3D
+    with self.assertRaisesRegexp(ValueError, "image array to have rank 3"):
+      x = np.random.random((height, width))
+      img = keras.preprocessing.image.array_to_img(
+          x, data_format='channels_first')
+    # unknown data_format
+    with self.assertRaisesRegexp(ValueError, "Invalid data_format"):
+      x = np.random.random((height, width, 3))
+      img = keras.preprocessing.image.array_to_img(x, data_format='channels')
+    # neither RGB nor gray-scale
+    with self.assertRaisesRegexp(ValueError, "Unsupported channel number"):
+      x = np.random.random((height, width, 5))
+      img = keras.preprocessing.image.array_to_img(
+          x, data_format='channels_last')
+    # neither RGB nor gray-scale
+    with self.assertRaisesRegexp(ValueError, "Unsupported image shape"):
+      x = np.random.random((height, width, 5, 3))
+      img = keras.preprocessing.image.img_to_array(
+          x, data_format='channels_last')
+
   def test_batch_standardize(self):
     if PIL is None:
       return  # Skip test if PIL is not available.
@@ -382,13 +403,29 @@ class TestImage(test.TestCase):
 
   def test_img_transforms(self):
     x = np.random.random((3, 200, 200))
-    _ = keras.preprocessing.image.random_rotation(x, 20)
-    _ = keras.preprocessing.image.random_shift(x, 0.2, 0.2)
-    _ = keras.preprocessing.image.random_shear(x, 2.)
-    _ = keras.preprocessing.image.random_zoom(x, (0.5, 0.5))
-    with self.assertRaises(ValueError):
+    self.assertEqual(x.shape,
+                     keras.preprocessing.image.random_rotation(x, 20).shape)
+    self.assertEqual(x.shape,
+                     keras.preprocessing.image.random_shift(x, 0.2, 0.2).shape)
+    self.assertEqual(x.shape,
+                     keras.preprocessing.image.random_shear(x, 2.).shape)
+    self.assertEqual(x.shape,
+                     keras.preprocessing.image.random_zoom(x, (0.5, 0.5)).shape)
+    self.assertEqual(x.shape,
+                     keras.preprocessing.image.random_channel_shift(
+                         x, 2.).shape)
+    x = x.transpose(1, 2, 0)
+    self.assertEqual(x.shape,
+                     keras.preprocessing.image.apply_brightness_shift(
+                         x, 0.2).shape)
+    self.assertEqual(x.shape,
+                     keras.preprocessing.image.random_brightness(
+                         x, brightness_range=(0.3, 0.5)).shape)
+    self.assertEqual(x.shape,
+                     keras.preprocessing.image.apply_affine_transform(
+                         x, theta=45, fill_mode='constant').shape)
+    with self.assertRaisesRegexp(ValueError, "should be a tuple or list"):
       keras.preprocessing.image.random_zoom(x, (0, 0, 0))
-    _ = keras.preprocessing.image.random_channel_shift(x, 2.)
 
 
 if __name__ == '__main__':
