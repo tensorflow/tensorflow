@@ -14,7 +14,7 @@ py_library(
       "__init__.py",
       "python/ops.py",
       "python/utils.py",
-      #"python/popnn_normalization.py",
+      "python/popnn_normalization.py",
       "python/popnn_rnn.py",
     ],
     srcs_version = "PY2AND3",
@@ -23,6 +23,7 @@ py_library(
         "//tensorflow/compiler/plugin/poplar:popnn_ops_py",
         "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/contrib/layers:layers_py",
     ],
 )
 
@@ -173,6 +174,23 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "popnn_normalization_test",
+    size = "medium",
+    srcs = ["python/tests/popnn_normalization_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -183,6 +201,7 @@ test_suite(
         "while_loop_test",
         "sort_op_test",
         "multi_ipu_test",
+        "popnn_normalization_test",
     ],
 )
 
