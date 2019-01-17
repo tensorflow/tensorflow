@@ -670,8 +670,7 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type> &elements) {
 namespace {
 class TensorLiteralParser {
 public:
-  TensorLiteralParser(Parser &p, Type eltTy)
-      : p(p), eltTy(eltTy), currBitPos(0) {}
+  TensorLiteralParser(Parser &p, Type eltTy) : p(p), eltTy(eltTy) {}
 
   ParseResult parse() {
     if (p.getToken().isNot(Token::l_square))
@@ -679,9 +678,7 @@ public:
     return parseList(shape);
   }
 
-  ArrayRef<char> getValues() const {
-    return {reinterpret_cast<const char *>(storage.data()), storage.size() * 8};
-  }
+  ArrayRef<Attribute> getValues() const { return storage; }
 
   ArrayRef<int> getShape() const { return shape; }
 
@@ -698,28 +695,10 @@ private:
   ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
   ParseResult parseList(llvm::SmallVectorImpl<int> &dims);
 
-  void addToStorage(uint64_t value) {
-    // Only tensors of integers or floats are supported.
-    // FIXME: use full word to store BF16 as double because APFloat, which we
-    // use to work with floats, does not have support for BF16 yet.
-    size_t bitWidth = eltTy.isBF16() ? 64 : eltTy.getIntOrFloatBitWidth();
-
-    if (bitWidth == 64)
-      storage.push_back(value);
-
-    if (currBitPos + bitWidth > storage.size() * 64)
-      storage.push_back(0L);
-
-    auto *rawData = reinterpret_cast<char *>(storage.data());
-    DenseElementsAttr::writeBits(rawData, currBitPos, bitWidth, value);
-    currBitPos += bitWidth;
-  }
-
   Parser &p;
   Type eltTy;
-  size_t currBitPos;
   SmallVector<int, 4> shape;
-  std::vector<uint64_t> storage;
+  std::vector<Attribute> storage;
 };
 } // namespace
 
@@ -754,30 +733,22 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
       size_t bitWidth = eltTy.isBF16() ? 64 : eltTy.getIntOrFloatBitWidth();
       assert(apInt.getBitWidth() == bitWidth);
       (void)bitWidth;
-
-      addToStorage(apInt.getRawData()[0]);
+      (void)apInt;
       break;
     }
     case StandardTypes::Integer: {
       if (!result.isa<IntegerAttr>())
         return p.emitError("expected tensor literal element has integer type");
       auto value = result.cast<IntegerAttr>().getValue();
-      auto bitWidth = eltTy.getIntOrFloatBitWidth();
-      if (value.getMinSignedBits() > bitWidth)
+      if (value.getMinSignedBits() > eltTy.getIntOrFloatBitWidth())
         return p.emitError("tensor literal element has more bits than that "
                            "specified in the type");
-
-      // FIXME: Handle larger than 64-bit types more gracefully.
-      if (bitWidth > 64)
-        return p.emitError("tensor literal element with more than 64-bits is "
-                           "not currently supported");
-
-      addToStorage(value.getSExtValue());
       break;
     }
     default:
       return p.emitError("expected integer or float tensor element");
     }
+    storage.push_back(result);
     break;
   }
   default:

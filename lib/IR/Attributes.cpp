@@ -150,13 +150,28 @@ Attribute SplatElementsAttr::getValue() const {
 /// DenseElementsAttr
 
 void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
+  auto elementType = getType().getElementType();
   switch (getKind()) {
-  case Attribute::Kind::DenseIntElements:
-    cast<DenseIntElementsAttr>().getValues(values);
+  case Attribute::Kind::DenseIntElements: {
+    // Get the raw APInt values.
+    SmallVector<APInt, 8> intValues;
+    cast<DenseIntElementsAttr>().getValues(intValues);
+
+    // Convert each to an IntegerAttr.
+    for (auto &intVal : intValues)
+      values.push_back(IntegerAttr::get(elementType, intVal));
     return;
-  case Attribute::Kind::DenseFPElements:
-    cast<DenseFPElementsAttr>().getValues(values);
+  }
+  case Attribute::Kind::DenseFPElements: {
+    // Get the raw APFloat values.
+    SmallVector<APFloat, 8> floatValues;
+    cast<DenseFPElementsAttr>().getValues(floatValues);
+
+    // Convert each to an FloatAttr.
+    for (auto &floatVal : floatValues)
+      values.push_back(FloatAttr::get(elementType, floatVal));
     return;
+  }
   default:
     llvm_unreachable("unexpected element type");
   }
@@ -166,112 +181,89 @@ ArrayRef<char> DenseElementsAttr::getRawData() const {
   return static_cast<ImplType *>(attr)->data;
 }
 
-/// Writes the lowest `bitWidth` bits of `value` to bit position `bitPos`
-/// starting from `rawData`.
-void DenseElementsAttr::writeBits(char *data, size_t bitPos, size_t bitWidth,
-                                  uint64_t value) {
-  assert(bitWidth <= 64 && "expected bitWidth to be within 64-bits");
-
-  // Read the destination bytes which will be written to.
-  uint64_t dst = 0;
-  auto dstData = reinterpret_cast<char *>(&dst);
-  auto endPos = bitPos + bitWidth;
-  auto start = data + bitPos / 8;
-  auto end = data + endPos / 8 + (endPos % 8 != 0);
-  std::copy(start, end, dstData);
-
-  // Clean up the invalid bits in the destination bytes.
-  dst &= ~(-1UL << (bitPos % 8));
-
-  // Get the valid bits of the source value, shift them to right position,
-  // then add them to the destination bytes.
-  value <<= bitPos % 8;
-  dst |= value;
-
-  // Write the destination bytes back.
-  ArrayRef<char> range({dstData, (size_t)(end - start)});
-  std::copy(range.begin(), range.end(), start);
-}
-
-/// Reads the next `bitWidth` bits from the bit position `bitPos` of `rawData`
-/// and put them in the lowest bits.
-uint64_t DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
-                                     size_t bitsWidth) {
-  assert(bitsWidth <= 64 && "expected bitWidth to be within 64-bits");
-
-  uint64_t dst = 0;
-  auto dstData = reinterpret_cast<char *>(&dst);
-  auto endPos = bitPos + bitsWidth;
-  auto start = rawData + bitPos / 8;
-  auto end = rawData + endPos / 8 + (endPos % 8 != 0);
-  std::copy(start, end, dstData);
-
-  dst >>= bitPos % 8;
-  dst &= ~(-1UL << bitsWidth);
-  return dst;
-}
-
-/// DenseIntElementsAttr
-
-void DenseIntElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
-  auto bitsWidth = static_cast<ImplType *>(attr)->bitsWidth;
+/// Parses the raw integer internal value for each dense element into
+/// 'values'.
+void DenseElementsAttr::getRawValues(SmallVectorImpl<APInt> &values) const {
+  auto elementType = getType().getElementType();
   auto elementNum = getType().getNumElements();
   values.reserve(elementNum);
-  if (bitsWidth == 64) {
-    ArrayRef<int64_t> vs(
-        {reinterpret_cast<const int64_t *>(getRawData().data()),
-         getRawData().size() / 8});
-    for (auto value : vs) {
-      auto attr = IntegerAttr::get(getType().getElementType(), value);
-      values.push_back(attr);
-    }
-  } else {
-    const auto *rawData = getRawData().data();
-    for (size_t pos = 0; pos < elementNum * bitsWidth; pos += bitsWidth) {
-      uint64_t bits = readBits(rawData, pos, bitsWidth);
-      APInt value(bitsWidth, bits, /*isSigned=*/true);
-      auto attr =
-          IntegerAttr::get(getType().getElementType(), value.getSExtValue());
-      values.push_back(attr);
-    }
-  }
-}
 
-/// DenseFPElementsAttr
-
-// Construct a FloatAttr wrapping a float value of `elementType` type from its
-// bit representation.  The APFloat stored in the attribute will have the
-// semantics defined by the float semantics of the element type.
-static inline FloatAttr makeFloatAttrFromBits(size_t bitWidth, uint64_t bits,
-                                              FloatType elementType) {
-  auto apint = APInt(bitWidth, bits);
-  auto apfloat = APFloat(elementType.getFloatSemantics(), apint);
-  return FloatAttr::get(elementType, apfloat);
-}
-
-void DenseFPElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
-  auto elementNum = getType().getNumElements();
-  auto elementType = getType().getElementType().dyn_cast<FloatType>();
-  assert(elementType && "non-float type in FP attribute");
   // FIXME: using 64 bits for BF16 because it is currently stored with double
   // semantics.
   size_t bitWidth =
       elementType.isBF16() ? 64 : elementType.getIntOrFloatBitWidth();
+  const auto *rawData = getRawData().data();
+  for (size_t i = 0, e = elementNum; i != e; ++i)
+    values.push_back(readBits(rawData, i * bitWidth, bitWidth));
+}
 
-  values.reserve(elementNum);
-  if (bitWidth == 64) {
-    ArrayRef<int64_t> vs(
-        {reinterpret_cast<const int64_t *>(getRawData().data()),
-         getRawData().size() / 8});
-    for (auto bitValue : vs) {
-      values.push_back(makeFloatAttrFromBits(64, bitValue, elementType));
-    }
+/// Writes value to the bit position `bitPos` in array `rawData`. 'rawData' is
+/// expected to be a 64-bit aligned storage address.
+void DenseElementsAttr::writeBits(char *rawData, size_t bitPos, APInt value) {
+  size_t bitWidth = value.getBitWidth();
+
+  // If the bitwidth is 1 we just toggle the specific bit.
+  if (bitWidth == 1) {
+    auto *rawIntData = reinterpret_cast<uint64_t *>(rawData);
+    if (value.isOneValue())
+      APInt::tcSetBit(rawIntData, bitPos);
+    else
+      APInt::tcClearBit(rawIntData, bitPos);
     return;
   }
-  for (unsigned i = 0; i < elementNum; ++i) {
-    uint64_t bits = readBits(getRawData().data(), i * bitWidth, bitWidth);
-    values.push_back(makeFloatAttrFromBits(bitWidth, bits, elementType));
+
+  // If the bit position and width are byte aligned, write the storage directly
+  // to the data.
+  if ((bitWidth % 8) == 0 && (bitPos % 8) == 0) {
+    std::copy_n(reinterpret_cast<const char *>(value.getRawData()),
+                bitWidth / 8, rawData + (bitPos / 8));
+    return;
   }
+
+  // Otherwise, convert the raw data into an APInt and insert the value at the
+  // specified bit position.
+  size_t totalWords = APInt::getNumWords((bitPos % 64) + bitWidth);
+  llvm::MutableArrayRef<uint64_t> rawIntData(
+      reinterpret_cast<uint64_t *>(rawData) + (bitPos / 64), totalWords);
+  APInt tempStorage(totalWords * 64, rawIntData);
+  tempStorage.insertBits(value, bitPos % 64);
+
+  // Copy the value back to the raw data.
+  std::copy_n(tempStorage.getRawData(), rawIntData.size(), rawIntData.data());
+}
+
+/// Reads the next `bitWidth` bits from the bit position `bitPos` in array
+/// `rawData`. 'rawData' is expected to be a 64-bit aligned storage address.
+APInt DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
+                                  size_t bitWidth) {
+  // Reinterpret the raw data as a uint64_t word array and extract the value
+  // starting at 'bitPos'.
+  APInt result(bitWidth, 0);
+  const uint64_t *intData = reinterpret_cast<const uint64_t *>(rawData);
+  APInt::tcExtract(const_cast<uint64_t *>(result.getRawData()),
+                   result.getNumWords(), intData, bitWidth, bitPos);
+  return result;
+}
+
+/// DenseIntElementsAttr
+
+void DenseIntElementsAttr::getValues(SmallVectorImpl<APInt> &values) const {
+  // Simply return the raw integer values.
+  getRawValues(values);
+}
+
+/// DenseFPElementsAttr
+
+void DenseFPElementsAttr::getValues(SmallVectorImpl<APFloat> &values) const {
+  // Get the raw APInt element values.
+  SmallVector<APInt, 8> intValues;
+  getRawValues(intValues);
+
+  // Convert each of the APInt values to an APFloat.
+  auto elementType = getType().getElementType().dyn_cast<FloatType>();
+  const auto &elementSemantics = elementType.getFloatSemantics();
+  for (auto &intValue : intValues)
+    values.push_back(APFloat(elementSemantics, intValue));
 }
 
 /// OpaqueElementsAttr

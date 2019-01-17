@@ -134,17 +134,6 @@ struct DenseElementsAttributeStorage : public ElementsAttributeStorage {
   ArrayRef<char> data;
 };
 
-/// An attribute representing a reference to a dense integer vector or tensor
-/// object.
-struct DenseIntElementsAttributeStorage : public DenseElementsAttributeStorage {
-  size_t bitsWidth;
-};
-
-/// An attribute representing a reference to a dense float vector or tensor
-/// object.
-struct DenseFPElementsAttributeStorage : public DenseElementsAttributeStorage {
-};
-
 /// An attribute representing a reference to a tensor constant with opaque
 /// content.
 struct OpaqueElementsAttributeStorage : public ElementsAttributeStorage {

@@ -337,13 +337,10 @@ public:
 
   /// It assumes the elements in the input array have been truncated to the bits
   /// width specified by the element type (note all float type are 64 bits).
-  /// When the value is retrieved, the bits are read from the storage and extend
-  /// to 64 bits if necessary.
   static DenseElementsAttr get(VectorOrTensorType type, ArrayRef<char> data);
 
-  // TODO: Read the data from the attribute list and compress them
-  // to a character array. Then call the above method to construct the
-  // attribute.
+  // Constructs a dense elements attribute from an array of element values. Each
+  // element attribute value is expected to be an element of 'type'.
   static DenseElementsAttr get(VectorOrTensorType type,
                                ArrayRef<Attribute> values);
 
@@ -351,20 +348,23 @@ public:
 
   ArrayRef<char> getRawData() const;
 
-  /// Writes the lowest `bitWidth` bits of `value` to the bit position `bitPos`
-  /// in array `rawData`.
-  static void writeBits(char *rawData, size_t bitPos, size_t bitWidth,
-                        uint64_t value);
+  /// Writes value to the bit position `bitPos` in array `rawData`. 'rawData' is
+  /// expected to be a 64-bit aligned storage address.
+  static void writeBits(char *rawData, size_t bitPos, APInt value);
 
   /// Reads the next `bitWidth` bits from the bit position `bitPos` in array
-  /// `rawData` and return them as the lowest bits of an uint64 integer.
-  static uint64_t readBits(const char *rawData, size_t bitPos,
-                           size_t bitsWidth);
+  /// `rawData`. 'rawData' is expected to be a 64-bit aligned storage address.
+  static APInt readBits(const char *rawData, size_t bitPos, size_t bitWidth);
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) {
     return kind == Kind::DenseIntElements || kind == Kind::DenseFPElements;
   }
+
+protected:
+  /// Parses the raw integer internal value for each dense element into
+  /// 'values'.
+  void getRawValues(SmallVectorImpl<APInt> &values) const;
 };
 
 /// An attribute represents a reference to a dense integer vector or tensor
@@ -372,10 +372,11 @@ public:
 class DenseIntElementsAttr : public DenseElementsAttr {
 public:
   using DenseElementsAttr::DenseElementsAttr;
-  using ImplType = detail::DenseIntElementsAttributeStorage;
+  using DenseElementsAttr::getValues;
+  using DenseElementsAttr::ImplType;
 
-  // TODO: returns APInts instead of IntegerAttr.
-  void getValues(SmallVectorImpl<Attribute> &values) const;
+  /// Gets the integer value of each of the dense elements.
+  void getValues(SmallVectorImpl<APInt> &values) const;
 
   APInt getValue(ArrayRef<unsigned> indices) const;
 
@@ -388,10 +389,11 @@ public:
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
   using DenseElementsAttr::DenseElementsAttr;
-  using ImplType = detail::DenseFPElementsAttributeStorage;
+  using DenseElementsAttr::getValues;
+  using DenseElementsAttr::ImplType;
 
-  // TODO: returns APFPs instead of FloatAttr.
-  void getValues(SmallVectorImpl<Attribute> &values) const;
+  /// Gets the float value of each of the dense elements.
+  void getValues(SmallVectorImpl<APFloat> &values) const;
 
   APFloat getValue(ArrayRef<unsigned> indices) const;
 

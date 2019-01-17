@@ -1050,37 +1050,68 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
   if (!existing.second)
     return *existing.first;
 
-  // Otherwise, allocate a new one, unique it and return it.
-  auto eltType = type.getElementType();
-  switch (eltType.getKind()) {
+  Attribute::Kind kind;
+  switch (type.getElementType().getKind()) {
   case StandardTypes::BF16:
   case StandardTypes::F16:
   case StandardTypes::F32:
-  case StandardTypes::F64: {
-    auto *result = impl.allocator.Allocate<DenseFPElementsAttributeStorage>();
-    auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
-    std::uninitialized_copy(data.begin(), data.end(), copy);
-    new (result) DenseFPElementsAttributeStorage{
-        {{{Attribute::Kind::DenseFPElements, /*isOrContainsFunction=*/false},
-          type},
-         {copy, data.size()}}};
-    return *existing.first = result;
-  }
-  case StandardTypes::Integer: {
-    auto width = eltType.cast<IntegerType>().getWidth();
-    auto *result = impl.allocator.Allocate<DenseIntElementsAttributeStorage>();
-    auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
-    std::uninitialized_copy(data.begin(), data.end(), copy);
-    new (result) DenseIntElementsAttributeStorage{
-        {{{Attribute::Kind::DenseIntElements, /*isOrContainsFunction=*/false},
-          type},
-         {copy, data.size()}},
-        width};
-    return *existing.first = result;
-  }
+  case StandardTypes::F64:
+    kind = Attribute::Kind::DenseFPElements;
+    break;
+  case StandardTypes::Integer:
+    kind = Attribute::Kind::DenseIntElements;
+    break;
   default:
     llvm_unreachable("unexpected element type");
   }
+
+  // Otherwise, allocate a new one, unique it and return it.
+  auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
+  std::uninitialized_copy(data.begin(), data.end(), copy);
+  auto *result = impl.allocator.Allocate<DenseElementsAttributeStorage>();
+  new (result) DenseElementsAttributeStorage{
+      {{kind, /*isOrContainsFunction=*/false}, type}, {copy, data.size()}};
+  return *existing.first = result;
+}
+
+DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
+                                         ArrayRef<Attribute> values) {
+  assert(type.getElementType().isIntOrFloat() &&
+         "expected int or float element type");
+
+  // FIXME: using 64 bits for BF16 because it is currently stored with double
+  // semantics.
+  auto eltType = type.getElementType();
+  size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
+
+  // Compress the attribute values into a character buffer.
+  SmallVector<char, 8> data(type.getSizeInBits() * 8L);
+  for (unsigned i = 0, e = values.size(); i < e; ++i) {
+    unsigned bitPos = i * bitWidth;
+
+    APInt intVal;
+    switch (eltType.getKind()) {
+    case StandardTypes::BF16:
+    case StandardTypes::F16:
+    case StandardTypes::F32:
+    case StandardTypes::F64:
+      assert(eltType == values[i].cast<FloatAttr>().getType() &&
+             "expected attribute value to have element type");
+      intVal = values[i].cast<FloatAttr>().getValue().bitcastToAPInt();
+      break;
+    case StandardTypes::Integer:
+      assert(eltType == values[i].cast<IntegerAttr>().getType() &&
+             "expected attribute value to have element type");
+      intVal = values[i].cast<IntegerAttr>().getValue();
+      break;
+    default:
+      llvm_unreachable("unexpected element type");
+    }
+    assert(intVal.getBitWidth() == bitWidth &&
+           "expected value to have same bitwidth as element type");
+    writeBits(data.data(), bitPos, intVal);
+  }
+  return get(type, data);
 }
 
 OpaqueElementsAttr OpaqueElementsAttr::get(VectorOrTensorType type,

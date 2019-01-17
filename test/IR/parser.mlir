@@ -593,6 +593,8 @@ func @densetensorattr() -> () {
   "fooi64"(){bar: dense<tensor<2x1x4xi64>, [[[1, -2, 1, 2]], [[0, 3, -1, 2]]]>} : () -> ()
 // CHECK: "fooi64"() {bar: dense<tensor<1x1x1xi64>, {{\[\[\[}}-5]]]>} : () -> ()
   "fooi64"(){bar: dense<tensor<1x1x1xi64>, [[[-5]]]>} : () -> ()
+// CHECK: "fooi67"() {bar: dense<vector<1x1x4xi67>, {{\[\[\[}}-5, 4, 6, 2]]]>} : () -> ()
+  "fooi67"(){bar: dense<vector<1x1x4xi67>, [[[-5, 4, 6, 2]]]>} : () -> ()
 
 // CHECK: "foo2"() {bar: dense<tensor<0xi32>, []>} : () -> ()
   "foo2"(){bar: dense<tensor<0 x i32>, []>} : () -> ()

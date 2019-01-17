@@ -107,6 +107,8 @@ public:
   ElementsAttr getSplatElementsAttr(VectorOrTensorType type, Attribute elt);
   ElementsAttr getDenseElementsAttr(VectorOrTensorType type,
                                     ArrayRef<char> data);
+  ElementsAttr getDenseElementsAttr(VectorOrTensorType type,
+                                    ArrayRef<Attribute> values);
   ElementsAttr getSparseElementsAttr(VectorOrTensorType type,
                                      DenseIntElementsAttr indices,
                                      DenseElementsAttr values);
