@@ -1200,6 +1200,126 @@ class MeanTensorTest(keras_parameterized.TestCase):
                           np.full((4, 3), 4))
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class BinaryCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    bce_obj = metrics.BinaryCrossentropy(
+        name='bce', dtype=dtypes.int32, label_smoothing=0.2)
+    self.assertEqual(bce_obj.name, 'bce')
+    self.assertEqual(bce_obj._dtype, dtypes.int32)
+
+    old_config = bce_obj.get_config()
+    self.assertAllClose(self.evaluate(old_config['label_smoothing']), 0.2, 1e-3)
+
+    # Check save and restore config
+    bce_obj2 = metrics.BinaryCrossentropy.from_config(old_config)
+    self.assertEqual(bce_obj2.name, 'bce')
+    self.assertEqual(bce_obj2._dtype, dtypes.int32)
+    new_config = bce_obj2.get_config()
+    self.assertAllClose(self.evaluate(new_config['label_smoothing']), 0.2, 1e-3)
+
+  def test_unweighted(self):
+    bce_obj = metrics.BinaryCrossentropy()
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
+    result = bce_obj(y_true, y_pred)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Metric = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #        = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #           -log(Y_MAX + EPSILON), -log(1)]
+    #        = [(0 + 15.33) / 2, (0 + 0) / 2]
+    # Reduced metric = 7.665 / 2
+
+    self.assertAllClose(self.evaluate(result), 3.833, atol=1e-3)
+
+  def test_unweighted_with_logits(self):
+    bce_obj = metrics.BinaryCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    y_pred = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
+    result = bce_obj(y_true, y_pred)
+
+    # Metric = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #              (where x = logits and z = y_true)
+    #        = [((100 - 100 * 1 + log(1 + exp(-100))) +
+    #            (0 + 100 * 0 + log(1 + exp(-100))) +
+    #            (100 - 100 * 1 + log(1 + exp(-100))),
+    #           ((100 - 100 * 0 + log(1 + exp(-100))) +
+    #            (100 - 100 * 1 + log(1 + exp(-100))) +
+    #            (0 + 100 * 1 + log(1 + exp(-100))))]
+    #        = [(0 + 0 + 0) / 3, 200 / 3]
+    # Reduced metric = (0 + 66.666) / 2
+
+    self.assertAllClose(self.evaluate(result), 33.333, atol=1e-3)
+
+  def test_weighted(self):
+    bce_obj = metrics.BinaryCrossentropy()
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = bce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Metric = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #        = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #           -log(Y_MAX + EPSILON), -log(1)]
+    #        = [(0 + 15.33) / 2, (0 + 0) / 2]
+    # Weighted metric = [7.665 * 1.5, 0]
+    # Reduced metric = 7.665 * 1.5 / (1.5 + 2)
+
+    self.assertAllClose(self.evaluate(result), 3.285, atol=1e-3)
+
+  def test_weighted_from_logits(self):
+    bce_obj = metrics.BinaryCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    y_pred = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
+    sample_weight = constant_op.constant([2., 2.5])
+    result = bce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # Metric = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #              (where x = logits and z = y_true)
+    #        = [(0 + 0 + 0) / 3, 200 / 3]
+    # Weighted metric = [0, 66.666 * 2.5]
+    # Reduced metric = 66.666 * 2.5 / (2 + 2.5)
+
+    self.assertAllClose(self.evaluate(result), 37.037, atol=1e-3)
+
+  def test_label_smoothing(self):
+    logits = constant_op.constant(((100., -100., -100.)))
+    y_true = constant_op.constant(((1, 0, 1)))
+    label_smoothing = 0.1
+    # Metric: max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #             (where x = logits and z = y_true)
+    # Label smoothing: z' = z * (1 - L) + 0.5L
+    # After label smoothing, label 1 becomes 1 - 0.5L
+    #                        label 0 becomes 0.5L
+    # Applying the above two fns to the given input:
+    # (100 - 100 * (1 - 0.5 L)  + 0 +
+    #  0   + 100 * (0.5 L)      + 0 +
+    #  0   + 100 * (1 - 0.5 L)  + 0) * (1/3)
+    #  = (100 + 50L) * 1/3
+    bce_obj = metrics.BinaryCrossentropy(
+        from_logits=True, label_smoothing=label_smoothing)
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+    result = bce_obj(y_true, logits)
+    expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
+    self.assertAllClose(expected_value, self.evaluate(result), atol=1e-3)
+
+
 def _get_model(compile_metrics):
   model_layers = [
       layers.Dense(3, activation='relu', kernel_initializer='ones'),
