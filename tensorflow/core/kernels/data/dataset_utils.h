@@ -57,20 +57,10 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
-constexpr char kDelimiter[] = "@@";
-
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
  public:
-  explicit VariantTensorDataReader(const VariantTensorData* data)
-      : data_(data) {
-    string metadata;
-    data_->get_metadata(&metadata);
-    auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
-    for (size_t i = 0; i < keys.size(); ++i) {
-      map_[keys[i]] = i;
-    }
-  }
+  explicit VariantTensorDataReader(const VariantTensorData* data);
 
   // Returns OK iff the initialization was successful.
   Status status() const;
