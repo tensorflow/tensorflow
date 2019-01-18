@@ -82,6 +82,7 @@ tensorflow/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_
 tensorflow/third_party/gpus/crosstool/CROSSTOOL.tpl
 tensorflow/third_party/gpus/crosstool/CROSSTOOL_hipcc.tpl
 tensorflow/third_party/gpus/crosstool/LICENSE
+tensorflow/third_party/gpus/crosstool/remote.BUILD.tpl
 tensorflow/third_party/gpus/crosstool/windows/msvc_wrapper_for_nvcc.py.tpl
 tensorflow/third_party/gpus/crosstool/BUILD.tpl
 tensorflow/third_party/gpus/crosstool/BUILD
@@ -89,6 +90,7 @@ tensorflow/third_party/gpus/cuda/LICENSE
 tensorflow/third_party/gpus/cuda/BUILD.tpl
 tensorflow/third_party/gpus/cuda/BUILD.windows.tpl
 tensorflow/third_party/gpus/cuda/cuda_config.h.tpl
+tensorflow/third_party/gpus/cuda/remote.BUILD.tpl
 tensorflow/third_party/gpus/cuda/BUILD
 tensorflow/third_party/gpus/cuda/build_defs.bzl.tpl
 tensorflow/third_party/gpus/rocm/rocm_config.h.tpl
@@ -192,6 +194,7 @@ tensorflow/third_party/tensorrt/BUILD
 tensorflow/third_party/tensorrt/build_defs.bzl.tpl
 tensorflow/third_party/tensorrt/BUILD.tpl
 tensorflow/third_party/tensorrt/tensorrt_configure.bzl
+tensorflow/third_party/tensorrt/remote.BUILD.tpl
 tensorflow/third_party/kafka/config.patch
 tensorflow/third_party/kafka/BUILD
 tensorflow/third_party/android/BUILD
