@@ -168,9 +168,9 @@ def _ragged_getitem(rt_input, key_list):
       # TypeError which happens when row_key is not an integer, the exception
       # will simply be ignored as it will be processed later anyway.
       try:
-        if row_key >= len(starts):
+        if int(row_key) >= len(starts):
           raise IndexError('Row key {} out of bounds'.format(row_key))
-      except TypeError:
+      except (TypeError, ValueError):
         pass
     row = rt_input.values[starts[row_key]:limits[row_key]]
     return row.__getitem__(inner_keys)
