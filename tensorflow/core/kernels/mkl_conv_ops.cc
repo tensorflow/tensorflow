@@ -1027,7 +1027,7 @@ class MklConvOp : public OpKernel {
       filter.SetUsrMem(filter_md, &filter_tensor);
 
       // MKLDNN dilations start from 0.
-      for (int i = 0; i < dilations.size(); i++) --dilations[i];
+      for (int i = 0; i < dilations.size(); ++i) --dilations[i];
 
       // In some cases, primitive descriptor could potentially contain
       // large buffers. As a result, we don't cache these primitives if the
@@ -1074,7 +1074,7 @@ class MklConvOp : public OpKernel {
       Ttemp_output* dst_data =
           reinterpret_cast<Ttemp_output*>(dst_tensor->flat<Toutput>().data());
 
-      // Check whether src and filter needs to be reordered
+      // Check whether src and filter need to be reordered
       Tinput* src_data = nullptr;
       if (src_md.data.format != conv_fwd->GetSrcMemoryFormat()) {
         // Reorder src
@@ -1270,10 +1270,10 @@ class MklConvOp : public OpKernel {
 
   // Allocate persistent tensors for cached filter data and
   // cached filter memory descriptor (data format)
-  void AllocatePersistTensor(OpKernelContext* context,
-                             const ConvFwdPd& conv_prim_desc,
-                             Tensor** filter_tensor) {
-    CHECK_NOTNULL(filter_tensor);
+  void AllocatePersistentTensor(OpKernelContext* context,
+                                const ConvFwdPd& conv_prim_desc,
+                                Tensor** filter_tensor) {
+    DCHECK(filter_tensor);
     TensorShape filter_tf_shape;
     filter_tf_shape.AddDim(
         (conv_prim_desc.weights_primitive_desc().get_size() / sizeof(Tfilter)));
@@ -1356,13 +1356,11 @@ class MklConvOp : public OpKernel {
     stream(stream::kind::eager).submit(net).wait();
   }
 
-  inline bool IsFilterCacheEmpty(OpKernelContext* context) {
-    tf_shared_lock lock(mu_);
-    SHARED_LOCKS_REQUIRED(mu_) {
-      const Tensor& cached_filter_data_tensor =
-          *cached_filter_data_ptensor_.AccessTensor(context);
-      return (cached_filter_data_tensor.NumElements() == 0);
-    }
+  inline bool IsFilterCacheEmpty(OpKernelContext* context)
+      SHARED_LOCKS_REQUIRED(mu_) {
+    const Tensor& cached_filter_data_tensor =
+        *cached_filter_data_ptensor_.AccessTensor(context);
+    return (cached_filter_data_tensor.NumElements() == 0);
   }
 
   // Cache the converted filter in a persistent tensor.
@@ -1370,51 +1368,47 @@ class MklConvOp : public OpKernel {
   void CacheFilter(OpKernelContext* context,
                    const std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
                    Tfilter* filter_data, const Tensor& filter_tensor,
-                   MklDnnData<Tfilter>& filter, const memory::desc& filter_md) {
-    mutex_lock lock(mu_);
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      const Tensor& cached_filter_data_tensor =
-          *cached_filter_data_ptensor_.AccessTensor(context);
+                   MklDnnData<Tfilter>& filter, const memory::desc& filter_md)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    const Tensor& cached_filter_data_tensor =
+        *cached_filter_data_ptensor_.AccessTensor(context);
 
-      // If filter is already cached, there's nothing to do.
-      if (cached_filter_data_tensor.NumElements() > 0) {
-        return;
-      }
-
-      // Otherwise, cache filter
-      filter.SetUsrMem(filter_md, &filter_tensor);
-      filter.CheckReorderToOpMem(conv_fwd_pd.get()->weights_primitive_desc());
-      filter_data = static_cast<Tfilter*>(filter.GetOpMem().get_data_handle());
-
-      Tensor* filter_tensor_ptr = nullptr;
-      AllocatePersistTensor(context, *conv_fwd_pd, &filter_tensor_ptr);
-      void* cached_filter_data = filter.GetTensorBuffer(filter_tensor_ptr);
-      size_t cached_filter_data_size =
-          filter.GetOpMem().get_primitive_desc().get_size();
-      memcpy(cached_filter_data, filter_data, cached_filter_data_size);
+    // If filter is already cached, there's nothing to do.
+    if (cached_filter_data_tensor.NumElements() > 0) {
+      return;
     }
+
+    // Otherwise, cache filter
+    filter.SetUsrMem(filter_md, &filter_tensor);
+    filter.CheckReorderToOpMem(conv_fwd_pd.get()->weights_primitive_desc());
+    filter_data = static_cast<Tfilter*>(filter.GetOpMem().get_data_handle());
+
+    Tensor* filter_tensor_ptr = nullptr;
+    AllocatePersistentTensor(context, *conv_fwd_pd, &filter_tensor_ptr);
+    void* cached_filter_data = filter.GetTensorBuffer(filter_tensor_ptr);
+    size_t cached_filter_data_size =
+        filter.GetOpMem().get_primitive_desc().get_size();
+    memcpy(cached_filter_data, filter_data, cached_filter_data_size);
   }
 
   Tfilter* GetCachedFilter(OpKernelContext* context,
-                           const memory::format& filter_mf) {
-    tf_shared_lock lock(mu_);
-    SHARED_LOCKS_REQUIRED(mu_) {
-      const Tensor& cached_filter_data =
-          *cached_filter_data_ptensor_.AccessTensor(context);
-      const Tensor& cached_filter_md =
-          *cached_filter_md_ptensor_.AccessTensor(context);
+                           const memory::format& filter_mf)
+      SHARED_LOCKS_REQUIRED(mu_) {
+    const Tensor& cached_filter_data =
+        *cached_filter_data_ptensor_.AccessTensor(context);
+    const Tensor& cached_filter_md =
+        *cached_filter_md_ptensor_.AccessTensor(context);
 
-      // Check if the memory descriptor of the cached weights is same as
-      // filter_mf. If so, we can used the cached weights; otherwise
-      // return NULL.
-      // TODO (bhavanis): Do we need to cast filter_mf before the check?
-      if (cached_filter_md.scalar<int32>().size() &&
-          cached_filter_md.scalar<int32>()() == filter_mf) {
-        return static_cast<Tfilter*>(
-            const_cast<Tfilter*>(cached_filter_data.flat<Tfilter>().data()));
-      }
-      return nullptr;
+    // Check if the memory descriptor of the cached weights is same as
+    // filter_mf. If so, we can used the cached weights; otherwise
+    // return NULL.
+    // TODO (bhavanis): Do we need to cast filter_mf before the check?
+    if (cached_filter_md.scalar<int32>().size() &&
+        cached_filter_md.scalar<int32>()() == filter_mf) {
+      return static_cast<Tfilter*>(
+          const_cast<Tfilter*>(cached_filter_data.flat<Tfilter>().data()));
     }
+    return nullptr;
   }
 };
 
@@ -1488,7 +1482,7 @@ class MklQuantizedConv2DOp
     bool is_filter_const;
     OP_REQUIRES_OK(context,
                    context->GetAttr("is_filter_const", &is_filter_const));
-    OP_REQUIRES(context, is_filter_const == true,
+    OP_REQUIRES(context, is_filter_const,
                 errors::InvalidArgument("Filter must be a constant"));
   }
 
@@ -1514,9 +1508,9 @@ class MklQuantizedConv2DOp
     float max_output_value;
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
-      // This is the case when convolution and requantization is fused.
-      // min_freezed_output and max_freezed_output are the actual ranges
-      // for the output.
+      // This is the case when convolution and requantization are fused.
+      // min_freezed_output and max_freezed_output are the actual range
+      // of the output.
       min_output_value = context->input(6 + bias_index_offset).flat<float>()(0);
       max_output_value = context->input(7 + bias_index_offset).flat<float>()(0);
     } else {
@@ -1645,13 +1639,7 @@ class MklQuantizedConv2DReluOp
 
   explicit MklQuantizedConv2DReluOp(OpKernelConstruction* context)
       : MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
-                             bias_enabled>(context) {
-    bool is_filter_const;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("is_filter_const", &is_filter_const));
-    OP_REQUIRES(context, is_filter_const == true,
-                errors::InvalidArgument("Filter must be a constant"));
-  }
+                             bias_enabled>(context) {}
 
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
@@ -1682,13 +1670,7 @@ class MklQuantizedConv2DSumReluOp
 
   explicit MklQuantizedConv2DSumReluOp(OpKernelConstruction* context)
       : MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
-                             bias_enabled>(context) {
-    bool is_filter_const;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("is_filter_const", &is_filter_const));
-    OP_REQUIRES(context, is_filter_const == true,
-                errors::InvalidArgument("Filter must be a constant"));
-  }
+                             bias_enabled>(context) {}
 
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
