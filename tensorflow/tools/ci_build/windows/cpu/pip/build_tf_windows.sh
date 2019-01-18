@@ -125,6 +125,10 @@ fi
 
 run_configure_for_cpu_build
 
+bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
+  tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
+
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
   tensorflow/tools/pip_package:build_pip_package \
   --incompatible_remove_native_http_archive=false || exit $?
