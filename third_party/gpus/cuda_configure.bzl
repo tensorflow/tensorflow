@@ -1515,7 +1515,7 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
   )
   repository_ctx.template(
       "crosstool/BUILD",
-      Label(remote_config_repo + "/crosstool/BUILD"),
+      Label(remote_config_repo + "/crosstool:BUILD"),
       {},
   )
 
