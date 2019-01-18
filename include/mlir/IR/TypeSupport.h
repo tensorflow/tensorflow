@@ -182,8 +182,7 @@ private:
     auto derivedKey = getKey<ImplType>(args...);
 
     // Create a hash of the kind and the derived key.
-    unsigned hashValue = llvm::hash_combine(
-        kind, llvm::DenseMapInfo<KeyTy>::getHashValue(derivedKey));
+    unsigned hashValue = getHash<ImplType>(kind, derivedKey);
 
     // Generate an equality function for the derived storage.
     std::function<bool(const TypeStorage *)> isEqual =
@@ -237,27 +236,76 @@ private:
                                              const void *const typeID);
 
   //===--------------------------------------------------------------------===//
+  // Util
+  //===--------------------------------------------------------------------===//
+
+  /// Utilities for detecting if specific traits hold for a given type 'T'.
+  template <typename...> using void_t = void;
+  template <class, template <class...> class Op, class... Args>
+  struct detector {
+    using value_t = std::false_type;
+  };
+  template <template <class...> class Op, class... Args>
+  struct detector<void_t<Op<Args...>>, Op, Args...> {
+    using value_t = std::true_type;
+  };
+  template <template <class...> class Op, class... Args>
+  using is_detected = typename detector<void, Op, Args...>::value_t;
+
+  //===--------------------------------------------------------------------===//
   // Key Construction
   //===--------------------------------------------------------------------===//
 
-  /// Utilities for generating a derived storage key.
-  /// Overload for if the key can be directly constructed from the provided
-  /// arguments.
+  /// Trait to check if ImplTy provides a 'getKey' method with types 'Args'.
+  template <typename ImplTy, typename... Args>
+  using has_impltype_getkey_t =
+      decltype(ImplTy::getKey(std::declval<Args>()...));
+
+  /// Used to construct an instance of 'ImplType::KeyTy' if there is an
+  /// 'ImplTy::getKey' function for the provided arguments.
   template <typename ImplTy, typename... Args>
   static typename std::enable_if<
-      std::is_constructible<typename ImplTy::KeyTy, Args...>::value,
+      is_detected<has_impltype_getkey_t, ImplTy, Args...>::value,
+      typename ImplTy::KeyTy>::type
+  getKey(Args &&... args) {
+    return ImplTy::getKey(args...);
+  }
+  /// If there is no 'ImplTy::getKey' method, then we try to directly construct
+  /// the 'ImplTy::KeyTy' with the provided arguments.
+  template <typename ImplTy, typename... Args>
+  static typename std::enable_if<
+      !is_detected<has_impltype_getkey_t, ImplTy, Args...>::value,
       typename ImplTy::KeyTy>::type
   getKey(Args &&... args) {
     return typename ImplTy::KeyTy(args...);
   }
-  // If the key cannot be directly constructed, query the derived storage for a
-  // construction function.
-  template <typename ImplTy, typename... Args>
+
+  //===--------------------------------------------------------------------===//
+  // Key and Kind Hashing
+  //===--------------------------------------------------------------------===//
+
+  /// Trait to check if ImplType provides a 'hashKey' method for 'T'.
+  template <typename ImplType, typename T>
+  using has_impltype_hash_t = decltype(ImplType::hashKey(std::declval<T>()));
+
+  /// Used to generate a hash for the 'ImplTy::KeyTy' and kind of a storage
+  /// instance if there is an 'ImplTy::hashKey' overload for 'DerivedKey'.
+  template <typename ImplTy, typename DerivedKey>
   static typename std::enable_if<
-      !std::is_constructible<typename ImplTy::KeyTy, Args...>::value,
-      typename ImplTy::KeyTy>::type
-  getKey(Args &&... args) {
-    return ImplTy::getKey(args...);
+      is_detected<has_impltype_hash_t, ImplTy, DerivedKey>::value,
+      ::llvm::hash_code>::type
+  getHash(unsigned kind, const DerivedKey &derivedKey) {
+    return llvm::hash_combine(kind, ImplTy::hashKey(derivedKey));
+  }
+  /// If there is no 'ImplTy::hashKey' default to using the
+  /// 'llvm::DenseMapInfo' definition for 'DerivedKey' for generating a hash.
+  template <typename ImplTy, typename DerivedKey>
+  static typename std::enable_if<
+      !is_detected<has_impltype_hash_t, ImplTy, DerivedKey>::value,
+      ::llvm::hash_code>::type
+  getHash(unsigned kind, const DerivedKey &derivedKey) {
+    return llvm::hash_combine(
+        kind, llvm::DenseMapInfo<DerivedKey>::getHashValue(derivedKey));
   }
 
   //===--------------------------------------------------------------------===//
