@@ -367,6 +367,59 @@ tf_kernel_library(
     ]),
 )
 
+cc_library(
+    name = "sparse_utils",
+    srcs = [
+        "sparse_utils.cc",
+    ],
+    hdrs = ["sparse_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_utils_test",
+    srcs = ["sparse_utils_test.cc"],
+    deps = [
+        ":sparse_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "tensor_flag_utils",
+    srcs = [
+        "tensor_flag_utils.cc",
+    ],
+    hdrs = ["tensor_flag_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tensor_flag_utils_test",
+    srcs = ["tensor_flag_utils_test.cc"],
+    deps = [
+        ":tensor_flag_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
 tf_cuda_library(
     name = "ops_testutil",
     testonly = 1,
