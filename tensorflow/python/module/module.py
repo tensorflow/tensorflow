@@ -199,23 +199,23 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   @property
   def variables(self):
-    """Returns a tuple of variables owned by this module and it's submodules.
+    """Collection of variables owned by this module and it's submodules.
 
     Returns:
-      A tuple of variables for the current module (sorted by attribute name)
-      followed by variables from all submodules recursively (depth first).
+      A collection of variables for the current module (sorted by attribute
+      name) followed by variables from all submodules recursively (depth first).
     """
     return tuple(walk(self, recurse_if=_IS_MODULE, predicate=_IS_VARIABLE))
 
   @property
   def owned_variables(self):
-    """Returns a tuple of variables that are attributes of the current module.
+    """Collection of variables that are attributes of the current module.
 
     See `variables` for a property which returns all variables from the current
     module and all it's submodules recursively.
 
     Returns:
-      A tuple of variables which are attributes of the current module. Will
+      A collection of variables which are attributes of the current module. Will
       yield variables inside nested structures (lists etc) but not in other
       modules.
     """
@@ -223,24 +223,24 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   @property
   def trainable_variables(self):
-    """Returns a tuple of variables owned by this module and it's submodules.
+    """Collection of variables owned by this module and it's submodules.
 
     Returns:
-      A tuple of variables for the current module (sorted by attribute name)
-      followed by variables from all submodules recursively (depth first).
+      A collection of variables for the current module (sorted by attribute
+      name) followed by variables from all submodules recursively (depth first).
     """
     return tuple(
         walk(self, recurse_if=_IS_MODULE, predicate=_IS_TRAINABLE_VARIABLE))
 
   @property
   def owned_trainable_variables(self):
-    """Returns a tuple of variables that are attributes of the current module.
+    """Collection of variables that are attributes of the current module.
 
     See `variables` for a property which returns all variables from the current
     module and all it's submodules recursively.
 
     Returns:
-      A tuple of variables which are attributes of the current module. Will
+      A collection of variables which are attributes of the current module. Will
       yield variables inside nested structures (lists etc) but not in other
       modules.
     """
