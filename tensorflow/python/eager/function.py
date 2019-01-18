@@ -689,7 +689,8 @@ class ConcreteFunction(object):
     # Clear captures, since we pass them in as inputs.
     backwards_graph.captures = {}
     backwards_graph.outputs.extend(
-        grad for grad in func_graph_module.flatten(gradients_wrt_inputs)
+        grad
+        for grad in nest.flatten(gradients_wrt_inputs, expand_composites=True)
         if grad is not None)
     backwards_graph.structured_outputs = gradients_wrt_inputs
     self._backward_graph_function = ConcreteFunction(

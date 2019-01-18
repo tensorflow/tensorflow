@@ -1,6 +1,7 @@
 path: "tensorflow.RaggedTensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.ragged.ragged_tensor.RaggedTensor\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dtype"

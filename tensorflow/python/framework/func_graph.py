@@ -26,7 +26,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
 from tensorflow.python.ops import array_ops
@@ -489,7 +488,7 @@ def func_graph_from_py_func(name,
           x = array_ops.identity(op_return_value)
       elif not isinstance(x, tensor_array_ops.TensorArray):
         try:
-          x = ops.convert_to_tensor_or_indexed_slices(x)
+          x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
               "To be compatible with tf.contrib.eager.defun, Python functions "
@@ -623,36 +622,25 @@ def flatten(sequence):
   Flattens non-tensor objects into their constituent tensors.
 
   Args:
-    sequence: A nested structure of Tensors, IndexedSlices, SparseTensors and
+    sequence: A nested structure of Tensors, CompositeTensors, and
       TensorArrays.
 
   Returns:
     A list of tensors.
   """
   # TODO(akshayka): Support `SparseTensor` in a similar fashion.
-  flat_sequence = nest.flatten(sequence)
-  outputs = []
-  for item in flat_sequence:
-    if isinstance(item, ops.IndexedSlices):
-      if item.dense_shape is not None:
-        outputs.extend([item.values, item.indices, item.dense_shape])
-      else:
-        outputs.extend([item.values, item.indices])
-    elif isinstance(item, sparse_tensor.SparseTensor):
-      outputs.extend([item.indices, item.values, item.dense_shape])
-    elif isinstance(item, tensor_array_ops.TensorArray):
-      outputs.append(item.flow)
-    else:
-      outputs.append(item)
-  return outputs
+  flat_sequence = nest.flatten(sequence, expand_composites=True)
+  return [
+      item.flow if isinstance(item, tensor_array_ops.TensorArray) else item
+      for item in flat_sequence]
 
 
 def pack_sequence_as(structure, flat_sequence):
   """Like `nest.pack_sequence_as` but also packs other Tensor-like objects.
 
   Args:
-    structure: The structure to pack into. May contain Tensors, IndexedSlices,
-      TensorArrays or SparseTensors.
+    structure: The structure to pack into. May contain Tensors,
+      CompositeTensors, or TensorArrays.
     flat_sequence: An iterable containing tensors.
 
   Returns:
@@ -661,33 +649,16 @@ def pack_sequence_as(structure, flat_sequence):
   Raises:
     AssertionError if `structure` and `flat_sequence` are not compatible.
   """
-  flattened_structure = nest.flatten(structure)
-  flat_sequence_with_slices_and_tas = []
-  index = 0
-  for t in flattened_structure:
-    if isinstance(t, ops.IndexedSlices):
-      if t.dense_shape is not None:
-        flat_sequence_with_slices_and_tas.append(
-            ops.IndexedSlices(*flat_sequence[index:index + 3]))
-        index += 3
-      else:
-        flat_sequence_with_slices_and_tas.append(
-            ops.IndexedSlices(*flat_sequence[index:index + 2]))
-        index += 2
-    elif isinstance(t, sparse_tensor.SparseTensor):
-      flat_sequence_with_slices_and_tas.append(
-          sparse_tensor.SparseTensor(*flat_sequence[index:index + 3]))
-      index += 3
-    elif isinstance(t, tensor_array_ops.TensorArray):
-      flow = flat_sequence[index]
-      ta = tensor_array_ops.build_ta_with_new_flow(t, flow)
-      flat_sequence_with_slices_and_tas.append(ta)
-      index += 1
-    else:
-      flat_sequence_with_slices_and_tas.append(flat_sequence[index])
-      index += 1
-  assert len(flattened_structure) == len(flat_sequence_with_slices_and_tas)
-  return nest.pack_sequence_as(structure, flat_sequence_with_slices_and_tas)
+  flat_sequence = list(flat_sequence)
+  flattened_structure = nest.flatten(structure, expand_composites=True)
+  if len(flattened_structure) != len(flat_sequence):
+    raise ValueError("Mismatch in element count")
+  for i in range(len(flat_sequence)):
+    if isinstance(flattened_structure[i], tensor_array_ops.TensorArray):
+      flat_sequence[i] = tensor_array_ops.build_ta_with_new_flow(
+          old_ta=flattened_structure[i], flow=flat_sequence[i])
+  return nest.pack_sequence_as(structure, flat_sequence, expand_composites=True)
+
 
 
 def _create_substitute_placeholder(value, name=None, dtype=None):
