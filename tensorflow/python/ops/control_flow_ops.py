@@ -187,6 +187,8 @@ def _Identity(data, name=None):
       return gen_array_ops.ref_identity(data, name=name)
     else:
       return array_ops.identity(data, name=name)
+  elif isinstance(data, composite_tensor.CompositeTensor):
+    return nest.map_structure(_Identity, data, expand_composites=True)
   else:
     raise TypeError("Type %s not supported" % type(data))
 
@@ -198,6 +200,8 @@ def _NextIteration(data, name=None):
       return ref_next_iteration(data, name=name)
     else:
       return next_iteration(data, name=name)
+  elif isinstance(data, composite_tensor.CompositeTensor):
+    return nest.map_structure(_NextIteration, data, expand_composites=True)
   else:
     raise TypeError("Type %s not supported" % type(data))
 
@@ -239,6 +243,11 @@ def _Enter(data,
     if use_input_shape:
       result.set_shape(data.get_shape())
     return result
+  elif isinstance(data, composite_tensor.CompositeTensor):
+    def enter_component(t):
+      return _Enter(t, frame_name, is_constant, parallel_iterations,
+                    use_ref, use_input_shape)
+    return nest.map_structure(enter_component, data, expand_composites=True)
   else:
     raise TypeError("Type %s not supported" % type(data))
 
@@ -261,6 +270,8 @@ def exit(data, name=None):  # pylint: disable=redefined-builtin
       return gen_control_flow_ops.ref_exit(data, name)
     else:
       return gen_control_flow_ops._exit(data, name)
+  elif isinstance(data, composite_tensor.CompositeTensor):
+    return nest.map_structure(exit, data, expand_composites=True)
   else:
     raise TypeError("Type %s not supported" % type(data))
 
@@ -548,6 +559,15 @@ def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
       # TODO(skyewm): call this for other cases below (needs testing)
       _EnforceShapeInvariant(m, v)
     m.op._update_input(1, v)  # pylint: disable=protected-access
+  elif isinstance(m, composite_tensor.CompositeTensor):
+    # pylint: disable=protected-access
+    def update_component(m_component, v_component):
+      m_component.op._update_input(1, v_component)
+    if isinstance(m, ops.IndexedSlices):
+      v = math_ops._as_indexed_slices(v, optimize=False)
+    # pylint: enable=protected-access
+    v = _NextIteration(v)
+    return nest.map_structure(update_component, m, v, expand_composites=True)
   else:
     raise TypeError("Type %s not supported" % type(m))
   return v
