@@ -141,6 +141,23 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   return Status::OK();
 }
 
+namespace {
+
+constexpr char kDelimiter[] = "@@";
+
+}  // namespace
+
+VariantTensorDataReader::VariantTensorDataReader(
+    const tensorflow::VariantTensorData* data)
+    : data_(data) {
+  string metadata;
+  data_->get_metadata(&metadata);
+  auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+  for (size_t i = 0; i < keys.size(); ++i) {
+    map_[keys[i]] = i;
+  }
+}
+
 Status VariantTensorDataReader::status() const { return status_; }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
