@@ -3656,12 +3656,13 @@ tf_cc_test(
     extra_copts = ["-Wno-string-plus-int"],
     deps = [
         ":hlo_matchers",
+        ":hlo_parser",
         ":indexed_array_analysis",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
