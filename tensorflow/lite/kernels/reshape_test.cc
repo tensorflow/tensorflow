@@ -137,21 +137,11 @@ TEST_P(ReshapeOpTest, MismatchedDimensions) {
 #endif
 
 TEST_P(ReshapeOpTest, TooManyDimensions) {
-  if (GetParam() == kAsReshapeOption) {
 #ifdef GTEST_HAS_DEATH_TEST
     EXPECT_DEATH(ReshapeOpModel<float>({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
                                        {1, 1, 1, 1, 1, 1, 1, 1, 2}, GetParam()),
                  "Found too many dimensions");
 #endif
-  } else {
-    ReshapeOpModel<float> m({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
-                            {1, 1, 1, 1, 1, 1, 1, 1, 2}, GetParam());
-    m.SetInput({3, 4});
-    m.Invoke();
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 4}));
-    EXPECT_THAT(m.GetOutputShape(),
-                ElementsAreArray({1, 1, 1, 1, 1, 1, 1, 1, 2}));
-  }
 }
 
 #ifdef GTEST_HAS_DEATH_TEST
