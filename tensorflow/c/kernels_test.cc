@@ -224,4 +224,8 @@ TEST(TestKernel, TestInputAndOutputCount) {
   }
 }
 
+TEST(TestKernel, DeleteKernelBuilderIsOkOnNull) {
+  TF_DeleteKernelBuilder(nullptr);
+}
+
 }  // namespace tensorflow
