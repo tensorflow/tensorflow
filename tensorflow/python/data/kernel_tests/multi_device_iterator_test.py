@@ -34,15 +34,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-# TODO(b/121264236): Once we have a mechanism to have multiple devices in eager
-# / V2 mode, we should remove this annotation and the run_v1_only annotations
-# as well.
 @test_util.run_all_in_graph_and_eager_modes
 class MultiDeviceIteratorTest(test_base.DatasetTestBase,
                               parameterized.TestCase):
 
-  @test_util.run_v1_only
   @parameterized.parameters(0, 1, 42,)
+  @test_util.run_v1_only("b/121264236")
   def testInitOnly(self, num_inits):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -53,7 +50,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       for _ in range(num_inits):
         self.evaluate(multi_device_iterator.initializer)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testBasic(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -71,7 +68,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testOneOnSameDevice(self):
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(10)
@@ -90,7 +87,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testRepeatDevices(self):
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(20)
@@ -115,7 +112,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_3)
         self.evaluate(elem_on_4)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testNotFullyDivisible(self):
     dataset = dataset_ops.Dataset.range(9)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -135,7 +132,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testGetNextAsOptional(self):
     if context.executing_eagerly():
       return
@@ -172,7 +169,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(elem_on_2_t)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testUneven(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -192,7 +189,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testMultipleInitializationsGraph(self):
     if context.executing_eagerly():
       return
@@ -214,8 +211,9 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.assertEqual([(i, 0), (i, 1)], self.evaluate([elem_on_1,
                                                           elem_on_2]))
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testMultipleInitializationsEager(self):
+    self.skipTest("b/123023614")
     if not context.executing_eagerly():
       return
 
@@ -230,7 +228,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       elem_on_1, elem_on_2 = multi_device_iterator.get_next()
       self.assertEqual([(0, 0), (1, 1)], self.evaluate([elem_on_1, elem_on_2]))
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testBasicGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -251,7 +249,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testUnevenGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -274,7 +272,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testGetNextAsOptionalGpu(self):
     if not test_util.is_gpu_available() or context.executing_eagerly():
       self.skipTest("No GPU available")
@@ -311,7 +309,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(elem_on_2_t)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("b/121264236")
   def testOptimization(self):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
