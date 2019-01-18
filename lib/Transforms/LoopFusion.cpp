@@ -32,6 +32,7 @@
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -44,6 +45,10 @@
 using llvm::SetVector;
 
 using namespace mlir;
+
+static llvm::cl::opt<bool>
+    clMaximalLoopFusion("fusion-maximal", llvm::cl::Hidden,
+                        llvm::cl::desc("Enables maximal loop fusion."));
 
 namespace {
 
@@ -95,6 +100,7 @@ public:
 // MemRefDependenceGraph is a graph data structure where graph nodes are
 // top-level instructions in a Function which contain load/store ops, and edges
 // are memref dependences between the nodes.
+// TODO(andydavis) Add a more flexible dependece graph representation.
 // TODO(andydavis) Add a depth parameter to dependence graph construction.
 struct MemRefDependenceGraph {
 public:
@@ -147,6 +153,9 @@ public:
   DenseMap<unsigned, SmallVector<Edge, 2>> inEdges;
   // Map from node id to list of output edges.
   DenseMap<unsigned, SmallVector<Edge, 2>> outEdges;
+  // Map from memref to a count on the dependence edges associated with that
+  // memref.
+  DenseMap<Value *, unsigned> memrefEdgeCount;
 
   MemRefDependenceGraph() {}
 
@@ -159,6 +168,32 @@ public:
     auto it = nodes.find(id);
     assert(it != nodes.end());
     return &it->second;
+  }
+
+  // Remove node 'id' (and its associated edges) from graph.
+  void removeNode(unsigned id) {
+    // Remove each edge in 'inEdges[id]'.
+    if (inEdges.count(id) > 0) {
+      SmallVector<Edge, 2> oldInEdges = inEdges[id];
+      for (auto &inEdge : oldInEdges) {
+        removeEdge(inEdge.id, id, inEdge.memref);
+      }
+    }
+    // Remove each edge in 'outEdges[id]'.
+    if (outEdges.count(id) > 0) {
+      SmallVector<Edge, 2> oldOutEdges = outEdges[id];
+      for (auto &outEdge : oldOutEdges) {
+        removeEdge(id, outEdge.id, outEdge.memref);
+      }
+    }
+    // Erase remaining node state.
+    inEdges.erase(id);
+    outEdges.erase(id);
+    nodes.erase(id);
+  }
+
+  bool hasOutEdges(unsigned id) {
+    return outEdges.count(id) > 0 && !outEdges[id].empty();
   }
 
   // Returns true iff there is an edge from node 'srcId' to node 'dstId' for
@@ -181,6 +216,7 @@ public:
     if (!hasEdge(srcId, dstId, memref)) {
       outEdges[srcId].push_back({dstId, memref});
       inEdges[dstId].push_back({srcId, memref});
+      memrefEdgeCount[memref]++;
     }
   }
 
@@ -188,6 +224,8 @@ public:
   void removeEdge(unsigned srcId, unsigned dstId, Value *memref) {
     assert(inEdges.count(dstId) > 0);
     assert(outEdges.count(srcId) > 0);
+    assert(memrefEdgeCount.count(memref) > 0);
+    memrefEdgeCount[memref]--;
     // Remove 'srcId' from 'inEdges[dstId]'.
     for (auto it = inEdges[dstId].begin(); it != inEdges[dstId].end(); ++it) {
       if ((*it).id == srcId && (*it).memref == memref) {
@@ -224,43 +262,36 @@ public:
     return outEdgeCount;
   }
 
-  // Returns the min node id of all output edges from node 'id'.
-  unsigned getMinOutEdgeNodeId(unsigned id) {
+  // Returns the min node id across all outgoing edges from node 'id', skipping
+  // edges with 'memrefToSkip'.
+  unsigned getMinOutEdgeNodeId(unsigned id, Value *memrefToSkip) {
     unsigned minId = std::numeric_limits<unsigned>::max();
     if (outEdges.count(id) > 0)
       for (auto &outEdge : outEdges[id])
-        minId = std::min(minId, outEdge.id);
+        if (outEdge.memref != memrefToSkip)
+          minId = std::min(minId, outEdge.id);
     return minId;
   }
 
-  // Updates edge mappings from node 'srcId' to node 'dstId' and removes
-  // state associated with node 'srcId'.
-  void updateEdgesAndRemoveSrcNode(unsigned srcId, unsigned dstId) {
+  // Updates edge mappings from node 'srcId' to node 'dstId'.
+  void updateEdges(unsigned srcId, unsigned dstId) {
     // For each edge in 'inEdges[srcId]': add new edge remaping to 'dstId'.
     if (inEdges.count(srcId) > 0) {
       SmallVector<Edge, 2> oldInEdges = inEdges[srcId];
       for (auto &inEdge : oldInEdges) {
-        // Remove edge from 'inEdge.id' to 'srcId'.
-        removeEdge(inEdge.id, srcId, inEdge.memref);
         // Add edge from 'inEdge.id' to 'dstId'.
         addEdge(inEdge.id, dstId, inEdge.memref);
       }
     }
-    // For each edge in 'outEdges[srcId]': add new edge remaping to 'dstId'.
+    // For each edge in 'outEdges[srcId]': remove edge from 'srcId' to 'dstId'.
     if (outEdges.count(srcId) > 0) {
       SmallVector<Edge, 2> oldOutEdges = outEdges[srcId];
       for (auto &outEdge : oldOutEdges) {
-        // Remove edge from 'srcId' to 'outEdge.id'.
-        removeEdge(srcId, outEdge.id, outEdge.memref);
-        // Add edge from 'dstId' to 'outEdge.id' (if 'outEdge.id' != 'dstId').
-        if (outEdge.id != dstId)
-          addEdge(dstId, outEdge.id, outEdge.memref);
+        // Remove any out edges from 'srcId' to 'dstId' across memrefs.
+        if (outEdge.id == dstId)
+          removeEdge(srcId, outEdge.id, outEdge.memref);
       }
     }
-    // Remove 'srcId' from graph state.
-    inEdges.erase(srcId);
-    outEdges.erase(srcId);
-    nodes.erase(srcId);
   }
 
   // Adds ops in 'loads' and 'stores' to node at 'id'.
@@ -271,6 +302,12 @@ public:
       node->loads.push_back(loadOpInst);
     for (auto *storeOpInst : stores)
       node->stores.push_back(storeOpInst);
+  }
+
+  void clearNodeLoadAndStores(unsigned id) {
+    Node *node = getNode(id);
+    node->loads.clear();
+    node->stores.clear();
   }
 
   void print(raw_ostream &os) const {
@@ -614,6 +651,82 @@ static bool getSliceUnion(const ComputationSliceState &sliceStateA,
   return true;
 }
 
+// Creates and returns a private (single-user) memref for fused loop rooted
+// at 'forInst', with (potentially reduced) memref size based on the
+// MemRefRegion written to by 'srcStoreOpInst'.
+static Value *createPrivateMemRef(ForInst *forInst,
+                                  OperationInst *srcStoreOpInst) {
+  // Create builder to insert alloc op just before 'forInst'.
+  FuncBuilder b(forInst);
+  // Builder to create constants at the top level.
+  FuncBuilder top(forInst->getFunction());
+  // Create new memref type based on slice bounds.
+  auto *oldMemRef = srcStoreOpInst->cast<StoreOp>()->getMemRef();
+  auto oldMemRefType = oldMemRef->getType().cast<MemRefType>();
+  unsigned rank = oldMemRefType.getRank();
+
+  // Compute MemRefRegion for 'srcStoreOpInst'.
+  MemRefRegion region;
+  getMemRefRegion(srcStoreOpInst, 0, &region);
+  SmallVector<int, 4> newShape;
+  std::vector<SmallVector<int64_t, 4>> lbs;
+  lbs.reserve(rank);
+  // Query 'region' for 'newShape' and lower bounds of MemRefRegion accessed
+  // by 'srcStoreOpInst'.
+  Optional<int64_t> numElements =
+      region.getBoundingConstantSizeAndShape(&newShape, &lbs);
+  assert(numElements.hasValue());
+
+  // Build 'rank' AffineExprs from MemRefRegion 'lbs'
+  const FlatAffineConstraints *cst = region.getConstraints();
+  SmallVector<AffineExpr, 4> offsets;
+  offsets.reserve(rank);
+  for (unsigned d = 0; d < rank; ++d) {
+    AffineExpr offset = top.getAffineConstantExpr(0);
+    for (unsigned j = 0, e = cst->getNumCols() - rank - 1; j < e; j++) {
+      offset = offset + lbs[d][j] * top.getAffineDimExpr(j);
+    }
+    offset = offset + lbs[d][cst->getNumCols() - 1 - rank];
+    offsets.push_back(offset);
+  }
+
+  // Create 'newMemRefType' using 'newShape' from MemRefRegion accessed
+  // by 'srcStoreOpInst'.
+  auto newMemRefType = b.getMemRefType(newShape, oldMemRefType.getElementType(),
+                                       {}, oldMemRefType.getMemorySpace());
+  // Gather alloc operands for the dynamic dimensions of the memref.
+  SmallVector<Value *, 4> allocOperands;
+  unsigned dynamicDimCount = 0;
+  for (auto dimSize : oldMemRefType.getShape()) {
+    if (dimSize == -1)
+      allocOperands.push_back(
+          b.create<DimOp>(forInst->getLoc(), oldMemRef, dynamicDimCount++));
+  }
+
+  // Create new private memref for fused loop 'forInst'.
+  Value *newMemRef =
+      b.create<AllocOp>(forInst->getLoc(), newMemRefType, allocOperands);
+
+  // Build an AffineMap to remap access functions based on lower bound offsets.
+  SmallVector<AffineExpr, 4> remapExprs;
+  remapExprs.reserve(rank);
+  unsigned zeroOffsetCount = 0;
+  for (unsigned i = 0; i < rank; i++) {
+    if (auto constExpr = offsets[i].dyn_cast<AffineConstantExpr>())
+      if (constExpr.getValue() == 0)
+        ++zeroOffsetCount;
+    auto dimExpr = b.getAffineDimExpr(i);
+    remapExprs.push_back(dimExpr - offsets[i]);
+  }
+  auto indexRemap = zeroOffsetCount == rank
+                        ? AffineMap::Null()
+                        : b.getAffineMap(rank, 0, remapExprs, {});
+  // Replace all users of 'oldMemRef' with 'newMemRef'.
+  assert(replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap, {},
+                                  &*forInst->getBody()->begin()));
+  return newMemRef;
+}
+
 // Checks the profitability of fusing a backwards slice of the loop nest
 // surrounding 'srcOpInst' into the loop nest surrounding 'dstOpInsts'.
 // Returns true if it profitable to fuse the candidate loop nests. Returns
@@ -744,10 +857,12 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
                           << " minFusedLoopNestComputeCost: "
                           << minFusedLoopNestComputeCost << "\n");
 
-  // Do not fuse if fused loop would increase the total cost of the computation.
+  // Do not fuse if fused loop would increase the total cost of the computation,
+  // unless 'clMaximalLoopFusion' flag is set.
   // TODO(andydavis) Use locality/reduction in slice memref size/opportunity
   // for load/store forwarding in cost model.
-  if (minFusedLoopNestComputeCost > srcLoopNestCost + dstLoopNestCost)
+  if (!clMaximalLoopFusion &&
+      minFusedLoopNestComputeCost > srcLoopNestCost + dstLoopNestCost)
     return false;
   // Update return parameter 'sliceState' with 'bestSliceState'.
   ComputationSliceState *bestSliceState = &sliceStates[bestDstLoopDepth - 1];
@@ -835,9 +950,13 @@ public:
 
       SmallVector<OperationInst *, 4> loads = dstNode->loads;
       SmallVector<OperationInst *, 4> dstLoadOpInsts;
+      DenseSet<Value *> visitedMemrefs;
       while (!loads.empty()) {
         // Get memref of load on top of the stack.
         auto *memref = loads.back()->cast<LoadOp>()->getMemRef();
+        if (visitedMemrefs.count(memref) > 0)
+          continue;
+        visitedMemrefs.insert(memref);
         // Move all loads in 'loads' accessing 'memref' to 'dstLoadOpInsts'.
         moveLoadsAccessingMemrefTo(memref, &loads, &dstLoadOpInsts);
         // Skip if no input edges along which to fuse.
@@ -855,16 +974,13 @@ public:
           // Skip if 'srcNode' has more than one store to 'memref'.
           if (srcNode->getStoreOpCount(memref) != 1)
             continue;
-          // Skip 'srcNode' if it has out edges on 'memref' other than 'dstId'.
-          if (mdg->getOutEdgeCount(srcNode->id, memref) != 1)
-            continue;
           // Skip 'srcNode' if it has in dependence edges. NOTE: This is overly
           // TODO(andydavis) Track dependence type with edges, and just check
           // for WAW dependence edge here.
           if (mdg->getInEdgeCount(srcNode->id, memref) != 0)
             continue;
           // Skip if 'srcNode' has out edges to other memrefs after 'dstId'.
-          if (mdg->getMinOutEdgeNodeId(srcNode->id) != dstId)
+          if (mdg->getMinOutEdgeNodeId(srcNode->id, memref) < dstId)
             continue;
           // Get unique 'srcNode' store op.
           auto *srcStoreOpInst = srcNode->stores.front();
@@ -878,26 +994,65 @@ public:
           auto *sliceLoopNest = mlir::insertBackwardComputationSlice(
               srcStoreOpInst, dstLoadOpInsts[0], dstLoopDepth, &sliceState);
           if (sliceLoopNest != nullptr) {
-            // Remove edges between 'srcNode' and 'dstNode' and remove 'srcNode'
-            mdg->updateEdgesAndRemoveSrcNode(srcNode->id, dstNode->id);
-            // Record all load/store accesses in 'sliceLoopNest' at 'dstPos'.
-            LoopNestStateCollector collector;
-            collector.walkForInst(sliceLoopNest);
-            mdg->addToNode(dstId, collector.loadOpInsts,
-                           collector.storeOpInsts);
-            // Add new load ops to current Node load op list 'loads' to
-            // continue fusing based on new operands.
-            for (auto *loadOpInst : collector.loadOpInsts)
-              loads.push_back(loadOpInst);
-            // Promote single iteration loops to single IV value.
-            for (auto *forInst : collector.forInsts) {
+            // Update edges between 'srcNode' and 'dstNode'.
+            mdg->updateEdges(srcNode->id, dstNode->id);
+
+            // Collect slice loop stats.
+            LoopNestStateCollector sliceCollector;
+            sliceCollector.walkForInst(sliceLoopNest);
+            // Promote single iteration slice loops to single IV value.
+            for (auto *forInst : sliceCollector.forInsts) {
               promoteIfSingleIteration(forInst);
             }
-            // Remove old src loop nest.
-            cast<ForInst>(srcNode->inst)->erase();
+
+            // Create private memref for 'memref' in 'dstForInst'.
+            auto *dstForInst = cast<ForInst>(dstNode->inst);
+            SmallVector<OperationInst *, 4> storesForMemref;
+            for (auto *storeOpInst : sliceCollector.storeOpInsts) {
+              if (storeOpInst->cast<StoreOp>()->getMemRef() == memref)
+                storesForMemref.push_back(storeOpInst);
+            }
+            assert(storesForMemref.size() == 1);
+            auto *newMemRef =
+                createPrivateMemRef(dstForInst, storesForMemref[0]);
+            visitedMemrefs.insert(newMemRef);
+
+            // Collect dst loop stats after memref privatizaton transformation.
+            LoopNestStateCollector dstLoopCollector;
+            dstLoopCollector.walkForInst(dstForInst);
+
+            // Add new load ops to current Node load op list 'loads' to
+            // continue fusing based on new operands.
+            for (auto *loadOpInst : dstLoopCollector.loadOpInsts) {
+              auto *loadMemRef = loadOpInst->cast<LoadOp>()->getMemRef();
+              if (visitedMemrefs.count(loadMemRef) == 0)
+                loads.push_back(loadOpInst);
+            }
+
+            // Clear and add back loads and stores
+            mdg->clearNodeLoadAndStores(dstNode->id);
+            mdg->addToNode(dstId, dstLoopCollector.loadOpInsts,
+                           dstLoopCollector.storeOpInsts);
+            // Remove old src loop nest if it no longer has users.
+            if (!mdg->hasOutEdges(srcNode->id)) {
+              mdg->removeNode(srcNode->id);
+              cast<ForInst>(srcNode->inst)->erase();
+            }
           }
         }
       }
+    }
+    // Clean up any allocs with no users.
+    for (auto &pair : mdg->memrefEdgeCount) {
+      if (pair.second > 0)
+        continue;
+      auto *memref = pair.first;
+      // Use list expected to match the dep graph info.
+      assert(memref->use_empty());
+      auto *inst = memref->getDefiningInst();
+      auto *opInst = dyn_cast_or_null<OperationInst>(inst);
+      if (opInst && opInst->isa<AllocOp>())
+        opInst->erase();
     }
   }
 };
