@@ -2169,7 +2169,8 @@ class TPUEstimator(estimator_lib.Estimator):
                export_to_tpu=True,
                export_to_cpu=True,
                warm_start_from=None,
-               experimental_exported_model_uses_all_cores=False):
+               experimental_exported_model_uses_all_cores=False,
+               experimental_export_device_assignment=False):
     """Constructs an `TPUEstimator` instance.
 
     Args:
@@ -2228,6 +2229,10 @@ class TPUEstimator(estimator_lib.Estimator):
         cores for inference with TPUPartitionedCall(). Once outside compilation
         is supported in TPUPartitionedCall(), this flag will be enabled by
         default.
+      experimental_export_device_assignment: Whether to include the device
+        assignment in the exported model. Doing so is useful in case of model
+        parallel inference but will tie the exported model to the TPU topology
+        used to export the model.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -2295,6 +2300,13 @@ class TPUEstimator(estimator_lib.Estimator):
     self._export_to_tpu = export_to_tpu
     self._experimental_exported_model_uses_all_cores = (
         experimental_exported_model_uses_all_cores)
+    self._experimental_export_device_assignment = (
+        experimental_export_device_assignment)
+    if (experimental_exported_model_uses_all_cores and
+        experimental_export_device_assignment):
+      raise ValueError('experimental_exported_model_uses_all_cores and '
+                       'experimental_export_device_assignment is not supported '
+                       'at the same time.')
 
     self._is_input_fn_invoked = None
     self._rendezvous = {}
@@ -2404,7 +2416,16 @@ class TPUEstimator(estimator_lib.Estimator):
       tpu_computation, tpu_capture = self._build_tpu_computation_for_inference(
           features, labels, mode, config)
 
-      tensors_on_cpu = tpu.rewrite_for_inference(tpu_computation)
+      if self._experimental_export_device_assignment:
+        # Export the device assignment as part of the model. This is useful for
+        # model parallel usecases where the model relies on the mapping between
+        # logical and physical devices.
+        with self._ctx.with_mode(mode) as ctx:
+          device_assignment = ctx.device_assignment
+      else:
+        device_assignment = None
+      tensors_on_cpu = tpu.rewrite_for_inference(
+          tpu_computation, device_assignment=device_assignment)
       (estimator_spec, export_outputs_dict, export_outputs_list,
        predictions_dict) = (
            tpu_capture.get())
