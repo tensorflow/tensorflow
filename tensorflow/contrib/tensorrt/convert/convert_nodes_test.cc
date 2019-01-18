@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
@@ -1123,7 +1124,7 @@ class OpConverterTest : public ::testing::Test {
 };
 
 template <typename T>
-void CopyTensorElements(const Tensor& tensor, proto2::RepeatedField<T>* out) {
+void CopyTensorElements(const Tensor& tensor, protobuf::RepeatedField<T>* out) {
   out->Clear();
   if (tensor.NumElements() == 0) return;
 
