@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#ifdef GOOGLE_CUDA
+
 #include "tensorflow/core/kernels/collective_nccl_reducer.h"
 
 #include <algorithm>
@@ -33,8 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
-
-#ifdef GOOGLE_CUDA
 
 namespace tensorflow {
 static constexpr int kStepId = 10;
