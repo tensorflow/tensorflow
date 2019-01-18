@@ -361,11 +361,52 @@ class LoadTest(test.TestCase):
     root.bias = bias
     root.g = g
     imported = self.cycle(root)
-    with backprop.GradientTape(watch_accessed_variables=True) as t:
+    with backprop.GradientTape() as t:
       x = constant_op.constant([3.5])
       loss = imported.g(x)
       grad = t.gradient(loss, [imported.weight, imported.bias])
       self.assertAllClose(grad, [3.5, 1.0])
+
+  def test_nested_backprop(self):
+    weight = variables.Variable(1., trainable=True)
+    bias = variables.Variable(0., trainable=True)
+
+    # Note: this function gets called from other function defs via a
+    # "PartitionedCall" op node.
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def mul(x, y):
+      return x * y
+
+    # Note: this function gets called from other function defs via a
+    # "StatefulPartitionedCall" op node.
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def f(x):
+      return mul(weight.read_value(), x)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def g(x):
+      return f(x) + bias,
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def h(x):
+      return g(x) + bias,
+
+    root = tracking.AutoCheckpointable()
+    root.weight = weight
+    root.bias = bias
+    root.g = h
+
+    imported = self.cycle(root)
+    with backprop.GradientTape() as t:
+      x = constant_op.constant([3.5])
+      loss = imported.g(x)
+    grad = t.gradient(loss, [imported.weight, imported.bias])
+    self.assertAllClose(grad, [3.5, 2.0])
 
   def test_callable(self):
     class M1(tracking.AutoCheckpointable):
