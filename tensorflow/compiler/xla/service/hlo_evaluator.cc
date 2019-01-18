@@ -18,9 +18,9 @@ limitations under the License.
 #include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <iterator>
 #include <string>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -1327,141 +1327,51 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   return Status::OK();
 }
 
-// Key-value sort is a special snowflake: it's templated on two different
-// element types, one for the keys, and one for the values. Jump through some
-// hoops to make this work.
 namespace {
-template <typename KeyType, typename ValueType>
-StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
-                                       const Literal& keys_literal,
-                                       const Literal& values_literal) {
-  auto rank = keys_literal.shape().rank();
-  TF_RET_CHECK(
-      ShapeUtil::SameDimensions(keys_literal.shape(), values_literal.shape()))
-      << "Sort keys and values must have the same dimensions";
-  TF_RET_CHECK(sort->operand_count() >= 2) << "Expected key-value sort";
-  // We need to sort an array of keys and an array of values, where the
-  // sorted order of the values is determined by the keys. The simplest(?)
-  // way to do this is to go to an array-of-pairs representation, sort the
-  // array using the keys, and then go back to pair-of-arrays.
-  VLOG(3) << "HandleSort keys_literal: " << keys_literal.ToString();
-  VLOG(3) << "HandleSort values_literal: " << values_literal.ToString();
-
-  if (rank == 0) {
-    // Nothing to sort.
-    return LiteralUtil::MakeTuple({&keys_literal, &values_literal});
-  }
-
-  Literal keys_result_literal(keys_literal.shape());
-  Literal values_result_literal(values_literal.shape());
-  std::vector<int64> zero_base(rank, 0);
-  std::vector<int64> increment(rank, 1);
-  int64 sort_dim = sort->dimensions(0);
-  int64 sort_dim_elements = keys_literal.shape().dimensions(sort_dim);
-  increment[sort_dim] = sort_dim_elements;
-  // Iterate through each dimension except 'sort_dim'.
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-      keys_literal.shape(), zero_base,
-      AsInt64Slice(keys_literal.shape().dimensions()), increment,
-      [&](absl::Span<const int64> indices) -> StatusOr<bool> {
-        // Extract a slice from the keys and values literals that correspond to
-        // exactly the row in dimension 'sort_dim'.
-        std::vector<int64> limit_indices(indices.begin(), indices.end());
-        absl::c_for_each(limit_indices, [](int64& index) { ++index; });
-        limit_indices[sort_dim] = sort_dim_elements;
-        TF_ASSIGN_OR_RETURN(auto keys_to_sort,
-                            keys_literal.Slice(indices, limit_indices)
-                                .Reshape({sort_dim_elements}));
-        const auto& keys_data = keys_to_sort.data<KeyType>();
-        TF_ASSIGN_OR_RETURN(auto values_to_sort,
-                            values_literal.Slice(indices, limit_indices)
-                                .Reshape({sort_dim_elements}));
-        const auto& values_data = values_to_sort.data<ValueType>();
-        using kv_pair = std::pair<KeyType, ValueType>;
-        std::vector<kv_pair> key_value_vector;
-        key_value_vector.reserve(keys_data.size());
-        for (int i = 0; i < keys_data.size(); ++i) {
-          key_value_vector.push_back(
-              std::make_pair(keys_data[i], values_data[i]));
-        }
-        std::stable_sort(key_value_vector.begin(), key_value_vector.end(),
-                         [](const kv_pair& a, const kv_pair& b) {
-                           return SafeLess<KeyType>(a.first, b.first);
-                         });
-        std::vector<KeyType> result_keys;
-        // We use a InlinedVector here because we need to convert it to an
-        // absl::Span later, and this would not work with std::vector<bool>.
-        absl::InlinedVector<ValueType, 10> result_values;
-        for (const auto& key_value : key_value_vector) {
-          result_keys.push_back(key_value.first);
-          result_values.push_back(key_value.second);
-        }
-        Literal sorted_keys(ShapeUtil::MakeShape(
-            keys_literal.shape().element_type(), {sort_dim_elements}));
-        sorted_keys.PopulateR1(absl::Span<const KeyType>(result_keys));
-        Literal sorted_values(ShapeUtil::MakeShape(
-            values_literal.shape().element_type(), {sort_dim_elements}));
-        sorted_values.PopulateR1(absl::Span<const ValueType>(result_values));
-        std::vector<int64> slice_dimensions(rank, 1);
-        slice_dimensions[sort_dim] = sort_dim_elements;
-        std::vector<int64> start_indices(rank, 0);
-        TF_ASSIGN_OR_RETURN(auto sorted_keys_reshaped,
-                            sorted_keys.Reshape(slice_dimensions));
-        TF_RETURN_IF_ERROR(keys_result_literal.CopySliceFrom(
-            sorted_keys_reshaped, start_indices, indices, slice_dimensions));
-        TF_ASSIGN_OR_RETURN(auto sorted_values_reshaped,
-                            sorted_values.Reshape(slice_dimensions));
-        TF_RETURN_IF_ERROR(values_result_literal.CopySliceFrom(
-            sorted_values_reshaped, start_indices, indices, slice_dimensions));
-        return true;
-      }));
-
-  Literal result_tuple;
-  result_tuple =
-      LiteralUtil::MakeTuple({&keys_result_literal, &values_result_literal});
-  VLOG(3) << "HandleSort result_tuple: " << result_tuple.ToString();
-  return std::move(result_tuple);
-}
-
-template <typename KeyType>
-StatusOr<Literal> EvaluateSortCurried(HloInstruction* sort,
-                                      const Literal& keys_literal,
-                                      const Literal& values_literal) {
-  switch (values_literal.shape().element_type()) {
-    case PRED:
-      return EvaluateSortInternal<KeyType, bool>(sort, keys_literal,
-                                                 values_literal);
-    case F32:
-      return EvaluateSortInternal<KeyType, float>(sort, keys_literal,
-                                                  values_literal);
-    case U32:
-      return EvaluateSortInternal<KeyType, uint32>(sort, keys_literal,
-                                                   values_literal);
-    case S32:
-      return EvaluateSortInternal<KeyType, int32>(sort, keys_literal,
-                                                  values_literal);
-    case BF16:
-      return EvaluateSortInternal<KeyType, bfloat16>(sort, keys_literal,
-                                                     values_literal);
+StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
+                                            absl::Span<int64 const> indices) {
+  PrimitiveType type = from.shape().element_type();
+  switch (type) {
+    case PRED: {
+      // We use a InlinedVector here because we need to convert it to an
+      // absl::Span later, and this would not work with std::vector<bool>.
+      absl::InlinedVector<bool, 10> values;
+      for (int64 index : indices) {
+        values.push_back(from.Get<bool>({index}));
+      }
+      return LiteralUtil::CreateR1<bool>(values);
+    }
+    case F32: {
+      std::vector<float> values;
+      for (int64 index : indices) {
+        values.push_back(from.Get<float>({index}));
+      }
+      return LiteralUtil::CreateR1<float>(values);
+    }
+    case U32: {
+      std::vector<uint32> values;
+      for (int64 index : indices) {
+        values.push_back(from.Get<uint32>({index}));
+      }
+      return LiteralUtil::CreateR1<uint32>(values);
+    }
+    case S32: {
+      std::vector<int32> values;
+      for (int64 index : indices) {
+        values.push_back(from.Get<int32>({index}));
+      }
+      return LiteralUtil::CreateR1<int32>(values);
+    }
+    case BF16: {
+      std::vector<bfloat16> values;
+      for (int64 index : indices) {
+        values.push_back(from.Get<bfloat16>({index}));
+      }
+      return LiteralUtil::CreateR1<bfloat16>(values);
+    }
     default:
-      return InvalidArgument("Unsupported type for Sort");
-  }
-}
-
-StatusOr<Literal> EvaluateSort(HloInstruction* sort,
-                               const Literal& keys_literal,
-                               const Literal& values_literal) {
-  switch (sort->operand(0)->shape().element_type()) {
-    case F32:
-      return EvaluateSortCurried<float>(sort, keys_literal, values_literal);
-    case U32:
-      return EvaluateSortCurried<uint32>(sort, keys_literal, values_literal);
-    case S32:
-      return EvaluateSortCurried<int32>(sort, keys_literal, values_literal);
-    case BF16:
-      return EvaluateSortCurried<bfloat16>(sort, keys_literal, values_literal);
-    default:
-      return InvalidArgument("Unsupported type for Sort");
+      return InvalidArgument("Unsupported type for Sort: %s",
+                             PrimitiveType_Name(type));
   }
 }
 }  // namespace
@@ -1470,23 +1380,113 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   if (!sort->shape().IsTuple()) {
     return DefaultAction(sort);
   } else {
-    // This is a really stupid work-around for the fact it's hard to support a
-    // multi-value sort directly, due to the fact we need to template the
-    // evaluation function on all of the value types.
-    std::vector<Literal> sort_results_backing;
-    for (int64 i = 0; i < sort->operand_count(); ++i) {
-      auto result = EvaluateSort(sort, GetEvaluatedLiteralFor(sort->operand(0)),
-                                 GetEvaluatedLiteralFor(sort->operand(i)));
-      if (!result.ok()) {
-        return result.status();
-      }
-      sort_results_backing.push_back(
-          std::move(result.ValueOrDie().DecomposeTuple()[1]));
+    TF_RET_CHECK(sort->operand_count() >= 2) << "Expected key-value sort";
+    for (int64 i = 1; i < sort->operand_count(); ++i) {
+      TF_RET_CHECK(ShapeUtil::SameDimensions(sort->operand(0)->shape(),
+                                             sort->operand(i)->shape()))
+          << "All Sort operands must have the same dimensions";
     }
-    std::vector<const Literal*> sort_results;
-    absl::c_transform(sort_results_backing, std::back_inserter(sort_results),
+
+    if (VLOG_IS_ON(3)) {
+      for (int64 i = 0; i < sort->operand_count(); ++i) {
+        VLOG(3) << "HandleSort operand " << i << " literal: "
+                << GetEvaluatedLiteralFor(sort->operand(i)).ToString();
+      }
+    }
+    Shape key_shape = sort->operand(0)->shape();
+    auto rank = key_shape.rank();
+    PrimitiveType keys_type = key_shape.element_type();
+    if (keys_type != F32 && keys_type != U32 && keys_type != S32 &&
+        keys_type != BF16) {
+      return InvalidArgument("Unsupported type for Sort: %s",
+                             PrimitiveType_Name(keys_type));
+    }
+    std::vector<Literal> result_literals;
+    result_literals.reserve(sort->operand_count());
+    for (int64 i = 0; i < sort->operand_count(); ++i) {
+      result_literals.emplace_back(sort->operand(i)->shape());
+    }
+    std::vector<int64> zero_base(rank, 0);
+    std::vector<int64> increment(rank, 1);
+    int64 sort_dim = sort->dimensions(0);
+    int64 sort_dim_elements = key_shape.dimensions(sort_dim);
+    increment[sort_dim] = sort_dim_elements;
+    // Iterate through each dimension except 'sort_dim'.
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+        key_shape, zero_base, AsInt64Slice(key_shape.dimensions()), increment,
+        [&](absl::Span<const int64> indices) -> StatusOr<bool> {
+          // Extract a slice from each operand literal that corresponds to
+          // exactly the row in dimension 'sort_dim'.
+          std::vector<int64> limit_indices(indices.begin(), indices.end());
+          absl::c_for_each(limit_indices, [](int64& index) { ++index; });
+          limit_indices[sort_dim] = sort_dim_elements;
+          std::vector<Literal> literals_to_sort;
+          literals_to_sort.reserve(sort->operand_count());
+          for (int64 i = 0; i < sort->operand_count(); ++i) {
+            TF_ASSIGN_OR_RETURN(auto literal_to_sort,
+                                GetEvaluatedLiteralFor(sort->operand(i))
+                                    .Slice(indices, limit_indices)
+                                    .Reshape({sort_dim_elements}));
+            literals_to_sort.push_back(std::move(literal_to_sort));
+          }
+          std::vector<int64> indices_to_sort(sort_dim_elements);
+          std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
+          std::stable_sort(
+              indices_to_sort.begin(), indices_to_sort.end(),
+              [keys_type, &literals_to_sort](int64 a, int64 b) {
+                switch (keys_type) {
+                  case F32: {
+                    auto key_lhs = literals_to_sort[0].Get<float>({a});
+                    auto key_rhs = literals_to_sort[0].Get<float>({b});
+                    return SafeLess(key_lhs, key_rhs);
+                  }
+                  case U32: {
+                    auto key_lhs = literals_to_sort[0].Get<uint32>({a});
+                    auto key_rhs = literals_to_sort[0].Get<uint32>({b});
+                    return SafeLess(key_lhs, key_rhs);
+                  }
+                  case S32: {
+                    auto key_lhs = literals_to_sort[0].Get<int32>({a});
+                    auto key_rhs = literals_to_sort[0].Get<int32>({b});
+                    return SafeLess(key_lhs, key_rhs);
+                  }
+                  case BF16: {
+                    auto key_lhs = literals_to_sort[0].Get<bfloat16>({a});
+                    auto key_rhs = literals_to_sort[0].Get<bfloat16>({b});
+                    return SafeLess(key_lhs, key_rhs);
+                  }
+                  default:
+                    // We should never reach here, because we checked earlier
+                    // that 'key_type' is one of the cases above.
+                    LOG(FATAL) << "Invalid key type in Sort: %s",
+                        PrimitiveType_Name(keys_type);
+                    return false;
+                }
+              });
+          std::vector<int64> slice_dimensions(rank, 1);
+          slice_dimensions[sort_dim] = sort_dim_elements;
+          std::vector<int64> start_indices(rank, 0);
+          for (int64 i = 0; i < sort->operand_count(); ++i) {
+            TF_ASSIGN_OR_RETURN(Literal sorted_literal,
+                                ExtractFromIndexPositions(literals_to_sort[i],
+                                                          indices_to_sort));
+            TF_ASSIGN_OR_RETURN(auto sorted_literal_reshaped,
+                                sorted_literal.Reshape(slice_dimensions));
+            TF_RETURN_IF_ERROR(result_literals[i].CopySliceFrom(
+                sorted_literal_reshaped, start_indices, indices,
+                slice_dimensions));
+          }
+          return true;
+        }));
+
+    std::vector<const Literal*> literal_ptrs;
+    absl::c_transform(result_literals, std::back_inserter(literal_ptrs),
                       [](const Literal& literal) { return &literal; });
-    evaluated_[sort] = LiteralUtil::MakeTuple(sort_results);
+
+    Literal result_tuple = LiteralUtil::MakeTuple(literal_ptrs);
+    VLOG(3) << "HandleSort result_tuple: " << result_tuple.ToString();
+
+    evaluated_[sort] = std::move(result_tuple);
     return Status::OK();
   }
 }
