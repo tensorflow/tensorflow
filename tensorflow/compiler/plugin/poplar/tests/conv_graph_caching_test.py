@@ -270,7 +270,56 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/WeightTranspose',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/DeltasPartialTranspose',
-            'GradientDescent/update_vs/conv2/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo']
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo']
+
+  def testConvolutionsMatchFwdBwdWuVariableLR(self):
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+      lr = array_ops.placeholder(np.float32, shape=[])
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 name='conv1')
+        y = convolutional.conv2d(y, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 name='conv2')
+        y = convolutional.conv2d(y, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 name='conv3')
+
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(lr)
+      train = optimizer.minimize(loss)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      sess.run([train,loss], {x: np.zeros([1,4,4,2]), lr: 0.1})
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      # Fwd and BackpropInput should be shared
+      # Weight transpose for BackpropInput should be present
+      # Both BackpropFilter should be shared
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
+            'Copy_',
+            'vs/conv1/Conv2D/convolution.*/Conv_1x1',
+            'Sum/reduce.*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
+            'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/WeightTranspose',
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4',
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/DeltasPartialTranspose',
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

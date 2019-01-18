@@ -430,9 +430,6 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
-  const HloInstruction* root =
-      inst->fused_instructions_computation()->root_instruction();
-
   poplar::program::Sequence prog;
 
   // Find the weights tensor
@@ -454,9 +451,9 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, 1, 2));
 
-  TF_CHECK_OK(conv_graph_caching::DoCachedConvolutionWithScaledAdd(
-      graph, res, w, in, deltas, params, GetShardingDeviceId(inst), prog, root,
-      inst));
+  TF_CHECK_OK(conv_graph_caching::DoCachedWeightUpdateConvolution(
+      graph, res, w, in, deltas, params, GetShardingDeviceId(inst), prog, inst,
+      tensor_map));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, w));
 

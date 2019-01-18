@@ -111,6 +111,19 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
 
+// Performs A = A z B * c (where z is + or -, depending on the op_type)
+Status ScaledInplaceConstantOrTensor(poplar::Graph& graph, poplar::Tensor& lhs,
+                                     poplar::Tensor& rhs, poplar::Tensor& scale,
+                                     poplar::program::Sequence& prog,
+                                     const HloOpcode op_type,
+                                     const std::string& name);
+
+Status ScaledInplaceConstantOrTensor(poplar::Graph& graph, poplar::Tensor& lhs,
+                                     poplar::Tensor& rhs, const double scale,
+                                     poplar::program::Sequence& prog,
+                                     const HloOpcode op_type,
+                                     const std::string& name);
+
 StatusOr<poplar::program::Program> CreateScaledInplace(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
