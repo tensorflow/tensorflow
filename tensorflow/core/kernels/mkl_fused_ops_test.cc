@@ -176,14 +176,14 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     int num_args = static_cast<int>(args.size());
 
     TF_EXPECT_OK(NodeDefBuilder("fused_conv_op", "_MklFusedConv2D")
-                     .Attr("T", dtype)
                      .Input(FakeInput(dtype))
                      .Input(FakeInput(dtype))
-                     .Attr("num_args", num_args)
                      .Input(FakeInput(num_args, dtype))
                      .Input(FakeInput(DT_UINT8))
                      .Input(FakeInput(DT_UINT8))
                      .Input(FakeInput(num_args, DT_UINT8))
+                     .Attr("T", dtype)
+                     .Attr("num_args", num_args)
                      .Attr("strides", {1, stride, stride, 1})
                      .Attr("padding", "SAME")
                      .Attr("fused_ops", fused_ops)
@@ -534,16 +534,16 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
                    padding_list_[3], 0, 0});
 
     TF_EXPECT_OK(NodeDefBuilder("pad_fused_conv_op", "_MklPadWithFusedConv2D")
-                     .Attr("T", dtype)
                      .Input(FakeInput(dtype))
                      .Input(FakeInput(dtype))
-                     .Attr("num_args", num_args)
                      .Input(FakeInput(num_args, dtype))
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_UINT8))
                      .Input(FakeInput(DT_UINT8))
                      .Input(FakeInput(num_args, DT_UINT8))
                      .Input(FakeInput(DT_UINT8))
+                     .Attr("T", dtype)
+                     .Attr("num_args", num_args)
                      .Attr("strides", {1, stride, stride, 1})
                      .Attr("padding", "VALID")
                      .Attr("fused_ops", fused_ops)
@@ -558,7 +558,7 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
       AddInputFromArray<T>(arg.shape(), arg.flat<T>());
     AddInputFromArray<int32>(padding.shape(), padding.flat<int32>());
     // Add MKL meta input for input, filter, pad and agrs.
-    for (int i = 0; i < args.size() + 3; i++)
+    for (int i = 0; i < args.size() + 3; ++i)
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     TF_ASSERT_OK(RunOpKernel());
 
