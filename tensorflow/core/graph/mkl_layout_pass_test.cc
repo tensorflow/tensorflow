@@ -1542,7 +1542,7 @@ TEST_F(MklLayoutPassTest, Output_ControlEdge_PadWithFusedConv2D_Positive) {
 // Input node pointing to both Pad and _FusedConv2D
 // Output of both Pad and _FusedConv2D feeds one node (G as Output2)
 // A = input(as image), B = input(as paddings), C = Pad(A, B)
-// E = input(as bias), F = _FusedConv2D(C, A, E), G=Output(C, F)
+// E = input(as bias), F = _FusedConv2D(C, A, E), G = Output(C, F)
 // After layout pass - No merging, since Pad and _FusedConv2D both
 // feed to the same node (Z)
 TEST_F(MklLayoutPassTest, NodeMerge_PadWithFusedConv2D_Common_InOutput) {
