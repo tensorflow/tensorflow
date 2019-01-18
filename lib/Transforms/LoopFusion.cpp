@@ -724,6 +724,7 @@ static Value *createPrivateMemRef(ForInst *forInst,
   // Replace all users of 'oldMemRef' with 'newMemRef'.
   assert(replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap, {},
                                   &*forInst->getBody()->begin()));
+  (void)indexRemap;
   return newMemRef;
 }
 
