@@ -129,7 +129,7 @@ def _tpl(repository_ctx, tpl, substitutions):
 
 def _create_dummy_repository(repository_ctx):
   """Create a dummy TensorRT repository."""
-  _tpl(repository_ctx, "build_defs.bzl", {"%{if_tensorrt}": "if_false"})
+  _tpl(repository_ctx, "build_defs.bzl", {"%{tensorrt_is_configured}": "False"})
 
   _tpl(repository_ctx, "BUILD", {
       "%{tensorrt_genrules}": "",
@@ -141,10 +141,11 @@ def _tensorrt_configure_impl(repository_ctx):
   """Implementation of the tensorrt_configure repository rule."""
   if _TF_TENSORRT_CONFIG_REPO in repository_ctx.os.environ:
     # Forward to the pre-configured remote repository.
-    remote_config_repo = repository_ctx.os.environ[_TF_TENSORRT_CONFIG_REPO]
-    repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
+    repository_ctx.template("BUILD", Label("//third_party/tensorrt:remote.BUILD.tpl"), {
+        "%{target}": repository_ctx.os.environ[_TF_TENSORRT_CONFIG_REPO],
+    })
     # Set up config file.
-    _tpl(repository_ctx, "build_defs.bzl", {"%{if_tensorrt}": "if_true"})
+    _tpl(repository_ctx, "build_defs.bzl", {"%{tensorrt_is_configured}": "True"})
     return
 
   if _TENSORRT_INSTALL_PATH not in repository_ctx.os.environ:
@@ -193,7 +194,7 @@ def _tensorrt_configure_impl(repository_ctx):
   ))
 
   # Set up config file.
-  _tpl(repository_ctx, "build_defs.bzl", {"%{if_tensorrt}": "if_true"})
+  _tpl(repository_ctx, "build_defs.bzl", {"%{tensorrt_is_configured}": "True"})
 
   # Set up BUILD file.
   _tpl(repository_ctx, "BUILD", {
