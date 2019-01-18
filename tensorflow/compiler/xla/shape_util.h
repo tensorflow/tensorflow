@@ -675,11 +675,9 @@ class ShapeUtil {
 
   template <typename FnType>
   static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
-    ForEachIndexWithStatus(shape,
-                           [&](absl::Span<const int64> indices) {
-                             return StatusOr<bool>(visitor_function(indices));
-                           })
-        .IgnoreError();
+    ForEachIndexWithStatus(shape, [&](absl::Span<const int64> indices) {
+      return StatusOr<bool>(visitor_function(indices));
+    }).IgnoreError();
   }
 
   // A parallel version of ForEachIndex(WithStatus). This can only be used if

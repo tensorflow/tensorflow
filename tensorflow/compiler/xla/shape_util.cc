@@ -85,77 +85,6 @@ bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
 }
 
 namespace {
-
-// Recursive helper for comparing the equality of two shapes. Returns true if
-// the shapes are the same. If compare_layouts is true, then layouts must also
-// match.
-bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
-                   bool ignore_fp_precision) {
-  if ((ignore_fp_precision &&
-       !ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) ||
-      (!ignore_fp_precision && !ShapeUtil::SameElementType(lhs, rhs))) {
-    VLOG(3) << "CompareShapes: lhs element type != rhs element type";
-    return false;
-  }
-
-  if (lhs.IsTuple()) {
-    return absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                         [=](const Shape& l, const Shape& r) {
-                           return CompareShapes(l, r, compare_layouts,
-                                                ignore_fp_precision);
-                         });
-  } else if (!lhs.IsArray()) {
-    // Non-tuple, non-array tupes such as opaque and token types are trivially
-    // the same.
-    return true;
-  }
-
-  if (compare_layouts) {
-    if (lhs.layout().format() != rhs.layout().format()) {
-      VLOG(3) << "CompareShapes: lhs layout format != rhs layout format";
-      return false;
-    }
-    if (LayoutUtil::IsDenseArray(lhs)) {
-      if (!absl::c_equal(LayoutUtil::MinorToMajor(lhs),
-                         LayoutUtil::MinorToMajor(rhs))) {
-        VLOG(3) << "CompareShapes: lhs layout != rhs layout";
-        return false;
-      }
-
-      const auto& lhs_tiles = lhs.layout().tiles();
-      const auto& rhs_tiles = rhs.layout().tiles();
-      if (lhs_tiles.size() != rhs_tiles.size()) {
-        return false;
-      }
-      for (int64 i = 0; i < lhs_tiles.size(); i++) {
-        if (!absl::c_equal(lhs_tiles[i].dimensions(),
-                           rhs_tiles[i].dimensions())) {
-          return false;
-        }
-      }
-
-      if (lhs.layout().element_size_in_bits() !=
-          rhs.layout().element_size_in_bits()) {
-        return false;
-      }
-    }
-  }
-
-  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
-    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
-    return false;
-  }
-
-  for (int i = 0; i < lhs.rank(); ++i) {
-    if (lhs.is_dynamic_dimension(i) != rhs.is_dynamic_dimension(i)) {
-      VLOG(3)
-          << "CompareShapes: lhs and rhs have different dynamic dimensions.";
-      return false;
-    }
-  }
-  return true;
-}
-
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.
 StatusOr<Shape> MakeShapeWithLayoutInternal(
@@ -182,12 +111,11 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
-
 }  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
-  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true,
-                             /*ignore_fp_precision=*/false);
+  bool equal = Shape::Equal()(lhs, rhs);
+
   if (!equal && VLOG_IS_ON(3)) {
     VLOG(3) << "ShapeUtil::Equal differ: lhs = " << lhs.ShortDebugString()
             << ", rhs = " << rhs.ShortDebugString();
@@ -198,8 +126,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 
 /* static */ bool ShapeUtil::EqualIgnoringFpPrecision(const Shape& lhs,
                                                       const Shape& rhs) {
-  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true,
-                             /*ignore_fp_precision=*/true);
+  bool equal = Shape::Equal().IgnoreFpPrecision()(lhs, rhs);
   if (!equal && VLOG_IS_ON(3)) {
     VLOG(3) << "ShapeUtil::EqualIgnoringFpPrecision differ: lhs = "
             << lhs.ShortDebugString() << ", rhs = " << rhs.ShortDebugString();
@@ -563,37 +490,17 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  return CompareShapes(lhs, rhs, /*compare_layouts=*/false,
-                       /*ignore_fp_precision=*/false);
+  return Shape::Equal().IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
                                                            const Shape& rhs) {
-  if (lhs.IsArray()) {
-    return rhs.IsArray() && SameDimensions(lhs, rhs);
-  } else if (lhs.element_type() == TUPLE) {
-    return rhs.element_type() == TUPLE &&
-           absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                         CompatibleIgnoringElementType);
-  } else {
-    // Opaque, token, etc types are vacuously compatible.
-    return lhs.element_type() == rhs.element_type();
-  }
+  return Shape::Equal().IgnoreElementType().IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringFpPrecision(const Shape& lhs,
                                                            const Shape& rhs) {
-  if (lhs.IsArray()) {
-    return rhs.IsArray() && SameElementTypeIgnoringFpPrecision(lhs, rhs) &&
-           CompatibleIgnoringElementType(lhs, rhs);
-  } else if (lhs.element_type() == TUPLE) {
-    return rhs.element_type() == TUPLE &&
-           absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                         CompatibleIgnoringFpPrecision);
-  } else {
-    // Opaque, token, etc types are vacuously compatible.
-    return lhs.element_type() == rhs.element_type();
-  }
+  return Shape::Equal().IgnoreFpPrecision().IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,
