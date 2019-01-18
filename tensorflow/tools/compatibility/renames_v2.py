@@ -169,6 +169,7 @@ renames = {
     'tf.distributions.Uniform': 'tf.compat.v1.distributions.Uniform',
     'tf.distributions.kl_divergence': 'tf.compat.v1.distributions.kl_divergence',
     'tf.div': 'tf.compat.v1.div',
+    'tf.dtypes.as_string': 'tf.strings.as_string',
     'tf.enable_eager_execution': 'tf.compat.v1.enable_eager_execution',
     'tf.enable_resource_variables': 'tf.compat.v1.enable_resource_variables',
     'tf.enable_v2_batch_normalization': 'tf.compat.v1.enable_v2_batch_normalization',
