@@ -671,7 +671,13 @@ cc_library(
             [
                 "rocm/*.cc",
             ],
-            exclude = ["rocm/rocm_platform_id.cc"],
+        ),
+    ),
+    hdrs = if_rocm_is_configured(
+        glob(
+            [
+                "rocm/*.h",
+            ],
         ),
     ),
     linkopts = select({
@@ -680,8 +686,12 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = [
+        ":scratch_allocator",
         ":stream_executor",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
         "@local_config_rocm//rocm:rocm_headers",
     ] + if_rocm_is_configured([
         "//tensorflow/core:rocm",

@@ -51,6 +51,7 @@ tf_gpu_library(
         "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
         "//tensorflow:using_cuda_clang_with_dynamic_build": [],
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
+        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor:rocm_platform"],
         "//conditions:default": [],
     }),
 )

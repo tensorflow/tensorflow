@@ -1336,45 +1336,6 @@ class DnnSupport {
       const BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data) = 0;
 
-  virtual bool PrepareForConvolutionBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<float>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<float>* backward_input_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::AlgorithmDesc* algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory) = 0;
-
-  virtual bool PrepareForConvolutionBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<double>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<double>* backward_input_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::AlgorithmDesc* algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory) = 0;
-
-  virtual bool PrepareForConvolutionBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<Eigen::half>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<Eigen::half>* backward_input_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::AlgorithmDesc* algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory) = 0;
-
   // Enqueues a single-precision backward convolution (for data) operation onto
   // the stream.
   //
