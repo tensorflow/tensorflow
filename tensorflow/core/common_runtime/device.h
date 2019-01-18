@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -122,9 +123,21 @@ class Device : public DeviceBase {
   // version.
   virtual void Sync(const DoneCallback& done);
 
-  // Override this to return true for devices that require a Sync() call before
-  // session completion.
-  virtual bool RequiresSyncOnCompletion() const { return false; }
+  // On session completion, the executor may call Device::Sync() depending on
+  // flag settings. Override this to return false for devices that don't allow
+  // such calls. Instead, these devices must use other mechanisms (such as
+  // num_deferred_ops) to ensure the device has finished processing necessary
+  // work at session completion.
+  //
+  // Devices that override this function must also implement CurrentStatus.
+  virtual bool AllowsSyncOnCompletion() const { return true; }
+
+  // This is used in conjunction with AllowsSyncOnCompletion to allow the
+  // executor to get execution result status at session completion.
+  virtual Status CurrentStatus() {
+    return errors::Unimplemented(
+        "CurrentStatus is not supported on this device.");
+  }
 
   // Optionally modify the device's GraphDef before execution.
   //

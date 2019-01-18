@@ -83,7 +83,6 @@ class StructureCoder(object):
     """
     return self._map_structure(nested_structure, self._get_encoders())
 
-
   def can_encode(self, nested_structure):
     """Determines whether a nested structure can be encoded into a proto.
 
@@ -361,7 +360,10 @@ class _TensorShapeCodec(object):
   """Codec for `TensorShape`."""
 
   def can_encode(self, pyobj):
-    return isinstance(pyobj, tensor_shape.TensorShape)
+    return isinstance(pyobj, (tensor_shape.TensorShape,
+                              # TODO(b/121255889): Should not need these.
+                              tensor_shape.TensorShapeV1,
+                              tensor_shape.TensorShapeV2))
 
   def do_encode(self, tensor_shape_value, encode_fn):
     del encode_fn

@@ -181,6 +181,15 @@ class AdadeltaOptimizerTest(test.TestCase):
     self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
+  def testConstructAdadeltaWithEpsilonValues(self):
+    opt = adadelta.Adadelta(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = adadelta.Adadelta(epsilon=1e-8)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-8)
+
 
 if __name__ == "__main__":
   test.main()

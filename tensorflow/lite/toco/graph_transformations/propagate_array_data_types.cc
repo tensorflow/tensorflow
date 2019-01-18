@@ -266,6 +266,14 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
       model->GetArray(op->outputs[1]).data_type = unique_op->idx_out_type;
       break;
     }
+    case OperatorType::kLstmCell: {
+      // It's tricky to propagate data types through a LstmCell, as that has
+      // multiple inputs and outputs, and there are quantized cases with
+      // mixed (8bit vs 16bit) cases. Fortunately, that should never be needed,
+      // as the data formats, such as TFLITE, that have LstmCell nodes, also
+      // have data type fields for all their arrays.
+      break;
+    }
     default: {
       // These operators produce outputs with the same type as their 1st input
       CHECK_GT(op->inputs.size(), 0);

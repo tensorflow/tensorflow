@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -134,7 +136,8 @@ void MutableGraphView::AddAndDedupFanouts(NodeDef* node) {
                               controlling_fanins.contains(input_node_name)));
     if (!gtl::InsertIfNotPresent(&fanins, input_node_name) &&
         can_dedup_control) {
-      node->mutable_input()->SwapElements(pos, last_pos--);
+      node->mutable_input()->SwapElements(pos, last_pos);
+      --last_pos;
     } else {
       OutputPort output(nodes()[input_node_name], tensor_id.index());
 
@@ -506,10 +509,11 @@ bool MutableGraphView::RemoveRegularFaninInternal(NodeDef* node,
       auto fanouts_set = remove_input(fanin_port, i, /*update_max_port=*/false);
       fanouts_set->insert({node, curr_pos});
       // Shift inputs to be retained.
-      mutable_inputs->SwapElements(i, curr_pos++);
+      mutable_inputs->SwapElements(i, curr_pos);
+      ++curr_pos;
     } else {
       // Skip inputs to be retained until first modification.
-      curr_pos++;
+      ++curr_pos;
     }
   }
 
@@ -717,15 +721,103 @@ Status MutableGraphView::UpdateFanin(absl::string_view node_name,
   return Status::OK();
 }
 
-void MutableGraphView::DeleteNodes(const std::set<string>& nodes_to_delete) {
-  // TODO(lyandy): Check if nodes have fanouts before deleting and return
-  // Status.
-  for (const string& node_name_to_delete : nodes_to_delete)
-    RemoveFaninsInternal(nodes().at(node_name_to_delete),
-                         /*keep_controlling_fanins=*/false);
-  for (const string& node_name_to_delete : nodes_to_delete)
+Status MutableGraphView::CheckNodesCanBeDeleted(
+    const absl::flat_hash_set<string>& nodes_to_delete) {
+  std::vector<string> missing_nodes;
+  std::vector<string> nodes_with_fanouts;
+  for (const string& node_name_to_delete : nodes_to_delete) {
+    NodeDef* node = GetNode(node_name_to_delete);
+    if (node == nullptr) {
+      // Can't delete missing node.
+      missing_nodes.push_back(node_name_to_delete);
+      continue;
+    }
+    const int max_port = gtl::FindWithDefault(max_regular_output_port(), node,
+                                              Graph::kControlSlot);
+    for (int i = Graph::kControlSlot; i <= max_port; ++i) {
+      auto it = fanouts().find({node, i});
+      bool has_retained_fanout = false;
+      if (it != fanouts().end()) {
+        for (const auto& fanout : it->second) {
+          // Check if fanouts are of nodes to be deleted, and if so, they can be
+          // ignored, as they will be removed also.
+          if (!nodes_to_delete.contains(fanout.node->name())) {
+            // Removing node will leave graph in an invalid state.
+            has_retained_fanout = true;
+            break;
+          }
+        }
+      }
+      if (has_retained_fanout) {
+        nodes_with_fanouts.push_back(node_name_to_delete);
+        break;
+      }
+    }
+  }
+
+  // Error message can get quite long, so we only show the first 5 node names.
+  auto sort_and_sample = [](std::vector<string>* s) {
+    constexpr int kMaxNodeNames = 5;
+    std::sort(s->begin(), s->end());
+    if (s->size() > kMaxNodeNames) {
+      return absl::StrCat(
+          absl::StrJoin(s->begin(), s->begin() + kMaxNodeNames, ", "), ", ...");
+    }
+    return absl::StrJoin(*s, ", ");
+  };
+
+  if (!missing_nodes.empty()) {
+    VLOG(1) << absl::Substitute("Attempting to delete missing node(s) [$0]",
+                                sort_and_sample(&missing_nodes));
+  }
+  if (!nodes_with_fanouts.empty()) {
+    std::vector<string> input_node_names(nodes_to_delete.begin(),
+                                         nodes_to_delete.end());
+    return errors::Internal(absl::Substitute(
+        "Can't delete node(s) with retained fanout(s) [$0] from node(s) [$1].",
+        sort_and_sample(&nodes_with_fanouts),
+        sort_and_sample(&input_node_names)));
+  }
+
+  return Status::OK();
+}
+
+Status MutableGraphView::DeleteNodes(
+    const absl::flat_hash_set<string>& nodes_to_delete) {
+  TF_RETURN_IF_ERROR(CheckNodesCanBeDeleted(nodes_to_delete));
+
+  // Find nodes in internal state and delete.
+  for (const string& node_name_to_delete : nodes_to_delete) {
+    NodeDef* node = GetNode(node_name_to_delete);
+    if (node != nullptr) {
+      RemoveFaninsInternal(node, /*keep_controlling_fanins=*/false);
+      RemoveFanoutsInternal(node);
+    }
+  }
+  for (const string& node_name_to_delete : nodes_to_delete) {
     nodes().erase(node_name_to_delete);
-  EraseNodesFromGraph(nodes_to_delete, graph());
+  }
+
+  // Find nodes in graph and delete by partitioning into nodes to retain and
+  // nodes to delete based on input set of nodes to delete by name.
+  // TODO(lyandy): Use a node name->idx hashmap if this is a performance
+  // bottleneck.
+  int pos = 0;
+  const int last_idx = graph()->node_size() - 1;
+  int last_pos = last_idx;
+  while (pos <= last_pos) {
+    if (nodes_to_delete.contains(graph()->node(pos).name())) {
+      graph()->mutable_node()->SwapElements(pos, last_pos);
+      --last_pos;
+    } else {
+      ++pos;
+    }
+  }
+  if (last_pos < last_idx) {
+    graph()->mutable_node()->DeleteSubrange(last_pos + 1, last_idx - last_pos);
+  }
+
+  return Status::OK();
 }
 
 void MutableGraphView::RemoveFaninsInternal(NodeDef* deleted_node,
@@ -741,10 +833,22 @@ void MutableGraphView::RemoveFaninsInternal(NodeDef* deleted_node,
     input.node = deleted_node;
     input.port_id = IsTensorIdControlling(tensor_id) ? Graph::kControlSlot : i;
 
-    absl::flat_hash_set<InputPort>* fanouts_set = &fanouts()[fanin];
-    fanouts_set->erase(input);
-    UpdateMaxRegularOutputPortForRemovedFanin(fanin, *fanouts_set);
+    auto it = fanouts().find(fanin);
+    if (it != fanouts().end()) {
+      absl::flat_hash_set<InputPort>* fanouts_set = &it->second;
+      fanouts_set->erase(input);
+      UpdateMaxRegularOutputPortForRemovedFanin(fanin, *fanouts_set);
+    }
   }
+}
+
+void MutableGraphView::RemoveFanoutsInternal(NodeDef* deleted_node) {
+  const int max_port = gtl::FindWithDefault(max_regular_output_port(),
+                                            deleted_node, Graph::kControlSlot);
+  for (int i = Graph::kControlSlot; i <= max_port; ++i) {
+    fanouts().erase({deleted_node, i});
+  }
+  max_regular_output_port().erase(deleted_node);
 }
 
 }  // end namespace grappler

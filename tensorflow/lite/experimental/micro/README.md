@@ -509,3 +509,134 @@ Another  badly-formed  format string
 
 If not, you'll need to debug what went wrong, but hopefully with this small
 starting project it should be manageable.
+
+### Troubleshooting
+
+When we've been porting to new platforms, it's often been hard to figure out
+some of the fundamentals like linker settings and other toolchain setup flags.
+If you are having trouble, see if you can find a simple example program for your
+platform, like one that just blinks an LED. If you're able to build and run that
+successfully, then start to swap in parts of the TF Lite Micro codebase to that
+working project, taking it a step at a time and ensuring it's still working
+after every change. For example, a first step might be to paste in your
+`DebugLog()` implementation and call `DebugLog("Hello World!")` from the main
+function.
+
+Another common problem on embedded platforms is the stack size being too small.
+Mbed defaults to 4KB for the main thread's stack, which is too small for most
+models since TensorFlow Lite allocates buffers and other data structures that
+require more memory. The exact size will depend on which model you're running,
+but try increasing it if you are running into strange corruption issues that
+might be related to stack overwriting.
+
+### Optimizing for your Platform
+
+The default reference implementations in TensorFlow Lite Micro are written to be
+portable and easy to understand, not fast, so you'll want to replace performance
+critical parts of the code with versions specifically tailored to your
+architecture. The framework has been designed with this in mind, and we hope the
+combination of small modules and many tests makes it as straightforward as
+possible to swap in your own code a piece at a time, ensuring you have a working
+version at every step.
+
+### Code Module Organization
+
+We have adopted a system of small modules with platform-specific implementations
+to help with portability. Every module is just a standard `.h` header file
+containing the interface (either functions or a class), with an accompanying
+reference implementation in a `.cc` with the same name. The source file
+implements all of the code that's declared in the header. If you have a
+specialized implementation, you can create a folder in the same directory as the
+header and reference source, name it after your platform, and put your
+implementation in a `.cc` file inside that folder. We've already seen one
+example of this, where the Mbed and Bluepill versions of `DebugLog()` are inside
+[mbed](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/mbed)
+and
+[bluepill](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/bluepill)
+folders, children of the
+[same directory](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro)
+where the stdio-based
+[`debug_log.cc`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/debug_log.cc)
+reference implementation is found.
+
+The advantage of this approach is that we can automatically pick specialized
+implementations based on the current build target, without having to manually
+edit build files for every new platform. It allows incremental optimizations
+from a always-working foundation, without cluttering the reference
+implementations with a lot of variants.
+
+To see why we're doing this, it's worth looking at the alternatives. TensorFlow
+Lite has traditionally used preprocessor macros to separate out some
+platform-specific code within particular files, for example:
+
+```
+#ifndef USE_NEON
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
+#define USE_NEON
+#include <arm_neon.h>
+#endif
+```
+
+There’s also a tradition in gemmlowp of using file suffixes to indicate
+platform-specific versions of particular headers, with kernel_neon.h being
+included by kernel.h if `USE_NEON` is defined. As a third variation, kernels are
+separated out using a directory structure, with
+tensorflow/lite/kernels/internal/reference containing portable implementations,
+and tensorflow/lite/kernels/internal/optimized holding versions optimized for
+NEON on Arm platforms.
+
+These approaches are hard to extend to multiple platforms. Using macros means
+that platform-specific code is scattered throughout files in a hard-to-find way,
+and can make following the control flow difficult since you need to understand
+the macro state to trace it. For example, I temporarily introduced a bug that
+disabled NEON optimizations for some kernels when I removed
+tensorflow/lite/kernels/internal/common.h from their includes, without realizing
+it was where USE_NEON was defined!
+
+It’s also tough to port to different build systems, since figuring out the right
+combination of macros to use can be hard, especially since some of them are
+automatically defined by the compiler, and others are only set by build scripts,
+often across multiple rules.
+
+The approach we are using extends the file system approach that we use for
+kernel implementations, but with some specific conventions:
+
+-   For each module in TensorFlow Lite, there will be a parent directory that
+    contains tests, interface headers used by other modules, and portable
+    implementations of each part.
+-   Portable means that the code doesn’t include code from any libraries except
+    flatbuffers, or other TF Lite modules. You can include a limited subset of
+    standard C or C++ headers, but you can’t use any functions that require
+    linking against those libraries, including fprintf, etc. You can link
+    against functions in the standard math library, in <math.h>.
+-   Specialized implementations are held inside subfolders of the parent
+    directory, named after the platform or library that they depend on. So, for
+    example if you had my_module/foo.cc, a version that used RISC-V extensions
+    would live in my_module/riscv/foo.cc. If you had a version that used the
+    CMSIS library, it should be in my_module/cmsis/foo.cc.
+-   These specialized implementations should completely replace the top-level
+    implementations. If this involves too much code duplication, the top-level
+    implementation should be split into smaller files, so only the
+    platform-specific code needs to be replaced.
+-   There is a convention about how build systems pick the right implementation
+    file. There will be an ordered list of 'tags' defining the preferred
+    implementations, and to generate the right list of source files, each module
+    will be examined in turn. If a subfolder with a tag’s name contains a .cc
+    file with the same base name as one in the parent folder, then it will
+    replace the parent folder’s version in the list of build files. If there are
+    multiple subfolders with matching tags and file names, then the tag that’s
+    latest in the ordered list will be chosen. This allows us to express “I’d
+    like generically-optimized fixed point if it’s available, but I’d prefer
+    something using the CMSIS library” using the list 'fixed_point cmsis'. These
+    tags are passed in as `TAGS="<foo"` on the command line when you use the
+    main Makefile to build.
+-   There is an implicit “reference” tag at the start of every list, so that
+    it’s possible to support directory structures like the current
+    tensorflow/kernels/internal where portable implementations are held in a
+    “reference” folder that’s a sibling to the NEON-optimized folder.
+-   The headers for each unit in a module should remain platform-agnostic, and
+    be the same for all implementations. Private headers inside a sub-folder can
+    be used as needed, but shouldn’t be referred to by any portable code at the
+    top level.
+-   Tests should be at the parent level, with no platform-specific code.
+-   No platform-specific macros or #ifdef’s should be used in any portable code.

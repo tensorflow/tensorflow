@@ -173,7 +173,7 @@ bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
   return false;
 }
 
-void DeleteOpAndArraysIfUnused(Model* model, Operator* op) {
+void DeleteOpAndArraysIfUnused(Model* model, const Operator* op) {
   for (const string& array_name : op->inputs) {
     DeleteArrayIfUsedOnce(array_name, model);
   }
@@ -385,6 +385,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ConcatV2)
     HANDLE_OPERATORTYPENAME_CASE(Cast)
     HANDLE_OPERATORTYPENAME_CASE(Floor)
+    HANDLE_OPERATORTYPENAME_CASE(Ceil)
     HANDLE_OPERATORTYPENAME_CASE(Gather)
     HANDLE_OPERATORTYPENAME_CASE(ResizeBilinear)
     HANDLE_OPERATORTYPENAME_CASE(SpaceToBatchND)

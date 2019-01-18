@@ -39,7 +39,7 @@ void SetEigenNbThreads(int threads) {
 #if defined(EIGEN_HAS_OPENMP)
   // The global Eigen thread count is only used when OpenMP is enabled. As this
   // call causes problems with tsan, make it only when OpenMP is available.
-  Eigen::setNbThreads(context->recommended_num_threads);
+  Eigen::setNbThreads(threads);
 #endif  // defined(EIGEN_HAS_OPENMP)
 }
 

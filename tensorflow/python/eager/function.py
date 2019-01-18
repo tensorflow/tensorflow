@@ -506,26 +506,25 @@ class ConcreteFunction(object):
     if context.executing_eagerly() or not self.outputs:
       outputs = self._inference_function.call(ctx, args)
     else:
-      if not self._gradient_name:
-        self._gradient_name = "PartitionedCall-%s" % ops.uid()
-        self._register_gradient(self._gradient_name)
+      self._register_gradient()
       with ops.get_default_graph().gradient_override_map(
           {"PartitionedCall": self._gradient_name,
            "StatefulPartitionedCall": self._gradient_name}):
         outputs = self._inference_function.call(ctx, args)
     return self._build_call_outputs(outputs)
 
-  def _register_gradient(self, name):
-    """Registers the gradient for this `ConcreteFunction` under the given name.
+  def _register_gradient(self):
+    """Registers the gradient for this `ConcreteFunction`.
 
     The gradient rewrites an inference call op to a forward call op, but does
     not modify a pre-existing forward call op. It then computes the gradient
     from the output's gradients and the side outputs of the forward op.
-
-    Args:
-      name: The name to register the gradient as.
     """
-    @ops.RegisterGradient(name)
+    if self._gradient_name:
+      return
+    self._gradient_name = "PartitionedCall-%s" % ops.uid()
+
+    @ops.RegisterGradient(self._gradient_name)
     def _registered_grad_fn(op, *doutputs):  # pylint: disable=unused-variable
       return self._grad_fn(op, *doutputs)
 
@@ -690,7 +689,8 @@ class ConcreteFunction(object):
     # Clear captures, since we pass them in as inputs.
     backwards_graph.captures = {}
     backwards_graph.outputs.extend(
-        grad for grad in func_graph_module.flatten(gradients_wrt_inputs)
+        grad
+        for grad in nest.flatten(gradients_wrt_inputs, expand_composites=True)
         if grad is not None)
     backwards_graph.structured_outputs = gradients_wrt_inputs
     self._backward_graph_function = ConcreteFunction(
@@ -724,9 +724,7 @@ class ConcreteFunction(object):
 
     ctx = context.context()
 
-    if not self._gradient_name:
-      self._gradient_name = "PartitionedCall-%s" % ops.uid()
-      self._register_gradient(self._gradient_name)
+    self._register_gradient()
     with ops.get_default_graph().gradient_override_map(
         {"PartitionedCall": self._gradient_name,
          "StatefulPartitionedCall": self._gradient_name}):
@@ -773,9 +771,7 @@ class ConcreteFunction(object):
     """
     ctx = context.context()
 
-    if not self._gradient_name:
-      self._gradient_name = "PartitionedCall-%s" % ops.uid()
-      self._register_gradient(self._gradient_name)
+    self._register_gradient()
     with ops.get_default_graph().gradient_override_map(
         {"PartitionedCall": self._gradient_name,
          "StatefulPartitionedCall": self._gradient_name}):
@@ -1306,10 +1302,15 @@ class Function(object):
           arglen = len(args)
         else:
           arglen = len(self._input_signature)
-        arg_names = (
-            self._function_spec.arg_names[:arglen]
-            + [self._function_spec.vararg_name] *
-            (arglen - len(self._function_spec.arg_names)))
+        base_arg_names = self._function_spec.arg_names[:arglen]
+        num_missing_args = arglen - len(self._function_spec.arg_names)
+        missing_arg_names = [self._function_spec.vararg_name] * num_missing_args
+        # Produce a list of missing args of the form ["arg_0", "arg_1", ...],
+        # where arg is based on the self._function_spec.vararg_name.
+        missing_arg_names = [
+            "%s_%d" % (arg, i) for i, arg in enumerate(missing_arg_names)
+        ]
+        arg_names = base_arg_names + missing_arg_names
         graph_function = ConcreteFunction(
             func_graph_module.func_graph_from_py_func(
                 self._name,

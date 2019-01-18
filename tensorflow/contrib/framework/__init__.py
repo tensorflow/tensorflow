@@ -130,6 +130,7 @@ _allowed_symbols = ['nest']
 _nest_allowed_symbols = [
     'assert_same_structure',
     'is_sequence',
+    'is_sequence_or_composite',
     'flatten',
     'flatten_dict_items',
     'pack_sequence_as',

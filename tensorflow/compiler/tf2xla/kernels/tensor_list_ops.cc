@@ -85,19 +85,40 @@ REGISTER_XLA_OP(Name("TensorListReserve")
 
 class EmptyTensorListOp : public XlaOpKernel {
  public:
-  explicit EmptyTensorListOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit EmptyTensorListOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    ctx->CtxFailure(
+    TensorShape element_shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &element_shape));
+    int64 max_num_elements;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &max_num_elements));
+    OP_REQUIRES(
+        ctx, max_num_elements >= 0,
         errors::InvalidArgument("XLA compilation requires a fixed tensor list "
-                                "size. Use TensorListReserve instead."));
+                                "size. Set the max number of elements."));
+
+    TensorShape tensor_shape;
+    tensor_shape.AddDim(max_num_elements);
+    tensor_shape.AppendShape(element_shape);
+
+    xla::XlaBuilder* b = ctx->builder();
+    ctx->SetOutput(0, xla::Tuple(b, {xla::Broadcast(XlaHelpers::Zero(b, dtype_),
+                                                    tensor_shape.dim_sizes()),
+                                     xla::ConstantR0<int32>(b, 0)}));
   }
 
  private:
+  DataType dtype_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(EmptyTensorListOp);
 };
 
-REGISTER_XLA_OP(Name("EmptyTensorList"), EmptyTensorListOp);
+REGISTER_XLA_OP(Name("EmptyTensorList")
+                    .CompileTimeConstantInput("element_shape")
+                    .CompileTimeConstantInput("max_num_elements"),
+                EmptyTensorListOp);
 
 class TensorListElementShapeOp : public XlaOpKernel {
  public:

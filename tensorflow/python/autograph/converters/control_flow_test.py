@@ -184,7 +184,7 @@ class ControlFlowTest(converter_testing.TestCase):
       return b
 
     node, ctx = self.prepare(test_fn, {})
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(transformer.AutoGraphParseError):
       control_flow.transform(node, ctx)
 
   @test_util.run_deprecated_v1

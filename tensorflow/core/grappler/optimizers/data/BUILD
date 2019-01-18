@@ -38,6 +38,7 @@ cc_library(
         ":graph_utils",
         ":fusion_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -193,6 +194,7 @@ cc_library(
         ":function_utils",
         ":graph_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -261,6 +263,7 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
@@ -324,6 +327,7 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -358,6 +362,7 @@ cc_library(
         ":graph_utils",
         ":fusion_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -396,6 +401,7 @@ cc_library(
         ":graph_utils",
         ":fusion_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -434,6 +440,7 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
@@ -470,6 +477,7 @@ cc_library(
         ":graph_utils",
         ":optimizer_base",
         ":vectorization_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -489,10 +497,12 @@ tf_cc_test(
         ":graph_utils",
         ":map_vectorization",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/kernels/data",
     ],
 )
 
@@ -526,6 +536,7 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -571,6 +582,7 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",

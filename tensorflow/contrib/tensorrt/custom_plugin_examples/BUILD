@@ -48,7 +48,7 @@ tf_custom_op_library(
         "//tensorflow/contrib/tensorrt:trt_plugins",
         "//tensorflow/core:framework_lite",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -67,7 +67,7 @@ tf_kernel_library(
         "//tensorflow/contrib/tensorrt:trt_plugins",
         "//tensorflow/core:stream_executor_headers_lib",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
+        "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
 )
 

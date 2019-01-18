@@ -27,8 +27,8 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 # distribution_strategy_context.
 # TODO(b/117329403): Remove this circular dependency.
 distribution_strategy_context = LazyLoader(
-    "distribute_lib", globals(),
-    "tensorflow.python.training."
+    "distribution_strategy_context", globals(),
+    "tensorflow.python.distribute."
     "distribution_strategy_context")
 
 

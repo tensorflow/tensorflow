@@ -40,6 +40,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import backend_config
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -97,15 +98,6 @@ _DUMMY_EAGER_GRAPH = _DummyEagerGraph()
 # Change its value via `manual_variable_initialization(value)`.
 _MANUAL_VAR_INIT = False
 
-# The type of float to use throughout a session.
-_FLOATX = 'float32'
-
-# Epsilon fuzz factor used throughout the codebase.
-_EPSILON = 1e-7
-
-# Default image data format, one of "channels_last", "channels_first".
-_IMAGE_DATA_FORMAT = 'channels_last'
-
 # This list holds the available devices.
 # It is populated when `_get_available_gpus()` is called for the first time.
 # We assume our devices don't change henceforth.
@@ -119,6 +111,14 @@ _GRAPH_VARIABLES = weakref.WeakKeyDictionary()
 # the graph.
 _GRAPH_TF_OPTIMIZERS = weakref.WeakKeyDictionary()
 
+# The below functions are kept accessible from backend for compatibility.
+epsilon = backend_config.epsilon
+floatx = backend_config.floatx
+image_data_format = backend_config.image_data_format
+set_epsilon = backend_config.set_epsilon
+set_floatx = backend_config.set_floatx
+set_image_data_format = backend_config.set_image_data_format
+
 
 @keras_export('keras.backend.backend')
 def backend():
@@ -130,87 +130,6 @@ def backend():
       The string "tensorflow".
   """
   return 'tensorflow'
-
-
-@keras_export('keras.backend.epsilon')
-def epsilon():
-  """Returns the value of the fuzz factor used in numeric expressions.
-
-  Returns:
-      A float.
-
-  Example:
-  ```python
-      >>> keras.backend.epsilon()
-      1e-07
-  ```
-  """
-  return _EPSILON
-
-
-@keras_export('keras.backend.set_epsilon')
-def set_epsilon(value):
-  """Sets the value of the fuzz factor used in numeric expressions.
-
-  Arguments:
-      value: float. New value of epsilon.
-
-  Example:
-  ```python
-      >>> from keras import backend as K
-      >>> K.epsilon()
-      1e-07
-      >>> K.set_epsilon(1e-05)
-      >>> K.epsilon()
-      1e-05
-  ```
-  """
-  global _EPSILON
-  _EPSILON = value
-
-
-@keras_export('keras.backend.floatx')
-def floatx():
-  """Returns the default float type, as a string.
-
-  E.g. 'float16', 'float32', 'float64'.
-
-  Returns:
-      String, the current default float type.
-
-  Example:
-  ```python
-      >>> keras.backend.floatx()
-      'float32'
-  ```
-  """
-  return _FLOATX
-
-
-@keras_export('keras.backend.set_floatx')
-def set_floatx(value):
-  """Sets the default float type.
-
-  Arguments:
-      value: String; 'float16', 'float32', or 'float64'.
-
-  Example:
-  ```python
-      >>> from keras import backend as K
-      >>> K.floatx()
-      'float32'
-      >>> K.set_floatx('float16')
-      >>> K.floatx()
-      'float16'
-  ```
-
-  Raises:
-      ValueError: In case of invalid value.
-  """
-  global _FLOATX
-  if value not in {'float16', 'float32', 'float64'}:
-    raise ValueError('Unknown floatx type: ' + str(value))
-  _FLOATX = str(value)
 
 
 @keras_export('keras.backend.cast_to_floatx')
@@ -238,49 +157,7 @@ def cast_to_floatx(x):
       dtype('float32')
   ```
   """
-  return np.asarray(x, dtype=_FLOATX)
-
-
-@keras_export('keras.backend.image_data_format')
-def image_data_format():
-  """Returns the default image data format convention.
-
-  Returns:
-      A string, either `'channels_first'` or `'channels_last'`
-
-  Example:
-  ```python
-      >>> keras.backend.image_data_format()
-      'channels_first'
-  ```
-  """
-  return _IMAGE_DATA_FORMAT
-
-
-@keras_export('keras.backend.set_image_data_format')
-def set_image_data_format(data_format):
-  """Sets the value of the image data format convention.
-
-  Arguments:
-      data_format: string. `'channels_first'` or `'channels_last'`.
-
-  Example:
-  ```python
-      >>> from keras import backend as K
-      >>> K.image_data_format()
-      'channels_first'
-      >>> K.set_image_data_format('channels_last')
-      >>> K.image_data_format()
-      'channels_last'
-  ```
-
-  Raises:
-      ValueError: In case of invalid `data_format` value.
-  """
-  global _IMAGE_DATA_FORMAT
-  if data_format not in {'channels_last', 'channels_first'}:
-    raise ValueError('Unknown data_format: ' + str(data_format))
-  _IMAGE_DATA_FORMAT = str(data_format)
+  return np.asarray(x, dtype=floatx())
 
 
 # A global dictionary mapping graph objects to an index of counters used

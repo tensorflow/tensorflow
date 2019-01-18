@@ -34,6 +34,7 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -528,10 +529,15 @@ def list_to_tuple(maybe_list):
 def get_iterator(dataset, distribution_strategy):
   with distribution_strategy.scope():
     iterator = distribution_strategy.make_dataset_iterator(dataset)
-    init_op = iterator.initialize()
+  initialize_iterator(iterator, distribution_strategy)
+  return iterator
+
+
+def initialize_iterator(iterator, distribution_strategy):
+  with distribution_strategy.scope():
+    init_op = control_flow_ops.group(iterator.initialize())
     if not context.executing_eagerly():
       K.get_session().run(init_op)
-  return iterator
 
 
 def _get_input_from_iterator(iterator, model):

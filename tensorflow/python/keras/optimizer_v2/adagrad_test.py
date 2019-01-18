@@ -411,6 +411,19 @@ class AdagradOptimizerTest(test.TestCase):
     self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
+  def testConstructAdagradWithEpsilonValues(self):
+    opt = adagrad.Adagrad(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = adagrad.Adagrad(epsilon=1e-6)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-6)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "epsilon must be larger than 1e-7"):
+      opt = adagrad.Adagrad(epsilon=1e-8)
+
 
 if __name__ == "__main__":
   test.main()

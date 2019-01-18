@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/map_vectorization.h"
 #include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -120,6 +121,7 @@ bool IsOutputShapesFullyDefined(const NodeDef& node) {
   const auto& shapes = shapes_attr->list().shape();
 
   for (const TensorShapeProto& shape : shapes) {
+    if (shape.unknown_rank()) return false;
     for (const auto& dim : shape.dim()) {
       if (dim.size() == -1) {
         return false;
@@ -218,7 +220,7 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
                                                  OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
 
   for (const NodeDef& node : item.graph.node()) {
     // Find Map->Batch nodes.
@@ -274,7 +276,7 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
     nodes_to_delete.insert(batch_node.name());
     stats->num_changes++;
   }
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 

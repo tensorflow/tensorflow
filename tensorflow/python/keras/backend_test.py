@@ -99,24 +99,6 @@ class BackendUtilsTest(test.TestCase):
   def test_backend(self):
     self.assertEqual(keras.backend.backend(), 'tensorflow')
 
-  def test_espilon(self):
-    epsilon = 1e-2
-    keras.backend.set_epsilon(epsilon)
-    self.assertEqual(keras.backend.epsilon(), epsilon)
-    keras.backend.set_epsilon(1e-7)
-
-  def test_floatx(self):
-    floatx = 'float64'
-    keras.backend.set_floatx(floatx)
-    self.assertEqual(keras.backend.floatx(), floatx)
-    keras.backend.set_floatx('float32')
-
-  def test_image_data_format(self):
-    image_data_format = 'channels_first'
-    keras.backend.set_image_data_format(image_data_format)
-    self.assertEqual(keras.backend.image_data_format(), image_data_format)
-    keras.backend.set_image_data_format('channels_last')
-
   def test_get_reset_uids(self):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
     self.assertEqual(keras.backend.get_uid('foo'), 2)
