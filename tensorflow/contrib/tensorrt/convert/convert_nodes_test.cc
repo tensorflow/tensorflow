@@ -1122,6 +1122,30 @@ class OpConverterTest : public ::testing::Test {
   std::unordered_map<string, NodeDef> validator_inputs_;
 };
 
+template <typename T>
+void CopyTensorElements(const Tensor& tensor, proto2::RepeatedField<T>* out) {
+  out->Clear();
+  if (tensor.NumElements() == 0) return;
+
+  // TensorProto does not need to have all the elements present and can truncate
+  // trailing elements with the same value for compressed representation. Such
+  // elements are derived based on the tensor shape.
+  const auto flat = tensor.flat<T>();
+  int64 last_index = 0;
+  for (int64 i = 0; i < tensor.NumElements(); ++i) {
+    if (flat(i) != flat(last_index)) {
+      last_index = i;
+    }
+  }
+
+  int num_out_elements = last_index + 1;
+  out->Reserve(num_out_elements);
+  out->AddNAlreadyReserved(num_out_elements);
+  const T* src = flat.data();
+  T* dst = out->mutable_data();
+  std::copy(src, src + num_out_elements, dst);
+}
+
 template <DataType dtype, typename InputCType, typename OutputCType>
 void TestConvertConst(OpConverterTest* test) {
   NodeDef node_def;
@@ -1134,11 +1158,23 @@ void TestConvertConst(OpConverterTest* test) {
                             const std::vector<OutputCType>& expected_value) {
     test->Reset();
 
-    auto& attr = *node_def.mutable_attr();
+    TensorProto* tensor_attr =
+        (*node_def.mutable_attr())["value"].mutable_tensor();
+    tensor_attr->Clear();
+
     if (as_tensor_content) {
-      tensor.AsProtoTensorContent(attr["value"].mutable_tensor());
+      tensor.AsProtoTensorContent(tensor_attr);
     } else {
-      tensor.AsProtoField(attr["value"].mutable_tensor());
+      tensor.shape().AsProto(tensor_attr->mutable_tensor_shape());
+      tensor_attr->set_dtype(tensor.dtype());
+
+      if (tensor.dtype() == DT_FLOAT) {
+        CopyTensorElements<float>(tensor, tensor_attr->mutable_float_val());
+      } else if (tensor.dtype() == DT_INT32) {
+        CopyTensorElements<int32>(tensor, tensor_attr->mutable_int_val());
+      } else {
+        tensor.AsProtoField(tensor_attr);
+      }
     }
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
@@ -1151,8 +1187,7 @@ void TestConvertConst(OpConverterTest* test) {
   {
     // By default empty tensor will pick DT_FLOAT as data type and we fix it
     // here.
-    attr["value"].mutable_tensor()->set_dtype(dtype);
-    Tensor t;  // Empty tensor.
+    Tensor t(dtype);  // Empty tensor.
     reset_and_test(t, false, {}, {});
   }
   {
@@ -1170,6 +1205,22 @@ void TestConvertConst(OpConverterTest* test) {
                                                         TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 2, 3, 4, 5, 6});
     reset_and_test(t, true, {2, 3}, {1, 2, 3, 4, 5, 6});
+  }
+  {
+    // Set all tensor elements to the same value. Such tensors are encoded
+    // using a single element list in tensor proto.
+    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1},
+                                                        TensorShape({2, 3}));
+    reset_and_test(t, false, {2, 3}, {1, 1, 1, 1, 1, 1});
+    reset_and_test(t, true, {2, 3}, {1, 1, 1, 1, 1, 1});
+  }
+  {
+    // Set trailing tensor elements to the same value. Such tensors are
+    // encoded by truncating all equal elements except the first one.
+    Tensor t = ::tensorflow::test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1},
+                                                        TensorShape({2, 3}));
+    reset_and_test(t, false, {2, 3}, {2, 2, 1, 1, 1, 1});
+    reset_and_test(t, true, {2, 3}, {2, 2, 1, 1, 1, 1});
   }
 }
 

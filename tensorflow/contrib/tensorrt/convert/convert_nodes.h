@@ -197,6 +197,10 @@ class TRT_ShapedWeights {
   // underlying buffer.
   TRT_ShapedWeights(DataType type, nvinfer1::Dims dims, Tensor tensor);
 
+  // All weights should be stored inside TrtWeightStore to make sure lifetime of
+  // all the underlying tensors are available until the engine is built. For
+  // this reason, tensor_ should never be reassigned to a different value that
+  // is not already present in the TrtWeightStore.
   Tensor tensor_;
 
   friend class TrtWeightStore;
