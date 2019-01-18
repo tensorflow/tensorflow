@@ -128,6 +128,14 @@ const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
   return ret;
 }
 
+char* TF_FunctionDebugString(TF_Function* func, size_t* len) {
+  const auto& debug_str = func->fdef.DebugString();
+  *len = debug_str.size();
+  char* ret = static_cast<char*>(malloc(*len + 1));
+  memcpy(ret, debug_str.c_str(), *len + 1);
+  return ret;
+}
+
 // On success, returns a set of TF_Function instances from `text_proto` of
 // GraphDef type. These functions must be deleted by calling TF_DeleteFunction.
 //
@@ -8746,6 +8754,11 @@ void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
 
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
+}
+
+void TFE_OpPrintDebugString(TFE_Op* op) {
+  VLOG(1) << "TFE_OpPrintDebugString() over " << op;
+  LOG(INFO) << op->operation.DebugString();
 }
 
 struct TFE_ExecuteOpNotification {

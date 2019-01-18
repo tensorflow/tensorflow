@@ -712,6 +712,7 @@ void TFE_OpSetAttrFunctionList(TFE_Op* op, const char* attr_name,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
+  VLOG(1) << "Calling TFE_Execute() on op " << op;
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> handle_retvals(
       *num_retvals);
   status->status =

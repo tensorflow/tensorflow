@@ -84,6 +84,15 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_CreateRunOptions(
 TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
                                                       size_t* len);
 
+// Returns the function content in a human-readable format, with length set in
+// `len`. The format is subject to change in the future.
+// The returned string is heap-allocated, and caller should call free() on it.
+//
+// Do not return const char*, because some foreign language binding
+// (e.g. swift) cannot then call free() on the returned pointer.
+TF_CAPI_EXPORT extern char* TF_FunctionDebugString(TF_Function* func,
+                                                   size_t* len);
+
 // Creates a stack of data set + iterator nodes, currently hard-coded to return
 // a sequence of 3 float values <42.0, 43.0, 44.0> over 3 calls. On success,
 // returns the IteratorGetNext node, which caller can run or feed into an node.
@@ -181,6 +190,8 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
 TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
     TFE_TensorHandle* handle);
 
+TF_CAPI_EXPORT extern void TFE_OpPrintDebugString(TFE_Op* op);
+
 typedef struct TFE_ExecuteOpNotification TFE_ExecuteOpNotification;
 
 // Allows invoking a kernel asynchronously, and explicitly returns a
@@ -255,6 +266,7 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

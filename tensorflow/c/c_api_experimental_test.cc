@@ -296,5 +296,25 @@ TEST(CAPI_EXPERIMENTAL, TFE_ExecuteOpInNewThreadTest_Blocking) {
   TF_DeleteStatus(status);
 }
 
+TEST(CAPI_EXPERIMENTAL, DebugPrint) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TFE_Op* op = MatMulOp(ctx, m, m);
+
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpPrintDebugString(op);
+
+  TFE_DeleteTensorHandle(m);
+  TFE_DeleteOp(op);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+}
+
 }  // namespace
 }  // namespace tensorflow
