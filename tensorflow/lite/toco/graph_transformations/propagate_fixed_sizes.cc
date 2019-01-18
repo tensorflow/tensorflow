@@ -1923,6 +1923,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
+    case OperatorType::kCeil:
     case OperatorType::kExp:
     case OperatorType::kSin:
     case OperatorType::kLogicalAnd:
