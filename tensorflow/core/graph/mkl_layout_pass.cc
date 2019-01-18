@@ -1391,13 +1391,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                               bool change_format = false);
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb,
                                 bool change_format = false);
-  static void CopyAttrsConvCheckConstFilter(const Node* orig_node,
-                                            NodeBuilder* nb,
-                                            bool change_format = false);
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
   static void CopyAttrsConv2DDepthwise(const Node* orig_node, NodeBuilder* nb,
                                        bool change_format = false);
+  static void CopyAttrsConvCheckConstFilter(const Node* orig_node,
+                                            NodeBuilder* nb,
+                                            bool change_format = false);
   static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb,
                                 bool change_format = false);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb,
@@ -1936,45 +1936,6 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
 // Op-specific functions to copy attributes from old node to new node
 //////////////////////////////////////////////////////////////////////////
 
-void MklLayoutRewritePass::CopyFormatAttrsConv(
-    const Node* orig_node, NodeBuilder* nb, const std::vector<int32>& strides,
-    const std::vector<int32>& dilations, bool change_format) {
-  string data_format;
-
-  if (!change_format) {
-    nb->Attr("strides", strides);
-    nb->Attr("dilations", dilations);
-
-    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-    nb->Attr("data_format", data_format);
-  } else {
-    std::vector<int32> new_strides;
-    std::vector<int32> new_dilations;
-    if (strides.size() == 5) {
-      // `strides` and `dilations` also need to be changed according to
-      // `data_format`. In this case, from `NDHWC` to `NCDHW`.
-      new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
-                     strides[NDHWC::dim::D], strides[NDHWC::dim::H],
-                     strides[NDHWC::dim::W]};
-
-      new_dilations = {dilations[NDHWC::dim::N], dilations[NDHWC::dim::C],
-                       dilations[NDHWC::dim::D], dilations[NDHWC::dim::H],
-                       dilations[NDHWC::dim::W]};
-    } else {
-      // `strides` and `dilations` also need to be changed according to
-      // `data_format`. In this case, from `NHWC` to `NCHW`.
-
-      new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
-                     strides[NHWC::dim::H], strides[NHWC::dim::W]};
-
-      new_dilations = {dilations[NHWC::dim::N], dilations[NHWC::dim::C],
-                       dilations[NHWC::dim::H], dilations[NHWC::dim::W]};
-    }
-    nb->Attr("strides", new_strides);
-    nb->Attr("dilations", new_dilations);
-  }
-}
-
 void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
                                                          NodeBuilder* nb,
                                                          bool change_format) {
@@ -1982,7 +1943,6 @@ void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
   string padding;
   std::vector<int32> strides;
   std::vector<int32> dilations;
-  bool is_filter_const;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
@@ -1990,15 +1950,13 @@ void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
 
-  // Check if filter is a constant.
   Node* filter_node = nullptr;
   orig_node->input_node(1, &filter_node);
-  is_filter_const = filter_node->IsConstant();
 
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("padding", padding);
-  nb->Attr("is_filter_const", is_filter_const);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
 
   // Add attributes related to `data_format`.
   CopyFormatAttrsConv(orig_node, nb, strides, dilations, change_format);
@@ -2035,7 +1993,6 @@ void MklLayoutRewritePass::CopyAttrsPadWithConv2D(const Node* orig_node,
   string padding;
   std::vector<int32> strides;
   std::vector<int32> dilations;
-  bool is_filter_const;
   bool use_cudnn_on_gpu;
 
   // Get all attributes from old node.
@@ -2048,17 +2005,15 @@ void MklLayoutRewritePass::CopyAttrsPadWithConv2D(const Node* orig_node,
       GetNodeAttr(orig_node->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tpaddings", &Tpaddings));
 
-  // Check if filter is a constant.
   Node* filter_node = nullptr;
   orig_node->input_node(1, &filter_node);
-  is_filter_const = filter_node->IsConstant();
 
   // Add attributes to new node.
   nb->Attr("T", T);
-  nb->Attr("is_filter_const", is_filter_const);
   nb->Attr("strides", strides);
   nb->Attr("dilations", dilations);
   nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
   nb->Attr("Tpaddings", Tpaddings);
@@ -2106,7 +2061,6 @@ void MklLayoutRewritePass::CopyAttrsConv2DDepthwise(const Node* orig_node,
   string padding;
   std::vector<int32> strides;
   std::vector<int32> dilations;
-  bool is_filter_const;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
@@ -2115,18 +2069,16 @@ void MklLayoutRewritePass::CopyAttrsConv2DDepthwise(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
 
-  // Check if filter is a constant.
   Node* filter_node = nullptr;
   orig_node->input_node(1, &filter_node);
-  is_filter_const = filter_node->IsConstant();
 
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("strides", strides);
   nb->Attr("dilations", dilations);
   nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("data_format", data_format);
-  nb->Attr("is_filter_const", is_filter_const);
 }
 
 void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb,
@@ -2262,7 +2214,6 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   string padding;
   string data_format("NHWC");
   std::vector<int32> strides, dilations;
-  bool is_filter_const;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tinput", &Tinput));
@@ -2272,21 +2223,19 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
 
-  // Check if filter is a constant.
   Node* filter_node = nullptr;
   orig_node->input_node(1, &filter_node);
-  is_filter_const = filter_node->IsConstant();
 
   // Add attributes to new node.
   nb->Attr("Tinput", Tinput);
   nb->Attr("Tfilter", Tfilter);
   nb->Attr("out_type", out_type);
   nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("strides", strides);
   nb->Attr("dilations", dilations);
   nb->Attr("T", out_type);  // added "T" for facilitating MklToTf conversion.
   nb->Attr("data_format", data_format);
-  nb->Attr("is_filter_const", is_filter_const);
 
   // Requantization attr Tbias.
   DataType Tbias;
@@ -2354,6 +2303,45 @@ void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node,
   nb->Attr("data_format", data_format);
 }
 
+void MklLayoutRewritePass::CopyFormatAttrsConv(
+    const Node* orig_node, NodeBuilder* nb, const std::vector<int32>& strides,
+    const std::vector<int32>& dilations, bool change_format) {
+  string data_format;
+
+  if (!change_format) {
+    nb->Attr("strides", strides);
+    nb->Attr("dilations", dilations);
+
+    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+    nb->Attr("data_format", data_format);
+  } else {
+    std::vector<int32> new_strides;
+    std::vector<int32> new_dilations;
+    if (strides.size() == 5) {
+      // `strides` and `dilations` also need to be changed according to
+      // `data_format`. In this case, from `NDHWC` to `NCDHW`.
+      new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
+                     strides[NDHWC::dim::D], strides[NDHWC::dim::H],
+                     strides[NDHWC::dim::W]};
+
+      new_dilations = {dilations[NDHWC::dim::N], dilations[NDHWC::dim::C],
+                       dilations[NDHWC::dim::D], dilations[NDHWC::dim::H],
+                       dilations[NDHWC::dim::W]};
+    } else {
+      // `strides` and `dilations` also need to be changed according to
+      // `data_format`. In this case, from `NHWC` to `NCHW`.
+
+      new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
+                     strides[NHWC::dim::H], strides[NHWC::dim::W]};
+
+      new_dilations = {dilations[NHWC::dim::N], dilations[NHWC::dim::C],
+                       dilations[NHWC::dim::H], dilations[NHWC::dim::W]};
+    }
+    nb->Attr("strides", new_strides);
+    nb->Attr("dilations", new_dilations);
+  }
+}
+
 void MklLayoutRewritePass::CopyAttrsConcat(const Node* orig_node,
                                            NodeBuilder* nb,
                                            bool change_format) {
@@ -2419,7 +2407,6 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   std::vector<int32> strides;
   std::vector<int32> dilations;
   std::vector<string> fused_ops;
-  bool is_filter_const;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
@@ -2431,21 +2418,19 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "fused_ops", &fused_ops));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "epsilon", &epsilon));
 
-  // Check if filter is a constant.
   Node* filter_node = nullptr;
   orig_node->input_node(1, &filter_node);
-  is_filter_const = filter_node->IsConstant();
 
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("num_args", num_args);
   nb->Attr("strides", strides);
   nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("data_format", data_format);
   nb->Attr("dilations", dilations);
   nb->Attr("fused_ops", fused_ops);
   nb->Attr("epsilon", epsilon);
-  nb->Attr("is_filter_const", is_filter_const);
 }
 
 //////////////////////////////////////////////////////////////////////////

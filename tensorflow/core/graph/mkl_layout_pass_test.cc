@@ -127,20 +127,12 @@ class MklLayoutPassTest : public ::testing::Test {
   template <typename T>
   T DoMklLayoutOptimizationPassGetAttrVal(const string& attr,
                                           const string& node_name) {
-    string before = CanonicalGraphString(&graph_);
-    LOG(ERROR) << "Before MKL layout rewrite pass: " << before;
-
-    std::unique_ptr<Graph>* ug = new std::unique_ptr<Graph>(&graph_);
-    RunMklLayoutRewritePass(ug);
-
-    string result = CanonicalGraphString(&graph_);
-    LOG(ERROR) << "After MKL layout rewrite pass:  " << result;
-
-    T attr_val{};
+    DoMklLayoutOptimizationPass();
+    T attr_val;
     for (const Node* n : graph_.nodes()) {
       if (IncludeNode(n) && n->type_string() == node_name) {
         TF_CHECK_OK(GetNodeAttr(n->def(), attr, &attr_val));
-        break;
+        return attr_val;
       }
     }
     return attr_val;
@@ -2553,6 +2545,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Slice_DeviceTest) {
 
 /////////////////////////////////////////////////////////////////////
 //         Post-rewrite fixup pass test
+/////////////////////////////////////////////////////////////////////
 
 TEST_F(MklLayoutPassTest, PostRewriteFixUpPass) {
   InitGraph(
@@ -2583,13 +2576,12 @@ TEST_F(MklLayoutPassTest, PostRewriteFixUpPass) {
 }
 
 /////////////////////////////////////////////////////////////////////
-
-/////////////////////////////////////////////////////////////////////
-// Unit tests related to filter caching.
+//         Unit tests related to filter caching.
 //
 // These tests check if the attribute `is_filter_const` is set to true
 // when filter is a constant and false otherwise for various operators
 // such as Conv2D, Conv2DWithBias, Conv3D etc.
+/////////////////////////////////////////////////////////////////////
 
 // Conv2D op where filter is a constant.
 TEST_F(MklLayoutPassTest, Conv2D_FilterCaching_Positive) {
@@ -2610,9 +2602,8 @@ TEST_F(MklLayoutPassTest, Conv2D_FilterCaching_Positive) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklConv2D"),
-            true);
+  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
+                                                          "_MklConv2D"));
 }
 
 // Conv2D op where filter is NOT a constant.
@@ -2630,9 +2621,8 @@ TEST_F(MklLayoutPassTest, Conv2D_FilterCaching_Negative) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklConv2D"),
-            false);
+  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
+                                                           "_MklConv2D"));
 }
 
 // Conv2D + BiasAdd fusion where filter is a constant.
@@ -2661,9 +2651,8 @@ TEST_F(MklLayoutPassTest, Conv2DWithBias_FilterCaching_Positive) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklConv2DWithBias"),
-            true);
+  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
+      "is_filter_const", "_MklConv2DWithBias"));
 }
 
 // Conv2D + BiasAdd fusion where filter is NOT a constant.
@@ -2688,9 +2677,8 @@ TEST_F(MklLayoutPassTest, Conv2DWithBias_FilterCaching_Negative) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklConv2DWithBias"),
-            false);
+  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
+      "is_filter_const", "_MklConv2DWithBias"));
 }
 
 // Conv3D op where filter is a constant.
@@ -2714,9 +2702,8 @@ TEST_F(MklLayoutPassTest, Conv3D_FilterCaching_Positive) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklConv3D"),
-            true);
+  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
+                                                          "_MklConv3D"));
 }
 
 // Conv3D op where filter is NOT a constant.
@@ -2736,9 +2723,8 @@ TEST_F(MklLayoutPassTest, Conv3D_FilterCaching_Negative) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklConv3D"),
-            false);
+  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
+                                                           "_MklConv3D"));
 }
 
 // Pad + Conv2D fusion where filter is a constant.
@@ -2768,9 +2754,8 @@ TEST_F(MklLayoutPassTest, PadWithConv2D_FilterCaching_Positive) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklPadWithConv2D"),
-            true);
+  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
+                                                          "_MklPadWithConv2D"));
 }
 
 // Pad + Conv2D fusion where filter is NOT a constant.
@@ -2796,9 +2781,8 @@ TEST_F(MklLayoutPassTest, PadWithConv2D_FilterCaching_Negative) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklPadWithConv2D"),
-            false);
+  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
+      "is_filter_const", "_MklPadWithConv2D"));
 }
 
 // _FusedConv2D + BiasAdd fusion where filter is a constant.
@@ -2823,9 +2807,8 @@ TEST_F(MklLayoutPassTest, FusedConv2DWithBias_FilterCaching_Positive) {
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['D', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklFusedConv2D"),
-            true);
+  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
+                                                          "_MklFusedConv2D"));
 }
 
 // _FusedConv2D + BiasAdd fusion where filter is NOT a constant.
@@ -2846,9 +2829,8 @@ TEST_F(MklLayoutPassTest, FusedConv2DWithBias_FilterCaching_Negative) {
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['D', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                        "_MklFusedConv2D"),
-            false);
+  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
+                                                           "_MklFusedConv2D"));
 }
 
 // Depthwise Conv2D op where filter is a constant.
@@ -2869,9 +2851,8 @@ TEST_F(MklLayoutPassTest, DepthwiseConv2dNative_FilterCaching_Positive) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-                "is_filter_const", "_MklDepthwiseConv2dNative"),
-            true);
+  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
+      "is_filter_const", "_MklDepthwiseConv2dNative"));
 }
 
 // Depthwise Conv2D op where filter is NOT a constant.
@@ -2888,11 +2869,9 @@ TEST_F(MklLayoutPassTest, DepthwiseConv2dNative_FilterCaching_Negative) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-                "is_filter_const", "_MklDepthwiseConv2dNative"),
-            false);
+  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
+      "is_filter_const", "_MklDepthwiseConv2dNative"));
 }
-/////////////////////////////////////////////////////////////////////
 
 static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
   testing::StopTiming();

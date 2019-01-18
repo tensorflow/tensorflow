@@ -431,20 +431,22 @@ class FilterCacheTest : public OpsTestBase {
 
     TF_ASSERT_OK(RunOpKernel());
 
-    // Compare output to expected results
-    const Tensor& first = *GetOutput(0);
-    const Tensor& second = *GetOutput(2);
+    // Compare outputs to expected results
+    const Tensor& output = *GetOutput(0);
+    const Tensor& output_layout = *GetOutput(2);
     ConvMklToTF<T> conv_comp;
-    conv_comp.ConvertAndCompare(dtype, first, second, expected);
+    conv_comp.ConvertAndCompare(dtype, output, output_layout, expected);
 
     // Run kernel again to ensure cached data is being reused
+    // TODO: Check if data is actually cached and reused
     TF_ASSERT_OK(RunOpKernel());
 
     // Compare output to expected results
-    const Tensor& first_new = *GetOutput(0);
-    const Tensor& second_new = *GetOutput(2);
+    const Tensor& output_new = *GetOutput(0);
+    const Tensor& output_layout_new = *GetOutput(2);
     ConvMklToTF<T> conv_comp_new;
-    conv_comp_new.ConvertAndCompare(dtype, first_new, second_new, expected);
+    conv_comp_new.ConvertAndCompare(dtype, output_new, output_layout_new,
+                                    expected);
   }
 };
 
