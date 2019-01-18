@@ -48,9 +48,10 @@ TF_KernelBuilder* TF_NewKernelBuilder(
 }
 
 void TF_DeleteKernelBuilder(TF_KernelBuilder* builder) {
-  DCHECK_NE(builder, nullptr);
-  delete builder->cc_builder;
-  delete builder;
+  if (builder != nullptr) {
+    delete builder->cc_builder;
+    delete builder;
+  }
 }
 
 namespace tensorflow {
