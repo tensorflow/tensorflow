@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/iterator.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 
@@ -58,16 +57,22 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
+constexpr char kDelimiter[] = "@@";
+
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
  public:
   explicit VariantTensorDataReader(const VariantTensorData* data)
       : data_(data) {
-    PreProcess();
+    string metadata;
+    data_->get_metadata(&metadata);
+    auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+    for (size_t i = 0; i < keys.size(); ++i) {
+      map_[keys[i]] = i;
+    }
   }
 
-  // Returns OK iff the initialization was successful, i.e.,
-  // pre-processing did not have errors.
+  // Returns OK iff the initialization was successful.
   Status status() const;
   Status ReadScalar(StringPiece key, int64* val) override;
   Status ReadScalar(StringPiece key, string* val) override;
@@ -75,7 +80,6 @@ class VariantTensorDataReader : public IteratorStateReader {
   bool Contains(StringPiece key) override;
 
  private:
-  void PreProcess();
   template <typename T>
   Status ReadScalarInternal(StringPiece key, T* val);
   Status ReadTensorInternal(StringPiece key, Tensor* val);
@@ -102,8 +106,7 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   Status WriteTensorInternal(StringPiece key, const Tensor& val);
   VariantTensorData* data_;
 
-  // TODO(srbs): Set the version string.
-  IteratorStateMetadata metadata_proto_;
+  std::vector<string> keys_;
 };
 
 }  // namespace data

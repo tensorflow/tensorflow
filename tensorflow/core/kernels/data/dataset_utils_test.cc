@@ -46,7 +46,6 @@ TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
   VariantTensorData data;
   VariantTensorDataWriter writer(&data);
   TF_ASSERT_OK(writer.WriteScalar("Int64", 24));
-  TF_ASSERT_OK(writer.WriteScalar("", "Empty_Key"));
   Tensor input_tensor(DT_FLOAT, {1});
   input_tensor.flat<float>()(0) = 2.0f;
   TF_ASSERT_OK(writer.WriteTensor("Tensor", input_tensor));
@@ -57,9 +56,6 @@ TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
   int64 val_int64;
   TF_ASSERT_OK(reader.ReadScalar("Int64", &val_int64));
   EXPECT_EQ(val_int64, 24);
-  string val_string;
-  TF_ASSERT_OK(reader.ReadScalar("", &val_string));
-  EXPECT_EQ(val_string, "Empty_Key");
   Tensor val_tensor;
   TF_ASSERT_OK(reader.ReadTensor("Tensor", &val_tensor));
   EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
@@ -68,6 +64,8 @@ TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
 
 TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
   VariantTensorData data;
+  strings::StrAppend(&data.metadata_, "key1", "@@");
+  data.tensors_.push_back(Tensor(DT_INT64, {1}));
   VariantTensorDataReader reader(&data);
   TF_ASSERT_OK(reader.status());
   int64 val_int64;
@@ -79,20 +77,6 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
             reader.ReadScalar("NonExistentKey", &val_string).code());
   EXPECT_EQ(error::NOT_FOUND,
             reader.ReadTensor("NonExistentKey", &val_tensor).code());
-}
-
-TEST(DatasetUtilsTest, VariantTensorDataInvalidMetadata) {
-  VariantTensorData data;
-  data.metadata_ = "Invalid Metadata";
-  VariantTensorDataReader reader(&data);
-  EXPECT_EQ(error::INTERNAL, reader.status().code());
-}
-
-TEST(DatasetUtilsTest, VariantTensorDataUnmatchedKeys) {
-  VariantTensorData data;
-  data.tensors_.push_back(Tensor(DT_INT64, {1}));
-  VariantTensorDataReader reader(&data);
-  EXPECT_EQ(error::INVALID_ARGUMENT, reader.status().code());
 }
 
 }  // namespace
