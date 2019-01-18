@@ -222,15 +222,6 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
               ElementsAre(0, 0, 0, 0.123f, 0, 0));
 }
 
-TEST(BufferMapTest, Forwardable) {
-  BufferMap buffer_map;
-  EXPECT_FALSE(buffer_map.IsForwardable(0));
-  buffer_map.SetForwardable(0);
-  EXPECT_TRUE(buffer_map.IsForwardable(0));
-  buffer_map.ClearForwardable();
-  EXPECT_FALSE(buffer_map.IsForwardable(0));
-}
-
 }  // namespace
 }  // namespace flex
 }  // namespace tflite
