@@ -497,10 +497,12 @@ tf_cc_test(
         ":graph_utils",
         ":map_vectorization",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/kernels/data",
     ],
 )
 
