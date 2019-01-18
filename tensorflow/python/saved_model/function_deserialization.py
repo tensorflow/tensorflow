@@ -164,22 +164,14 @@ def load_function_def_library(library):
   """
   functions = {}
 
-  # Note: Use a new graph to allow function_def_to_graph to help validating
-  # that the functions are loaded correctly. This is not possible to do
-  # just in eager mode as there is no python API to find if a function has
-  # been registered in eager. Note also that despite this the created
-  # func_graphs can still be used in eager or in other graphs.
-  import_graph = ops.Graph()
-
   for fdef in _sort_function_defs(library):
-    with import_graph.as_default():
-      copy = _fix_fdef(fdef, functions)
+    copy = _fix_fdef(fdef, functions)
 
-      func_graph = function_def_lib.function_def_to_graph(copy)
-      func = function_lib.ConcreteFunction(func_graph)
-      func.add_to_graph(import_graph)
+    func_graph = function_def_lib.function_def_to_graph(copy)
+    func = function_lib.ConcreteFunction(func_graph)
+    func.add_to_graph()
 
-      functions[fdef.signature.name] = func
+    functions[fdef.signature.name] = func
 
     # Also register the gradients in the current root context.
     with ops.init_scope():

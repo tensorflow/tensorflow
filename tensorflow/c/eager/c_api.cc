@@ -754,6 +754,10 @@ void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
   status->status = ctx->context.AddFunctionDef(function->fdef);
 }
 
+unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
+  return ctx->context.FindFunctionDef(name) != nullptr;
+}
+
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
   ctx->context.SetShouldStoreMetadata(true);
 }
