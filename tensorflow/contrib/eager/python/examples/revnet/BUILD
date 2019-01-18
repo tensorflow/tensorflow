@@ -87,6 +87,7 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     tags = [
+        "no_oss",  # b/123045964
         "optonly",
     ],
 )
