@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Classes and functions used to construct graphs."""
+"""Sparse tensors."""
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
 from __future__ import division
@@ -21,8 +21,10 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.util.tf_export import tf_export
 
@@ -34,7 +36,7 @@ _override_helper = ops._override_helper
 
 
 @tf_export("sparse.SparseTensor", "SparseTensor")
-class SparseTensor(_TensorLike):
+class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
   """Represents a sparse tensor.
 
   TensorFlow represents a sparse tensor as three separate dense tensors:
@@ -236,6 +238,29 @@ class SparseTensor(_TensorLike):
   @staticmethod
   def _override_operator(operator, func):
     _override_helper(SparseTensor, operator, func)
+
+  def _to_components(self):
+    return (self._indices, self._values, self._dense_shape)
+
+  @classmethod
+  def _from_components(cls, components):
+    return cls(*components)
+
+  def _shape_invariant_to_components(self, shape=None):
+    if shape is None:
+      shape = self.dense_shape.shape
+      # TODO(edloper): What if shape.dense_shape.shape.ndims is None?
+    if shape.ndims != 1:
+      raise ValueError("Shape invariant for SparseTensor must have the form "
+                       "TensorShape([r]), got %r" % shape)
+    rank = tensor_shape.dimension_value(shape[0])
+    return [tensor_shape.TensorShape([None, rank]),  # indices
+            tensor_shape.TensorShape([None]),  # values
+            tensor_shape.TensorShape([rank])]  # dense_shape
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._values, 'graph')
 
 
 SparseTensorValue = collections.namedtuple(

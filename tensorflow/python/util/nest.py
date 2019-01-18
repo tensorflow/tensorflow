@@ -74,6 +74,7 @@ def _is_namedtuple(instance, strict=False):
 # See the swig file (util.i) for documentation.
 _is_mapping = _pywrap_tensorflow.IsMapping
 _is_attrs = _pywrap_tensorflow.IsAttrs
+_is_composite_tensor = _pywrap_tensorflow.IsCompositeTensor
 
 
 def _sequence_like(instance, args):
@@ -97,6 +98,8 @@ def _sequence_like(instance, args):
     return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
+  elif _is_composite_tensor(instance):
+    return instance._from_components(args)  # pylint: disable=protected-access
   else:
     # Not a namedtuple
     return type(instance)(args)
@@ -115,6 +118,9 @@ def _yield_value(iterable):
   elif _is_attrs(iterable):
     for value in _get_attrs_values(iterable):
       yield value
+  elif _is_composite_tensor(iterable):
+    for value in _yield_value(iterable._to_components()):  # pylint: disable=protected-access
+      yield value
   else:
     for value in iterable:
       yield value
@@ -122,6 +128,10 @@ def _yield_value(iterable):
 
 # See the swig file (util.i) for documentation.
 is_sequence = _pywrap_tensorflow.IsSequence
+
+
+# See the swig file (util.i) for documentation.
+is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
 
 
 # See the swig file (util.i) for documentation.
@@ -144,7 +154,8 @@ class _DotString(object):
 _DOT = _DotString()
 
 
-def assert_same_structure(nest1, nest2, check_types=True):
+def assert_same_structure(nest1, nest2, check_types=True,
+                          expand_composites=False):
   """Asserts that two structures are nested in the same way.
 
   Note that namedtuples with identical name and fields are always considered
@@ -168,6 +179,8 @@ def assert_same_structure(nest1, nest2, check_types=True):
         considered the same if they are both list subtypes (which allows "list"
         and "_ListWrapper" from checkpointable dependency tracking to compare
         equal).
+    expand_composites: If true, then composite tensors such as `tf.SparseTensor`
+        and `tf.RaggedTensor` are expanded into their component tensors.
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or
@@ -176,7 +189,8 @@ def assert_same_structure(nest1, nest2, check_types=True):
       their substructures. Only possible if `check_types` is `True`.
   """
   try:
-    _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types)
+    _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types,
+                                           expand_composites)
   except (ValueError, TypeError) as e:
     str1 = str(map_structure(lambda _: _DOT, nest1))
     str2 = str(map_structure(lambda _: _DOT, nest2))
@@ -242,13 +256,14 @@ def flatten_dict_items(dictionary):
   return flat_dictionary
 
 
-def _packed_nest_with_indices(structure, flat, index):
+def _packed_nest_with_indices(structure, flat, index, is_seq):
   """Helper function for pack_sequence_as.
 
   Args:
     structure: Substructure (list / tuple / dict) to mimic.
     flat: Flattened values to output substructure for.
     index: Index at which to start reading from flat.
+    is_seq: Function used to test if a value should be treated as a sequence.
 
   Returns:
     The tuple (new_index, child), where:
@@ -263,8 +278,8 @@ def _packed_nest_with_indices(structure, flat, index):
   """
   packed = []
   for s in _yield_value(structure):
-    if is_sequence(s):
-      new_index, child = _packed_nest_with_indices(s, flat, index)
+    if is_seq(s):
+      new_index, child = _packed_nest_with_indices(s, flat, index, is_seq)
       packed.append(_sequence_like(s, child))
       index = new_index
     else:
@@ -273,7 +288,7 @@ def _packed_nest_with_indices(structure, flat, index):
   return index, packed
 
 
-def pack_sequence_as(structure, flat_sequence):
+def pack_sequence_as(structure, flat_sequence, expand_composites=False):
   """Returns a given flattened sequence packed into a given structure.
 
   If `structure` is a scalar, `flat_sequence` must be a single-element list;
@@ -293,6 +308,8 @@ def pack_sequence_as(structure, flat_sequence):
         tuples, and dicts. Note: numpy arrays and strings are considered
         scalars.
     flat_sequence: flat sequence to pack.
+    expand_composites: If true, then composite tensors such as `tf.SparseTensor`
+        and `tf.RaggedTensor` are expanded into their component tensors.
 
   Returns:
     packed: `flat_sequence` converted to have the same recursive structure as
@@ -303,17 +320,19 @@ def pack_sequence_as(structure, flat_sequence):
       element counts.
     TypeError: `structure` is or contains a dict with non-sortable keys.
   """
-  if not is_sequence(flat_sequence):
+  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  if not is_seq(flat_sequence):
     raise TypeError("flat_sequence must be a sequence")
 
-  if not is_sequence(structure):
+  if not is_seq(structure):
     if len(flat_sequence) != 1:
       raise ValueError("Structure is a scalar but len(flat_sequence) == %d > 1"
                        % len(flat_sequence))
     return flat_sequence[0]
 
   try:
-    final_index, packed = _packed_nest_with_indices(structure, flat_sequence, 0)
+    final_index, packed = _packed_nest_with_indices(structure, flat_sequence,
+                                                    0, is_seq)
     if final_index < len(flat_sequence):
       raise IndexError
   except IndexError:
@@ -326,7 +345,7 @@ def pack_sequence_as(structure, flat_sequence):
   return _sequence_like(structure, packed)
 
 
-def map_structure(func, *structure, **check_types_dict):
+def map_structure(func, *structure, **kwargs):
   """Applies `func` to each entry in `structure` and returns a new structure.
 
   Applies `func(x[0], x[1], ...)` where x[i] is an entry in
@@ -337,12 +356,18 @@ def map_structure(func, *structure, **check_types_dict):
     func: A callable that accepts as many arguments as there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
       tuples/lists, or scalars.  Note: numpy arrays are considered as scalars.
-    **check_types_dict: only valid keyword argument is `check_types`. If set to
-      `True` (default) the types of iterables within the structures have to be
-      same (e.g. `map_structure(func, [1], (1,))` raises a `TypeError`
-      exception). To allow this set this argument to `False`.
-      Note that namedtuples with identical name and fields are always
-      considered to have the same shallow structure.
+    **kwargs: Valid keyword args are:
+
+      * `check_types`: If set to `True` (default) the types of
+        iterables within the structures have to be same (e.g.
+        `map_structure(func, [1], (1,))` raises a `TypeError`
+        exception). To allow this set this argument to `False`.
+        Note that namedtuples with identical name and fields are always
+        considered to have the same shallow structure.
+      * `expand_composites`: If set to `True`, then composite tensors such
+        as `tf.SparseTensor` and `tf.RaggedTensor` are expanded into their
+        component tensors.  If `False` (the default), then composite tensors
+        are not expanded.
 
   Returns:
     A new structure with the same arity as `structure`, whose values correspond
@@ -364,21 +389,25 @@ def map_structure(func, *structure, **check_types_dict):
   if not structure:
     raise ValueError("Must provide at least one structure")
 
-  if check_types_dict:
-    if "check_types" not in check_types_dict or len(check_types_dict) > 1:
-      raise ValueError("Only valid keyword argument is check_types")
-    check_types = check_types_dict["check_types"]
-  else:
-    check_types = True
+  check_types = True
+  expand_composites = False
+  if kwargs:
+    check_types = kwargs.pop("check_types", check_types)
+    expand_composites = kwargs.pop("expand_composites", expand_composites)
+    if kwargs:
+      raise ValueError("Only valid keyword arguments are check_types "
+                       "and expand_composites")
 
   for other in structure[1:]:
-    assert_same_structure(structure[0], other, check_types=check_types)
+    assert_same_structure(structure[0], other, check_types=check_types,
+                          expand_composites=expand_composites)
 
-  flat_structure = [flatten(s) for s in structure]
+  flat_structure = [flatten(s, expand_composites) for s in structure]
   entries = zip(*flat_structure)
 
   return pack_sequence_as(
-      structure[0], [func(*x) for x in entries])
+      structure[0], [func(*x) for x in entries],
+      expand_composites=expand_composites)
 
 
 def map_structure_with_paths(func, *structure, **kwargs):
