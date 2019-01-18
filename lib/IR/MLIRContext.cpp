@@ -1078,6 +1078,8 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
                                          ArrayRef<Attribute> values) {
   assert(type.getElementType().isIntOrFloat() &&
          "expected int or float element type");
+  assert(values.size() == type.getNumElements() &&
+         "expected 'values' to contain the same number of elements as 'type'");
 
   // FIXME: using 64 bits for BF16 because it is currently stored with double
   // semantics.
@@ -1085,7 +1087,7 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
   size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
 
   // Compress the attribute values into a character buffer.
-  SmallVector<char, 8> data(type.getSizeInBits() * 8L);
+  SmallVector<char, 8> data(APInt::getNumWords(bitWidth * values.size()) * 8L);
   for (unsigned i = 0, e = values.size(); i < e; ++i) {
     unsigned bitPos = i * bitWidth;
 
