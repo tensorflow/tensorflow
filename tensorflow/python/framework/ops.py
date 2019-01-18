@@ -5145,12 +5145,19 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
         op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
 
 
+# Internal interface to colocate_with. colocate_with has been deprecated from
+# public API. There are still a few internal uses of colocate_with. Add internal
+# only API for those uses to avoid deprecation warning.
+def colocate_with(op, ignore_existing=False):
+  return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
+
+
 @deprecation.deprecated(
     date=None,
     instructions="Colocations handled automatically by placer.")
 @tf_export(v1=["colocate_with"])
-def colocate_with(op, ignore_existing=False):
-  return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
+def _colocate_with(op, ignore_existing=False):
+  return colocate_with(op, ignore_existing)
 
 
 @tf_export("control_dependencies")
