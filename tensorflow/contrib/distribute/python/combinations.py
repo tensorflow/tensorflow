@@ -53,6 +53,7 @@ from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -321,11 +322,18 @@ class NamedDistribution(object):
     return self._required_tpu
 
 
-def _get_tpu_strategy_creator(steps_per_run, **kwargs):
+def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
   def _create_tpu_strategy():
     resolver = cluster_resolver.TPUClusterResolver("")
-    tpu_lib.initialize_tpu_system(resolver)
+    topology = tpu_lib.initialize_tpu_system(resolver)
+    device_assignment = None
+    if use_single_core:
+      device_assignment = device_assignment_lib.DeviceAssignment(
+          topology, core_assignment=device_assignment_lib.
+          SINGLE_CORE_ASSIGNMENT)
+
     strategy = tpu_lib.TPUStrategy(resolver, steps_per_run=steps_per_run,
+                                   device_assignment=device_assignment,
                                    **kwargs)
     return strategy
   return _create_tpu_strategy
@@ -344,6 +352,16 @@ tpu_strategy = NamedDistribution(
     required_tpu=True)
 tpu_strategy_one_step = NamedDistribution(
     "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1),
+    required_tpu=True)
+tpu_strategy_loop_on_device_one_core = NamedDistribution(
+    "TPULoopOnDeviceOneCore", _get_tpu_strategy_creator(
+        steps_per_run=2, use_single_core=True,
+        _disable_training_loop_on_host=True),
+    required_tpu=True)
+tpu_strategy_one_step_loop_on_device_one_core = NamedDistribution(
+    "TPUOneStepLoopOnDeviceOneCore", _get_tpu_strategy_creator(
+        steps_per_run=1, use_single_core=True,
+        _disable_training_loop_on_host=True),
     required_tpu=True)
 # TODO(b/122327153): Remove below two NamedDistributions.
 tpu_strategy_loop_on_device = NamedDistribution(
