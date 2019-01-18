@@ -193,7 +193,7 @@ cc_library(
         "//tensorflow/lite/core/api:api",
         "//tensorflow/lite/kernels:eigen_support",
         "//tensorflow/lite/kernels:gemm_support",
-        "//tensorflow/lite/nnapi:nnapi_lib",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({

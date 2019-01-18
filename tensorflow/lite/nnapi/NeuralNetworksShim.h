@@ -22,6 +22,11 @@ limitations under the License.
 
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 
+// This interface is now deprecated. You should use instead
+// nnapi_implementation.
+
+// TODO(b/123017568): Update all current usages of this file.
+
 // helpers
 
 #define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
