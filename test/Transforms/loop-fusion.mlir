@@ -621,7 +621,7 @@ func @fuse_reshape_16_4_64() {
 // TODO(b/123072438) Re-enable test MemRefRegion bug is fixed.
 // All three loop nests below (6-d one, 2-d one, 2-d one is fused into a single
 // 2-d loop nest).
-// xCHECK-LABEL: func @R6_to_R2_reshape
+// CHECK-LABEL: func @R6_to_R2_reshape
 func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
   %in = alloc() : memref<2x2x3x3x16x1xi32>
   %out = alloc() : memref<64x9xi32>
@@ -650,12 +650,12 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
       %a1 = affine_apply (d0) -> (
           d0 floordiv (2 * 3 * 3 * 16 * 1),
           (d0 mod 288) floordiv (3 * 3 * 16 * 1),
-          ((d0 mod 288) mod 144) floordiv 48,
-          (((d0 mod 288) mod 144) mod 48) floordiv 16,
+          ((d0 mod 288) mod 144) floordiv (3 * 16 * 1),
+          (((d0 mod 288) mod 144) mod 48) floordiv (16 * 1),
           ((((d0 mod 288) mod 144) mod 48) mod 16),
-          (((d0 mod 144) mod 144) mod 48) mod 16
+          ((((d0 mod 144) mod 144) mod 48) mod 16) mod 1
         ) (%a0)
-      %v = load %in[%a1#0, %a1#1, %a1#3, %a1#4, %a1#2, %a1#5]
+      %v = load %in[%a1#0, %a1#1, %a1#2, %a1#3, %a1#4, %a1#5]
         : memref<2x2x3x3x16x1xi32>
       store %v, %out[%ii, %jj] : memref<64x9xi32>
     }
@@ -673,50 +673,51 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
 // Everything above is fused to a single 2-d loop nest, and the 6-d tensor %in
 // is eliminated if -memref-dataflow-opt is also supplied.
 //
-// xCHECK:       %0 = alloc() : memref<64x9xi32>
-// xCHECK-NEXT:  %1 = alloc() : memref<64x9xi32>
-// xCHECK-NEXT:  %2 = alloc() :  memref<2x2x3x3x16x1xi32>
-// xCHECK-NEXT:  for %i0 = 0 to 64 {
-// xCHECK-NEXT:    for %i1 = 0 to 9 {
-// xCHECK-NEXT:      %3 = affine_apply #map0(%i0, %i1)
-// xCHECK-NEXT:      %4 = affine_apply #map1(%i0, %i1)
-// xCHECK-NEXT:      %5 = affine_apply #map2(%i0, %i1)
-// xCHECK-NEXT:      %6 = affine_apply #map3(%i0, %i1)
-// xCHECK-NEXT:      %7 = affine_apply #map4(%i0, %i1)
-// xCHECK-NEXT:      %8 = "foo"(%3, %4, %5, %6, %7, %c0) : (index, index, index, index, index, index) -> i32
-// xCHECK-NEXT:      store %8, %2[%3, %4, %5, %6, %7, %c0] : memref<2x2x3x3x16x1xi32>
-// xCHECK-NEXT:      %9 = affine_apply #map5(%i0)
-// xCHECK-NEXT:      %10 = affine_apply #map5(%i1)
-// xCHECK-NEXT:      %11 = affine_apply #map6(%8, %9)
-// xCHECK-NEXT:      %12 = affine_apply #map7(%10)
-// xCHECK-NEXT:      %13 = load %2[%12#0, %12#1, %12#3, %12#4, %12#2, %12#5] : memref<2x2x3x3x16x1xi32>
-// xCHECK-NEXT:      store %12, %1[%9, %10] : memref<64x9xi32>
-// xCHECK-NEXT:      %14 = load %1[%i0, %i1] : memref<64x9xi32>
-// xCHECK-NEXT:      %15 = muli %14, %14 : i32
-// xCHECK-NEXT:      store %15, %0[%i0, %i1] : memref<64x9xi32>
-// xCHECK-NEXT:    }
-// xCHECK-NEXT:  }
-// xCHECK-NEXT:  return %0 : memref<64x9xi32>
+// CHECK:       %0 = alloc() : memref<64x9xi32>
+// CHECK-NEXT:  %1 = alloc() : memref<64x9xi32>
+// CHECK-NEXT:  %2 = alloc() :  memref<2x2x3x3x16x1xi32>
+// CHECK-NEXT:  for %i0 = 0 to 64 {
+// CHECK-NEXT:    for %i1 = 0 to 9 {
+// CHECK-NEXT:      %3 = affine_apply #map0(%i0, %i1)
+// CHECK-NEXT:      %4 = affine_apply #map1(%i0, %i1)
+// CHECK-NEXT:      %5 = affine_apply #map2(%i0, %i1)
+// CHECK-NEXT:      %6 = affine_apply #map3(%i0, %i1)
+// CHECK-NEXT:      %7 = affine_apply #map4(%i0, %i1)
+// CHECK-NEXT:      %8 = "foo"(%3, %4, %5, %6, %7, %c0) : (index, index, index, index, index, index) -> i32
+// CHECK-NEXT:      store %8, %2[%3, %4, %5, %6, %7, %c0] : memref<2x2x3x3x16x1xi32>
+// CHECK-NEXT:      %9 = affine_apply #map5(%i0)
+// CHECK-NEXT:      %10 = affine_apply #map5(%i1)
+// CHECK-NEXT:      %11 = affine_apply #map6(%9, %10)
+// CHECK-NEXT:      %12 = affine_apply #map7(%11)
+// CHECK-NEXT:      %13 = load %2[%12#0, %12#1, %12#2, %12#3, %12#4, %12#5] : memref<2x2x3x3x16x1xi32>
+// CHECK-NEXT:      store %13, %1[%9, %10] : memref<64x9xi32>
+// CHECK-NEXT:      %14 = load %1[%i0, %i1] : memref<64x9xi32>
+// CHECK-NEXT:      %15 = muli %14, %14 : i32
+// CHECK-NEXT:      store %15, %0[%i0, %i1] : memref<64x9xi32>
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// CHECK-NEXT:  return %0 : memref<64x9xi32>
 
 // -----
 
 // CHECK-LABEL: func @fuse_symbolic_bounds
 func @fuse_symbolic_bounds(%M : index, %N : index) {
-  %m = alloc() : memref<800x800xf32>
+  %N_plus_5 = affine_apply (d0) -> (d0 + 5)(%N)
+  %m = alloc(%M, %N_plus_5) : memref<? x ? x f32>
 
   %c0 = constant 0.0 : f32
   %s = constant 5 : index
 
   for %i0 = 0 to %M {
     for %i1 = 0 to (d0) -> (d0 + 5) (%N) {
-      store %c0, %m[%i0, %i1] : memref<800 x 800 x f32>
+      store %c0, %m[%i0, %i1] : memref<? x ? x f32>
     }
   }
 
   for %i2 = 0 to %M {
     for %i3 = 0 to %N {
       %idx = affine_apply (d0, d1)[s0] -> (d0, d1 + s0) (%i2, %i3)[%s]
-      %v = load %m[%idx#0, %idx#1] : memref<800 x 800 x f32>
+      %v = load %m[%idx#0, %idx#1] : memref<? x ? x f32>
     }
   }
 
