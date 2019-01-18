@@ -2214,6 +2214,20 @@ class Model(Network):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
+    if (self.stateful and distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy) and self._distribution_strategy.
+        num_replicas_in_sync != 1):
+      raise ValueError('Single core must be used for computation on '
+                       'stateful models. Consider adding `device_assignment` '
+                       'parameter to TPUStrategy using\n'
+                       'topology = tf.contrib.distribute.'
+                       'initialize_tpu_system()\n'
+                       'device_assignment = tf.contrib.tpu.DeviceAssignment('
+                       'topology, core_assignment=tf.contrib.tpu.'
+                       'SINGLE_CORE_ASSIGNMENT)\n'
+                       'tpu_strategy = tf.contrib.distribute.TPUStrategy('
+                       'device_assignment=device_assignment)')
+
     # Validates `steps` and `shuffle` arguments right at the beginning
     # since we use it to construct the dataset object.
     # TODO(anjalisridhar): Remove this check once we refactor the
