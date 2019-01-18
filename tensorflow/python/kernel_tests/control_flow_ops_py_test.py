@@ -1598,6 +1598,21 @@ class ControlFlowTest(test.TestCase):
     self.assertEqual(r.values.get_shape().as_list(), [None])
     self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
 
+    # Shape invariant with ndims=None.  Technically, this isn't supported
+    # according to the docs, but we support it for backwards compatibility.
+    _, r = control_flow_ops.while_loop(
+        c, b1, [i, x],
+        [i.get_shape(), tensor_shape.TensorShape(None)])
+    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
+    self.assertEqual(r.values.get_shape().as_list(), [None])
+    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    _, r = control_flow_ops.while_loop(
+        c, b3, [i, x],
+        [i.get_shape(), tensor_shape.TensorShape(None)])
+    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
+    self.assertEqual(r.values.get_shape().as_list(), [None])
+    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+
     # Explicit shape invariant, with a specific (incompatible) rank.
     with self.assertRaisesRegexp(ValueError, "is not compatible with"):
       _, r = control_flow_ops.while_loop(
