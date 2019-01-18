@@ -18,13 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class ConvUtilsTest(test.TestCase):
 
-  def testConvertDataFormat(self):
+  def test_convert_data_format(self):
     self.assertEqual('NCDHW', utils.convert_data_format('channels_first', 5))
     self.assertEqual('NCHW', utils.convert_data_format('channels_first', 4))
     self.assertEqual('NCW', utils.convert_data_format('channels_first', 3))
@@ -35,7 +38,7 @@ class ConvUtilsTest(test.TestCase):
     with self.assertRaises(ValueError):
       utils.convert_data_format('invalid', 2)
 
-  def testNormalizeTuple(self):
+  def test_normalize_tuple(self):
     self.assertEqual((2, 2, 2), utils.normalize_tuple(2, n=3, name='strides'))
     self.assertEqual(
         (2, 1, 2), utils.normalize_tuple((2, 1, 2), n=3, name='strides'))
@@ -46,7 +49,7 @@ class ConvUtilsTest(test.TestCase):
     with self.assertRaises(ValueError):
       utils.normalize_tuple(None, n=3, name='strides')
 
-  def testNormalizeDataFormat(self):
+  def test_normalize_data_format(self):
     self.assertEqual(
         'channels_last', utils.normalize_data_format('Channels_Last'))
     self.assertEqual(
@@ -55,14 +58,14 @@ class ConvUtilsTest(test.TestCase):
     with self.assertRaises(ValueError):
       utils.normalize_data_format('invalid')
 
-  def testNormalizePadding(self):
+  def test_normalize_padding(self):
     self.assertEqual('same', utils.normalize_padding('SAME'))
     self.assertEqual('valid', utils.normalize_padding('VALID'))
 
     with self.assertRaises(ValueError):
       utils.normalize_padding('invalid')
 
-  def testConvOutputLength(self):
+  def test_conv_output_length(self):
     self.assertEqual(4, utils.conv_output_length(4, 2, 'same', 1, 1))
     self.assertEqual(2, utils.conv_output_length(4, 2, 'same', 2, 1))
     self.assertEqual(3, utils.conv_output_length(4, 2, 'valid', 1, 1))
@@ -71,7 +74,7 @@ class ConvUtilsTest(test.TestCase):
     self.assertEqual(3, utils.conv_output_length(4, 2, 'full', 2, 1))
     self.assertEqual(2, utils.conv_output_length(5, 2, 'valid', 2, 2))
 
-  def testConvInputLength(self):
+  def test_conv_input_length(self):
     self.assertEqual(3, utils.conv_input_length(4, 2, 'same', 1))
     self.assertEqual(2, utils.conv_input_length(2, 2, 'same', 2))
     self.assertEqual(4, utils.conv_input_length(3, 2, 'valid', 1))
@@ -79,13 +82,58 @@ class ConvUtilsTest(test.TestCase):
     self.assertEqual(3, utils.conv_input_length(4, 2, 'full', 1))
     self.assertEqual(4, utils.conv_input_length(3, 2, 'full', 2))
 
-  def testDeconvOutputLength(self):
+  def test_deconv_output_length(self):
     self.assertEqual(4, utils.deconv_output_length(4, 2, 'same', 1))
     self.assertEqual(8, utils.deconv_output_length(4, 2, 'same', 2))
     self.assertEqual(5, utils.deconv_output_length(4, 2, 'valid', 1))
     self.assertEqual(8, utils.deconv_output_length(4, 2, 'valid', 2))
     self.assertEqual(3, utils.deconv_output_length(4, 2, 'full', 1))
     self.assertEqual(6, utils.deconv_output_length(4, 2, 'full', 2))
+
+
+class ConstantValueTest(test.TestCase):
+
+  def test_constant_value(self):
+    f1 = lambda: constant_op.constant(5)
+    f2 = lambda: constant_op.constant(32)
+
+    # Boolean pred
+    self.assertEqual(5, utils.constant_value(utils.smart_cond(True, f1, f2)))
+    self.assertEqual(32, utils.constant_value(utils.smart_cond(False, f1, f2)))
+
+    # Integer pred
+    self.assertEqual(5, utils.constant_value(utils.smart_cond(1, f1, f2)))
+    self.assertEqual(32, utils.constant_value(utils.smart_cond(0, f1, f2)))
+
+    # Unknown pred
+    pred = array_ops.placeholder_with_default(True, shape=())
+    self.assertIsNone(utils.constant_value(utils.smart_cond(pred, f1, f2)))
+
+    #Error case
+    with self.assertRaises(TypeError):
+      utils.constant_value(5)
+
+
+class GetReachableFromInputsTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def test_get_reachable_from_inputs(self):
+
+    pl_1 = array_ops.placeholder(shape=None, dtype='float32')
+    pl_2 = array_ops.placeholder(shape=None, dtype='float32')
+    pl_3 = array_ops.placeholder(shape=None, dtype='float32')
+    x_1 = pl_1 + pl_2
+    x_2 = pl_2 * 2
+    x_3 = pl_3 + 1
+    x_4 = x_1 + x_2
+    x_5 = x_3 * pl_1
+
+    self.assertEqual({pl_1, x_1, x_4, x_5},
+                     utils.get_reachable_from_inputs([pl_1]))
+    self.assertEqual({pl_1, pl_2, x_1, x_2, x_4, x_5},
+                     utils.get_reachable_from_inputs([pl_1, pl_2]))
+    self.assertEqual({pl_3, x_3, x_5}, utils.get_reachable_from_inputs([pl_3]))
+    self.assertEqual({x_3, x_5}, utils.get_reachable_from_inputs([x_3]))
 
 
 if __name__ == '__main__':
