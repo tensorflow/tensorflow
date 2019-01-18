@@ -2754,8 +2754,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
-        # TODO(b/118887316): Re-enable this test in Kokoro.
-        "no_oss",
         "optonly",  # times out
     ],
     xla_enable_strict_auto_jit = True,
