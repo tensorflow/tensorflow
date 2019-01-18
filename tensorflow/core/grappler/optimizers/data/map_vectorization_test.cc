@@ -231,10 +231,28 @@ TEST(MapVectorizationTest, VectorizeWithUndefinedOutputShapes) {
                      input_node->name());
 }
 
+TEST(MapVectorizationTest, VectorizeWithUnknownRank) {
+  // Tests that the optimization doesn't break when the input to MapDataset
+  // has components with unknown rank. In this case, the optimization does not
+  // occur.
+  GrapplerItem item;
+  std::vector<PartialTensorShape> input_shapes({{}});
+  std::vector<DataType> input_types({DT_INT64});
+  auto input_node =
+      AddArbitraryInputNode(&item.graph, &input_shapes, &input_types);
+  auto map_node = AddMapNode(&item.graph, input_node->name());
+  auto batch_node = AddBatchNode(&item.graph, map_node->name());
+  MapVectorization optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  CheckNotVectorized(output, map_node->op(), batch_node->op(),
+                     input_node->name());
+}
+
 TEST(MapVectorizationTest, VectorizeWithUnknownDim) {
   // Tests that the optimization doesn't break when the input to MapDataset
-  // doesn't has some components with unknown dimensions. In this case, the
-  // optimization does not occur.
+  // has components with unknown dimensions. In this case, the optimization does
+  // not occur.
   GrapplerItem item;
   std::vector<PartialTensorShape> input_shapes({{-1, 2}});
   std::vector<DataType> input_types({DT_INT64});
