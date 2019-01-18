@@ -307,6 +307,8 @@ class Layer(checkpointable.Checkpointable):
     if dtype is None:
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
+    if self._dtype is None:
+      self._dtype = dtype.base_dtype.name
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
