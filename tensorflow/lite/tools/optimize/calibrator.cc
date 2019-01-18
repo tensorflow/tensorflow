@@ -199,8 +199,10 @@ std::vector<int> GetLoggableTensorIndices(
   for (auto tensor_index : tensor_indices) {
     auto tensor = tensors->Get(tensor_index);
     auto buffer_index = tensor->buffer();
-    bool has_no_buffer =
-        buffer_index == 0 || (tensor_buffers->Get(buffer_index) == nullptr);
+    const bool has_no_buffer =
+        (tensor_buffers->Get(buffer_index) == nullptr) ||
+        (tensor_buffers->Get(buffer_index)->data() == nullptr) ||
+        (tensor_buffers->Get(buffer_index)->data()->size() == 0);
     if (has_no_buffer && tensor->type() == tflite::TensorType_FLOAT32) {
       loggable.push_back(tensor_index);
     }
