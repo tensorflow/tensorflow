@@ -159,26 +159,6 @@ bool VariantTensorDataReader::Contains(StringPiece key) {
   return map_.find(string(key)) != map_.end();
 }
 
-void VariantTensorDataReader::PreProcess() {
-  string metadata;
-  data_->get_metadata(&metadata);
-  IteratorStateMetadata proto;
-  if (!proto.ParseFromString(metadata)) {
-    status_ = errors::Internal("Error parsing IteratorStateMetadata.");
-    return;
-  }
-  size_t num_entries = proto.keys_size();
-  if (num_entries != data_->tensors_size()) {
-    status_ =
-        errors::InvalidArgument("Unmatched number of keys and tensors: ",
-                                num_entries, " vs. ", data_->tensors_size());
-    return;
-  }
-  for (size_t i = 0; i < num_entries; i++) {
-    map_[proto.keys(i)] = i;
-  }
-}
-
 template <typename T>
 Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
   if (map_.find(string(key)) == map_.end()) {
@@ -213,8 +193,8 @@ Status VariantTensorDataWriter::WriteTensor(StringPiece key,
 
 Status VariantTensorDataWriter::Flush() {
   string metadata;
-  if (!metadata_proto_.SerializeToString(&metadata)) {
-    return errors::Internal("Unable to serialize IteratorStateMetadata.");
+  for (size_t i = 0; i < keys_.size(); ++i) {
+    strings::StrAppend(&metadata, kDelimiter, keys_[i]);
   }
   data_->set_metadata(metadata);
   return Status::OK();
@@ -230,12 +210,8 @@ Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
 
 Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
                                                     const Tensor& val) {
-  // Write key to the metadata proto. This gets written to `data_`
-  // when `Flush()` is called. We do this lazily to avoid multiple
-  // serialization calls.
-  metadata_proto_.add_keys(string(key));
-
-  // Update tensors.
+  DCHECK_EQ(key.find(kDelimiter), string::npos);
+  keys_.push_back(string(key));
   *(data_->add_tensors()) = val;
   return Status::OK();
 }
