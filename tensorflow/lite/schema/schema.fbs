@@ -217,6 +217,7 @@ enum BuiltinOperator : byte {
   ABS = 101,
   SPLIT_V = 102,
   UNIQUE = 103,
+  CEIL = 104,
 }
 
 // Options for the builtin operators.

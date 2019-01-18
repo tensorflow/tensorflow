@@ -112,6 +112,7 @@ class OperatorTest : public ::testing::Test {
 
 TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
+  CheckSimpleOperator<CeilOperator>("CEIL", OperatorType::kCeil);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);

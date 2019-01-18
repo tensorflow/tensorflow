@@ -228,6 +228,7 @@ def generated_test_models():
         "arg_min_max",
         "avg_pool",
         "batch_to_space_nd",
+        "ceil",
         "concat",
         "constant",
         "control_dep",

@@ -362,6 +362,17 @@ Outputs {
 }
 ```
 
+**CEIL**
+
+```
+inputs {
+  0: tensor
+}
+outputs: {
+  0: result of computing element-wise ceil of the input tensor
+}
+```
+
 **FULLY_CONNECTED**
 
 ```
