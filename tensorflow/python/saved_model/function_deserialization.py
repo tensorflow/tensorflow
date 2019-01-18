@@ -28,7 +28,9 @@ from tensorflow.python.framework import function_def_to_graph as function_def_li
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
 
@@ -160,24 +162,29 @@ def load_function_def_library(library):
   Raises:
     ValueError: if functions dependencies have a cycle.
   """
-  # TODO(andresp): Look into restoring gradient function information.
   functions = {}
-  name_mapping = {}
+
   # Note: Use a new graph to allow function_def_to_graph to help validating
   # that the functions are loaded correctly. This is not possible to do
   # just in eager mode as there is no python API to find if a function has
   # been registered in eager. Note also that despite this the created
   # func_graphs can still be used in eager or in other graphs.
-  with ops.Graph().as_default() as import_graph:
-    for fdef in _sort_function_defs(library):
-      copy = _fix_fdef(fdef, name_mapping)
+  import_graph = ops.Graph()
+
+  for fdef in _sort_function_defs(library):
+    with import_graph.as_default():
+      copy = _fix_fdef(fdef, functions)
 
       func_graph = function_def_lib.function_def_to_graph(copy)
       func = function_lib.ConcreteFunction(func_graph)
       func.add_to_graph(import_graph)
 
-      name_mapping[fdef.signature.name] = func.name
       functions[fdef.signature.name] = func
+
+    # Also register the gradients in the current root context.
+    with ops.init_scope():
+      func._register_gradient()  # pylint: disable=protected-access
+
   return functions
 
 
@@ -215,14 +222,39 @@ def _sort_function_defs(library):
   return [reverse[x] for x in output]
 
 
-def _fix_fdef(orig_fdef, name_map):
+def _fix_fdef(orig_fdef, functions):
+  """Fixes a FunctionDef proto to be loaded in current context.
+
+  In particular, when loading a function library into an eager context, one
+  must rename the functions to avoid conflicts with existent functions.
+
+  Args:
+    orig_fdef: FunctionDef proto to fix. It is not modified.
+    functions: map from function name to a ConcreteFunction instance.
+
+  Returns:
+    A fixed copy of the original FunctionDef.
+  """
   fdef = function_pb2.FunctionDef()
   fdef.CopyFrom(orig_fdef)
-  fdef.signature.name = _clean_function_name(fdef.signature.name)
   for node_def in fdef.node_def:
+    if "_gradient_op_type" in node_def.attr:
+      if node_def.op in ["StatefulPartitionedCall", "PartitionedCall"]:
+        # TODO(andresp): This code assumes that the gradient registered for this
+        # function call is the default gradient for the function and not a
+        # custom one.
+        fname = node_def.attr["f"].func.name
+        node_def.attr["_gradient_op_type"].s = compat.as_bytes(
+            functions[fname]._gradient_name)  # pylint: disable=protected-access
+      else:
+        logging.warning("Importing a function (%s) with ops with custom "
+                        "gradients. Will likely fail if a gradient is "
+                        "requested.", fdef.signature.name)
     for _, attr_value in node_def.attr.items():
       if attr_value.func.name:
-        attr_value.func.name = name_map[attr_value.func.name]
+        attr_value.func.name = functions[attr_value.func.name].name
+
+  fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef
 
 
