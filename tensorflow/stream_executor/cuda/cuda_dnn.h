@@ -19,8 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
-class CUDAExecutor;
+class GpuExecutor;
 class CudnnRnnDescriptor;
 class CudnnRnnSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
@@ -42,7 +42,7 @@ extern const PluginId kCuDnnPlugin;
 // functions, see dnn.h.
 class CudnnSupport : public dnn::DnnSupport {
  public:
-  explicit CudnnSupport(CUDAExecutor* parent);
+  explicit CudnnSupport(GpuExecutor* parent);
 
   port::Status Init() override;
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
@@ -552,7 +552,7 @@ class CudnnSupport : public dnn::DnnSupport {
                          DeviceMemoryBase* output_data) override;
 
  private:
-  CUDAExecutor* parent_;  // Parent executor object. Not owned.
+  GpuExecutor* parent_;  // Parent executor object. Not owned.
 
   // Provides access to the cuDNN handle.
   std::unique_ptr<class CudnnAccess> cudnn_;
@@ -667,7 +667,7 @@ class CudnnSupport : public dnn::DnnSupport {
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
 };
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
