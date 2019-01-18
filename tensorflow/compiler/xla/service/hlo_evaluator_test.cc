@@ -308,6 +308,19 @@ TEST_F(HloEvaluatorTest, DoesNotR2) {
                                     {0, std::numeric_limits<int>::min()}});
   TestUnaryOp(HloOpcode::kNot, std::move(expected), std::move(operand));
 }
+
+TEST_F(HloEvaluatorTest, DoesRealC128) {
+  auto x = LiteralUtil::CreateR1<complex128>({{1, 0}, {-100, 4}});
+  auto expected_real = LiteralUtil::CreateR1<double>({1, -100});
+  TestUnaryOp(HloOpcode::kReal, std::move(expected_real), std::move(x));
+}
+
+TEST_F(HloEvaluatorTest, DoesImagC128) {
+  auto x = LiteralUtil::CreateR1<complex128>({{1, 0}, {-100, 4}});
+  auto expected_imag = LiteralUtil::CreateR1<double>({0, 4});
+  TestUnaryOp(HloOpcode::kImag, std::move(expected_imag), std::move(x));
+}
+
 // Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
 // constant operands.
 TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
