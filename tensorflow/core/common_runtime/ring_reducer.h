@@ -40,6 +40,11 @@ class RingReducer : public CollectiveImplementationInterface {
   // and device_locality.  Also saves the CollectiveContext in this object.
   Status InitializeCollectiveContext(CollectiveContext* col_ctx) override;
 
+  // No-op for ring reducer.
+  Status InitializeInstanceBeforeGroupDiscovery(CollectiveParams*) override {
+    return Status::OK();
+  }
+
   // Begins async execution of the ring reduce algorithm.
   // Must be called in a blockable thread.
   // TODO(b/80529858): remove the previous warning when we have a dedicated
@@ -52,26 +57,7 @@ class RingReducer : public CollectiveImplementationInterface {
   void StartAbort(const Status& s);
   void ContinueAfterInputCopy();
   void Finish(bool ok);
-  Status ComputeBinOp(Device* device, OpKernel* op, Tensor* output,
-                      Tensor* input);
   bool RunAsyncParts();
-
-  // Used for executing a sub-operation, e.g. a merge_op instance, with
-  // an OpKernelContext based on the one passed into this Op.
-  class SubContext {
-   public:
-    OpKernelContext::Params sub_params_;
-    gtl::InlinedVector<TensorValue, 4> sub_inputs_;
-    gtl::InlinedVector<AllocatorAttributes, 4> sub_input_attr_;
-    gtl::InlinedVector<DeviceContext*, 4> sub_input_dc_;
-    // Used only for Binary and Unary Ops for which we require
-    // the calculation to be in-place on the first input.
-    int forward_from_ = 0;
-    OpKernelContext* sub_ctx_;
-    SubContext(OpKernelContext* ctx, OpKernelContext::Params* params,
-               OpKernel* op, Tensor* output, Tensor* input);
-    ~SubContext() { delete sub_ctx_; }
-  };
 
   // Current status of a RingField
   enum RingFieldAction {
