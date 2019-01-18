@@ -28,22 +28,27 @@ namespace {
 // Copies the contents from the flatbuffer int vector `flatbuffer` into the
 // int array `buffer`. `flat_vector` and `buffer` represent the same
 // configuration operation for a given operation.
-void FlatBufferIntVectorToArray(int max_size_of_buffer,
-                                const flatbuffers::Vector<int32_t>* flat_vector,
-                                int* buffer, ErrorReporter* error_reporter) {
+TfLiteStatus FlatBufferIntVectorToArray(
+    int max_size_of_buffer, const flatbuffers::Vector<int32_t>* flat_vector,
+    int* buffer, ErrorReporter* error_reporter, const char* op_name) {
   if (!flat_vector) {
-    error_reporter->Report("Input array not provided for operation.\n");
+    error_reporter->Report("Input array not provided for operation '%s'.\n",
+                           op_name);
+    return kTfLiteError;
   } else {
     int num_dimensions = flat_vector->Length();
     if (num_dimensions > max_size_of_buffer / sizeof(int)) {
       error_reporter->Report(
-          "Found too many dimensions in the operation's input array.\n");
+          "Found too many dimensions in the input array of operation '%s'.\n",
+          op_name);
+      return kTfLiteError;
     } else {
       for (int i = 0; i < num_dimensions; ++i) {
         buffer[i] = flat_vector->Get(i);
       }
     }
   }
+  return kTfLiteOk;
 }
 
 }  // namespace
@@ -452,8 +457,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = allocator->AllocatePOD<TfLiteReshapeParams>();
       if (auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
         auto* new_shape = schema_params->new_shape();
-        FlatBufferIntVectorToArray(sizeof(params->shape), new_shape,
-                                   params->shape, error_reporter);
+        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+            sizeof(params->shape), new_shape, params->shape, error_reporter,
+            "reshape"));
         params->num_dimensions = new_shape->Length();
       }
       *builtin_data = reinterpret_cast<void*>(params);
@@ -521,8 +527,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = allocator->AllocatePOD<TfLiteSqueezeParams>();
       if (auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
         const auto& squeeze_dims = schema_params->squeeze_dims();
-        FlatBufferIntVectorToArray(sizeof(params->squeeze_dims), squeeze_dims,
-                                   params->squeeze_dims, error_reporter);
+        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+            sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
+            error_reporter, "squeeze"));
         params->num_squeeze_dims = squeeze_dims->Length();
       }
       *builtin_data = reinterpret_cast<void*>(params);
