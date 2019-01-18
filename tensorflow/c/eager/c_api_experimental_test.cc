@@ -18,12 +18,12 @@ limitations under the License.
 #include <string.h>
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
+#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/profiler/tfprof_log.pb.h"
 
 using tensorflow::string;
 
@@ -70,17 +70,17 @@ void ExecuteWithProfiling(bool async) {
   TFE_ProfilerSerializeToString(ctx, profiler, profiler_result, status);
   TFE_DeleteProfiler(profiler);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  tensorflow::tfprof::ProfileProto profile_proto;
+  tensorflow::tpu::Trace profile_proto;
   EXPECT_TRUE(profile_proto.ParseFromString(
       {reinterpret_cast<const char*>(profiler_result->data),
        profiler_result->length}));
   string profile_proto_str = profile_proto.DebugString();
   if (!gpu_device_name.empty()) {
-    EXPECT_TRUE(HasSubstr(profile_proto_str, "gpu:0"));
+    EXPECT_TRUE(HasSubstr(profile_proto_str, "GPU:0"));
     // device name with "stream:all" is collected by Device Tracer.
     EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
   }
-  EXPECT_TRUE(HasSubstr(profile_proto_str, "cpu:0"));
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "CPU:0"));
   TF_DeleteBuffer(profiler_result);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
