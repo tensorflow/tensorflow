@@ -4091,7 +4091,6 @@ cc_library(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:replay_log_proto_cc",
-        "@com_google_absl//absl/time",
     ],
 )
 
