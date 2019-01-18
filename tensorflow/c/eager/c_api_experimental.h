@@ -35,9 +35,8 @@ typedef struct TFE_Profiler TFE_Profiler;
 TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler(TFE_Context* ctx);
 TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
 
-// The output string is a binary string of tensorflow.tfprof.ProfileProto.
-// User can write the string to file for offline analysis by tfprof command-line
-// tools or graphical user interface.
+// The output string is a binary string of tensorflow.tpu.Trace. User can write
+// the string to file for offline analysis by tensorboard.
 TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Context* ctx,
                                                          TFE_Profiler* profiler,
                                                          TF_Buffer* buf,

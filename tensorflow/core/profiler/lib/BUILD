@@ -23,7 +23,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/cc/profiler",
+        "//tensorflow/contrib/tpu/profiler:trace_events_proto_cc",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
