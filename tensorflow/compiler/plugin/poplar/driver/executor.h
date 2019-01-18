@@ -50,6 +50,7 @@ limitations under the License.
 #include <mutex>
 
 #include <poplar/Device.hpp>
+#include <poplar/DeviceManager.hpp>
 #include <poplar/Engine.hpp>
 #include <poplar/OptionFlags.hpp>
 #include <poplar/Tensor.hpp>
@@ -317,6 +318,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   void AboutToFreeEngine(poplar::Engine* engine);
 
   const int device_ordinal() const;
+
+  static poplar::DeviceManager& GetDeviceManager();
 
  private:
   struct TensorControl {

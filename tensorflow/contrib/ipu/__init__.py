@@ -23,6 +23,7 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.contrib.ipu.python import ops
+from tensorflow.contrib.ipu.python import popnn_normalization
 from tensorflow.contrib.ipu.python import popnn_rnn
 from tensorflow.contrib.ipu.python import utils
 # pylint: enable=wildcard-import,unused-import

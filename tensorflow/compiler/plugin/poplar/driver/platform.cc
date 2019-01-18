@@ -48,9 +48,9 @@ PoplarPlatform::~PoplarPlatform() {}
 se::Platform::Id PoplarPlatform::id() const { return kPoplarPlatformId; }
 
 int PoplarPlatform::VisibleDeviceCount() const {
-  poplar::DeviceManager device_mgr = poplar::DeviceManager::getDeviceManager();
-
-  int num_devices = device_mgr.getDevices(poplar::TargetType::IPU, 1).size();
+  int num_devices = PoplarExecutor::GetDeviceManager()
+                        .getDevices(poplar::TargetType::IPU, 1)
+                        .size();
 
   if (num_devices == 0) {
     // Allow for 2 virtual devices
