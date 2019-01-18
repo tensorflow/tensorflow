@@ -513,10 +513,11 @@ class Layer(checkpointable.Checkpointable):
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
     input_list = nest.flatten(inputs)
-    # Accept NumPy inputs by converting to Tensors.
-    if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-      inputs = nest.map_structure(ops.convert_to_tensor, inputs)
-      input_list = nest.flatten(inputs)
+    if context.executing_eagerly():
+      # Accept NumPy inputs by converting to Tensors when executing eagerly.
+      if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+        inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+        input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
     # This is always the case in graph mode. It can also be the case in eager
