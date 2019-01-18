@@ -1617,7 +1617,7 @@ class KerasTPUModel(models.Model):
         validation_split=validation_split)
 
     # Prepare validation data
-    val_x, val_y, val_sample_weights = self._prepare_validation_data(
+    x, y, val_x, val_y, val_sample_weights = self._prepare_validation_data(
         validation_data, validation_split, validation_steps, x, y,
         sample_weights, batch_size)
     return self._pipeline_fit_loop(
@@ -1910,7 +1910,7 @@ class KerasTPUModel(models.Model):
       batch_size: The training batch size (if provided)
 
     Returns:
-      A 3-tuple of (val_x, val_y, val_sample_weights).
+      A 5-tuple of (x, y, val_x, val_y, val_sample_weights).
 
     Raises:
       ValueError: If the provided arguments are not compatible with
@@ -1967,7 +1967,7 @@ class KerasTPUModel(models.Model):
       val_y = None
       val_sample_weights = None
 
-    return val_x, val_y, val_sample_weights
+    return x, y, val_x, val_y, val_sample_weights
 
   def predict(self,
               x,
