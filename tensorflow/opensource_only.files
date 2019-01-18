@@ -217,7 +217,6 @@ tensorflow/third_party/protobuf/BUILD
 tensorflow/third_party/tflite_mobilenet.BUILD
 tensorflow/third_party/py/BUILD
 tensorflow/third_party/py/BUILD.tpl
-tensorflow/third_party/py/remote.BUILD.tpl
 tensorflow/third_party/py/numpy/BUILD
 tensorflow/third_party/py/python_configure.bzl
 tensorflow/third_party/termcolor.BUILD
