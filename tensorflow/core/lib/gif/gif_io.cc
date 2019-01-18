@@ -147,6 +147,14 @@ uint8* Decode(const void* srcdata, int datasize,
         GifByteType color_index =
             this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) +
                                    (j - img_desc->Left)];
+
+        if (color_index >= color_map->ColorCount) {
+          *error_string = strings::StrCat("found color index ", color_index,
+                                          " outside of color map range ",
+                                          color_map->ColorCount);
+          return nullptr;
+        }
+
         const GifColorType& gif_color = color_map->Colors[color_index];
         p_dst[j * channel + 0] = gif_color.Red;
         p_dst[j * channel + 1] = gif_color.Green;
