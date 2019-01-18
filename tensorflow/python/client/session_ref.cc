@@ -18,9 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -480,8 +477,6 @@ Status SessionRef::ReleaseCallable(CallableHandle handle) {
   LOG_AND_RUN_OPERATION(ReleaseCallable, handle);
 }
 
-static const absl::Duration kMaxCloseWaitTime = absl::Seconds(60);
-
 Status SessionRef::Close(const RunOptions& run_options) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
   mutex_lock l(run_lock_);
@@ -492,17 +487,8 @@ Status SessionRef::Close(const RunOptions& run_options) {
     status = session_->Close(run_options);
   }
   session_.reset();
-
-  // Wait no more than kMaxCloseWaitTime for all pending operations to finish.
-  absl::Time start_time = absl::Now();
-  absl::Duration wait_time = start_time + kMaxCloseWaitTime - absl::Now();
-  while (run_count_ > 0 && wait_time > absl::ZeroDuration()) {
-    if (run_finished_.wait_for(l, absl::ToChronoMilliseconds(wait_time)) ==
-        std::cv_status::timeout) {
-      status.Update(errors::DeadlineExceeded("Timeout closing session."));
-      return status;
-    }
-    wait_time = start_time + kMaxCloseWaitTime - absl::Now();
+  while (run_count_ > 0) {
+    run_finished_.wait(l);
   }
   return status;
 }
@@ -517,17 +503,8 @@ Status SessionRef::Close() {
     status = session_->Close();
   }
   session_.reset();
-
-  // Wait no more than kMaxCloseWaitTime for all pending operations to finish.
-  absl::Time start_time = absl::Now();
-  absl::Duration wait_time = start_time + kMaxCloseWaitTime - absl::Now();
-  while (run_count_ > 0 && wait_time > absl::ZeroDuration()) {
-    if (run_finished_.wait_for(l, absl::ToChronoMilliseconds(wait_time)) ==
-        std::cv_status::timeout) {
-      status.Update(errors::DeadlineExceeded("Timeout closing session."));
-      return status;
-    }
-    wait_time = start_time + kMaxCloseWaitTime - absl::Now();
+  while (run_count_ > 0) {
+    run_finished_.wait(l);
   }
   return status;
 }
