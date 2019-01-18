@@ -60,6 +60,7 @@ load(
     "mkl_deps",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -180,12 +181,36 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "collective_ops",
+    srcs = if_nccl([
+        "collective_nccl_reducer.h",
+        "collective_nccl_reducer.cc",
+    ]),
     prefix = "collective_ops",
     deps = [
         "//tensorflow/core:collective_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ] + if_nccl([
+        "@local_config_nccl//:nccl",
+        "//tensorflow/core/nccl:nccl_lib",
+    ]),
+)
+
+tf_cuda_cc_test(
+    name = "collective_nccl_reducer_test",
+    size = "small",
+    srcs = ["collective_nccl_reducer_test.cc"],
+    tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
