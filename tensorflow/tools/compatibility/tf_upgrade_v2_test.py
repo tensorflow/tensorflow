@@ -293,6 +293,18 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     visitor.private_map["tf.compat"] = ["v1", "v2"]
     traverse.traverse(tf.compat.v1, visitor)
 
+  def testPositionsMatchArgGiven(self):
+    full_dict = tf_upgrade_v2.TFAPIChangeSpec().function_arg_warnings
+    method_names = full_dict.keys()
+    for method in method_names:
+      # doesn't test methods on objects
+      if not method.startswith("*."):
+        args = full_dict[method].keys()
+        method = get_symbol_for_name(tf, method)
+        arg_spec = tf_inspect.getfullargspec(method)
+        for (arg, pos) in args:
+          self.assertEqual(arg_spec[0][pos], arg)
+
   def testReorderFileNeedsUpdate(self):
     reordered_function_names = (
         tf_upgrade_v2.TFAPIChangeSpec().reordered_function_names)
