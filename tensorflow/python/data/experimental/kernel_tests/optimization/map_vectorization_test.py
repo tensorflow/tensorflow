@@ -225,6 +225,10 @@ def _generate_csv_test_case():
 
 
 def _generate_parse_single_example_test_case():
+  # When sparse tensors are used, map_vectorization is not
+  # attempted because the output_shapes of the map dataset are not defined.
+  # TODO(rachelim): Consider being more lax with checking the output_shapes of
+  # the map node.
 
   def parse_example_factory():
 
@@ -243,8 +247,6 @@ def _generate_parse_single_example_test_case():
                     feature={
                         "dense_int": _int64_feature(i),
                         "dense_str": _bytes_feature(str(i)),
-                        "sparse_int": _int64_feature(i, i * 2, i * 4, i * 8),
-                        "sparse_str": _bytes_feature(*["abc"] * i)
                     })).SerializeToString() for i in range(10)
         ]))
 
@@ -252,8 +254,6 @@ def _generate_parse_single_example_test_case():
     features = {
         "dense_int": parsing_ops.FixedLenFeature((), dtypes.int64, 0),
         "dense_str": parsing_ops.FixedLenFeature((), dtypes.string, ""),
-        "sparse_int": parsing_ops.VarLenFeature(dtypes.int64),
-        "sparse_str": parsing_ops.VarLenFeature(dtypes.string),
     }
     return parsing_ops.parse_single_example(x, features)
 

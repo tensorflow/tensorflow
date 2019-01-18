@@ -121,6 +121,7 @@ bool IsOutputShapesFullyDefined(const NodeDef& node) {
   const auto& shapes = shapes_attr->list().shape();
 
   for (const TensorShapeProto& shape : shapes) {
+    if (shape.unknown_rank()) return false;
     for (const auto& dim : shape.dim()) {
       if (dim.size() == -1) {
         return false;
