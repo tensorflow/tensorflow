@@ -59,6 +59,7 @@ class TensorHandle : public core::RefCounted {
                Device* op_device, Device* resource_device, EagerContext* ctx);
 
   ~TensorHandle() override {
+    VLOG(1) << "Deleting TensorHandle " << this;
     if (call_on_destroy_) {
       call_on_destroy_();
     }
@@ -113,6 +114,8 @@ class TensorHandle : public core::RefCounted {
   }
 
   bool IsRemote();
+
+  string DebugString() const;
 
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be

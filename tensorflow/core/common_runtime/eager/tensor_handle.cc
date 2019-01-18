@@ -312,4 +312,15 @@ Device* GetResourceDevice(const Tensor& t, EagerContext* ctx) {
   return it->second;
 }
 
+string TensorHandle::DebugString() const {
+  VLOG(1) << "Calling TensorHandle::DebugString() on " << this;
+
+  string out;
+  strings::StrAppend(&out, "Device: ", device_ ? device_->DebugString() : "[]");
+  // Consider supporting non-CPU tensors (when device_ is non-NULL) if needed.
+  strings::StrAppend(&out, ", Tensor: ", device_ ? "?" : tensor_.DebugString(),
+                     "\n");
+  return out;
+}
+
 }  // namespace tensorflow
