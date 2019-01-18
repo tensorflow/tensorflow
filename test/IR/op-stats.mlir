@@ -30,7 +30,7 @@ func @main(tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> {
 }
 
 // CHECK-LABEL: Operations encountered
-// CHECK: 'addf' , 6
-// CHECK: 'long_op_name' , 1
-// CHECK: 'return' , 1
-// CHECK: 'xla.add' , 17
+// CHECK: addf , 6
+// CHECK: long_op_name , 1
+// CHECK: return , 1
+// CHECK: xla.add , 17
