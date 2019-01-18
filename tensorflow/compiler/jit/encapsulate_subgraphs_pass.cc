@@ -1008,13 +1008,15 @@ Status Encapsulator::Subgraph::AddHostComputes(
       // subgraph.
       for (const auto& src_node : oc_subgraph.control_inputs) {
         Node* src_image = node_images.at(src_node);
-        graph_->AddControlEdge(src_image, host_compute);
+        graph_->AddControlEdge(src_image, host_compute,
+                               /* allow_duplicates= */ true);
       }
 
       // Connect the _HostCompute node to its ancestor host compute nodes.
       for (const auto& ancestor_name : host_compute_ancestors) {
         Node* ancestor = host_compute_node[ancestor_name];
-        graph_->AddControlEdge(ancestor, host_compute);
+        graph_->AddControlEdge(ancestor, host_compute,
+                               /* allow_duplicates= */ true);
       }
 
       // Connect the consumers in the subgraph to the _HostCompute node.
@@ -1031,7 +1033,8 @@ Status Encapsulator::Subgraph::AddHostComputes(
       // node.
       for (const auto& dst_node : oc_subgraph.control_outputs) {
         Node* dst_image = node_images.at(dst_node);
-        graph_->AddControlEdge(host_compute, dst_image);
+        graph_->AddControlEdge(host_compute, dst_image,
+                               /* allow_duplicates= */ true);
       }
     }
   }
@@ -1059,7 +1062,8 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
 void Encapsulator::Subgraph::ConnectSequencerToCallNode(Graph* graph_out) {
   if (sequencer_ != nullptr) {
     VLOG(2) << "ConnectSequencerToCallNode";
-    graph_out->AddControlEdge(sequencer_, call_node_);
+    graph_out->AddControlEdge(sequencer_, call_node_,
+                              /* allow_duplicates= */ true);
   }
 }
 
@@ -1279,7 +1283,8 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
   // completes. This has no effect on execution order but prevents the
   // RecvAtHost being pruned.
   TF_RETURN_IF_ERROR(MakeSequencingNode(subgraph_name, graph_out));
-  graph_out->AddControlEdge(oc_subgraph->recv_at_host, sequencer_);
+  graph_out->AddControlEdge(oc_subgraph->recv_at_host, sequencer_,
+                            true /* skip duplicates check */);
 
   return Status::OK();
 }
@@ -1336,7 +1341,8 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   // subgraph completes. This has no effect on execution order but prevents the
   // RecvAtHost being pruned.
   TF_RETURN_IF_ERROR(MakeSequencingNode(subgraph_name, graph_out));
-  graph_out->AddControlEdge(oc_subgraph->send_from_host, sequencer_);
+  graph_out->AddControlEdge(oc_subgraph->send_from_host, sequencer_,
+                            /* allow_duplicates= */ true);
 
   return Status::OK();
 }
@@ -1446,7 +1452,8 @@ Status Encapsulator::CopySubgraphEdges(
         src_func_id == dst_func_id) {
       Graph* g = subgraphs_[src_func_id].GetGraph();
       if (edge->IsControlEdge()) {
-        g->AddControlEdge(src_image, dst_image);
+        g->AddControlEdge(src_image, dst_image,
+                          /* allow_duplicates= */ true);
       } else {
         g->AddEdge(src_image, edge->src_output(), dst_image, edge->dst_input());
       }
@@ -1732,7 +1739,8 @@ Status Encapsulator::CopyEdgeToOutputGraph(
     if (edges_added
             ->emplace(OutputTensor(src_image, -1), InputTensor(dst_image, -1))
             .second) {
-      graph_out->AddControlEdge(src_image, dst_image);
+      graph_out->AddControlEdge(src_image, dst_image,
+                                /* allow_duplicates= */ true);
     }
 
     return Status::OK();
@@ -1761,7 +1769,8 @@ Status Encapsulator::AddCallNodeDependencies(Graph* graph_out) {
     const string& subgraph = ancestors.first;
     for (const string& ancestor : ancestors.second) {
       graph_out->AddControlEdge(subgraphs_[ancestor].GetCallNode(),
-                                subgraphs_[subgraph].GetCallNode());
+                                subgraphs_[subgraph].GetCallNode(),
+                                /* allow_duplicates= */ true);
     }
   }
   return Status::OK();
@@ -2129,7 +2138,8 @@ Status CheckClusterDependencyForCycles(
     const string& ancestor, const string& successor,
     const std::unordered_map<string, std::unordered_set<string>>& ancestors,
     const std::unordered_map<Node*, PathDetails>& node_ancestors_map,
-    GraphCycles* cycle_detector, std::map<string, int>* cycle_detector_map) {
+    GraphCycles* cycle_detector,
+    std::unordered_map<string, int>* cycle_detector_map) {
   if (cycle_detector_map->find(ancestor) == cycle_detector_map->end()) {
     (*cycle_detector_map)[ancestor] = cycle_detector->NewNode();
   }
@@ -2173,7 +2183,7 @@ Status Encapsulator::FindClusterDependencies() {
   // We check that clusters are acyclic using this cycle detector.
   GraphCycles cycle_detector;
   // Map from cluster name to cycle detector node id.
-  std::map<string, int> cycle_detector_map;
+  std::unordered_map<string, int> cycle_detector_map;
   // Process the nodes in topologically-sorted order.
   std::vector<Node*> nodes;
   GetReversePostOrder(*graph_in_, &nodes);
