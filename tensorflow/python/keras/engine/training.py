@@ -279,7 +279,7 @@ class Model(Network):
     self._distributed_model = None
     # Initialize model metric attributes.
     self._init_metric_attributes()
-    if not self.built:
+    if not self.built or not self.inputs or not self.outputs:
       # Model is not compilable because it does not know its number of inputs
       # and outputs, nor their shapes and names. We will compile after the first
       # time the model gets called on training data.
