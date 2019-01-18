@@ -1508,17 +1508,21 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
               ),
       },
   )
-  _tpl(
-      repository_ctx,
-      "cuda:remote.BUILD",
-      {
-          "%{remote_cuda_repo}": remote_config_repo,
-      },
+  repository_ctx.template(
       "cuda/BUILD",
+      Label(remote_config_repo + "/cuda:BUILD"),
+      {},
   )
-  _tpl(repository_ctx, "crosstool:remote.BUILD", {
-      "%{remote_cuda_repo}": remote_config_repo,
-  }, "crosstool/BUILD")
+  repository_ctx.template(
+      "cuda/build_defs.bzl",
+      Label(remote_config_repo + "/cuda:build_defs.bzl"),
+      {},
+  )
+  repository_ctx.template(
+      "cuda/cuda/cuda_config.h",
+      Label(remote_config_repo + "/cuda:cuda/cuda_config.h"),
+      {},
+  )
 
 
 def _cuda_autoconf_impl(repository_ctx):
