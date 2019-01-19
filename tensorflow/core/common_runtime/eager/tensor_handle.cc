@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -98,6 +99,19 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
   DCHECK(dtype == DT_RESOURCE ? resource_device_ != nullptr
                               : resource_device_ == nullptr);
 }
+
+TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
+    : dtype(dtype),
+      node_id_(0),
+      device_(nullptr),
+      op_device_(nullptr),
+      resource_device_(nullptr),
+      remote_op_id_(-1),
+      remote_output_num_(-1),
+      remote_shape_node_id_(-1),
+      ctx_(nullptr),
+      is_ready_(true),
+      symbolic_tensor(new OutputGraphNode(symbolic_tensor)) {}
 
 bool TensorHandle::IsReady() {
   if (node_id_ == 0) return true;
@@ -314,6 +328,11 @@ Device* GetResourceDevice(const Tensor& t, EagerContext* ctx) {
 
 string TensorHandle::DebugString() const {
   VLOG(1) << "Calling TensorHandle::DebugString() on " << this;
+
+  if (symbolic_tensor) {
+    return absl::Substitute("TF_Output($0, $1)", symbolic_tensor->oper,
+                            symbolic_tensor->index);
+  }
 
   string out;
   strings::StrAppend(&out, "Device: ", device_ ? device_->DebugString() : "[]");

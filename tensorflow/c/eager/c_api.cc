@@ -356,6 +356,8 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   if (h == nullptr) return;
+  VLOG(1) << "Deleting tensor handle " << h << " with internal handle "
+          << h->handle;
   if (h->handle) {
     h->handle->Unref();
   }
