@@ -10,20 +10,20 @@ func @fn() {
 }
 
 // CHECK: block {
-// CHECK:   for(idx({{.*}})=[[zero1:.*]] to {{.*}} step [[step1:.*]]) {
-// CHECK:     for(idx({{.*}})=[[zero1]] to {{.*}} step [[step1]]) {
-// CHECK:       for(idx({{.*}})=[[zero1]] to {{.*}} step [[step1]]) {
-// CHECK:         for(idx({{.*}})=[[zero1]] to {{.*}} step [[step1]]) {
-// CHECK:           lhs({{.*}}) = store( ... );
+// CHECK:   for({{.*}}=[[zero1:.*]] to {{.*}} step [[step1:.*]]) {
+// CHECK:     for({{.*}}=[[zero1]] to {{.*}} step [[step1]]) {
+// CHECK:       for({{.*}}=[[zero1]] to {{.*}} step [[step1]]) {
+// CHECK:         for({{.*}}=[[zero1]] to {{.*}} step [[step1]]) {
+// CHECK:           {{.*}} = store( ... );
 // CHECK:         };
 // CHECK:       };
 // CHECK:     };
 // CHECK:   }
 // CHECK: }
 // CHECK: block {
-// CHECK:   for(idx({{.*}})=[[zero2:.*]] to {{.*}} step [[step2:.*]]) {
-// CHECK:     for(idx({{.*}})=[[zero2]] to {{.*}} step [[step2]]) {
-// CHECK:       lhs({{.*}}) = store( ... );
+// CHECK:   for({{.*}}=[[zero2:.*]] to {{.*}} step [[step2:.*]]) {
+// CHECK:     for({{.*}}=[[zero2]] to {{.*}} step [[step2]]) {
+// CHECK:       {{.*}} = store( ... );
 // CHECK:     };
 // CHECK:   }
 // CHECK: }

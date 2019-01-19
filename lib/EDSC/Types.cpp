@@ -78,7 +78,10 @@ struct StmtStorage {
 
 } // namespace detail
 
-ScopedEDSCContext::ScopedEDSCContext() { Expr::globalAllocator() = &allocator; }
+ScopedEDSCContext::ScopedEDSCContext() {
+  Expr::globalAllocator() = &allocator;
+  Bindable::resetIds();
+}
 
 ScopedEDSCContext::~ScopedEDSCContext() { Expr::globalAllocator() = nullptr; }
 
@@ -241,7 +244,7 @@ void Expr::print(raw_ostream &os) const {
   } else if (auto un = this->dyn_cast<UnaryExpr>()) {
     os << "unknown_unary";
   } else if (auto bin = this->dyn_cast<BinaryExpr>()) {
-    os << bin.getLHS();
+    os << "(" << bin.getLHS();
     switch (bin.getKind()) {
     case ExprKind::Add:
       os << " + ";
@@ -271,7 +274,8 @@ void Expr::print(raw_ostream &os) const {
       os << "unknown_binary";
     }
     }
-    os << bin.getRHS();
+    os << bin.getRHS() << ")";
+    return;
   } else if (auto ter = this->dyn_cast<TernaryExpr>()) {
     switch (ter.getKind()) {
     case ExprKind::Select:
@@ -451,8 +455,7 @@ void Stmt::print(raw_ostream &os, Twine indent) const {
   if (auto stmtExpr = rhs.dyn_cast<StmtBlockLikeExpr>()) {
     switch (stmtExpr.getKind()) {
     case ExprKind::For:
-      os << indent << "for(idx(" << lhs << ")=" << stmtExpr << ") {";
-      os << " // @" << storage;
+      os << indent << "for(" << lhs << " = " << stmtExpr << ") {";
       os << "\n";
       for (const auto &s : getEnclosedStmts()) {
         if (!s.getRHS().isa<StmtBlockLikeExpr>()) {
@@ -477,7 +480,7 @@ void Stmt::print(raw_ostream &os, Twine indent) const {
     }
     }
   } else {
-    os << "lhs(" << lhs << ") = " << rhs;
+    os << lhs << " = " << rhs;
   }
 }
 

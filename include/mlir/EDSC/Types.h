@@ -227,7 +227,10 @@ struct Bindable : public Expr {
     assert(!ptr || isa<Bindable>() && "expected Bindable");
   }
 
+  friend struct ScopedEDSCContext;
+
 private:
+  static void resetIds() { newId() = 0; }
   static unsigned &newId();
 };
 
