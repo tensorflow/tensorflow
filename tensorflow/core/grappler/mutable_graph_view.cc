@@ -215,6 +215,31 @@ NodeDef* MutableGraphView::AddNode(NodeDef&& node) {
   return node_in_graph;
 }
 
+Status MutableGraphView::AddSubgraph(GraphDef&& subgraph) {
+  if (subgraph.library().function_size() != 0) {
+    return errors::InvalidArgument(
+        "Can't add a subgraph with non-empty function library");
+  }
+
+  int node_size_before = graph()->node_size();
+
+  for (NodeDef& node : *subgraph.mutable_node()) {
+    auto* node_in_graph = graph()->add_node();
+    *node_in_graph = std::move(node);
+    TF_RETURN_IF_ERROR(AddUniqueNode(node_in_graph));
+  }
+
+  // TODO(ezhulenev, lyandy): Right now AddAndDedupFanouts do not check that
+  // fanins actually exists in the graph, and there is already TODO for that.
+
+  for (int i = node_size_before; i < graph()->node_size(); ++i) {
+    NodeDef* node = graph()->mutable_node(i);
+    AddAndDedupFanouts(node);
+  }
+
+  return Status::OK();
+}
+
 Status MutableGraphView::UpdateFanouts(absl::string_view from_node,
                                        absl::string_view to_node) {
   NodeDef* from_node_ptr = GetNode(from_node);
