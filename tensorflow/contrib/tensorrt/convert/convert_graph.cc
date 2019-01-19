@@ -666,14 +666,8 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     segment_string = info.segment_graph_def.SerializeAsString();
   }
 
-  // TODO(aaroey): use enum instead, and add a helper method to do the
-  // conversion.
   string prec_string;
   TF_RETURN_IF_ERROR(GetPrecisionModeName(info.precision_mode, &prec_string));
-  if (info.precision_mode == INT8MODE && calibrate_int8 &&
-      !TRTResourceManager::instance()->getManager("TRTCalibration")) {
-    LOG(ERROR) << "Failed to construct calibration storage";
-  }
   tensorflow::NodeDefBuilder node_builder(info.engine_name, "TRTEngineOp");
   if (!info.device.empty()) node_builder.Device(info.device);
   if (VLOG_IS_ON(1)) {
