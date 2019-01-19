@@ -2477,6 +2477,60 @@ class BinaryCrossentropy(MeanMetricWrapper):
     return super(BinaryCrossentropy, cls).from_config(config)
 
 
+class QuadraticWeightedKappa(Metric):
+  """Computes Quadratic Weighted Kappa score between two raters.
+  The score lies in the range [-1,1], where a score of -1 represents
+  complete disagreement between two the raters whereas a score of 1 represents
+  complete agreement between the two raters. A value of 0 means chance agreement.
+
+  Args:
+  y1: array, shape = [n_samples]
+  Labels assigned by the first annotator.
+  y2 : array, shape = [n_samples]
+  Labels assigned by the second annotator. The kappa statistic is symmetric, 
+  so swapping ``y1`` and `y2`` doesn't change the value.
+
+  Returns
+  kappa_score : float
+  The kappa statistic, which is a number between -1 and 1. The maximum
+  value means complete agreement; zero or lower means chance agreement.
+
+  """
+  def __init__(self, name='quadratic_weighted_kappa', dtype=None):
+    super(QuadraticWeightedKappa, self).__init__(name=name, dtype=dtype)
+    self.kappa_score = self.add_weight('quadratic_weighted_kappa_score', 
+                                   initializer=init_ops.zeros_initializer)
+
+  def update_state(self, y_true, y_pred):
+    y_true = math_ops.cast(y_true, dtype=dtypes.float32)
+    y_pred = math_ops.cast(y_pred, dtype=dtypes.float32)
+
+    conf_mtx = confusion_matrix.confusion_matrix(y_true, y_pred)
+    conf_mtx = K.cast(conf_mtx, dtype=dtypes.float32)
+    nb_ratings = conf_mtx.shape[0]
+
+    weight_mtx = K.zeros((nb_ratings, nb_ratings), dtype=dtypes.int32)
+    weight_mtx = math_ops.add(weight_mtx, K.arange(nb_ratings))
+    weight_mtx = (weight_mtx - K.transpose(weight_mtx))**2 / ((nb_ratings-1)**2)
+    weight_mtx = K.cast(weight_mtx, dtype=dtypes.float32)
+
+    actual_ratings_hist = K.sum(conf_mtx, axis=1)
+    predicted_ratings_hist = K.sum(conf_mtx, axis=0)
+
+    out_prod = predicted_ratings_hist[..., None] * actual_ratings_hist[None, ...]
+
+    conf_mtx = conf_mtx / K.sum(conf_mtx)
+    out_prod = out_prod / K.sum(out_prod)
+
+    numerator = K.sum(conf_mtx * weight_mtx)
+    denominator = K.sum(out_prod * weight_mtx)          
+    kp = 1-(numerator/denominator)
+    state_ops.assign(self.kappa_score, kp)
+
+  def result(self):
+    return self.kappa_score
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
