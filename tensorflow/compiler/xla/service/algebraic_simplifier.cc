@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -218,6 +220,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandlePad(HloInstruction* pad) override;
 
   Status HandlePower(HloInstruction* power) override;
+
+  Status HandleRemainder(HloInstruction* remainder) override;
 
   Status HandleReshape(HloInstruction* reshape) override;
 
@@ -812,6 +816,79 @@ Status InvertConstant(const HloInstruction& constant, Literal* result) {
     return T{1.0} / constant.literal().Get<T>(indices);
   });
 }
+
+template <typename T>
+std::unique_ptr<HloInstruction> TryDivideToShift(HloInstruction* divide,
+                                                 HloComputation* computation) {
+  HloInstruction *a, *b, *c;
+  CHECK(Match(divide, m::Divide(m::Op(&a), m::Op(&b))));
+
+  if (ShapeUtil::ElementIsIntegral(divide->shape()) &&
+      !Match(b, m::ConstantEffectiveScalar(&c)) &&
+      !Match(b, m::Broadcast(m::ConstantEffectiveScalar(&c)))) {
+    return nullptr;
+  }
+
+  if (ShapeUtil::ElementIsSigned(divide->shape())) {
+    int64 b_value = c->literal().GetFirstElement<T>();
+    if (b_value > 0 && IsPowerOfTwo(static_cast<uint64>(b_value))) {
+      // Handle negative dividends by negating the result of the division.
+      HloInstruction* zero_like_a = BroadcastZeros(
+          computation, a->shape().element_type(), a->shape().dimensions());
+
+      auto* dividend_is_negative =
+          computation->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::ChangeElementType(a->shape(), PRED), HloOpcode::kLt, a,
+              zero_like_a));
+
+      auto* negated_dividend = computation->AddInstruction(
+          HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));
+
+      auto* abs_dividend =
+          computation->AddInstruction(HloInstruction::CreateTernary(
+              a->shape(), HloOpcode::kSelect, dividend_is_negative,
+              negated_dividend, a));
+
+      int log2_abs_b_value = tensorflow::Log2Floor64(b_value);
+
+      auto* shift_amount =
+          computation->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<T>(log2_abs_b_value)));
+      if (!ShapeUtil::IsScalar(b->shape())) {
+        shift_amount = computation->AddInstruction(
+            HloInstruction::CreateBroadcast(b->shape(), shift_amount, {}));
+      }
+
+      auto* quotient = computation->AddInstruction(HloInstruction::CreateBinary(
+          divide->shape(), HloOpcode::kShiftRightLogical, abs_dividend,
+          shift_amount));
+
+      auto* neqated_quotient =
+          computation->AddInstruction(HloInstruction::CreateUnary(
+              quotient->shape(), HloOpcode::kNegate, quotient));
+
+      return HloInstruction::CreateTernary(divide->shape(), HloOpcode::kSelect,
+                                           dividend_is_negative,
+                                           neqated_quotient, quotient);
+    }
+  } else {
+    uint64 b_value = c->literal().GetFirstElement<T>();
+    if (IsPowerOfTwo(b_value)) {
+      int log2_abs_b_value = tensorflow::Log2Floor64(b_value);
+      HloInstruction* shift_amount =
+          computation->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<T>(log2_abs_b_value)));
+      if (!ShapeUtil::IsScalar(b->shape())) {
+        shift_amount = computation->AddInstruction(
+            HloInstruction::CreateBroadcast(b->shape(), shift_amount, {}));
+      }
+      return HloInstruction::CreateBinary(
+          divide->shape(), HloOpcode::kShiftRightLogical, a, shift_amount);
+    }
+  }
+
+  return nullptr;
+}
 }  // namespace
 
 Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
@@ -822,6 +899,60 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   VLOG(10) << "trying transform [A/1 => A]: " << divide->ToString();
   if (IsAll(b, 1) && ReplaceInstructionIfSameShape(divide, a)) {
     return Status::OK();
+  }
+
+  // A / B => A >> log2(B) if B is a power of 2.
+  switch (divide->shape().element_type()) {
+    case S8:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryDivideToShift<int8>(divide, computation_)) {
+        return ReplaceWithNewInstruction(divide, std::move(shift));
+      }
+      break;
+    case S16:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryDivideToShift<int16>(divide, computation_)) {
+        return ReplaceWithNewInstruction(divide, std::move(shift));
+      }
+      break;
+    case S32:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryDivideToShift<int32>(divide, computation_)) {
+        return ReplaceWithNewInstruction(divide, std::move(shift));
+      }
+      break;
+    case S64:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryDivideToShift<int64>(divide, computation_)) {
+        return ReplaceWithNewInstruction(divide, std::move(shift));
+      }
+      break;
+    case U8:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryDivideToShift<uint8>(divide, computation_)) {
+        return ReplaceWithNewInstruction(divide, std::move(shift));
+      }
+      break;
+    case U16:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryDivideToShift<uint16>(divide, computation_)) {
+        return ReplaceWithNewInstruction(divide, std::move(shift));
+      }
+      break;
+    case U32:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryDivideToShift<uint32>(divide, computation_)) {
+        return ReplaceWithNewInstruction(divide, std::move(shift));
+      }
+      break;
+    case U64:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryDivideToShift<uint64>(divide, computation_)) {
+        return ReplaceWithNewInstruction(divide, std::move(shift));
+      }
+      break;
+    default:
+      break;
   }
 
   // exp(A)/exp(B) => exp(A-B)
@@ -2157,6 +2288,137 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
     changed = true;
   }
   return changed;
+}
+
+namespace {
+template <typename T>
+std::unique_ptr<HloInstruction> TryRemainderToAnd(HloInstruction* remainder,
+                                                  HloComputation* computation) {
+  HloInstruction *a, *b, *c;
+  CHECK(Match(remainder, m::Remainder(m::Op(&a), m::Op(&b))));
+
+  if (ShapeUtil::ElementIsIntegral(remainder->shape()) &&
+      !Match(b, m::ConstantEffectiveScalar(&c)) &&
+      !Match(b, m::Broadcast(m::ConstantEffectiveScalar(&c)))) {
+    return nullptr;
+  }
+
+  if (ShapeUtil::ElementIsSigned(remainder->shape())) {
+    int64 b_value = c->literal().GetFirstElement<T>();
+    if (b_value > 0 && IsPowerOfTwo(static_cast<uint64>(b_value))) {
+      // Handle negative dividends by negating the result of the division.
+      HloInstruction* zero_like_a = BroadcastZeros(
+          computation, a->shape().element_type(), a->shape().dimensions());
+
+      auto* dividend_is_negative =
+          computation->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::ChangeElementType(a->shape(), PRED), HloOpcode::kLt, a,
+              zero_like_a));
+
+      auto* negated_dividend = computation->AddInstruction(
+          HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));
+
+      auto* abs_dividend =
+          computation->AddInstruction(HloInstruction::CreateTernary(
+              a->shape(), HloOpcode::kSelect, dividend_is_negative,
+              negated_dividend, a));
+
+      auto* mask_amount =
+          computation->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<T>(b_value - 1)));
+      if (!ShapeUtil::IsScalar(b->shape())) {
+        mask_amount = computation->AddInstruction(
+            HloInstruction::CreateBroadcast(b->shape(), mask_amount, {}));
+      }
+
+      auto* quotient = computation->AddInstruction(HloInstruction::CreateBinary(
+          remainder->shape(), HloOpcode::kAnd, abs_dividend, mask_amount));
+
+      auto* neqated_quotient =
+          computation->AddInstruction(HloInstruction::CreateUnary(
+              quotient->shape(), HloOpcode::kNegate, quotient));
+
+      return HloInstruction::CreateTernary(
+          remainder->shape(), HloOpcode::kSelect, dividend_is_negative,
+          neqated_quotient, quotient);
+    }
+  } else {
+    uint64 b_value = c->literal().GetFirstElement<T>();
+    if (IsPowerOfTwo(b_value)) {
+      HloInstruction* mask_amount =
+          computation->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<T>(b_value - 1)));
+      if (!ShapeUtil::IsScalar(b->shape())) {
+        mask_amount = computation->AddInstruction(
+            HloInstruction::CreateBroadcast(b->shape(), mask_amount, {}));
+      }
+      return HloInstruction::CreateBinary(remainder->shape(), HloOpcode::kAnd,
+                                          a, mask_amount);
+    }
+  }
+  return nullptr;
+}
+}  // namespace
+
+Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
+  HloInstruction *a, *b;
+  CHECK(Match(remainder, m::Remainder(m::Op(&a), m::Op(&b))));
+
+  // A % B => A & (B - 1) if B is a power of 2.
+  switch (remainder->shape().element_type()) {
+    case S8:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryRemainderToAnd<int8>(remainder, computation_)) {
+        return ReplaceWithNewInstruction(remainder, std::move(shift));
+      }
+      break;
+    case S16:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryRemainderToAnd<int16>(remainder, computation_)) {
+        return ReplaceWithNewInstruction(remainder, std::move(shift));
+      }
+      break;
+    case S32:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryRemainderToAnd<int32>(remainder, computation_)) {
+        return ReplaceWithNewInstruction(remainder, std::move(shift));
+      }
+      break;
+    case S64:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryRemainderToAnd<int64>(remainder, computation_)) {
+        return ReplaceWithNewInstruction(remainder, std::move(shift));
+      }
+      break;
+    case U8:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryRemainderToAnd<uint8>(remainder, computation_)) {
+        return ReplaceWithNewInstruction(remainder, std::move(shift));
+      }
+      break;
+    case U16:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryRemainderToAnd<uint16>(remainder, computation_)) {
+        return ReplaceWithNewInstruction(remainder, std::move(shift));
+      }
+      break;
+    case U32:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryRemainderToAnd<uint32>(remainder, computation_)) {
+        return ReplaceWithNewInstruction(remainder, std::move(shift));
+      }
+      break;
+    case U64:
+      if (std::unique_ptr<HloInstruction> shift =
+              TryRemainderToAnd<uint64>(remainder, computation_)) {
+        return ReplaceWithNewInstruction(remainder, std::move(shift));
+      }
+      break;
+    default:
+      break;
+  }
+
+  return Status::OK();
 }
 
 Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
