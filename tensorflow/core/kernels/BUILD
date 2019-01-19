@@ -6104,7 +6104,9 @@ tf_kernel_library(
 tf_cc_test(
     name = "requantization_range_op_test",
     size = "small",
-    srcs = ["requantization_range_op_test.cc"],
+    srcs = [
+        "requantization_range_op_test.cc",
+    ],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -6979,6 +6981,67 @@ tf_mkl_kernel_library(
     ],
     prefix = "mkl_cwise_ops_common",
     deps = NN_DEPS + mkl_deps() + [":cwise_op"],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_requantize_ops",
+    srcs = [
+        "mkl_requantization_range_per_channel_op.cc",
+        "mkl_requantize_per_channel_op.cc",
+    ],
+    hdrs = [
+        "meta_support.h",
+        "no_op.h",
+        "reference_gemm.h",
+    ],
+    deps = if_mkl(
+        [
+            ":concat_lib_hdrs",
+            ":conv_ops",
+            ":cwise_op",
+            ":eigen_helpers",
+            ":image_resizer_state",
+            ":ops_util",
+            ":pooling_ops",
+            ":quantization_utils",
+            "//tensorflow/core:array_ops_op_lib",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:math_ops_op_lib",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/eigen3",
+            "@gemmlowp",
+            ":transpose_functor",
+            "@mkl_dnn",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+tf_cc_test_mkl(
+    name = "mkl_requantize_ops_test",
+    size = "small",
+    srcs = ["mkl_requantize_ops_test.cc"],
+    deps = [
+        ":mkl_requantize_ops",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cc_test_mkl(
