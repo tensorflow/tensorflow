@@ -39,6 +39,7 @@ tf_cc_test(
     srcs = ["dataset_utils_test.cc"],
     deps = [
         ":dataset_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
