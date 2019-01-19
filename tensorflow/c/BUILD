@@ -129,6 +129,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_platform",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -318,6 +319,7 @@ tf_cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":c_api_internal",
         ":c_test_util",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_test_util",
