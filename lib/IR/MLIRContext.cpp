@@ -754,30 +754,23 @@ IntegerAttr IntegerAttr::get(Type type, int64_t value) {
 
 static FloatAttr getFloatAttr(Type type, double value,
                               llvm::Optional<Location> loc) {
-  Optional<APFloat> val;
-  if (type.isBF16())
-    // Treat BF16 as double because it is not supported in LLVM's APFloat.
-    // TODO(jpienaar): add BF16 support to APFloat?
-    val = APFloat(value);
-  else if (type.isF32())
-    val = APFloat(static_cast<float>(value));
-  else if (type.isF64())
-    val = APFloat(value);
-  else {
-    // This handles, e.g., F16 because there is no APFloat constructor for it.
-    bool unused;
-    val = APFloat(value);
-    auto fltType = type.cast<FloatType>();
-    auto status = (*val).convert(fltType.getFloatSemantics(),
-                                 APFloat::rmTowardZero, &unused);
-    if (status != APFloat::opOK) {
-      if (loc)
-        type.getContext()->emitError(
-            *loc, "failed to convert floating point value to requested type");
-      return nullptr;
-    }
+  if (!type.isa<FloatType>()) {
+    if (loc)
+      type.getContext()->emitError(*loc, "expected floating point type");
+    return nullptr;
   }
-  return FloatAttr::get(type, *val);
+
+  // Treat BF16 as double because it is not supported in LLVM's APFloat.
+  // TODO(jpienaar): add BF16 support to APFloat?
+  if (type.isBF16() || type.isF64())
+    return FloatAttr::get(type, APFloat(value));
+
+  // This handles, e.g., F16 because there is no APFloat constructor for it.
+  bool unused;
+  APFloat val(value);
+  val.convert(type.cast<FloatType>().getFloatSemantics(),
+              APFloat::rmNearestTiesToEven, &unused);
+  return FloatAttr::get(type, val);
 }
 
 FloatAttr FloatAttr::getChecked(Type type, double value, Location loc) {

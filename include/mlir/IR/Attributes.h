@@ -174,10 +174,14 @@ public:
   using ImplType = detail::FloatAttributeStorage;
   using ValueType = APFloat;
 
+  /// Return a float attribute for the specified value in the specified type.
+  /// These methods should only be used for simple constant values, e.g 1.0/2.0,
+  /// that are known-valid both as host double and the 'type' format.
   static FloatAttr get(Type type, double value);
-  static FloatAttr get(Type type, const APFloat &value);
-
   static FloatAttr getChecked(Type type, double value, Location loc);
+
+  /// Return a float attribute for the specified value in the specified type.
+  static FloatAttr get(Type type, const APFloat &value);
 
   APFloat getValue() const;
 
