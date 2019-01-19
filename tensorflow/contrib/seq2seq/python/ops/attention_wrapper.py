@@ -28,7 +28,7 @@ from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras import layers
 from tensorflow.python.layers import base as layers_base
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
@@ -218,7 +218,7 @@ class _BaseAttentionMechanism(AttentionMechanism):
     return self.initial_alignments(batch_size, dtype)
 
 
-class _BaseAttentionMechanismV2(AttentionMechanism, Layer):
+class _BaseAttentionMechanismV2(AttentionMechanism, layers.Layer):
   """A base AttentionMechanism class providing common functionality.
 
   Common functionality includes:
@@ -251,11 +251,11 @@ class _BaseAttentionMechanismV2(AttentionMechanism, Layer):
         creation.
     """
     if (query_layer is not None
-        and not isinstance(query_layer, layers_base.Layer)):
+        and not isinstance(query_layer, layers.Layer)):
       raise TypeError(
           "query_layer is not a Layer: %s" % type(query_layer).__name__)
     if (memory_layer is not None
-        and not isinstance(memory_layer, layers_base.Layer)):
+        and not isinstance(memory_layer, layers.Layer)):
       raise TypeError(
           "memory_layer is not a Layer: %s" % type(memory_layer).__name__)
     self.query_layer = query_layer
@@ -275,10 +275,12 @@ class _BaseAttentionMechanismV2(AttentionMechanism, Layer):
     self._check_inner_dims_defined = True
 
   def build(self, input_shape):
+    # The layer suppose to take 3 inputs, [query, state, memory].
+    query_input_shape, _, memory_input_shape = input_shape
     if self.query_layer is not None:
-      self.query_layer.build(input_shape)
+      self.query_layer.build(query_input_shape)
     if self.memory_layer is not None:
-      self.memory_layer.build(input_shape)
+      self.memory_layer.build(memory_input_shape)
     # dtype of the layer is known at this moment, create the score_mask_value if
     # needed.
     self.score_mask_value = dtypes.as_dtype(self.dtype).as_numpy_dtype(-np.inf)
@@ -310,8 +312,8 @@ class _BaseAttentionMechanismV2(AttentionMechanism, Layer):
       self.batch_size = (
           tensor_shape.dimension_value(self.keys.shape[0]) or
           array_ops.shape(self.keys)[0])
-      self.alignments_size = (tensor_shape.dimension_value(self.keys.shape[1])
-                              or array_ops.shape(self.keys)[1])
+      self._alignments_size = (tensor_shape.dimension_value(self.keys.shape[1])
+                               or array_ops.shape(self.keys)[1])
       if memory_mask is not None:
         self.probability_fn = lambda score, prev: (  # pylint:disable=g-long-lambda
             self.probability_fn(_maybe_mask_score(
@@ -398,6 +400,8 @@ class _BaseAttentionMechanismV2(AttentionMechanism, Layer):
     """
     # Reconstruct the query and memory layer for parent class.
     from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+    # Instead of updating the input, create a copy and use that.
+    config = config.copy()
     query_layer_config = config.pop("query_layer", None)
     if query_layer_config:
       query_layer = deserialize_layer(query_layer_config,
@@ -409,6 +413,10 @@ class _BaseAttentionMechanismV2(AttentionMechanism, Layer):
                                        custom_objects=custom_objects)
       config["memory_layer"] = memory_layer
     return config
+
+  @property
+  def alignments_size(self):
+    return self._alignments_size
 
 
 def _luong_score(query, keys, scale):
@@ -606,10 +614,13 @@ class LuongAttentionV2(_BaseAttentionMechanismV2):
     wrapped_probability_fn = lambda score, _: probability_fn(score)
     if dtype is None:
       dtype = dtypes.float32
+    memory_layer = kwargs.pop("memory_layer", None)
+    if not memory_layer:
+      memory_layer = layers.Dense(
+          units, name="memory_layer", use_bias=False, dtype=dtype)
     super(LuongAttentionV2, self).__init__(
         query_layer=None,
-        memory_layer=layers_core.Dense(
-            units, name="memory_layer", use_bias=False, dtype=dtype),
+        memory_layer=memory_layer,
         probability_fn=wrapped_probability_fn,
         name=name,
         dtype=dtype,
@@ -640,6 +651,7 @@ class LuongAttentionV2(_BaseAttentionMechanismV2):
       alignments: Tensor of dtype matching `self.values` and shape
         `[batch_size, alignments_size]` (`alignments_size` is memory's
         `max_time`).
+      next_state: Same as the alignments.
     """
     score = _luong_score(query, self.keys, self.scale_weight)
     alignments = self.probability_fn(score, state)
@@ -865,11 +877,17 @@ class BahdanauAttentionV2(_BaseAttentionMechanismV2):
     wrapped_probability_fn = lambda score, _: probability_fn(score)
     if dtype is None:
       dtype = dtypes.float32
+    query_layer = kwargs.pop("query_layer", None)
+    if not query_layer:
+      query_layer = layers.Dense(
+          units, name="query_layer", use_bias=False, dtype=dtype)
+    memory_layer = kwargs.pop("memory_layer", None)
+    if not memory_layer:
+      memory_layer = layers.Dense(
+          units, name="memory_layer", use_bias=False, dtype=dtype)
     super(BahdanauAttentionV2, self).__init__(
-        query_layer=layers_core.Dense(
-            units, name="query_layer", use_bias=False, dtype=dtype),
-        memory_layer=layers_core.Dense(
-            units, name="memory_layer", use_bias=False, dtype=dtype),
+        query_layer=query_layer,
+        memory_layer=memory_layer,
         probability_fn=wrapped_probability_fn,
         name=name,
         dtype=dtype,
@@ -907,6 +925,7 @@ class BahdanauAttentionV2(_BaseAttentionMechanismV2):
       alignments: Tensor of dtype matching `self.values` and shape
         `[batch_size, alignments_size]` (`alignments_size` is memory's
         `max_time`).
+      next_state: same as alignments.
     """
     processed_query = self.query_layer(query) if self.query_layer else query
     score = _bahdanau_score(processed_query, self.keys, self.attention_v,
@@ -1314,11 +1333,17 @@ class BahdanauMonotonicAttentionV2(_BaseMonotonicAttentionMechanismV2):
     wrapped_probability_fn = functools.partial(
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
+    query_layer = kwargs.pop("query_layer", None)
+    if not query_layer:
+      query_layer = layers.Dense(
+          units, name="query_layer", use_bias=False, dtype=dtype)
+    memory_layer = kwargs.pop("memory_layer", None)
+    if not memory_layer:
+      memory_layer = layers.Dense(
+          units, name="memory_layer", use_bias=False, dtype=dtype)
     super(BahdanauMonotonicAttentionV2, self).__init__(
-        query_layer=layers_core.Dense(
-            units, name="query_layer", use_bias=False, dtype=dtype),
-        memory_layer=layers_core.Dense(
-            units, name="memory_layer", use_bias=False, dtype=dtype),
+        query_layer=query_layer,
+        memory_layer=memory_layer,
         probability_fn=wrapped_probability_fn,
         name=name,
         dtype=dtype,
@@ -1551,10 +1576,13 @@ class LuongMonotonicAttentionV2(_BaseMonotonicAttentionMechanismV2):
     wrapped_probability_fn = functools.partial(
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
+    memory_layer = kwargs.pop("memory_layer", None)
+    if not memory_layer:
+      memory_layer = layers.Dense(
+          units, name="memory_layer", use_bias=False, dtype=dtype)
     super(LuongMonotonicAttentionV2, self).__init__(
         query_layer=None,
-        memory_layer=layers_core.Dense(
-            units, name="memory_layer", use_bias=False, dtype=dtype),
+        memory_layer=memory_layer,
         probability_fn=wrapped_probability_fn,
         name=name,
         dtype=dtype,
@@ -1593,6 +1621,7 @@ class LuongMonotonicAttentionV2(_BaseMonotonicAttentionMechanismV2):
       alignments: Tensor of dtype matching `self.values` and shape
         `[batch_size, alignments_size]` (`alignments_size` is memory's
         `max_time`).
+      next_state: Same as alignments
     """
     score = _luong_score(query, self.keys, self.attention_g)
     score += self.attention_score_bias
@@ -1603,7 +1632,7 @@ class LuongMonotonicAttentionV2(_BaseMonotonicAttentionMechanismV2):
   def get_config(self):
     config = {
         "units": self.units,
-        "normalize": self.normalize,
+        "scale": self.scale,
         "sigmoid_noise": self.sigmoid_noise,
         "sigmoid_noise_seed": self.sigmoid_noise_seed,
         "score_bias_init": self.score_bias_init,
