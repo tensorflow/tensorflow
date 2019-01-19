@@ -3672,7 +3672,7 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
     w_g = g * w_c + (1 - g) * prev_w
 
     s = array_ops.concat([s[:, :self.shift_range + 1],
-      array_ops.zeros([s.get_shape()[0],
+      array_ops.zeros([s.shape[0].value or array_ops.shape(s)[0],
         self.memory_size - (self.shift_range * 2 + 1)]),
       s[:, -self.shift_range:]], axis=1)
     t = array_ops.concat([array_ops.reverse(s, axis=[1]),
