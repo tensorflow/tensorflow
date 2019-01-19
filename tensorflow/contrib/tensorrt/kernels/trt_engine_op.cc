@@ -195,18 +195,37 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   tensorflow::core::ScopedUnref sc(helper);
-  // TODO(aaroey): remove the ResourceMgr singleton.
-  auto trt_rm = TRTResourceManager::instance();
-  auto res_mgr = trt_rm->getManager("TRTCalibration");
+  auto res_mgr = ctx->resource_manager();
   TRTCalibrationResource* calib_res = nullptr;
-  auto status = res_mgr->LookupOrCreate(
-      funcdef_name_, "Calibrator", &calib_res,
-      {[ctx, this](TRTCalibrationResource** cr) -> tensorflow::Status {
-        return this->AllocateCalibrationResources(ctx, cr);
-      }});
-  if (!status.ok()) {
-    ctx->SetStatus(status);
-    return;
+  OP_REQUIRES_OK(
+      ctx,
+      res_mgr->LookupOrCreate(
+          "TF_TRT_Calibration", name(),
+          reinterpret_cast<SerializableResourceBase**>(&calib_res),
+          {[ctx, this](SerializableResourceBase** cr) -> tensorflow::Status {
+            return this->AllocateCalibrationResources(ctx, cr);
+          }}));
+  tensorflow::core::ScopedUnref calib_sc(calib_res);
+  // TODO(aaroey): here we also add the resource to the ResourceMgr singleton.
+  // This is needed before we migrate all uses of calib_graph_to_infer_graph()
+  // to the new calibration workflow. After that we'll remove this block.
+  {
+    auto deprecated_rm =
+        TRTResourceManager::instance()->getManager("TRTCalibration");
+    TRTCalibrationResource* copied_resource = nullptr;
+    // Check whether the resource exists, and create it if not.
+    if (deprecated_rm->Lookup(funcdef_name_, "Calibrator", &copied_resource)
+            .ok()) {
+      // Do nothing if the resource exists.
+      copied_resource->Unref();
+    } else {
+      copied_resource = calib_res;
+      // Increase the refcount by 1 then transfer the ownership of that refcount
+      // to the ResourceMgr singleton.
+      copied_resource->Ref();
+      OP_REQUIRES_OK(ctx, deprecated_rm->Create(funcdef_name_, "Calibrator",
+                                                copied_resource));
+    }
   }
   int num_inputs = ctx->num_inputs();
   // Pass input data to calibrator
@@ -542,7 +561,7 @@ EngineContext* TRTEngineOp::GetEngine(
 }
 
 tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
-    OpKernelContext* ctx, TRTCalibrationResource** cr) {
+    OpKernelContext* ctx, SerializableResourceBase** cr) {
   auto cres = new TRTCalibrationResource();
   *cr = cres;
   // Get the allocator.
