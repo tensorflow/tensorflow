@@ -1450,6 +1450,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_identity_op",
         "//tensorflow/core/kernels:mkl_input_conversion_op",
         "//tensorflow/core/kernels:mkl_lrn_op",
+        "//tensorflow/core/kernels:mkl_requantize_ops",
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
