@@ -537,7 +537,9 @@ critical parts of the code with versions specifically tailored to your
 architecture. The framework has been designed with this in mind, and we hope the
 combination of small modules and many tests makes it as straightforward as
 possible to swap in your own code a piece at a time, ensuring you have a working
-version at every step.
+version at every step. To write specialized implementations for a platform, it's
+useful to understand how optional components are handled inside the build
+system.
 
 ### Code Module Organization
 
@@ -628,7 +630,7 @@ kernel implementations, but with some specific conventions:
     latest in the ordered list will be chosen. This allows us to express “I’d
     like generically-optimized fixed point if it’s available, but I’d prefer
     something using the CMSIS library” using the list 'fixed_point cmsis'. These
-    tags are passed in as `TAGS="<foo"` on the command line when you use the
+    tags are passed in as `TAGS="<foo>"` on the command line when you use the
     main Makefile to build.
 -   There is an implicit “reference” tag at the start of every list, so that
     it’s possible to support directory structures like the current
@@ -640,3 +642,172 @@ kernel implementations, but with some specific conventions:
     top level.
 -   Tests should be at the parent level, with no platform-specific code.
 -   No platform-specific macros or #ifdef’s should be used in any portable code.
+
+The implementation of these rules is handled inside the Makefile, with a
+[`specialize` function](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/tools/make/helper_functions.inc#L42)
+that takes a list of reference source file paths as an input, and returns the
+equivalent list with specialized versions of those files swapped in if they
+exist.
+
+### Working with Generated Projects
+
+So far, I've recommended that you use the standalone generated projects for your
+system. You might be wondering why you're not just checking out the full
+[TensorFlow codebase from Github](https://github.com/tensorflow/tensorflow/)?
+The main reason is that there is a lot more diversity of architectures, IDEs,
+support libraries, and operating systems in the embedded world. Many of the
+toolchains require their own copy of source files, or a list of sources to be
+written to a project file. When a developer working on TensorFlow adds a new
+source file or changes its location, we can't expect her to update multiple
+different project files, many of which she may not have the right software to
+verify the change was correct. That means we have to rely on a central listing
+of source files (which in our case is held in the makefile), and then call a
+tool to generate other project files from those. We could ask embedded
+developers to do this process themselves after downloading the main source, but
+running the makefile requires a Linux system which may not be available, takes
+time, and involves downloading a lot of dependencies. That is why we've opted to
+make regular snapshots of the results of generating these projects for popular
+IDEs and platforms, so that embedded developers have a fast and friendly way to
+start using TensorFlow Lite for Microcontrollers.
+
+This does have the disadvantage that you're no longer working directly on the
+main repository, instead you have a copy that's outside of source control. We've
+tried to make the copy as similar to the main repo as possible, for example by
+keeping the paths of all source files the same, and ensuring that there are no
+changes between the copied files and the originals, but it still makes it
+tougher to sync as the main repository is updated. There are also multiple
+copies of the source tree, one for each target, so any change you make to one
+copy has to be manually propagated across all the other projects you care about.
+This doesn't matter so much if you're just using the projects as they are to
+build products, but if you want to support a new platform and have the changes
+reflected in the main code base, you'll have to do some extra work.
+
+As an example, think about the `DebugLog()` implementation we discussed adding
+for a new platform earlier. At this point, you have a new version of
+`debug_log.cc` that does what's required, but how can you share that with the
+wider community? The first step is to pick a tag name for your platform. This
+can either be the operating system (for example 'mbed'), the name of a device
+('bluepill'), or some other text that describes it. This should be a short
+string with no spaces or special characters. Log in or create an account on
+Github, fork the full
+[TensorFlow codebase](https://github.com/tensorflow/tensorflow/) using the
+'Fork' button on the top left, and then grab your fork by using a command like
+`git clone https://github.com/<your user name>/tensorflow`.
+
+You'll either need Linux, MacOS, or Windows with something like CygWin installed
+to run the next steps, since they involve building a makefile. Run the following
+commands from a terminal, inside the root of the source folder:
+
+```
+tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile generate_projects
+```
+
+This will take a few minutes, since it has to download some large toolchains for
+the dependencies. Once it has finished, you should see some folders created
+inside a path like
+`tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/`. The exact
+path depends on your host operating system, but you should be able to figure it
+out from all the copy commands. These folders contain the generated project and
+source files, with
+`tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/keil`
+containing the Keil uVision targets,
+`tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/mbed` with
+the Mbed versions, and so on.
+
+If you've got this far, you've successfully set up the project generation flow.
+Now you need to add your specialized implementation of `DebugLog()`. Start by
+creating a folder inside `tensorflow/lite/experimental/micro/` named after the
+tag you picked earlier. Put your `debug_log.cc` file inside this folder, and
+then run this command, with '<your tag>' replaced by the actual folder name:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS="<your tag>" generate_projects
+```
+
+If your tag name actually refers to a whole target architecture, then you'll use
+TARGET or TARGET_ARCH instead. For example, here's how a simple RISC-V set of
+projects is generated:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET="riscv32_mcu" generate_projects
+```
+
+The way it works is the same as TAGS though, it just looks for specialized
+implementations with the same containing folder name.
+
+If you look inside the projects that have been created, you should see that the
+default `DebugLog()` implementation is no longer present at
+`tensorflow/lite/experimental/micro/debug_log.cc`, and instead
+`tensorflow/lite/experimental/micro/<your tag>/debug_log.cc` is being used. Copy
+over the generated project files and try building them in your own IDE. If
+everything works, then you're ready to submit your change.
+
+To do this, run something like:
+
+```
+git add tensorflow/lite/experimental/micro/<your tag>/debug_log.cc
+git commit -a -m "Added DebugLog() support for <your platform>"
+git push origin master
+```
+
+Then go back to https://github.com/<your account>/tensorflow, and choose "New
+Pull Request" near the top. You should then be able to go through the standard
+TensorFlow PR process to get your change added to the main repository, and
+available to the rest of the community!
+
+### Supporting a Platform with Makefiles
+
+The changes you've made so far will enable other developers using the generated
+projects to use your platform, but TensorFlow's continuous integration process
+uses makefiles to build frequently and ensure changes haven't broken the build
+process for different systems. If you are able to convert your build procedure
+into something that can be expressed by a makefile, then we can integrate your
+platform into our CI builds and make sure it continues to work.
+
+Fully describing how to do this is beyond the scope of this documentation, but
+the biggest needs are:
+
+-   A command-line compiler that can be called for every source file.
+-   A list of the arguments to pass into the compiler to build and link all
+    files.
+-   The correct linker map files and startup assembler to ensure `main()` gets
+    called.
+
+### Supporting a Platform with Emulation Testing
+
+Integrating your platform into the makefile process should help us make sure
+that it continues to build, but it doesn't guarantee that the results of the
+build process will run correctly. Running tests is something we require to be
+able to say that TensorFlow officially supports a platform, since otherwise we
+can't guarantee that users will have a good experience when they try using it.
+Since physically maintaining a full set of all supported hardware devices isn't
+feasible, we rely on software emulation to run these tests. A good example is
+our
+[STM32F4 'Bluepill' support](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/testing/test_bluepill_binary.sh),
+which uses [Docker](https://www.docker.com/) and [Renode](https://renode.io/) to
+run built binaries in an emulator. You can use whatever technologies you want,
+the only requirements are that they capture the debug log output of the tests
+being run in the emulator, and parse them for the string that indicates the test
+was successful. These scripts need to run on Ubuntu 18.04, in a bash
+environment, though Docker is available if you need to install extra software or
+have other dependencies.
+
+### Optimizing for your Platform
+
+Clearly, getting debug logging support is only the beginning of the work you'll
+need to do on a particular platform. It's very likely that you'll want to
+optimize the core deep learning operations that take up the most time when
+running models you care about. The good news is that the process for providing
+optimized implementations is the same as the one you just went through to
+provide your own logging. You'll need to identify parts of the code that are
+bottlenecks, and then add specialized implementations in their own folders.
+These don't need to be platform specific, they can also be broken out by which
+library they rely on for example. [Here's where we do that for the CMSIS
+implementation of integer fast-fourier
+transforms](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/preprocessor.cc).
+This more complex case shows that you can also add helper source files alongside
+the main implementation, as long as you
+[mention them in the platform-specific makefile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/Makefile.inc).
+You can also do things like update the list of libraries that need to be linked
+in, or add include paths to required headers.
