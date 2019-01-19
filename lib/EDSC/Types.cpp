@@ -167,9 +167,9 @@ Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,
   return Stmt(idx, StmtBlockLikeExpr(ExprKind::For, {lb, ub, step}), stmts);
 }
 
-Stmt ForNest(MutableArrayRef<Bindable> indices, ArrayRef<Expr> lbs,
-             ArrayRef<Expr> ubs, ArrayRef<Expr> steps,
-             ArrayRef<Stmt> enclosedStmts) {
+Stmt For(MutableArrayRef<Bindable> indices, ArrayRef<Expr> lbs,
+         ArrayRef<Expr> ubs, ArrayRef<Expr> steps,
+         ArrayRef<Stmt> enclosedStmts) {
   assert(!indices.empty());
   assert(indices.size() == lbs.size());
   assert(indices.size() == ubs.size());
@@ -182,14 +182,12 @@ Stmt ForNest(MutableArrayRef<Bindable> indices, ArrayRef<Expr> lbs,
   return curStmt;
 }
 
-Stmt ForNest(llvm::MutableArrayRef<Bindable> indices,
-             llvm::ArrayRef<Bindable> lbs, llvm::ArrayRef<Bindable> ubs,
-             llvm::ArrayRef<Bindable> steps,
-             llvm::ArrayRef<Stmt> enclosedStmts) {
-  return ForNest(indices, SmallVector<Expr, 8>{lbs.begin(), lbs.end()},
-                 SmallVector<Expr, 8>{ubs.begin(), ubs.end()},
-                 SmallVector<Expr, 8>{steps.begin(), steps.end()},
-                 enclosedStmts);
+Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Bindable> lbs,
+         llvm::ArrayRef<Bindable> ubs, llvm::ArrayRef<Bindable> steps,
+         llvm::ArrayRef<Stmt> enclosedStmts) {
+  return For(indices, SmallVector<Expr, 8>{lbs.begin(), lbs.end()},
+             SmallVector<Expr, 8>{ubs.begin(), ubs.end()},
+             SmallVector<Expr, 8>{steps.begin(), steps.end()}, enclosedStmts);
 }
 
 template <typename BindableOrExpr>
@@ -315,12 +313,19 @@ void Expr::print(raw_ostream &os) const {
 
 void Expr::dump() const { this->print(llvm::errs()); }
 
+std::string Expr::str() const {
+  std::string res;
+  llvm::raw_string_ostream os(res);
+  this->print(os);
+  return res;
+}
+
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Expr &expr) {
   expr.print(os);
   return os;
 }
 
-Bindable::Bindable(ExprKind kind)
+Bindable::Bindable()
     : Expr(Expr::globalAllocator()->Allocate<detail::BindableStorage>()) {
   // Initialize with placement new.
   new (storage) detail::BindableStorage{Bindable::newId()};
@@ -390,6 +395,25 @@ ArrayRef<Type> VariadicExpr::getTypes() const {
   return static_cast<ImplType *>(storage)->types;
 }
 
+StmtBlockLikeExpr::StmtBlockLikeExpr(ExprKind kind, ArrayRef<Expr> exprs,
+                                     ArrayRef<Type> types)
+    : Expr(Expr::globalAllocator()->Allocate<detail::VariadicExprStorage>()) {
+  // Initialize with placement new.
+  auto exprStorage = Expr::globalAllocator()->Allocate<Expr>(exprs.size());
+  std::uninitialized_copy(exprs.begin(), exprs.end(), exprStorage);
+  auto typeStorage = Expr::globalAllocator()->Allocate<Type>(types.size());
+  std::uninitialized_copy(types.begin(), types.end(), typeStorage);
+  new (storage) detail::VariadicExprStorage{
+      kind, ArrayRef<Expr>(exprStorage, exprs.size()),
+      ArrayRef<Type>(typeStorage, types.size())};
+}
+ArrayRef<Expr> StmtBlockLikeExpr::getExprs() const {
+  return static_cast<ImplType *>(storage)->exprs;
+}
+ArrayRef<Type> StmtBlockLikeExpr::getTypes() const {
+  return static_cast<ImplType *>(storage)->types;
+}
+
 Stmt::Stmt(const Bindable &lhs, const Expr &rhs,
            llvm::ArrayRef<Stmt> enclosedStmts) {
   storage = Expr::globalAllocator()->Allocate<detail::StmtStorage>();
@@ -424,10 +448,10 @@ void Stmt::print(raw_ostream &os, Twine indent) const {
   auto lhs = getLHS();
   auto rhs = getRHS();
 
-  if (auto stmt = rhs.dyn_cast<StmtBlockLikeExpr>()) {
-    switch (stmt.getKind()) {
+  if (auto stmtExpr = rhs.dyn_cast<StmtBlockLikeExpr>()) {
+    switch (stmtExpr.getKind()) {
     case ExprKind::For:
-      os << indent << "for(idx(" << lhs << ")=" << rhs << ") {";
+      os << indent << "for(idx(" << lhs << ")=" << stmtExpr << ") {";
       os << " // @" << storage;
       os << "\n";
       for (const auto &s : getEnclosedStmts()) {
@@ -458,6 +482,13 @@ void Stmt::print(raw_ostream &os, Twine indent) const {
 }
 
 void Stmt::dump() const { this->print(llvm::errs()); }
+
+std::string Stmt::str() const {
+  std::string res;
+  llvm::raw_string_ostream os(res);
+  this->print(os);
+  return res;
+}
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Stmt &stmt) {
   stmt.print(os);

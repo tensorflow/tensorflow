@@ -105,7 +105,7 @@ def TF_AddOp : Op<"tf.Add", [NoSideEffect]>,
   let reference = [{
     auto ivs = makeBindables(lhsShape.size());
     block = edsc::Block({
-      ForNest(ivs, 0, lhsShape, 1, {
+      For(ivs, 0, lhsShape, 1, {
         result[ivs] = lhs[ivs] + rhs[ivs]
       })});
     }

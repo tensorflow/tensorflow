@@ -19,7 +19,7 @@ def X_AddOp : Op<"x.add">,
     SmallVector<Bindable, 8> ones(ivs.size(), one);
     Indexed IA(lhs), IB(rhs), IC(result);
     block = edsc::Block({
-      ForNest(ivs, zeros, lhsShape, ones, {
+      For(ivs, zeros, lhsShape, ones, {
         IC[ivs] = IA[ivs] + IB[ivs]
       })
     });

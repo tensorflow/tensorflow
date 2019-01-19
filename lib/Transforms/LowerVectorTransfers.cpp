@@ -325,7 +325,7 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   Stmt block = edsc::Block({
     tmpAlloc = alloc(tmpMemRefType),
     vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
-    ForNest(ivs, lbs, ubs, steps, {
+    For(ivs, lbs, ubs, steps, {
       scalarValue = load(scalarMemRef, accessInfo.clippedScalarAccessExprs),
       store(scalarValue, tmpAlloc, accessInfo.tmpAccessExprs),
     }),
@@ -380,7 +380,7 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
     tmpAlloc = alloc(tmpMemRefType),
     vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
     store(vectorValue, vectorView, {zero}),
-    ForNest(ivs, lbs, ubs, steps, {
+    For(ivs, lbs, ubs, steps, {
       scalarValue = load(tmpAlloc, accessInfo.tmpAccessExprs),
       store(scalarValue, scalarMemRef, accessInfo.clippedScalarAccessExprs),
     }),

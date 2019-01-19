@@ -191,6 +191,7 @@ public:
 
   void print(raw_ostream &os) const;
   void dump() const;
+  std::string str() const;
 
   /// Creates the BinaryExpr corresponding to the operator.
   Expr operator+(Expr other) const;
@@ -218,11 +219,13 @@ protected:
 struct Bindable : public Expr {
   using ImplType = detail::BindableStorage;
   friend class Expr;
-  Bindable(ExprKind kind = ExprKind::Unbound);
+  Bindable();
   unsigned getId() const;
 
-protected:
-  Bindable(Expr::ImplType *ptr) : Expr(ptr) {}
+  // protected:
+  Bindable(Expr::ImplType *ptr) : Expr(ptr) {
+    assert(!ptr || isa<Bindable>() && "expected Bindable");
+  }
 
 private:
   static unsigned &newId();
@@ -236,7 +239,9 @@ struct UnaryExpr : public Expr {
   Expr getExpr() const;
 
 protected:
-  UnaryExpr(Expr::ImplType *ptr) : Expr(ptr) {}
+  UnaryExpr(Expr::ImplType *ptr) : Expr(ptr) {
+    assert(!ptr || isa<UnaryExpr>() && "expected UnaryExpr");
+  }
 };
 
 struct BinaryExpr : public Expr {
@@ -247,7 +252,9 @@ struct BinaryExpr : public Expr {
   Expr getRHS() const;
 
 protected:
-  BinaryExpr(Expr::ImplType *ptr) : Expr(ptr) {}
+  BinaryExpr(Expr::ImplType *ptr) : Expr(ptr) {
+    assert(!ptr || isa<BinaryExpr>() && "expected BinaryExpr");
+  }
 };
 
 struct TernaryExpr : public Expr {
@@ -259,7 +266,9 @@ struct TernaryExpr : public Expr {
   Expr getRHS() const;
 
 protected:
-  TernaryExpr(Expr::ImplType *ptr) : Expr(ptr) {}
+  TernaryExpr(Expr::ImplType *ptr) : Expr(ptr) {
+    assert(!ptr || isa<TernaryExpr>() && "expected TernaryExpr");
+  }
 };
 
 struct VariadicExpr : public Expr {
@@ -271,18 +280,23 @@ struct VariadicExpr : public Expr {
   llvm::ArrayRef<Type> getTypes() const;
 
 protected:
-  VariadicExpr(Expr::ImplType *ptr) : Expr(ptr) {}
+  VariadicExpr(Expr::ImplType *ptr) : Expr(ptr) {
+    assert(!ptr || isa<VariadicExpr>() && "expected VariadicExpr");
+  }
 };
 
-struct StmtBlockLikeExpr : public VariadicExpr {
-  using ImplType = detail::VariadicExprStorage;
+struct StmtBlockLikeExpr : public Expr {
+  using ImplType = detail::VariadicExprStorage; // same storage as variadic
   friend class Expr;
   StmtBlockLikeExpr(ExprKind kind, llvm::ArrayRef<Expr> exprs,
-                    llvm::ArrayRef<Type> types = {})
-      : VariadicExpr(kind, exprs, types) {}
+                    llvm::ArrayRef<Type> types = {});
+  llvm::ArrayRef<Expr> getExprs() const;
+  llvm::ArrayRef<Type> getTypes() const;
 
 protected:
-  StmtBlockLikeExpr(Expr::ImplType *ptr) : VariadicExpr(ptr) {}
+  StmtBlockLikeExpr(Expr::ImplType *ptr) : Expr(ptr) {
+    assert(!ptr || isa<StmtBlockLikeExpr>() && "expected StmtBlockLikeExpr");
+  }
 };
 
 /// A Stmt represent a unit of liaison betweeb a Bindable `lhs`, an Expr `rhs`
@@ -295,7 +309,7 @@ protected:
 ///    Stmt block = Block({
 ///      tmpAlloc = alloc(tmpMemRefType),
 ///      vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
-///      ForNest(ivs, lbs, ubs, steps, {
+///      For(ivs, lbs, ubs, steps, {
 ///        scalarValue = load(scalarMemRef,
 ///        accessInfo.clippedScalarAccessExprs), store(scalarValue, tmpAlloc,
 ///        accessInfo.tmpAccessExprs),
@@ -324,6 +338,7 @@ struct Stmt {
   using ImplType = detail::StmtStorage;
   friend class Expr;
   Stmt() : storage(nullptr) {}
+  explicit Stmt(ImplType *storage) : storage(storage) {}
   Stmt(const Stmt &other) : storage(other.storage) {}
   Stmt operator=(const Stmt &other) {
     this->storage = other.storage; // NBD if &other == this
@@ -341,6 +356,7 @@ struct Stmt {
 
   void print(raw_ostream &os, llvm::Twine indent = "") const;
   void dump() const;
+  std::string str() const;
 
   Bindable getLHS() const;
   Expr getRHS() const;
@@ -470,20 +486,19 @@ Stmt Block(llvm::ArrayRef<Stmt> stmts);
 Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);
 Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,
          llvm::ArrayRef<Stmt> enclosedStmts);
-Stmt ForNest(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Expr> lbs,
-             llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Expr> steps,
-             llvm::ArrayRef<Stmt> enclosedStmts);
-Stmt ForNest(llvm::MutableArrayRef<Bindable> indices,
-             llvm::ArrayRef<Bindable> lbs, llvm::ArrayRef<Bindable> ubs,
-             llvm::ArrayRef<Bindable> steps,
-             llvm::ArrayRef<Stmt> enclosedStmts);
+Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Expr> lbs,
+         llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Expr> steps,
+         llvm::ArrayRef<Stmt> enclosedStmts);
+Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Bindable> lbs,
+         llvm::ArrayRef<Bindable> ubs, llvm::ArrayRef<Bindable> steps,
+         llvm::ArrayRef<Stmt> enclosedStmts);
 
 /// This helper class exists purely for sugaring purposes and allows writing
 /// expressions such as:
 ///
 /// ```mlir
 ///    Indexed A(...), B(...), C(...);
-///    ForNest(ivs, zeros, shapeA, ones, {
+///    For(ivs, zeros, shapeA, ones, {
 ///      C[ivs] = A[ivs] + B[ivs]
 ///    });
 /// ```
