@@ -43,7 +43,7 @@ def get_json_type(obj):
   # if obj is any numpy type
   if type(obj).__module__ == np.__name__:
     if isinstance(obj, np.ndarray):
-      return {'type': type(obj), 'value': obj.tolist()}
+      return obj.tolist()
     else:
       return obj.item()
 

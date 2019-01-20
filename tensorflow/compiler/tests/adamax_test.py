@@ -78,8 +78,8 @@ class AdaMaxOptimizerTest(xla_test.XLATestCase):
 
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         beta1_power = opt._get_beta_accumulators()
 
@@ -87,14 +87,17 @@ class AdaMaxOptimizerTest(xla_test.XLATestCase):
         for t in range(1, 4):
           update.run()
 
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1),
+                                             self.evaluate(beta1_power))
 
           var0_np, m0, v0 = adamax_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adamax_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval(), rtol=1e-2)
-          self.assertAllCloseAccordingToType(var1_np, var1.eval(), rtol=1e-2)
+          self.assertAllCloseAccordingToType(
+              var0_np, self.evaluate(var0), rtol=1e-2)
+          self.assertAllCloseAccordingToType(
+              var1_np, self.evaluate(var1), rtol=1e-2)
           self.assertEqual("var0_%d/AdaMax:0" % (i,),
                            opt.get_slot(var=var0, name="m").name)
 
@@ -118,22 +121,23 @@ class AdaMaxOptimizerTest(xla_test.XLATestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         beta1_power = opt._get_beta_accumulators()
 
         # Run 3 steps of AdaMax
         for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.9**t, self.evaluate(beta1_power))
           update.run()
 
           var0_np, m0, v0 = adamax_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adamax_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
 
 if __name__ == "__main__":
   test.main()

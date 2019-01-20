@@ -24,8 +24,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-void SetMinorToMajorLayout(Shape* shape,
-                           std::initializer_list<int64> dimensions) {
+void SetMinorToMajorLayout(Shape* shape, std::vector<int64> dimensions) {
   shape->mutable_layout()->clear_minor_to_major();
   for (auto dimension : dimensions) {
     shape->mutable_layout()->add_minor_to_major(dimension);
@@ -122,7 +121,7 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
   std::vector<int64> linear_indexes = {0,        1439999999, 1145567336,
                                        43883404, 617295214,  1117613654};
 
-  std::vector<std::initializer_list<int64>> minor_to_major_orders;
+  std::vector<std::vector<int64>> minor_to_major_orders;
   minor_to_major_orders.push_back({6, 5, 4, 3, 2, 1, 0});
   minor_to_major_orders.push_back({0, 1, 2, 3, 4, 5, 6});
   minor_to_major_orders.push_back({4, 5, 1, 2, 6, 0, 3});

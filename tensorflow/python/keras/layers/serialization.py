@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras.engine.base_layer import TensorFlowOpLayer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.layers.advanced_activations import *
@@ -51,10 +52,11 @@ def deserialize(config, custom_objects=None):
           of custom (non-Keras) objects to class/functions
 
   Returns:
-      Layer instance (may be Model, Sequential, Layer...)
+      Layer instance (may be Model, Sequential, Network, Layer...)
   """
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
   globs = globals()  # All layers.
+  globs['Network'] = models.Network
   globs['Model'] = models.Model
   globs['Sequential'] = models.Sequential
   return deserialize_keras_object(

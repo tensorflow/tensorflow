@@ -65,6 +65,34 @@ REGISTER_OP("SdcaOptimizer")
     .Output("out_delta_dense_weights: num_dense_features * float")
     .SetShapeFn(ApplySdcaOptimizerShapeFn);
 
+// The SdcaOptimizerV2 op fixes the "adaptative" typo in v1.
+REGISTER_OP("SdcaOptimizerV2")
+    .Attr(
+        "loss_type: {'logistic_loss', 'squared_loss', 'hinge_loss',"
+        "'smooth_hinge_loss', 'poisson_loss'}")
+    .Attr("adaptive : bool=false")
+    .Attr("num_sparse_features: int >= 0")
+    .Attr("num_sparse_features_with_values: int >= 0")
+    .Attr("num_dense_features: int >= 0")
+    .Attr("l1: float")
+    .Attr("l2: float")
+    .Attr("num_loss_partitions: int >= 1")
+    .Attr("num_inner_iterations: int >= 1")
+    .Input("sparse_example_indices: num_sparse_features * int64")
+    .Input("sparse_feature_indices: num_sparse_features * int64")
+    .Input("sparse_feature_values: num_sparse_features_with_values * float")
+    .Input("dense_features: num_dense_features * float")
+    .Input("example_weights: float")
+    .Input("example_labels: float")
+    .Input("sparse_indices: num_sparse_features * int64")
+    .Input("sparse_weights: num_sparse_features * float")
+    .Input("dense_weights: num_dense_features * float")
+    .Input("example_state_data: float")
+    .Output("out_example_state_data: float")
+    .Output("out_delta_sparse_weights: num_sparse_features * float")
+    .Output("out_delta_dense_weights: num_dense_features * float")
+    .SetShapeFn(ApplySdcaOptimizerShapeFn);
+
 REGISTER_OP("SdcaShrinkL1")
     .Attr("num_features: int >= 0")
     .Attr("l1: float")

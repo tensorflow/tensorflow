@@ -1033,7 +1033,7 @@ class PFor(object):
         *[self._unwrap_or_tile(w) for w in outputs])
 
   def _restack_sparse_tensor_logically(self, indices, values, shape):
-    sparse_tensor_rank = indices.get_shape()[-1].value
+    sparse_tensor_rank = indices.get_shape().dims[-1].value
     if sparse_tensor_rank is not None:
       sparse_tensor_rank += 1
 
@@ -1152,9 +1152,8 @@ class PFor(object):
           continue
 
         converted_inputs = [self._conversion_map[inp] for inp in y_op.inputs]
-        some_input_converted = any(
-            [self._was_converted(x) for x in y_op.inputs])
-        some_input_stacked = any([x.is_stacked for x in converted_inputs])
+        some_input_converted = any(self._was_converted(x) for x in y_op.inputs)
+        some_input_stacked = any(x.is_stacked for x in converted_inputs)
 
         converted_control_ops = set()
         some_control_input_converted = False
@@ -1198,7 +1197,7 @@ class PFor(object):
           # All inputs are unstacked or uncoverted but some control inputs are
           # converted.
           # TODO(rachelim): Handle the case where some inputs are sparsely
-          # stacked (i.e. any([x.is_sparse_stacked for x in converted_inputs]))
+          # stacked (i.e. any(x.is_sparse_stacked for x in converted_inputs))
           new_op = _create_op(y_op.type, [x.t for x in converted_inputs],
                               [x.dtype for x in y_op.outputs],
                               y_op.node_def.attr)
@@ -1303,7 +1302,11 @@ def _inputs_with_flattening(pfor_input, input_indices):
 @RegisterPForWithArgs("Conv2D", dims=[0])
 @RegisterPForWithArgs("AvgPool", dims=[0])
 @RegisterPForWithArgs("MaxPool", dims=[0])
+@RegisterPForWithArgs("MaxPool3D", dims=[0])
+@RegisterPForWithArgs("MaxPool3DGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGrad", dims=[0, 1, 2])
+@RegisterPForWithArgs("MaxPool3DGradGrad", dims=[0, 1, 2])
+@RegisterPForWithArgs("MaxPoolGradGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("SoftmaxCrossEntropyWithLogits", dims=[0, 1])
 def _convert_flatten_batch(pfor_input, op_type, dims):
   del op_type
@@ -1532,9 +1535,17 @@ def _convert_conv2d_backprop_filter(pfor_input):
 
 @RegisterPForWithArgs("Identity", array_ops.identity)
 @RegisterPForWithArgs("StopGradient", array_ops.stop_gradient)
+@RegisterPForWithArgs("MatrixDiagPart", array_ops.matrix_diag_part)
 def _convert_identity(pfor_input, op_type, op_func):
   del op_type
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
+
+
+@RegisterPFor("IdentityN")
+def _convert_identity_n(pfor_input):
+  outputs = array_ops.identity_n([x.t for x in pfor_input.inputs])
+  return [wrap(out, inp.is_stacked) for out, inp in
+          zip(outputs, pfor_input.inputs)]
 
 
 @RegisterPFor("Reshape")
@@ -1609,6 +1620,15 @@ def _convert_split(pfor_input):
   return [wrap(x, True) for x in array_ops.split(t, num_split, axis=split_dim)]
 
 
+@RegisterPFor("SplitV")
+def _convert_split_v(pfor_input):
+  t = pfor_input.stacked_input(0)
+  splits = pfor_input.unstacked_input(1)
+  split_dim = pfor_input.unstacked_input(2)
+  split_dim += math_ops.cast(split_dim >= 0, dtypes.int32)
+  return [wrap(x, True) for x in array_ops.split(t, splits, axis=split_dim)]
+
+
 @RegisterPFor("Transpose")
 def _convert_transpose(pfor_input):
   t = pfor_input.stacked_input(0)
@@ -1641,8 +1661,8 @@ def _convert_gather(pfor_input):
       axis = axis_value
   if indices_stacked and not param_stacked:
     if indices == pfor_input.pfor.all_indices and axis == 0:
-      param_shape0 = param.shape[0].value
-      indices_shape0 = indices.shape[0].value
+      param_shape0 = param.shape.dims[0].value
+      indices_shape0 = indices.shape.dims[0].value
       if param_shape0 is not None and indices_shape0 == param_shape0:
         # Note that with loops and conditionals, indices may not be contiguous.
         # However they will be sorted and unique. So if the shape matches, then
@@ -1908,7 +1928,8 @@ def _convert_unsortedsegmentsum(pfor_input):
   segment_offset = array_ops.reshape(segment_offset,
                                      array_ops.concat([[n], ones], axis=0))
   segment_ids += segment_offset
-  num_segments *= n
+  num_segments = math_ops.cast(num_segments, dtypes.int64) * math_ops.cast(
+      n, dtypes.int64)
   output = math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
   new_output_shape = array_ops.concat(
       [[n, -1], array_ops.shape(output)[1:]], axis=0)

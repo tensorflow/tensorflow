@@ -339,7 +339,7 @@ class SkipGramOpsTest(test.TestCase):
         lookup.KeyValueTensorInitializer(keys, values), -1)
 
     with self.cached_session():
-      vocab_freq_table.init.run()
+      vocab_freq_table.initializer.run()
 
       # No vocab_freq_table specified - output should be the same as input.
       no_table_output = skip_gram_ops._filter_input(
@@ -396,7 +396,7 @@ class SkipGramOpsTest(test.TestCase):
         lookup.KeyValueTensorInitializer(keys, values), -1)
 
     with self.cached_session():
-      vocab_freq_table.init.run()
+      vocab_freq_table.initializer.run()
       output = skip_gram_ops._filter_input(
           input_tensor=input_tensor,
           vocab_freq_table=vocab_freq_table,

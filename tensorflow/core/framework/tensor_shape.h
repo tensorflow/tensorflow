@@ -300,13 +300,17 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   bool operator!=(const TensorShape& b) const { return !IsSameSize(b); }
 
   /// Fill `*dsizes` from `*this`.
-  template <int NDIMS>
-  Eigen::DSizes<Eigen::DenseIndex, NDIMS> AsEigenDSizes() const;
+  /// Notice: Using IndexType=int32 in combination with To32Bit() can
+  /// significantly improve performance on GPU.
+  template <int NDIMS, typename IndexType = Eigen::DenseIndex>
+  Eigen::DSizes<IndexType, NDIMS> AsEigenDSizes() const;
 
   /// Same as `AsEigenDSizes()` but allows for `NDIMS > dims()` -- in
   /// which case we pad the rest of the sizes with 1.
-  template <int NDIMS>
-  Eigen::DSizes<Eigen::DenseIndex, NDIMS> AsEigenDSizesWithPadding() const;
+  /// Notice: Using IndexType=int32 in combination with To32Bit() can
+  /// significantly improve performance on GPU.
+  template <int NDIMS, typename IndexType = Eigen::DenseIndex>
+  Eigen::DSizes<IndexType, NDIMS> AsEigenDSizesWithPadding() const;
 
  private:
   // These CHECK fail to ease debugging.
@@ -458,20 +462,19 @@ class PartialTensorShapeUtils {
 // Template method implementation details below
 // ----------------------------------------------------------------------------
 
-template <int NDIMS>
-Eigen::DSizes<Eigen::DenseIndex, NDIMS> TensorShape::AsEigenDSizes() const {
+template <int NDIMS, typename IndexType>
+Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizes() const {
   CheckDimsEqual(NDIMS);
-  return AsEigenDSizesWithPadding<NDIMS>();
+  return AsEigenDSizesWithPadding<NDIMS, IndexType>();
 }
 
-template <int NDIMS>
-Eigen::DSizes<Eigen::DenseIndex, NDIMS> TensorShape::AsEigenDSizesWithPadding()
-    const {
+template <int NDIMS, typename IndexType>
+Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizesWithPadding() const {
   CheckDimsAtLeast(NDIMS);
   static_assert(NDIMS <= TensorShape::MaxDimensions(), "Too many dimensions");
-  Eigen::DSizes<Eigen::DenseIndex, NDIMS> dsizes;
+  Eigen::DSizes<IndexType, NDIMS> dsizes;
   for (int d = 0; d < dims(); d++) {
-    dsizes[d] = dim_size(d);
+    dsizes[d] = static_cast<IndexType>(dim_size(d));
   }
   for (int d = dims(); d < NDIMS; d++) {
     dsizes[d] = 1;

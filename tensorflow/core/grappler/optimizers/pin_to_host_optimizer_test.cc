@@ -28,30 +28,40 @@ namespace {
 
 class PinToHostOptimizerTest : public GrapplerTest {};
 
-TEST_F(PinToHostOptimizerTest, TryFindHostDevice) {
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceNoDevices) {
   gtl::FlatSet<string> devices = {};
-  EXPECT_EQ("ABC", internal::TryFindHostDevice(devices, false, "ABC"));
 
-  devices = {"/device:CPU:0", "/device:XLA_GPU:0"};
+  EXPECT_EQ(internal::TryFindHostDevice(devices, false, "ABC"), "");
+}
+
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceCpuXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:CPU:0", "/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, ""), "/device:CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, "/device:XLA_GPU:0"),
             "/device:CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, "/device:XLA_GPU:*"),
             "/device:CPU:0");
+}
 
-  devices = {"/device:XLA_CPU:0", "/device:XLA_GPU:0"};
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceXlaCpuXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:XLA_CPU:0", "/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, ""), "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:0"),
             "/device:XLA_CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:*"),
             "/device:XLA_CPU:0");
+}
 
-  devices = {"/device:XLA_GPU:0"};
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, ""), "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:0"),
-            "/device:XLA_GPU:0");
+            "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:*"),
-            "/device:XLA_GPU:*");
+            "");
 }
 
 TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
@@ -158,6 +168,48 @@ TEST_F(PinToHostOptimizerTest, NoSwap) {
     ++found;
   }
   EXPECT_EQ(found, 3);
+}
+
+TEST_F(PinToHostOptimizerTest, Identity) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  // `a,c` is on GPU, `e` is on CPU, consequently `e` should not be swapped.
+  // `b` should be placed onto Host since `c` pins the input to Host memory.
+  Output a =
+      ops::Const(s.WithOpName("a").WithDevice("/device:GPU:0"), 1, {64, 64});
+  Output b = ops::Const(s.WithOpName("b"), {0, 1}, {2});
+  Output c =
+      ops::ReduceProd(s.WithOpName("c").WithDevice("/device:GPU:0"), a, b);
+  Output d = ops::Identity(s.WithDevice("/device:CPU:0").WithOpName("d"), c);
+  Output e = ops::Multiply(s.WithOpName("e"), d, d);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  PinToHostOptimizer optimizer(RewriterConfig::ON);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "a" || node.name() == "c") {
+      EXPECT_EQ(node.device(), "/device:GPU:0");
+    } else if (node.name() == "b") {
+      // If CUDA, then there is a GPU kernel registration that is pinned to Host
+      // memory. Consequently, `b` will be mapped to Host correct if there is
+      // a GPU kernel registered.
+#if GOOGLE_CUDA
+      EXPECT_EQ(node.device(), "/device:CPU:0");
+#else
+      EXPECT_TRUE(node.device().empty());
+#endif
+    } else if (node.name() == "d") {
+      EXPECT_EQ(node.device(), "/device:CPU:0");
+    } else if (node.name() == "e") {
+      EXPECT_TRUE(node.device().empty());
+    }
+    ++found;
+  }
+  EXPECT_EQ(found, 5);
 }
 
 TEST_F(PinToHostOptimizerTest, PortIdToArgId) {

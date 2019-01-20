@@ -160,6 +160,17 @@ class WindowsEnv : public Env {
     return filename;
   }
 
+  string GetRunfilesDir() override {
+    string bin_path = this->GetExecutablePath();
+    string runfiles_path = bin_path + ".runfiles\\org_tensorflow";
+    Status s = this->IsDirectory(runfiles_path);
+    if (s.ok()) {
+      return runfiles_path;
+    } else {
+      return bin_path.substr(0, bin_path.find_last_of("/\\"));
+    }
+  }
+
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override;
 

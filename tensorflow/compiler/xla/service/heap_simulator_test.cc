@@ -30,16 +30,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
-class MinimumMemoryForSequenceTest : public HloVerifiedTestBase {};
+class MinimumMemoryForSequenceTest : public HloTestBase {};
 
 TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
@@ -86,7 +86,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
-  HloSchedule schedule(module);
+  HloSchedule schedule(module.get());
   schedule.set_sequence(cond_computation,
                         {cond_param, cond_iter, cond_data, cond_lt});
   schedule.set_sequence(body_computation, {body_param});
@@ -96,6 +96,124 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   EXPECT_EQ(
       56,
       HeapSimulator::MinimumMemoryForModule(schedule, size_fn).ValueOrDie());
+}
+
+TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
+  // HloModule SubcomputationAccounting
+
+  // %WhileBody (body_param: f32[4]) -> f32[4] {
+  //   %body_param = f32[4]{0} parameter(0)
+  //   %constant.1 = f32[4]{0} constant({1, 1, 1, 1})
+  //   ROOT %subtract = f32[4]{0} subtract(f32[4]{0} %body_param, f32[4]{0}
+  //   %constant.1)
+  // }
+
+  // %WhileCond (cond_param: f32[4]) -> pred[] {
+  //   %cond_param = f32[4]{0} parameter(0)
+  //   %slice = f32[1]{0} slice(f32[4]{0} %cond_param), slice={[0:1]}
+  //   %reshape = f32[] reshape(f32[1]{0} %slice)
+  //   %constant = f32[] constant(0)
+  //   ROOT %not-equal-to = pred[] not-equal-to(f32[] %reshape, f32[] %constant)
+  // }
+
+  // ENTRY %SubcomputationAccounting () -> f32[2,4] {
+  //   %constant.3 = f32[2,4]{1,0} constant(f32[2,4] { { 1, 2, 3, 4 }, { 1, 2,
+  //   3, 4 } }) %transpose = f32[2,4]{1,0} transpose(f32[2,4]{1,0}
+  //   %constant.3), dimensions={0,1} %constant.2 = f32[4]{0} constant({1, 1, 1,
+  //   1}) %while = f32[4]{0} while(f32[4]{0} %constant.2),
+  //   condition=%WhileCond, body=%WhileBody %broadcast = f32[2,4]{1,0}
+  //   broadcast(f32[4]{0} %while), dimensions={1} ROOT %add = f32[2,4]{1,0}
+  //   add(f32[2,4]{1,0} %transpose, f32[2,4]{1,0} %broadcast)
+  // }
+
+  auto module = CreateNewVerifiedModule();
+  const Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  const Shape r1f32 = ShapeUtil::MakeShape(F32, {4});
+  const Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 4});
+
+  // reshape(slice(param)) != 0
+  // Needs 5 bytes
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "cond_param"));
+  HloInstruction* slice =
+      cond_builder.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {1}), cond_param, {0}, {1}, {1}));
+  HloInstruction* reshape =
+      cond_builder.AddInstruction(HloInstruction::CreateReshape(r0f32, slice));
+  HloInstruction* zero = cond_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+  HloInstruction* cond_comparison =
+      cond_builder.AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, reshape, zero));
+  auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
+
+  // param - 1
+  // Needs 16 bytes
+  auto body_builder = HloComputation::Builder("WhileBody");
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "body_param"));
+  HloInstruction* one_vector =
+      body_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<float>({1, 1, 1, 1})));
+  HloInstruction* subtract =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          r1f32, HloOpcode::kSubtract, body_param, one_vector));
+  auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
+
+  // transpose(matrix) + bcast(while)
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* while_init =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<float>({1, 1, 1, 1})));
+  // Creates 16 bytes, ignoring subcomputations
+  HloInstruction* while_loop =
+      builder.AddInstruction(HloInstruction::CreateWhile(
+          r1f32, cond_computation, body_computation, while_init));
+
+  // Creates 32 bytes and frees 16
+  HloInstruction* bcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r2f32, while_loop, {1}));
+
+  HloInstruction* matrix = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>(
+          {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}})));
+  // Creates 32 bytes
+  HloInstruction* transpose = builder.AddInstruction(
+      HloInstruction::CreateTranspose(r2f32, matrix, {0, 1}));
+
+  // Creates 32 bytes and frees 64
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, transpose, bcast));
+
+  auto entry_computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  std::vector<HloInstruction*> cond_vec = {cond_param, slice, reshape, zero,
+                                           cond_comparison};
+  std::vector<HloInstruction*> while_body_vec = {body_param, one_vector,
+                                                 subtract};
+  std::vector<HloInstruction*> entry_comp_vec = {while_init, while_loop, bcast,
+                                                 matrix,     transpose,  add};
+  schedule.set_sequence(cond_computation, cond_vec);
+  schedule.set_sequence(body_computation, while_body_vec);
+  schedule.set_sequence(entry_computation, entry_comp_vec);
+
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape());
+  };
+  absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
+  memory_by_computation[cond_computation] = 5;
+  memory_by_computation[body_computation] = 16;
+  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis =
+      TuplePointsToAnalysis::Run(module.get()).ValueOrDie();
+
+  // HeapSimulator accounts for subcomputations. The output buffer is aliased,
+  // so we don't double count.
+  EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
+                    *entry_computation, schedule.sequence(entry_computation),
+                    *points_to_analysis, size_fn, &memory_by_computation)
+                    .ValueOrDie());
 }
 
 const char kAlloc[] = "Alloc";
@@ -140,7 +258,7 @@ class HeapSimulatorTracker {
   // Constructor for testing a single entry computation.
   HeapSimulatorTracker(
       const string& name, std::unique_ptr<HloComputation> computation,
-      const std::vector<const HloInstruction*>& instruction_sequence) {
+      const std::vector<HloInstruction*>& instruction_sequence) {
     HloModuleConfig config;
     module_ = absl::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(computation));
@@ -168,7 +286,7 @@ class HeapSimulatorTracker {
   // Similar to the single entry computation constructor above, but runs the
   // simulation over the entire module.
   void RunWholeModule(
-      const std::vector<const HloInstruction*>& full_module_sequence) {
+      const std::vector<HloInstruction*>& full_module_sequence) {
     points_to_analysis_ =
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
 
@@ -176,7 +294,7 @@ class HeapSimulatorTracker {
     HloSchedule schedule(module_.get());
     absl::flat_hash_map<const HloInstruction*, int> reverse_position;
     for (int i = 0; i < full_module_sequence.size(); ++i) {
-      const HloInstruction* instruction = full_module_sequence[i];
+      HloInstruction* instruction = full_module_sequence[i];
       schedule.GetOrCreateSequence(instruction->parent())
           .push_back(instruction);
       reverse_position[instruction] = full_module_sequence.size() - i;
@@ -233,7 +351,7 @@ class HeapSimulatorTracker {
   HeapSimulator::Result result_;
 };
 
-class HeapSimulatorTest : public HloVerifiedTestBase {
+class HeapSimulatorTest : public HloTestBase {
  protected:
   HeapSimulatorTest() {}
   ~HeapSimulatorTest() override {}

@@ -21,6 +21,7 @@ import os
 
 from tensorflow.contrib.ignite import IgniteDataset
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -46,42 +47,6 @@ class IgniteDatasetTest(test.TestCase):
     ds = IgniteDataset(cache_name="SQL_PUBLIC_TEST_CACHE", port=42300)
     self._check_dataset(ds)
 
-  def test_ignite_dataset_with_ssl_client(self):
-    """Test Ignite Dataset with ssl client.
-
-    """
-    self._clear_env()
-    os.environ["IGNITE_DATASET_CERTFILE"] = os.path.dirname(
-        os.path.realpath(__file__)) + "/keystore/client.pem"
-    os.environ["IGNITE_DATASET_CERT_PASSWORD"] = "123456"
-
-    ds = IgniteDataset(
-        cache_name="SQL_PUBLIC_TEST_CACHE",
-        port=42301,
-        certfile=os.environ["IGNITE_DATASET_CERTFILE"],
-        cert_password=os.environ["IGNITE_DATASET_CERT_PASSWORD"])
-    self._check_dataset(ds)
-
-  def test_ignite_dataset_with_ssl_client_and_auth(self):
-    """Test Ignite Dataset with ssl client and authentication.
-
-    """
-    self._clear_env()
-    os.environ["IGNITE_DATASET_USERNAME"] = "ignite"
-    os.environ["IGNITE_DATASET_PASSWORD"] = "ignite"
-    os.environ["IGNITE_DATASET_CERTFILE"] = os.path.dirname(
-        os.path.realpath(__file__)) + "/keystore/client.pem"
-    os.environ["IGNITE_DATASET_CERT_PASSWORD"] = "123456"
-
-    ds = IgniteDataset(
-        cache_name="SQL_PUBLIC_TEST_CACHE",
-        port=42302,
-        certfile=os.environ["IGNITE_DATASET_CERTFILE"],
-        cert_password=os.environ["IGNITE_DATASET_CERT_PASSWORD"],
-        username=os.environ["IGNITE_DATASET_USERNAME"],
-        password=os.environ["IGNITE_DATASET_PASSWORD"])
-    self._check_dataset(ds)
-
   def _clear_env(self):
     """Clears environment variables used by Ignite Dataset.
 
@@ -101,7 +66,7 @@ class IgniteDatasetTest(test.TestCase):
     self.assertEqual(dtypes.string, dataset.output_types["val"]["NAME"])
     self.assertEqual(dtypes.int64, dataset.output_types["val"]["VAL"])
 
-    it = dataset.make_one_shot_iterator()
+    it = dataset_ops.make_one_shot_iterator(dataset)
     ne = it.get_next()
 
     with session.Session() as sess:

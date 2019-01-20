@@ -21,7 +21,10 @@ from __future__ import print_function
 import abc
 import itertools
 
+import six
 
+
+@six.add_metaclass(abc.ABCMeta)
 class Pattern(object):
   """The parent class of all patterns (e.g. OpTypePattern and OneofPattern)."""
 

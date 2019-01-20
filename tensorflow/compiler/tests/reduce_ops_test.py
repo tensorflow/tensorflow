@@ -91,6 +91,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       np.array([], dtype=np.bool).reshape(0, 3),
       np.array([[False, True, False], [True, True, False]]),
   ]
+  ONES = [np.ones([34000, 2])]
 
   def testReduceSumF32(self, index_dtype):
     self._testReduction(math_ops.reduce_sum, np.sum, np.float32, self.REAL_DATA,
@@ -148,6 +149,11 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     # reducing across zero inputs.
     self._testReduction(math_ops.reduce_mean, np.mean, np.float32,
                         self.NONEMPTY_REAL_DATA, index_dtype)
+
+  def testReduceMeanF16(self, index_dtype):
+    if np.float16 in self.all_types:
+      self._testReduction(math_ops.reduce_mean, np.mean, np.float16, self.ONES,
+                          index_dtype)
 
   def testReduceMeanC64(self, index_dtype):
     self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,

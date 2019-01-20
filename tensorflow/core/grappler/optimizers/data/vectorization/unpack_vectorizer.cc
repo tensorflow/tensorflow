@@ -19,33 +19,42 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-namespace vectorization_utils {
+namespace {
 
 class UnpackVectorizer : public Vectorizer {
  public:
   Status Vectorize(const Node& node, Graph* outer_scope,
-                   std::vector<Port>* input_ports,
-                   std::vector<Port>* output_ports) override {
-    Status s;
-    if (node.num_inputs() != 1) {
-      return errors::Internal("Unpack op should only have one input.");
+                   VectorizerInput&& inputs,
+                   VectorizerOutput* outputs) override {
+    NodeBuilder::NodeOut value;
+    TF_RETURN_IF_ERROR(inputs.stacked(0, &value));
+
+    int axis = 0;
+    if (HasNodeAttr(node.def(), "axis")) {
+      TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "axis", &axis));
     }
 
-    // Add new Unpack node with the same op and attrs as the original node
-    auto new_unpack_node = outer_scope->AddNode(node.def(), &s);
-    TF_RETURN_IF_ERROR(s);
+    if (axis >= 0) {
+      // Since the vectorized input has an extra leading dimension, we need
+      // to increment `axis` attr by 1 for non-negative axis values.
+      // Note: negative axis values wrap around.
+      axis += 1;
+    }
 
-    // Increment "axis" attr by 1:
-    int new_axis = node.def().attr().at("axis").i() + 1;
-    new_unpack_node->AddAttr("axis", new_axis);
+    int num;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "num", &num));
 
-    // Add the input mappings
-    input_ports->push_back({new_unpack_node, 0});
+    Node* new_node;
+    TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("vectorized/", node.name()),
+                                   node.type_string())
+                           .Input(value)
+                           .Attr("axis", axis)
+                           .Attr("num", num)
+                           .Finalize(outer_scope, &new_node));
 
     // Add the output mappings
-    int num = node.def().attr().at("num").i();
     for (int i = 0; i < num; ++i) {
-      output_ports->push_back({new_unpack_node, i});
+      outputs->push_back({new_node, i, true});
     }
 
     return Status::OK();
@@ -54,6 +63,6 @@ class UnpackVectorizer : public Vectorizer {
 
 REGISTER_VECTORIZER("Unpack", UnpackVectorizer);
 
-}  // namespace vectorization_utils
+}  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

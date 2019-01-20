@@ -33,7 +33,7 @@ class AssertTransformer(converter.Base):
     # Note: The lone tf.Assert call will be wrapped with control_dependencies
     # by side_effect_guards.
     template = """
-      tf.Assert(test, (msg,))
+      ag__.assert_stmt(test, lambda: msg)
     """
 
     if node.msg is None:

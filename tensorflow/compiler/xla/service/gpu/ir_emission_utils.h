@@ -108,9 +108,9 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 // memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
 // is not well-defined.
 //
-// CudnnConvolutionRewriter lowers kConvolution HLOs to these custom calls.
+// CudnnConvRewriter lowers kConvolution HLOs to these custom calls.
 // When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
-// on in the pipeline, CudnnConvolutionAlgorithmChooser chooses an explicit
+// on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
 // algorithm for each conv and sets the amount of scratch space needed.
 //
 // (Representing the scratch memory as an output may seem strange at first, but
@@ -154,6 +154,10 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder);
+
+// Emits code that determines whether the current thread is thread 0 within
+// block 0 of the kernel.
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
 }  // namespace gpu
 }  // namespace xla

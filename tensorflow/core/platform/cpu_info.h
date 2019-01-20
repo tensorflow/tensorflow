@@ -32,8 +32,21 @@ namespace port {
 // Returns an estimate of the number of schedulable CPUs for this
 // process.  Usually, it's constant throughout the lifetime of a
 // process, but it might change if the underlying cluster management
-// software can change it dynamically.
+// software can change it dynamically.  If the underlying call fails, a default
+// value (e.g. `4`) may be returned.
 int NumSchedulableCPUs();
+
+// Returns the total number of CPUs on the system.  This number should
+// not change even if the underlying cluster management software may
+// change the number of schedulable CPUs.  Unlike `NumSchedulableCPUs`, if the
+// underlying call fails, an invalid value of -1 will be returned;
+// the user must check for validity.
+static constexpr int kUnknownCPU = -1;
+int NumTotalCPUs();
+
+// Returns the id of the current CPU.  Returns -1 if the current CPU cannot be
+// identified.  If successful, the return value will be in [0, NumTotalCPUs()).
+int GetCurrentCPU();
 
 // Returns an estimate of the number of hyperthreads per physical core
 // on the CPU

@@ -26,7 +26,7 @@ def _wrap_bash_cmd(ctx, cmd):
         bazel_sh = _get_env_var(ctx, "BAZEL_SH")
         if not bazel_sh:
             fail("BAZEL_SH environment variable is not set")
-        cmd = [bazel_sh, "-l", "-c", " ".join(cmd)]
+        cmd = [bazel_sh, "-l", "-c", " ".join(["\"%s\"" % s for s in cmd])]
     return cmd
 
 def _get_env_var(ctx, name):
@@ -47,7 +47,7 @@ def _use_system_lib(ctx, name):
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
 def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
-    result = repo_ctx.execute(cmd_and_args, timeout = 10)
+    result = repo_ctx.execute(cmd_and_args, timeout = 60)
     if result.return_code != 0:
         fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n" +
               "Stderr: {3}").format(
@@ -84,7 +84,7 @@ def _apply_delete(ctx, paths):
 def _tf_http_archive(ctx):
     if ("mirror.bazel.build" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST)):
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.bazel.build URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
@@ -150,7 +150,7 @@ ensure best practices are followed.
 def _third_party_http_archive(ctx):
     if ("mirror.bazel.build" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST)):
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.bazel.build URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +

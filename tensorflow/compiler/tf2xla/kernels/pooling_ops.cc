@@ -152,7 +152,12 @@ class MaxPoolOp : public PoolingOp {
  public:
   MaxPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
-                  /*reduction_type=*/ctx->input_type(0)) {}
+                  /*reduction_type=*/ctx->input_type(0)) {
+    string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
@@ -180,16 +185,12 @@ class MaxPool2DOp : public MaxPoolOp {
  public:
   explicit MaxPool2DOp(OpKernelConstruction* ctx)
       : MaxPoolOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
   }
 };
 REGISTER_XLA_OP(Name("MaxPool"), MaxPool2DOp);
 REGISTER_XLA_OP(Name("MaxPoolV2")
-                    .CompileTimeConstInput("ksize")
-                    .CompileTimeConstInput("strides"),
+                    .CompileTimeConstantInput("ksize")
+                    .CompileTimeConstantInput("strides"),
                 MaxPool2DOp);
 
 class MaxPool3DOp : public MaxPoolOp {
@@ -204,7 +205,12 @@ class AvgPoolOp : public PoolingOp {
   AvgPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
                   /*reduction_type=*/
-                  XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
+                  XlaHelpers::SumAccumulationType(ctx->input_type(0))) {
+    string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
@@ -241,10 +247,6 @@ class AvgPool2DOp : public AvgPoolOp {
  public:
   explicit AvgPool2DOp(OpKernelConstruction* ctx)
       : AvgPoolOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
   }
 };
 REGISTER_XLA_OP(Name("AvgPool"), AvgPool2DOp);
@@ -360,8 +362,8 @@ class MaxPool2DGradOp : public MaxPoolGradOp {
 };
 REGISTER_XLA_OP(Name("MaxPoolGrad"), MaxPool2DGradOp);
 REGISTER_XLA_OP(Name("MaxPoolGradV2")
-                    .CompileTimeConstInput("ksize")
-                    .CompileTimeConstInput("strides"),
+                    .CompileTimeConstantInput("ksize")
+                    .CompileTimeConstantInput("strides"),
                 MaxPool2DGradOp);
 
 class MaxPool3DGradOp : public MaxPoolGradOp {
@@ -390,6 +392,11 @@ class AvgPoolGradOp : public XlaOpKernel {
     OP_REQUIRES(ctx, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
+
+    string data_format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -449,22 +456,20 @@ class AvgPool2DGradOp : public AvgPoolGradOp {
  public:
   explicit AvgPool2DGradOp(OpKernelConstruction* ctx)
       : AvgPoolGradOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
-    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP(Name("AvgPoolGrad").CompileTimeConstInput("orig_input_shape"),
-                AvgPool2DGradOp);
+REGISTER_XLA_OP(
+    Name("AvgPoolGrad").CompileTimeConstantInput("orig_input_shape"),
+    AvgPool2DGradOp);
 
 class AvgPool3DGradOp : public AvgPoolGradOp {
  public:
   explicit AvgPool3DGradOp(OpKernelConstruction* ctx)
       : AvgPoolGradOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP(Name("AvgPool3DGrad").CompileTimeConstInput("orig_input_shape"),
-                AvgPool3DGradOp);
+REGISTER_XLA_OP(
+    Name("AvgPool3DGrad").CompileTimeConstantInput("orig_input_shape"),
+    AvgPool3DGradOp);
 
 class MaxPoolGradGradOp : public XlaOpKernel {
  public:
@@ -632,8 +637,8 @@ REGISTER_XLA_OP(Name("MaxPoolGradGrad").TypeConstraint("T", DT_FLOAT),
                 MaxPool2DGradGradOp);
 REGISTER_XLA_OP(Name("MaxPoolGradGradV2")
                     .TypeConstraint("T", DT_FLOAT)
-                    .CompileTimeConstInput("ksize")
-                    .CompileTimeConstInput("strides"),
+                    .CompileTimeConstantInput("ksize")
+                    .CompileTimeConstantInput("strides"),
                 MaxPool2DGradGradOp);
 
 class MaxPool3DGradGradOp : public MaxPoolGradGradOp {

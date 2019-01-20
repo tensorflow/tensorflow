@@ -176,8 +176,9 @@ XLA_TEST_F(TupleTest, AddTupleElements) {
       {2.f, 4.f, 6.f},  // row 0
       {5.f, 7.f, 9.f},  // row 1
   });
-  ASSERT_TRUE(ShapeUtil::ShapeIs(vector_shape, F32, {3}));
-  ASSERT_TRUE(ShapeUtil::ShapeIs(matrix_shape, F32, {/*y=*/2, /*x=*/3}));
+  ASSERT_TRUE(ShapeUtil::Equal(vector_shape, ShapeUtil::MakeShape(F32, {3})));
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_shape,
+                               ShapeUtil::MakeShape(F32, {/*y=*/2, /*x=*/3})));
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
@@ -512,10 +513,9 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 
 class TupleHloTest : public HloTestBase {};
 
-// Disabled on the interpreter because bitcast doesn't exist on the interpreter.
-XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
+XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {
   const char* testcase = R"(
-    HloModule m
+    HloModule m, is_scheduled=true
 
     ENTRY test {
       name.1 = (f32[3]{0}) parameter(0)
@@ -555,8 +555,8 @@ XLA_TEST_F(TupleHloTest,
       s = (f32[2],f32[2]) tuple-select(cond, tup0, tup1)
       gte = f32[2] get-tuple-element(s), index=0
       tuple = (f32[2]) tuple(gte)
-      token = token[] after-all()
-      ROOT outfeed = token[] outfeed(tuple, token)
+      token0 = token[] after-all()
+      ROOT outfeed = token[] outfeed(tuple, token0)
     }
   )";
   auto module =

@@ -22,11 +22,13 @@ from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class FunctionBodyTransformerTest(converter_testing.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_basic(self):
 
     def test_fn(l):
@@ -40,6 +42,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       self.assertIn('test_fn/', result_op.op.name)
       self.assertEqual('Docstring.', result.test_fn.__doc__)
 
+  @test_util.run_deprecated_v1
   def test_multiline_docstring(self):
 
     tf = None
@@ -58,6 +61,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       self.assertIn('First sentence.', result.test_fn.__doc__)
       self.assertIn('Second sentence.', result.test_fn.__doc__)
 
+  @test_util.run_deprecated_v1
   def test_nested_functions(self):
 
     def test_fn(l):
@@ -74,6 +78,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       self.assertNotIn('inner_fn', first.op.name)
       self.assertIn('test_fn/inner_fn/', second.op.name)
 
+  @test_util.run_deprecated_v1
   def test_method(self):
 
     class TestClass(object):

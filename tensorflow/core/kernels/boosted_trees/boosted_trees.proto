@@ -12,6 +12,7 @@ message Node {
     Leaf leaf = 1;
     BucketizedSplit bucketized_split = 2;
     CategoricalSplit categorical_split = 3;
+    DenseSplit dense_split = 4;
   }
   NodeMetadata metadata = 777;
 }
@@ -63,6 +64,19 @@ message CategoricalSplit {
   // value.
   int32 feature_id = 1;
   int32 value = 2;
+
+  // Node children indexing into a contiguous
+  // vector of nodes starting from the root.
+  int32 left_id = 3;
+  int32 right_id = 4;
+}
+
+// TODO(nponomareva): move out of boosted_trees and rename to trees.proto
+message DenseSplit {
+  // Float feature column and split threshold describing
+  // the rule feature <= threshold.
+  int32 feature_id = 1;
+  float threshold = 2;
 
   // Node children indexing into a contiguous
   // vector of nodes starting from the root.

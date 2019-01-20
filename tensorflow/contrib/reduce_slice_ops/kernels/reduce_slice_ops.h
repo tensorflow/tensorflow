@@ -21,11 +21,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
-#define Sum(a, b) ((a) + (b))
-#define Prod(a, b) ((a) * (b))
-#define Max(a, b) ((a) > (b) ? (a) : (b))
-#define Min(a, b) ((a) < (b) ? (a) : (b))
-
 namespace tensorflow {
 
 class OpKernelContext;

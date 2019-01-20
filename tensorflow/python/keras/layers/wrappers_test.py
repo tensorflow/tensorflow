@@ -27,7 +27,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import util as checkpointable_util
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class _RNNCellWithConstants(keras.layers.Layer):
@@ -77,7 +76,7 @@ class TimeDistributedTest(test.TestCase):
     model.add(
         keras.layers.TimeDistributed(
             keras.layers.Dense(2), input_shape=(3, 4)))
-    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.compile(optimizer='rmsprop', loss='mse')
     model.fit(
         np.random.random((10, 3, 4)),
         np.random.random((10, 3, 2)),
@@ -98,7 +97,7 @@ class TimeDistributedTest(test.TestCase):
     model.add(
         keras.layers.TimeDistributed(
             keras.layers.Dense(2), input_shape=(3, 4), batch_size=10))
-    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.compile(optimizer='rmsprop', loss='mse')
     model.fit(
         np.random.random((10, 3, 4)),
         np.random.random((10, 3, 2)),
@@ -159,8 +158,8 @@ class TimeDistributedTest(test.TestCase):
       # test layers that need learning_phase to be set
       np.random.seed(1234)
       x = keras.layers.Input(shape=(3, 2))
-      y = keras.layers.TimeDistributed(
-          keras.layers.Dropout(.999))(x, training=True)
+      y = keras.layers.TimeDistributed(keras.layers.Dropout(.999))(
+          x, training=True)
       model = keras.models.Model(x, y)
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
@@ -192,8 +191,8 @@ class TimeDistributedTest(test.TestCase):
     x = keras.layers.Input(shape=(3, 2))
     layer = keras.layers.TimeDistributed(keras.layers.BatchNormalization())
     _ = layer(x)
-    self.assertEquals(len(layer.updates), 2)
-    self.assertEquals(len(layer.trainable_weights), 2)
+    self.assertEqual(len(layer.updates), 2)
+    self.assertEqual(len(layer.trainable_weights), 2)
     layer.trainable = False
     assert not layer.updates
     assert not layer.trainable_weights
@@ -277,7 +276,7 @@ class BidirectionalTest(test.TestCase):
         model.add(
             keras.layers.Bidirectional(
                 rnn(output_dim), merge_mode=mode, input_shape=(timesteps, dim)))
-        model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+        model.compile(optimizer='rmsprop', loss='mse')
         model.fit(x, y, epochs=1, batch_size=1)
 
         # check whether the model variables are present in the
@@ -375,6 +374,7 @@ class BidirectionalTest(test.TestCase):
       model.compile(loss='mse', optimizer='sgd')
       model.fit(x, y, epochs=1, batch_size=1)
 
+  @tf_test_util.run_v1_only('b/120545219')
   def test_Bidirectional_merged_value(self):
     rnn = keras.layers.LSTM
     samples = 2
@@ -452,16 +452,13 @@ class BidirectionalTest(test.TestCase):
       wrapped = keras.layers.Bidirectional(
           rnn(units, dropout=0.2, recurrent_dropout=0.2), merge_mode=merge_mode)
       outputs = _to_list(wrapped(inputs, training=True))
-      assert all(not getattr(x, '_uses_learning_phase') for x in outputs)
 
       inputs = keras.Input((timesteps, dim))
       wrapped = keras.layers.Bidirectional(
           rnn(units, dropout=0.2, return_state=True), merge_mode=merge_mode)
       outputs = _to_list(wrapped(inputs))
-      assert all(x._uses_learning_phase for x in outputs)
 
       model = keras.Model(inputs, outputs)
-      assert model.uses_learning_phase
       y1 = _to_list(model.predict(x))
       y2 = _to_list(model.predict(x))
       for x1, x2 in zip(y1, y2):
@@ -508,6 +505,7 @@ class BidirectionalTest(test.TestCase):
       layer.trainable = True
       assert len(layer.trainable_weights) == 6
 
+  @tf_test_util.run_v1_only('b/120545219')
   def test_Bidirectional_updates(self):
     with self.cached_session():
       x = keras.layers.Input(shape=(3, 2))
@@ -637,6 +635,34 @@ class BidirectionalTest(test.TestCase):
       model.set_weights(weights)
       y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
+
+  def test_Bidirectional_with_masking(self):
+    rnn = keras.layers.LSTM
+    samples = 2
+    dim = 5
+    timesteps = 3
+    units = 3
+    merge_mode = 'concat'
+    x = np.random.rand(samples, timesteps, dim)
+    # clear the first record's timestep 2, and expect the output of timestep 2
+    # is also 0s.
+    x[0, 2] = 0
+
+    with self.cached_session():
+      inputs = keras.Input((timesteps, dim))
+      masked_inputs = keras.layers.Masking()(inputs)
+      wrapped = keras.layers.Bidirectional(
+          rnn(units, return_sequences=True),
+          merge_mode=merge_mode)
+      outputs = _to_list(wrapped(masked_inputs, training=True))
+      self.assertEqual(len(outputs), 1)
+      self.assertEqual(outputs[0].get_shape().as_list(),
+                       [None, timesteps, units * 2])
+
+      model = keras.Model(inputs, outputs)
+      y = _to_list(model.predict(x))
+      self.assertEqual(len(y), 1)
+      self.assertAllClose(y[0][0, 2], np.zeros(units * 2))
 
 
 def _to_list(ls):

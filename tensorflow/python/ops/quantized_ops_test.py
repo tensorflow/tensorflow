@@ -33,7 +33,7 @@ class QuantizedOpsTest(test.TestCase):
 
   def testQuantizeOp(self):
     expected_output = [1, 1, 2, 127, 255, 255]
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       x = constant_op.constant(
           [1.0, 1.25, 1.75, 127.0, 255.0, 500.0],
           shape=[6],
@@ -41,18 +41,18 @@ class QuantizedOpsTest(test.TestCase):
       x_min = 0.0
       x_max = 255.0
       op = array_ops.quantize(x, x_min, x_max, dtypes.quint8, mode="MIN_FIRST")
-      value = sess.run(op)
+      value = self.evaluate(op)
       self.assertArrayNear(expected_output, value.output, 0.1)
 
   def testDequantizeOp(self):
     expected_output = [1.0, 2.0, 4.0, 8.0, 16.0, 255.0]
     inp = np.array([1, 2, 4, 8, 16, 255]).astype(np.uint8)
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       x = constant_op.constant(inp, shape=[6], dtype=dtypes.quint8)
       x_min = 0.0
       x_max = 255.0
       op = array_ops.dequantize(x, x_min, x_max, mode="MIN_FIRST")
-      value = sess.run(op)
+      value = self.evaluate(op)
       self.assertArrayNear(expected_output, value, 0.1)
 
 

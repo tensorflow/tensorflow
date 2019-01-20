@@ -18,24 +18,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gast
-
 from tensorflow.python.autograph.converters import asserts
+from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.core import converter_testing
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.platform import test
 
 
 class AssertsTest(converter_testing.TestCase):
 
-  def test_transform(self):
+  @test_util.run_deprecated_v1
+  def test_basic(self):
 
     def test_fn(a):
-      assert a > 0
+      assert a, 'test message'
+      return tf.no_op()  # pylint:disable=undefined-variable
 
-    node, ctx = self.prepare(test_fn, {})
-    node = asserts.transform(node, ctx)
-
-    self.assertTrue(isinstance(node.body[0].value, gast.Call))
+    with self.converted(test_fn, (asserts, side_effect_guards), {},
+                        gen_control_flow_ops.no_op) as result:
+      with self.cached_session() as sess:
+        op = result.test_fn(constant_op.constant(False))
+        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                     'test message'):
+          self.evaluate(op)
 
 
 if __name__ == '__main__':

@@ -36,4 +36,7 @@ cuda_py_test(
         "//tensorflow/contrib/eager/python:tfe",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "oss_serial",
+    ],
 )

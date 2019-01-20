@@ -53,7 +53,7 @@ PANDAS_DTYPES = {
 }
 
 
-@deprecated(None, 'Please use tf.estimator.inputs.pandas_input_fn')
+@deprecated(None, 'Please use tf.compat.v1.estimator.inputs.pandas_input_fn')
 def pandas_input_fn(x,
                     y=None,
                     batch_size=128,

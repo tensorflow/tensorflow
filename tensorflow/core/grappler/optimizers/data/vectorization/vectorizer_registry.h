@@ -19,11 +19,11 @@ limitations under the License.
 #include <functional>
 #include <map>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/grappler/optimizers/data/vectorization/vectorizer.h"
 
 namespace tensorflow {
 namespace grappler {
-namespace vectorization_utils {
 
 // A global VectorizerRegistry is used to hold all the vectorizers.
 class VectorizerRegistry {
@@ -38,7 +38,7 @@ class VectorizerRegistry {
   void Register(const string& op_type, std::unique_ptr<Vectorizer> vectorizer);
 
  private:
-  std::map<string, std::unique_ptr<Vectorizer>> vectorizers_;
+  absl::flat_hash_map<string, std::unique_ptr<Vectorizer>> vectorizers_;
 };
 
 namespace vectorizer_registration {
@@ -59,16 +59,12 @@ class VectorizerRegistration {
 #define REGISTER_VECTORIZER_UNIQ_HELPER(ctr, op_type, vectorizer) \
   REGISTER_VECTORIZER_UNIQ(ctr, op_type, vectorizer)
 
-#define REGISTER_VECTORIZER_UNIQ(ctr, op_type, vectorizer)                  \
-  static ::tensorflow::grappler::vectorization_utils::                      \
-      vectorizer_registration::VectorizerRegistration                       \
-          vectorizer_registration_##ctr(                                    \
-              op_type,                                                      \
-              ::std::unique_ptr<                                            \
-                  ::tensorflow::grappler::vectorization_utils::Vectorizer>( \
-                  new vectorizer()))
+#define REGISTER_VECTORIZER_UNIQ(ctr, op_type, vectorizer)                \
+  static ::tensorflow::grappler::vectorizer_registration::                \
+      VectorizerRegistration vectorizer_registration_##ctr(               \
+          op_type, ::std::unique_ptr<::tensorflow::grappler::Vectorizer>( \
+                       new vectorizer()))
 
-}  // namespace vectorization_utils
 }  // namespace grappler
 }  // namespace tensorflow
 

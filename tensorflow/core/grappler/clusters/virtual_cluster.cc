@@ -34,8 +34,11 @@ VirtualCluster::VirtualCluster(
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices,
-    OpLevelCostEstimator* node_estimator, ReadyNodeManager* node_manager)
-    : Cluster(0), node_estimator_(node_estimator), node_manager_(node_manager) {
+    std::unique_ptr<OpLevelCostEstimator> node_estimator,
+    std::unique_ptr<ReadyNodeManager> node_manager)
+    : Cluster(0),
+      node_estimator_(std::move(node_estimator)),
+      node_manager_(std::move(node_manager)) {
   devices_ = devices;
 }
 
@@ -64,14 +67,18 @@ Status VirtualCluster::Run(const GraphDef& graph,
                            const std::vector<string>& fetch,
                            RunMetadata* metadata) {
   // Initialize a virtual scheduler to process the graph. Make sure to use
-  // static shape inference to prevent the schedulrer from calling the Run
-  // method on the cluster, and create an infinite loop.
+  // static shape inference to prevent the scheduler from calling the Run
+  // method on the cluster and creating an infinite loop.
   GrapplerItem item;
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(&item, true, this, node_manager_.get());
-  TF_RETURN_IF_ERROR(scheduler.Init());
+  // Note that we do not use aggressive shape inference to preserve unknown
+  // shapes from the input graph.
+  VirtualScheduler scheduler(/*use_static_shapes=*/true,
+                             /*use_aggressive_shape_inference=*/false, this,
+                             node_manager_.get());
+  TF_RETURN_IF_ERROR(scheduler.Init(&item));
 
   if (metadata) {
     metadata->clear_step_stats();

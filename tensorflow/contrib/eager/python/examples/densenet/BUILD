@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
 
 py_binary(
     name = "densenet",
@@ -26,6 +27,7 @@ cuda_py_test(
     tags = [
         "no_pip",
         "optonly",
+        "oss_serial",
     ],
 )
 
@@ -44,5 +46,6 @@ cuda_py_test(
         "nomsan",
         "notsan",
         "optonly",
+        "oss_serial",
     ],
 )

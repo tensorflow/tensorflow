@@ -59,7 +59,7 @@ class VirtualBatchnormTest(test.TestCase):
       mom_mean, mom_var = nn.moments(tensors, axes)
       vb_var = mean_sq - math_ops.square(vb_mean)
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         vb_mean_np, vb_var_np, mom_mean_np, mom_var_np = sess.run([
             vb_mean, vb_var, mom_mean, mom_var])
 
@@ -93,7 +93,7 @@ class VirtualBatchnormTest(test.TestCase):
       vb_mean = array_ops.squeeze(vb_mean, batch_axis)
       vb_variance = array_ops.squeeze(vb_variance, batch_axis)
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         vb_mean_np, vb_var_np, mom_mean_np, mom_var_np = sess.run([
             vb_mean, vb_variance, mom_mean, mom_variance])
 
@@ -116,7 +116,7 @@ class VirtualBatchnormTest(test.TestCase):
       vbn = virtual_batchnorm.VBN(batch, axis, batch_axis=batch_axis)
       vbn_normalized = vbn.reference_batch_normalization()
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         variables_lib.global_variables_initializer().run()
 
         bn_normalized_np, vbn_normalized_np = sess.run(
@@ -142,7 +142,7 @@ class VirtualBatchnormTest(test.TestCase):
       vb_normed = array_ops.squeeze(
           vbn(array_ops.expand_dims(examples[i], [0])), [0])
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         variables_lib.global_variables_initializer().run()
         bn_np, vb_np = sess.run([batch_normalized, vb_normed])
       self.assertAllClose(bn_np[i, ...], vb_np)
@@ -167,7 +167,7 @@ class VirtualBatchnormTest(test.TestCase):
     vbn = virtual_batchnorm.VBN(reference_batch)
     vbn_fixed_example = array_ops.squeeze(
         vbn(array_ops.expand_dims(fixed_example, 0)), 0)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       variables_lib.global_variables_initializer().run()
       vbn_fixed_example_np = vbn_fixed_example.eval()
 
@@ -180,7 +180,7 @@ class VirtualBatchnormTest(test.TestCase):
       minibatch = array_ops.stack([fixed_example] + examples)
       vbn_minibatch = vbn(minibatch)
       cur_vbn_fixed_example = vbn_minibatch[0, ...]
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         variables_lib.global_variables_initializer().run()
         cur_vbn_fixed_example_np = cur_vbn_fixed_example.eval()
       self.assertAllClose(vbn_fixed_example_np, cur_vbn_fixed_example_np)
@@ -219,7 +219,7 @@ class VirtualBatchnormTest(test.TestCase):
 
     self.assertEqual(4, len(contrib_variables_lib.get_variables()))
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       variables_lib.global_variables_initializer().run()
       sess.run(to_fetch)
 

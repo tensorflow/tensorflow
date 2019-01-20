@@ -283,7 +283,7 @@ def tf_library(
     )
 
     # Variables used for gen_test and gen_benchmark.
-    cpp_class_split = cpp_class.rsplit("::", maxsplit = 2)
+    cpp_class_split = cpp_class.rsplit("::", 2)
     if len(cpp_class_split) == 1:
         no_ns_name = cpp_class_split[0]
     else:
@@ -390,6 +390,7 @@ def target_llvm_triple():
         "//tensorflow:android_arm": "armv7-none-android",
         "//tensorflow:android_arm64": "aarch64-none-android",
         "//tensorflow:android_x86": "i686-none-android",
+        "//tensorflow:ios": "arm64-none-ios",
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
         "//tensorflow:darwin": "x86_64-none-darwin",
         "//conditions:default": "x86_64-pc-linux",

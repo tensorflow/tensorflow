@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
@@ -72,7 +73,7 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
     matmul = sparse_ops.sparse_tensor_dense_matmul(
         sp_t, dense_t, adjoint_a=adjoint_a, adjoint_b=adjoint_b, name=name)
 
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       dense_t_shape = [m, k] if adjoint_b else [k, m]
       sp_t_val_shape = [nnz]
       err = gradient_checker.compute_gradient_error(
@@ -89,6 +90,7 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
         self._testGradients(adjoint_a, adjoint_b, name, values_dtype,
                             indices_dtype)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     np.random.seed(5)  # Fix seed to avoid flakiness
     self._testGradientsType(np.float32, np.int64)

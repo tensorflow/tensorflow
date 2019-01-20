@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -55,6 +56,9 @@ class DeviceMgr;
 
 class Device : public DeviceBase {
  public:
+  // Callback type that takes a Status and returns void.
+  typedef std::function<void(const Status&)> DoneCallback;
+
   Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
@@ -112,9 +116,28 @@ class Device : public DeviceBase {
   // at completion.
   virtual Status Sync() = 0;
 
-  // Override this to return true for devices that require a Sync() call before
-  // session completion.
-  virtual bool RequiresSyncOnCompletion() const { return false; }
+  // Calls the given callback when all operations queued on the device at the
+  // time of the call have completed. The callback is passed any error pending
+  // on the device at completion.
+  // TODO(b/112409994): Consolidate these two APIs, removing the synchronous
+  // version.
+  virtual void Sync(const DoneCallback& done);
+
+  // On session completion, the executor may call Device::Sync() depending on
+  // flag settings. Override this to return false for devices that don't allow
+  // such calls. Instead, these devices must use other mechanisms (such as
+  // num_deferred_ops) to ensure the device has finished processing necessary
+  // work at session completion.
+  //
+  // Devices that override this function must also implement CurrentStatus.
+  virtual bool AllowsSyncOnCompletion() const { return true; }
+
+  // This is used in conjunction with AllowsSyncOnCompletion to allow the
+  // executor to get execution result status at session completion.
+  virtual Status CurrentStatus() {
+    return errors::Unimplemented(
+        "CurrentStatus is not supported on this device.");
+  }
 
   // Optionally modify the device's GraphDef before execution.
   //

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 
 def ConvertBetweenDataFormats(x, data_format_src, data_format_dst):
@@ -61,3 +62,14 @@ def PermuteDimsBetweenDataFormats(dims, data_format_src, data_format_dst):
   dim_map = {d: i for i, d in enumerate(data_format_src)}
   permuted_dims = [dims[dim_map[d]] for d in data_format_dst]
   return permuted_dims
+
+
+_JIT_WARMUP_ITERATIONS = 10
+
+
+def RunWithWarmup(sess, op_to_run, feed_dict, options=None, run_metadata=None):
+  """Runs a graph a few times to ensure that its clusters are compiled."""
+  for _ in xrange(0, _JIT_WARMUP_ITERATIONS):
+    sess.run(op_to_run, feed_dict, options=options)
+  return sess.run(
+      op_to_run, feed_dict, options=options, run_metadata=run_metadata)

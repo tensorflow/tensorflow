@@ -157,7 +157,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   jpeg_calc_output_dimensions(&cinfo);
 
   int64 total_size = static_cast<int64>(cinfo.output_height) *
-                     static_cast<int64>(cinfo.output_width);
+                     static_cast<int64>(cinfo.output_width) *
+                     static_cast<int64>(cinfo.num_components);
   // Some of the internal routines do not gracefully handle ridiculously
   // large images, so fail fast.
   if (cinfo.output_width <= 0 || cinfo.output_height <= 0) {

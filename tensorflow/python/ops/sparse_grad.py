@@ -195,7 +195,7 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   parts_a = array_ops.gather(grad, rows if not adj_a else cols)
   parts_b = array_ops.gather(b if not adj_b else array_ops.transpose(b),
                              cols if not adj_a else rows)
-  a_values_grad = math_ops.reduce_sum(parts_a * parts_b, reduction_indices=1)
+  a_values_grad = math_ops.reduce_sum(parts_a * parts_b, axis=1)
 
   # gradients w.r.t. (a_indices, a_values, a_shape, b)
   return (None, a_values_grad, None, b_grad)
@@ -278,7 +278,7 @@ def _SparseSoftmaxGrad(op, grad):
       indices, sp_output.values * sp_grad.values, shape)
 
   # [..., B, 1], dense.
-  sum_reduced = -sparse_ops.sparse_reduce_sum(sp_product, [-1], keep_dims=True)
+  sum_reduced = -sparse_ops.sparse_reduce_sum(sp_product, [-1], keepdims=True)
   # sparse [..., B, C] + dense [..., B, 1] with broadcast; outputs sparse.
   sp_sum = sparse_ops.sparse_dense_cwise_add(sp_grad, sum_reduced)
 

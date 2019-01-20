@@ -80,8 +80,10 @@ class XlaJitCompiledCpuFunction {
   std::vector<const char*> arg_names_;
   std::vector<const char*> result_names_;
 
-  // The backing data for the program shape.
-  std::unique_ptr<const xla::ProgramShape> program_shape_;
+  // The backing data for the program shape. The proto form of program shape is
+  // used because the program shape is serialized and embedded in the object
+  // file.
+  std::unique_ptr<const xla::ProgramShapeProto> program_shape_;
 };
 
 }  // namespace tensorflow

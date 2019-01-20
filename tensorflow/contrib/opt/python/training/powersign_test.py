@@ -67,7 +67,7 @@ class PowerSignTest(test.TestCase):
                  base=math.e,
                  beta=0.9):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -173,7 +173,7 @@ class PowerSignTest(test.TestCase):
                   py_sign_decay_fn=None,
                   base=math.e,
                   beta=0.9):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0

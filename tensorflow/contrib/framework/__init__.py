@@ -15,10 +15,6 @@
 
 """Framework utilities.
 
-See the
-[Contrib Framework](https://tensorflow.org/api_guides/python/contrib.framework)
-guide.
-
 @@assert_same_float_dtype
 @@assert_scalar
 @@assert_scalar_int
@@ -134,6 +130,7 @@ _allowed_symbols = ['nest']
 _nest_allowed_symbols = [
     'assert_same_structure',
     'is_sequence',
+    'is_sequence_or_composite',
     'flatten',
     'flatten_dict_items',
     'pack_sequence_as',

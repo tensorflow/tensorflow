@@ -148,18 +148,46 @@ def save_wav_file(filename, wav_data, sample_rate):
         })
 
 
+def get_features_range(model_settings):
+  """Returns the expected min/max for generated features.
+
+  Args:
+    model_settings: Information about the current model being trained.
+
+  Returns:
+    Min/max float pair holding the range of features.
+
+  Raises:
+    Exception: If preprocessing mode isn't recognized.
+  """
+  # TODO(petewarden): These values have been derived from the observed ranges
+  # of spectrogram and MFCC inputs. If the preprocessing pipeline changes,
+  # they may need to be updated.
+  if model_settings['preprocess'] == 'average':
+    features_min = 0.0
+    features_max = 127.5
+  elif model_settings['preprocess'] == 'mfcc':
+    features_min = -247.0
+    features_max = 30.0
+  else:
+    raise Exception('Unknown preprocess mode "%s" (should be "mfcc" or'
+                    ' "average")' % (model_settings['preprocess']))
+  return features_min, features_max
+
+
 class AudioProcessor(object):
   """Handles loading, partitioning, and preparing audio training data."""
 
   def __init__(self, data_url, data_dir, silence_percentage, unknown_percentage,
                wanted_words, validation_percentage, testing_percentage,
                model_settings, summaries_dir):
-    self.data_dir = data_dir
-    self.maybe_download_and_extract_dataset(data_url, data_dir)
-    self.prepare_data_index(silence_percentage, unknown_percentage,
-                            wanted_words, validation_percentage,
-                            testing_percentage)
-    self.prepare_background_data()
+    if data_dir:
+      self.data_dir = data_dir
+      self.maybe_download_and_extract_dataset(data_url, data_dir)
+      self.prepare_data_index(silence_percentage, unknown_percentage,
+                              wanted_words, validation_percentage,
+                              testing_percentage)
+      self.prepare_background_data()
     self.prepare_processing_graph(model_settings, summaries_dir)
 
   def maybe_download_and_extract_dataset(self, data_url, dest_directory):
@@ -421,8 +449,9 @@ class AudioProcessor(object):
       # Merge all the summaries and write them out to /tmp/retrain_logs (by
       # default)
       self.merged_summaries_ = tf.summary.merge_all(scope='data')
-      self.summary_writer_ = tf.summary.FileWriter(summaries_dir + '/data',
-                                                   tf.get_default_graph())
+      if summaries_dir:
+        self.summary_writer_ = tf.summary.FileWriter(summaries_dir + '/data',
+                                                     tf.get_default_graph())
 
   def set_size(self, mode):
     """Calculates the number of samples in the dataset partition.
@@ -537,6 +566,34 @@ class AudioProcessor(object):
       label_index = self.word_to_index[sample['label']]
       labels[i - offset] = label_index
     return data, labels
+
+  def get_features_for_wav(self, wav_filename, model_settings, sess):
+    """Applies the feature transformation process to the input_wav.
+
+    Runs the feature generation process (generally producing a spectrogram from
+    the input samples) on the WAV file. This can be useful for testing and
+    verifying implementations being run on other platforms.
+
+    Args:
+      wav_filename: The path to the input audio file.
+      model_settings: Information about the current model being trained.
+      sess: TensorFlow session that was active when processor was created.
+
+    Returns:
+      Numpy data array containing the generated features.
+    """
+    desired_samples = model_settings['desired_samples']
+    input_dict = {
+        self.wav_filename_placeholder_: wav_filename,
+        self.time_shift_padding_placeholder_: [[0, 0], [0, 0]],
+        self.time_shift_offset_placeholder_: [0, 0],
+        self.background_data_placeholder_: np.zeros([desired_samples, 1]),
+        self.background_volume_placeholder_: 0,
+        self.foreground_volume_placeholder_: 1,
+    }
+    # Run the graph to produce the output audio.
+    data_tensor = sess.run([self.output_], feed_dict=input_dict)
+    return data_tensor
 
   def get_unprocessed_data(self, how_many, model_settings, mode):
     """Retrieve sample data for the given partition, with no transformations.

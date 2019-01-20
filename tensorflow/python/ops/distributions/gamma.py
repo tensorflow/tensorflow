@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -42,7 +43,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Gamma")
+@tf_export(v1=["distributions.Gamma"])
 class Gamma(distribution.Distribution):
   """Gamma distribution.
 
@@ -121,6 +122,14 @@ class Gamma(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,
@@ -225,7 +234,7 @@ class Gamma(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return (self.concentration - 1.) * math_ops.log(x) - self.rate * x
+    return math_ops.xlogy(self.concentration - 1., x) - self.rate * x
 
   def _log_normalization(self):
     return (math_ops.lgamma(self.concentration)
@@ -279,6 +288,11 @@ class Gamma(distribution.Distribution):
 class GammaWithSoftplusConcentrationRate(Gamma):
   """`Gamma` with softplus of `concentration` and `rate`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Gamma(tf.nn.softplus(concentration), "
+      "tf.nn.softplus(rate))` instead.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Classes and functions used to construct graphs."""
+"""Sparse tensors."""
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
 from __future__ import division
@@ -21,8 +21,10 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.util.tf_export import tf_export
 
@@ -34,7 +36,7 @@ _override_helper = ops._override_helper
 
 
 @tf_export("sparse.SparseTensor", "SparseTensor")
-class SparseTensor(_TensorLike):
+class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
   """Represents a sparse tensor.
 
   TensorFlow represents a sparse tensor as three separate dense tensors:
@@ -113,16 +115,12 @@ class SparseTensor(_TensorLike):
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
 
     """
-    with ops.name_scope(None, "SparseTensor",
-                        [indices, values, dense_shape]):
+    with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
       indices = ops.convert_to_tensor(
           indices, name="indices", dtype=dtypes.int64)
-      # Always pass as_ref=True because we want to be able to update
-      # values later if it is a VariableOp.
       # TODO(touts): Consider adding mutable_values() when 'values'
       # is a VariableOp and updating users of SparseTensor.
-      values = ops.internal_convert_to_tensor(
-          values, name="values", as_ref=True)
+      values = ops.internal_convert_to_tensor(values, name="values")
       dense_shape = ops.convert_to_tensor(
           dense_shape, name="dense_shape", dtype=dtypes.int64)
     self._indices = indices
@@ -134,10 +132,10 @@ class SparseTensor(_TensorLike):
     dense_shape_shape = dense_shape.get_shape().with_rank(1)
 
     # Assert number of rows in indices match the number of elements in values.
-    indices_shape[0].merge_with(values_shape[0])
+    indices_shape.dims[0].merge_with(values_shape.dims[0])
     # Assert number of columns in indices matches the number of elements in
     # dense_shape.
-    indices_shape[1].merge_with(dense_shape_shape[0])
+    indices_shape.dims[1].merge_with(dense_shape_shape.dims[0])
 
   def get_shape(self):
     """Get the `TensorShape` representing the shape of the dense tensor.
@@ -241,14 +239,38 @@ class SparseTensor(_TensorLike):
   def _override_operator(operator, func):
     _override_helper(SparseTensor, operator, func)
 
+  def _to_components(self):
+    return (self._indices, self._values, self._dense_shape)
+
+  @classmethod
+  def _from_components(cls, components):
+    return cls(*components)
+
+  def _shape_invariant_to_components(self, shape=None):
+    if shape is None:
+      shape = self.dense_shape.shape
+    if shape.ndims is None:
+      shape = tensor_shape.TensorShape([None])
+    if shape.ndims != 1:
+      raise ValueError("Shape invariant for SparseTensor must have the form "
+                       "TensorShape([r]), got %r" % shape)
+    rank = tensor_shape.dimension_value(shape[0])
+    return [tensor_shape.TensorShape([None, rank]),  # indices
+            tensor_shape.TensorShape([None]),  # values
+            tensor_shape.TensorShape([rank])]  # dense_shape
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._values, 'graph')
+
 
 SparseTensorValue = collections.namedtuple(
     "SparseTensorValue", ["indices", "values", "dense_shape"])
-tf_export("SparseTensorValue")(SparseTensorValue)
+tf_export(v1=["SparseTensorValue"])(SparseTensorValue)
 pywrap_tensorflow.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
-@tf_export("convert_to_tensor_or_sparse_tensor")
+@tf_export(v1=["convert_to_tensor_or_sparse_tensor"])
 def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
   """Converts value to a `SparseTensor` or `Tensor`.
 

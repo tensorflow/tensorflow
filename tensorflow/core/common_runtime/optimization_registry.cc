@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -39,6 +40,19 @@ Status OptimizationPassRegistry::RunGrouping(
         VLOG(1) << "Running optimization pass: " << pass->name();
         Status s = pass->Run(options);
         if (!s.ok()) return s;
+        if (VLOG_IS_ON(1)) {
+          DumpGraphToFile(
+              strings::StrCat("after_phase_", phase.first, "_", pass->name()),
+              **options.graph);
+          if (options.partition_graphs) {
+            for (auto& part : *options.partition_graphs) {
+              DumpGraphToFile(
+                  strings::StrCat("after_phase_", phase.first, "_",
+                                  pass->name(), "_partition_", part.first),
+                  *part.second);
+            }
+          }
+        }
       }
     }
   }

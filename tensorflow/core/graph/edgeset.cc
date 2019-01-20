@@ -38,9 +38,8 @@ std::pair<EdgeSet::const_iterator, bool> EdgeSet::insert(value_type value) {
     }
     // array is full. convert to set.
     s = new std::set<const Edge*>;
-    for (int i = 0; i < kInline; i++) {
-      s->insert(static_cast<const Edge*>(ptrs_[i]));
-    }
+    s->insert(reinterpret_cast<const Edge**>(std::begin(ptrs_)),
+              reinterpret_cast<const Edge**>(std::end(ptrs_)));
     ptrs_[0] = this;
     ptrs_[1] = s;
     // fall through.

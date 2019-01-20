@@ -19,28 +19,26 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import keras
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
-class NoiseLayersTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class NoiseLayersTest(keras_parameterized.TestCase):
 
   def test_GaussianNoise(self):
-    with self.cached_session():
-      testing_utils.layer_test(
-          keras.layers.GaussianNoise,
-          kwargs={'stddev': 1.},
-          input_shape=(3, 2, 3))
+    testing_utils.layer_test(
+        keras.layers.GaussianNoise,
+        kwargs={'stddev': 1.},
+        input_shape=(3, 2, 3))
 
   def test_GaussianDropout(self):
-    with self.cached_session():
-      testing_utils.layer_test(
-          keras.layers.GaussianDropout,
-          kwargs={'rate': 0.5},
-          input_shape=(3, 2, 3))
+    testing_utils.layer_test(
+        keras.layers.GaussianDropout,
+        kwargs={'rate': 0.5},
+        input_shape=(3, 2, 3))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_AlphaDropout(self):
     testing_utils.layer_test(
         keras.layers.AlphaDropout,

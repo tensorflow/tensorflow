@@ -18,9 +18,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
@@ -39,9 +36,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-GdrWorker::GdrWorker(WorkerEnv* worker_env,
+GdrWorker::GdrWorker(WorkerEnv* worker_env, const ConfigProto& config,
                      RemoteMemoryManager* remote_memory_manager)
-    : GrpcWorker(worker_env),
+    : GrpcWorker(worker_env, config),
       remote_memory_manager_(remote_memory_manager),
       recv_tensor_recent_request_ids_(100000) {}
 
@@ -78,7 +75,7 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
   const bool dma_ok = request->dma_ok();
   env_->rendezvous_mgr->RecvLocalAsync(
       step_id, parsed,
-      [this, opts, response, done, src_dev, dma_ok](
+      [this, opts, response, done, src_dev, request, dma_ok](
           const Status& status, const Rendezvous::Args& send_args,
           const Rendezvous::Args&, const Tensor& val, const bool is_dead) {
         opts->ClearCancelCallback();
@@ -89,10 +86,8 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
           // 3) the tensor has the on_host allocation attribute,
           // i.e. it's in CPU RAM *independent of its assigned
           // device type*.
-          const bool on_host =
-              (src_dev->tensorflow_gpu_device_info() == nullptr) ||
-              send_args.alloc_attrs.on_host();
-          if (val.TotalBytes() > 0 && (!is_dead) &&
+          const bool on_host = send_args.alloc_attrs.on_host();
+          if (val.TotalBytes() > 1024 && (!is_dead) &&
               DMAHelper::CanUseDMA(&val) && dma_ok) {
             // DMA cases.
             RecvTensorResponse* proto = new RecvTensorResponse;
@@ -117,8 +112,7 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
           } else {
             // Non-DMA cases.
             if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
-#if GOOGLE_CUDA
-              const DeviceContext* send_dev_context = send_args.device_context;
+              DeviceContext* send_dev_context = send_args.device_context;
               AllocatorAttributes alloc_attrs;
               alloc_attrs.set_gpu_compatible(true);
               alloc_attrs.set_on_host(true);
@@ -127,7 +121,8 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
               CHECK(send_dev_context)
                   << "send dev name: " << src_dev->name()
                   << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
-              // "val" is on a GPU. Uses GPUUtil to fill the response proto.
+              // "val" is on an accelerator device. Uses the device_context to
+              // fill the copy on host.
               StatusCallback copy_ready = [response, done, copy,
                                            is_dead](const Status& s) {
                 // The value is now ready to be returned on the wire.
@@ -136,11 +131,8 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
                 delete copy;
               };
 
-              GPUUtil::CopyGPUTensorToCPU(src_dev, send_dev_context, &val, copy,
-                                          copy_ready);
-#else
-              done(errors::Internal("No GPU device in process"));
-#endif  // GOOGLE_CUDA
+              send_dev_context->CopyDeviceTensorToCPU(
+                  &val, request->rendezvous_key(), src_dev, copy, copy_ready);
             } else {
               grpc::EncodeTensorToByteBuffer(is_dead, val, response);
               done(Status::OK());

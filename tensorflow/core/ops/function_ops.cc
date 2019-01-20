@@ -35,7 +35,38 @@ output: The argument.
 index: This argument is the index-th argument of the function.
 )doc");
 
+REGISTER_SYSTEM_OP("_DeviceArg")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("index: int >= 0")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      context->set_output(0, context->UnknownShape());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+A graph node which represents an argument to a function.
+
+output: The argument.
+index: This argument is the index-th argument of the function.
+)doc");
+
 REGISTER_SYSTEM_OP("_Retval")
+    .Input("input: T")
+    .Attr("T: type")
+    .Attr("index: int >= 0")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      return Status::OK();
+    })
+    .Doc(R"doc(
+A graph node which represents a return value of a function.
+
+input: The return value.
+index: This return value is the index-th return value of the function.
+)doc");
+
+REGISTER_SYSTEM_OP("_DeviceRetval")
     .Input("input: T")
     .Attr("T: type")
     .Attr("index: int >= 0")

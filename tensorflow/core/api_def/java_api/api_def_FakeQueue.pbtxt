@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "FakeQueue"
+  endpoint {
+    name: "io.FakeQueue"
+  }
+}

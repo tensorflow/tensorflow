@@ -102,7 +102,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
 
     # Mapping from function to the new name of the function
-    self.function_renames = {
+    self.symbol_renames = {
         "tf.inv": "tf.reciprocal",
         "tf.contrib.deprecated.scalar_summary": "tf.summary.scalar",
         "tf.contrib.deprecated.histogram_summary": "tf.summary.histogram",
@@ -175,23 +175,13 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.op_scope": ["values", "name", "default_name"],
     }
 
-    # Specially handled functions.
-    self.function_handle = {"tf.reverse": self._reverse_handler}
-
-  @staticmethod
-  def _reverse_handler(file_edit_recorder, node):
-    # TODO(aselle): Could check for a literal list of bools and try to convert
-    # them to indices.
-    comment = ("ERROR: tf.reverse has had its argument semantics changed "
-               "significantly the converter cannot detect this reliably, so "
-               "you need to inspect this usage manually.\n")
-    file_edit_recorder.add(
-        comment,
-        node.lineno,
-        node.col_offset,
-        "tf.reverse",
-        "tf.reverse",
-        error="tf.reverse requires manual check.")
+    # Warnings that should be printed if corresponding functions are used.
+    self.function_warnings = {
+        "tf.reverse":
+            "ERROR: tf.reverse has had its argument semantics changed "
+            "significantly. The converter cannot detect this reliably, so "
+            "you need to inspect this usage manually.\n",
+    }
 
 
 if __name__ == "__main__":

@@ -66,15 +66,17 @@ class AdagradOptimizer(optimizer_v2.OptimizerV2):
     for v in var_list:
       dtype = v.dtype.base_dtype
       if v.get_shape().is_fully_defined():
-        init = init_ops.constant_initializer(self._initial_accumulator_value,
-                                             dtype=dtype)
+        init = init_ops.constant_initializer(
+            self._initial_accumulator_value, dtype=dtype)
       else:
+
         def init(v=v, dtype=dtype):
           # Use a Tensor instead of initializer if variable does not have
           # static shape.
-          init_constant = gen_array_ops.fill(array_ops.shape(v),
-                                             self._initial_accumulator_value)
+          init_constant = gen_array_ops.fill(
+              array_ops.shape(v), self._initial_accumulator_value)
           return math_ops.cast(init_constant, dtype)
+
       state.create_slot_with_initializer(v, init, v.get_shape(), dtype,
                                          "accumulator")
 

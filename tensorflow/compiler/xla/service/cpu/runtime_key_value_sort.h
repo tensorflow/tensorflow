@@ -21,68 +21,19 @@ limitations under the License.
 
 extern "C" {
 
-// 'keys' represents a 3-dimensional shape with dimensions [a, b, c]. The 'b'
-// dimension of 'keys' is sorted into ascending order. 'values' can be nullptr.
-// If 'values' is not nullptr, the elements in 'values' are reordered in such a
-// way that if the element at index 'i' in 'keys' was moved to index 'j', the
-// element at index 'i' in 'values' is also moved to index 'j' (which means that
-// the same elements correspond to each other as before).
-extern void __xla_cpu_runtime_KeyValueSortPRED(
-    bool* keys, tensorflow::int64 a, tensorflow::int64 b, tensorflow::int64 c,
-    char* values, tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortS8(
-    tensorflow::int8* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortU8(
-    tensorflow::uint8* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortS16(
-    tensorflow::int16* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortU16(
-    tensorflow::uint16* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortF16(
-    Eigen::half* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortS32(
-    tensorflow::int32* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortU32(
-    tensorflow::uint32* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortF32(
-    float* keys, tensorflow::int64 a, tensorflow::int64 b, tensorflow::int64 c,
-    char* values, tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortS64(
-    tensorflow::int64* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortU64(
-    tensorflow::uint64* keys, tensorflow::int64 a, tensorflow::int64 b,
-    tensorflow::int64 c, char* values,
-    tensorflow::int32 values_primitive_type_size_in_bytes);
-
-extern void __xla_cpu_runtime_KeyValueSortF64(
-    double* keys, tensorflow::int64 a, tensorflow::int64 b, tensorflow::int64 c,
-    char* values, tensorflow::int32 values_primitive_type_size_in_bytes);
+// Each entry in 'values' represents a 3-dimensional shape with dimensions
+// [a, b, c]. The 'b' dimension of the first shape is sorted into ascending
+// order according to the results of comparisons using the provided 'less_than'
+// function. 'values_count' must be > 0 and specifies the number of entries in
+// 'values' and 'values_primitive_type_size_in_bytes'. The size of the primitive
+// type of the i-th shape has exactly 'values_primitive_type_size_in_bytes[i]'
+// bytes. The elements in each 'values' shape are reordered in the same way
+// according to the comparisons using the first shape.
+extern void __xla_cpu_runtime_KeyValueSort(
+    tensorflow::int64 a, tensorflow::int64 b, tensorflow::int64 c,
+    char** values, tensorflow::int32 values_count,
+    tensorflow::int32* values_primitive_type_size_in_bytes,
+    bool (*less_than)(char*, char*));
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_KEY_VALUE_SORT_H_

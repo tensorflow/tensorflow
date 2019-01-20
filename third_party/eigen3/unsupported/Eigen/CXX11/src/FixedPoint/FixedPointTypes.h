@@ -249,9 +249,7 @@ EIGEN_STRONG_INLINE QInt32& operator/=(QInt32& a, const QInt32 b) {
   a.value /= b.value;
   return a;
 }
-EIGEN_STRONG_INLINE QInt32 operator-(const QInt32 a) {
-  return -a.value;
-}
+EIGEN_STRONG_INLINE QInt32 operator-(const QInt32 a) { return -a.value; }
 
 // Scaling QInt32 by double. We do the arithmetic in double because
 // float only has 23 bits of mantissa, so casting QInt32 to float might reduce

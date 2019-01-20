@@ -31,7 +31,7 @@ import six
 
 from tensorflow.python.util import tf_stack
 
-_NAME_REGEX = r"[A-Za-z0-9.][A-Za-z0-9_.\-/]*?"
+_NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = r"{{{{({name}) ({name})}}}}".format(name=_NAME_REGEX)
 _INTERPOLATION_REGEX = r"^(.*?)({tag})".format(tag=_TAG_REGEX)
 _INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX, re.DOTALL)
@@ -40,11 +40,12 @@ _ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
 
 _BAD_FILE_SUBSTRINGS = [
     os.path.join("tensorflow", "python"),
+    os.path.join("tensorflow", "contrib"),
     "<embedded",
 ]
 
 
-def _parse_message(message):
+def parse_message(message):
   """Parses the message.
 
   Splits the message into separators and tags. Tags are named tuples
@@ -176,9 +177,9 @@ def _compute_colocation_summary_from_op(op, prefix=""):
 
 
 def _find_index_of_defining_frame_for_op(op):
-  """Return index in op._traceback with first 'useful' frame.
+  """Return index in op.traceback with first 'useful' frame.
 
-  This method reads through the stack stored in op._traceback looking for the
+  This method reads through the stack stored in op.traceback looking for the
   innermost frame which (hopefully) belongs to the caller.  It accomplishes this
   by rejecting frames whose filename appears to come from TensorFlow (see
   error_interpolation._BAD_FILE_SUBSTRINGS for the list of rejected substrings).
@@ -188,15 +189,13 @@ def _find_index_of_defining_frame_for_op(op):
         location.
 
   Returns:
-    Integer index into op._traceback where the first non-TF file was found
+    Integer index into op.traceback where the first non-TF file was found
     (innermost to outermost), or 0 (for the outermost stack frame) if all files
     came from TensorFlow.
   """
-  # pylint: disable=protected-access
   # Index 0 of tf_traceback is the outermost frame.
-  tf_traceback = tf_stack.convert_stack(op._traceback)
+  tf_traceback = op.traceback
   size = len(tf_traceback)
-  # pylint: enable=protected-access
   filenames = [frame[tf_stack.TB_FILENAME] for frame in tf_traceback]
   # We process the filenames from the innermost frame to outermost.
   for idx, filename in enumerate(reversed(filenames)):
@@ -209,17 +208,16 @@ def _find_index_of_defining_frame_for_op(op):
 def _get_defining_frame_from_op(op):
   """Find and return stack frame where op was defined."""
   frame_index = _find_index_of_defining_frame_for_op(op)
-  # pylint: disable=protected-access
-  frame = op._traceback[frame_index]
-  # pylint: enable=protected-access
-  return frame
+  return op.traceback[frame_index]
 
 
-def compute_field_dict(op):
+def compute_field_dict(op, strip_file_prefix=""):
   """Return a dictionary mapping interpolation tokens to values.
 
   Args:
     op: op.Operation object having a _traceback member.
+    strip_file_prefix: The common path in the stacktrace. We remove the prefix
+    from the file names.
 
   Returns:
     A dictionary mapping string tokens to string values.  The keys are shown
@@ -247,6 +245,8 @@ def compute_field_dict(op):
   """
   frame = _get_defining_frame_from_op(op)
   filename = frame[tf_stack.TB_FILENAME]
+  if filename.startswith(strip_file_prefix):
+    filename = filename[len(strip_file_prefix):]
   lineno = frame[tf_stack.TB_LINENO]
   defined_at = " (defined at %s:%d)" % (filename, lineno)
   colocation_summary = _compute_colocation_summary_from_op(op)
@@ -264,11 +264,109 @@ def compute_field_dict(op):
   return field_dict
 
 
+def traceback_files_common_prefix(all_ops):
+  """Determines the common prefix from the paths of the stacktrace of 'all_ops'.
+
+  For example, if the paths are '/foo/bar/baz/' and '/foo/car', this would
+  return '/foo'.
+
+  Args:
+    all_ops: All the input nodes in the form of a list of lists of ops.
+
+  Returns:
+    The common prefix.
+  """
+  files = set()
+  for ops in all_ops:
+    if ops is None:
+      continue
+    for op in ops:
+      for frame in op.traceback:
+        filename = frame[tf_stack.TB_FILENAME]
+        if "<embedded" not in filename:
+          files.add(filename)
+  return os.path.split(os.path.commonprefix(list(files)))[0]
+
+
+def _sources_for_node(name, graph):
+  """Gets the top-level root input nodes for 'name' node.
+
+  We recursively traverse the graph from 'name' node to its inputs and collect
+  all the nodes which don't have any inputs.
+
+  Args:
+    name: The name of the node.
+    graph: The graph containing the node.
+
+  Returns:
+    The unique top-level root input nodes.
+  """
+  def _helper(name, graph, seen_names, inputs):
+    """Recursive helper. 'seen_names' and 'inputs' are mutated."""
+    if name.startswith("^"):
+      name = name[1:]
+    try:
+      tensor = graph.get_tensor_by_name(name)
+      op = tensor.op
+    except (KeyError, ValueError):
+      try:
+        op = graph.get_operation_by_name(name)
+      except KeyError:
+        return
+    name = op.name
+    if name in seen_names:
+      return
+    seen_names.add(name)
+    if not op.node_def.input:
+      inputs.add(op)
+      return
+    for n in op.node_def.input:
+      _helper(n, graph, seen_names, inputs)
+
+  names = set()
+  inputs = set()
+  _helper(name, graph, names, inputs)
+  return list(inputs)
+
+
+def _build_error_message(op, input_ops, common_prefix):
+  """Returns the formatted error message for the given op.
+
+  Args:
+    op: The node.
+    input_ops: The input nodes to the 'op' node
+    common_prefix: The prefix path common to the stacktrace of inputs.
+
+  Returns:
+    The formatted error message for the given op. The error message also
+    includes the information about the input sources for the given op.
+  """
+  field_dict = compute_field_dict(op, common_prefix)
+  msg = "node %s%s " % (op.name, field_dict["defined_at"])
+  input_debug_info = []
+  # This stores the line numbers that we have already printed.
+  done = set()
+  done.add(field_dict["defined_at"])
+  for op_inp in input_ops:
+    field_dict_inp = compute_field_dict(op_inp, common_prefix)
+    if field_dict_inp["defined_at"] not in done:
+      input_debug_info.append(
+          " %s%s" % (op_inp.name, field_dict_inp["defined_at"]))
+      done.add(field_dict_inp["defined_at"])
+  if input_debug_info:
+    end_msg = ("\nInput Source operations connected to node %s:\n") % (op.name)
+    end_msg += "\t\n".join(input_debug_info)
+  else:
+    end_msg = ""
+  return msg, end_msg
+
+
 def interpolate(error_message, graph):
   """Interpolates an error message.
 
-  The error message can contain tags of the form ^^type:name^^ which will
-  be replaced.
+  The error message can contain tags of the form `{{type name}}` which will be
+  replaced. For example: "{{node <name>}}" would get expanded to:
+  "node <name>(defined at <path>)".
 
   Args:
     error_message: A string to interpolate.
@@ -278,27 +376,45 @@ def interpolate(error_message, graph):
   Returns:
     The string with tags of the form {{type name}} interpolated.
   """
-  seps, tags = _parse_message(error_message)
+  seps, tags = parse_message(error_message)
   subs = []
-  end_msg = ""
+  end_msg = collections.defaultdict(list)
+  tagged_ops = []
 
   for t in tags:
     try:
       op = graph.get_operation_by_name(t.name)
     except KeyError:
       op = None
+    if op is None:
+      tagged_ops.append(None)
+    else:
+      tagged_ops.append([op] + _sources_for_node(op.name, graph))
 
-    msg = "{{%s %s}}" % (t.type, t.name)
-    if op is not None:
-      field_dict = compute_field_dict(op)
-      if t.type == "node":
-        msg = "node %s%s " % (t.name, field_dict["defined_at"])
-      elif t.type == "colocation_node":
-        msg = "node %s%s having device %s " % (t.name, field_dict["defined_at"],
-                                               field_dict["devices"])
-        end_msg += "\n\n" + field_dict["devs_and_colocs"]
+  common_prefix = traceback_files_common_prefix(tagged_ops)
+  for tag, ops in zip(tags, tagged_ops):
+    msg = "{{%s %s}}" % (tag.type, tag.name)
+    if ops is not None:
+      if tag.type == "node":
+        msg, source_msg = _build_error_message(ops[0], ops[1:], common_prefix)
+        if source_msg:
+          end_msg["source_nodes"].append(source_msg)
+      elif tag.type == "colocation_node":
+        field_dict = compute_field_dict(ops[0], common_prefix)
+        msg = "node %s%s placed on device %s " % (
+            ops[0].name, field_dict["defined_at"], field_dict["devices"])
+        end_msg["colocations"].append(field_dict["devs_and_colocs"])
+    if tag.type == "function_node":
+      msg = ""
     subs.append(msg)
-  subs.append(end_msg)
+
+  if "source_nodes" in end_msg:
+    subs.append("\n\nErrors may have originated from an input operation.")
+    subs.append("\n".join(end_msg["source_nodes"]))
+    end_msg.pop("source_nodes", None)
+  for k, messages in end_msg.items():
+    subs.append("Additional information about %s:" % k)
+    subs.append("\n".join(messages))
 
   return "".join(
       itertools.chain(*six.moves.zip_longest(seps, subs, fillvalue="")))

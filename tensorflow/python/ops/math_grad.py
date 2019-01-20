@@ -1041,11 +1041,12 @@ def _PowGrad(op, grad):
   # Avoid false singularity at x = 0
   if x.dtype.is_complex:
     # real(x) < 0 is fine for the complex case
-    log_x = array_ops.where(
-        math_ops.not_equal(x, 0), math_ops.log(x), array_ops.zeros_like(x))
+    mask = math_ops.not_equal(x, 0)
   else:
     # There's no sensible real value to return if x < 0, so return 0
-    log_x = array_ops.where(x > 0, math_ops.log(x), array_ops.zeros_like(x))
+    mask = x > 0
+  safe_x = array_ops.where(mask, x, array_ops.ones_like(x))
+  log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
   gy = array_ops.reshape(math_ops.reduce_sum(grad * z * log_x, ry), sy)
   return gx, gy
 
@@ -1342,3 +1343,20 @@ def _CumprodGrad(op, grad):
   out = math_ops.cumsum(
       prod * grad, axis, exclusive=exclusive, reverse=not reverse)
   return [out / x, None]
+
+
+@ops.RegisterGradient("NextAfter")
+def _NextAfterGrad(op, grad):
+  """Returns gradient of nextafter(x1, x2) with respect to x1 and x2."""
+  x1 = op.inputs[0]
+  x2 = op.inputs[1]
+  s_x1 = array_ops.shape(x1)
+  s_x2 = array_ops.shape(x2)
+  r_x1, r_x2 = gen_array_ops.broadcast_gradient_args(s_x1, s_x2)
+  with ops.control_dependencies([grad]):
+    partial_x1 = array_ops.ones(s_x1, dtype=x1.dtype)
+    partial_x2 = array_ops.zeros(s_x2, dtype=x2.dtype)
+    return (array_ops.reshape(
+        math_ops.reduce_sum(partial_x1 * grad, r_x1), s_x1),
+            array_ops.reshape(
+                math_ops.reduce_sum(partial_x2 * grad, r_x2), s_x2))

@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -124,7 +124,7 @@ class Conv2DBackpropInputOp : public ConvBackpropInputOp {
       : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/false) {}
 };
 REGISTER_XLA_OP(
-    Name("Conv2DBackpropInput").CompileTimeConstInput("input_sizes"),
+    Name("Conv2DBackpropInput").CompileTimeConstantInput("input_sizes"),
     Conv2DBackpropInputOp);
 
 class Conv3DBackpropInputOp : public ConvBackpropInputOp {
@@ -133,7 +133,7 @@ class Conv3DBackpropInputOp : public ConvBackpropInputOp {
       : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/3, /*depthwise=*/false) {}
 };
 REGISTER_XLA_OP(
-    Name("Conv3DBackpropInputV2").CompileTimeConstInput("input_sizes"),
+    Name("Conv3DBackpropInputV2").CompileTimeConstantInput("input_sizes"),
     Conv3DBackpropInputOp);
 
 class DepthwiseConv2DBackpropInputOp : public ConvBackpropInputOp {
@@ -142,7 +142,7 @@ class DepthwiseConv2DBackpropInputOp : public ConvBackpropInputOp {
       : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/true) {}
 };
 REGISTER_XLA_OP(Name("DepthwiseConv2dNativeBackpropInput")
-                    .CompileTimeConstInput("input_sizes"),
+                    .CompileTimeConstantInput("input_sizes"),
                 DepthwiseConv2DBackpropInputOp);
 
 class ConvBackpropFilterOp : public XlaOpKernel {
@@ -183,7 +183,7 @@ class Conv2DBackpropFilterOp : public ConvBackpropFilterOp {
   }
 };
 REGISTER_XLA_OP(
-    Name("Conv2DBackpropFilter").CompileTimeConstInput("filter_sizes"),
+    Name("Conv2DBackpropFilter").CompileTimeConstantInput("filter_sizes"),
     Conv2DBackpropFilterOp);
 
 class Conv3DBackpropFilterOp : public ConvBackpropFilterOp {
@@ -193,7 +193,7 @@ class Conv3DBackpropFilterOp : public ConvBackpropFilterOp {
   }
 };
 REGISTER_XLA_OP(
-    Name("Conv3DBackpropFilterV2").CompileTimeConstInput("filter_sizes"),
+    Name("Conv3DBackpropFilterV2").CompileTimeConstantInput("filter_sizes"),
     Conv3DBackpropFilterOp);
 
 class DepthwiseConv2DBackpropFilterOp : public ConvBackpropFilterOp {
@@ -202,7 +202,7 @@ class DepthwiseConv2DBackpropFilterOp : public ConvBackpropFilterOp {
       : ConvBackpropFilterOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/true) {}
 };
 REGISTER_XLA_OP(Name("DepthwiseConv2dNativeBackpropFilter")
-                    .CompileTimeConstInput("filter_sizes"),
+                    .CompileTimeConstantInput("filter_sizes"),
                 DepthwiseConv2DBackpropFilterOp);
 
 }  // namespace

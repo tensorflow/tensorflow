@@ -25,7 +25,7 @@ from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.util import nest
 
 
-def jacobian(output, inputs, use_pfor=True):
+def jacobian(output, inputs, use_pfor=True, parallel_iterations=None):
   """Computes jacobian of `output` w.r.t. `inputs`.
 
   Args:
@@ -33,6 +33,8 @@ def jacobian(output, inputs, use_pfor=True):
     inputs: A tensor or a nested structure of tensor objects.
     use_pfor: If true, uses pfor for computing the jacobian. Else uses
       tf.while_loop.
+    parallel_iterations: A knob to control how many iterations and dispatched in
+      parallel. This knob can be used to control the total memory usage.
 
   Returns:
     A tensor or a nested strucutre of tensors with the same structure as
@@ -56,10 +58,14 @@ def jacobian(output, inputs, use_pfor=True):
     output_size = array_ops.shape(output)[0]
 
   if use_pfor:
-    pfor_outputs = control_flow_ops.pfor(loop_fn, output_size)
+    pfor_outputs = control_flow_ops.pfor(
+        loop_fn, output_size, parallel_iterations=parallel_iterations)
   else:
     pfor_outputs = control_flow_ops.for_loop(
-        loop_fn, [output.dtype] * len(flat_inputs), output_size)
+        loop_fn,
+        [output.dtype] * len(flat_inputs),
+        output_size,
+        parallel_iterations=parallel_iterations)
 
   for i, out in enumerate(pfor_outputs):
     if out is not None:
@@ -72,7 +78,7 @@ def jacobian(output, inputs, use_pfor=True):
   return nest.pack_sequence_as(inputs, pfor_outputs)
 
 
-def batch_jacobian(output, inp, use_pfor=True):
+def batch_jacobian(output, inp, use_pfor=True, parallel_iterations=None):
   """Computes and stacks jacobians of `output[i,...]` w.r.t. `input[i,...]`.
 
   e.g.
@@ -87,6 +93,8 @@ def batch_jacobian(output, inp, use_pfor=True):
     inp: A tensor with shape [b, x1, ..., x_m]
     use_pfor: If true, uses pfor for computing the Jacobian. Else uses a
       tf.while_loop.
+    parallel_iterations: A knob to control how many iterations and dispatched in
+      parallel. This knob can be used to control the total memory usage.
 
   Returns:
     A tensor `t` with shape [b, y_1, ..., y_n, x1, ..., x_m] where `t[i, ...]`
@@ -118,10 +126,13 @@ def batch_jacobian(output, inp, use_pfor=True):
     return gradient_ops.gradients(y, inp)[0]
 
   if use_pfor:
-    pfor_output = control_flow_ops.pfor(loop_fn, output_row_size)
+    pfor_output = control_flow_ops.pfor(loop_fn, output_row_size,
+                                        parallel_iterations=parallel_iterations)
   else:
-    pfor_output = control_flow_ops.for_loop(loop_fn, output.dtype,
-                                            output_row_size)
+    pfor_output = control_flow_ops.for_loop(
+        loop_fn, output.dtype,
+        output_row_size,
+        parallel_iterations=parallel_iterations)
   if pfor_output is None:
     return None
   pfor_output = array_ops.reshape(pfor_output,

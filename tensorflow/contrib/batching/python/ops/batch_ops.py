@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import function
+from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_batch_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -101,11 +102,14 @@ def batch_function(num_batch_threads,
   def decorator(fn):  # pylint: disable=missing-docstring
 
     def decorated(*args):  # pylint: disable=missing-docstring
-      types = [arg.dtype for arg in args]
 
-      @function.Defun(*types)
+      @function.defun()
       def computation(*computation_args):
         return fn(*computation_args)
+
+      computation = computation.get_concrete_function(
+          *[tensor_spec.TensorSpec(dtype=x.dtype, shape=x.shape, name=str(i))
+            for i, x in enumerate(args)])
 
       with ops.name_scope("batch") as name:
         for a in args:
@@ -123,7 +127,7 @@ def batch_function(num_batch_threads,
             f=computation,
             in_tensors=list(args),
             captured_tensors=computation.captured_inputs,
-            Tout=[o.type for o in computation.definition.signature.output_arg])
+            Tout=[o.dtype for o in computation.outputs])
 
     return decorated
 

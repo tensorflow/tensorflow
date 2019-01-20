@@ -51,8 +51,10 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
         c = constant_op.constant(3.0, name="c%d_3" % i)
         q = math_ops.add(q, c, name="add%d_3" % i)
         if i == 0:
+          axis = constant_op.constant(-1, dtype=dtypes.int32, name="axis")
           for j in range(2):
-            q = array_ops.expand_dims(q, -1, name="expand%d_%d" % (i, j))
+            q = array_ops.expand_dims(q, axis, name="expand%d_%d" % (i, j))
+          q = self.trt_incompatible_op(q)
         q = gen_math_ops.reciprocal(q, name="reciprocal%d" % i)
         outputs.append(q)
       # Combine both paths
@@ -61,28 +63,22 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=input_names,
-        input_dims=input_dims,
+        input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[tuple(input_dims[1])])
+        expected_output_dims=[[input_dims[1]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": [
+        "TRTEngineOp_0": [
             "add0_1", "add0_2", "add0_3", "c0_1", "c0_2", "c0_3", "abs0_1",
-            "abs0_2"
+            "abs0_2", "expand0_0", "expand0_1", "axis"
         ],
-        "my_trt_op_1": [
+        "TRTEngineOp_1": [
             "add", "add1_1", "add1_2", "add1_3", "c1_1", "c1_2", "c1_3",
             "abs1_1", "abs1_2", "reciprocal0", "reciprocal1"
         ],
     }
-
-  def ShouldRunTest(self, run_params):
-    """Whether to run the test."""
-    # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
-    # mode, which is a bug. Re-enable this when trt library is fixed.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
 
 if __name__ == "__main__":

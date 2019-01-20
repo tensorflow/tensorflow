@@ -1,10 +1,4 @@
 op {
   graph_op_name: "ExtractImagePatches"
-  endpoint {
-    name: "image.extract_image_patches"
-  }
-  endpoint {
-    name: "extract_image_patches"
-    deprecated: true
-  }
+  visibility: HIDDEN
 }

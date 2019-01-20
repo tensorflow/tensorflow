@@ -171,6 +171,6 @@ void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
   node->set_name(std::move(name));
 }
 
-}  // end namespace function_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace function_utils
+}  // namespace grappler
+}  // namespace tensorflow

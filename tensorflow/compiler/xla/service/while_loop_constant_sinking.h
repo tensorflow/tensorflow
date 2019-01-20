@@ -23,8 +23,8 @@ limitations under the License.
 namespace xla {
 
 // Sinks while loop invariant values that happen to be constants into the while
-// loop body.  This is probably not a win in isolation but may unlock further
-// optimizations like constant folding.
+// loop body and conditional. This is probably not a win in isolation but may
+// unlock further optimizations like constant folding.
 //
 //   state = (..., const, ...)
 //   while (pred(state)) {
@@ -46,22 +46,19 @@ namespace xla {
 // tuple trivially loop invariant.  WhileLoopSimplifier will later get rid of
 // `v`.
 //
-// We only sink into while loop bodies, but this can be extended to transform
-// conditions as well.
-//
 // TODO(b/79121449):  We should also sink broadcasts of constants.
 class WhileLoopConstantSinking : public HloModulePass {
  public:
   ~WhileLoopConstantSinking() override = default;
 
   absl::string_view name() const override {
-    return "while-loop-invariant-code-motion";
+    return "while-loop-constant-sinking";
   }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  StatusOr<bool> TrySinkingConstantsIntoWhileBody(HloInstruction* while_instr);
+  StatusOr<bool> TrySinkingConstantsIntoWhileLoop(HloInstruction* while_instr);
 };
 }  // namespace xla
 

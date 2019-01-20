@@ -19,7 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-namespace vectorization_utils {
 
 VectorizerRegistry* VectorizerRegistry::Global() {
   static VectorizerRegistry* registry = new VectorizerRegistry;
@@ -42,6 +41,5 @@ void VectorizerRegistry::Register(const string& op_type,
   vectorizers_.insert(std::pair<const string&, std::unique_ptr<Vectorizer>>(
       op_type, std::move(vectorizer)));
 }
-}  // namespace vectorization_utils
 }  // namespace grappler
 }  // namespace tensorflow

@@ -40,16 +40,6 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
 
 namespace {
 
-string SanitizeFilename(const string& file_name) {
-  string safe_file_name = file_name;
-  for (char& c : safe_file_name) {
-    if (c == '/' || c == '\\') {
-      c = '_';
-    }
-  }
-  return safe_file_name;
-}
-
 std::pair<tensorflow::mutex*, std::vector<std::function<string(string)>>*>
 GetDirectoryExpanders() {
   static auto* mutex = new tensorflow::mutex;

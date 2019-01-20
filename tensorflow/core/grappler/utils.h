@@ -17,18 +17,24 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_H_
 
 #include <functional>
-#include <unordered_map>
+#include <iterator>
+#include <set>
 #include <unordered_set>
+#include <utility>
 #include <vector>
-
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -57,8 +63,8 @@ class NodeMap {
 
  private:
   const std::set<NodeDef*> empty_set_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::set<NodeDef*>> outputs_;
+  gtl::FlatMap<string, NodeDef*> nodes_;
+  gtl::FlatMap<string, std::set<NodeDef*>> outputs_;
 };
 
 // A vector with a set. The set stores the same elements as the vector, and
@@ -90,13 +96,20 @@ class SetVector {
   void Reserve(int64 size) { vector_.reserve(size); }
 
  private:
-  std::unordered_set<T, Hash> set_;
+  gtl::FlatSet<T, Hash> set_;
   std::vector<T> vector_;
 };
+
+// Returns formatted string from TensorId specific to grappler. Specifically,
+// for the 0 port (first output), only the node name is returned.
+string TensorIdToString(const TensorId& tensor_id);
 
 // True iff 'name' refers to a control inputs, i.e. a node name prefixed with
 // the ^ character.
 bool IsControlInput(const string& name);
+
+// True iff tensor index refers to a control input.
+bool IsControlInput(const TensorId& tensor_id);
 
 // True iff 'name1' and 'name2' refer to the same input.
 bool IsSameInput(const string& name1, const string& name2);
@@ -160,6 +173,7 @@ inline string NodeName(const string& name) {
 }
 
 // Returns the node name and position in a single call.
+// DEPRECATED(ezhulenev): Use TensorId and ParseTensorName.
 inline StringPiece ParseNodeNameAsStringPiece(const string& name,
                                               int* position) {
   static const string empty;
@@ -190,6 +204,7 @@ inline StringPiece ParseNodeNameAsStringPiece(const string& name,
 }
 
 // Returns the node name and position in a single call.
+// DEPRECATED(ezhulenev): Use SafeTensorId and ParseTensorName.
 inline string ParseNodeName(const string& name, int* position) {
   return string(ParseNodeNameAsStringPiece(name, position));
 }
@@ -224,6 +239,12 @@ string AsControlDependency(const NodeDef& node);
 // for control dependency, given a node name
 string AsControlDependency(const string& node);
 
+// Returns true if the node is assigned to run on CPU device.
+bool NodeIsOnCpu(const NodeDef* node);
+
+// Returns true if the node is assigned to run on GPU device.
+bool NodeIsOnGpu(const NodeDef* node);
+
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
 int NumOutputs(const NodeDef& node, GraphDef* graph);
@@ -244,9 +265,15 @@ int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
 // Removes redundant control inputs from node.
 void DedupControlInputs(NodeDef* node);
 
+// Returns an error if an attribute with the given key does not exist in node.
+Status CheckAttrExists(const NodeDef& node, const string& key);
+
+// Returns an error if attributes with the given keys do not exist in node.
+Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys);
+
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name);
+DataType GetDataTypeFromAttr(const NodeDef& node, const string& type_attr);
 
 // Returns the last node in the simple chain starting at source and traversing
 // through the input(0) edge from each node as long as the next node satisfies
@@ -265,6 +292,10 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
 void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
                          bool invert_permutation);
 
+// Returns Status::OK() if a kernel is registered for node.op() on the device
+// type corresponding to node.device().
+Status IsKernelRegisteredForNode(const NodeDef& node);
+
 Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
 void EraseNodesFromGraph(const std::set<int>& nodes_to_delete, GraphDef* graph);
@@ -273,68 +304,6 @@ void EraseNodesFromGraph(std::vector<int>&& nodes_to_delete, GraphDef* graph);
 
 void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
                          GraphDef* graph);
-
-class SimpleGraphView {
- public:
-  // Build a graph view for the specified graphdef.
-  Status Initialize(const GraphDef& graph) {
-    return Initialize(graph, nullptr, true, true);
-  }
-  // Build a graph view for the specified graphdef augmented with the additional
-  // edges specified in 'extra_dependencies' if any. Note that
-  // extra_dependencies can be null.
-  Status Initialize(
-      const GraphDef& graph,
-      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
-          extra_dependencies) {
-    return Initialize(graph, extra_dependencies, true, true);
-  }
-  Status Initialize(
-      const GraphDef& graph,
-      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
-          extra_dependencies,
-      bool dedup_inputs, bool dedup_outputs);
-
-  const GraphDef* graph() const { return graph_; }
-  inline int num_nodes() const { return index_to_name_.size(); }
-  inline bool has_node(const string& node_name) const {
-    return name_to_index_.find(node_name) != name_to_index_.end();
-  }
-  inline const int index(const string& node_name) const {
-    const auto& it = name_to_index_.find(node_name);
-    DCHECK(it != name_to_index_.end());
-    return it == name_to_index_.end() ? -1 : it->second;
-  }
-  inline const NodeDef& node(int node_idx) const {
-    return graph_->node(node_idx);
-  }
-  inline const string& node_name(int node_idx) const {
-    return index_to_name_[node_idx];
-  }
-  inline const gtl::InlinedVector<int, 4>& inputs(int node_idx) const {
-    return inputs_[node_idx];
-  }
-  inline const gtl::InlinedVector<int, 2>& outputs(int node_idx) const {
-    return outputs_[node_idx];
-  }
-
-  // Traverse the graph starting at `node_idx`, collecting indices of nodes
-  // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
-  // walk continues to its children. It is assumed that *graph_ was not modified
-  // after the call to Initialize().
-  // If `op_types_to_traverse` is empty the DFS will traverse any node type.
-  void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
-                        int node_idx, std::set<int>* nodes_found) const;
-
-  string PrintToString() const;
-
- private:
-  const GraphDef* graph_;  // Not owned.
-  std::vector<string> index_to_name_;
-  std::unordered_map<string, int> name_to_index_;
-  std::vector<gtl::InlinedVector<int, 4>> inputs_;
-  std::vector<gtl::InlinedVector<int, 2>> outputs_;
-};
 
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -35,16 +35,6 @@ void* Align(uint64_t alignment, uint64_t size, void*& ptr, uint64_t& space);
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#if NV_TENSORRT_MAJOR == 3
-// Define interface here temporarily until TRT 4.0 is released
-namespace nvinfer1 {
-class IGpuAllocator {
- public:
-  virtual void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) = 0;
-  virtual void free(void* memory) = 0;
-};
-}  // namespace nvinfer1
-#endif
 
 namespace tensorflow {
 namespace tensorrt {

@@ -27,7 +27,7 @@ from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn as core_n
 from tensorflow.python.util.deprecation import deprecated
 
 
-@deprecated(None, 'Use tf.estimator.inputs.numpy_input_fn.')
+@deprecated(None, 'Use tf.compat.v1.estimator.inputs.numpy_input_fn.')
 def numpy_input_fn(x,
                    y=None,
                    batch_size=128,

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
@@ -61,8 +62,7 @@ class IndexUtil {
   static bool BumpIndices(const Shape& shape, absl::Span<int64> indices);
 
   // Calculates the stride size (in number of elements, not byte size) of a
-  // given logical shape dimension (from 0 to rank-1). If available, padded
-  // dimensions are used.
+  // given logical shape dimension (from 0 to rank-1).
   // Example:
   //  GetDimensionStride(F32[5,8,10,4]{3,2,1,0}, 1) ==
   //    sizeof(dimension(3)) * sizeof(dimension(2)) == 4 * 10

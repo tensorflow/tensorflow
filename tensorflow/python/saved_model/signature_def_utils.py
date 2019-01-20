@@ -24,6 +24,8 @@ from __future__ import print_function
 from tensorflow.python.saved_model.signature_def_utils_impl import build_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import classification_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import is_valid_signature
+from tensorflow.python.saved_model.signature_def_utils_impl import load_op_from_signature_def
+from tensorflow.python.saved_model.signature_def_utils_impl import op_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import predict_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import regression_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import supervised_eval_signature_def

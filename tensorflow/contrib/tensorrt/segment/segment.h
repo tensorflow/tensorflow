@@ -29,10 +29,10 @@ namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
-// Vector of segments, each entry contains a set of node names and a device name
-// in the segment.
-// TODO(aaroey): use node pointer instead of node name.
-using SegmentNodesVector = std::vector<std::pair<std::set<string>, string>>;
+// Vector of segments, each entry contains a set of node pointers and a device
+// name in the segment.
+using SegmentNodesVector =
+    std::vector<std::pair<std::set<const Node*>, string>>;
 
 struct SegmentOptions {
   // Segment must contain at least this many nodes.
@@ -43,7 +43,7 @@ struct SegmentOptions {
 // Get the subgraphs of a graph that can be handled by TensorRT.
 //
 // @param graph tensorflow::Graph of the network
-// @param candidate_fn A function that returns true for a Node* if
+// @param candidate_fn A function that returns OK for a Node* if
 // that node can be handled by TensorRT.
 // @param segments Returns the TensorRT segments/subgraphs. Each entry
 // in the vector describes a subgraph by giving a set of the names of
@@ -51,7 +51,7 @@ struct SegmentOptions {
 // @return the status.
 tensorflow::Status SegmentGraph(
     const tensorflow::Graph* tf_graph,
-    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
+    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments);

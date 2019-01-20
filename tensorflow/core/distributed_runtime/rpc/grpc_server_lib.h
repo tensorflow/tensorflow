@@ -53,7 +53,8 @@ typedef std::function<void(const WorkerEnv*, ::grpc::ServerBuilder*)>
     ServiceInitFunction;
 
 // function that creates a grpc based worker implementation.
-typedef std::function<std::unique_ptr<GrpcWorker>(WorkerEnv*)>
+typedef std::function<std::unique_ptr<GrpcWorker>(WorkerEnv*,
+                                                  const ConfigProto& config)>
     WorkerCreationFunction;
 
 class GrpcServer : public ServerInterface {
@@ -61,7 +62,7 @@ class GrpcServer : public ServerInterface {
   GrpcServer(const ServerDef& server_def, Env* env);
   // Allow children classes to override this and provide custom args to the
   // server before it is constructed. Default behavior is to do nothing.
-  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
+  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder);
 
  public:
   static Status Create(const ServerDef& server_def, Env* env,

@@ -57,17 +57,14 @@ def self_transform_decorator(transform):
 
 class DecoratorsTest(converter_testing.TestCase):
 
-  def _transform(self, f, autograph_decorators):
+  def _transform(self, f, strip_decorators):
     namespace = {
         'self_transform_decorator': self_transform_decorator,
         'simple_decorator': simple_decorator,
         'converter_testing': converter_testing,
     }
     node, ctx = self.prepare(
-        f,
-        namespace,
-        recursive=False,
-        autograph_decorators=autograph_decorators)
+        f, namespace, recursive=False, strip_decorators=strip_decorators)
     node = decorators.transform(node, ctx)
     import_line = '\n'.join(ctx.program.additional_imports)
     result, _ = compiler.ast_to_object(node, source_prefix=import_line)
@@ -124,7 +121,7 @@ class DecoratorsTest(converter_testing.TestCase):
       return inner_fn(a)
 
     # Expected to fail because simple_decorator could not be imported.
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(transformer.AutoGraphParseError):
       test_fn(1)
 
   def test_nested_decorators_imported(self):

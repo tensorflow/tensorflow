@@ -32,6 +32,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import special_math
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -41,7 +42,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Normal")
+@tf_export(v1=["distributions.Normal"])
 class Normal(distribution.Distribution):
   """The Normal distribution with location `loc` and `scale` parameters.
 
@@ -106,6 +107,14 @@ class Normal(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -240,6 +249,11 @@ class Normal(distribution.Distribution):
 class NormalWithSoftplusScale(Normal):
   """Normal with softplus applied to `scale`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Normal(loc, tf.nn.softplus(scale)) "
+      "instead.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -87,6 +88,8 @@ class Executor {
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     SessionState* session_state = nullptr;
+    // Unique session identifier. Can be empty.
+    string session_handle;
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
@@ -171,41 +174,40 @@ class ExecutorBarrier {
 
   mutable mutex mu_;
   int pending_ GUARDED_BY(mu_) = 0;
-  Status status_ GUARDED_BY(mu_);
+  StatusGroup status_group_ GUARDED_BY(mu_);
 
   void WhenDone(const Status& s) {
-    bool error = false;
     Rendezvous* error_rendez = nullptr;
     StatusCallback done = nullptr;
     Status status;
+
     {
       mutex_lock l(mu_);
-      // If we are the first error encountered, mark the status
-      // appropriately and later trigger an abort of the Rendezvous
-      // object by this thread only.
-      if (status_.ok() && !s.ok()) {
-        error = true;
+
+      // If we are the first error encountered, trigger an abort of the
+      // Rendezvous object by this thread only.
+      if (status_group_.ok() && !s.ok()) {
         error_rendez = rendez_;
         error_rendez->Ref();
-        status_ = s;
       }
+
+      status_group_.Update(s);
 
       // If this is the last call to WhenDone, call the final callback
       // below.
       if (--pending_ == 0) {
         CHECK(done_cb_ != nullptr);
         std::swap(done, done_cb_);
-      }
-
-      if (!status_.ok()) {
-        status = status_;
+        status = status_group_.as_status();
       }
     }
 
-    if (error) {
-      error_rendez->StartAbort(status);
+    if (error_rendez != nullptr) {
+      error_rendez->StartAbort(
+          errors::Aborted("Stopping remaining executors."));
       error_rendez->Unref();
     }
+
     if (done != nullptr) {
       delete this;
       done(status);

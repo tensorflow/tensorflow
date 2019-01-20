@@ -81,58 +81,95 @@ std::vector<int> GetLoadedTensorRTVersion() {
   return {ver_major, ver_minor, ver_patch};
 }
 
-namespace {
+TrtCandidateSelector::TrtCandidateSelector(
+    const grappler::GraphProperties& graph_properties, int precision_mode)
+    : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
 
-bool IsTensorRTCandidate(const tensorflow::Node* node) {
+Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
+  // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
-  // TODO(jie): Segmentation shouldn't associated with op name.
-  //            Split it into a registration for each kernel.
   static const std::set<string> candidate_ops = {
-    "Identity",
-    "Snapshot",
-    "Const",
-    "Conv2D",
-    "MaxPool",
-    "BiasAdd",
-    "Relu",
-    "Add",
-    "Mul",
-    "Sub",
-    "Rsqrt",
-    "Pad",
-    "Mean",
-    "AvgPool",
-    "ConcatV2",
-    "DepthwiseConv2dNative",
-    "FusedBatchNorm",
-    "FusedBatchNormV2",
-    "Div",
-    "RealDiv",
-    "Rsqrt",
-    "Reciprocal",
-    "Exp",
-    "Log",
-    "Sqrt",
-    "Abs",
-    "Neg",
-#if NV_TENSORRT_MAJOR > 3
-    "MatMul",
-    "BatchMatMul",
-    "Softmax",
-    "Minimum",
-    "Maximum",
-    "TopKV2",
-    "Sum",
-    "Prod",
-    "Max",
-    "Min",
-#endif
-    // TODO(ben,jie): ...
+      "Abs",
+      "Add",
+      "AvgPool",
+      "BatchMatMul",
+      "BiasAdd",
+      "ConcatV2",
+      "Const",
+      "Conv2D",
+      "DepthwiseConv2dNative",
+      "Div",
+      "Exp",
+      "ExpandDims",
+      "FusedBatchNorm",
+      "FusedBatchNormV2",
+      "Identity",
+      "Log",
+      "MatMul",
+      "Max",
+      "MaxPool",
+      "Maximum",
+      "Mean",
+      "Min",
+      "Minimum",
+      "Mul",
+      "Neg",
+      "Pad",
+      "Prod",
+      "RealDiv",
+      "Reciprocal",
+      "Relu",
+      "Relu6",
+      "Reshape",
+      "Rsqrt",
+      "Rsqrt",
+      "Sigmoid",
+      "Snapshot",
+      "Softmax",
+      "Sqrt",
+      "Square",
+      "Squeeze",
+      "StridedSlice",
+      "Sub",
+      "Sum",
+      "Tanh",
+      "TopKV2",
+      "Transpose",
   };
+  bool is_supported_op_type =
+      (candidate_ops.count(node->type_string()) ||
+       PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
+  static const std::set<string> quantize_ops = {
+      "QuantizeAndDequantizeV2",
+      "QuantizeAndDequantizeV3",
+      "FakeQuantWithMinMaxVars",
+      "FakeQuantWithMinMaxArgs",
+  };
+  // In INT8 mode, we will always apply the quantization ranges provided by
+  // these ops to the relevant tensors. This happens regardless of the value of
+  // use_calibration.
+  if (precision_mode_ == INT8MODE && quantize_ops.count(node->type_string())) {
+    is_supported_op_type = true;
+  }
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
-  return (candidate_ops.count(node->type_string()) ||
-          PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
+  if (!is_supported_op_type) {
+    return errors::Unimplemented("Op type ", node->type_string(),
+                                 " is not supported");
+  }
+
+  std::vector<const Edge*> input_edges;
+  TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
+  std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
+  input_node_and_ports.reserve(input_edges.size());
+  for (const Edge* input_edge : input_edges) {
+    input_node_and_ports.emplace_back(&input_edge->src()->def(),
+                                      input_edge->src_output());
+  }
+  return validator_.ValidateNode(node->def(), input_node_and_ports,
+                                 graph_properties_);
 }
+
+namespace {
 
 tensorflow::Status BuildNodeMap(
     const tensorflow::Graph& graph,
@@ -152,7 +189,7 @@ tensorflow::Status BuildNodeMap(
 tensorflow::Status ConvertCalibGraphToInferGraph(
     const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph,
     bool is_dyn_op) {
-  VLOG(0) << "Starting Calib Conversion";
+  LOG(INFO) << "Starting Calib Conversion";
   infer_graph->CopyFrom(graph_def);
   auto trt_rm = TRTResourceManager::instance();
   auto calib_rm = trt_rm->getManager("TRTCalibration");
@@ -202,18 +239,19 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
     int precision_mode, int minimum_segment_size, bool is_dyn_op,
-    int max_cached_engines, std::vector<int> cached_engine_batches) {
+    int max_cached_engines, std::vector<int> cached_engine_batches,
+    bool use_calibration) {
   // Create GrapplerItem.
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
   item.graph = graph_def;
 
-  // TODO(aaroey): we should have used single machine cluster like the
-  // following, but the problem is then wrap_conversion will depend on
-  // direct_session and cause double linking problems. To fix this we need to
-  // fix or get rid of the swig dependency. Here we use VirtualCluster
-  // as a work around, and we need to create a session to initialize the
-  // underlying device before calling this method.
+// TODO(aaroey): we should have used single machine cluster like the
+// following, but the problem is then wrap_conversion will depend on
+// direct_session and cause double linking problems. To fix this we need to
+// fix or get rid of the swig dependency. Here we use VirtualCluster
+// as a work around, and we need to create a session to initialize the
+// underlying device before calling this method.
 #if 0
   // Create single machine cluster. Note that this will create a session and
   // initialize the gpu devices.
@@ -246,7 +284,9 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 #endif
 
   // Create RewriterConfig.
-  tensorflow::RewriterConfig rw_cfg;
+  tensorflow::ConfigProto config_proto;
+  auto& rw_cfg =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   // TODO(aaroey): use only const folding and layout for the time being since
   // new optimizers break the graph for trt.
   rw_cfg.add_optimizers("constfold");
@@ -267,9 +307,10 @@ tensorflow::Status ConvertGraphDefToTensorRT(
       list->add_i(batch);
     }
   }
+  parameters["use_calibration"].set_b(use_calibration);
 
   // Run optimizer.
-  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
+  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, config_proto);
   TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, new_graph_def));
 
   if (VLOG_IS_ON(5)) {
@@ -282,17 +323,23 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   return Status::OK();
 }
 
+struct EdgePtrCompare {
+  bool operator()(const tensorflow::Edge* lhs,
+                  const tensorflow::Edge* rhs) const {
+    return lhs->id() < rhs->id();
+  }
+};
+
 // Function to get subsegment information structure.
 tensorflow::Status GetEngineInfo(
     const tensorflow::Graph* g,
     const tensorflow::grappler::GraphProperties& graph_properties,
-    const std::set<string>& segment_nodes,
+    const std::set<const Node*>& segment_nodes,
     const std::unordered_map<string, tensorflow::Node*>& node_map,
     const std::vector<tensorflow::Node*>& reverse_topo_order,
     EngineInfo* info) {
-  std::vector<int> subgraph_node_ids;  // Topologically sorted node ids.
-  std::set<string> subgraph_node_names = segment_nodes;
-  std::set<int> added_const_node_ids;  // Used to prevent double insertion.
+  std::vector<const Node*> subgraph_nodes;  // Topologically sorted nodes.
+  std::set<const Node*> added_const_nodes;  // Used to prevent double insertion.
   std::set<string> segment_devices;
 
   // Map from src_node_name+port to the unique port numbers of the TRT op, where
@@ -304,26 +351,45 @@ tensorflow::Status GetEngineInfo(
   std::unordered_map<string, int> input_to_engine_port, output_to_engine_port;
   for (auto it = reverse_topo_order.rbegin(); it != reverse_topo_order.rend();
        ++it) {
-    const auto& node_name = (*it)->name();
-    if (segment_nodes.count(node_name) == 0) continue;
-    auto node = *it;
+    const Node* node = *it;
+    if (segment_nodes.count(node) == 0) continue;
     auto node_device = node->requested_device();
     if (!node_device.empty()) {
-      segment_devices.insert(node_device);
+      // If device is CPU, treat as if no device was assigned. Don't add CPU to
+      // segment_device because that would cause a segfault in
+      // GetDeviceAndAllocator. This is because GetDeviceAndAllocator assumes
+      // any already set device is a GPU.
+      DeviceNameUtils::ParsedName parsed_name;
+      DeviceNameUtils::ParseFullName(node_device, &parsed_name);
+      if (parsed_name.type == "CPU") {
+        VLOG(1) << "Node " << node->name() << " was assigned to the CPU. "
+                << "Attempting to place on GPU.";
+      } else {
+        segment_devices.insert(node_device);
+      }
     } else {
       if (node->has_assigned_device_name()) {
+        // It appears that nodes will not have assigned devices at this point in
+        // execution.
         segment_devices.insert(node->assigned_device_name());
       } else {
         VLOG(2) << "Node " << node->name()
                 << " neither have requested device nor assigned device";
       }
     }
+    subgraph_nodes.push_back(node);
+
     const int node_id = node->id();
-    subgraph_node_ids.push_back(node_id);
-    // Create input connections.
-    for (const auto edge : node->in_edges()) {
+    const string& node_name = node->name();
+
+    // Create input connections. Sort edges first to make determnistic since
+    // in_edges is a set of pointers.
+    std::vector<const tensorflow::Edge*> in_edges(node->in_edges().begin(),
+                                                  node->in_edges().end());
+    std::sort(in_edges.begin(), in_edges.end(), EdgePtrCompare());
+    for (const auto edge : in_edges) {
       auto input_node = edge->src();
-      if (input_node->IsSource() || segment_nodes.count(input_node->name())) {
+      if (input_node->IsSource() || segment_nodes.count(input_node)) {
         continue;
       }
       if (edge->IsControlEdge()) {
@@ -340,12 +406,11 @@ tensorflow::Status GetEngineInfo(
         //
         // Note that the segmenter already ensure that the constant data input
         // is valid and suppported by the engine.
-        if (!added_const_node_ids.insert(input_node->id()).second) {
+        if (!added_const_nodes.insert(input_node).second) {
           // Already added before.
           continue;
         }
         VLOG(1) << "Adding const node " << input_node->name();
-        QCHECK(subgraph_node_names.insert(input_node->name()).second);
         // Since we already add (duplicate) the const input node to the segment
         // graphdef, it's now not a data dependency any more, but to make the
         // dependency correct we still add a control dependency.
@@ -369,10 +434,14 @@ tensorflow::Status GetEngineInfo(
             node_id, edge->dst_input(), /*input_edge=*/true, port);
       }
     }
-    // Create output connections.
-    for (const auto edge : node->out_edges()) {
+    // Create output connections. Sort edges first to make determnistic since
+    // out_edges is a set of pointers.
+    std::vector<const tensorflow::Edge*> out_edges(node->out_edges().begin(),
+                                                   node->out_edges().end());
+    std::sort(out_edges.begin(), out_edges.end(), EdgePtrCompare());
+    for (const auto edge : out_edges) {
       auto output_node = edge->dst();
-      if (output_node->IsSink() || segment_nodes.count(output_node->name())) {
+      if (output_node->IsSink() || segment_nodes.count(output_node)) {
         continue;
       }
       if (edge->IsControlEdge()) {
@@ -400,12 +469,11 @@ tensorflow::Status GetEngineInfo(
   }  // For each segment node in topological order.
 
   // Construct the const nodes first.
-  subgraph_node_ids.insert(subgraph_node_ids.begin(),
-                           added_const_node_ids.begin(),
-                           added_const_node_ids.end());
+  subgraph_nodes.insert(subgraph_nodes.begin(), added_const_nodes.begin(),
+                        added_const_nodes.end());
   TF_RETURN_IF_ERROR(ConvertSegmentToGraphDef(
-      g, graph_properties, subgraph_node_names, subgraph_node_ids,
-      &info->connections, &info->segment_graph_def, &info->engine_name));
+      g, graph_properties, subgraph_nodes, &info->connections,
+      &info->segment_graph_def, &info->engine_name));
   // TODO(sami): This should not happen once segmenter is updated.
   if (segment_devices.size() == 1) {
     info->device = *segment_devices.begin();
@@ -415,7 +483,8 @@ tensorflow::Status GetEngineInfo(
                  << "but this shouldn't have happened";
     info->device = *segment_devices.begin();
   } else {
-    LOG(ERROR) << "Can't find a device placement for the op!";
+    VLOG(1) << "No device is assigned to the segment. "
+            << "A device will be assigned during graph execution (inference).";
   }
   return Status::OK();
 }
@@ -525,6 +594,18 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
         }
         input_shape_protos.at(conn.port_number) = in_shape;
         input_shapes.at(conn.port_number) = conn.outside_shape;
+        // Shape must be fully defined (excluding batch dimension) for static
+        // mode.
+        if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+          for (int i = 1; i < conn.outside_shape.dims(); i++) {
+            if (conn.outside_shape.dim_size(i) <= 0) {
+              return tensorflow::errors::Internal(
+                  "Input shapes must be fully defined when in static mode. "
+                  "Please try is_dynamic_op=True (shape was ",
+                  conn.outside_shape.DebugString(), ")");
+            }
+          }
+        }
 
         // Rewrire data input if it's not found in original graph.
         tensorflow::Node* input_node = graph->FindNodeId(conn.outside_id);
@@ -546,27 +627,38 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
       }
     }
   }
+  // We don't support segments with no inputs. Fall back to native TF here to
+  // avoid crash later. Constant folding should've folded the ops that make up
+  // these segments.
+  if (inputs.empty()) {
+    return tensorflow::errors::Internal(
+        "Segment has no inputs (possible "
+        "constfold failure)");
+  }
+
+  const bool calibrate_int8 =
+      (info.precision_mode == INT8MODE && info.use_calibration);
+  // Build the engine and get its serialized representation.
   string segment_string;
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic ||
-      info.precision_mode == INT8MODE) {
+  if (info.engine_type == EngineInfo::EngineType::TRTStatic || calibrate_int8) {
     // Create static engine for fp32/fp16 mode, and test validity of the engine
-    // for int8 mode. We don't want engine to fail at the calibration time.
-    // So we are constructing a FP32 engine here to check its validity, and if
-    // it is a valid engine then we put the serialized graphdef to the op.
-    // Otherwise we skip node creation for this engine.
+    // for int8 calibration mode. We don't want engine to fail at the
+    // calibration time. So we are constructing a FP32 engine here to check its
+    // validity, and if it is a valid engine then we put the serialized graphdef
+    // to the op. Otherwise we skip node creation for this engine.
     Logger trt_logger;
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
-        info.segment_graph_def,
-        info.precision_mode == INT8MODE ? FP32MODE : info.precision_mode,
+        info.segment_graph_def, calibrate_int8 ? FP32MODE : info.precision_mode,
         max_batch_size, info.max_workspace_size_bytes, input_shapes,
         &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
+        info.use_calibration,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string =
         string((const char*)engine_data->data(), engine_data->size());
-    if (info.precision_mode == INT8MODE) {
+    if (calibrate_int8) {
       // See above comment about why not putting this inside the 'else' branch.
       segment_string = info.segment_graph_def.SerializeAsString();
     }
@@ -574,14 +666,8 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     segment_string = info.segment_graph_def.SerializeAsString();
   }
 
-  // TODO(aaroey): use enum instead, and add a helper method to do the
-  // conversion.
   string prec_string;
   TF_RETURN_IF_ERROR(GetPrecisionModeName(info.precision_mode, &prec_string));
-  if (info.precision_mode == INT8MODE &&
-      !TRTResourceManager::instance()->getManager("TRTCalibration")) {
-    LOG(ERROR) << "Failed to construct calibration storage";
-  }
   tensorflow::NodeDefBuilder node_builder(info.engine_name, "TRTEngineOp");
   if (!info.device.empty()) node_builder.Device(info.device);
   if (VLOG_IS_ON(1)) {
@@ -597,7 +683,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
   }
 
   if (info.engine_type == EngineInfo::EngineType::TRTStatic &&
-      info.cached_engine_batches.size()) {
+      !info.cached_engine_batches.empty()) {
     LOG(WARNING) << "Cached engine batches are ignored for static engines";
   }
   tensorflow::NodeDef trt_node;
@@ -611,9 +697,9 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
           .Attr("serialized_segment", segment_string)
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
-          .Attr("cached_engine_batches", {max_batch_size})
           .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
           .Attr("precision_mode", prec_string)
+          .Attr("use_calibration", info.use_calibration)
           .Attr("OutT", out_types)
           .Finalize(&trt_node);
   if (!status.ok()) {
@@ -846,13 +932,18 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
+  TrtCandidateSelector candidate_selector(*params.graph_properties,
+                                          params.precision_mode);
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph, IsTensorRTCandidate, InputEdgeValidator(*params.graph_properties),
-      OutputEdgeValidator(), segment_options, &initial_segments));
-  if (initial_segments.size() > 1) {
-    VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
+      &graph,
+      std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
+                std::placeholders::_1),
+      // Input validation is already done by TrtCandidateSelector, so we don't
+      // need to check the input edges.
+      [](const Edge* edge) { return true; }, OutputEdgeValidator(),
+      segment_options, &initial_segments));
+  LOG(INFO) << "Number of TensorRT candidate segments: "
             << initial_segments.size();
-  }
 
   // Get the EngineInfo for each segment.
   std::unordered_map<string, tensorflow::Node*> node_map;
@@ -878,13 +969,17 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
-    curr_engine.engine_type =
-        (params.is_dyn_op || params.precision_mode == INT8MODE
-             ? EngineInfo::EngineType::TRTDynamic
-             : EngineInfo::EngineType::TRTStatic);
+    if (params.use_calibration && params.precision_mode != INT8MODE) {
+      return errors::InvalidArgument(
+          "Calibration with FP32 or FP16 is not supported.");
+    }
+    curr_engine.engine_type = ((params.is_dyn_op || params.use_calibration)
+                                   ? EngineInfo::EngineType::TRTDynamic
+                                   : EngineInfo::EngineType::TRTStatic);
+    curr_engine.use_calibration = params.use_calibration;
     curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
-    StrAppend(&curr_engine.engine_name, "my_trt_op_", t);
+    StrAppend(&curr_engine.engine_name, "TRTEngineOp_", t);
     status = RegisterSegmentFunctionToFunctionLibrary(
         &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
     if (!status.ok()) {
@@ -900,7 +995,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     converted_segments.push_back(std::move(curr_segment));
 
     if (VLOG_IS_ON(8)) {
-      string fname = curr_engine.engine_name;
+      string fname = engine_segments.back().engine_name;
       StrAppend(&fname, ".pb");
       std::fstream f;
       f.open(fname.c_str(), std::fstream::out | std::fstream::binary);
@@ -943,19 +1038,30 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     cudaSetDevice(cuda_device_id);
     auto status = CreateTRTNode(engine_segments, i, params.max_batch_size,
                                 &graph, alloc.get(), &engine_nodes);
-    // If status is ok, we successfully added the node to the graph and can
-    // remove segment ops. Otherwise graph is not modified.
-    const string msg = StrCat("Engine ", engine.engine_name,
-                              " creation for segment ", i, ", composed of ",
-                              converted_segments.at(i).first.size(), " nodes");
+
+    string msg = StrCat("TensorRT node ", engine.engine_name,
+                        " added for segment ", i, " consisting of ",
+                        converted_segments.at(i).first.size(), " nodes");
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
-      for (auto node_name : converted_segments.at(i).first) {
-        graph.RemoveNode(node_map.at(node_name));
-      }
     } else {
       // Graph is not modified.
-      LOG(WARNING) << msg << " failed: " << status << ". Skipping...";
+      LOG(WARNING) << msg << " failed: " << status << ". Fallback to TF...";
+    }
+    if (VLOG_IS_ON(1)) {
+      msg = "Segment consists of nodes: ";
+      for (const Node* node : converted_segments.at(i).first) {
+        StrAppend(&msg, node->name(), ", ");
+      }
+      VLOG(1) << msg;
+    }
+
+    // If status is ok, we successfully added the node to the graph and can
+    // remove segment ops. Otherwise graph is not modified.
+    if (status.ok()) {
+      for (const Node* node : converted_segments.at(i).first) {
+        graph.RemoveNode(const_cast<Node*>(node));
+      }
     }
   }
   cudaSetDevice(old_cuda_device);

@@ -34,16 +34,15 @@ class Cluster;
 struct GrapplerItem;
 
 // Estimate the cost of running a Grappler item based on the theoretical
-// performance of the hardware that will run the model.
+// performance of the hardware that will run the model. Note that this
+// internally uses aggressive shape inference with static shape inference.
 class AnalyticalCostEstimator : public CostEstimator {
  public:
   // Does not take ownership of cluster.
   AnalyticalCostEstimator(Cluster* cluster, bool use_static_shapes);
-  // Does not take ownership of the cluster, but takes ownership of the
-  // node_estimator and the node_manager
   AnalyticalCostEstimator(Cluster* cluster,
-                          OpLevelCostEstimator* node_estimator,
-                          ReadyNodeManager* node_manager,
+                          std::unique_ptr<OpLevelCostEstimator> node_estimator,
+                          std::unique_ptr<ReadyNodeManager> node_manager,
                           bool use_static_shapes);
   ~AnalyticalCostEstimator() override {}
 
@@ -52,17 +51,20 @@ class AnalyticalCostEstimator : public CostEstimator {
   Status Initialize(const GrapplerItem& item) override;
 
   // Predict the performance of each node of the optimized graph and annotate
-  // the CostGraphDef with the corresponding estimates. Also returns the
-  // expected latency for the whole graph.
-  Status PredictCosts(const GraphDef& optimized_graph, CostGraphDef* cost_graph,
-                      Costs* overall_latency) const override;
+  // the RunMetadata with the corresponding estimates. Also returns the
+  // expected cost for the whole graph.
+  Status PredictCosts(const GraphDef& optimized_graph,
+                      RunMetadata* run_metadata, Costs* cost) const override;
+
+  const VirtualScheduler* GetScheduler() const { return scheduler_.get(); }
 
  private:
-  Cluster* cluster_;  // Not owned.
+  Cluster* cluster_;
   GrapplerItem item_;
   std::unique_ptr<OpLevelCostEstimator> node_estimator_;
   std::unique_ptr<ReadyNodeManager> node_manager_;
   bool use_static_shapes_;
+  std::unique_ptr<VirtualScheduler> scheduler_;
 };
 
 }  // end namespace grappler

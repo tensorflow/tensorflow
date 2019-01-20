@@ -34,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
@@ -211,7 +212,7 @@ class _DistributionMeta(abc.ABCMeta):
     return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
 
 
-@tf_export("distributions.ReparameterizationType")
+@tf_export(v1=["distributions.ReparameterizationType"])
 class ReparameterizationType(object):
   """Instances of this class represent how sampling is reparameterized.
 
@@ -229,6 +230,14 @@ class ReparameterizationType(object):
     gradients / surrogate loss instead.
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self, rep_type):
     self._rep_type = rep_type
 
@@ -254,7 +263,7 @@ class ReparameterizationType(object):
 # reparameterized distribution support straight-through gradients with
 # respect to all parameters.
 FULLY_REPARAMETERIZED = ReparameterizationType("FULLY_REPARAMETERIZED")
-tf_export("distributions.FULLY_REPARAMETERIZED").export_constant(
+tf_export(v1=["distributions.FULLY_REPARAMETERIZED"]).export_constant(
     __name__, "FULLY_REPARAMETERIZED")
 
 
@@ -262,12 +271,12 @@ tf_export("distributions.FULLY_REPARAMETERIZED").export_constant(
 # reparameterized distribution do not support straight-through gradients for
 # at least some of the parameters.
 NOT_REPARAMETERIZED = ReparameterizationType("NOT_REPARAMETERIZED")
-tf_export("distributions.NOT_REPARAMETERIZED").export_constant(
+tf_export(v1=["distributions.NOT_REPARAMETERIZED"]).export_constant(
     __name__, "NOT_REPARAMETERIZED")
 
 
 @six.add_metaclass(_DistributionMeta)
-@tf_export("distributions.Distribution")
+@tf_export(v1=["distributions.Distribution"])
 class Distribution(_BaseDistribution):
   """A generic probability distribution base class.
 
@@ -405,6 +414,14 @@ class Distribution(_BaseDistribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                dtype,
                reparameterization_type,
@@ -1298,7 +1315,7 @@ class Distribution(_BaseDistribution):
       return static_shape.ndims == 0
     shape = dynamic_shape_fn()
     if (shape.get_shape().ndims is not None and
-        shape.get_shape()[0].value is not None):
+        shape.get_shape().dims[0].value is not None):
       # If the static_shape is correctly written then we should never execute
       # this branch. We keep it just in case there's some unimagined corner
       # case.

@@ -28,7 +28,6 @@ tf_custom_op_py_library(
         "python/ops/wals.py",
     ],
     dso = [
-        ":python/ops/_clustering_ops.so",
         ":python/ops/_factorization_ops.so",
     ],
     kernels = [
@@ -38,12 +37,12 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":factorization_ops_test_utils_py",
-        ":gen_clustering_ops",
         ":gen_factorization_ops",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:clustering_ops_gen",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:embedding_ops",
@@ -77,17 +76,6 @@ py_library(
     ],
 )
 
-# Ops
-tf_custom_op_library(
-    name = "python/ops/_clustering_ops.so",
-    srcs = [
-        "ops/clustering_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/contrib/factorization/kernels:clustering_ops",
-    ],
-)
-
 tf_custom_op_library(
     name = "python/ops/_factorization_ops.so",
     srcs = [
@@ -100,23 +88,13 @@ tf_custom_op_library(
 )
 
 tf_gen_op_libs([
-    "clustering_ops",
     "factorization_ops",
 ])
 
 cc_library(
     name = "all_ops",
     deps = [
-        ":clustering_ops_op_lib",
         ":factorization_ops_op_lib",
-    ],
-)
-
-tf_gen_op_wrapper_py(
-    name = "gen_clustering_ops",
-    out = "python/ops/gen_clustering_ops.py",
-    deps = [
-        ":clustering_ops_op_lib",
     ],
 )
 

@@ -1,10 +1,14 @@
 op {
   graph_op_name: "IFFT"
   endpoint {
+    name: "signal.ifft"
+  }
+  endpoint {
     name: "spectral.ifft"
+    deprecation_version: 2
   }
   endpoint {
     name: "ifft"
-    deprecated: true
+    deprecation_version: 2
   }
 }

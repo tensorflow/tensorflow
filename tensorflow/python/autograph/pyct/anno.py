@@ -63,10 +63,8 @@ class Static(NoValue):
   The enum values are used strictly for documentation purposes.
   """
 
-  # Deprecated - use reaching definitions instead.
   # Symbols
   # These flags are boolean.
-  IS_LOCAL = 'Symbol is local to the function scope being analyzed.'
   IS_PARAM = 'Symbol is a parameter to the function being analyzed.'
 
   # Scopes
@@ -91,6 +89,7 @@ class Static(NoValue):
   DEFINED_VARS_IN = (
       'Symbols defined when entering the node. See reaching_definitions.py.')
   LIVE_VARS_OUT = ('Symbols live when exiting the node. See liveness.py.')
+  LIVE_VARS_IN = ('Symbols live when entering the node. See liveness.py.')
 
 
 FAIL = object()

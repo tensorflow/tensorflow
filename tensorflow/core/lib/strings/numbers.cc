@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <algorithm>
+#include <cinttypes>
 #include <cmath>
 #include <locale>
 #include <unordered_map>
@@ -391,7 +392,7 @@ string FpToString(Fprint fp) {
 bool StringToFp(const string& s, Fprint* fp) {
   char junk;
   uint64_t result;
-  if (sscanf(s.c_str(), "%lx%c", &result, &junk) == 1) {
+  if (sscanf(s.c_str(), "%" SCNx64 "%c", &result, &junk) == 1) {
     *fp = result;
     return true;
   } else {

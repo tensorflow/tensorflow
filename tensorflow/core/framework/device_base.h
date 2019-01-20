@@ -82,6 +82,13 @@ class DeviceContext : public core::RefCounted {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
   }
 
+  // Copies a tensor in this device.
+  virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
+                                      Device* device, Tensor* output_tensor,
+                                      StatusCallback done) const {
+    done(errors::Unimplemented("Copy in same device not implemented."));
+  }
+
   // "device_tensor" is a tensor on a non-CPU device.  Copies
   // device_tensor into "cpu_tensor".  "cpu_tensor" must be allocated
   // to be of the same size as "device_tensor".

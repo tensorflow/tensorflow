@@ -28,7 +28,7 @@ class GatherExpander : public HloModulePass {
   absl::string_view name() const override { return "gather_expander"; }
   StatusOr<bool> Run(HloModule* module) override;
 
- private:
+ protected:
   StatusOr<HloInstruction*> ExpandGather(HloInstruction* gather_instr);
 };
 

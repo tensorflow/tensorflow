@@ -100,16 +100,13 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name, input2_name],
-        input_dims=[input_dims, input2_dims],
+        input_dims=[[input_dims, input2_dims]],
         output_names=[output_name],
-        expected_output_dims=[(12, 5, 8, 12)])
+        expected_output_dims=[[[12, 5, 8, 12]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return [
-        "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3",
-        "my_trt_op_4"
-    ]
+    return ["TRTEngineOp_0"]
 
 
 if __name__ == "__main__":

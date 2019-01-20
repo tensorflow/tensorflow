@@ -21,7 +21,7 @@ A detailed description of rmsprop.
 - maintain a moving (discounted) average of the square of gradients
 - divide gradient by the root of this average
 
-mean_square = decay * mean_square{t-1} + (1-decay) * gradient ** 2
+mean_square = rho * mean_square{t-1} + (1-rho) * gradient ** 2
 mom = momentum * mom{t-1} + learning_rate * g_t / sqrt(mean_square)
 delta = - mom
 
@@ -30,8 +30,8 @@ This implementation of RMSProp uses plain momentum, not Nesterov momentum.
 The centered version additionally maintains a moving (discounted) average of the
 gradients, and uses that average to estimate the variance:
 
-mean_grad = decay * mean_square{t-1} + (1-decay) * gradient
-mean_square = decay * mean_square{t-1} + (1-decay) * gradient ** 2
+mean_grad = rho * mean_square{t-1} + (1-rho) * gradient
+mean_square = rho * mean_square{t-1} + (1-rho) * gradient ** 2
 mom = momentum * mom{t-1} + learning_rate * g_t /
     sqrt(mean_square - mean_grad**2)
 delta = - mom
@@ -51,7 +51,8 @@ class RMSPropOptimizer(optimizer_v2.OptimizerV2):
   """Optimizer that implements the RMSProp algorithm.
 
   See the
-  [paper](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+  [paper]
+  (http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
   """
 
   def __init__(self,
@@ -106,8 +107,8 @@ class RMSPropOptimizer(optimizer_v2.OptimizerV2):
 
   def _create_vars(self, var_list, state):
     for v in var_list:
-      init_rms = state.get_hyper(
-          "epsilon", v.dtype.base_dtype) * array_ops.ones_like(v)
+      init_rms = state.get_hyper("epsilon",
+                                 v.dtype.base_dtype) * array_ops.ones_like(v)
       state.create_slot_with_initializer(v, init_rms, v.get_shape(),
                                          v.dtype.base_dtype, "rms")
       if self._centered:

@@ -33,9 +33,9 @@ namespace xla {
 using llvm_ir::IrArray;
 
 Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
-  generators_[hlo] =
+  indexed_generators_[hlo] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    if (generated_value_cache_[hlo].count(index.multidim()) > 0) {
+    if (generated_value_cache_[hlo].contains(index.multidim())) {
       llvm::Value* generated_value =
           generated_value_cache_[hlo][index.multidim()];
       llvm::BasicBlock* generated_value_bb = nullptr;
@@ -63,25 +63,26 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
               << llvm_ir::AsString(b_->GetInsertBlock()->getName()) << ").";
     }
 
-    TF_ASSIGN_OR_RETURN(
-        generated_value_cache_[hlo][index.multidim()],
-        elemental_emitter_->MakeElementGenerator(hlo, generators_)(index));
+    TF_ASSIGN_OR_RETURN(generated_value_cache_[hlo][index.multidim()],
+                        elemental_emitter_->MakeElementGenerator(
+                            hlo, indexed_generators_)(index));
     return generated_value_cache_[hlo][index.multidim()];
   };
   return Status::OK();
 }
 
 Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
-  const Literal& literal = constant->literal();
-  llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-  llvm::GlobalVariable* global = new llvm::GlobalVariable(
-      *b_->GetInsertBlock()->getModule(), initializer->getType(),
-      /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
-      /*Name=*/"");
-  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
-      global, llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
-  generators_[constant] = [=](const IrArray::Index& index) {
+  indexed_generators_[constant] = [=](const IrArray::Index& index) {
+    const Literal& literal = constant->literal();
+    llvm::Constant* initializer =
+        llvm_ir::ConvertLiteralToIrConstant(literal, module_);
+    llvm::GlobalVariable* global = new llvm::GlobalVariable(
+        *b_->GetInsertBlock()->getModule(), initializer->getType(),
+        /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
+        /*Name=*/"");
+    llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
+        global,
+        llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
     return IrArray(shape_constant, constant->shape())
         .EmitReadArrayElement(index, b_);
   };
@@ -91,34 +92,47 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
 
 Status FusedIrEmitter::HandleGetTupleElement(
     HloInstruction* get_tuple_element) {
-  // Lookup ir value for 'operand'.
-  auto operand = get_tuple_element->operand(0);
-  auto it = gte_values_.find(operand);
-  if (it == gte_values_.end()) {
-    return Unimplemented(
-        "GetTupleElement fusion currently only supports"
-        " parameter operands, but found operand: %s",
-        operand->name());
-  }
-  // Emit code to lookup tuple element pointer, and store it in 'gte_values_'.
-  llvm::Value* tuple_element_ptr = llvm_ir::EmitGetTupleElement(
-      get_tuple_element->shape(), get_tuple_element->tuple_index(),
-      /*alignment=*/1, it->second, b_, module_);
-  gte_values_.insert(std::make_pair(get_tuple_element, tuple_element_ptr));
-  // Emit code to read base tuple element array (if non-tuple shaped).
-  if (!ShapeUtil::IsTuple(get_tuple_element->shape())) {
-    generators_[get_tuple_element] =
+  auto emit_tuple_element_ptr = [=]() -> StatusOr<llvm::Value*> {
+    const HloInstruction* tuple_operand = get_tuple_element->operand(0);
+    llvm::Value* tuple_ptr;
+    if (tuple_operand->opcode() == HloOpcode::kGetTupleElement) {
+      TF_ASSIGN_OR_RETURN(tuple_ptr, non_indexed_generators_[tuple_operand]());
+    } else {
+      if (tuple_operand->opcode() != HloOpcode::kParameter) {
+        return Unimplemented(
+            "GetTupleElement fusion currently only supports parameter or "
+            "nested"
+            "GetTupleElement as tuple operand, found an exception: %s",
+            tuple_operand->name());
+      }
+      tuple_ptr =
+          GetBasePointerForFusedParameter(tuple_operand->parameter_number());
+    }
+
+    // Lookup tuple element pointer.
+    return llvm_ir::EmitGetTupleElement(
+        get_tuple_element->shape(), get_tuple_element->tuple_index(),
+        /*alignment=*/1, tuple_ptr, b_, module_);
+  };
+
+  if (!get_tuple_element->shape().IsTuple()) {
+    indexed_generators_[get_tuple_element] =
         [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
       // TODO(b/34080002) Add aliasing information to tuple element IrArray.
+      TF_ASSIGN_OR_RETURN(llvm::Value * tuple_element_ptr,
+                          emit_tuple_element_ptr());
       return IrArray(tuple_element_ptr, get_tuple_element->shape())
           .EmitReadArrayElement(index, b_);
     };
+  } else {
+    non_indexed_generators_[get_tuple_element] = emit_tuple_element_ptr;
   }
   return Status::OK();
 }
 
 Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
-  generators_[parameter] = [=](const IrArray::Index& index) -> llvm::Value* {
+  indexed_generators_[parameter] =
+      [=](const IrArray::Index& index) -> llvm::Value* {
     if (tiled_parameter_info_) {
       if (llvm::Value* param_tile_buffer =
               tiled_parameter_info_->GetBufferForParameter(
@@ -135,14 +149,9 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
             "tiled_buffer");
       }
     }
-    return parameter_arrays_[parameter->parameter_number()]
+    return GetIrArrayForFusedParameter(parameter->parameter_number())
         .EmitReadArrayElement(index, b_);
   };
-  // Store ir value for fusion operand associated with fusion parameter to be
-  // accessed by subsequent fused GetTupleElement instructions.
-  gte_values_.insert(std::make_pair(
-      parameter,
-      parameter_arrays_[parameter->parameter_number()].GetBasePointer()));
   return Status::OK();
 }
 
@@ -153,12 +162,13 @@ Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
     operand_elemental_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(
         operand->shape().element_type(), module_));
   }
-  generators_[tuple] =
+  indexed_generators_[tuple] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
     llvm::Value* ret = llvm::UndefValue::get(
         llvm::StructType::get(b_->getContext(), operand_elemental_ir_types));
     for (size_t i = 0; i < ShapeUtil::TupleElementCount(tuple->shape()); ++i) {
-      TF_ASSIGN_OR_RETURN(llvm::Value * val_i, generators_[operands[i]](index));
+      TF_ASSIGN_OR_RETURN(llvm::Value * val_i,
+                          indexed_generators_[operands[i]](index));
       ret = b_->CreateInsertValue(ret, val_i, i);
     }
     return ret;
@@ -171,15 +181,15 @@ Status FusedIrEmitter::FinishVisit(HloInstruction* root) {
   return Status::OK();
 }
 
-FusedIrEmitter::Generator FusedIrEmitter::GetRootGenerator() const {
+FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetRootGenerator() const {
   CHECK_NE(nullptr, fused_root_)
       << "GetRootGenerator should be called after Accept.";
-  return generators_.at(fused_root_);
+  return indexed_generators_.at(fused_root_);
 }
 
-FusedIrEmitter::Generator FusedIrEmitter::GetGenerator(
+FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetGenerator(
     const HloInstruction* instruction) const {
-  return generators_.at(instruction);
+  return indexed_generators_.at(instruction);
 }
 
 }  // namespace xla

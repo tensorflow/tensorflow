@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -51,7 +52,8 @@ struct MatrixDescriptor {
 // rhs_matrix, and stores the result to output_matrix.
 template <typename Element>
 bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-            MatrixDescriptor output_matrix, double alpha, se::Stream* stream) {
+            MatrixDescriptor output_matrix, double alpha, double beta,
+            se::Stream* stream) {
   DCHECK(!output_matrix.transpose);
 
   const int64 batch_size = lhs_matrix.batch_size;
@@ -73,7 +75,7 @@ bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
             lhs_transpose, rhs_transpose, output_matrix.num_rows,
             output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/alpha,
             lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
-            /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0,
+            /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/beta,
             &output_data, /*leading dim of output=*/output_matrix.num_rows)
         .ok();
   }
@@ -88,7 +90,7 @@ bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
           /*alpha=*/alpha, lhs_data,
           /*leading dim of LHS=*/lhs_matrix.num_rows, lhs_stride, rhs_data,
           /*leading dim of RHS=*/rhs_matrix.num_rows, rhs_stride,
-          /*beta=*/0.0, &output_data,
+          /*beta=*/beta, &output_data,
           /*leading dim of output=*/output_matrix.num_rows, output_stride,
           batch_size)
       .ok();
@@ -112,6 +114,7 @@ template <typename Element>
 bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
                          MatrixDescriptor rhs_matrix,
                          MatrixDescriptor output_matrix, double alpha,
+                         double beta,
                          se::blas::ComputationType computation_type,
                          se::blas::AlgorithmType algorithm, se::Stream* stream,
                          se::blas::ProfileResult* output_profile_result) {
@@ -138,7 +141,7 @@ bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
           /*alpha=*/static_cast<Element>(alpha), lhs_data,
           /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
           /*leading dim of RHS=*/rhs_matrix.num_rows,
-          /*beta=*/static_cast<Element>(0.0f), &output_data,
+          /*beta=*/static_cast<Element>(beta), &output_data,
           /*leading dim of output=*/output_matrix.num_rows, computation_type,
           algorithm, output_profile_result)
       .ok();
@@ -153,7 +156,7 @@ bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
 template <typename Element>
 StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
     MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-    MatrixDescriptor output_matrix, double alpha,
+    MatrixDescriptor output_matrix, double alpha, double beta,
     se::blas::ComputationType computation_type, se::Stream* stream) {
   std::vector<se::blas::AlgorithmType> algorithms;
   CHECK(stream->parent()->GetBlasGemmAlgorithms(&algorithms));
@@ -166,7 +169,7 @@ StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
     CHECK(DoGemmWithAlgorithm<Element>(lhs_matrix, rhs_matrix, output_matrix,
-                                       alpha, computation_type, algorithm,
+                                       alpha, beta, computation_type, algorithm,
                                        stream, &profile_result));
 
     if (profile_result.is_valid()) {
@@ -203,6 +206,8 @@ auto GetGemmFn(PrimitiveType type) -> decltype(&DoGemm<float>) {
       return &DoGemm<double>;
     case C64:
       return &DoGemm<std::complex<float>>;
+    case C128:
+      return &DoGemm<std::complex<double>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -218,6 +223,8 @@ auto GetGemmWithAlgorithmFn(PrimitiveType type)
       return &DoGemmWithAlgorithm<double>;
     case C64:
       return &DoGemmWithAlgorithm<std::complex<float>>;
+    case C128:
+      return &DoGemmWithAlgorithm<std::complex<double>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -232,6 +239,8 @@ auto GetGemmAutotuneFn(PrimitiveType type) -> decltype(&DoGemmAutotune<float>) {
       return &DoGemmAutotune<double>;
     case C64:
       return &DoGemmAutotune<std::complex<float>>;
+    case C128:
+      return &DoGemmAutotune<std::complex<double>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -252,6 +261,8 @@ se::blas::ComputationType GetBlasComputationType(PrimitiveType type) {
       return se::blas::ComputationType::kF64;
     case C64:
       return se::blas::ComputationType::kComplexF32;
+    case C128:
+      return se::blas::ComputationType::kComplexF64;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -263,8 +274,9 @@ DotDimensionNumbers GetDimensionNumbers(const HloInstruction& hlo_instruction) {
   }
   CHECK_EQ(hlo_instruction.opcode(), HloOpcode::kFusion);
   CHECK_EQ(hlo_instruction.fusion_kind(), HloInstruction::FusionKind::kOutput);
-  CHECK_EQ(hlo_instruction.fused_expression_root()->opcode(),
-           HloOpcode::kMultiply);
+  CHECK(hlo_instruction.fused_expression_root()->opcode() == HloOpcode::kAdd ||
+        hlo_instruction.fused_expression_root()->opcode() ==
+            HloOpcode::kMultiply);
   // Try to find the dot inside the output fusion node.
   const HloInstruction* dot =
       hlo_instruction.fused_expression_root()->operand(0);
@@ -282,8 +294,9 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
                      const BufferAllocation::Slice& rhs_buffer,
                      const BufferAllocation::Slice& output_buffer,
                      const Shape& lhs_shape, const Shape& rhs_shape,
-                     const Shape& output_shape, double alpha,
-                     const HloInstruction* hlo_instruction)
+                     const Shape& output_shape, double alpha, double beta,
+                     const HloInstruction* hlo_instruction,
+                     bool implements_whole_instruction)
     : Thunk(Kind::kGemm, hlo_instruction),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
@@ -291,7 +304,9 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       lhs_shape_(lhs_shape),
       rhs_shape_(rhs_shape),
       output_shape_(output_shape),
-      alpha_(alpha) {}
+      alpha_(alpha),
+      beta_(beta),
+      implements_whole_instruction_(implements_whole_instruction) {}
 
 Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
                                   se::Stream* stream,
@@ -308,8 +323,7 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   DotDimensionNumbers dim_nums = GetDimensionNumbers(*hlo_instruction());
   CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
            dim_nums.rhs_batch_dimensions_size());
-  CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
-           ShapeUtil::Rank(output_shape_));
+  CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2, output_shape_.rank());
 
   int64 row_dim = dim_nums.lhs_batch_dimensions_size();
   int64 col_dim = dim_nums.lhs_batch_dimensions_size() + 1;
@@ -386,7 +400,7 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     // TODO(b/112111608): Implement auto tune for batched gemm.
     if (batch_size != 1) {
       return GetGemmFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
-                                     alpha_, stream);
+                                     alpha_, beta_, stream);
     }
 
     auto thunk_name = [&] {
@@ -398,9 +412,27 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     auto autotune_it = autotune_results_.find(device_name);
     if (autotune_it == autotune_results_.end()) {
       VLOG(3) << "Starting autotune of GemmThunk " << thunk_name();
-      StatusOr<se::blas::AlgorithmType> best_algorithm =
-          GetGemmAutotuneFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
-                                          alpha_, computation_type, stream);
+
+      // If the output buffer already contains a bias then autotune into a
+      // scratch buffer. This avoids overwriting the bias buffer. The scratch
+      // buffer may contain arbitrary garbage values.
+      se::DeviceMemoryBase scratch_data = output_data;
+      std::unique_ptr<se::TemporaryDeviceMemory<char>> scratch_mem;
+      if (beta_ != 0.0) {
+        auto temp_status = stream->AllocateTemporaryArray<char>(
+            ShapeUtil::ByteSizeOf(output_shape_));
+        if (!temp_status.ok()) {
+          return false;
+        }
+        scratch_mem = std::move(temp_status).ValueOrDie();
+        scratch_data = scratch_mem->device_memory();
+      }
+      const MatrixDescriptor scratch_descriptor(
+          scratch_data, false, output_num_cols, output_num_rows, batch_size);
+
+      StatusOr<se::blas::AlgorithmType> best_algorithm = GetGemmAutotuneFn(
+          element_type)(lhs_matrix, rhs_matrix, scratch_descriptor, alpha_,
+                        beta_, computation_type, stream);
       autotune_it =
           autotune_results_.insert({device_name, best_algorithm}).first;
 
@@ -421,18 +453,19 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
       VLOG(2) << "Using algorithm " << algorithm
               << " chosen by autotuning on GemmThunk " << thunk_name();
       return GetGemmWithAlgorithmFn(element_type)(
-          lhs_matrix, rhs_matrix, output_matrix, alpha_, computation_type,
-          algorithm, stream,
+          lhs_matrix, rhs_matrix, output_matrix, alpha_, beta_,
+          computation_type, algorithm, stream,
           /*output_profile_result=*/nullptr);
     }
 
     // Autotune will fail when CUDA 8 and GPU sm_50 or older are used.
     // Use the older Gemm API in this case.
     return GetGemmFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
-                                   alpha_, stream);
+                                   alpha_, beta_, stream);
   };
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(
+      implements_whole_instruction_ ? hlo_instruction() : nullptr);
   bool launch_ok;
   if (LayoutUtil::Minor(output_shape_.layout(), row_dim) == 0) {
     launch_ok = launch(lhs_descriptor, rhs_descriptor,

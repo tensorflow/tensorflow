@@ -55,35 +55,25 @@ bool useCudaMemoryGuardAllocator() {
 
 }  // namespace
 
-GPUProcessState* GPUProcessState::instance_ = nullptr;
-
-/*static*/ GPUProcessState* GPUProcessState::singleton() {
-  if (instance_ == nullptr) {
-    instance_ = new GPUProcessState;
-  }
-  CHECK(instance_->process_state_);
-
-  return instance_;
+/*static*/ GPUProcessState* GPUProcessState::singleton(GPUProcessState* ps) {
+  static GPUProcessState* instance = ps ? ps : new GPUProcessState;
+  DCHECK((!ps) || (ps == instance))
+      << "Multiple calls to GPUProcessState with non-null ps";
+  return instance;
 }
 
 GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
-  CHECK(instance_ == nullptr);
-  instance_ = this;
   process_state_ = ProcessState::singleton();
-}
-
-// Normally the GPUProcessState singleton is never explicitly deleted.
-// This function is defined for debugging problems with the allocators.
-GPUProcessState::~GPUProcessState() {
-  CHECK_EQ(this, instance_);
-  instance_ = nullptr;
 }
 
 int GPUProcessState::BusIdForGPU(TfGpuId tf_gpu_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
   se::StreamExecutor* se =
       GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id).ValueOrDie();
-  return se->GetDeviceDescription().numa_node();
+  int numa_node = se->GetDeviceDescription().numa_node();
+  // bus_id must be non-negative.  If the numa_node is not known,
+  // use 0.
+  return numa_node >= 0 ? numa_node : 0;
 }
 
 Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
@@ -110,6 +100,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     PlatformGpuId platform_gpu_id;
     TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
     int bus_id = BusIdForGPU(tf_gpu_id);
+    DCHECK_GE(bus_id, 0);
     while (bus_id >= gpu_visitors_.size()) {
       gpu_visitors_.push_back({});
     }
@@ -166,7 +157,9 @@ Allocator* GPUProcessState::GetCUDAHostAllocator(int numa_node) {
       !process_state_->ProcessState::FLAGS_brain_mem_reg_cuda_dma) {
     return process_state_->GetCPUAllocator(numa_node);
   }
-  CHECK_GE(numa_node, 0);
+  if (numa_node == port::kNUMANoAffinity) {
+    numa_node = 0;
+  }
   {
     // Here we optimize the most common use case where cuda_host_allocators_
     // and cuda_al_ have already been populated and since we're only reading
@@ -260,6 +253,7 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
   CHECK(gpu_allocators_.empty())  // Crash OK
       << "AddGPUAllocVisitor must be called before "
          "first call to GetGPUAllocator.";
+  DCHECK_GE(bus_id, 0);
   while (bus_id >= static_cast<int64>(gpu_visitors_.size())) {
     gpu_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }

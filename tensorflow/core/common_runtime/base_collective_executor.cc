@@ -261,6 +261,13 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   });
 }
 
+void BaseCollectiveExecutor::CompleteParamsAsync(
+    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
+    StatusCallback done) {
+  cp->instance.gpu_ring_order = *gpu_ring_order_;
+  cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr, done);
+}
+
 Status BaseCollectiveExecutor::CreateCollective(
     const CollectiveParams& col_params,
     CollectiveImplementationInterface** col_impl) {
@@ -287,6 +294,39 @@ Status BaseCollectiveExecutor::CreateCollective(
           col_params.instance.data_type);
   }
   return status;
+}
+
+bool BaseCollectiveExecutor::CheckDependencies(
+    const CollectiveParams& col_params) {
+  for (int32 instance : col_params.instance.impl_details.dependencies) {
+    auto find_iter = launched_.find(instance);
+    if (find_iter == launched_.end() || find_iter->second != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void BaseCollectiveExecutor::WaitForDependencies(
+    const CollectiveParams& col_params) {
+  mutex_lock l(launch_mu_);
+  while (!CheckDependencies(col_params)) {
+    launch_cv_.wait(l);
+  }
+}
+
+void BaseCollectiveExecutor::Launched(const CollectiveParams& col_params) {
+  mutex_lock l(launch_mu_);
+  if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
+    const string& task_name =
+        col_params.instance.task_names[col_params.default_rank];
+    const int32 num_devices =
+        col_params.instance.num_devices_per_task.at(task_name);
+    launched_[col_params.instance.instance_key] = num_devices;
+  }
+  if (--launched_[col_params.instance.instance_key] == 0) {
+    launch_cv_.notify_all();
+  }
 }
 
 }  // namespace tensorflow

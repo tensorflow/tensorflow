@@ -180,7 +180,7 @@ class Barrier : public ResourceBase {
         // SQSS is closed, nothing is left in the incomplete set,
         // the queue is not already marked as closed, and (most
         // importantly), the queue has entries in it.
-        [this, ctx, callback, component_index]() {
+        [this, ctx, callback]() {
           if (!ctx->status().ok()) {
             callback();
             return;
@@ -300,7 +300,7 @@ class Barrier : public ResourceBase {
     ready_queue_->Unref();
   }
 
-  string DebugString() override { return "A barrier"; }
+  string DebugString() const override { return "A barrier"; }
 
  protected:
   template <typename T>

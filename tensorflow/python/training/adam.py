@@ -29,7 +29,7 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.AdamOptimizer")
+@tf_export(v1=["train.AdamOptimizer"])
 class AdamOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adam algorithm.
 
@@ -39,7 +39,7 @@ class AdamOptimizer(optimizer.Optimizer):
 
   def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
                use_locking=False, name="Adam"):
-    """Construct a new Adam optimizer.
+    r"""Construct a new Adam optimizer.
 
     Initialization:
 
@@ -75,23 +75,20 @@ class AdamOptimizer(optimizer.Optimizer):
 
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.
-      beta1: A float value or a constant float tensor.
-        The exponential decay rate for the 1st moment estimates.
-      beta2: A float value or a constant float tensor.
-        The exponential decay rate for the 2nd moment estimates.
+      beta1: A float value or a constant float tensor. The exponential decay
+        rate for the 1st moment estimates.
+      beta2: A float value or a constant float tensor. The exponential decay
+        rate for the 2nd moment estimates.
       epsilon: A small constant for numerical stability. This epsilon is
         "epsilon hat" in the Kingma and Ba paper (in the formula just before
         Section 2.1), not the epsilon in Algorithm 1 of the paper.
       use_locking: If True use locks for update operations.
       name: Optional name for the operations created when applying gradients.
-        Defaults to "Adam".
-
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate`, `beta1`, `beta2`, and
-    `epsilon` can each be a callable that takes no arguments and returns the
-    actual value to use. This can be useful for changing these values across
-    different invocations of optimizer functions.
-    @end_compatibility
+        Defaults to "Adam".  @compatibility(eager) When eager execution is
+        enabled, `learning_rate`, `beta1`, `beta2`, and `epsilon` can each be a
+        callable that takes no arguments and returns the actual value to use.
+        This can be useful for changing these values across different
+        invocations of optimizer functions. @end_compatibility
     """
     super(AdamOptimizer, self).__init__(use_locking, name)
     self._lr = learning_rate

@@ -143,6 +143,33 @@ Status Relu6GradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Relu6", Relu6GradHelper);
 
+Status LeakyReluGradHelper(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
+  float alpha;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "alpha", &alpha));
+  internal::LeakyReluGrad::Attrs attrs;
+  auto dx = internal::LeakyReluGrad(scope, grad_inputs[0], op.input(0),
+                                    attrs.Alpha(alpha));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("LeakyRelu", LeakyReluGradHelper);
+
+Status LeakyReluGradGradHelper(const Scope& scope, const Operation& op,
+                               const std::vector<Output>& grad_inputs,
+                               std::vector<Output>* grad_outputs) {
+  float alpha;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "alpha", &alpha));
+  internal::LeakyReluGrad::Attrs attrs;
+  auto dx = internal::LeakyReluGrad(scope, grad_inputs[0], op.input(1),
+                                    attrs.Alpha(alpha));
+  grad_outputs->push_back(dx);
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("LeakyReluGrad", LeakyReluGradGradHelper);
+
 Status EluGradHelper(const Scope& scope, const Operation& op,
                      const std::vector<Output>& grad_inputs,
                      std::vector<Output>* grad_outputs) {

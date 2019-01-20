@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Proximal stochastic dual coordinate ascent optimizer for linear models."""
+# pylint: disable=line-too-long
+"""Proximal stochastic dual coordinate ascent optimizer for linear models (deprecated).
+
+This module and all its submodules are deprecated. To UPDATE or USE linear
+optimizers, please check its latest version in core:
+tensorflow_estimator/python/estimator/canned/linear_optimizer/.
+"""
+# pylint: enable=line-too-long
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,9 +29,11 @@ import collections
 from six.moves import range
 
 from tensorflow.contrib.linear_optimizer.python.ops.sharded_mutable_dense_hashtable import ShardedMutableDenseHashTable
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.ops import internal_convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
@@ -38,6 +47,7 @@ from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import log_poisson_loss
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.summary import summary
+from tensorflow.python.util import deprecation
 
 __all__ = ['SdcaModel']
 
@@ -46,7 +56,7 @@ __all__ = ['SdcaModel']
 class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
 
-    Loss functions supported:
+  Loss functions supported:
 
      * Binary logistic loss
      * Squared loss
@@ -107,6 +117,10 @@ class SdcaModel(object):
     ```
   """
 
+  @deprecation.deprecated(
+      None, 'This class is deprecated. To UPDATE or USE linear optimizers, '
+      'please check its latest version in core: '
+      'tensorflow_estimator/python/estimator/canned/linear_optimizer/.')
   def __init__(self, examples, variables, options):
     """Create a new sdca optimizer."""
 
@@ -151,7 +165,8 @@ class SdcaModel(object):
         default_value=[0.0, 0.0, 0.0, 0.0],
         # SdcaFprint never returns 0 or 1 for the low64 bits, so this a safe
         # empty_key (that will never collide with actual payloads).
-        empty_key=[0, 0])
+        empty_key=[0, 0],
+        deleted_key=[1, 1])
 
     summary.scalar('approximate_duality_gap', self.approximate_duality_gap())
     summary.scalar('examples_seen', self._hashtable.size())
@@ -202,7 +217,7 @@ class SdcaModel(object):
             with ops.colocate_with(v):
               # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109
               # is fixed.
-              slot_var = var_ops.Variable(
+              slot_var = var_ops.VariableV1(
                   initial_value=array_ops.zeros_like(v.initialized_value(),
                                                      dtypes.float32),
                   name=v.op.name + '_unshrinked/SDCAOptimizer')
@@ -214,7 +229,7 @@ class SdcaModel(object):
             # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109 is
             # fixed.
             self._slots['unshrinked_' + name].append(
-                var_ops.Variable(
+                var_ops.VariableV1(
                     array_ops.zeros_like(var.initialized_value(),
                                          dtypes.float32),
                     name=var.op.name + '_unshrinked/SDCAOptimizer'))
@@ -425,14 +440,15 @@ class SdcaModel(object):
           dim_0_size = self._get_first_dimension_size_statically(
               w, num_partitions)
 
-          if dim_0_size.value:
-            num_total_ids = constant_op.constant(dim_0_size.value,
-                                                 flat_ids.dtype)
+          if tensor_shape.dimension_value(dim_0_size):
+            num_total_ids = constant_op.constant(
+                tensor_shape.dimension_value(dim_0_size),
+                flat_ids.dtype)
           else:
             dim_0_sizes = []
             for p in range(num_partitions):
-              if w[p].get_shape()[0].value is not None:
-                dim_0_sizes.append(w[p].get_shape()[0].value)
+              if tensor_shape.dimension_value(w[p].shape[0]) is not None:
+                dim_0_sizes.append(tensor_shape.dimension_value(w[p].shape[0]))
               else:
                 with ops.colocate_with(w[p]):
                   dim_0_sizes.append(array_ops.shape(w[p])[0])
@@ -485,24 +501,44 @@ class SdcaModel(object):
         sparse_weights.append(batch_gathered_weights)
 
       # pylint: disable=protected-access
-      esu, sfw, dfw = gen_sdca_ops.sdca_optimizer(
-          sparse_example_indices,
-          sparse_feature_indices,
-          sparse_features_values,
-          self._convert_n_to_tensor(self._examples['dense_features']),
-          internal_convert_to_tensor(self._examples['example_weights']),
-          internal_convert_to_tensor(self._examples['example_labels']),
-          sparse_indices,
-          sparse_weights,
-          self._convert_n_to_tensor(self._slots[
-              'unshrinked_dense_features_weights']),
-          example_state_data,
-          loss_type=self._options['loss_type'],
-          l1=self._options['symmetric_l1_regularization'],
-          l2=self._symmetric_l2_regularization(),
-          num_loss_partitions=self._num_loss_partitions(),
-          num_inner_iterations=1,
-          adaptative=self._adaptive())
+      if compat.forward_compatible(year=2018, month=10, day=30):
+        esu, sfw, dfw = gen_sdca_ops.sdca_optimizer_v2(
+            sparse_example_indices,
+            sparse_feature_indices,
+            sparse_features_values,
+            self._convert_n_to_tensor(self._examples['dense_features']),
+            internal_convert_to_tensor(self._examples['example_weights']),
+            internal_convert_to_tensor(self._examples['example_labels']),
+            sparse_indices,
+            sparse_weights,
+            self._convert_n_to_tensor(self._slots[
+                'unshrinked_dense_features_weights']),
+            example_state_data,
+            loss_type=self._options['loss_type'],
+            l1=self._options['symmetric_l1_regularization'],
+            l2=self._symmetric_l2_regularization(),
+            num_loss_partitions=self._num_loss_partitions(),
+            num_inner_iterations=1,
+            adaptive=self._adaptive())
+      else:
+        esu, sfw, dfw = gen_sdca_ops.sdca_optimizer(
+            sparse_example_indices,
+            sparse_feature_indices,
+            sparse_features_values,
+            self._convert_n_to_tensor(self._examples['dense_features']),
+            internal_convert_to_tensor(self._examples['example_weights']),
+            internal_convert_to_tensor(self._examples['example_labels']),
+            sparse_indices,
+            sparse_weights,
+            self._convert_n_to_tensor(self._slots[
+                'unshrinked_dense_features_weights']),
+            example_state_data,
+            loss_type=self._options['loss_type'],
+            l1=self._options['symmetric_l1_regularization'],
+            l2=self._symmetric_l2_regularization(),
+            num_loss_partitions=self._num_loss_partitions(),
+            num_inner_iterations=1,
+            adaptative=self._adaptive())
       # pylint: enable=protected-access
 
       with ops.control_dependencies([esu]):

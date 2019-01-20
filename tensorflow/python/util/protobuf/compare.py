@@ -63,6 +63,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import difflib
 
 import six
 
@@ -101,10 +102,19 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
     if normalize_numbers:
       NormalizeNumberFields(pb)
 
-  self.assertMultiLineEqual(
-      text_format.MessageToString(a, descriptor_pool=pool),
-      text_format.MessageToString(b, descriptor_pool=pool),
-      msg=msg)
+  a_str = text_format.MessageToString(a, descriptor_pool=pool)
+  b_str = text_format.MessageToString(b, descriptor_pool=pool)
+
+  # Some Python versions would perform regular diff instead of multi-line
+  # diff if string is longer than 2**16. We substitute this behavior
+  # with a call to unified_diff instead to have easier-to-read diffs.
+  # For context, see: https://bugs.python.org/issue11763.
+  if len(a_str) < 2**16 and len(b_str) < 2**16:
+    self.assertMultiLineEqual(a_str, b_str, msg=msg)
+  else:
+    diff = '\n' + ''.join(difflib.unified_diff(a_str.splitlines(True),
+                                               b_str.splitlines(True)))
+    self.fail('%s : %s' % (msg, diff))
 
 
 def NormalizeNumberFields(pb):

@@ -34,10 +34,13 @@ namespace ops = ::tensorflow::ops;
 
 class SegmentTest : public ::testing::Test {
  protected:
-  std::function<bool(const tensorflow::Node*)> MakeCandidateFn(
+  std::function<Status(const tensorflow::Node*)> MakeCandidateFn(
       const std::set<string>& node_names) {
-    return [node_names](const tensorflow::Node* node) -> bool {
-      return node_names.find(node->name()) != node_names.end();
+    return [node_names](const tensorflow::Node* node) -> Status {
+      if (node_names.find(node->name()) != node_names.end()) {
+        return Status::OK();
+      }
+      return errors::NotFound("");
     };
   }
 
@@ -72,7 +75,10 @@ class SegmentTest : public ::testing::Test {
                        const std::vector<std::set<string>>& expected_segments) {
     EXPECT_EQ(expected_segments.size(), segments.size());
     for (int i = 0; i < segments.size(); ++i) {
-      const auto& segment_node_names = segments[i].first;
+      std::set<string> segment_node_names;
+      for (const Node* node : segments[i].first) {
+        segment_node_names.insert(node->name());
+      }
       const auto& expected = expected_segments[i];
       for (const auto& name : expected) {
         EXPECT_TRUE(segment_node_names.count(name))

@@ -38,7 +38,7 @@ message RewriterConfig {
   }
 
   // Enum controlling the number of times to run optimizers. The default is to
-  // run them once.
+  // run them twice.
   enum NumIterationsType {
     DEFAULT_NUM_ITERS = 0;
     ONE = 1;
@@ -128,10 +128,19 @@ message RewriterConfig {
   // "gradients/", the default, it will match node name "gradients/foo",
   // "foo/gradients/bar", but not "foo_gradients/"
   string memory_optimizer_target_node_name_scope = 6;
+  // Maximum number of milliseconds to spend optimizing a single graph before
+  // timing out. If equal to 0 the system picks a default (currently 5 minutes).
+  // If less than 0 the optimizer will never time out.
+  int64 meta_optimizer_timeout_ms = 20;
 
   // Configures AutoParallel optimization passes either through the
   // meta-optimizer or when manually specified through the optimizers field.
   AutoParallelOptions auto_parallel = 5;
+
+  // If true, any optimization pass failing will cause the MetaOptimizer to
+  // stop with an error. By default - or when set to false, failing passes are
+  // skipped silently.
+  bool fail_on_optimizer_errors = 21;
 
   ScopedAllocatorOptions scoped_allocator_opts = 16;
 

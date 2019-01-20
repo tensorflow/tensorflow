@@ -25,6 +25,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
@@ -32,11 +33,12 @@ from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.models.Sequential', 'keras.Sequential')
+@keras_export('keras.models.Sequential', 'keras.Sequential')
 class Sequential(Model):
   """Linear stack of layers.
 
@@ -85,8 +87,8 @@ class Sequential(Model):
   model.add(Dense(32))
   model.weights  # returns list of length 4
 
-  When using the delayed-build pattern (no input shape specified), you can
-  choose to manually build your model by calling `build(batch_input_shape)`:
+  # When using the delayed-build pattern (no input shape specified), you can
+  # choose to manually build your model by calling `build(batch_input_shape)`:
   model = Sequential()
   model.add(Dense(32))
   model.add(Dense(32))
@@ -101,6 +103,8 @@ class Sequential(Model):
     self.supports_masking = True
     self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
+
+    self._layer_call_argspecs = {}
 
     # Add to the model any layers passed to the constructor.
     if layers:
@@ -118,6 +122,10 @@ class Sequential(Model):
     if layers and isinstance(layers[0], InputLayer):
       return layers[1:]
     return layers[:]
+
+  @property
+  def dynamic(self):
+    return any(layer.dynamic for layer in self.layers)
 
   @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
@@ -143,10 +151,10 @@ class Sequential(Model):
     if not self._layers:
       if isinstance(layer, InputLayer):
         # Corner case where the user passes an InputLayer layer via `add`.
-        assert len(layer._inbound_nodes[-1].output_tensors) == 1
+        assert len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) == 1
         set_inputs = True
       else:
-        batch_shape, dtype = get_input_shape_and_dtype(layer)
+        batch_shape, dtype = training_utils.get_input_shape_and_dtype(layer)
         if batch_shape:
           # Instantiate an input layer.
           x = Input(
@@ -161,12 +169,14 @@ class Sequential(Model):
 
       if set_inputs:
         # If an input layer (placeholder) is available.
-        if len(layer._inbound_nodes[-1].output_tensors) != 1:
+        if len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) != 1:
           raise ValueError('All layers in a Sequential model '
                            'should have a single output tensor. '
                            'For multi-output layers, '
                            'use the functional API.')
-        self.outputs = [layer._inbound_nodes[-1].output_tensors[0]]
+        self.outputs = [
+            nest.flatten(layer._inbound_nodes[-1].output_tensors)[0]
+        ]
         self.inputs = layer_utils.get_source_inputs(self.outputs[0])
 
     elif self.outputs:
@@ -187,6 +197,8 @@ class Sequential(Model):
     if self._layers:
       self._track_layers(self._layers)
 
+    self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+
   @checkpointable.no_automatic_dependency_tracking
   def pop(self):
     """Removes the last layer in the model.
@@ -197,7 +209,8 @@ class Sequential(Model):
     if not self.layers:
       raise TypeError('There are no layers in the model.')
 
-    self._layers.pop()
+    layer = self._layers.pop()
+    self._layer_call_argspecs.pop(layer)
     if not self.layers:
       self.outputs = None
       self.inputs = None
@@ -208,20 +221,16 @@ class Sequential(Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
+  @base_layer.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
     else:
       if input_shape is None:
         raise ValueError('You must provide an `input_shape` argument.')
+      input_shape = tuple(input_shape)
       self._build_input_shape = input_shape
-      shape = input_shape
-      for layer in self.layers:
-        if not layer.built:
-          with ops.name_scope(layer._name_scope()):
-            layer.build(shape)
-          layer.built = True
-        shape = layer.compute_output_shape(shape)
+      super(Sequential, self).build(input_shape)
     self.built = True
 
   def call(self, inputs, training=None, mask=None):
@@ -233,28 +242,50 @@ class Sequential(Model):
     return outputs
 
   def _call_and_compute_mask(self, inputs, training=None, mask=None):
-    if not self.built:
-      self.build(inputs.shape)
+    if not self.built and self._is_graph_network:
+      self._init_graph_network(self.inputs, self.outputs, name=self.name)
 
-    x = inputs
+    outputs = inputs  # handle the corner case where self.layers is empty
     for layer in self.layers:
+      # During each iteration, `inputs` are the inputs to `layer`, and `outputs`
+      # are the outputs of `layer` applied to `inputs`. At the end of each
+      # iteration `inputs` is set to `outputs` to prepare for the next layer.
       kwargs = {}
-      if 'mask' in tf_inspect.getfullargspec(layer.call).args:
+      argspec = self._layer_call_argspecs[layer].args
+      if 'mask' in argspec:
         kwargs['mask'] = mask
-      if 'training' in tf_inspect.getfullargspec(layer.call).args:
+      if 'training' in argspec:
         kwargs['training'] = training
 
       if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
-        x, mask = layer._call_and_compute_mask(x, **kwargs)
+        outputs, mask = layer._call_and_compute_mask(inputs, **kwargs)
       else:
-        x = layer.call(x, **kwargs)
+        if not layer.built:
+          # Build layer if applicable.
+          with ops.name_scope(layer._name_scope()):
+            layer._maybe_build(inputs)
+          layer.built = True
         if layer.supports_masking:
-          mask = layer.compute_mask(x, mask)
+          mask = layer.compute_mask(inputs, mask)
         else:
           mask = None
+
+        if context.executing_eagerly():
+          # __call__ handles activity regularization.
+          outputs = layer(inputs, **kwargs)
+        elif layer.dynamic:
+          outputs = layer._symbolic_call(inputs)
+          layer._handle_activity_regularization(inputs, outputs)
+        else:
+          outputs = layer.call(inputs, **kwargs)
+          layer._handle_activity_regularization(inputs, outputs)
+
       if not context.executing_eagerly():
-        x._keras_mask = mask
-    return x, mask
+        outputs._keras_mask = mask
+
+      # `outputs` will be the inputs to the next layer.
+      inputs = outputs
+    return outputs, mask
 
   def compute_output_shape(self, input_shape):
     shape = input_shape
@@ -308,6 +339,10 @@ class Sequential(Model):
     else:
       return (proba > 0.5).astype('int32')
 
+  def save(self, filepath, overwrite=True, include_optimizer=True):
+    from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
+    save_model(self, filepath, overwrite, include_optimizer)
+
   def get_config(self):
     layer_configs = []
     for layer in self.layers:
@@ -340,39 +375,13 @@ class Sequential(Model):
       model.add(layer)
     if not model.inputs and build_input_shape:
       model.build(build_input_shape)
+    if not model._is_graph_network:
+      # Still needs to be built when passed input data.
+      model.built = False
     return model
 
-
-def get_input_shape_and_dtype(layer):
-  """Retrieve input shape and input dtype of layer if applicable.
-
-  Args:
-    layer: Layer (or model) instance.
-
-  Returns:
-    Tuple (input_shape, input_dtype). Both could be None if the layer
-      does not have a defined input shape.
-
-  Raises:
-    ValueError: in case an empty Sequential or Graph Network is passed.
-  """
-  if ((isinstance(layer, Model) and layer._is_graph_network)
-      or isinstance(layer, Sequential)):
-    # We were passed a model as first layer.
-    # This requires a specific way to figure out the
-    # input shape and dtype.
-    if not layer.layers:
-      raise ValueError('Cannot add an empty model '
-                       'to a `Sequential` model.')
-    # In case of nested models: recover the first layer
-    # of the deepest model to infer input shape and dtype.
-    layer = layer.layers[0]
-    while ((isinstance(layer, Model) and layer._is_graph_network)
-           or isinstance(layer, Sequential)):
-      layer = layer.layers[0]
-
-  if hasattr(layer, '_batch_input_shape'):
-    batch_shape = layer._batch_input_shape
-    dtype = layer.dtype
-    return batch_shape, dtype
-  return None, None
+  @property
+  def input_spec(self):
+    if self.layers and hasattr(self.layers[0], 'input_spec'):
+      return self.layers[0].input_spec
+    return None

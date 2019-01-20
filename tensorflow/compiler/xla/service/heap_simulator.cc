@@ -199,7 +199,7 @@ Status HeapSimulator::RunComputation(
 
       // If the buffer has no users and isn't an entry parameter or output, it
       // must be a dead value.
-      if (live_buffers.count(buffer) == 0) {
+      if (!live_buffers.contains(buffer)) {
         dead_buffers_to_free.push_back(buffer);
       }
     }
@@ -225,10 +225,10 @@ Status HeapSimulator::RunComputation(
       }
     }
     // Sort to get a deterministic iteration order.
-    std::sort(operand_buffers_to_free.begin(), operand_buffers_to_free.end(),
-              [](const BufferValue* x, const BufferValue* y) {
-                return x->id() < y->id();
-              });
+    absl::c_sort(operand_buffers_to_free,
+                 [](const BufferValue* x, const BufferValue* y) {
+                   return x->id() < y->id();
+                 });
 
     // Allocate buffers defined by this instruction.  This is the latest point
     // that we can allocate; right before the buffer is first used.  This must
@@ -240,6 +240,7 @@ Status HeapSimulator::RunComputation(
 
     // Make sure each buffer get reused at most once.
     flat_hash_set<const BufferValue*> reused_buffers;
+    int64 alloc_size_by_instruction = 0;
     for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
@@ -252,7 +253,7 @@ Status HeapSimulator::RunComputation(
       bool shared = false;
       if (options_.may_reuse_operand_buffers) {
         for (const BufferValue* operand_buffer : operand_buffers_to_free) {
-          if (reused_buffers.count(operand_buffer) != 0) {
+          if (reused_buffers.contains(operand_buffer)) {
             continue;
           }
           if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
@@ -272,14 +273,15 @@ Status HeapSimulator::RunComputation(
 
       if (!shared) {
         VLOG(3) << "  Allocating: " << buffer->ToString();
+        alloc_size_by_instruction += size_fn_(*buffer);
         Alloc(buffer, instruction);
       }
     }
     // Account for the memory used by subcomputations when estimating the
     // current heap size.
     if (memory_by_computation_ != nullptr) {
-      algorithm_->AccountForSubcomputationMemory(instruction,
-                                                 *memory_by_computation_);
+      algorithm_->AccountForSubcomputationMemory(
+          instruction, alloc_size_by_instruction, *memory_by_computation_);
     }
 
     // If all computations in the module have been scheduled, we can save memory
@@ -333,10 +335,9 @@ Status HeapSimulator::RunComputation(
     to_free.push_back(buffer);
   }
 
-  std::sort(to_free.begin(), to_free.end(),
-            [](const BufferValue* x, const BufferValue* y) {
-              return x->id() < y->id();
-            });
+  absl::c_sort(to_free, [](const BufferValue* x, const BufferValue* y) {
+    return x->id() < y->id();
+  });
   for (const BufferValue* buffer : to_free) {
     VLOG(3) << "Freeing pending: " << buffer->ToString();
     Free(buffer, root);
@@ -372,23 +373,21 @@ bool HeapSimulator::IgnoreBuffer(const BufferValue* buffer) const {
     return true;
   }
   return options_.buffers_to_assign != nullptr &&
-         options_.buffers_to_assign->count(buffer) == 0;
+         !options_.buffers_to_assign->contains(buffer);
 }
 
 // Alloc always calls the underlying heap algorithm.
 void HeapSimulator::Alloc(const BufferValue* buffer,
                           const HloInstruction* instruction) {
-  CHECK(allocated_buffers_.count(buffer) == 0)
+  CHECK(!allocated_buffers_.contains(buffer))
       << "Alloc called on allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "Alloc called on freed buffer: " << *buffer;
 
   allocated_buffers_.insert(buffer);
   const int64 size = size_fn_(*buffer);
-  const HloInstruction* instruction_to_calc_aliasing =
-      memory_by_computation_ == nullptr ? nullptr : instruction;
-  algorithm_->Alloc(buffer, size, instruction_to_calc_aliasing);
-  no_fragmentation_stats_->Alloc(buffer, size, instruction_to_calc_aliasing);
+  algorithm_->Alloc(buffer, size);
+  no_fragmentation_stats_->Alloc(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
                  nullptr);
 }
@@ -411,9 +410,9 @@ void HeapSimulator::Free(const BufferValue* buffer,
     buffer = group->canonical;
   }
 
-  CHECK(allocated_buffers_.count(buffer) > 0)
+  CHECK(allocated_buffers_.contains(buffer))
       << "Free called on non-allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "Free called on freed buffer: " << *buffer;
 
   freed_buffers_.insert(buffer);
@@ -433,11 +432,11 @@ void HeapSimulator::ShareBuffer(const BufferValue* buffer,
                                 const HloInstruction* instruction) {
   CHECK_LE(size_fn_(*buffer), size_fn_(*shared))
       << "ShareBuffer oversized buffer" << *buffer << " shared: " << *shared;
-  CHECK(allocated_buffers_.count(buffer) == 0)
+  CHECK(!allocated_buffers_.contains(buffer))
       << "ShareBuffer called on allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "ShareBuffer called on freed buffer: " << *buffer;
-  CHECK(freed_buffers_.count(shared) == 0)
+  CHECK(!freed_buffers_.contains(shared))
       << "ShareBuffer called on freed shared buffer: " << *shared;
 
   const BufferValue* canonical = nullptr;
@@ -452,7 +451,7 @@ void HeapSimulator::ShareBuffer(const BufferValue* buffer,
   } else {
     // The 'shared' buffer doesn't have a group; it must be the canonical.  Add
     // both 'buffer' and 'shared' to a new group.
-    CHECK(allocated_buffers_.count(shared) > 0)
+    CHECK(allocated_buffers_.contains(shared))
         << "ShareBuffer called on non-allocated shared buffer: " << *shared;
     auto group = std::make_shared<SharedGroup>();
     canonical = shared;
@@ -526,20 +525,8 @@ void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
   }
 }
 
-void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size,
-                                     const HloInstruction* instruction) {
-  // The output buffer of while/call/conditional is always aliased with the
-  // output buffer of the root instruction in the body. Don't double count.
-  if (instruction == nullptr ||
-      (instruction->opcode() != HloOpcode::kWhile &&
-       instruction->opcode() != HloOpcode::kCall &&
-       instruction->opcode() != HloOpcode::kConditional)) {
-    Alloc(buffer, size);
-  }
-}
-
 void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
-    const HloInstruction* instruction,
+    const HloInstruction* instruction, int64 alloc_size_by_instruction,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   // We only count the memory usage of the largest subcomputation, instead of
@@ -553,6 +540,14 @@ void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
         max_subcomputation_bytes = subcomputation_bytes;
       }
     }
+  }
+  if (max_subcomputation_bytes > 0 &&
+      (instruction->opcode() == HloOpcode::kWhile ||
+       instruction->opcode() == HloOpcode::kCall ||
+       instruction->opcode() == HloOpcode::kConditional)) {
+    // The output buffer of while/call/conditional is always aliased with the
+    // output buffer of the root instruction in the body. Don't double count.
+    max_subcomputation_bytes -= alloc_size_by_instruction;
   }
   max_heap_size_ =
       std::max(max_heap_size_, current_heap_size_ + max_subcomputation_bytes);
@@ -600,7 +595,7 @@ void DecreasingSizeRunsHeap::CallAndDrainRun() {
   }
 
   // Call ops in the run sorted by decreasing size, breaking ties by buffer id.
-  std::sort(run_.begin(), run_.end(), [](const Op& a, const Op& b) {
+  absl::c_sort(run_, [](const Op& a, const Op& b) {
     if (a.size != b.size) {
       return a.size > b.size;
     }
@@ -870,23 +865,23 @@ HeapSimulator::Result GlobalDecreasingSizeBestFitHeap::Finish() {
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
   }
-  std::sort(sorted_buffer_intervals.begin(), sorted_buffer_intervals.end(),
-            [](const BufferInterval& x, const BufferInterval& y) {
-              if (x.size != y.size) {
-                return x.size > y.size;
-              }
-              if (x.end - x.start != y.end - y.start) {
-                return x.end - x.start > y.end - y.start;
-              }
-              return x.buffer->id() < y.buffer->id();
-            });
+  absl::c_sort(sorted_buffer_intervals,
+               [](const BufferInterval& x, const BufferInterval& y) {
+                 if (x.size != y.size) {
+                   return x.size > y.size;
+                 }
+                 if (x.end - x.start != y.end - y.start) {
+                   return x.end - x.start > y.end - y.start;
+                 }
+                 return x.buffer->id() < y.buffer->id();
+               });
 
   BufferIntervalTree interval_tree(sorted_buffer_intervals.size());
   for (auto& buffer_interval : sorted_buffer_intervals) {
     auto chunks_overlapping_in_time = interval_tree.ChunksOverlappingInTime(
         buffer_interval.start, buffer_interval.end);
-    std::sort(
-        chunks_overlapping_in_time.begin(), chunks_overlapping_in_time.end(),
+    absl::c_sort(
+        chunks_overlapping_in_time,
         [](const Chunk& x, const Chunk& y) { return x.offset < y.offset; });
 
     // Find the minimum free chunk that can hold this buffer.

@@ -62,9 +62,14 @@ class Placer {
   // Graph "graph" (nodes in which may or may not be assigned) on the
   // given DeviceSet "devices".
   //
-  // The "graph", and "devices" pointer arguments
-  // are borrowed by this Placer, and must outlive it.
-  Placer(Graph* graph, const DeviceSet* devices, const SessionOptions* options);
+  // If non-null, default_device is used where possible as a placement for nodes
+  // which do not have a device specified, ahead of other devices which would
+  // otherwise be higher priority.
+  //
+  // The "graph", "devices", and "default_device" pointer arguments are borrowed
+  // by this Placer, and must outlive it.
+  Placer(Graph* graph, const DeviceSet* devices, const SessionOptions* options,
+         const Device* default_device);
 
   Placer(Graph* graph, const DeviceSet* devices);
 
@@ -92,6 +97,7 @@ class Placer {
   const DeviceSet* const devices_;  // Not owned.
   const SessionOptions* options_;   // Not owned.
   const bool log_device_placement_;
+  const Device* default_device_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(Placer);
 };

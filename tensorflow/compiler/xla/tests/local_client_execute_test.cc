@@ -205,7 +205,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_array, &y_array});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(3, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);
@@ -233,7 +233,7 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_array, &y_array});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);
@@ -311,7 +311,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_buffer, &y_buffer});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);
@@ -842,7 +842,8 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
        LiteralUtil::CreateR0<int64>(123456789000LL)}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
+// Disabled on interpreter backend since infeed HLO is unsupported.
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedTest)) {
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);
@@ -867,7 +868,8 @@ XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
   LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, result);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
+// Disabled on interpreter backend since infeed/outfeed HLOs are unsupported.
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);

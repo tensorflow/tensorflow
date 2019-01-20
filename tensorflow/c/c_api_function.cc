@@ -392,26 +392,26 @@ Status ProcessInputs(
     EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   input_tensors->reserve(ninputs);
   for (int i = 0; i < ninputs; ++i) {
-    const Node& node = inputs[i].oper->node;
+    Node* node = &inputs[i].oper->node;
     int idx = inputs[i].index;
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        fn_body->graph.IsValidOutputTensor(&node, idx),
+        fn_body->graph.IsValidOutputTensor(node, idx),
         "Encountered while processing input ", i, " into function '", fn_name,
         "'");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(&node, idx),
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(node, idx),
                                     "Encountered while processing input ", i,
                                     " into function '", fn_name, "'");
 
-    input_tensors->emplace_back(&node, idx);
+    input_tensors->emplace_back(node, idx);
 
-    const auto& iter = input_nodes->find(&node);
+    const auto& iter = input_nodes->find(node);
     if (iter == input_nodes->end()) {
-      input_nodes->insert({&node, {idx}});
+      input_nodes->insert({node, {idx}});
     } else {
       auto& indices = iter->second;
       if (std::find(indices.begin(), indices.end(), idx) != indices.end()) {
-        return InvalidArgument("TF_Output ", node.name(), ":", idx,
+        return InvalidArgument("TF_Output ", node->name(), ":", idx,
                                " appears more than once in the input list");
       }
       indices.push_back(idx);
@@ -428,16 +428,16 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
     EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   output_tensors->reserve(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    const Node& node = outputs[i].oper->node;
+    Node* node = &outputs[i].oper->node;
     int idx = outputs[i].index;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        fn_body->graph.IsValidOutputTensor(&node, idx),
+        fn_body->graph.IsValidOutputTensor(node, idx),
         "Encountered while processing output ", i, " from function '", fn_name,
         "'");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(&node, idx),
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(node, idx),
                                     "Encountered while creating function '",
                                     fn_name, "'");
-    output_tensors->emplace_back(&node, idx);
+    output_tensors->emplace_back(node, idx);
   }
   return Status::OK();
 }
