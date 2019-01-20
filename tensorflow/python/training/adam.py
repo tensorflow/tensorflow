@@ -102,9 +102,6 @@ class AdamOptimizer(optimizer.Optimizer):
     self._beta2_t = None
     self._epsilon_t = None
 
-    # Created in SparseApply if needed.
-    self._updated_lr = None
-
   def _get_beta_accumulators(self):
     with ops.init_scope():
       if context.executing_eagerly():
