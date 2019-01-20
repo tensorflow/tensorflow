@@ -60,9 +60,8 @@ class CheckpointUtilsWithDistributionStrategyTest(
   def _get_test_object(self):
     checkpoint_dir = self.get_temp_dir()
     with self.cached_session() as session:
-      v1, v2, v3, v4 = checkpoint_utils_test._create_checkpoints(
-          session, checkpoint_dir)
-    return checkpoint_dir, v1, v2, v3, v4
+      v1, v2 = _create_checkpoints(session, checkpoint_dir)
+    return checkpoint_dir, v1, v2
 
   @combinations.generate(combinations.combine(
       distribution=[combinations.default_strategy,
@@ -74,9 +73,9 @@ class CheckpointUtilsWithDistributionStrategyTest(
       in_replica_mode=[True, False],
       mode=["graph"]))
   def testInitFromCheckpoint(self, distribution, in_replica_mode):
-    checkpoint_dir, v1_value, v2_value, _, _ = self._get_test_object()
+    checkpoint_dir, v1_value, v2_value = self._get_test_object()
 
-    def init_from_constant_name_and_verify(g):
+    def init_and_verify(g):
       v1 = variable_scope.get_variable("new_var1", [1, 10])
       v2 = variable_scope.get_variable(
           "new_var2", [10, 10],
@@ -91,7 +90,25 @@ class CheckpointUtilsWithDistributionStrategyTest(
         self.assertAllEqual(v1_value, self.evaluate(v1))
         self.assertAllEqual(v2_value, self.evaluate(v2))
 
-    def init_from_new_name_and_verify(g):
+    with ops.Graph().as_default() as g, distribution.scope():
+      if in_replica_mode:
+        distribution.extended.call_for_each_replica(init_and_verify, args=[g])
+      else:
+        init_and_verify(g)
+
+  @combinations.generate(combinations.combine(
+      distribution=[combinations.default_strategy,
+                    combinations.one_device_strategy,
+                    combinations.mirrored_strategy_with_gpu_and_cpu,
+                    combinations.mirrored_strategy_with_two_gpus,
+                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
+                    combinations.core_mirrored_strategy_with_two_gpus],
+      in_replica_mode=[True, False],
+      mode=["graph"]))
+  def testInitFromDifferentNameObject(self, distribution, in_replica_mode):
+    checkpoint_dir, v1_value, _ = self._get_test_object()
+
+    def init_and_verify(g):
       v1 = variable_scope.get_variable("new_var1", [1, 10])
       # Use string add to create new object in each replica
       prefix = "new_"
@@ -106,29 +123,8 @@ class CheckpointUtilsWithDistributionStrategyTest(
 
     with ops.Graph().as_default() as g, distribution.scope():
       if in_replica_mode:
-        distribution.call_for_each_replica(
-            init_from_constant_name_and_verify, args=[g])
-      else:
-        init_from_constant_name_and_verify(g)
-
-    with ops.Graph().as_default() as g, distribution.scope():
-      if in_replica_mode:
-        distribution.call_for_each_replica(
-            init_from_new_name_and_verify, g)
-
-  def testAssignmentMapHasDifferentValues(self):
-    checkpoint_dir, v1_value, _, _, _ = self._get_test_object()
-
-    def init_from_assignment_map_and_raise_error(g):
-      v1 = variable_scope.get_variable("new_var1", [1, 10])
-      assignment_map = values.regroup(
-          {"/gpu:0": {"var1": "new_var1"},
-           "/gpu:1": {"var1": "new_var2"}})
-      checkpoint_utils.init_from_checkpoint(
-          checkpoint_dir, assignment_map)
-
-    with ops.Graph().as_default() as g, self.assertRaises(ValueError):
-      init_from_assignment_map_and_raise_error(g)
+        distribution.extended.call_for_each_replica(
+            init_and_verify, [g])
 
 
 if __name__ == "__main__":

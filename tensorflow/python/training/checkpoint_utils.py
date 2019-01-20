@@ -183,16 +183,16 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     ValueError: If missing variables in current graph, or if missing
       checkpoints or tensors in checkpoints.
   """
+  init_from_checkpoint_fn = lambda _ : _init_from_checkpoint(
+      ckpt_dir_or_file, assignment_map)
   if distribution_strategy_context.get_cross_replica_context():
-    _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
+    init_from_checkpoint_fn(None)
   else:
     distribution_strategy_context.get_replica_context().merge_call(
-        _init_from_checkpoint, args=(ckpt_dir_or_file, assignment_map))
+        init_from_checkpoint_fn)
 
-
-def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
+def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """See `init_from_checkpoint` for documentation."""
-
   ckpt_file = _get_checkpoint_filename(ckpt_dir_or_file)
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
@@ -206,8 +206,6 @@ def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
         and all(_is_variable(v) for v in current_var_or_name)):
       var = current_var_or_name
     else:
-      if hasattr(current_var_or_name, "_index"):
-        current_var_or_name = _validate_and_get_var_or_name(current_var_or_name)
       store_vars = vs._get_default_variable_store()._vars  # pylint:disable=protected-access
       # Check if this variable is in var_store.
       var = store_vars.get(current_var_or_name, None)
@@ -363,16 +361,6 @@ def _set_variable_or_list_initializer(variable_or_list, ckpt_file,
 def _is_variable(x):
   return (isinstance(x, variables.Variable) or
           resource_variable_ops.is_resource_variable(x))
-
-def _validate_and_get_var_or_name(distributed_value):
-  assert distribution_strategy_context.get_cross_replica_context()
-  assert hasattr(distributed_value, "_index")
-  v0 = distributed_value._index.items()[0][1] # pylint:disable=protected-access
-  for (d, v) in six.iteritems(distributed_value._index): # pylint:disable=protected-access
-    if v != v0:
-      raise ValueError("Values on different device should be the same: "
-                       " %s != %s" % (v, v0))
-  return v0
 
 def _collect_partitioned_variable(name, all_vars):
   """Returns list of `tf.Variable` that comprise the partitioned variable."""
