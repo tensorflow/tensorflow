@@ -171,6 +171,50 @@ TEST(LinalgOpsTest, MatrixSolveLs_ShapeFn) {
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;[1]");
 }
 
+TEST(LinalgOpsTest, Qr_ShapeFn) {
+  ShapeInferenceTestOp op("Qr");
+  auto set_attrs = [&op](bool full_matrices) {
+    TF_ASSERT_OK(NodeDefBuilder("test", "Qr")
+                     .Input({"input", 0, DT_FLOAT})
+                     .Attr("full_matrices", full_matrices)
+                     .Finalize(&op.node_def));
+  };
+
+  // Defining `P` = min(`M`, `N`), if full_matrices = False, then Q should be
+  // `M` x `P` and `R` should be `P` x `N`. Otherwise, Q should be
+  // `M` x `M` and `R` should be `M` x `N`.
+  //
+  // For rank-3 tensors, `M` = d0_1 and `N` = d0_2.
+  //
+  set_attrs(false);
+  INFER_OK(op, "?", "?;?");
+  INFER_OK(op, "[?,?,?]", "[d0_0,d0_1,?];[d0_0,?,d0_2]");
+  INFER_OK(op, "[4,?,?]", "[d0_0,d0_1,?];[d0_0,?,d0_2]");
+  INFER_OK(op, "[4,2,?]", "[d0_0,d0_1,?];[d0_0,?,d0_2]");
+  INFER_OK(op, "[4,?,2]", "[d0_0,d0_1,?];[d0_0,?,d0_2]");
+  INFER_OK(op, "[?,2,2]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[4,2,2]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,3,2]", "[d0_0,d0_1,d0_2];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[4,3,2]", "[d0_0,d0_1,d0_2];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[?,2,3]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[4,2,3]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+
+  set_attrs(true);
+  INFER_OK(op, "?", "?;?");
+  INFER_OK(op, "[?,?,?]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[4,?,?]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[4,2,?]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[4,?,2]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,2,2]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[4,2,2]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,3,2]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[4,3,2]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,2,3]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[4,2,3]", "[d0_0,d0_1,d0_1];[d0_0,d0_1,d0_2]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+}
+
 TEST(LinalgOpsTest, Svd_ShapeFn) {
   ShapeInferenceTestOp op("Svd");
   auto set_attrs = [&op](bool compute_uv, bool full_matrices) {
@@ -180,6 +224,13 @@ TEST(LinalgOpsTest, Svd_ShapeFn) {
                      .Attr("full_matrices", full_matrices)
                      .Finalize(&op.node_def));
   };
+
+  // Defining `P` = min(`M`, `N`), if full_matrices = False, then U should be
+  // `M` x `P` and `V` should be `N` x `P`. Otherwise, U should be
+  // `M` x `M` and `V` should be `N` x `N`.
+  //
+  // For rank-3 tensors, `M` = d0_1 and `N` = d0_2.
+  //
   set_attrs(false, false);
   INFER_OK(op, "?", "?;[0];[0]");
   INFER_OK(op, "[?,?,?]", "[d0_0,?];[0];[0]");
@@ -221,6 +272,25 @@ TEST(LinalgOpsTest, Svd_ShapeFn) {
   INFER_OK(op, "[?,2,3]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
   INFER_OK(op, "[4,2,3]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+}
+
+TEST(LinalgOpsTest, Lu_ShapeFn) {
+  ShapeInferenceTestOp op("Lu");
+  INFER_OK(op, "?", "?;?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,?,3,4,1,2]");
+
+  INFER_OK(op, "[?,?]", "[d0_0,d0_0];[d0_0]");
+  INFER_OK(op, "[1,?]", "[d0_0,d0_0];[d0_0]");
+  INFER_OK(op, "[?,1]", "[d0_1,d0_1];[d0_1]");
+
+  // Repeat previous block of tests with input rank > 2.
+  INFER_OK(op, "[1,?,3,4,?,?]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_4,d0_4];[d0_0,d0_1,d0_2,d0_3,d0_4]");
+  INFER_OK(op, "[1,?,3,4,1,?]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_4,d0_4];[d0_0,d0_1,d0_2,d0_3,d0_4]");
+  INFER_OK(op, "[1,?,3,4,?,1]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_5,d0_5];[d0_0,d0_1,d0_2,d0_3,d0_5]");
 }
 
 }  // end namespace tensorflow

@@ -1,0 +1,12 @@
+path: "tensorflow.distribute.ReduceOp"
+tf_class {
+  is_instance: "<enum \'ReduceOp\'>"
+  member {
+    name: "MEAN"
+    mtype: "<enum \'ReduceOp\'>"
+  }
+  member {
+    name: "SUM"
+    mtype: "<enum \'ReduceOp\'>"
+  }
+}

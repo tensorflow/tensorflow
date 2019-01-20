@@ -12,72 +12,94 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for StringToNumber op from parsing_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.platform import test
 
 _ERROR_MESSAGE = "StringToNumberOp could not correctly convert string: "
 
 
-class StringToNumberOpTest(tf.test.TestCase):
+class StringToNumberOpTest(test.TestCase):
 
+  def _test(self, tf_type, good_pairs, bad_pairs):
+    with self.cached_session():
+      # Build a small testing graph.
+      input_string = array_ops.placeholder(dtypes.string)
+      output = parsing_ops.string_to_number(
+          input_string, out_type=tf_type)
+
+      # Check all the good input/output pairs.
+      for instr, outnum in good_pairs:
+        result, = output.eval(feed_dict={input_string: [instr]})
+        self.assertAllClose([outnum], [result])
+
+      # Check that the bad inputs produce the right errors.
+      for instr, outstr in bad_pairs:
+        with self.assertRaisesOpError(outstr):
+          output.eval(feed_dict={input_string: [instr]})
+
+  @test_util.run_deprecated_v1
   def testToFloat(self):
-    with self.test_session():
-      input_string = tf.placeholder(tf.string)
-      output = tf.string_to_number(
-          input_string,
-          out_type=tf.float32)
+    self._test(dtypes.float32,
+               [("0", 0), ("3", 3), ("-1", -1),
+                ("1.12", 1.12), ("0xF", 15), ("   -10.5", -10.5),
+                ("3.40282e+38", 3.40282e+38),
+                # Greater than max value of float.
+                ("3.40283e+38", float("INF")),
+                ("-3.40283e+38", float("-INF")),
+                # Less than min value of float.
+                ("NAN", float("NAN")),
+                ("INF", float("INF"))],
+               [("10foobar", _ERROR_MESSAGE + "10foobar")])
 
-      result = output.eval(feed_dict={
-          input_string: ["0",
-                         "3",
-                         "-1",
-                         "1.12",
-                         "0xF",
-                         "   -10.5",
-                         "3.40282e+38",
-                         # The next two exceed maximum value for float, so we
-                         # expect +/-INF to be returned instead.
-                         "3.40283e+38",
-                         "-3.40283e+38",
-                         "NAN",
-                         "INF"]
-      })
+  @test_util.run_deprecated_v1
+  def testToDouble(self):
+    self._test(dtypes.float64,
+               [("0", 0), ("3", 3), ("-1", -1),
+                ("1.12", 1.12), ("0xF", 15), ("   -10.5", -10.5),
+                ("3.40282e+38", 3.40282e+38),
+                # Greater than max value of float.
+                ("3.40283e+38", 3.40283e+38),
+                # Less than min value of float.
+                ("-3.40283e+38", -3.40283e+38),
+                ("NAN", float("NAN")),
+                ("INF", float("INF"))],
+               [("10foobar", _ERROR_MESSAGE + "10foobar")])
 
-      self.assertAllClose([0, 3, -1, 1.12, 0xF, -10.5, 3.40282e+38,
-                           float("INF"), float("-INF"), float("NAN"),
-                           float("INF")], result)
-
-      with self.assertRaisesOpError(_ERROR_MESSAGE + "10foobar"):
-        output.eval(feed_dict={input_string: ["10foobar"]})
-
+  @test_util.run_deprecated_v1
   def testToInt32(self):
-    with self.test_session():
-      input_string = tf.placeholder(tf.string)
-      output = tf.string_to_number(
-          input_string,
-          out_type=tf.int32)
+    self._test(dtypes.int32,
+               [("0", 0), ("3", 3), ("-1", -1),
+                ("    -10", -10),
+                ("-2147483648", -2147483648),
+                ("2147483647", 2147483647)],
+               [   # Less than min value of int32.
+                   ("-2147483649", _ERROR_MESSAGE + "-2147483649"),
+                   # Greater than max value of int32.
+                   ("2147483648", _ERROR_MESSAGE + "2147483648"),
+                   ("2.9", _ERROR_MESSAGE + "2.9"),
+                   ("10foobar", _ERROR_MESSAGE + "10foobar")])
 
-      result = output.eval(feed_dict={
-          input_string: ["0", "3", "-1", "    -10", "-2147483648", "2147483647"]
-      })
-
-      self.assertAllEqual([0, 3, -1, -10, -2147483648, 2147483647], result)
-
-      with self.assertRaisesOpError(_ERROR_MESSAGE + "2.9"):
-        output.eval(feed_dict={input_string: ["2.9"]})
-
-      # The next two exceed maximum value of int32.
-      for in_string in ["-2147483649", "2147483648"]:
-        with self.assertRaisesOpError(_ERROR_MESSAGE + in_string):
-          output.eval(feed_dict={input_string: [in_string]})
+  @test_util.run_deprecated_v1
+  def testToInt64(self):
+    self._test(dtypes.int64,
+               [("0", 0), ("3", 3), ("-1", -1),
+                ("    -10", -10),
+                ("-2147483648", -2147483648),
+                ("2147483647", 2147483647),
+                ("-2147483649", -2147483649),  # Less than min value of int32.
+                ("2147483648", 2147483648)],  # Greater than max value of int32.
+               [("2.9", _ERROR_MESSAGE + "2.9"),
+                ("10foobar", _ERROR_MESSAGE + "10foobar")])
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

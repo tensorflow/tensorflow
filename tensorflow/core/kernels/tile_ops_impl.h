@@ -13,39 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_TILE_IMPL_OPS_H_
-#define TENSORFLOW_KERNELS_TILE_IMPL_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TILE_OPS_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_TILE_OPS_IMPL_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
 namespace functor {
-
-template <typename Device, typename T, int NDIM>
-struct Tile {
-  void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
-                  typename TTypes<T, NDIM>::ConstTensor in,
-                  const Eigen::array<int32, NDIM>& broadcast_array) const {
-    if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-      // Use 32bit indexing to speed up the computations
-      To32Bit(out).device(d) = To32Bit(in).broadcast(broadcast_array);
-    } else {
-      out.device(d) = in.broadcast(broadcast_array);
-    }
-  }
-};
-
-template <typename Device, typename T>
-struct Tile<Device, T, 0> {
-  void operator()(const Device& d, typename TTypes<T, 0>::Tensor out,
-                  typename TTypes<T, 0>::ConstTensor in,
-                  const Eigen::array<int32, 0>&) const {
-    // In the scalar case we simply copy the input.
-    out.device(d) = in;
-  }
-};
 
 template <typename Device, typename T, int NDIM>
 struct TileGrad {
@@ -91,4 +68,4 @@ struct ReduceAndReshape {
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_TILE_OPS_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TILE_OPS_IMPL_H_

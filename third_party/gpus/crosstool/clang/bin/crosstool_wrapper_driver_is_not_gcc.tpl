@@ -49,10 +49,9 @@ import pipes
 CPU_COMPILER = ('%{cpu_compiler}')
 GCC_HOST_COMPILER_PATH = ('%{gcc_host_compiler_path}')
 
-CURRENT_DIR = os.path.dirname(sys.argv[0])
-NVCC_PATH = CURRENT_DIR + '/../../../cuda/bin/nvcc'
-LLVM_HOST_COMPILER_PATH = ('/usr/bin/gcc')
+NVCC_PATH = '%{nvcc_path}'
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
+NVCC_VERSION = '%{cuda_version}'
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -114,6 +113,14 @@ def GetHostCompilerOptions(argv):
 
   return opts
 
+def _update_options(nvcc_options):
+  if NVCC_VERSION in ("7.0",):
+    return nvcc_options
+
+  update_options = { "relaxed-constexpr" : "expt-relaxed-constexpr" }
+  return [ update_options[opt] if opt in update_options else opt
+                    for opt in nvcc_options ]
+
 def GetNvccOptions(argv):
   """Collect the -nvcc_options values from argv.
 
@@ -130,7 +137,8 @@ def GetNvccOptions(argv):
   args, _ = parser.parse_known_args(argv)
 
   if args.nvcc_options:
-    return ' '.join(['--'+a for a in sum(args.nvcc_options, [])])
+    options = _update_options(sum(args.nvcc_options, []))
+    return ' '.join(['--'+a for a in options])
   return ''
 
 
@@ -167,6 +175,11 @@ def InvokeNvcc(argv, log=False):
   # any other reliable way to just get the list of source files to be compiled.
   src_files = GetOptionValue(argv, 'c')
 
+  # Pass -w through from host to nvcc, but don't do anything fancier with
+  # warnings-related flags, since they're not necessarily the same across
+  # compilers.
+  warning_options = ' -w' if '-w' in argv else ''
+
   if len(src_files) == 0:
     return 1
   if len(out_file) != 1:
@@ -197,6 +210,7 @@ def InvokeNvcc(argv, log=False):
   nvccopts += defines
   nvccopts += std_options
   nvccopts += m_options
+  nvccopts += warning_options
 
   if depfiles:
     # Generate the dependency file
@@ -205,7 +219,7 @@ def InvokeNvcc(argv, log=False):
            ' --compiler-options "' + host_compiler_options + '"' +
            ' --compiler-bindir=' + GCC_HOST_COMPILER_PATH +
            ' -I .' +
-           ' -x cu ' + includes + ' ' + srcs + ' -M -o ' + depfile)
+           ' -x cu ' + opt + includes + ' ' + srcs + ' -M -o ' + depfile)
     if log: Log(cmd)
     exit_status = os.system(cmd)
     if exit_status != 0:
@@ -219,7 +233,7 @@ def InvokeNvcc(argv, log=False):
 
   # TODO(zhengxq): for some reason, 'gcc' needs this help to find 'as'.
   # Need to investigate and fix.
-  cmd = 'PATH=' + PREFIX_DIR + ' ' + cmd
+  cmd = 'PATH=' + PREFIX_DIR + ':$PATH ' + cmd
   if log: Log(cmd)
   return os.system(cmd)
 

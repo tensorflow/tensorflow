@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "MetaGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "google/protobuf/any.proto";
 
 import "tensorflow/core/framework/graph.proto";
@@ -32,8 +32,8 @@ message MetaGraphDef {
   // Meta information regarding the graph to be exported.  To be used by users
   // of this protocol buffer to encode information regarding their meta graph.
   message MetaInfoDef {
-    // Version string. Can be the name of the model and revision, steps this
-    // model has been trained to, etc.
+    // User specified Version string. Can be the name of the model and revision,
+    // steps this model has been trained to, etc.
     string meta_graph_version = 1;
 
     // A copy of the OpDefs used by the producer of this graph_def.
@@ -51,6 +51,20 @@ message MetaGraphDef {
     // These tags enable loaders to access the MetaGraph(s) appropriate for a
     // specific use-case or runtime environment.
     repeated string tags = 4;
+
+    // The __version__ string of the tensorflow build used to write this graph.
+    // This will be populated by the framework, which will overwrite any user
+    // supplied value.
+    string tensorflow_version = 5;
+
+    // The __git_version__ string of the tensorflow build used to write this
+    // graph. This will be populated by the framework, which will overwrite any
+    // user supplied value.
+    string tensorflow_git_version = 6;
+
+    // A flag to denote whether default-valued attrs have been stripped from
+    // the nodes in this graph_def.
+    bool stripped_default_attrs = 7;
   }
   MetaInfoDef meta_info_def = 1;
 
@@ -130,7 +144,7 @@ message MetaGraphDef {
 //                                from_proto=YourPythonObject.from_proto)
 //    These functions will be invoked to serialize and de-serialize the
 //    collection. For example,
-//    ops.register_proto_function(ops.GraphKeys.VARIABLES,
+//    ops.register_proto_function(ops.GraphKeys.GLOBAL_VARIABLES,
 //                                proto_type=variable_pb2.VariableDef,
 //                                to_proto=Variable.to_proto,
 //                                from_proto=Variable.from_proto)
@@ -192,8 +206,34 @@ message CollectionDef {
 
 // Information about a Tensor necessary for feeding or retrieval.
 message TensorInfo {
-  string name = 1;
+  // For sparse tensors, The COO encoding stores a triple of values, indices,
+  // and shape.
+  message CooSparse {
+    // The shape of the values Tensor is [?].  Its dtype must be the dtype of
+    // the SparseTensor as a whole, given in the enclosing TensorInfo.
+    string values_tensor_name = 1;
+
+    // The indices Tensor must have dtype int64 and shape [?, ?].
+    string indices_tensor_name = 2;
+
+    // The dynamic logical shape represented by the SparseTensor is recorded in
+    // the Tensor referenced here.  It must have dtype int64 and shape [?].
+    string dense_shape_tensor_name = 3;
+  }
+
+  oneof encoding {
+    // For dense `Tensor`s, the name of the tensor in the graph.
+    string name = 1;
+    // There are many possible encodings of sparse matrices
+    // (https://en.wikipedia.org/wiki/Sparse_matrix).  Currently, TensorFlow
+    // uses only the COO encoding.  This is supported and documented in the
+    // SparseTensor Python class.
+    CooSparse coo_sparse = 4;
+  }
   DataType dtype = 2;
+  // The static shape should be recorded here, to the extent that it can
+  // be known in advance.  In the case of a SparseTensor, this field describes
+  // the logical shape of the represented tensor (aka dense_shape).
   TensorShapeProto tensor_shape = 3;
 }
 

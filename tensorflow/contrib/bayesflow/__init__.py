@@ -14,18 +14,23 @@
 # ==============================================================================
 """Ops for representing Bayesian computation.
 
+Use [tfp](/probability/api_docs/python/tfp) instead.
+
 ## This package provides classes for Bayesian computation with TensorFlow.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import,line-too-long
-from tensorflow.contrib.bayesflow.python.ops import entropy
+# pylint: disable=unused-import,line-too-long
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
-from tensorflow.contrib.bayesflow.python.ops import special_math
-from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators
-from tensorflow.contrib.bayesflow.python.ops import stochastic_graph
-from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
-from tensorflow.contrib.bayesflow.python.ops import stochastic_variables
-from tensorflow.contrib.bayesflow.python.ops import variational_inference
+# pylint: enable=unused-import,line-too-long
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+
+_allowed_symbols = [
+    'monte_carlo',
+]
+
+remove_undocumented(__name__, _allowed_symbols)

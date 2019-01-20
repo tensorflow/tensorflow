@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STATIC_THREADLOCAL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STATIC_THREADLOCAL_H_
 
+#ifdef _MSC_VER
+#define __thread __declspec(thread)
+#endif
+
 // For POD types in TLS mode, s_obj_VAR is the thread-local variable.
 #define SE_STATIC_THREAD_LOCAL_POD(_Type_, _var_)               \
   static __thread _Type_ s_obj_##_var_;                         \

@@ -22,14 +22,14 @@ limitations under the License.
 // In your BUILD rule, add a dependency on a platform plugin that you'd like
 // to use, such as:
 //
-//   //perftools/gputools/executor/cuda:cuda_platform
-//   //perftools/gputools/executor/opencl:opencl_platform
+//   //third_party/tensorflow/stream_executor/cuda:cuda_platform
+//   //third_party/tensorflow/stream_executor/opencl:opencl_platform
 //
 // This will register platform plugins that can be discovered via this
 // interface. Sample API usage:
 //
 //   port::StatusOr<Platform*> platform_status =
-//      gpu::MultiPlatformManager::PlatformWithName("OpenCL");
+//      se::MultiPlatformManager::PlatformWithName("OpenCL");
 //   if (!platform_status.ok()) { ... }
 //   Platform* platform = platform_status.ValueOrDie();
 //   LOG(INFO) << platform->VisibleDeviceCount() << " devices visible";
@@ -56,10 +56,10 @@ limitations under the License.
 // And similarly, for standard interfaces (BLAS, RNG, etc.) you can add
 // dependencies on support libraries, e.g.:
 //
-//    //perftools/gputools/executor/cuda:pluton_blas_plugin
-//    //perftools/gputools/executor/cuda:cudnn_plugin
-//    //perftools/gputools/executor/cuda:cublas_plugin
-//    //perftools/gputools/executor/cuda:curand_plugin
+//    //third_party/tensorflow/stream_executor/cuda:pluton_blas_plugin
+//    //third_party/tensorflow/stream_executor/cuda:cudnn_plugin
+//    //third_party/tensorflow/stream_executor/cuda:cublas_plugin
+//    //third_party/tensorflow/stream_executor/cuda:curand_plugin
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
@@ -67,16 +67,16 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/platform/port.h"
+#include <vector>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Manages multiple platforms that may be present on the current machine.
 class MultiPlatformManager {
@@ -84,27 +84,39 @@ class MultiPlatformManager {
   // Registers a platform object, returns an error status if the platform is
   // already registered. The associated listener, if not null, will be used to
   // trace events for ALL executors for that platform.
-  // Takes ownership of listener.
+  // Takes ownership of platform.
   static port::Status RegisterPlatform(std::unique_ptr<Platform> platform);
 
-  // Retrieves the platform registered with the given platform name; e.g.
-  // "CUDA", "OpenCL", ...
+  // Retrieves the platform registered with the given platform name (e.g.
+  // "CUDA", "OpenCL", ...) or id (an opaque, comparable value provided by the
+  // Platform's Id() method).
+  //
+  // If the platform has not already been initialized, it will be initialized
+  // with a default set of parameters.
   //
   // If the requested platform is not registered, an error status is returned.
   // Ownership of the platform is NOT transferred to the caller --
   // the MultiPlatformManager owns the platforms in a singleton-like fashion.
-  static port::StatusOr<Platform*> PlatformWithName(const string& target);
-
-  // Retrieves the platform registered with the given platform ID, which
-  // is an opaque (but comparable) value.
-  //
-  // If the requested platform is not registered, an error status is returned.
-  // Ownership of the platform is NOT transferred to the caller --
-  // the MultiPlatformManager owns the platforms in a singleton-like fashion.
+  static port::StatusOr<Platform*> PlatformWithName(absl::string_view target);
   static port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id);
 
-  // Clears the set of registered platforms, primarily used for testing.
-  static void ClearPlatformRegistry();
+  // Retrieves the platform registered with the given platform name (e.g.
+  // "CUDA", "OpenCL", ...) or id (an opaque, comparable value provided by the
+  // Platform's Id() method).
+  //
+  // The platform will be initialized with the given options. If the platform
+  // was already initialized, an error will be returned.
+  //
+  // If the requested platform is not registered, an error status is returned.
+  // Ownership of the platform is NOT transferred to the caller --
+  // the MultiPlatformManager owns the platforms in a singleton-like fashion.
+  static port::StatusOr<Platform*> InitializePlatformWithName(
+      absl::string_view target, const std::map<string, string>& options);
+
+  static port::StatusOr<Platform*> InitializePlatformWithId(
+      const Platform::Id& id, const std::map<string, string>& options);
+
+  static std::vector<Platform*> AllPlatforms();
 
   // Although the MultiPlatformManager "owns" its platforms, it holds them as
   // undecorated pointers to prevent races during program exit (between this
@@ -118,42 +130,32 @@ class MultiPlatformManager {
   // of any platforms registered with it, and leak checking should be disabled
   // during allocation of such Platforms, to avoid spurious reporting at program
   // exit.
-  using PlatformMap = std::map<string, Platform*>;
 
-  // Provides access to the available set of platforms under a lock.
-  static port::Status WithPlatforms(
-      std::function<port::Status(PlatformMap*)> callback) {
-    mutex_lock lock(platforms_mutex_);
-    return callback(GetPlatformMap());
-  }
-
- private:
-  // mutex that guards the platform map.
-  static mutex platforms_mutex_;
-
-  // TODO(b/22689637): Clean up these two maps; make sure they coexist nicely.
-  // TODO(b/22689637): Move this (whatever the final/"official" map is) to
-  // plugin_regstry.h, along with the associated functionality.
-  // Platform-name-to-object mapping. These platforms are registered via module
-  // initializers, and linkage determines which platforms are available to a
-  // given target.
-  static PlatformMap* GetPlatformMap() {
-    static PlatformMap* instance = new PlatformMap;
-    return instance;
-  }
-
-  // Holds a Platform::Id-to-object mapping.
-  // Unlike platforms_ above, this map does not own its contents.
-  static std::map<Platform::Id, Platform*>* GetPlatformByIdMap() {
-    using PlatformIdMap = std::map<Platform::Id, Platform*>;
-    static PlatformIdMap* instance = new PlatformIdMap;
-    return instance;
-  }
-
-  SE_DISALLOW_COPY_AND_ASSIGN(MultiPlatformManager);
+  // Interface for a listener that gets notfied at certain events.
+  class Listener {
+   public:
+    virtual ~Listener() = default;
+    // Callback that is invoked when a Platform is registered.
+    virtual void PlatformRegistered(Platform* platform) = 0;
+  };
+  // Registers a listeners to receive notifications about certain events.
+  // Precondition: No Platform has been registered yet.
+  static port::Status RegisterListener(std::unique_ptr<Listener> listener);
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
+
+// multi_platform_manager.cc will define these instances.
+//
+// Registering a platform:
+// REGISTER_MODULE_INITIALIZER_SEQUENCE(my_platform, multi_platform_manager);
+// REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
+// my_platform);
+//
+// Registering a listener:
+// REGISTER_MODULE_INITIALIZER_SEQUENCE(my_listener,
+// multi_platform_manager_listener);
+DECLARE_MODULE_INITIALIZER(multi_platform_manager);
+DECLARE_MODULE_INITIALIZER(multi_platform_manager_listener);
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_

@@ -32,7 +32,7 @@ class FullyConnectedLayer(hybrid_layer.HybridLayer):
     pass
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
       # Compute activations for the neural network.
       nn_activations = layers.fully_connected(data, self.params.layer_size)
 
@@ -49,13 +49,13 @@ class ManyToOneLayer(hybrid_layer.HybridLayer):
     pass
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
       # Compute activations for the neural network.
       nn_activations = layers.fully_connected(data, 1)
 
       # There is always one activation per instance by definition, so squeeze
       # away the extra dimension.
-      return array_ops.squeeze(nn_activations, squeeze_dims=[1])
+      return array_ops.squeeze(nn_activations, axis=[1])
 
 
 class FlattenedFullyConnectedLayer(hybrid_layer.HybridLayer):
@@ -65,7 +65,7 @@ class FlattenedFullyConnectedLayer(hybrid_layer.HybridLayer):
     pass
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
       # Compute activations for the neural network.
       nn_activations = [layers.fully_connected(data, self.params.layer_size)]
 
@@ -77,6 +77,6 @@ class FlattenedFullyConnectedLayer(hybrid_layer.HybridLayer):
                 self.params.layer_size))
 
       nn_activations_tensor = array_ops.concat(
-          1, nn_activations, name="flattened_nn_activations")
+          nn_activations, 1, name="flattened_nn_activations")
 
       return nn_activations_tensor

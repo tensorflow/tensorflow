@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_RANGE_SAMPLER_H_
-#define TENSORFLOW_KERNELS_RANGE_SAMPLER_H_
+#ifndef TENSORFLOW_CORE_KERNELS_RANGE_SAMPLER_H_
+#define TENSORFLOW_CORE_KERNELS_RANGE_SAMPLER_H_
 
 #include <vector>
 
@@ -115,10 +115,12 @@ class AllSampler : public RangeSampler {
 
   int64 Sample(random::SimplePhilox* rnd) const override {
     LOG(FATAL) << "Should not be called";
+    return 0;
   }
 
   float Probability(int64 value) const override {
     LOG(FATAL) << "Should not be called";
+    return 0;
   }
 
   void SampleBatchGetExpectedCountAvoid(
@@ -247,4 +249,4 @@ class FixedUnigramSampler : public RangeSampler {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_RANGE_SAMPLER_H_
+#endif  // TENSORFLOW_CORE_KERNELS_RANGE_SAMPLER_H_

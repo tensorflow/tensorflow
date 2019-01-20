@@ -39,10 +39,10 @@ Status CheckInvalidLabelIndex(const Tensor& labels, int64 max_index) {
   if (*min_max_dim_value.first < 0 || *min_max_dim_value.second >= max_index) {
     bad_index = (*min_max_dim_value.first < 0) ? *min_max_dim_value.first
                                                : *min_max_dim_value.second;
-    return errors::InvalidArgument("Received a label value of ", bad_index,
-                                   " which is outside the valid range of [0, ",
-                                   max_index, ").  Label values: ",
-                                   labels.SummarizeValue(labels.NumElements()));
+    return errors::InvalidArgument(
+        "Received a label value of ", bad_index,
+        " which is outside the valid range of [0, ", max_index,
+        ").  Label values: ", labels.SummarizeValue(labels.NumElements()));
   }
   return Status::OK();
 }
@@ -78,11 +78,11 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
                                                    labels.shape(), &scratch));
 
     Tensor* loss_out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, labels.shape(), &loss_out));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {1}, 0, labels.shape(), &loss_out));
     Tensor* back_out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(1, logits.shape(), &back_out));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 1, logits.shape(), &back_out));
 
     if (logits.dim_size(0) > 0) {
       if (std::is_same<Device, CPUDevice>::value) {
@@ -90,9 +90,8 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
             context, CheckInvalidLabelIndex<Index>(labels, logits.dim_size(1)));
       }
       functor::SparseXentFunctor<Device, T, Index> functor;
-      functor(context->eigen_device<Device>(), logits.matrix<T>(),
-              labels.vec<Index>(), scratch.vec<T>(), loss_out->vec<T>(),
-              back_out->matrix<T>());
+      functor(context, logits.matrix<T>(), labels.vec<Index>(),
+              scratch.vec<T>(), loss_out->vec<T>(), back_out->matrix<T>());
     }
   }
 };
@@ -102,11 +101,11 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
 namespace functor {
 template <typename T, typename Index>
 struct SparseXentFunctor<CPUDevice, T, Index> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix logits,
+  void operator()(OpKernelContext* ctx, typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<Index>::ConstVec labels,
                   typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-    SparseXentEigenImpl<CPUDevice, T, Index>::Compute(d, logits, labels,
+    SparseXentEigenImpl<CPUDevice, T, Index>::Compute(ctx, logits, labels,
                                                       scratch, loss, backprop);
   }
 };

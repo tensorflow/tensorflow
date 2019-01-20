@@ -1,4 +1,4 @@
-Copyright 2015 The TensorFlow Authors.  All rights reserved.
+Copyright 2018 The TensorFlow Authors.  All rights reserved.
 
                                  Apache License
                            Version 2.0, January 2004
@@ -188,7 +188,7 @@ Copyright 2015 The TensorFlow Authors.  All rights reserved.
       same "printed page" as the copyright notice for easier
       identification within third-party archives.
 
-   Copyright 2015, The TensorFlow Authors.
+   Copyright 2017, The TensorFlow Authors.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.

@@ -33,15 +33,18 @@ import re
 
 import six
 
-BASE_DIR = os.path.normpath(os.path.join(__file__, '../../..'))
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 FUTURES_PATTERN = re.compile(r'^from __future__ import (\w+)\s*$')
 FUTURES_PATTERN_2 = re.compile(
     r'^from __future__ import (\w+), (\w+), (\w+)\s*$')
+FUTURES_PATTERN_3 = re.compile(r'^from __future__ import (\w+) as \w+\s*$')
 REQUIRED_FUTURES = frozenset(['absolute_import', 'division', 'print_function'])
 
 WHITELIST = [
     'python/platform/control_imports.py',
     'tools/docker/jupyter_notebook_config.py',
+    'tools/ci_build/update_version.py',
+    'tools/ci_build/copy_binary.py',
 ]
 
 # Tests that must *not* import division
@@ -57,6 +60,8 @@ def check_file(path, old_division):
   for line in open(path, encoding='utf-8') if six.PY3 else open(path):
     count += 1
     m = FUTURES_PATTERN.match(line)
+    if not m:
+      m = FUTURES_PATTERN_3.match(line)
     if m:
       futures.add(m.group(1))
     else:

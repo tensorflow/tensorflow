@@ -5,6 +5,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "package",
     srcs = [
@@ -23,7 +25,12 @@ py_library(
     srcs = ["input_data.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -44,6 +51,7 @@ py_binary(
         "fully_connected_feed.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["optonly"],
     deps = [
         ":input_data",
         ":mnist",
@@ -63,10 +71,16 @@ py_binary(
     ],
 )
 
+# Note: We need to set the evironment variable to use CPU JIT.
+# The way to achieve this is via setting the following:
+# TF_XLA_FLAGS='--tf_xla_cpu_global_jit=true'
+# before the run command. To use XLA, we also must build
+# with --define=with_xla_support=true flag.
+# Note (GPU): Add --config=cuda to the build command.
 py_binary(
-    name = "mnist_softmax",
+    name = "mnist_softmax_xla",
     srcs = [
-        "mnist_softmax.py",
+        "mnist_softmax_xla.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -77,14 +91,13 @@ py_binary(
 
 py_test(
     name = "fully_connected_feed_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "fully_connected_feed.py",
     ],
     args = [
         "--fake_data",
         "--max_steps=10",
-        "--train_dir=/tmp/mnist",
     ],
     main = "fully_connected_feed.py",
     srcs_version = "PY2AND3",
@@ -113,16 +126,4 @@ py_test(
         ":input_data",
         "//tensorflow:tensorflow_py",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

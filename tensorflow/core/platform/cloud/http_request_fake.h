@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_FAKE_H_
-#define TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_FAKE_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_
 
+#include <algorithm>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -24,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -33,7 +34,7 @@ limitations under the License.
 namespace tensorflow {
 
 /// Fake HttpRequest for testing.
-class FakeHttpRequest : public HttpRequest {
+class FakeHttpRequest : public CurlHttpRequest {
  public:
   /// Return the response for the given request.
   FakeHttpRequest(const string& request, const string& response)
@@ -74,27 +75,19 @@ class FakeHttpRequest : public HttpRequest {
         response_headers_(response_headers),
         response_code_(response_code) {}
 
-  Status Init() override { return Status::OK(); }
-  Status SetUri(const string& uri) override {
-    actual_request_ += "Uri: " + uri + "\n";
-    return Status::OK();
+  void SetUri(const string& uri) override {
+    actual_uri_ += "Uri: " + uri + "\n";
   }
-  Status SetRange(uint64 start, uint64 end) override {
+  void SetRange(uint64 start, uint64 end) override {
     actual_request_ += strings::StrCat("Range: ", start, "-", end, "\n");
-    return Status::OK();
   }
-  Status AddHeader(const string& name, const string& value) override {
+  void AddHeader(const string& name, const string& value) override {
     actual_request_ += "Header " + name + ": " + value + "\n";
-    return Status::OK();
   }
-  Status AddAuthBearerHeader(const string& auth_token) override {
+  void AddAuthBearerHeader(const string& auth_token) override {
     actual_request_ += "Auth Token: " + auth_token + "\n";
-    return Status::OK();
   }
-  Status SetDeleteRequest() override {
-    actual_request_ += "Delete: yes\n";
-    return Status::OK();
-  }
+  void SetDeleteRequest() override { actual_request_ += "Delete: yes\n"; }
   Status SetPutFromFile(const string& body_filepath, size_t offset) override {
     std::ifstream stream(body_filepath);
     const string& content = string(std::istreambuf_iterator<char>(stream),
@@ -103,40 +96,44 @@ class FakeHttpRequest : public HttpRequest {
     actual_request_ += "Put body: " + content + "\n";
     return Status::OK();
   }
-  Status SetPostFromBuffer(const char* buffer, size_t size) override {
+  void SetPostFromBuffer(const char* buffer, size_t size) override {
     if (captured_post_body_) {
       *captured_post_body_ = string(buffer, size);
     } else {
       actual_request_ +=
           strings::StrCat("Post body: ", StringPiece(buffer, size), "\n");
     }
-    return Status::OK();
   }
-  Status SetPutEmptyBody() override {
-    actual_request_ += "Put: yes\n";
-    return Status::OK();
-  }
-  Status SetPostEmptyBody() override {
+  void SetPutEmptyBody() override { actual_request_ += "Put: yes\n"; }
+  void SetPostEmptyBody() override {
     if (captured_post_body_) {
       *captured_post_body_ = "<empty>";
     } else {
       actual_request_ += "Post: yes\n";
     }
-    return Status::OK();
   }
-  Status SetResultBuffer(char* scratch, size_t size,
-                         StringPiece* result) override {
-    scratch_ = scratch;
-    size_ = size;
-    result_ = result;
-    return Status::OK();
+  void SetResultBuffer(std::vector<char>* buffer) override {
+    buffer->clear();
+    buffer_ = buffer;
+  }
+  void SetResultBufferDirect(char* buffer, size_t size) override {
+    direct_result_buffer_ = buffer;
+    direct_result_buffer_size_ = size;
+  }
+  size_t GetResultBufferDirectBytesTransferred() override {
+    return direct_result_bytes_transferred_;
   }
   Status Send() override {
-    EXPECT_EQ(expected_request_, actual_request_) << "Unexpected HTTP request.";
-    if (scratch_ && result_) {
-      auto actual_size = std::min(response_.size(), size_);
-      memcpy(scratch_, response_.c_str(), actual_size);
-      *result_ = StringPiece(scratch_, actual_size);
+    EXPECT_EQ(expected_request_, actual_request())
+        << "Unexpected HTTP request.";
+    if (buffer_) {
+      buffer_->insert(buffer_->begin(), response_.data(),
+                      response_.data() + response_.size());
+    } else if (direct_result_buffer_ != nullptr) {
+      size_t bytes_to_copy =
+          std::min<size_t>(direct_result_buffer_size_, response_.size());
+      memcpy(direct_result_buffer_, response_.data(), bytes_to_copy);
+      direct_result_bytes_transferred_ += bytes_to_copy;
     }
     return response_status_;
   }
@@ -163,11 +160,26 @@ class FakeHttpRequest : public HttpRequest {
 
   virtual uint64 GetResponseCode() const override { return response_code_; }
 
+  void SetTimeouts(uint32 connection, uint32 inactivity,
+                   uint32 total) override {
+    actual_request_ += strings::StrCat("Timeouts: ", connection, " ",
+                                       inactivity, " ", total, "\n");
+  }
+
  private:
-  char* scratch_ = nullptr;
-  size_t size_ = 0;
-  StringPiece* result_ = nullptr;
+  string actual_request() const {
+    string s;
+    s.append(actual_uri_);
+    s.append(actual_request_);
+    return s;
+  }
+
+  std::vector<char>* buffer_ = nullptr;
+  char* direct_result_buffer_ = nullptr;
+  size_t direct_result_buffer_size_ = 0;
+  size_t direct_result_bytes_transferred_ = 0;
   string expected_request_;
+  string actual_uri_;
   string actual_request_;
   string response_;
   Status response_status_;
@@ -200,4 +212,4 @@ class FakeHttpRequestFactory : public HttpRequest::Factory {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_FAKE_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_

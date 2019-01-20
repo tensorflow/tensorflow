@@ -17,13 +17,17 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -31,8 +35,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ReadHiddenOpsFromFile(const string& filename,
-                             std::vector<string>* hidden_ops) {
+Status ReadOpListFromFile(const string& filename,
+                          std::vector<string>* op_list) {
   std::unique_ptr<RandomAccessFile> file;
   TF_CHECK_OK(Env::Default()->NewRandomAccessFile(filename, &file));
   std::unique_ptr<io::InputBuffer> input_buffer(
@@ -48,7 +52,7 @@ Status ReadHiddenOpsFromFile(const string& filename,
     if (scanner.One(strings::Scanner::LETTER_DIGIT_DOT)
             .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
             .GetResult(nullptr, &op_name)) {
-      hidden_ops->emplace_back(op_name.ToString());
+      op_list->emplace_back(op_name);
     }
     s = input_buffer->ReadLine(&line_contents);
   }
@@ -65,23 +69,75 @@ Status ReadHiddenOpsFromFile(const string& filename,
 // Expected command-line argument syntax:
 // ARG ::= '@' FILENAME
 //       |  OP_NAME [',' OP_NAME]*
-Status ParseHiddenOpsCommandLine(const char* arg,
-                                 std::vector<string>* hidden_ops) {
+//       |  ''
+Status ParseOpListCommandLine(const char* arg, std::vector<string>* op_list) {
   std::vector<string> op_names = str_util::Split(arg, ',');
-  if (op_names.size() == 1 && op_names[0].substr(0, 1) == "@") {
+  if (op_names.size() == 1 && op_names[0].empty()) {
+    return Status::OK();
+  } else if (op_names.size() == 1 && op_names[0].substr(0, 1) == "@") {
     const string filename = op_names[0].substr(1);
-    return tensorflow::ReadHiddenOpsFromFile(filename, hidden_ops);
+    return tensorflow::ReadOpListFromFile(filename, op_list);
   } else {
-    *hidden_ops = std::move(op_names);
+    *op_list = std::move(op_names);
   }
   return Status::OK();
 }
 
-void PrintAllPythonOps(const std::vector<string>& hidden_ops,
-                       bool require_shapes) {
+// Use the name of the current executable to infer the C++ source file
+// where the REGISTER_OP() call for the operator can be found.
+// Returns the name of the file.
+// Returns an empty string if the current executable's name does not
+// follow a known pattern.
+string InferSourceFileName(const char* argv_zero) {
+  StringPiece command_str = io::Basename(argv_zero);
+
+  // For built-in ops, the Bazel build creates a separate executable
+  // with the name gen_<op type>_ops_py_wrappers_cc containing the
+  // operators defined in <op type>_ops.cc
+  const char* kExecPrefix = "gen_";
+  const char* kExecSuffix = "_py_wrappers_cc";
+  if (str_util::ConsumePrefix(&command_str, kExecPrefix) &&
+      str_util::EndsWith(command_str, kExecSuffix)) {
+    command_str.remove_suffix(strlen(kExecSuffix));
+    return strings::StrCat(command_str, ".cc");
+  } else {
+    return string("");
+  }
+}
+
+void PrintAllPythonOps(const std::vector<string>& op_list,
+                       const std::vector<string>& api_def_dirs,
+                       const string& source_file_name, bool require_shapes,
+                       bool op_list_is_whitelist) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
-  PrintPythonOps(ops, hidden_ops, require_shapes);
+
+  ApiDefMap api_def_map(ops);
+  if (!api_def_dirs.empty()) {
+    Env* env = Env::Default();
+
+    for (const auto& api_def_dir : api_def_dirs) {
+      std::vector<string> api_files;
+      TF_CHECK_OK(env->GetMatchingPaths(io::JoinPath(api_def_dir, "*.pbtxt"),
+                                        &api_files));
+      TF_CHECK_OK(api_def_map.LoadFileList(env, api_files));
+    }
+    api_def_map.UpdateDocs();
+  }
+
+  if (op_list_is_whitelist) {
+    std::unordered_set<string> whitelist(op_list.begin(), op_list.end());
+    OpList pruned_ops;
+    for (const auto& op_def : ops.op()) {
+      if (whitelist.find(op_def.name()) != whitelist.end()) {
+        *pruned_ops.mutable_op()->Add() = op_def;
+      }
+    }
+    PrintPythonOps(pruned_ops, api_def_map, {}, require_shapes,
+                   source_file_name);
+  } else {
+    PrintPythonOps(ops, api_def_map, op_list, require_shapes, source_file_name);
+  }
 }
 
 }  // namespace
@@ -89,15 +145,35 @@ void PrintAllPythonOps(const std::vector<string>& hidden_ops,
 
 int main(int argc, char* argv[]) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
+
+  tensorflow::string source_file_name =
+      tensorflow::InferSourceFileName(argv[0]);
+
   // Usage:
-  //   gen_main [ @FILENAME | OpName[,OpName]* ] (0 | 1)
-  if (argc == 2) {
-    tensorflow::PrintAllPythonOps({}, tensorflow::string(argv[1]) == "1");
-  } else if (argc == 3) {
+  //   gen_main api_def_dir1,api_def_dir2,...
+  //       [ @FILENAME | OpName[,OpName]* ] (0 | 1) [0 | 1]
+  if (argc < 3) {
+    return -1;
+  }
+  std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
+      argv[1], ",", tensorflow::str_util::SkipEmpty());
+
+  if (argc == 3) {
+    tensorflow::PrintAllPythonOps({}, api_def_dirs, source_file_name,
+                                  tensorflow::string(argv[2]) == "1",
+                                  false /* op_list_is_whitelist */);
+  } else if (argc == 4) {
     std::vector<tensorflow::string> hidden_ops;
-    TF_CHECK_OK(tensorflow::ParseHiddenOpsCommandLine(argv[1], &hidden_ops));
-    tensorflow::PrintAllPythonOps(hidden_ops,
-                                  tensorflow::string(argv[2]) == "1");
+    TF_CHECK_OK(tensorflow::ParseOpListCommandLine(argv[2], &hidden_ops));
+    tensorflow::PrintAllPythonOps(hidden_ops, api_def_dirs, source_file_name,
+                                  tensorflow::string(argv[3]) == "1",
+                                  false /* op_list_is_whitelist */);
+  } else if (argc == 5) {
+    std::vector<tensorflow::string> op_list;
+    TF_CHECK_OK(tensorflow::ParseOpListCommandLine(argv[2], &op_list));
+    tensorflow::PrintAllPythonOps(op_list, api_def_dirs, source_file_name,
+                                  tensorflow::string(argv[3]) == "1",
+                                  tensorflow::string(argv[4]) == "1");
   } else {
     return -1;
   }

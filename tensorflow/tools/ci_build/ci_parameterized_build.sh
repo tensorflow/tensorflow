@@ -18,7 +18,7 @@
 #   ci_parameterized_build.sh
 #
 # The script obeys the following required environment variables:
-#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID)
+#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_FULL)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
@@ -55,15 +55,16 @@
 #                      AVX- or AVX2-compatible CPUs.
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
-#                      //tensorflow/...
+#                      //tensorflow/... -//tensorflow/compiler
 #   TF_BUILD_BAZEL_CLEAN:
 #                      Will perform "bazel clean", if and only if this variable
 #                      is set to any non-empty and non-0 value
-#   TF_BUILD_SERIAL_TESTS:
-#                      Build parallely, but test serially
-#                      (i.e., bazel test --job=1), potentially useful for
-#                      builds where the tests cannot be run in parallel due to
-#                      resource contention (e.g., for GPU builds)
+#   TF_BAZEL_BUILD_ONLY:
+#                      If it is set to any non-empty value that is not "0", Bazel 
+#                      will only build specified targets
+#   TF_GPU_COUNT:
+#                      Run this many parallel tests for serial builds.
+#                      For now, only can be edited for PIP builds.
 #   TF_BUILD_TEST_TUTORIALS:
 #                      If set to any non-empty and non-0 value, will perform
 #                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
@@ -76,15 +77,24 @@
 #                      If set to any non-empty and non-0 value, will perform
 #                      the benchmark tests (see *_logged_benchmark targets in
 #                      tools/test/BUILD)
-#   TF_BUILD_DISABLE_GCP:
-#                      If set to any non-empty and non-0 value, will disable
-#                      support for Google Cloud Platform (GCP), which is
-#                      enabled by default.
 #   TF_BUILD_OPTIONS:
-#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2)
+#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2_FMA | MAVX_DBG |
+#                      MAVX2_FMA_DBG)
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
+#   TF_BUILD_TEST_TIMEOUT:
+#                     Sets the value of bazel --test_timeout, defaults to -1
+#                     which uses the bazel defaults.
+#   TF_SKIP_CONTRIB_TESTS:
+#                     If set to any non-empty or non-0 value, will skip running
+#                     contrib tests.
+#   TF_NIGHTLY:
+#                     If this run is being used to build the tf_nightly pip
+#                     packages.
+#   TF_CUDA_CLANG:
+#                     If set to 1, builds and runs cuda_clang configuration.
+#                     Only available inside GPU containers.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -104,7 +114,6 @@ die () {
   exit 1
 }
 
-
 ##########################################################
 # Default configuration
 CI_BUILD_DIR="tensorflow/tools/ci_build"
@@ -115,24 +124,67 @@ DOCKER_MAIN_CMD="${CI_BUILD_DIR}/ci_build.sh"
 NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 
 # Additional option flags to apply when Docker is unavailable (e.g., on Mac)
-NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names "\
-"--genrule_strategy=standalone"
+NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 
-BAZEL_CMD="bazel test"
-BAZEL_BUILD_ONLY_CMD="bazel build"
+# Default values for various settings.
+TF_BUILD_TEST_TIMEOUT=${TF_BUILD_TEST_TIMEOUT:--1}  # Use bazel defaults
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
+
+# Helpful flags:
+# --test_summary=detailed: Tell us more about which targets are being built
+# --keep_going: Don't stop at the first failure; tell us all the failures
+# --build_tests_only: Don't build targets depended on by tests if the test is
+#                     disabled. Also saves some compilation time. Otherwise,
+#                     tries to build everything.
+# --test_timeout: Test timeouts in the order short,moderate,long,eternal.
+# --test_env: Environment variables to set when running bazel tests. These are
+#             especially important when using --run_under with
+#             parallel_gpu_execute.
+BAZEL_TEST_FLAGS=""\
+"--test_summary=detailed --build_tests_only --keep_going "\
+"--test_timeout=${TF_BUILD_TEST_TIMEOUT} "\
+"--test_env=TF_GPU_COUNT=${TF_GPU_COUNT}"
+
+# Only set these environment variables if they're specified, to avoid causing
+# problems like b/118404869, where an envvar set to the empty string has
+# different semantics from an unset envvar.
+if [ -n "${TF_TESTS_PER_GPU}" ]; then
+  BAZEL_TEST_FLAGS="${BAZEL_TEST_FLAGS} "\
+"--test_env=TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU}"
+fi
+if [ -n "${TF_PER_DEVICE_MEMORY_LIMIT_MB}" ]; then
+  BAZEL_TEST_FLAGS="${BAZEL_TEST_FLAGS} "\
+"--test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=${TF_PER_DEVICE_MEMORY_LIMIT_MB}"
+fi
+
+BAZEL_BUILD_FLAGS="--keep_going"
+
+# Explicitly set jdk8 since that's what's installed in our images. Note that
+# bazel 0.16 and higher defaults to jdk9, which causes failures. See b/117634064
+BAZEL_JAVA_FLAGS="--java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8"
+
+BAZEL_CMD="bazel test ${BAZEL_TEST_FLAGS} ${BAZEL_JAVA_FLAGS}"
+BAZEL_BUILD_ONLY_CMD="bazel build ${BAZEL_BUILD_FLAGS} ${BAZEL_JAVA_FLAGS}"
 BAZEL_CLEAN_CMD="bazel clean"
-BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
+ANDROID_FULL_CMD="${CI_BUILD_DIR}/builds/android_full.sh"
+
+PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
-BAZEL_TARGET="//tensorflow/..."
+EXTRA_PARAMS=""
+BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
+
+if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
+  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/..."
+fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
 
@@ -152,6 +204,7 @@ if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
   TF_BUILD_MAVX=$(to_lower ${TF_BUILD_MAVX})
 fi
 
+
 # Print parameter values
 echo "Required build parameters:"
 echo "  TF_BUILD_CONTAINER_TYPE=${TF_BUILD_CONTAINER_TYPE}"
@@ -166,44 +219,66 @@ echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
-echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
-echo "  TF_BUILD_DISABLE_GCP=${TF_BUILD_DISABLE_GCP}"
 echo "  TF_BUILD_OPTIONS=${TF_BUILD_OPTIONS}"
+
 
 # Function that tries to determine CUDA capability, if deviceQuery binary
 # is available on path
 function get_cuda_capability_version() {
   if [[ ! -z $(which deviceQuery) ]]; then
     # The first listed device is used
-    echo $(deviceQuery | grep "CUDA Capability .* version" | \
-        head -1 | awk '{print $NF}')
+    deviceQuery | grep "CUDA Capability .* version" | \
+        head -1 | awk '{print $NF}'
   fi
 }
 
 # Container type, e.g., CPU, GPU
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
 
-# Determine if Docker is available
-OPT_FLAG=""
-if [[ -z "$(which docker)" ]]; then
+# Determine if the machine is a Mac
+OPT_FLAG="--test_output=errors"
+if [[ "$(uname -s)" == "Darwin" ]]; then
   DO_DOCKER=0
 
-  echo "It appears that Docker is not available on this system. "\
-"Will perform build without Docker."
+  echo "It appears this machine is a Mac. "\
+"We will perform this build without Docker."
   echo "Also, the additional option flags will be applied to the build:"
   echo "  ${NO_DOCKER_OPT_FLAG}"
   MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"
   OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
 fi
 
+# In DO_DOCKER mode, appends environment variable to docker's run invocation.
+# Otherwise, exports the corresponding variable.
+function set_script_variable() {
+  local VAR="$1"
+  local VALUE="$2"
+  if [[ $DO_DOCKER == "1" ]]; then
+    TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e $VAR=$VALUE"
+  else
+    export $VAR="$VALUE"
+  fi
+}
+
+
 # Process container type
-if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+if [[ ${CTYPE} == cpu* ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
   :
-elif [[ ${CTYPE} == "gpu" ]]; then
-  OPT_FLAG="${OPT_FLAG} --config=cuda"
+elif [[ ${CTYPE} == gpu* ]]; then
+  set_script_variable TF_NEED_CUDA 1
+
+  if [[ $TF_CUDA_CLANG == "1" ]]; then
+    OPT_FLAG="${OPT_FLAG} --config=cuda_clang"
+
+    set_script_variable TF_CUDA_CLANG 1
+    # For cuda_clang we download `clang` while building.
+    set_script_variable TF_DOWNLOAD_CLANG 1
+  else
+    OPT_FLAG="${OPT_FLAG} --config=cuda"
+  fi
 
   # Attempt to determine CUDA capability version automatically and use it if
   # CUDA capability version is not specified by the environment variables.
@@ -236,14 +311,12 @@ elif [[ ${CTYPE} == "gpu" ]]; then
       echo ""
     fi
   fi
-elif [[ ${CTYPE} == "android" ]]; then
+elif [[ ${CTYPE} == "android" ]] || [[ ${CTYPE} == "android_full" ]]; then
   :
 else
   die "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
 "\"${TF_BUILD_CONTAINER_TYPE}\""
 fi
-
-EXTRA_PARAMS=""
 
 # Determine if this is a benchmarks job
 RUN_BENCHMARKS=0
@@ -292,8 +365,14 @@ else
     MAVX)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
       ;;
-    MAVX2)
-      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
+    MAVX_DBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
+      ;;
+    MAVX2_FMA)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2 --copt=-mfma"
+      ;;
+    MAVX2_FMA_DBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx2 --copt=-mfma"
       ;;
   esac
 fi
@@ -302,21 +381,52 @@ fi
 OPT_FLAG=$(str_strip "${OPT_FLAG}")
 
 
-# Filter out benchmark tests if this is not a benchmarks job
-EXTRA_ARGS=""
+# 1) Filter out benchmark tests if this is not a benchmarks job;
+# 2) Filter out tests with the "nomac" tag if the build is on Mac OS X.
+EXTRA_ARGS=${DEFAULT_BAZEL_CONFIGS}
+IS_MAC=0
+if [[ "$(uname)" == "Darwin" ]]; then
+  IS_MAC=1
+fi
 if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
   ITEMS=(${TF_BUILD_APPEND_ARGUMENTS})
 
   for ITEM in "${ITEMS[@]}"; do
-    if [[ ${ITEM} == *"--test_tag_filters="* ]] &&
-      [[ ${ITEM} != *"benchmark-test"* ]]; then
-      EXTRA_ARGS="${EXTRA_ARGS} ${ITEM},-benchmark-test"
+    if [[ ${ITEM} == *"--test_tag_filters="* ]]; then
+      NEW_ITEM="${ITEM}"
+      if [[ ${NEW_ITEM} != *"benchmark-test"* ]]; then
+        NEW_ITEM="${NEW_ITEM},-benchmark-test"
+      fi
+      if [[ ${IS_MAC} == "1" ]] && [[ ${NEW_ITEM} != *"nomac"* ]]; then
+        # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+        NEW_ITEM="${NEW_ITEM},-nomac,-no_mac"
+      fi
+      EXTRA_ARGS="${EXTRA_ARGS} ${NEW_ITEM}"
     else
       EXTRA_ARGS="${EXTRA_ARGS} ${ITEM}"
     fi
   done
 else
-  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-benchmark-test"
+  EXTRA_ARGS="${EXTRA_ARGS} ${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
+  if [[ ${IS_MAC} == "1" ]]; then
+    # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac,-no_mac"
+  fi
+  EXTRA_ARGS="${EXTRA_ARGS} --build_tag_filters=-no_oss,-oss_serial,-benchmark-test"
+  if [[ ${IS_MAC} == "1" ]]; then
+    # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac,-no_mac"
+  fi
+fi
+
+# For any "tool" dependencies in genrules, Bazel will build them for host
+# instead of the target configuration. We can save some build time by setting
+# this flag, and it only affects a few tests.
+EXTRA_ARGS="${EXTRA_ARGS} --distinct_host_configuration=false"
+
+if [[ ! -z "${TF_BAZEL_BUILD_ONLY}" ]] &&
+   [[ "${TF_BAZEL_BUILD_ONLY}" != "0" ]];then
+  BAZEL_CMD=${BAZEL_BUILD_ONLY_CMD}
 fi
 
 # Process PIP install-test option
@@ -327,31 +437,23 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}
   fi
 
-  if [[ ${CTYPE} == "cpu" ]] || \
-     [[ ${CTYPE} == "debian.jessie.cpu" ]] || \
-     [[ ${CTYPE} == "gpu" ]]; then
-    # Run Bazel
+  if [[ ${CTYPE} == cpu* ]] || \
+     [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+    # CPU only command, fully parallel.
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-    NO_PIP_MAIN_CMD=$(str_strip "${NO_PIP_MAIN_CMD}")
-
-    if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
-       [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
-      # Break the operation into two steps: build and test
-      # The 1st (build) step will be done in parallel, as default
-      # But the 2nd (test) step will be done serially.
-
-      BUILD_ONLY_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-      echo "Build-only command: ${BUILD_ONLY_CMD}"
-
-      NO_PIP_MAIN_CMD="${BUILD_ONLY_CMD} && "\
-"${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-      echo "Parallel-build + serial-test command: ${NO_PIP_MAIN_CMD}"
-    fi
+"${EXTRA_ARGS} -- ${BAZEL_TARGET}"
+  elif [[ ${CTYPE} == gpu* ]]; then
+    # GPU only command, run as many jobs as the GPU count only.
+    NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
+"--local_test_jobs=${TF_GPU_COUNT} "\
+"--run_under=${PARALLEL_GPU_TEST_CMD} "\
+"${EXTRA_ARGS} -- ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == "android" ]]; then
+    # Run android specific script for android build.
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
+  elif [[ ${CTYPE} == "android_full" ]]; then
+    # Run android specific script for full android build.
+    NO_PIP_MAIN_CMD="${ANDROID_FULL_CMD} ${OPT_FLAG} "
   fi
 
 fi
@@ -365,12 +467,7 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
     exit 0
   fi
 
-  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
-
-  # Add flag for mavx/mavx2
-  if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
-    PIP_MAIN_CMD="${PIP_MAIN_CMD} --${TF_BUILD_MAVX}"
-  fi
+  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_ARGS} ${OPT_FLAG}"
 
   # Add flag for integration tests
   if [[ ! -z "${TF_BUILD_INTEGRATION_TESTS}" ]] &&
@@ -407,12 +504,18 @@ else
   die "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
 fi
 
+# Check if this is a tf_nightly build
+if [[ "${TF_NIGHTLY}" == "1" ]]; then
+  EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_NIGHTLY=1"
+fi
+
 # Process Python version
 if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" || \
         ${TF_BUILD_PYTHON_VERSION} == "python3.4" || \
-        ${TF_BUILD_PYTHON_VERSION} == "python3.5" ]]; then
+        ${TF_BUILD_PYTHON_VERSION} == "python3.5" || \
+        ${TF_BUILD_PYTHON_VERSION} == "python3.6" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
     EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=${TF_BUILD_PYTHON_VERSION}"
@@ -479,32 +582,52 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
-  # Modify Dockerfile for Python3.5 build
-  TMP_DIR=$(mktemp -d)
-  echo "Docker build will occur in temporary directory: ${TMP_DIR}"
+if [[ "${DO_DOCKER}" == "1" ]]; then
+  if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
+    [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+    # Modify Dockerfile for Python3.5 | Python3.6 build
+    TMP_DIR=$(mktemp -d)
+    echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 
-  # Copy the files required for the docker build
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
-      die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
+    # Copy the files required for the docker build
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
+        die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
 
-  DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
-  cp "${DOCKERFILE}" "${TMP_DIR}/" || \
-      die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
-  DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+    DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+    cp "${DOCKERFILE}" "${TMP_DIR}/" || \
+        die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
+    DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
 
-  # Replace a line in the Dockerfile
-  sed -i \
-      's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
-      "${DOCKERFILE}" && \
-      echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}" || \
+    # Replace a line in the Dockerfile
+    if sed -i \
+        "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
+        "${DOCKERFILE}"
+    then
+      echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
+    else
       die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+    fi
 
-  DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
+    DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
+  fi
 fi
 
+# Set a disk usage trap.
+function debug_disk_usage {
+    echo "Finished script... disk usage report in ${TMP_DIR}"
+    du -k -d 2 ${TMP_DIR} | sort -n -r
+}
+# trap debug_disk_usage EXIT
+
 chmod +x ${TMP_SCRIPT}
+
+# Map TF_BUILD container types to containers we actually have.
+if [[ "${CTYPE}" == "android_full" ]]; then
+  CONTAINER="android"
+else
+  CONTAINER=${CTYPE}
+fi
 
 FAILURE=0
 if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
@@ -513,7 +636,7 @@ if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
 else
   # Actually run the command
   if [[ "${DO_DOCKER}" == "1" ]]; then
-    ${DOCKER_MAIN_CMD} ${CTYPE} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
+    ${DOCKER_MAIN_CMD} ${CONTAINER} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
   else
     ${TMP_SCRIPT}
   fi
@@ -530,8 +653,10 @@ rm -f ${TMP_SCRIPT}
 END_TIME=$(date +'%s')
 echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
-"(Elapsed time: $((${END_TIME} - ${START_TIME})) s)"
+"(Elapsed time: $((END_TIME - START_TIME)) s)"
 
+# Dump disk usage
+debug_disk_usage
 
 # Clean up temporary directory if it exists
 if [[ ! -z "${TMP_DIR}" ]]; then

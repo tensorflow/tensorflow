@@ -17,9 +17,9 @@
 #
 # To build the image, use ../build_server.sh --test
 
-FROM ubuntu:14.04
+FROM ubuntu:16.04
 
-MAINTAINER Shanqing Cai <cais@google.com>
+LABEL maintainer="Shanqing Cai <cais@google.com>"
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y \
@@ -40,9 +40,10 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
 # Install python panda for the census wide&deep test
 RUN pip install --upgrade pandas==0.18.1
 
-# Install TensorFlow CPU version.
-RUN pip --no-cache-dir install \
-    https://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.10.0-cp27-none-linux_x86_64.whl
+# Install TensorFlow wheel
+COPY tensorflow-*.whl /
+RUN pip install /tensorflow-*.whl && \
+    rm -f /tensorflow-*.whl
 
 # Copy files, including the GRPC server binary at
 # server/grpc_tensorflow_server.py
@@ -51,20 +52,20 @@ ADD . /var/tf-k8s
 # Download MNIST data for tests
 RUN mkdir -p /tmp/mnist-data
 RUN curl -o /tmp/mnist-data/train-labels-idx1-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz
+    https://storage.googleapis.com/cvdf-datasets/mnist/train-labels-idx1-ubyte.gz
 RUN curl -o /tmp/mnist-data/train-images-idx3-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz
+    https://storage.googleapis.com/cvdf-datasets/mnist/train-images-idx3-ubyte.gz
 RUN curl -o /tmp/mnist-data/t10k-labels-idx1-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz
+    https://storage.googleapis.com/cvdf-datasets/mnist/t10k-labels-idx1-ubyte.gz
 RUN curl -o /tmp/mnist-data/t10k-images-idx3-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz
+    https://storage.googleapis.com/cvdf-datasets/mnist/t10k-images-idx3-ubyte.gz
 
 # Download Census data for Wide & Deep test
 RUN mkdir -p /tmp/census-data
 RUN curl -o /tmp/census-data/adult.data \
-    https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data
+    http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data
 RUN curl -o /tmp/census-data/adult.test \
-    https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test
+    http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test
 
 # Container entry point
 ENTRYPOINT ["/var/tf-k8s/server/grpc_tensorflow_server_wrapper.sh"]

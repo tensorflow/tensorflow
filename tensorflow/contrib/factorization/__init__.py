@@ -24,3 +24,23 @@ from tensorflow.contrib.factorization.python.ops.factorization_ops import *
 from tensorflow.contrib.factorization.python.ops.gmm import *
 from tensorflow.contrib.factorization.python.ops.gmm_ops import *
 from tensorflow.contrib.factorization.python.ops.kmeans import *
+from tensorflow.contrib.factorization.python.ops.wals import *
+# pylint: enable=wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = [
+    'COSINE_DISTANCE',
+    'GMM',
+    'gmm',
+    'GmmAlgorithm',
+    'KMeans',
+    'KMEANS_PLUS_PLUS_INIT',
+    'KMeansClustering',
+    'RANDOM_INIT',
+    'SQUARED_EUCLIDEAN_DISTANCE',
+    'WALSMatrixFactorization',
+    'WALSModel',
+]
+
+remove_undocumented(__name__, _allowed_symbols)

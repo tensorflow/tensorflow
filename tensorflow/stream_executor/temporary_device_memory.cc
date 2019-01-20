@@ -17,8 +17,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 TemporaryDeviceMemoryBase::~TemporaryDeviceMemoryBase() {
   parent_->temporary_memory_manager()->MarkFinalized(device_memory_,
@@ -64,5 +63,4 @@ TemporaryDeviceMemoryBase::TemporaryDeviceMemoryBase(
   DCHECK(IsAllocated());
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

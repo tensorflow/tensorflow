@@ -17,8 +17,12 @@ limitations under the License.
 
 #include <array>
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -270,13 +274,15 @@ size_t BytesPerElementHelper(DT value) {
   SavedSlice ss;
   std::array<DT, 1> lo_data;
   std::fill(lo_data.begin(), lo_data.end(), value);
-  TensorSliceWriter::SaveData(lo_data.data(), lo_data.size(), &ss);
-  int lo_byte_size = ss.ByteSize();
+  TF_EXPECT_OK(
+      TensorSliceWriter::SaveData(lo_data.data(), lo_data.size(), &ss));
+  size_t lo_byte_size = ss.ByteSizeLong();
 
   std::array<DT, 1001> hi_data;
   std::fill(hi_data.begin(), hi_data.end(), value);
-  TensorSliceWriter::SaveData(hi_data.data(), hi_data.size(), &ss);
-  int hi_byte_size = ss.ByteSize();
+  TF_EXPECT_OK(
+      TensorSliceWriter::SaveData(hi_data.data(), hi_data.size(), &ss));
+  size_t hi_byte_size = ss.ByteSizeLong();
 
   return (hi_byte_size - lo_byte_size) / (hi_data.size() - lo_data.size());
 }
@@ -328,8 +334,8 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<int8> data(300000000, -1);
     Status s = writer.Add("test1", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(StringPiece(s.error_message())
-                    .contains("Tensor slice is too large to serialize"));
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(), "Tensor slice is too large to serialize"));
   }
 
   // Add a large string tensor slice, which will fail.
@@ -339,8 +345,8 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<string> data(256 * 1024, std::string(8192, 'f'));
     Status s = writer.Add("test2", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(StringPiece(s.error_message())
-                    .contains("Tensor slice is too large to serialize"));
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(), "Tensor slice is too large to serialize"));
   }
 }
 

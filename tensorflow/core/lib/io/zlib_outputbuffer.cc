@@ -36,7 +36,7 @@ ZlibOutputBuffer::ZlibOutputBuffer(
       z_stream_(new z_stream) {}
 
 ZlibOutputBuffer::~ZlibOutputBuffer() {
-  if (z_stream_.get()) {
+  if (z_stream_) {
     LOG(WARNING) << "ZlibOutputBuffer::Close() not called. Possible data loss";
   }
 }
@@ -58,7 +58,7 @@ Status ZlibOutputBuffer::Init() {
                    zlib_options_.compression_method, zlib_options_.window_bits,
                    zlib_options_.mem_level, zlib_options_.compression_strategy);
   if (status != Z_OK) {
-    z_stream_.reset(NULL);
+    z_stream_.reset(nullptr);
     return errors::InvalidArgument("deflateInit failed with status", status);
   }
   z_stream_->next_in = z_stream_input_.get();
@@ -143,7 +143,7 @@ Status ZlibOutputBuffer::FlushOutputBufferToFile() {
   return Status::OK();
 }
 
-Status ZlibOutputBuffer::Write(StringPiece data) {
+Status ZlibOutputBuffer::Append(StringPiece data) {
   // If there is sufficient free space in z_stream_input_ to fit data we
   // add it there and return.
   // If there isn't enough space we deflate the existing contents of
@@ -197,11 +197,22 @@ Status ZlibOutputBuffer::Flush() {
   return Status::OK();
 }
 
+Status ZlibOutputBuffer::Name(StringPiece* result) const {
+  return file_->Name(result);
+}
+
+Status ZlibOutputBuffer::Sync() {
+  TF_RETURN_IF_ERROR(Flush());
+  return file_->Sync();
+}
+
 Status ZlibOutputBuffer::Close() {
-  TF_RETURN_IF_ERROR(DeflateBuffered(true));
-  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
-  deflateEnd(z_stream_.get());
-  z_stream_.reset(NULL);
+  if (z_stream_) {
+    TF_RETURN_IF_ERROR(DeflateBuffered(true));
+    TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+    deflateEnd(z_stream_.get());
+    z_stream_.reset(nullptr);
+  }
   return Status::OK();
 }
 
@@ -212,11 +223,13 @@ Status ZlibOutputBuffer::Deflate(int flush) {
     return Status::OK();
   }
   string error_string = strings::StrCat("deflate() failed with error ", error);
-  if (z_stream_->msg != NULL) {
+  if (z_stream_->msg != nullptr) {
     strings::StrAppend(&error_string, ": ", z_stream_->msg);
   }
   return errors::DataLoss(error_string);
 }
+
+Status ZlibOutputBuffer::Tell(int64* position) { return file_->Tell(position); }
 
 }  // namespace io
 }  // namespace tensorflow

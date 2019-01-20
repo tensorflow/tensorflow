@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,8 +38,11 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated("2017-06-30",
+            "No longer supported. Switch to SavedModel immediately.")
 def gfile_copy_callback(files_to_copy, export_dir_path):
   """Callback to copy files using `gfile.Copy` to an export directory.
 
@@ -53,7 +56,7 @@ def gfile_copy_callback(files_to_copy, export_dir_path):
       basename in the export directory.
     export_dir_path: Directory to copy the files to.
   """
-  logging.info("Write assest into: %s using gfile_copy.", export_dir_path)
+  logging.info("Write assets into: %s using gfile_copy.", export_dir_path)
   gfile.MakeDirs(export_dir_path)
   for source_filepath, basename in files_to_copy.items():
     new_path = os.path.join(
@@ -69,6 +72,8 @@ def gfile_copy_callback(files_to_copy, export_dir_path):
     gfile.Copy(source_filepath, new_path)
 
 
+@deprecated("2017-06-30",
+            "No longer supported. Switch to SavedModel immediately.")
 def regression_signature(input_tensor, output_tensor):
   """Creates a regression signature.
 
@@ -85,6 +90,8 @@ def regression_signature(input_tensor, output_tensor):
   return signature
 
 
+@deprecated("2017-06-30",
+            "No longer supported. Switch to SavedModel immediately.")
 def classification_signature(input_tensor,
                              classes_tensor=None,
                              scores_tensor=None):
@@ -107,6 +114,8 @@ def classification_signature(input_tensor,
   return signature
 
 
+@deprecated("2017-06-30",
+            "No longer supported. Switch to SavedModel immediately.")
 def generic_signature(name_tensor_map):
   """Creates a generic signature of name to Tensor name.
 
@@ -140,6 +149,8 @@ class Exporter(object):
     self._has_init = False
     self._assets_to_copy = {}
 
+  @deprecated("2017-06-30",
+              "No longer supported. Switch to SavedModel immediately.")
   def init(self,
            graph_def=None,
            init_op=None,
@@ -221,6 +232,8 @@ class Exporter(object):
 
     self._assets_callback = assets_callback
 
+  @deprecated("2017-06-30",
+              "No longer supported. Switch to SavedModel immediately.")
   def export(self,
              export_dir_base,
              global_step_tensor,
@@ -268,11 +281,12 @@ class Exporter(object):
     tmp_export_dir = compat.as_text(export_dir) + "-tmp"
     gfile.MakeDirs(tmp_export_dir)
 
-    self._saver.save(sess,
-                     os.path.join(
-                         compat.as_text(tmp_export_dir),
-                         compat.as_text(constants.EXPORT_BASE_NAME)),
-                     meta_graph_suffix=constants.EXPORT_SUFFIX_NAME)
+    self._saver.save(
+        sess,
+        os.path.join(
+            compat.as_text(tmp_export_dir),
+            compat.as_text(constants.EXPORT_BASE_NAME)),
+        meta_graph_suffix=constants.EXPORT_SUFFIX_NAME)
 
     # Run the asset callback.
     if self._assets_callback and self._assets_to_copy:
@@ -288,7 +302,12 @@ class Exporter(object):
     if exports_to_keep:
       # create a simple parser that pulls the export_version from the directory.
       def parser(path):
-        match = re.match("^" + export_dir_base + "/(\\d{8})$", path.path)
+        if os.name == "nt":
+          match = re.match(
+              r"^" + export_dir_base.replace("\\", "/") + r"/(\d{8})$",
+              path.path.replace("\\", "/"))
+        else:
+          match = re.match(r"^" + export_dir_base + r"/(\d{8})$", path.path)
         if not match:
           return None
         return path._replace(export_version=int(match.group(1)))

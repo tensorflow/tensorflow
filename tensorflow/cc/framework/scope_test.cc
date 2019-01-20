@@ -26,6 +26,16 @@ TEST(ScopeTest, BasicNames) {
   EXPECT_EQ(root.GetUniqueNameForOp("mul"), "mul");
 }
 
+TEST(ScopeTest, OpAndScopeNameCollision) {
+  Scope root = Scope::NewRootScope();
+  EXPECT_EQ(root.GetUniqueNameForOp("foo"), "foo");
+  EXPECT_EQ(root.GetUniqueNameForOp("foo"), "foo_1");
+  EXPECT_EQ(root.GetUniqueNameForOp("foo_1"), "foo_1_1");
+  EXPECT_EQ(root.GetUniqueNameForOp("foo_2"), "foo_2");
+  EXPECT_EQ(root.GetUniqueNameForOp("foo"), "foo_3");
+  EXPECT_EQ(root.GetUniqueNameForOp("foo_2"), "foo_2_1");
+}
+
 TEST(ScopeTest, HierarchicalNames) {
   Scope root = Scope::NewRootScope();
   Scope child = root.NewSubScope("child");
@@ -127,11 +137,11 @@ TEST(ScopeTest, SingleUseScope) {
 
 TEST(ScopeTest, ControlDeps) {
   Scope root = Scope::NewRootScope();
-  auto c1 = ops::Operation();
-  auto c2 = ops::Operation();
+  auto c1 = Operation();
+  auto c2 = Operation();
   Scope c = root.WithControlDependencies({c1, c2});
   EXPECT_EQ(c.control_deps().size(), 2);
-  Scope c_c = c.WithControlDependencies({ops::Operation()});
+  Scope c_c = c.WithControlDependencies({Operation()});
   EXPECT_EQ(c_c.control_deps().size(), 3);
 }
 

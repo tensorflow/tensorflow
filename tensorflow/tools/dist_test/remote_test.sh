@@ -20,13 +20,17 @@
 # runs from within a container based on the image.
 #
 # Usage:
-#   remote_test.sh [--setup_cluster_only]
+#   remote_test.sh <whl_url>
+#                  [--setup_cluster_only]
 #                  [--num_workers <NUM_WORKERS>]
 #                  [--num_parameter_servers <NUM_PARAMETER_SERVERS>]
 #                  [--sync_replicas]
 #
 # Arguments:
-#   --setup_cluster_only:
+# <whl_url>
+#   Specify custom TensorFlow whl file URL to install in the test Docker image.
+#
+# --setup_cluster_only:
 #       Setup the TensorFlow k8s cluster only, and do not perform testing of
 #       the distributed runtime.
 #
@@ -40,6 +44,7 @@
 #   Use the synchronized-replica mode. The parameter updates from the replicas
 #   (workers) will be aggregated before applied, which avoids stale parameter
 #   updates.
+#
 #
 #
 # If any of the following environment variable has non-empty values, it will
@@ -60,6 +65,11 @@
 #   TF_DIST_GRPC_PORT:            port on which to create the TensorFlow GRPC
 #                                 servers
 #   TF_DIST_DOCKER_NO_CACHE:      do not use cache when building docker images
+
+die() {
+  echo $@
+  exit 1
+}
 
 DOCKER_IMG_NAME="tensorflow/tf-dist-test-client"
 
@@ -95,8 +105,39 @@ if [[ ! -z "${TF_DIST_DOCKER_NO_CACHE}" ]] &&
   NO_CACHE_FLAG="--no-cache"
 fi
 
+# Parse command-line arguments.
+WHL_URL=${1}
+if [[ -z "${WHL_URL}" ]]; then
+  echo "WARNING: No wheel url passed. Will use latest tf-nightly cpu p2 wheel."
+fi
+
+# Create docker build context directory.
+BUILD_DIR=$(mktemp -d)
+echo ""
+echo "Using custom whl file URL: ${WHL_URL}"
+echo "Building in temporary directory: ${BUILD_DIR}"
+
+cp -r ${DIR}/* ${BUILD_DIR}/ || \
+  die "Failed to copy files to ${BUILD_DIR}"
+
+# Download whl file into the build context directory.
+if [[ -z "${WHL_URL}" ]]; then
+  pip2 download --no-deps tf-nightly
+  cp tf-nightly-*.whl "${BUILD_DIR}"/tensorflow-none-any.whl
+else
+  wget -P "${BUILD_DIR}" ${WHL_URL} || \
+    die "Failed to download tensorflow whl file from URL: ${WHL_URL}"
+fi
+
+# Build docker image for test.
 docker build ${NO_CACHE_FLAG} \
-    -t ${DOCKER_IMG_NAME} -f "${DIR}/Dockerfile" "${DIR}"
+    -t ${DOCKER_IMG_NAME} -f "${BUILD_DIR}/Dockerfile" "${BUILD_DIR}" || \
+    die "Failed to build docker image: ${DOCKER_IMG_NAME}"
+
+# Clean up docker build context directory.
+rm -rf "${BUILD_DIR}"
+
+# Run docker image for test.
 KEY_FILE=${TF_DIST_GCLOUD_KEY_FILE:-"${HOME}/gcloud-secrets/tensorflow-testing.json"}
 
 docker run --rm -v ${KEY_FILE}:/var/gcloud/secrets/tensorflow-testing.json \

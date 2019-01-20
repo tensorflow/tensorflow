@@ -20,13 +20,14 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -72,8 +73,9 @@ class SparseToDense : public OpKernel {
     // sparse_values
     const Tensor& sparse_values = c->input(2);
     const int64 num_values = sparse_values.NumElements();
-    OP_REQUIRES(c, sparse_values.dims() == 0 ||
-                       (sparse_values.dims() == 1 && num_values == num_elems),
+    OP_REQUIRES(c,
+                sparse_values.dims() == 0 ||
+                    (sparse_values.dims() == 1 && num_values == num_elems),
                 errors::InvalidArgument("sparse_values has incorrect shape ",
                                         sparse_values.shape().DebugString(),
                                         ", should be [] or [", num_elems, "]"));
@@ -117,8 +119,10 @@ class SparseToDense : public OpKernel {
     // Assume SparseTensor is lexicographically sorted.
     gtl::InlinedVector<int64, 8> order(output->shape().dims());
     std::iota(order.begin(), order.end(), 0);
-    sparse::SparseTensor st(indices_shaped, sparse_values_b, output->shape(),
-                            order);
+    sparse::SparseTensor st;
+    OP_REQUIRES_OK(c,
+                   sparse::SparseTensor::Create(indices_shaped, sparse_values_b,
+                                                output->shape(), order, &st));
 
     if (validate_indices_) {
       OP_REQUIRES_OK(c, st.IndicesValid());

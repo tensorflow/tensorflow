@@ -22,9 +22,10 @@ limitations under the License.
 #include <assert.h>
 #include <stdio.h>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/random_op.h"
+#include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
+#include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
@@ -37,20 +38,22 @@ using GPUDevice = Eigen::GpuDevice;
 
 // Kernel for Multinomial op.  Data is interpreted to have the following shapes:
 //   scores: [B, S, C];  maxima: [B, S];  output: [B, S].
+template <typename OutputType>
 __global__ void MultinomialKernel(int32 nthreads, const int32 num_classes,
                                   const int32 num_samples, const float* scores,
-                                  const float* maxima, int64* output) {
+                                  const float* maxima, OutputType* output) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
     const int maxima_idx = index / num_classes;
     if (ldg(maxima + maxima_idx) == ldg(scores + index)) {
-      CudaAtomicMax(reinterpret_cast<uint64*>(output + maxima_idx),
-                    static_cast<uint64>(index % num_classes));
+      using UnsignedOutputType = typename std::make_unsigned<OutputType>::type;
+      CudaAtomicMax(reinterpret_cast<UnsignedOutputType*>(output + maxima_idx),
+                    static_cast<UnsignedOutputType>(index % num_classes));
     }
   }
 }
 
-template <typename T>
-struct MultinomialFunctor<GPUDevice, T> {
+template <typename T, typename OutputType>
+struct MultinomialFunctor<GPUDevice, T, OutputType> {
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
                   typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<float>::Flat noises,
@@ -58,14 +61,13 @@ struct MultinomialFunctor<GPUDevice, T> {
                   typename TTypes<float>::Flat maxima, int batch_size,
                   int num_classes, int num_samples,
                   const random::PhiloxRandom& gen,
-                  typename TTypes<int64>::Matrix output) {
+                  typename TTypes<OutputType>::Matrix output) {
     // Uniform, [0, 1).
     typedef random::UniformDistribution<random::PhiloxRandom, float> Dist;
     functor::FillPhiloxRandom<GPUDevice, Dist>()(ctx, d, gen, noises.data(),
                                                  noises.size(), Dist());
 
 #if defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::IndexList<Eigen::type2index<2>> kTwo;
     Eigen::IndexList<int, int, int> bsc;
     bsc.set(0, batch_size);
     bsc.set(1, num_samples);
@@ -78,7 +80,6 @@ struct MultinomialFunctor<GPUDevice, T> {
     Eigen::IndexList<Eigen::type2index<1>, int, Eigen::type2index<1>> oso;
     oso.set(1, num_samples);
 #else
-    Eigen::array<int, 1> kTwo{2};
     Eigen::array<int, 3> bsc{batch_size, num_samples, num_classes};
     Eigen::array<int, 3> boc{batch_size, 1, num_classes};
     Eigen::array<int, 3> oso{1, num_samples, 1};
@@ -87,12 +88,23 @@ struct MultinomialFunctor<GPUDevice, T> {
     // Calculates "scores = logits - log(-log(noises))"; B*C*S elements.
     // NOTE: we don't store back to "noises" because having it appear on both
     // sides is potentially unsafe (e.g. Eigen may use ldg() to load RHS data).
+    // 2e-30 is chosen so as to be small enough to only change 0 -> 2e-30 while
+    // not affect any of the other numbers (smallest is ~1e-7), but not so small
+    // that log(x) == -inf, which is why it needs to be larger than 0 in the
+    // first place.
     To32Bit(scores).device(d) =
         To32Bit(logits).reshape(boc).broadcast(oso).template cast<float>() -
-        ((-(To32Bit(noises).log())).log());
+        ((-((To32Bit(noises) + 2e-30f).log())).log());
 
     // Max-reduce along classes for each (batch, sample).
-    To32Bit(maxima).device(d) = To32Bit(scores).reshape(bsc).maximum(kTwo);
+    typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
+    Constants<GPUDevice> constants;
+    cub::Max op;
+    functor::ReduceImpl<float, cub::Max, float*, const float*, ReductionAxes>(
+        /*ctx=*/ctx, /*out=*/maxima.data(), /*in=*/scores.data(), /*in_rank=*/2,
+        /*in_dim0=*/batch_size * num_samples,
+        /*in_dim1=*/num_classes, /*in_dim2=*/1, /*out_rank=*/1,
+        /*reduction_axes=*/constants.kOne, /*Op=*/op);
 
     // Necessary for atomicMax() inside the kernel.
     output.device(d) = output.constant(0LL);
@@ -107,11 +119,17 @@ struct MultinomialFunctor<GPUDevice, T> {
 };
 
 // Explicit instantiation of the GPU functors.
-template struct MultinomialFunctor<GPUDevice, Eigen::half>;
-template struct MultinomialFunctor<GPUDevice, float>;
-template struct MultinomialFunctor<GPUDevice, double>;
-template struct MultinomialFunctor<GPUDevice, int32>;
-template struct MultinomialFunctor<GPUDevice, int64>;
+template struct MultinomialFunctor<GPUDevice, Eigen::half, int32>;
+template struct MultinomialFunctor<GPUDevice, float, int32>;
+template struct MultinomialFunctor<GPUDevice, double, int32>;
+template struct MultinomialFunctor<GPUDevice, int32, int32>;
+template struct MultinomialFunctor<GPUDevice, int64, int32>;
+
+template struct MultinomialFunctor<GPUDevice, Eigen::half, int64>;
+template struct MultinomialFunctor<GPUDevice, float, int64>;
+template struct MultinomialFunctor<GPUDevice, double, int64>;
+template struct MultinomialFunctor<GPUDevice, int32, int64>;
+template struct MultinomialFunctor<GPUDevice, int64, int64>;
 
 }  // namespace functor
 }  // namespace tensorflow

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_NO_OP_H_
-#define TENSORFLOW_KERNELS_NO_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_NO_OP_H_
+#define TENSORFLOW_CORE_KERNELS_NO_OP_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -29,4 +29,4 @@ class NoOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_NO_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_NO_OP_H_

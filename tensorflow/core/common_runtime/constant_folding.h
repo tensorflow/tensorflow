@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,43 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
-#define TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/platform/env.h"
+
+// TODO(skyewm): can this be combined with EvaluateConstantTensor?
 
 namespace tensorflow {
+
+// This generator type is used to generate a name for the newly folded node
+// based on the node's old name.
+using ConstantFoldNameGenerator =
+    std::function<string(Graph* graph, string old_name)>;
+
+// Options specific to constant folding optimizations.
+struct ConstantFoldingOptions {
+  // If "consider" is not a nullptr, then only constant fold a node "n" if
+  // consider(n) returns true.
+  std::function<bool(const Node*)> consider = nullptr;
+  // If shape_map is not a nullptr, it is a map from node n to a
+  // vector of the (potentially partially-known) shapes of its
+  // outputs.
+  const std::unordered_map<string, std::vector<PartialTensorShape>>* shape_map =
+      nullptr;  // not owned
+  // The maximum size of each constant created during constant folding
+  // optimization.
+  int64 max_constant_size_in_bytes = 10 * 1024 * 1024;
+
+  // A generator for the name suffix of constant folded nodes. A
+  // default id generator that monotonically increases is used if nullptr is
+  // passed.
+  ConstantFoldNameGenerator generate_new_name = nullptr;
+};
 
 // Perform constant folding optimization on "graph".
 // Looks for nodes in "graph" that can be completely evaluated statically, i.e.,
@@ -29,20 +57,13 @@ namespace tensorflow {
 // and replaces those nodes with the result of the evaluation.
 // "partition_device", if non-null, is the device where all the graph nodes are
 // assumed to execute.
-// Returns true if and only if "graph" has been mutated.
-bool DoConstantFolding(const ConstantFoldingOptions& opts,
-                       FunctionLibraryRuntime* function_library, Env* env,
-                       Device* partition_device, Graph* graph);
-
-typedef std::pair<Node*, int> NodeAndOutput;
-
-// Replaces the identified Tensor in 'graph' by a 'Const' node with
-// the value supplied in 'constant'. 'partition_device', if non-null
-// is the device where the graph executes. Returns true if the
-// replacement was successful, false otherwise.
-bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
-                               NodeAndOutput tensor, const Tensor& constant);
+// Sets `was_mutated` to true if and only if "graph" has been mutated.
+// The status is only set to a non-OK state if an unexpected error is hit
+// running the graph.
+Status ConstantFold(const ConstantFoldingOptions& opts,
+                    FunctionLibraryRuntime* function_library, Env* env,
+                    Device* partition_device, Graph* graph, bool* was_mutated);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_

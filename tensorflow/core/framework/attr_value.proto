@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "AttrValueProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
@@ -23,7 +23,7 @@ message AttrValue {
     repeated DataType type = 6 [packed = true];  // "list(type)"
     repeated TensorShapeProto shape = 7;         // "list(shape)"
     repeated TensorProto tensor = 8;             // "list(tensor)"
-    // TODO(zhifengc/josh11b): implements list(func) if needed.
+    repeated NameAttrList func = 9;              // "list(attr)"
   }
   // LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/c/c_api.cc)
 

@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""TensorFlow composable models used as building blocks for estimators (deprecated).
 
-"""TensorFlow composable models used as building blocks for estimators."""
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,15 +29,17 @@ import re
 import six
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import list_variables
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.layers.python.layers import feature_column_ops
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.summary import summary
+from tensorflow.python.util.deprecation import deprecated
 
 
 class _ComposableModel(object):
@@ -46,16 +52,18 @@ class _ComposableModel(object):
   _ComposableModel and its subclasses are not part of the public tf.learn API.
   """
 
+  @deprecated(None, "Please use model_fns in tf.estimator.")
   def __init__(self,
                num_label_columns,
                optimizer,
                gradient_clip_norm,
                num_ps_replicas,
-               scope):
+               scope,
+               trainable=True):
     """Common initialization for all _ComposableModel objects.
 
     Args:
-      num_label_columns: The number of label/target columns.
+      num_label_columns: The number of label columns.
       optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the model. If `None`, will use a FTRL optimizer.
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
@@ -63,12 +71,16 @@ class _ComposableModel(object):
         tf.clip_by_global_norm for more details.
       num_ps_replicas: The number of parameter server replicas.
       scope: Scope for variables created in this model.
+      trainable: True if this model contains variables that can be trained.
+        False otherwise (in cases where the variables are used strictly for
+        transforming input labels for training).
     """
     self._num_label_columns = num_label_columns
     self._optimizer = optimizer
     self._gradient_clip_norm = gradient_clip_norm
     self._num_ps_replicas = num_ps_replicas
     self._scope = scope
+    self._trainable = trainable
     self._feature_columns = None
 
   def get_scope_name(self):
@@ -136,6 +148,10 @@ class _ComposableModel(object):
 class LinearComposableModel(_ComposableModel):
   """A _ComposableModel that implements linear regression.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Instances of this class can be used to build estimators through the use
   of composition.
   """
@@ -146,11 +162,12 @@ class LinearComposableModel(_ComposableModel):
                _joint_weights=False,
                gradient_clip_norm=None,
                num_ps_replicas=0,
-               scope=None):
+               scope=None,
+               trainable=True):
     """Initializes LinearComposableModel objects.
 
     Args:
-      num_label_columns: The number of label/target columns.
+      num_label_columns: The number of label columns.
       optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the model. If `None`, will use a FTRL optimizer.
       _joint_weights: If True use a single (possibly partitioned) variable
@@ -162,6 +179,9 @@ class LinearComposableModel(_ComposableModel):
       num_ps_replicas: The number of parameter server replicas.
       scope: Optional scope for variables created in this model. If scope
         is not supplied, it will default to 'linear'.
+      trainable: True if this model contains variables that can be trained.
+        False otherwise (in cases where the variables are used strictly for
+        transforming input labels for training).
     """
     scope = "linear" if not scope else scope
     super(LinearComposableModel, self).__init__(
@@ -169,7 +189,8 @@ class LinearComposableModel(_ComposableModel):
         optimizer=optimizer,
         gradient_clip_norm=gradient_clip_norm,
         num_ps_replicas=num_ps_replicas,
-        scope=scope)
+        scope=scope,
+        trainable=trainable)
     self._joint_weights = _joint_weights
 
   def get_weights(self, model_dir):
@@ -181,14 +202,14 @@ class LinearComposableModel(_ComposableModel):
     Returns:
       The weights created by this model (without the optimizer weights).
     """
-    all_variables = [name for name, _ in checkpoints.list_variables(model_dir)]
+    all_variables = [name for name, _ in list_variables(model_dir)]
     values = {}
     optimizer_regex = r".*/" + self._get_optimizer().get_name() + r"(_\d)?$"
     for name in all_variables:
       if (name.startswith(self._scope + "/") and
           name != self._scope + "/bias_weight" and
           not re.match(optimizer_regex, name)):
-        values[name] = checkpoints.load_variable(model_dir, name)
+        values[name] = load_variable(model_dir, name)
     if len(values) == 1:
       return values[list(values.keys())[0]]
     return values
@@ -202,18 +223,15 @@ class LinearComposableModel(_ComposableModel):
     Returns:
       The bias weights created by this model.
     """
-    return checkpoints.load_variable(model_dir,
-                                     name=(self._scope+"/bias_weight"))
+    return load_variable(model_dir, name=(self._scope + "/bias_weight"))
 
   def build_model(self, features, feature_columns, is_training):
     """See base class."""
     self._feature_columns = feature_columns
     partitioner = partitioned_variables.min_max_variable_partitioner(
-        max_partitions=self._num_ps_replicas,
-        min_slice_size=64 << 20)
+        max_partitions=self._num_ps_replicas, min_slice_size=64 << 20)
     with variable_scope.variable_scope(
-        self._scope,
-        values=features.values(),
+        self._scope, values=features.values(),
         partitioner=partitioner) as scope:
       if self._joint_weights:
         logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
@@ -221,6 +239,7 @@ class LinearComposableModel(_ComposableModel):
             feature_columns=self._get_feature_columns(),
             num_outputs=self._num_label_columns,
             weight_collections=[self._scope],
+            trainable=self._trainable,
             scope=scope)
       else:
         logits, _, _ = layers.weighted_sum_from_feature_columns(
@@ -228,6 +247,7 @@ class LinearComposableModel(_ComposableModel):
             feature_columns=self._get_feature_columns(),
             num_outputs=self._num_label_columns,
             weight_collections=[self._scope],
+            trainable=self._trainable,
             scope=scope)
     return logits
 
@@ -243,6 +263,10 @@ class LinearComposableModel(_ComposableModel):
 class DNNComposableModel(_ComposableModel):
   """A _ComposableModel that implements a DNN.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Instances of this class can be used to build estimators through the use
   of composition.
   """
@@ -255,11 +279,12 @@ class DNNComposableModel(_ComposableModel):
                dropout=None,
                gradient_clip_norm=None,
                num_ps_replicas=0,
-               scope=None):
+               scope=None,
+               trainable=True):
     """Initializes DNNComposableModel objects.
 
     Args:
-      num_label_columns: The number of label/target columns.
+      num_label_columns: The number of label columns.
       hidden_units: List of hidden units per layer. All layers are fully
         connected.
       optimizer: An instance of `tf.Optimizer` used to apply gradients to
@@ -274,6 +299,9 @@ class DNNComposableModel(_ComposableModel):
       num_ps_replicas: The number of parameter server replicas.
       scope: Optional scope for variables created in this model. If not scope
         is supplied, one is generated.
+      trainable: True if this model contains variables that can be trained.
+        False otherwise (in cases where the variables are used strictly for
+        transforming input labels for training).
     """
     scope = "dnn" if not scope else scope
     super(DNNComposableModel, self).__init__(
@@ -281,7 +309,8 @@ class DNNComposableModel(_ComposableModel):
         optimizer=optimizer,
         gradient_clip_norm=gradient_clip_norm,
         num_ps_replicas=num_ps_replicas,
-        scope=scope)
+        scope=scope,
+        trainable=trainable)
     self._hidden_units = hidden_units
     self._activation_fn = activation_fn
     self._dropout = dropout
@@ -295,11 +324,12 @@ class DNNComposableModel(_ComposableModel):
     Returns:
       The weights created by this model.
     """
-    return [checkpoints.load_variable(
-        model_dir, name=(self._scope+"/hiddenlayer_%d/weights" % i))
-            for i, _ in enumerate(self._hidden_units)] + [
-                checkpoints.load_variable(
-                    model_dir, name=(self._scope+"/logits/weights"))]
+    return [
+        load_variable(
+            model_dir, name=(self._scope + "/hiddenlayer_%d/weights" % i))
+        for i, _ in enumerate(self._hidden_units)
+    ] + [load_variable(
+        model_dir, name=(self._scope + "/logits/weights"))]
 
   def get_bias(self, model_dir):
     """Returns the bias of the model.
@@ -310,17 +340,17 @@ class DNNComposableModel(_ComposableModel):
     Returns:
       The bias weights created by this model.
     """
-    return [checkpoints.load_variable(
-        model_dir, name=(self._scope+"/hiddenlayer_%d/biases" % i))
-            for i, _ in enumerate(self._hidden_units)] + [
-                checkpoints.load_variable(
-                    model_dir, name=(self._scope+"/logits/biases"))]
+    return [
+        load_variable(
+            model_dir, name=(self._scope + "/hiddenlayer_%d/biases" % i))
+        for i, _ in enumerate(self._hidden_units)
+    ] + [load_variable(
+        model_dir, name=(self._scope + "/logits/biases"))]
 
   def _add_hidden_layer_summary(self, value, tag):
     # TODO(zakaria): Move this code to tf.learn and add test.
-    logging_ops.scalar_summary("%s:fraction_of_zero_values" % tag,
-                               nn.zero_fraction(value))
-    logging_ops.histogram_summary("%s:activation" % tag, value)
+    summary.scalar("%s/fraction_of_zero_values" % tag, nn.zero_fraction(value))
+    summary.histogram("%s/activation" % tag, value)
 
   def build_model(self, features, feature_columns, is_training):
     """See base class."""
@@ -328,8 +358,7 @@ class DNNComposableModel(_ComposableModel):
 
     input_layer_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
-            max_partitions=self._num_ps_replicas,
-            min_slice_size=64 << 20))
+            max_partitions=self._num_ps_replicas, min_slice_size=64 << 20))
     with variable_scope.variable_scope(
         self._scope + "/input_from_feature_columns",
         values=features.values(),
@@ -338,6 +367,7 @@ class DNNComposableModel(_ComposableModel):
           features,
           self._get_feature_columns(),
           weight_collections=[self._scope],
+          trainable=self._trainable,
           scope=scope)
 
     hidden_layer_partitioner = (
@@ -353,11 +383,10 @@ class DNNComposableModel(_ComposableModel):
             num_hidden_units,
             activation_fn=self._activation_fn,
             variables_collections=[self._scope],
+            trainable=self._trainable,
             scope=scope)
         if self._dropout is not None and is_training:
-          net = layers.dropout(
-              net,
-              keep_prob=(1.0 - self._dropout))
+          net = layers.dropout(net, keep_prob=(1.0 - self._dropout))
       self._add_hidden_layer_summary(net, scope.name)
 
     with variable_scope.variable_scope(
@@ -369,6 +398,7 @@ class DNNComposableModel(_ComposableModel):
           self._num_label_columns,
           activation_fn=None,
           variables_collections=[self._scope],
+          trainable=self._trainable,
           scope=scope)
     self._add_hidden_layer_summary(logits, "logits")
     return logits

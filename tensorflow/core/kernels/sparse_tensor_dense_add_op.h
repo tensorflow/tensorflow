@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SPARSE_TENSOR_DENSE_ADD_OP_H_
-#define TENSORFLOW_KERNELS_SPARSE_TENSOR_DENSE_ADD_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_ADD_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_ADD_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/scatter_op.h"
+#include "tensorflow/core/kernels/scatter_functor.h"
 
 namespace tensorflow {
 namespace functor {
 
-// TOOD(zongheng): this should be a general functor that powers SparseAdd and
+// TODO(zongheng): this should be a general functor that powers SparseAdd and
 // ScatterNd ops.  It should be moved to its own head file, once the other ops
 // are implemented.
 template <typename Device, typename T, typename Index, int NDIMS,
@@ -39,4 +39,4 @@ struct ScatterNdFunctor {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SPARSE_TENSOR_DENSE_ADD_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_ADD_OP_H_

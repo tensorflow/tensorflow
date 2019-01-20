@@ -19,20 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
+from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
-from tensorflow.python.framework import common_shapes
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import load_library
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
+
+_ffmpeg_so = loader.load_op_library(
+    resource_loader.get_path_to_datafile('ffmpeg.so'))
 
 
-ops.RegisterShape('DecodeAudio')(common_shapes.call_cpp_shape_fn)
-
-
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
 def decode_audio(contents, file_format=None, samples_per_second=None,
-                 channel_count=None):
+                 channel_count=None, stream=None):
   """Create an op that decodes the contents of an audio file.
 
   Note that ffmpeg is free to select the "best" audio track from an mp4.
@@ -41,78 +41,75 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
   Args:
     contents: The binary contents of the audio file to decode. This is a
         scalar.
-    file_format: A string specifying which format the contents will conform
-        to. This can be mp3, mp4, ogg, or wav.
-    samples_per_second: The number of samples per second that is assumed.
-        In some cases, resampling will occur to generate the correct sample
-        rate.
+    file_format: A string or scalar string tensor specifying which
+        format the contents will conform to. This can be mp3, mp4, ogg,
+        or wav.
+    samples_per_second: The number of samples per second that is
+        assumed, as an `int` or scalar `int32` tensor. In some cases,
+        resampling will occur to generate the correct sample rate.
     channel_count: The number of channels that should be created from the
-        audio contents. If the contents have more than this number, then
-        some channels will be merged or dropped. If contents has fewer than
-        this, then additional channels will be created from the existing ones.
+        audio contents, as an `int` or scalar `int32` tensor. If the
+        `contents` have more than this number, then some channels will
+        be merged or dropped. If `contents` has fewer than this, then
+        additional channels will be created from the existing ones.
+    stream: A string specifying which stream from the content file
+        should be decoded, e.g., '0' means the 0-th stream.
+        The default value is '' which leaves the decision to ffmpeg.
 
   Returns:
-    A rank 2 tensor that has time along dimension 0 and channels along
-    dimension 1. Dimension 0 will be `samples_per_second * length` wide, and
-    dimension 1 will be `channel_count` wide. If ffmpeg fails to decode the
-    audio then an empty tensor will be returned.
+    A rank-2 tensor that has time along dimension 0 and channels along
+    dimension 1. Dimension 0 will be `samples_per_second *
+    length_in_seconds` wide, and dimension 1 will be `channel_count`
+    wide. If ffmpeg fails to decode the audio then an empty tensor will
+    be returned.
   """
-  return gen_decode_audio_op_py.decode_audio(
+  return gen_decode_audio_op_py.decode_audio_v2(
       contents, file_format=file_format, samples_per_second=samples_per_second,
-      channel_count=channel_count)
+      channel_count=channel_count, stream=stream)
 
 
 ops.NotDifferentiable('DecodeAudio')
 
 
-ops.RegisterShape('EncodeAudio')(common_shapes.call_cpp_shape_fn)
-
-
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
 def encode_audio(audio, file_format=None, samples_per_second=None):
   """Creates an op that encodes an audio file using sampled audio from a tensor.
 
   Args:
-    audio: A rank 2 tensor that has time along dimension 0 and channels along
-        dimension 1. Dimension 0 is `samples_per_second * length` long in
-        seconds.
-    file_format: The type of file to encode. "wav" is the only supported format.
-    samples_per_second: The number of samples in the audio tensor per second of
-        audio.
+    audio: A rank-2 `Tensor` that has time along dimension 0 and
+        channels along dimension 1. Dimension 0 is `samples_per_second *
+        length_in_seconds` long.
+    file_format: The type of file to encode, as a string or rank-0
+        string tensor. "wav" is the only supported format.
+    samples_per_second: The number of samples in the audio tensor per
+        second of audio, as an `int` or rank-0 `int32` tensor.
 
   Returns:
     A scalar tensor that contains the encoded audio in the specified file
     format.
   """
-  return gen_encode_audio_op_py.encode_audio(
-      audio, file_format=file_format, samples_per_second=samples_per_second)
+  return gen_encode_audio_op_py.encode_audio_v2(
+      audio,
+      file_format=file_format,
+      samples_per_second=samples_per_second,
+      bits_per_second=192000)  # not used by WAV
 
 
 ops.NotDifferentiable('EncodeAudio')
 
 
-def _load_library(name, op_list=None):
-  """Loads a .so file containing the specified operators.
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
+def decode_video(contents):
+  """Create an op that decodes the contents of a video file.
 
   Args:
-    name: The name of the .so file to load.
-    op_list: A list of names of operators that the library should have. If None
-        then the .so file's contents will not be verified.
+    contents: The binary contents of the video file to decode. This is a
+      scalar.
 
-  Raises:
-    NameError if one of the required ops is missing.
+  Returns:
+    A rank-4 `Tensor` that has `[frames, height, width, 3]` RGB as output.
   """
-  try:
-    filename = resource_loader.get_path_to_datafile(name)
-    library = load_library.load_op_library(filename)
-    for expected_op in (op_list or []):
-      for lib_op in library.OP_LIST.op:
-        if lib_op.name == expected_op:
-          break
-      else:
-        raise NameError('Could not find operator %s in dynamic library %s' %
-                        (expected_op, name))
-  except errors.NotFoundError:
-    logging.warning('%s file could not be loaded.', name)
+  return gen_decode_video_op_py.decode_video(contents)
 
 
-_load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])
+ops.NotDifferentiable('DecodeVideo')

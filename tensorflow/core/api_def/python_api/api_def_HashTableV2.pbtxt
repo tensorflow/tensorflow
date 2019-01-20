@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "HashTableV2"
+  visibility: HIDDEN
+}

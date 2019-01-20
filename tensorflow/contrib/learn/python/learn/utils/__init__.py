@@ -13,11 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow Learn Utils."""
+"""TensorFlow Learn Utils (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.learn.python.learn.utils.export import export_estimator
+from tensorflow.contrib.learn.python.learn.utils.input_fn_utils import build_default_serving_input_fn
+from tensorflow.contrib.learn.python.learn.utils.input_fn_utils import build_parsing_serving_input_fn
+from tensorflow.contrib.learn.python.learn.utils.input_fn_utils import InputFnOps
+from tensorflow.contrib.learn.python.learn.utils.saved_model_export_utils import make_export_strategy
+

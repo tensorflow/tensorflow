@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
+#define TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
 
 #include "tensorflow/core/platform/env.h"
 
@@ -45,9 +45,12 @@ class HadoopFileSystem : public FileSystem {
       const string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  bool FileExists(const string& fname) override;
+  Status FileExists(const string& fname) override;
 
   Status GetChildren(const string& dir, std::vector<string>* result) override;
+
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override;
 
   Status DeleteFile(const string& fname) override;
 
@@ -70,4 +73,4 @@ class HadoopFileSystem : public FileSystem {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_

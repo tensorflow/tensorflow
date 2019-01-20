@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
-#include "tensorflow/core/distributed_runtime/master_session_interface.h"
+#include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
@@ -46,8 +46,11 @@ class Master {
   void ExtendSession(const ExtendSessionRequest* req,
                      ExtendSessionResponse* resp, MyClosure done);
 
-  void RunStep(CallOptions* opts, const RunStepRequest* req,
-               RunStepResponse* resp, MyClosure done);
+  void PartialRunSetup(const PartialRunSetupRequest* req,
+                       PartialRunSetupResponse* resp, MyClosure done);
+
+  void RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
+               MutableRunStepResponseWrapper* resp, MyClosure done);
 
   void CloseSession(const CloseSessionRequest* req, CloseSessionResponse* resp,
                     MyClosure done);
@@ -55,7 +58,15 @@ class Master {
   void ListDevices(const ListDevicesRequest* req, ListDevicesResponse* resp,
                    MyClosure done);
 
+  // See tensorflow::Reset() and the comment on ResetRequest.
   void Reset(const ResetRequest* req, ResetResponse* resp, MyClosure done);
+
+  void MakeCallable(const MakeCallableRequest* req, MakeCallableResponse* resp,
+                    MyClosure done);
+  void RunCallable(CallOptions* opts, const RunCallableRequest* req,
+                   RunCallableResponse* resp, MyClosure done);
+  void ReleaseCallable(const ReleaseCallableRequest* req,
+                       ReleaseCallableResponse* resp, MyClosure done);
 
  private:
   typedef Master ME;
@@ -72,7 +83,7 @@ class Master {
   Thread* gc_thread_;
 
   // Maps session handles to sessions.
-  std::unordered_map<string, MasterSessionInterface*> sessions_ GUARDED_BY(mu_);
+  std::unordered_map<string, MasterSession*> sessions_ GUARDED_BY(mu_);
 
   // Moving average of step times.
   MovingAverage last_1000_steps_ GUARDED_BY(mu_);
@@ -89,6 +100,10 @@ class Master {
 
   // Cleanup unused session.
   void GC();
+
+  // Find master session by session handle, and increments the reference count
+  // on the returned MasterSession if not null.
+  MasterSession* FindMasterSession(const string& handle);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Master);
 };

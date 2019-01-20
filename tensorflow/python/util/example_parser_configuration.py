@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Extract parse_example op configuration to a proto."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -64,15 +65,15 @@ def extract_example_parser_configuration(parse_example_op, sess):
 
   # Fetch total_features key names and num_dense default values.
   if len(fetch_list) != (total_features + num_dense):
-    raise ValueError("len(fetch_list) does not match total features + num_dense"
-                     "(%d vs %d" % (len(fetch_list),
-                                    (total_features + num_dense)))
+    raise ValueError("len(fetch_list) does not match total features + "
+                     "num_dense (%d vs %d)" %
+                     (len(fetch_list), (total_features + num_dense)))
 
   fetched = sess.run(fetch_list)
 
   if len(fetched) != len(fetch_list):
-    raise ValueError("len(fetched) does not match len(fetch_list)"
-                     "(%d vs %d" % (len(fetched), len(fetch_list)))
+    raise ValueError("len(fetched) does not match len(fetch_list) "
+                     "(%d vs %d)" % (len(fetched), len(fetch_list)))
 
   # Fetch indices.
   sparse_keys_start = 0
@@ -93,14 +94,14 @@ def extract_example_parser_configuration(parse_example_op, sess):
     # into a TensorProto.
     fixed_config = feature_config.fixed_len_feature
 
-    fixed_config.default_value.CopyFrom(tensor_util.make_tensor_proto(fetched[
-        dense_def_start + i]))
+    fixed_config.default_value.CopyFrom(
+        tensor_util.make_tensor_proto(fetched[dense_def_start + i]))
     # Convert the shape from the attributes
     # into a TensorShapeProto.
-    fixed_config.shape.CopyFrom(tensor_shape.TensorShape(dense_shapes[
-        i]).as_proto())
+    fixed_config.shape.CopyFrom(
+        tensor_shape.TensorShape(dense_shapes[i]).as_proto())
 
-    fixed_config.dtype = dense_types[i]
+    fixed_config.dtype = int(dense_types[i])
     # Get the output tensor name.
     fixed_config.values_output_tensor_name = parse_example_op.outputs[
         dense_values_start + i].name
@@ -110,7 +111,7 @@ def extract_example_parser_configuration(parse_example_op, sess):
     key = fetched[sparse_keys_start + i]
     feature_config = config.feature_map[key]
     var_len_feature = feature_config.var_len_feature
-    var_len_feature.dtype = sparse_types[i]
+    var_len_feature.dtype = int(sparse_types[i])
     var_len_feature.indices_output_tensor_name = parse_example_op.outputs[
         sparse_indices_start + i].name
     var_len_feature.values_output_tensor_name = parse_example_op.outputs[

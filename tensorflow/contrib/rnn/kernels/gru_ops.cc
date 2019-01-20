@@ -15,64 +15,14 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
-#include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/rnn/kernels/gru_ops.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-#if GOOGLE_CUDA
-namespace {
-template <typename T>
-perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
-  perftools::gputools::DeviceMemory<T> typed(wrapped);
-  return typed;
-}
-}  // namespace
-#endif  // GOOGLE_CUDA
-
-namespace functor {
-template <typename T>
-// TODO(gitegaurav) : Refactor the matmul operation inside the kernel. Make
-// similar changes in the LSTMBlockCell. Create a new file which contains matmul
-// functionality. It should perform matmul operation using CuBlas when the Cuda
-// support is present otherwise using eigentensors.
-void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx,
-                                     perftools::gputools::Stream* stream,
-                                     bool transa, bool transb, uint64 m,
-                                     uint64 n, uint64 k, T alpha, const T* a,
-                                     int lda, const T* b, int ldb, T beta, T* c,
-                                     int ldc) {
-#if GOOGLE_CUDA
-  perftools::gputools::blas::Transpose trans[] = {
-      perftools::gputools::blas::Transpose::kNoTranspose,
-      perftools::gputools::blas::Transpose::kTranspose};
-
-  auto a_ptr = AsDeviceMemory(a);
-  auto b_ptr = AsDeviceMemory(b);
-  auto c_ptr = AsDeviceMemory(c);
-
-  bool blas_launch_status =
-      stream
-          ->ThenBlasGemm(trans[transa], trans[transb], m, n, k, alpha, a_ptr,
-                         lda, b_ptr, ldb, beta, &c_ptr, ldc)
-          .ok();
-  OP_REQUIRES(ctx, blas_launch_status, errors::Aborted("CuBlasGemm failed!"));
-#else
-  ctx->SetStatus(errors::InvalidArgument("CuBlasGemm needs CUDA."));
-#endif
-}
-
-template struct TensorCuBlasGemm<float>;
-}  // end namespace functor
 
 template <typename Device, typename T, bool USE_CUBLAS>
 class GRUCellBlockOp : public OpKernel {
@@ -111,9 +61,9 @@ class GRUCellBlockOp : public OpKernel {
                                         h_prev_tensor->dim_size(0), " vs. ",
                                         batch_size));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument("h_prev.dims(1) != cell_size: ",
-                                        h_prev_tensor->dim_size(1), " vs. ",
-                                        cell_size));
+                errors::InvalidArgument(
+                    "h_prev.dims(1) != cell_size: ", h_prev_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Shape of 'w_ru' must be [input_size+cell_size, 2*cell_size]
     OP_REQUIRES(ctx, w_ru_tensor->dim_size(0) == input_size + cell_size,
@@ -132,10 +82,10 @@ class GRUCellBlockOp : public OpKernel {
                     "w_c.dim_size(0) != input_size + cell_size: ",
                     w_c_tensor->dim_size(0), " vs. ", input_size + cell_size));
 
-    OP_REQUIRES(
-        ctx, w_c_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("w_c.dim_size(1) != cell_size: ",
-                                w_c_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, w_c_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "w_c.dim_size(1) != cell_size: ", w_c_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Shape of 'b_ru' must be [2*cell_size]
     OP_REQUIRES(ctx, b_ru_tensor->dim_size(0) == cell_size * 2,
@@ -147,10 +97,10 @@ class GRUCellBlockOp : public OpKernel {
                 errors::InvalidArgument("Rank of b_ru must be 1",
                                         b_ru_tensor->dims(), " vs. 1", 1));
     // Shape of 'b_c' must be [cell_size]
-    OP_REQUIRES(
-        ctx, b_c_tensor->dim_size(0) == cell_size,
-        errors::InvalidArgument("b_c.dim_size(0) != cell_size: ",
-                                b_c_tensor->dim_size(0), " vs. ", cell_size));
+    OP_REQUIRES(ctx, b_c_tensor->dim_size(0) == cell_size,
+                errors::InvalidArgument(
+                    "b_c.dim_size(0) != cell_size: ", b_c_tensor->dim_size(0),
+                    " vs. ", cell_size));
     OP_REQUIRES(ctx, b_c_tensor->dims() == 1,
                 errors::InvalidArgument("Rank of b_c must be 1",
                                         b_c_tensor->dims(), " vs. 1"));
@@ -172,9 +122,9 @@ class GRUCellBlockOp : public OpKernel {
                                   &c_tensor));
 
     Tensor* h_tensor = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("h", TensorShape({batch_size, cell_size}),
-                                  &h_tensor));
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {"h_prev"}, "h",
+                            TensorShape({batch_size, cell_size}), &h_tensor));
 
     // Allocate temp tensors.
     Tensor x_h_prev_tensor;
@@ -197,14 +147,9 @@ class GRUCellBlockOp : public OpKernel {
 
     const Device& device = ctx->eigen_device<Device>();
 
-    perftools::gputools::Stream* stream =
-        std::is_same<Device, GPUDevice>::value
-            ? ctx->op_device_context()->stream()
-            : nullptr;
-
     functor::GRUBlockCellFprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                       cell_size)(
-        ctx, stream, device, x_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
+        ctx, device, x_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
         w_ru_tensor->matrix<T>(), w_c_tensor->matrix<T>(),
         b_ru_tensor->vec<T>(), b_c_tensor->vec<T>(), r_u_bar_tensor.matrix<T>(),
         r_tensor->matrix<T>(), u_tensor->matrix<T>(), c_tensor->matrix<T>(),
@@ -271,9 +216,9 @@ class GRUBlockCellGradOp : public OpKernel {
                                         h_prev_tensor->dim_size(0), " vs. ",
                                         batch_size));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument("h_prev.dims(1) != cell_size: ",
-                                        h_prev_tensor->dim_size(1), " vs. ",
-                                        cell_size));
+                errors::InvalidArgument(
+                    "h_prev.dims(1) != cell_size: ", h_prev_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Shape of 'w_ru' must be [input_size+cell_size, 2*cell_size]
     OP_REQUIRES(ctx, w_ru_tensor->dim_size(0) == input_size + cell_size,
@@ -292,10 +237,10 @@ class GRUBlockCellGradOp : public OpKernel {
                     "w_c.dim_size(0) != input_size + cell_size: ",
                     w_c_tensor->dim_size(0), " vs. ", input_size + cell_size));
 
-    OP_REQUIRES(
-        ctx, w_c_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("w_c.dim_size(1) != cell_size: ",
-                                w_c_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, w_c_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "w_c.dim_size(1) != cell_size: ", w_c_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Shape of 'b_ru' must be [2*cell_size]
     OP_REQUIRES(ctx, b_ru_tensor->dim_size(0) == cell_size * 2,
@@ -308,65 +253,66 @@ class GRUBlockCellGradOp : public OpKernel {
                                         b_ru_tensor->dims(), " vs. 1"));
 
     // Shape of 'b_c' must be [cell_size]
-    OP_REQUIRES(
-        ctx, b_c_tensor->dim_size(0) == cell_size,
-        errors::InvalidArgument("b_c.dim_size(0) != cell_size: ",
-                                b_c_tensor->dim_size(0), " vs. ", cell_size));
+    OP_REQUIRES(ctx, b_c_tensor->dim_size(0) == cell_size,
+                errors::InvalidArgument(
+                    "b_c.dim_size(0) != cell_size: ", b_c_tensor->dim_size(0),
+                    " vs. ", cell_size));
 
     OP_REQUIRES(ctx, b_c_tensor->dims() == 1,
                 errors::InvalidArgument("Rank of b_c must be 1 ",
                                         b_c_tensor->dims(), " vs. 1"));
 
     // Shape of 'r' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, r_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("r.dims(0) != batch_size: ",
-                                r_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, r_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("r.dims(1) != cell_size: ",
-                                r_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, r_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "r.dims(0) != batch_size: ", r_tensor->dim_size(0), " vs. ",
+                    batch_size));
+    OP_REQUIRES(ctx, r_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "r.dims(1) != cell_size: ", r_tensor->dim_size(1), " vs. ",
+                    cell_size));
 
     // Shape of 'u' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, u_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("u.dims(0) != batch_size: ",
-                                u_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, u_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("u.dims(1) != cell_size: ",
-                                u_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, u_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "u.dims(0) != batch_size: ", u_tensor->dim_size(0), " vs. ",
+                    batch_size));
+    OP_REQUIRES(ctx, u_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "u.dims(1) != cell_size: ", u_tensor->dim_size(1), " vs. ",
+                    cell_size));
 
     // Shape of 'c' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, c_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("c.dims(0) != batch_size: ",
-                                c_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, c_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("c.dims(1) != cell_size: ",
-                                c_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, c_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "c.dims(0) != batch_size: ", c_tensor->dim_size(0), " vs. ",
+                    batch_size));
+    OP_REQUIRES(ctx, c_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "c.dims(1) != cell_size: ", c_tensor->dim_size(1), " vs. ",
+                    cell_size));
 
     // Shape of 'd_h' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, d_h_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("d_h.dims(0) != batch_size: ",
-                                d_h_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, d_h_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("d_h.dims(1) != cell_size: ",
-                                d_h_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, d_h_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "d_h.dims(0) != batch_size: ", d_h_tensor->dim_size(0),
+                    " vs. ", batch_size));
+    OP_REQUIRES(ctx, d_h_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "d_h.dims(1) != cell_size: ", d_h_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Create output tensors.
     Tensor* d_x_tensor = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("d_x", TensorShape({batch_size, input_size}),
-                                  &d_x_tensor));
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {"x"}, "d_x", TensorShape({batch_size, input_size}),
+                            &d_x_tensor));
 
     Tensor* d_h_prev_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(
-                            "d_h_prev", TensorShape({batch_size, cell_size}),
-                            &d_h_prev_tensor));
+    OP_REQUIRES_OK(
+        ctx, ctx->forward_input_or_allocate_output(
+                 {"h_prev"}, "d_h_prev", TensorShape({batch_size, cell_size}),
+                 &d_h_prev_tensor));
 
     Tensor* d_c_bar_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(
@@ -408,14 +354,10 @@ class GRUBlockCellGradOp : public OpKernel {
                             &d_x_component_2_h_prevr));
 
     const Device& device = ctx->eigen_device<Device>();
-    perftools::gputools::Stream* stream =
-        std::is_same<Device, GPUDevice>::value
-            ? ctx->op_device_context()->stream()
-            : nullptr;
 
     functor::GRUBlockCellBprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                       cell_size)(
-        ctx, stream, device, x_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
+        ctx, device, x_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
         w_ru_tensor->matrix<T>(), w_c_tensor->matrix<T>(),
         b_ru_tensor->vec<T>(), b_c_tensor->vec<T>(), r_tensor->matrix<T>(),
         u_tensor->matrix<T>(), c_tensor->matrix<T>(), d_h_tensor->matrix<T>(),
@@ -446,8 +388,8 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                   \
   template <>                                                                 \
   void GRUBlockCellFprop<GPUDevice, T, true>::operator()(                     \
-      OpKernelContext* ctx, perftools::gputools::Stream* stream,              \
-      const GPUDevice& d, typename TTypes<T>::ConstMatrix x,                  \
+      OpKernelContext* ctx, const GPUDevice& d,                               \
+      typename TTypes<T>::ConstMatrix x,                                      \
       typename TTypes<T>::ConstMatrix h_prev,                                 \
       typename TTypes<T>::ConstMatrix w_ru,                                   \
       typename TTypes<T>::ConstMatrix w_c, typename TTypes<T>::ConstVec b_ru, \
@@ -476,9 +418,9 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
   template <>                                                                  \
   void GRUBlockCellBprop<GPUDevice, T, true>::operator()(                      \
-      OpKernelContext* ctx, perftools::gputools::Stream* stream,               \
-      const GPUDevice& d, typename TTypes<T>::ConstMatrix x,                   \
-      typename TTypes<T>::ConstMatrix h, typename TTypes<T>::ConstMatrix w_ru, \
+      OpKernelContext* ctx, const GPUDevice& d,                                \
+      typename TTypes<T>::ConstMatrix x, typename TTypes<T>::ConstMatrix h,    \
+      typename TTypes<T>::ConstMatrix w_ru,                                    \
       typename TTypes<T>::ConstMatrix w_c, typename TTypes<T>::ConstVec b_ru,  \
       typename TTypes<T>::ConstVec b_c, typename TTypes<T>::ConstMatrix r,     \
       typename TTypes<T>::ConstMatrix u, typename TTypes<T>::ConstMatrix c,    \

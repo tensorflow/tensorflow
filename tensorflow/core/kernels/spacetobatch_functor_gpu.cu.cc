@@ -141,10 +141,10 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
     }
     CudaLaunchConfig config =
         GetCudaLaunchConfig(static_cast<int32>(total_count), d);
-    S2B<T, NUM_BLOCK_DIMS,
-        B2S><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, const_cast<T*>(space_tensor.data()), args,
-        const_cast<T*>(batch_tensor.data()));
+    S2B<T, NUM_BLOCK_DIMS, B2S>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            config.virtual_thread_count, const_cast<T*>(space_tensor.data()),
+            args, const_cast<T*>(batch_tensor.data()));
     return Status::OK();
   }
 };
@@ -153,12 +153,12 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
 #define INSTANTIATE(NUM_BLOCK_DIMS, T)                                      \
   template struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, false>; \
   template struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, true>;  \
-/**/
+  /**/
 
 #define INSTANTIATE_FOR_T(T) \
   TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(INSTANTIATE, T)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(INSTANTIATE_FOR_T)
+TF_CALL_GPU_NUMBER_TYPES(INSTANTIATE_FOR_T)
 
 #undef INSTANTIATE_FOR_T
 #undef INSTANTIATE

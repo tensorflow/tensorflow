@@ -192,18 +192,20 @@ bool GenerateRandomCrop(int original_width, int original_height,
 }  // namespace
 
 template <typename T>
-class SampleDistortedBoundingBoxOp : public OpKernel {
+class SampleDistortedBoundingBoxV2Op : public OpKernel {
  public:
-  explicit SampleDistortedBoundingBoxOp(OpKernelConstruction* context)
+  explicit SampleDistortedBoundingBoxV2Op(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, generator_.Init(context));
 
-    OP_REQUIRES_OK(
-        context, context->GetAttr("min_object_covered", &min_object_covered_));
-    OP_REQUIRES(
-        context, min_object_covered_ > 0,
-        errors::InvalidArgument("Min object covered must be non-negative: ",
-                                min_object_covered_));
+    if (context->num_inputs() == 2) {
+      OP_REQUIRES_OK(context, context->GetAttr("min_object_covered",
+                                               &min_object_covered_));
+      OP_REQUIRES(
+          context, min_object_covered_ >= 0,
+          errors::InvalidArgument("Min object covered must be non-negative: ",
+                                  min_object_covered_));
+    }
 
     OP_REQUIRES_OK(context, context->GetAttr("use_image_if_no_bounding_boxes",
                                              &use_image_if_no_bounding_boxes_));
@@ -275,6 +277,25 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
                     "bounding boxes must have shape [4] or [*, 4], got ",
                     input_boxes.shape().DebugString()));
 
+    float min_object_covered_val = 0.0;
+    if (context->num_inputs() == 3) {
+      const Tensor& min_object_covered = context->input(2);
+
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsScalar(min_object_covered.shape()),
+          errors::InvalidArgument("min_object_covered must be 0-D, got shape ",
+                                  min_object_covered.shape().DebugString()));
+
+      min_object_covered_val = min_object_covered.scalar<float>()();
+
+      OP_REQUIRES(
+          context, min_object_covered_val >= 0,
+          errors::InvalidArgument("Min object covered must be non-negative: ",
+                                  min_object_covered_val));
+    } else {
+      min_object_covered_val = min_object_covered_;
+    }
+
     std::vector<Rectangle> bounding_boxes;
     if (input_boxes.NumElements() > 0) {
       TTypes<float>::ConstMatrix boxes = input_boxes.flat_inner_dims<float>();
@@ -298,7 +319,7 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
 
     // Insert the entire image if no bounding boxes are supplied.
     const Rectangle image_rect(0, 0, width, height);
-    if (bounding_boxes.size() < 1) {
+    if (bounding_boxes.empty()) {
       OP_REQUIRES(context, use_image_if_no_bounding_boxes_,
                   errors::InvalidArgument(
                       "No bounding boxes provided as input. One must "
@@ -325,7 +346,7 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
 
       if (GenerateRandomCrop(width, height, min_sample_area, max_sample_area,
                              sample_aspect_ratio, &random, &crop_rect)) {
-        if (SatisfiesOverlapConstraints(crop_rect, min_object_covered_,
+        if (SatisfiesOverlapConstraints(crop_rect, min_object_covered_val,
                                         bounding_boxes)) {
           sample_generated = true;
           break;
@@ -366,9 +387,9 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output(2, TensorShape({1, 1, 4}), &bboxes));
 
-    typename TTypes<T, 1>::Tensor begin_data = begin->tensor<T, 1>();
-    typename TTypes<T, 1>::Tensor size_data = size->tensor<T, 1>();
-    typename TTypes<float, 3>::Tensor bboxes_data = bboxes->tensor<float, 3>();
+    typename TTypes<T, 1>::Tensor begin_data(begin->tensor<T, 1>());
+    typename TTypes<T, 1>::Tensor size_data(size->tensor<T, 1>());
+    TTypes<float, 3>::Tensor bboxes_data = bboxes->tensor<float, 3>();
 
     begin_data(0) = T(offset_height);
     size_data(0) = T(target_height);
@@ -399,11 +420,15 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
   bool use_image_if_no_bounding_boxes_;
 };
 
-#define REGISTER_KERNELS(type)                               \
-  REGISTER_KERNEL_BUILDER(                                   \
-      Name("SampleDistortedBoundingBox").Device(DEVICE_CPU)   \
-           .TypeConstraint<type>("T"),                       \
-      SampleDistortedBoundingBoxOp<type>)
+#define REGISTER_KERNELS(type)                                  \
+  REGISTER_KERNEL_BUILDER(Name("SampleDistortedBoundingBox")    \
+                              .Device(DEVICE_CPU)               \
+                              .TypeConstraint<type>("T"),       \
+                          SampleDistortedBoundingBoxV2Op<type>) \
+  REGISTER_KERNEL_BUILDER(Name("SampleDistortedBoundingBoxV2")  \
+                              .Device(DEVICE_CPU)               \
+                              .TypeConstraint<type>("T"),       \
+                          SampleDistortedBoundingBoxV2Op<type>)
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS

@@ -19,8 +19,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 CUDAEvent::CUDAEvent(CUDAExecutor* parent)
@@ -68,5 +67,4 @@ const CUevent& CUDAEvent::cuda_event() {
 }
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -18,11 +18,138 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import os
 import re
+import sre_constants
+import traceback
 
+import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python import pywrap_tensorflow_internal
+from tensorflow.python.platform import gfile
+
 HELP_INDENT = "  "
+
+EXPLICIT_USER_EXIT = "explicit_user_exit"
+REGEX_MATCH_LINES_KEY = "regex_match_lines"
+INIT_SCROLL_POS_KEY = "init_scroll_pos"
+
+MAIN_MENU_KEY = "mm:"
+
+
+class CommandLineExit(Exception):
+
+  def __init__(self, exit_token=None):
+    Exception.__init__(self)
+    self._exit_token = exit_token
+
+  @property
+  def exit_token(self):
+    return self._exit_token
+
+
+class RichLine(object):
+  """Rich single-line text.
+
+  Attributes:
+    text: A plain string, the raw text represented by this object.  Should not
+      contain newlines.
+    font_attr_segs: A list of (start, end, font attribute) triples, representing
+      richness information applied to substrings of text.
+  """
+
+  def __init__(self, text="", font_attr=None):
+    """Construct a RichLine with no rich attributes or a single attribute.
+
+    Args:
+      text: Raw text string
+      font_attr: If specified, a single font attribute to be applied to the
+        entire text.  Extending this object via concatenation allows creation
+        of text with varying attributes.
+    """
+    # TODO(ebreck) Make .text and .font_attr protected members when we no
+    # longer need public access.
+    self.text = text
+    if font_attr:
+      self.font_attr_segs = [(0, len(text), font_attr)]
+    else:
+      self.font_attr_segs = []
+
+  def __add__(self, other):
+    """Concatenate two chunks of maybe rich text to make a longer rich line.
+
+    Does not modify self.
+
+    Args:
+      other: Another piece of text to concatenate with this one.
+        If it is a plain str, it will be appended to this string with no
+        attributes.  If it is a RichLine, it will be appended to this string
+        with its attributes preserved.
+
+    Returns:
+      A new RichLine comprising both chunks of text, with appropriate
+        attributes applied to the corresponding substrings.
+    """
+    ret = RichLine()
+    if isinstance(other, six.string_types):
+      ret.text = self.text + other
+      ret.font_attr_segs = self.font_attr_segs[:]
+      return ret
+    elif isinstance(other, RichLine):
+      ret.text = self.text + other.text
+      ret.font_attr_segs = self.font_attr_segs[:]
+      old_len = len(self.text)
+      for start, end, font_attr in other.font_attr_segs:
+        ret.font_attr_segs.append((old_len + start, old_len + end, font_attr))
+      return ret
+    else:
+      raise TypeError("%r cannot be concatenated with a RichLine" % other)
+
+  def __len__(self):
+    return len(self.text)
+
+
+def rich_text_lines_from_rich_line_list(rich_text_list, annotations=None):
+  """Convert a list of RichLine objects or strings to a RichTextLines object.
+
+  Args:
+    rich_text_list: a list of RichLine objects or strings
+    annotations: annotatoins for the resultant RichTextLines object.
+
+  Returns:
+    A corresponding RichTextLines object.
+  """
+  lines = []
+  font_attr_segs = {}
+  for i, rl in enumerate(rich_text_list):
+    if isinstance(rl, RichLine):
+      lines.append(rl.text)
+      if rl.font_attr_segs:
+        font_attr_segs[i] = rl.font_attr_segs
+    else:
+      lines.append(rl)
+  return RichTextLines(lines, font_attr_segs, annotations=annotations)
+
+
+def get_tensorflow_version_lines(include_dependency_versions=False):
+  """Generate RichTextLines with TensorFlow version info.
+
+  Args:
+    include_dependency_versions: Include the version of TensorFlow's key
+      dependencies, such as numpy.
+
+  Returns:
+    A formatted, multi-line `RichTextLines` object.
+  """
+  lines = ["TensorFlow version: %s" % pywrap_tensorflow_internal.__version__]
+  lines.append("")
+  if include_dependency_versions:
+    lines.append("Dependency version(s):")
+    lines.append("  numpy: %s" % np.__version__)
+    lines.append("")
+  return RichTextLines(lines)
 
 
 class RichTextLines(object):
@@ -50,7 +177,8 @@ class RichTextLines(object):
 
         In each tuple, the 1st element is the start index of the segment. The
         2nd element is the end index, in an "open interval" fashion. The 3rd
-        element is a string that represents the font attribute.
+        element is an object or a list of objects that represents the font
+        attribute. Colors are represented as strings as in the examples above.
       annotations: A map from 0-based row index to any object for annotating
         the row. A typical use example is annotating rows of the output as
         indices in a multi-dimensional tensor. For example, consider the
@@ -70,7 +198,7 @@ class RichTextLines(object):
     """
     if isinstance(lines, list):
       self._lines = lines
-    elif isinstance(lines, str):
+    elif isinstance(lines, six.string_types):
       self._lines = [lines]
     else:
       raise ValueError("Unexpected type in lines: %s" % type(lines))
@@ -78,10 +206,12 @@ class RichTextLines(object):
     self._font_attr_segs = font_attr_segs
     if not self._font_attr_segs:
       self._font_attr_segs = {}
+      # TODO(cais): Refactor to collections.defaultdict(list) to simplify code.
 
     self._annotations = annotations
     if not self._annotations:
       self._annotations = {}
+      # TODO(cais): Refactor to collections.defaultdict(list) to simplify code.
 
   @property
   def lines(self):
@@ -95,6 +225,159 @@ class RichTextLines(object):
   def annotations(self):
     return self._annotations
 
+  def num_lines(self):
+    return len(self._lines)
+
+  def slice(self, begin, end):
+    """Slice a RichTextLines object.
+
+    The object itself is not changed. A sliced instance is returned.
+
+    Args:
+      begin: (int) Beginning line index (inclusive). Must be >= 0.
+      end: (int) Ending line index (exclusive). Must be >= 0.
+
+    Returns:
+      (RichTextLines) Sliced output instance of RichTextLines.
+
+    Raises:
+      ValueError: If begin or end is negative.
+    """
+
+    if begin < 0 or end < 0:
+      raise ValueError("Encountered negative index.")
+
+    # Copy lines.
+    lines = self.lines[begin:end]
+
+    # Slice font attribute segments.
+    font_attr_segs = {}
+    for key in self.font_attr_segs:
+      if key >= begin and key < end:
+        font_attr_segs[key - begin] = self.font_attr_segs[key]
+
+    # Slice annotations.
+    annotations = {}
+    for key in self.annotations:
+      if not isinstance(key, int):
+        # Annotations can contain keys that are not line numbers.
+        annotations[key] = self.annotations[key]
+      elif key >= begin and key < end:
+        annotations[key - begin] = self.annotations[key]
+
+    return RichTextLines(
+        lines, font_attr_segs=font_attr_segs, annotations=annotations)
+
+  def extend(self, other):
+    """Extend this instance of RichTextLines with another instance.
+
+    The extension takes effect on the text lines, the font attribute segments,
+    as well as the annotations. The line indices in the font attribute
+    segments and the annotations are adjusted to account for the existing
+    lines. If there are duplicate, non-line-index fields in the annotations,
+    the value from the input argument "other" will override that in this
+    instance.
+
+    Args:
+      other: (RichTextLines) The other RichTextLines instance to be appended at
+        the end of this instance.
+    """
+
+    orig_num_lines = self.num_lines()  # Record original number of lines.
+
+    # Merge the lines.
+    self._lines.extend(other.lines)
+
+    # Merge the font_attr_segs.
+    for line_index in other.font_attr_segs:
+      self._font_attr_segs[orig_num_lines + line_index] = (
+          other.font_attr_segs[line_index])
+
+    # Merge the annotations.
+    for key in other.annotations:
+      if isinstance(key, int):
+        self._annotations[orig_num_lines + key] = (other.annotations[key])
+      else:
+        self._annotations[key] = other.annotations[key]
+
+  def _extend_before(self, other):
+    """Add another RichTextLines object to the front.
+
+    Args:
+      other: (RichTextLines) The other object to add to the front to this
+        object.
+    """
+
+    other_num_lines = other.num_lines()  # Record original number of lines.
+
+    # Merge the lines.
+    self._lines = other.lines + self._lines
+
+    # Merge the font_attr_segs.
+    new_font_attr_segs = {}
+    for line_index in self.font_attr_segs:
+      new_font_attr_segs[other_num_lines + line_index] = (
+          self.font_attr_segs[line_index])
+    new_font_attr_segs.update(other.font_attr_segs)
+    self._font_attr_segs = new_font_attr_segs
+
+    # Merge the annotations.
+    new_annotations = {}
+    for key in self._annotations:
+      if isinstance(key, int):
+        new_annotations[other_num_lines + key] = (self.annotations[key])
+      else:
+        new_annotations[key] = other.annotations[key]
+
+    new_annotations.update(other.annotations)
+    self._annotations = new_annotations
+
+  def append(self, line, font_attr_segs=None):
+    """Append a single line of text.
+
+    Args:
+      line: (str) The text to be added to the end.
+      font_attr_segs: (list of tuples) Font attribute segments of the appended
+        line.
+    """
+
+    self._lines.append(line)
+    if font_attr_segs:
+      self._font_attr_segs[len(self._lines) - 1] = font_attr_segs
+
+  def append_rich_line(self, rich_line):
+    self.append(rich_line.text, rich_line.font_attr_segs)
+
+  def prepend(self, line, font_attr_segs=None):
+    """Prepend (i.e., add to the front) a single line of text.
+
+    Args:
+      line: (str) The text to be added to the front.
+      font_attr_segs: (list of tuples) Font attribute segments of the appended
+        line.
+    """
+
+    other = RichTextLines(line)
+    if font_attr_segs:
+      other.font_attr_segs[0] = font_attr_segs
+    self._extend_before(other)
+
+  def write_to_file(self, file_path):
+    """Write the object itself to file, in a plain format.
+
+    The font_attr_segs and annotations are ignored.
+
+    Args:
+      file_path: (str) path of the file to write to.
+    """
+
+    with gfile.Open(file_path, "w") as f:
+      for line in self._lines:
+        f.write(line + "\n")
+
+  # TODO(cais): Add a method to allow appending to a line in RichTextLines with
+  # both text and font_attr_segs.
+
 
 def regex_find(orig_screen_output, regex, font_attr):
   """Perform regex match in rich text lines.
@@ -103,7 +386,7 @@ def regex_find(orig_screen_output, regex, font_attr):
   regex matches.
 
   Example use cases include:
-  1) search for specific nodes in a large list of nodes, and
+  1) search for specific items in a large list of items, and
   2) search for specific numerical values in a large tensor.
 
   Args:
@@ -114,14 +397,21 @@ def regex_find(orig_screen_output, regex, font_attr):
 
   Returns:
     A modified copy of orig_screen_output.
+
+  Raises:
+    ValueError: If input str regex is not a valid regular expression.
   """
   new_screen_output = RichTextLines(
       orig_screen_output.lines,
       font_attr_segs=copy.deepcopy(orig_screen_output.font_attr_segs),
       annotations=orig_screen_output.annotations)
 
-  re_prog = re.compile(regex)
+  try:
+    re_prog = re.compile(regex)
+  except sre_constants.error:
+    raise ValueError("Invalid regular expression: \"%s\"" % regex)
 
+  regex_match_lines = []
   for i in xrange(len(new_screen_output.lines)):
     line = new_screen_output.lines[i]
     find_it = re_prog.finditer(line)
@@ -137,7 +427,9 @@ def regex_find(orig_screen_output, regex, font_attr):
         new_screen_output.font_attr_segs[i].extend(match_segs)
         new_screen_output.font_attr_segs[i] = sorted(
             new_screen_output.font_attr_segs[i], key=lambda x: x[0])
+      regex_match_lines.append(i)
 
+  new_screen_output.annotations[REGEX_MATCH_LINES_KEY] = regex_match_lines
   return new_screen_output
 
 
@@ -155,11 +447,15 @@ def wrap_rich_text_lines(inp, cols):
     cols: Number of columns, as an int.
 
   Returns:
-    A new instance of RichTextLines, with line lengths limited to cols.
-
+    1) A new instance of RichTextLines, with line lengths limited to cols.
+    2) A list of new (wrapped) line index. For example, if the original input
+      consists of three lines and only the second line is wrapped, and it's
+      wrapped into two lines, this return value will be: [0, 1, 3].
   Raises:
     ValueError: If inputs have invalid types.
   """
+
+  new_line_indices = []
 
   if not isinstance(inp, RichTextLines):
     raise ValueError("Invalid type of input screen_output")
@@ -171,6 +467,8 @@ def wrap_rich_text_lines(inp, cols):
 
   row_counter = 0  # Counter for new row index
   for i in xrange(len(inp.lines)):
+    new_line_indices.append(out.num_lines())
+
     line = inp.lines[i]
 
     if i in inp.annotations:
@@ -225,7 +523,12 @@ def wrap_rich_text_lines(inp, cols):
 
       out.lines.extend(wlines)
 
-  return out
+  # Copy over keys of annotation that are not row indices.
+  for key in inp.annotations:
+    if not isinstance(key, int):
+      out.annotations[key] = inp.annotations[key]
+
+  return out, new_line_indices
 
 
 class CommandHandlerRegistry(object):
@@ -254,6 +557,11 @@ class CommandHandlerRegistry(object):
   The call will return a RichTextLines object which can be rendered by a CLI.
   """
 
+  HELP_COMMAND = "help"
+  HELP_COMMAND_ALIASES = ["h"]
+  VERSION_COMMAND = "version"
+  VERSION_COMMAND_ALIASES = ["ver"]
+
   def __init__(self):
     # A dictionary from command prefix to handler.
     self._handlers = {}
@@ -266,6 +574,23 @@ class CommandHandlerRegistry(object):
 
     # A dictionary from command prefix to help string.
     self._prefix_to_help = {}
+
+    # Introductory text to help information.
+    self._help_intro = None
+
+    # Register a default handler for the command "help".
+    self.register_command_handler(
+        self.HELP_COMMAND,
+        self._help_handler,
+        "Print this help message.",
+        prefix_aliases=self.HELP_COMMAND_ALIASES)
+
+    # Register a default handler for the command "version".
+    self.register_command_handler(
+        self.VERSION_COMMAND,
+        self._version_handler,
+        "Print the versions of TensorFlow and its key dependencies.",
+        prefix_aliases=self.VERSION_COMMAND_ALIASES)
 
   def register_command_handler(self,
                                prefix,
@@ -282,7 +607,12 @@ class CommandHandlerRegistry(object):
         where argv is the argument vector (excluding the command prefix) and
           screen_info is a dictionary containing information about the screen,
           such as number of columns, e.g., {"cols": 100}.
-        The callable should return a RichTextLines object.
+        The callable should return:
+          1) a RichTextLines object representing the screen output.
+
+        The callable can also raise an exception of the type CommandLineExit,
+        which if caught by the command-line interface, will lead to its exit.
+        The exception can optionally carry an exit token of arbitrary type.
       help_info: A help string.
       prefix_aliases: Aliases for the command prefix, as a list of str. E.g.,
         shorthands for the command prefix: ["p", "pr"]
@@ -295,6 +625,7 @@ class CommandHandlerRegistry(object):
         4) elements in prefix_aliases clash with existing aliases.
         5) help_info is not a str.
     """
+
     if not prefix:
       raise ValueError("Empty command prefix")
 
@@ -307,7 +638,7 @@ class CommandHandlerRegistry(object):
       raise ValueError("handler is not callable")
 
     # Make sure that help info is a string.
-    if not isinstance(help_info, str):
+    if not isinstance(help_info, six.string_types):
       raise ValueError("help_info is not a str")
 
     # Process prefix aliases.
@@ -338,9 +669,9 @@ class CommandHandlerRegistry(object):
       screen_info: A dictionary containing screen info, e.g., {"cols": 100}.
 
     Returns:
-      An instance of RichTextLines. If any exception is caught during the
-      invocation of the command handler, the RichTextLines will wrap the error
-      type and message.
+      An instance of RichTextLines or None. If any exception is caught during
+      the invocation of the command handler, the RichTextLines will wrap the
+      error type and message.
 
     Raises:
       ValueError: If
@@ -348,6 +679,9 @@ class CommandHandlerRegistry(object):
         2) no command handler is registered for the command prefix, or
         3) the handler is found for the prefix, but it fails to return a
           RichTextLines or raise any exception.
+      CommandLineExit:
+        If the command handler raises this type of exception, this method will
+        simply pass it along.
     """
     if not prefix:
       raise ValueError("Prefix is empty")
@@ -360,15 +694,28 @@ class CommandHandlerRegistry(object):
     handler = self._handlers[resolved_prefix]
     try:
       output = handler(argv, screen_info=screen_info)
-    except BaseException as e:  # pylint: disable=broad-except
-      output = RichTextLines(
-          ["Error occurred during handling of command: %s %s:" %
-           (resolved_prefix, " ".join(argv)), "%s: %s" % (type(e), str(e))])
+    except CommandLineExit as e:
+      raise e
+    except SystemExit as e:
+      # Special case for syntax errors caught by argparse.
+      lines = ["Syntax error for command: %s" % prefix,
+               "For help, do \"help %s\"" % prefix]
+      output = RichTextLines(lines)
 
-    if not isinstance(output, RichTextLines):
+    except BaseException as e:  # pylint: disable=broad-except
+      lines = ["Error occurred during handling of command: %s %s:" %
+               (resolved_prefix, " ".join(argv)), "%s: %s" % (type(e), str(e))]
+
+      # Include traceback of the exception.
+      lines.append("")
+      lines.extend(traceback.format_exc().split("\n"))
+
+      output = RichTextLines(lines)
+
+    if not isinstance(output, RichTextLines) and output is not None:
       raise ValueError(
-          "Return value from command handler %s is not a RichTextLines instance"
-          % str(handler))
+          "Return value from command handler %s is not None or a RichTextLines "
+          "instance" % str(handler))
 
     return output
 
@@ -397,16 +744,59 @@ class CommandHandlerRegistry(object):
     """
     if not cmd_prefix:
       # Print full help information, in sorted order of the command prefixes.
-      lines = []
+      help_info = RichTextLines([])
+      if self._help_intro:
+        # If help intro is available, show it at the beginning.
+        help_info.extend(self._help_intro)
+
       sorted_prefixes = sorted(self._handlers)
       for cmd_prefix in sorted_prefixes:
-        lines.extend(self._get_help_for_command_prefix(cmd_prefix))
+        lines = self._get_help_for_command_prefix(cmd_prefix)
         lines.append("")
         lines.append("")
+        help_info.extend(RichTextLines(lines))
 
-      return RichTextLines(lines)
+      return help_info
     else:
       return RichTextLines(self._get_help_for_command_prefix(cmd_prefix))
+
+  def set_help_intro(self, help_intro):
+    """Set an introductory message to help output.
+
+    Args:
+      help_intro: (RichTextLines) Rich text lines appended to the
+        beginning of the output of the command "help", as introductory
+        information.
+    """
+    self._help_intro = help_intro
+
+  def _help_handler(self, args, screen_info=None):
+    """Command handler for "help".
+
+    "help" is a common command that merits built-in support from this class.
+
+    Args:
+      args: Command line arguments to "help" (not including "help" itself).
+      screen_info: (dict) Information regarding the screen, e.g., the screen
+        width in characters: {"cols": 80}
+
+    Returns:
+      (RichTextLines) Screen text output.
+    """
+
+    _ = screen_info  # Unused currently.
+
+    if not args:
+      return self.get_help()
+    elif len(args) == 1:
+      return self.get_help(args[0])
+    else:
+      return RichTextLines(["ERROR: help takes only 0 or 1 input argument."])
+
+  def _version_handler(self, args, screen_info=None):
+    del args  # Unused currently.
+    del screen_info  # Unused currently.
+    return get_tensorflow_version_lines(include_dependency_versions=True)
 
   def _resolve_prefix(self, token):
     """Resolve command prefix from the prefix itself or its alias.
@@ -463,6 +853,9 @@ class TabCompletionRegistry(object):
   def __init__(self):
     self._comp_dict = {}
 
+  # TODO(cais): Rename method names with "comp" to "*completion*" to avoid
+  # confusion.
+
   def register_tab_comp_context(self, context_words, comp_items):
     """Register a tab-completion context.
 
@@ -482,7 +875,7 @@ class TabCompletionRegistry(object):
 
     Args:
       context_words: A list of context words belonging to the context being
-        registerd. It is a list of str, instead of a single string, to support
+        registered. It is a list of str, instead of a single string, to support
         synonym words triggering the same tab-completion context, e.g.,
         both "drink" and the short-hand "dr" can trigger the same context.
       comp_items: A list of completion items, as a list of str.
@@ -531,7 +924,7 @@ class TabCompletionRegistry(object):
     Args:
       context_word: A single completion word as a string. The extension will
         also apply to all other context words of the same context.
-      new_comp_items: New completion items to add.
+      new_comp_items: (list of str) New completion items to add.
 
     Raises:
       KeyError: if the context word has not been registered.
@@ -571,33 +964,95 @@ class TabCompletionRegistry(object):
       prefix: The prefix of the incomplete word.
 
     Returns:
-      None if no registered context matches the context_word.
-      A list of str for the matching completion items. Can be an empty list
-        of a matching context exists, but no completion item matches the
-        prefix.
+      (1) None if no registered context matches the context_word.
+          A list of str for the matching completion items. Can be an empty list
+          of a matching context exists, but no completion item matches the
+          prefix.
+      (2) Common prefix of all the words in the first return value. If the
+          first return value is None, this return value will be None, too. If
+          the first return value is not None, i.e., a list, this return value
+          will be a str, which can be an empty str if there is no common
+          prefix among the items of the list.
     """
 
     if context_word not in self._comp_dict:
-      return None
+      return None, None
 
     comp_items = self._comp_dict[context_word]
+    comp_items = sorted(
+        [item for item in comp_items if item.startswith(prefix)])
 
-    return sorted([item for item in comp_items if item.startswith(prefix)])
+    return comp_items, self._common_prefix(comp_items)
+
+  def _common_prefix(self, m):
+    """Given a list of str, returns the longest common prefix.
+
+    Args:
+      m: (list of str) A list of strings.
+
+    Returns:
+      (str) The longest common prefix.
+    """
+    if not m:
+      return ""
+
+    s1 = min(m)
+    s2 = max(m)
+    for i, c in enumerate(s1):
+      if c != s2[i]:
+        return s1[:i]
+
+    return s1
 
 
 class CommandHistory(object):
   """Keeps command history and supports lookup."""
 
-  def __init__(self, limit=100):
+  _HISTORY_FILE_NAME = ".tfdbg_history"
+
+  def __init__(self, limit=100, history_file_path=None):
     """CommandHistory constructor.
 
     Args:
       limit: Maximum number of the most recent commands that this instance
         keeps track of, as an int.
+      history_file_path: (str) Manually specified path to history file. Used in
+        testing.
     """
 
     self._commands = []
     self._limit = limit
+    self._history_file_path = (
+        history_file_path or self._get_default_history_file_path())
+    self._load_history_from_file()
+
+  def _load_history_from_file(self):
+    if os.path.isfile(self._history_file_path):
+      try:
+        with open(self._history_file_path, "rt") as history_file:
+          commands = history_file.readlines()
+        self._commands = [command.strip() for command in commands
+                          if command.strip()]
+
+        # Limit the size of the history file.
+        if len(self._commands) > self._limit:
+          self._commands = self._commands[-self._limit:]
+          with open(self._history_file_path, "wt") as history_file:
+            for command in self._commands:
+              history_file.write(command + "\n")
+      except IOError:
+        print("WARNING: writing history file failed.")
+
+  def _add_command_to_history_file(self, command):
+    try:
+      with open(self._history_file_path, "at") as history_file:
+        history_file.write(command + "\n")
+    except IOError:
+      pass
+
+  @classmethod
+  def _get_default_history_file_path(cls):
+    return os.path.join(os.path.expanduser("~"), cls._HISTORY_FILE_NAME)
 
   def add_command(self, command):
     """Add a command to the command history.
@@ -609,13 +1064,19 @@ class CommandHistory(object):
       TypeError: if command is not a str.
     """
 
-    if not isinstance(command, str):
+    if self._commands and command == self._commands[-1]:
+      # Ignore repeating commands in a row.
+      return
+
+    if not isinstance(command, six.string_types):
       raise TypeError("Attempt to enter non-str entry to command history")
 
     self._commands.append(command)
 
     if len(self._commands) > self._limit:
       self._commands = self._commands[-self._limit:]
+
+    self._add_command_to_history_file(command)
 
   def most_recent_n(self, n):
     """Look up the n most recent commands.
@@ -648,3 +1109,144 @@ class CommandHistory(object):
     return commands[-n:]
 
   # TODO(cais): Lookup by regex.
+
+
+class MenuItem(object):
+  """A class for an item in a text-based menu."""
+
+  def __init__(self, caption, content, enabled=True):
+    """Menu constructor.
+
+    TODO(cais): Nested menu is currently not supported. Support it.
+
+    Args:
+      caption: (str) caption of the menu item.
+      content: Content of the menu item. For a menu item that triggers
+        a command, for example, content is the command string.
+      enabled: (bool) whether this menu item is enabled.
+    """
+
+    self._caption = caption
+    self._content = content
+    self._enabled = enabled
+
+  @property
+  def caption(self):
+    return self._caption
+
+  @property
+  def type(self):
+    return self._node_type
+
+  @property
+  def content(self):
+    return self._content
+
+  def is_enabled(self):
+    return self._enabled
+
+  def disable(self):
+    self._enabled = False
+
+  def enable(self):
+    self._enabled = True
+
+
+class Menu(object):
+  """A class for text-based menu."""
+
+  def __init__(self, name=None):
+    """Menu constructor.
+
+    Args:
+      name: (str or None) name of this menu.
+    """
+
+    self._name = name
+    self._items = []
+
+  def append(self, item):
+    """Append an item to the Menu.
+
+    Args:
+      item: (MenuItem) the item to be appended.
+    """
+    self._items.append(item)
+
+  def insert(self, index, item):
+    self._items.insert(index, item)
+
+  def num_items(self):
+    return len(self._items)
+
+  def captions(self):
+    return [item.caption for item in self._items]
+
+  def caption_to_item(self, caption):
+    """Get a MenuItem from the caption.
+
+    Args:
+      caption: (str) The caption to look up.
+
+    Returns:
+      (MenuItem) The first-match menu item with the caption, if any.
+
+    Raises:
+      LookupError: If a menu item with the caption does not exist.
+    """
+
+    captions = self.captions()
+    if caption not in captions:
+      raise LookupError("There is no menu item with the caption \"%s\"" %
+                        caption)
+
+    return self._items[captions.index(caption)]
+
+  def format_as_single_line(self,
+                            prefix=None,
+                            divider=" | ",
+                            enabled_item_attrs=None,
+                            disabled_item_attrs=None):
+    """Format the menu as a single-line RichTextLines object.
+
+    Args:
+      prefix: (str) String added to the beginning of the line.
+      divider: (str) The dividing string between the menu items.
+      enabled_item_attrs: (list or str) Attributes applied to each enabled
+        menu item, e.g., ["bold", "underline"].
+      disabled_item_attrs: (list or str) Attributes applied to each
+        disabled menu item, e.g., ["red"].
+
+    Returns:
+      (RichTextLines) A single-line output representing the menu, with
+        font_attr_segs marking the individual menu items.
+    """
+
+    if (enabled_item_attrs is not None and
+        not isinstance(enabled_item_attrs, list)):
+      enabled_item_attrs = [enabled_item_attrs]
+
+    if (disabled_item_attrs is not None and
+        not isinstance(disabled_item_attrs, list)):
+      disabled_item_attrs = [disabled_item_attrs]
+
+    menu_line = prefix if prefix is not None else ""
+    attr_segs = []
+
+    for item in self._items:
+      menu_line += item.caption
+      item_name_begin = len(menu_line) - len(item.caption)
+
+      if item.is_enabled():
+        final_attrs = [item]
+        if enabled_item_attrs:
+          final_attrs.extend(enabled_item_attrs)
+        attr_segs.append((item_name_begin, len(menu_line), final_attrs))
+      else:
+        if disabled_item_attrs:
+          attr_segs.append(
+              (item_name_begin, len(menu_line), disabled_item_attrs))
+
+      menu_line += divider
+
+    return RichTextLines(menu_line, font_attr_segs={0: attr_segs})

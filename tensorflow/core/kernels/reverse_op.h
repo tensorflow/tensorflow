@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_REVERSE_OP_H_
-#define TENSORFLOW_KERNELS_REVERSE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_REVERSE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_REVERSE_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -22,17 +22,12 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-// Functor used by MirrorOp to do the computations.
+// Functor used by ReverseOp to do the computations.
 template <typename Device, typename T, int Dims>
 struct Reverse {
   void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor input,
-                  typename TTypes<bool, 1>::ConstTensor dims,
+                  const Eigen::array<bool, Dims>& reverse_dims,
                   typename TTypes<T, Dims>::Tensor output) {
-    // mirror is in host memory
-    Eigen::array<bool, Dims> reverse_dims;
-    for (int i = 0; i < Dims; ++i) {
-      reverse_dims[i] = dims(i);
-    }
     output.device(d) = input.reverse(reverse_dims);
   }
 };
@@ -40,7 +35,7 @@ struct Reverse {
 template <typename Device, typename T>
 struct Reverse<Device, T, 0> {
   void operator()(const Device& d, typename TTypes<T, 0>::ConstTensor input,
-                  typename TTypes<bool, 1>::ConstTensor,
+                  const Eigen::array<bool, 0>& reverse_dims,
                   typename TTypes<T, 0>::Tensor output) {
     // Reversing a scalar is copying it.
     output.device(d) = input;
@@ -50,4 +45,4 @@ struct Reverse<Device, T, 0> {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_MIRROR_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_REVERSE_OP_H_

@@ -1,13 +1,14 @@
-FROM ubuntu:14.04
+FROM ubuntu:18.04
 
-MAINTAINER Craig Citro <craigcitro@google.com>
+LABEL maintainer="Craig Citro <craigcitro@google.com>"
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
         libfreetype6-dev \
-        libpng12-dev \
+        libhdf5-serial-dev \
+        libpng-dev \
         libzmq3-dev \
         pkg-config \
         python \
@@ -24,15 +25,19 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py
 
 RUN pip --no-cache-dir install \
+        Pillow \
+        h5py \
         ipykernel \
         jupyter \
+        keras_applications \
+        keras_preprocessing \
         matplotlib \
         numpy \
+        pandas \
         scipy \
+        sklearn \
         && \
     python -m ipykernel.kernelspec
-
-ENV TENSORFLOW_VERSION 0.10.0
 
 # --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 # These lines will be edited automatically by parameterized_docker_build.sh. #
@@ -42,8 +47,10 @@ ENV TENSORFLOW_VERSION 0.10.0
 
 # Install TensorFlow CPU version from central repo
 RUN pip --no-cache-dir install \
-    http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
+    http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.0.0-cp27-none-linux_x86_64.whl
 # --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
+
+# RUN ln -s -f /usr/bin/python3 /usr/bin/python#
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
@@ -63,4 +70,4 @@ EXPOSE 8888
 
 WORKDIR "/notebooks"
 
-CMD ["/run_jupyter.sh"]
+CMD ["/run_jupyter.sh", "--allow-root"]

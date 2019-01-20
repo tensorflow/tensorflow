@@ -1,3 +1,4 @@
+# This Python file uses the following encoding: utf-8
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,19 +14,19 @@
 # limitations under the License.
 # =============================================================================
 """Testing File IO operations in file_io.py."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os.path
 
-import tensorflow as tf
-
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.platform import test
 
 
-class FileIoTest(tf.test.TestCase):
+class FileIoTest(test.TestCase):
 
   def setUp(self):
     self._base_dir = os.path.join(self.get_temp_dir(), "base_dir")
@@ -33,6 +34,11 @@ class FileIoTest(tf.test.TestCase):
 
   def tearDown(self):
     file_io.delete_recursively(self._base_dir)
+
+  def testEmptyFilename(self):
+    f = file_io.FileIO("", mode="r")
+    with self.assertRaises(errors.NotFoundError):
+      _ = f.read()
 
   def testFileDoesntExist(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -45,7 +51,59 @@ class FileIoTest(tf.test.TestCase):
     file_io.write_string_to_file(file_path, "testing")
     self.assertTrue(file_io.file_exists(file_path))
     file_contents = file_io.read_file_to_string(file_path)
-    self.assertEqual(b"testing", file_contents)
+    self.assertEqual("testing", file_contents)
+
+  def testAtomicWriteStringToFile(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.atomic_write_string_to_file(file_path, "testing")
+    self.assertTrue(file_io.file_exists(file_path))
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("testing", file_contents)
+
+  def testAtomicWriteStringToFileOverwriteFalse(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.atomic_write_string_to_file(file_path, "old", overwrite=False)
+    with self.assertRaises(errors.AlreadyExistsError):
+      file_io.atomic_write_string_to_file(file_path, "new", overwrite=False)
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("old", file_contents)
+    file_io.delete_file(file_path)
+    file_io.atomic_write_string_to_file(file_path, "new", overwrite=False)
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("new", file_contents)
+
+  def testReadBinaryMode(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.write_string_to_file(file_path, "testing")
+    with file_io.FileIO(file_path, mode="rb") as f:
+      self.assertEqual(b"testing", f.read())
+
+  def testWriteBinaryMode(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.FileIO(file_path, "wb").write("testing")
+    with file_io.FileIO(file_path, mode="r") as f:
+      self.assertEqual("testing", f.read())
+
+  def testAppend(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("begin\n")
+    with file_io.FileIO(file_path, mode="a") as f:
+      f.write("a1\n")
+    with file_io.FileIO(file_path, mode="a") as f:
+      f.write("a2\n")
+    with file_io.FileIO(file_path, mode="r") as f:
+      file_contents = f.read()
+      self.assertEqual("begin\na1\na2\n", file_contents)
+
+  def testMultipleFiles(self):
+    file_prefix = os.path.join(self._base_dir, "temp_file")
+    for i in range(5000):
+      f = file_io.FileIO(file_prefix + str(i), mode="w+")
+      f.write("testing")
+      f.flush()
+      self.assertEqual("testing", f.read())
+      f.close()
 
   def testMultipleWrites(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -53,7 +111,7 @@ class FileIoTest(tf.test.TestCase):
       f.write("line1\n")
       f.write("line2")
     file_contents = file_io.read_file_to_string(file_path)
-    self.assertEqual(b"line1\nline2", file_contents)
+    self.assertEqual("line1\nline2", file_contents)
 
   def testFileWriteBadMode(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -89,6 +147,12 @@ class FileIoTest(tf.test.TestCase):
     self.assertItemsEqual(
         file_io.get_matching_files(os.path.join(dir_path, "file*.txt")),
         expected_match)
+    self.assertItemsEqual(file_io.get_matching_files(tuple()), [])
+    files_subset = [
+        os.path.join(dir_path, files[0]), os.path.join(dir_path, files[2])
+    ]
+    self.assertItemsEqual(
+        file_io.get_matching_files(files_subset), files_subset)
     file_io.delete_recursively(dir_path)
     self.assertFalse(file_io.file_exists(os.path.join(dir_path, "file3.txt")))
 
@@ -109,7 +173,7 @@ class FileIoTest(tf.test.TestCase):
     file_io.copy(file_path, copy_path)
     self.assertTrue(file_io.file_exists(copy_path))
     f = file_io.FileIO(file_path, mode="r")
-    self.assertEqual(b"testing", f.read())
+    self.assertEqual("testing", f.read())
     self.assertEqual(7, f.tell())
 
   def testCopyOverwrite(self):
@@ -119,7 +183,7 @@ class FileIoTest(tf.test.TestCase):
     file_io.FileIO(copy_path, mode="w").write("copy")
     file_io.copy(file_path, copy_path, overwrite=True)
     self.assertTrue(file_io.file_exists(copy_path))
-    self.assertEqual(b"testing", file_io.FileIO(file_path, mode="r").read())
+    self.assertEqual("testing", file_io.FileIO(file_path, mode="r").read())
 
   def testCopyOverwriteFalse(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -223,7 +287,8 @@ class FileIoTest(tf.test.TestCase):
       all_files.append(w_files)
     self.assertItemsEqual(all_dirs, [dir_path] + [
         os.path.join(dir_path, item)
-        for item in ["subdir1_1", "subdir1_2", "subdir1_2/subdir2", "subdir1_3"]
+        for item in
+        ["subdir1_1", "subdir1_2", "subdir1_2/subdir2", "subdir1_3"]
     ])
     self.assertEqual(dir_path, all_dirs[0])
     self.assertLess(
@@ -249,7 +314,8 @@ class FileIoTest(tf.test.TestCase):
       all_files.append(w_files)
     self.assertItemsEqual(all_dirs, [
         os.path.join(dir_path, item)
-        for item in ["subdir1_1", "subdir1_2/subdir2", "subdir1_2", "subdir1_3"]
+        for item in
+        ["subdir1_1", "subdir1_2/subdir2", "subdir1_2", "subdir1_3"]
     ] + [dir_path])
     self.assertEqual(dir_path, all_dirs[4])
     self.assertLess(
@@ -298,10 +364,21 @@ class FileIoTest(tf.test.TestCase):
     self.assertEqual("testing5", f.readline())
     self.assertEqual("", f.readline())
 
+  def testRead(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual(36, f.size())
+    self.assertEqual("testing1\n", f.read(9))
+    self.assertEqual("testing2\n", f.read(9))
+    self.assertEqual("t", f.read(1))
+    self.assertEqual("esting3\n\ntesting5", f.read())
+
   def testTell(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="r+") as f:
       f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual(0, f.tell())
     self.assertEqual("testing1\n", f.readline())
     self.assertEqual(9, f.tell())
     self.assertEqual("testing2\n", f.readline())
@@ -314,6 +391,64 @@ class FileIoTest(tf.test.TestCase):
     self.assertEqual(36, f.tell())
     self.assertEqual("", f.readline())
     self.assertEqual(36, f.tell())
+
+  def testSeek(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual("testing1\n", f.readline())
+    self.assertEqual(9, f.tell())
+
+    # Seek to 18
+    f.seek(18)
+    self.assertEqual(18, f.tell())
+    self.assertEqual("testing3\n", f.readline())
+
+    # Seek back to 9
+    f.seek(9)
+    self.assertEqual(9, f.tell())
+    self.assertEqual("testing2\n", f.readline())
+
+    f.seek(0)
+    self.assertEqual(0, f.tell())
+    self.assertEqual("testing1\n", f.readline())
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      f.seek(-1)
+
+    with self.assertRaises(TypeError):
+      f.seek()
+
+    # TODO(jhseu): Delete after position deprecation.
+    with self.assertRaises(TypeError):
+      f.seek(offset=0, position=0)
+    f.seek(position=9)
+    self.assertEqual(9, f.tell())
+    self.assertEqual("testing2\n", f.readline())
+
+  def testSeekFromWhat(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual("testing1\n", f.readline())
+    self.assertEqual(9, f.tell())
+
+    # Seek to 18
+    f.seek(9, 1)
+    self.assertEqual(18, f.tell())
+    self.assertEqual("testing3\n", f.readline())
+
+    # Seek back to 9
+    f.seek(9, 0)
+    self.assertEqual(9, f.tell())
+    self.assertEqual("testing2\n", f.readline())
+
+    f.seek(-f.size(), 2)
+    self.assertEqual(0, f.tell())
+    self.assertEqual("testing1\n", f.readline())
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      f.seek(0, 3)
 
   def testReadingIterator(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -334,6 +469,143 @@ class FileIoTest(tf.test.TestCase):
     lines = f.readlines()
     self.assertSequenceEqual(lines, data)
 
+  def testUTF8StringPath(self):
+    file_path = os.path.join(self._base_dir, "UTF8测试_file")
+    file_io.write_string_to_file(file_path, "testing")
+    with file_io.FileIO(file_path, mode="rb") as f:
+      self.assertEqual(b"testing", f.read())
+
+  def testEof(self):
+    """Test that reading past EOF does not raise an exception."""
+
+    file_path = os.path.join(self._base_dir, "temp_file")
+    f = file_io.FileIO(file_path, mode="r+")
+    content = "testing"
+    f.write(content)
+    f.flush()
+    self.assertEqual(content, f.read(len(content) + 1))
+
+  def testUTF8StringPathExists(self):
+    file_path = os.path.join(self._base_dir, "UTF8测试_file_exist")
+    file_io.write_string_to_file(file_path, "testing")
+    v = file_io.file_exists(file_path)
+    self.assertEqual(v, True)
+
+  def testFilecmp(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, u"This is another sentence\n" * 100)
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFilecmpSameSize(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is b sentence\n" * 100)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, u"This is b sentence\n" * 100)
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFilecmpBinary(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.FileIO(file1, "wb").write("testing\n\na")
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.FileIO(file2, "wb").write("testing\n\nb")
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.FileIO(file3, "wb").write("testing\n\nb")
+
+    file4 = os.path.join(self._base_dir, "file4")
+    file_io.FileIO(file4, "wb").write("testing\n\ntesting")
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertFalse(file_io.filecmp(file1, file4))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFileCrc32(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+    crc1 = file_io.file_crc32(file1)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+    crc2 = file_io.file_crc32(file2)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, "This is another sentence\n" * 100)
+    crc3 = file_io.file_crc32(file3)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
+
+  def testFileCrc32WithBytes(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+    crc1 = file_io.file_crc32(file1, block_size=24)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+    crc2 = file_io.file_crc32(file2, block_size=24)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, "This is another sentence\n" * 100)
+    crc3 = file_io.file_crc32(file3, block_size=-1)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
+
+  def testFileCrc32Binary(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.FileIO(file1, "wb").write("testing\n\n")
+    crc1 = file_io.file_crc32(file1)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.FileIO(file2, "wb").write("testing\n\n\n")
+    crc2 = file_io.file_crc32(file2)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.FileIO(file3, "wb").write("testing\n\n\n")
+    crc3 = file_io.file_crc32(file3)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
+
+  def testMatchingFilesPermission(self):
+    # Create top level directory test_dir.
+    dir_path = os.path.join(self._base_dir, "test_dir")
+    file_io.create_dir(dir_path)
+    # Create second level directories `noread` and `any`.
+    noread_path = os.path.join(dir_path, "noread")
+    file_io.create_dir(noread_path)
+    any_path = os.path.join(dir_path, "any")
+    file_io.create_dir(any_path)
+    files = ["file1.txt", "file2.txt", "file3.txt"]
+    for name in files:
+      file_path = os.path.join(any_path, name)
+      file_io.FileIO(file_path, mode="w").write("testing")
+    file_path = os.path.join(noread_path, "file4.txt")
+    file_io.FileIO(file_path, mode="w").write("testing")
+    # Change noread to noread access.
+    os.chmod(noread_path, 0)
+    expected_match = [os.path.join(any_path, name) for name in files]
+    self.assertItemsEqual(
+        file_io.get_matching_files(os.path.join(dir_path, "*", "file*.txt")),
+        expected_match)
+    # Change noread back so that it could be cleaned during tearDown.
+    os.chmod(noread_path, 0o777)
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

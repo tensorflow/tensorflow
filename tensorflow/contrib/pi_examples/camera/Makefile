@@ -39,17 +39,17 @@ INCLUDES := \
 -I/usr/local/include \
 -I. \
 -I$(DOWNLOADSDIR) \
--I$(DOWNLOADSDIR)/eigen-latest/ \
+-I$(DOWNLOADSDIR)/eigen/ \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 LIBS := \
--lstdc++ \
--lprotobuf \
--lv4l2 \
 -Wl,--allow-multiple-definition \
 -Wl,--whole-archive \
 -ltensorflow-core \
 -Wl,--no-whole-archive \
+-lstdc++ \
+-lprotobuf \
+-lv4l2 \
 -ldl \
 -lpthread \
 -lm \
@@ -76,7 +76,7 @@ $(EXECUTABLE_NAME): $(EXECUTABLE_OBJS) $(TFLIBS)
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
 
 # Matches on C++ source files.
-$(OBJDIR)%.o: %.cc 
+$(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 

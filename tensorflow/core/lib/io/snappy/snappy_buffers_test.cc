@@ -61,7 +61,6 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
   string fname = testing::TmpDir() + "/snappy_buffers_test";
   string data = GenTestString(num_copies);
   std::unique_ptr<WritableFile> file_writer;
-  string actual_result;
   string expected_result;
 
   TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file_writer));
@@ -118,14 +117,19 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
   io::SnappyInputBuffer in(file_reader.get(), uncompress_input_buf_size,
                            uncompress_output_buf_size);
 
-  for (int i = 0; i < num_writes; i++) {
-    string decompressed_output;
-    TF_RETURN_IF_ERROR(in.ReadNBytes(data.size(), &decompressed_output));
-    strings::StrAppend(&actual_result, decompressed_output);
-  }
+  // Run the test twice, resetting the stream after the first attempt.
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    string actual_result;
+    for (int i = 0; i < num_writes; i++) {
+      string decompressed_output;
+      TF_RETURN_IF_ERROR(in.ReadNBytes(data.size(), &decompressed_output));
+      strings::StrAppend(&actual_result, decompressed_output);
+    }
 
-  if (actual_result.compare(expected_result)) {
-    return errors::DataLoss("Actual and expected results don't match.");
+    if (actual_result.compare(expected_result)) {
+      return errors::DataLoss("Actual and expected results don't match.");
+    }
+    TF_RETURN_IF_ERROR(in.Reset());
   }
   return Status::OK();
 }

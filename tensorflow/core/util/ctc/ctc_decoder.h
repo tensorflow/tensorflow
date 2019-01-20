@@ -12,11 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// LINT.IfChange
 
 #ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_DECODER_H_
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_DECODER_H_
 
+#include <memory>
+#include <vector>
+
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace ctc {
@@ -47,9 +53,9 @@ class CTCDecoder {
   //  - input[t].rows(b) - t = 0 to timesteps; b = 0 t batch_size_
   //  - output.size() specifies the number of beams to be returned.
   //  - scores(b, i) - b = 0 to batch_size; i = 0 to output.size()
-  virtual void Decode(const SequenceLength& seq_len,
-                      const std::vector<Input>& input,
-                      std::vector<Output>* output, ScoreOutput* scores) = 0;
+  virtual Status Decode(const SequenceLength& seq_len,
+                        const std::vector<Input>& input,
+                        std::vector<Output>* output, ScoreOutput* scores) = 0;
 
   int batch_size() { return batch_size_; }
   int num_classes() { return num_classes_; }
@@ -68,10 +74,18 @@ class CTCGreedyDecoder : public CTCDecoder {
   CTCGreedyDecoder(int num_classes, int batch_size, bool merge_repeated)
       : CTCDecoder(num_classes, batch_size, merge_repeated) {}
 
-  void Decode(const CTCDecoder::SequenceLength& seq_len,
-              const std::vector<CTCDecoder::Input>& input,
-              std::vector<CTCDecoder::Output>* output,
-              CTCDecoder::ScoreOutput* scores) override {
+  Status Decode(const CTCDecoder::SequenceLength& seq_len,
+                const std::vector<CTCDecoder::Input>& input,
+                std::vector<CTCDecoder::Output>* output,
+                CTCDecoder::ScoreOutput* scores) override {
+    if (output->empty() || (*output)[0].size() < batch_size_) {
+      return errors::InvalidArgument(
+          "output needs to be of size at least (1, batch_size).");
+    }
+    if (scores->rows() < batch_size_ || scores->cols() == 0) {
+      return errors::InvalidArgument(
+          "scores needs to be of size at least (batch_size, 1).");
+    }
     // For each batch entry, identify the transitions
     for (int b = 0; b < batch_size_; ++b) {
       int seq_len_b = seq_len[b];
@@ -79,7 +93,6 @@ class CTCGreedyDecoder : public CTCDecoder {
       std::vector<int>& output_b = (*output)[0][b];
 
       int prev_class_ix = -1;
-      std::vector<int> transcription;
       (*scores)(b, 0) = 0;
       for (int t = 0; t < seq_len_b; ++t) {
         auto row = input[t].row(b);
@@ -88,11 +101,11 @@ class CTCGreedyDecoder : public CTCDecoder {
         if (max_class_ix != blank_index_ &&
             !(merge_repeated_ && max_class_ix == prev_class_ix)) {
           output_b.push_back(max_class_ix);
-          transcription.push_back(max_class_ix);
         }
         prev_class_ix = max_class_ix;
       }
     }
+    return Status::OK();
   }
 };
 
@@ -100,3 +113,4 @@ class CTCGreedyDecoder : public CTCDecoder {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_DECODER_H_
+// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_decoder.h)

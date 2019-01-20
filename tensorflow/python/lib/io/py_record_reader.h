@@ -42,10 +42,12 @@ class PyRecordReader {
 
   ~PyRecordReader();
 
-  // Attempt to get the next record at "current_offset()".  If
-  // successful, returns true, and the record contents can be retrieved
-  // with "this->record()".  Otherwise, returns false.
-  bool GetNext();
+  // Attempt to get the next record at "current_offset()". Populates status
+  // with OK on success, OUT_OF_RANGE for end of file, DATA_LOSS for some
+  // kinds of truncated reads, or another code for other errors
+  // (e.g., filesystem errors).
+  void GetNext(TF_Status* status);
+
   // Return the current record contents.  Only valid after the preceding call
   // to GetNext() returned true
   string record() const { return record_; }

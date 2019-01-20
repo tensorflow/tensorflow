@@ -22,21 +22,32 @@ limitations under the License.
 namespace tensorflow {
 namespace benchmark_model {
 
-// Loads a model from disk into a new session, and sets up the stats collection.
+// Used to help construct dummy inputs for the benchmarking.
+struct InputLayerInfo {
+  string name;
+  DataType data_type;
+  TensorShape shape;
+  std::vector<float> initialization_values;
+};
+
+// Loads a model from disk into a new session.
 Status InitializeSession(int num_threads, const string& graph,
                          std::unique_ptr<Session>* session,
-                         std::unique_ptr<StatSummarizer>* stats);
+                         std::unique_ptr<GraphDef>* graph_def);
 
 // Does a single run of the model that's been loaded into the given session.
-Status RunBenchmark(DataType input_data_type, TensorShape input_shape,
-                    const string& input_layer, const string output_layer,
-                    Session* session, StatSummarizer* stats);
+Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
+                    const std::vector<string>& outputs,
+                    const std::vector<string>& targets, Session* session,
+                    StatSummarizer* stats, int64* inference_time_us);
 
 // Runs the model multiple time, keeping track of timing information.
-Status TimeMultipleRuns(double sleep_seconds, int num_runs,
-                        DataType input_data_type, TensorShape input_shape,
-                        const string& input_layer, const string output_layer,
-                        Session* session, StatSummarizer* stats);
+Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
+                        const std::vector<InputLayerInfo>& inputs,
+                        const std::vector<string>& outputs,
+                        const std::vector<string>& targets, Session* session,
+                        StatSummarizer* stats, int64* total_time_us,
+                        int64* actual_num_runs);
 
 // Handles all setup and argument parsing.
 int Main(int argc, char** argv);

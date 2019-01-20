@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
-#define TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_ATTR_VALUE_UTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_ATTR_VALUE_UTIL_H_
 
+#include <functional>
 #include <string>
 #include <vector>
-#include "tensorflow/core/framework/attr_value.pb.h"
+
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +29,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
+
+// Forward declare protos so their symbols can be removed from .so exports
+class AttrValue;
+class NameAttrList;
 
 // A human-readable rendering of attr_value, that is more concise than a
 // text-format proto.
@@ -78,14 +83,33 @@ void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<PartialTensorShape> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<Tensor> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorProto> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 
-inline void SetAttrValue(const AttrValue& value, AttrValue* out) {
-  *out = value;
-}
+void SetAttrValue(const AttrValue& value, AttrValue* out);
 
 // Returns true if a and b have the same value.
-// NOTE: May return false negatives for tensor values.
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
+
+// Returns a hash of `a` that is consistent with AreAttrValuesEqual. In other
+// words, if two AttrValues compare equal according to AreAttrValuesEqual,
+// they will have the same hash value.
+// Similarly to protobuf deterministic serialization, hash value is
+// guaranteed to be stable only for a given binary. In particular, one should
+// probably not persist the returned value.
+uint64 AttrValueHash(const AttrValue& a);
+
+// WARNING: Equality check might return false-negative for large (> 32mb)
+// tensors defined with different TensorProto representations.
+//
+// A pair of consistent hash and equals functions that are guaranteed to be fast
+// with AttrValues that potentially can have very large Tensors (larger than
+// 32mb) defined by TensorProto. If large identical Tensors are defined using
+// different representations (e.g. one with tensor content, and second with
+// bool_val), they will have different hash code and equals will return false.
+// Small (less than 32mb) tensors with different TensorProto representations
+// hashed/compared by their tensor content.
+uint64 FastAttrValueHash(const AttrValue& a);
+bool FastAreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
 
 // Returns true if "val" has a placeholder.
 bool HasPlaceHolder(const AttrValue& val);
@@ -97,9 +121,9 @@ bool HasPlaceHolder(const AttrValue& val);
 // SubstituteFunc is given a placeholder string. If the placeholder is
 // unknown, SubstituteFunc returns false. Otherwise, overwrites the
 // attr value and returns true.
-typedef std::function<bool(const string&, AttrValue*)> SubstituteFunc;
-bool SubstitutePlaceholders(SubstituteFunc substitute, AttrValue* value);
+using SubstituteFunc = std::function<bool(const string&, AttrValue*)>;
+bool SubstitutePlaceholders(const SubstituteFunc& substitute, AttrValue* value);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_ATTR_VALUE_UTIL_H_

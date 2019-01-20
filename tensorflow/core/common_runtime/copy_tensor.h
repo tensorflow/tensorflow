@@ -28,13 +28,11 @@ namespace tensorflow {
 
 class CopyTensor {
  public:
-  typedef void (*CopyFunction)(DeviceContext* send_dev_context,
-                               DeviceContext* recv_dev_context, Device* src,
-                               Device* dst,
-                               const AllocatorAttributes src_alloc_attr,
-                               const AllocatorAttributes dst_alloc_attr,
-                               const Tensor* input, Tensor* output,
-                               StatusCallback done);
+  typedef void (*CopyFunction)(
+      DeviceContext* send_dev_context, DeviceContext* recv_dev_context,
+      Device* src, Device* dst, const AllocatorAttributes src_alloc_attr,
+      const AllocatorAttributes dst_alloc_attr, const Tensor* input,
+      Tensor* output, int dev_to_dev_stream_index, StatusCallback done);
 
   // Copies "input" to "output" between devices accessible to the
   // local process via some DMA-like method.  "edge_name" is the name
@@ -46,7 +44,8 @@ class CopyTensor {
                      DeviceContext* recv_dev_context, Device* src, Device* dst,
                      const AllocatorAttributes src_alloc_attr,
                      const AllocatorAttributes dst_alloc_attr,
-                     const Tensor* input, Tensor* output, StatusCallback done);
+                     const Tensor* input, Tensor* output,
+                     int dev_to_dev_stream_index, StatusCallback done);
 
   // Object used to call Register() at static-initialization time.
   // Note: This should only ever be used as a global-static object; no stack

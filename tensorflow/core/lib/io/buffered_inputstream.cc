@@ -41,9 +41,18 @@ BufferedInputStream::~BufferedInputStream() {
 }
 
 Status BufferedInputStream::FillBuffer() {
+  if (!file_status_.ok()) {
+    pos_ = 0;
+    limit_ = 0;
+    return file_status_;
+  }
   Status s = input_stream_->ReadNBytes(size_, &buf_);
   pos_ = 0;
   limit_ = buf_.size();
+  if (buf_.empty()) {
+    DCHECK(!s.ok());
+    file_status_ = s;
+  }
   return s;
 }
 
@@ -82,6 +91,9 @@ Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, string* result) {
                                    bytes_to_read);
   }
   result->clear();
+  if (!file_status_.ok() && bytes_to_read > 0) {
+    return file_status_;
+  }
   result->reserve(bytes_to_read);
 
   Status s;
@@ -91,6 +103,8 @@ Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, string* result) {
       s = FillBuffer();
       // If we didn't read any bytes, we're at the end of the file; break out.
       if (limit_ == 0) {
+        DCHECK(!s.ok());
+        file_status_ = s;
         break;
       }
     }
@@ -124,6 +138,9 @@ Status BufferedInputStream::SkipNBytes(int64 bytes_to_skip) {
     Status s = input_stream_->SkipNBytes(bytes_to_skip - (limit_ - pos_));
     pos_ = 0;
     limit_ = 0;
+    if (errors::IsOutOfRange(s)) {
+      file_status_ = s;
+    }
     return s;
   }
   return Status::OK();
@@ -133,13 +150,57 @@ int64 BufferedInputStream::Tell() const {
   return input_stream_->Tell() - (limit_ - pos_);
 }
 
+Status BufferedInputStream::Seek(int64 position) {
+  if (position < 0) {
+    return errors::InvalidArgument("Seeking to a negative position: ",
+                                   position);
+  }
+
+  // Position of the buffer within file.
+  const int64 bufpos = Tell();
+  if (position < bufpos) {
+    // Reset input stream and skip 'position' bytes.
+    TF_RETURN_IF_ERROR(Reset());
+    return SkipNBytes(position);
+  }
+
+  return SkipNBytes(position - bufpos);
+}
+
+Status BufferedInputStream::ReadAll(string* result) {
+  result->clear();
+  Status status;
+  while (status.ok()) {
+    status = FillBuffer();
+    if (limit_ == 0) {
+      break;
+    }
+    result->append(buf_);
+    pos_ = limit_;
+  }
+
+  if (errors::IsOutOfRange(status)) {
+    file_status_ = status;
+    return Status::OK();
+  }
+  return status;
+}
+
+Status BufferedInputStream::Reset() {
+  TF_RETURN_IF_ERROR(input_stream_->Reset());
+  pos_ = 0;
+  limit_ = 0;
+  file_status_ = Status::OK();
+  return Status::OK();
+}
+
 Status BufferedInputStream::ReadLine(string* result) {
   return ReadLineHelper(result, false);
 }
 
 string BufferedInputStream::ReadLineAsString() {
   string result;
-  ReadLineHelper(&result, true);
+  ReadLineHelper(&result, true).IgnoreError();
   return result;
 }
 

@@ -13,81 +13,85 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+namespace shape_inference {
+class InferenceContext;
+}  // namespace shape_inference
 
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+REGISTER_OP("RegexReplace")
+    .Input("input: string")
+    .Input("pattern: string")
+    .Input("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
+REGISTER_OP("StaticRegexReplace")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Attr("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("RegexFullMatch")
+    .Input("input: string")
+    .Input("pattern: string")
+    .Output("output: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
+REGISTER_OP("StaticRegexFullMatch")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Output("output: bool")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Converts each string in the input Tensor to its hash mod by a number of buckets.
-
-The hash function is deterministic on the content of the string within the
-process and will never change. However, it is not suitable for cryptography.
-This function may be used when CPU time is scarce and inputs are trusted or
-unimportant. There is a risk of adversaries constructing inputs that all hash
-to the same bucket. To prevent this problem, use a strong hash function with
-`tf.string_to_hash_bucket_strong`.
-
-input: The strings to assign a hash bucket.
-num_buckets: The number of buckets.
-output: A Tensor of the same shape as the input `string_tensor`.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("StringToHashBucketStrong")
     .Input("input: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
     .Attr("key: list(int)")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Converts each string in the input Tensor to its hash mod by a number of buckets.
-
-The hash function is deterministic on the content of the string within the
-process. The hash function is a keyed hash function, where attribute `key`
-defines the key of the hash function. `key` is an array of 2 elements.
-
-A strong hash is important when inputs may be malicious, e.g. URLs with
-additional components. Adversaries could try to make their inputs hash to the
-same bucket for a denial-of-service attack or to skew the results. A strong
-hash prevents this by making it dificult, if not infeasible, to compute inputs
-that hash to the same bucket. This comes at a cost of roughly 4x higher compute
-time than tf.string_to_hash_bucket_fast.
-
-input: The strings to assign a hash bucket.
-num_buckets: The number of buckets.
-key: The key for the keyed hash function passed as a list of two uint64
-  elements.
-output: A Tensor of the same shape as the input `string_tensor`.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("StringToHashBucket")
     .Input("string_tensor: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Converts each string in the input Tensor to its hash mod by a number of buckets.
-
-The hash function is deterministic on the content of the string within the
-process.
-
-Note that the hash function may change from time to time.
-This functionality will be deprecated and it's recommended to use
-`tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
-
-num_buckets: The number of buckets.
-output: A Tensor of the same shape as the input `string_tensor`.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("ReduceJoin")
     .Input("inputs: string")
@@ -95,70 +99,46 @@ REGISTER_OP("ReduceJoin")
     .Attr("keep_dims: bool = false")
     .Attr("separator: string = ''")
     .Output("output: string")
-    .SetShapeFn(shape_inference::ReductionShapeForReduceJoin)
-    .Doc(R"doc(
-Joins a string Tensor across the given dimensions.
-
-Computes the string join across dimensions in the given string Tensor of shape
-`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input
-strings with the given separator (default: empty string).  Negative indices are
-counted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing
-an empty `reduction_indices` joins all strings in linear index order and outputs
-a scalar string.
-
-
-For example:
-
-```
-# tensor `a` is [["a", "b"], ["c", "d"]]
-tf.reduce_join(a, 0) ==> ["ac", "bd"]
-tf.reduce_join(a, 1) ==> ["ab", "cd"]
-tf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> ["ac", "bd"]
-tf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> ["ab", "cd"]
-tf.reduce_join(a, 0, keep_dims=True) ==> [["ac", "bd"]]
-tf.reduce_join(a, 1, keep_dims=True) ==> [["ab"], ["cd"]]
-tf.reduce_join(a, 0, separator=".") ==> ["a.c", "b.d"]
-tf.reduce_join(a, [0, 1]) ==> ["acbd"]
-tf.reduce_join(a, [1, 0]) ==> ["abcd"]
-tf.reduce_join(a, []) ==> ["abcd"]
-```
-
-inputs: The input to be joined.  All reduced indices must have non-zero size.
-reduction_indices: The dimensions to reduce over.  Dimensions are reduced in the
-  order specified.  Omitting `reduction_indices` is equivalent to passing
-  `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
-keep_dims: If `True`, retain reduced dimensions with length `1`.
-separator: The separator to use when joining.
-
-output: Has shape equal to that of the input with reduced dimensions removed or
-  set to `1` depending on `keep_dims`.
-)doc");
+    .SetShapeFn(shape_inference::ReductionShape);
 
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr("T: {int32, int64, complex64, float, double, bool, int8}")
+    .Attr(
+        "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
+        "bool}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
     .Attr("width: int = -1")
     .Attr("fill: string = ''")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Converts each entry in the given tensor to strings.  Supports many numeric
-types and boolean.
+    .SetShapeFn(shape_inference::UnchangedShape);
 
-precision: The post-decimal precision to use for floating point numbers.
-  Only used if precision > -1.
-scientific: Use scientific notation for floating point numbers.
-shortest: Use shortest representation (either scientific or standard) for
-  floating point numbers.
-width: Pad pre-decimal numbers to this width.
-  Applies to both floating point and integer numbers.
-  Only used if width > -1.
-fill: The value to pad if width > -1.  If empty, pads with spaces.
-  Another typical value is '0'.  String cannot be longer than 1 character.
-)doc");
+REGISTER_OP("StringFormat")
+    .Input("inputs: T")
+    .Output("output: string")
+    .Attr("T: list(type) >= 0")
+    .Attr("template: string = '%s'")
+    .Attr("placeholder: string = '%s'")
+    .Attr("summarize: int = 3")
+    .SetShapeFn([](InferenceContext* c) {
+      string template_;
+      string placeholder;
+      TF_RETURN_IF_ERROR(c->GetAttr("template", &template_));
+      TF_RETURN_IF_ERROR(c->GetAttr("placeholder", &placeholder));
+
+      std::vector<std::string> split_template;
+      split_template = absl::StrSplit(template_, placeholder);
+      int64 num_placeholders = split_template.size() - 1;
+      if (c->num_inputs() != num_placeholders) {
+        return errors::InvalidArgument(strings::StrCat(
+            "num placeholders in template and num inputs must match: ",
+            num_placeholders, " vs. ", c->num_inputs()));
+      }
+
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("StringJoin")
     .Input("inputs: N * string")
@@ -188,16 +168,7 @@ REGISTER_OP("StringJoin")
       }
       c->set_output(0, out);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Joins the strings in the given list of string tensors into one tensor;
-with the given separator (default is an empty separator).
-
-inputs: A list of string tensors.  The tensors must all have the same shape,
-  or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
-  of non-scalar inputs.
-separator: string, an optional join separator.
-)doc");
+    });
 
 REGISTER_OP("StringSplit")
     .Input("input: string")
@@ -205,6 +176,7 @@ REGISTER_OP("StringSplit")
     .Output("indices: int64")
     .Output("values: string")
     .Output("shape: int64")
+    .Attr("skip_empty: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
@@ -214,70 +186,158 @@ REGISTER_OP("StringSplit")
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(2, c->Vector(2));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Split elements of `input` based on `delimiter` into a `SparseTensor`.
+    });
 
-Let N be the size of source (typically N will be the batch size). Split each
-element of `input` based on `delimiter` and return a `SparseTensor`
-containing the splitted tokens. Empty tokens are ignored.
+REGISTER_OP("StringSplitV2")
+    .Input("input: string")
+    .Input("sep: string")
+    .Output("indices: int64")
+    .Output("values: string")
+    .Output("shape: int64")
+    .Attr("maxsplit: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
-`delimiter` can be empty or a single character. If `delimiter` is an empty
- string, each element of `input` is split into individual 1 character strings.
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
 
-For example:
-  N = 2, input[0] is 'hello world' and input[1] is 'a b c', then the output
-  will be
+REGISTER_OP("StringStrip")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
-  indices = [0, 0;
-             0, 1;
-             1, 0;
-             1, 1;
-             1, 2]
-  shape = [2, 3]
-  values = ['hello', 'world', 'a', 'b', 'c']
-
-input: 1-D. Strings to split.
-delimiter: 0-D. Delimiter character, or empty string.
-indices: A dense matrix of int64 representing the indices of the sparse tensor.
-values: A vector of strings corresponding to the splited values.
-shape: a length-2 vector of int64 representing the shape of the sparse
-  tensor, where the first value is N and the second value is the maximum number
-  of tokens in a single input entry.
-)doc");
+REGISTER_OP("StringLength")
+    .Input("input: string")
+    .Output("output: int32")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")
     .Input("input: string")
     .Output("output: string")
     .Attr("pad: bool = false")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Encode strings into web-safe base64 format.
-
-Refer to the following article for more information on base64 format:
-en.wikipedia.org/wiki/Base64. Base64 strings may have padding with '=' at the
-end so that the encoded has length multiple of 4. See Padding section of the
-link above.
-
-Web-safe means that the encoder uses - and _ instead of + and /.
-
-input: Strings to be encoded.
-output: Input strings encoded in base64.
-pad: Bool whether padding is applied at the ends.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("DecodeBase64")
     .Input("input: string")
     .Output("output: string")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Decode web-safe base64-encoded strings.
+    .SetShapeFn(shape_inference::UnchangedShape);
 
-Input may or may not have padding at the end. See EncodeBase64 for padding.
-Web-safe means that input must use - and _ instead of + and /.
+REGISTER_OP("Substr")
+    .Input("input: string")
+    .Input("pos: T")
+    .Input("len: T")
+    .Output("output: string")
+    .Attr("T: {int32, int64}")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle pos_shape = c->input(1);
+      ShapeHandle len_shape = c->input(2);
+      ShapeHandle unused;
+      // Check that pos/len have same rank
+      TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
+      // Check that dimensions are equal
+      for (int32 i = 0; i < c->Rank(pos_shape); ++i) {
+        DimensionHandle pos_dim = c->Dim(pos_shape, i);
+        DimensionHandle len_dim = c->Dim(len_shape, i);
+        if (c->Value(pos_dim) != c->Value(len_dim)) {
+          return errors::InvalidArgument(
+              "pos and len shapes must match: ", c->DebugString(pos_shape),
+              " vs. ", c->DebugString(len_shape));
+        }
+      }
+      // c->input(0) is the ShapeHandle to input strings
+      // BroadcastBinaryOpShapeFn infers shape from c->input(0) and c->input(1).
+      return shape_inference::BroadcastBinaryOpShapeFn(c);
+    });
 
-input: Base64 strings to decode.
-output: Decoded strings.
-)doc");
+REGISTER_OP("UnicodeScript")
+    .Input("input: int32")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("UnicodeEncode")
+    .Input("input_values: int32")
+    .Input("input_splits: int64")
+    .Attr("errors: {'ignore', 'replace', 'strict'} = 'replace'")
+    .Attr("output_encoding: {'UTF-8', 'UTF-16-BE', 'UTF-32-BE'}")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Output("output: string")
+    .SetShapeFn([](InferenceContext* c) {
+      // Check rank of inner values
+      ShapeHandle input_inner_values_shape = c->input(0);
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(input_inner_values_shape, 1, &unused));
+
+      // Check rank of input_splits
+      ShapeHandle splits_shape = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(splits_shape, 1, &unused));
+
+      // Output shape is a 1-D tensor with size equal to number of splits.
+      std::vector<DimensionHandle> dims(1);
+      TF_RETURN_IF_ERROR(c->Subtract(c->Dim(splits_shape, 0), 1, &dims[0]));
+      c->set_output(0, c->MakeShape(dims));
+
+      return Status::OK();
+    });
+
+REGISTER_OP("UnicodeTranscode")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("input_encoding: string")
+    .Attr("output_encoding: {'UTF-8', 'UTF-16-BE', 'UTF-32-BE'}")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("UnicodeDecode")
+    .Input("input: string")
+    .Output("row_splits: int64")
+    .Output("char_values: int32")
+    .Attr("input_encoding: string")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      // row_splits.shape == [input.size() + 1]
+      DimensionHandle num_row_splits;
+      DimensionHandle input_size = c->NumElements(c->input(0));
+      TF_RETURN_IF_ERROR(c->Add(input_size, 1, &num_row_splits));
+      c->set_output(0, c->Vector(num_row_splits));
+
+      // char_values.shape == [num_chars]
+      DimensionHandle num_chars = c->UnknownDim();
+      c->set_output(1, c->Vector(num_chars));
+      return Status::OK();
+    });
+
+REGISTER_OP("UnicodeDecodeWithOffsets")
+    .Input("input: string")
+    .Output("row_splits: int64")
+    .Output("char_values: int32")
+    .Output("char_to_byte_starts: int64")
+    .Attr("input_encoding: string")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      // row_splits.shape == [input.size() + 1]
+      DimensionHandle num_row_splits;
+      DimensionHandle input_size = c->NumElements(c->input(0));
+      TF_RETURN_IF_ERROR(c->Add(input_size, 1, &num_row_splits));
+      c->set_output(0, c->Vector(num_row_splits));
+
+      // char_values.shape == offset_values.shape == [num_chars]
+      DimensionHandle num_chars = c->UnknownDim();
+      c->set_output(1, c->Vector(num_chars));
+      c->set_output(2, c->Vector(num_chars));
+      return Status::OK();
+    });
 
 }  // namespace tensorflow

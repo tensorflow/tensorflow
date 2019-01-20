@@ -14,16 +14,21 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/oauth_client.h"
+#ifndef _WIN32
 #include <pwd.h>
 #include <sys/types.h>
 #include <unistd.h>
+#else
+#include <sys/types.h>
+#endif
 #include <fstream>
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -43,7 +48,8 @@ constexpr char kJwtType[] = "JWT";
 constexpr char kGrantType[] =
     "urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer";
 
-Status ReadJsonValue(Json::Value json, const string& name, Json::Value* value) {
+Status ReadJsonValue(const Json::Value& json, const string& name,
+                     Json::Value* value) {
   if (!value) {
     return errors::FailedPrecondition("'value' cannot be nullptr.");
   }
@@ -55,7 +61,8 @@ Status ReadJsonValue(Json::Value json, const string& name, Json::Value* value) {
   return Status::OK();
 }
 
-Status ReadJsonString(Json::Value json, const string& name, string* value) {
+Status ReadJsonString(const Json::Value& json, const string& name,
+                      string* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isString()) {
@@ -66,7 +73,7 @@ Status ReadJsonString(Json::Value json, const string& name, string* value) {
   return Status::OK();
 }
 
-Status ReadJsonInt(Json::Value json, const string& name, int64* value) {
+Status ReadJsonInt(const Json::Value& json, const string& name, int64* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isIntegral()) {
@@ -88,9 +95,14 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
   if (!md) {
     return errors::Internal("Could not get a sha256 encryptor.");
   }
+
+  // EVP_MD_CTX_destroy is renamed to EVP_MD_CTX_free in OpenSSL 1.1.0 but
+  // the old name is still retained as a compatibility macro.
+  // Keep this around until support is dropped for OpenSSL 1.0
+  // https://www.openssl.org/news/cl110.txt
   std::unique_ptr<EVP_MD_CTX, std::function<void(EVP_MD_CTX*)>> md_ctx(
       EVP_MD_CTX_create(), [](EVP_MD_CTX* ptr) { EVP_MD_CTX_destroy(ptr); });
-  if (!md_ctx.get()) {
+  if (!md_ctx) {
     return errors::Internal("Could not create MD_CTX.");
   }
 
@@ -98,21 +110,20 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
       EVP_PKEY_new(), [](EVP_PKEY* ptr) { EVP_PKEY_free(ptr); });
   EVP_PKEY_set1_RSA(key.get(), private_key);
 
-  if (EVP_DigestSignInit(md_ctx.get(), NULL, md, NULL, key.get()) != 1) {
+  if (EVP_DigestSignInit(md_ctx.get(), nullptr, md, nullptr, key.get()) != 1) {
     return errors::Internal("DigestInit failed.");
   }
   if (EVP_DigestSignUpdate(md_ctx.get(), to_sign.data(), to_sign.size()) != 1) {
     return errors::Internal("DigestUpdate failed.");
   }
   size_t sig_len = 0;
-  if (EVP_DigestSignFinal(md_ctx.get(), NULL, &sig_len) != 1) {
+  if (EVP_DigestSignFinal(md_ctx.get(), nullptr, &sig_len) != 1) {
     return errors::Internal("DigestFinal (get signature length) failed.");
   }
   std::unique_ptr<unsigned char[]> sig(new unsigned char[sig_len]);
   if (EVP_DigestSignFinal(md_ctx.get(), sig.get(), &sig_len) != 1) {
     return errors::Internal("DigestFinal (signature compute) failed.");
   }
-  EVP_MD_CTX_cleanup(md_ctx.get());
   return Base64Encode(StringPiece(reinterpret_cast<char*>(sig.get()), sig_len),
                       signature);
 }
@@ -130,8 +141,8 @@ Status EncodeJwtClaim(StringPiece client_email, StringPiece scope,
   const auto expiration_timestamp_sec =
       request_timestamp_sec + kRequestedTokenLifetimeSec;
 
-  root["iat"] = request_timestamp_sec;
-  root["exp"] = expiration_timestamp_sec;
+  root["iat"] = Json::Value::UInt64(request_timestamp_sec);
+  root["exp"] = Json::Value::UInt64(expiration_timestamp_sec);
 
   // Step 2: represent the JSON as a string.
   string claim = root.toStyledString();
@@ -159,7 +170,7 @@ Status EncodeJwtHeader(StringPiece key_id, string* encoded) {
 
 OAuthClient::OAuthClient()
     : OAuthClient(
-          std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory()),
+          std::unique_ptr<HttpRequest::Factory>(new CurlHttpRequest::Factory()),
           Env::Default()) {}
 
 OAuthClient::OAuthClient(
@@ -189,7 +200,7 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   std::unique_ptr<RSA, std::function<void(RSA*)>> private_key(
       PEM_read_bio_RSAPrivateKey(bio.get(), nullptr, nullptr, nullptr),
       [](RSA* ptr) { RSA_free(ptr); });
-  if (!private_key.get()) {
+  if (!private_key) {
     return errors::Internal("Could not deserialize the private key.");
   }
 
@@ -208,16 +219,14 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
 
   // Send the request to the Google OAuth 2.0 server to get the token.
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  std::unique_ptr<char[]> response_buffer(new char[kResponseBufferSize]);
-  StringPiece response;
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
-  TF_RETURN_IF_ERROR(
-      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
-                                              kResponseBufferSize, &response));
+  std::vector<char> response_buffer;
+  request->SetUri(string(oauth_server_uri));
+  request->SetPostFromBuffer(request_body.c_str(), request_body.size());
+  request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
 
+  StringPiece response =
+      StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
   return Status::OK();
@@ -242,16 +251,14 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
   const uint64 request_timestamp_sec = env_->NowSeconds();
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  std::unique_ptr<char[]> response_buffer(new char[kResponseBufferSize]);
-  StringPiece response;
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
-  TF_RETURN_IF_ERROR(
-      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
-                                              kResponseBufferSize, &response));
+  std::vector<char> response_buffer;
+  request->SetUri(string(oauth_server_uri));
+  request->SetPostFromBuffer(request_body.c_str(), request_body.size());
+  request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
 
+  StringPiece response =
+      StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
   return Status::OK();

@@ -15,103 +15,190 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <complex>
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
 
 namespace tensorflow {
-namespace internal {
+namespace {
 
-template <typename Device, typename T>
-void TransposeSimple(const Device& d, const Tensor& in,
+template <typename T, bool conjugate>
+void TransposeSimple(const CPUDevice& device, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   const int ndims = in.dims();
-  gtl::InlinedVector<int64, 8> in_strides(ndims);
-  ComputeStride(in.shape(), in_strides.data());
-  gtl::InlinedVector<int64, 8> out_strides(ndims);
-  ComputeStride(out->shape(), out_strides.data());
-  const int64 nelem = in.NumElements();
+  gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
+  gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-
-  // TODO(zhifengc): Shard by range.
-  // TODO(zhifengc): Avoids the division.
-  for (int64 o_idx = 0; o_idx < nelem; ++o_idx) {
-    int64 i_idx = 0;
-    int64 t = o_idx;
-    for (int i = 0; i < ndims; ++i) {
-      i_idx += (t / out_strides[i]) * in_strides[perm[i]];
-      t = t % out_strides[i];
+  auto transpose_fn = [=, &in_strides, &out_strides, &perm](int64 begin,
+                                                            int64 end) {
+    for (int64 o_idx = begin; o_idx < end; ++o_idx) {
+      int64 i_idx = 0;
+      int64 t = o_idx;
+      for (int i = 0; i < ndims; ++i) {
+        const int64 ratio = t / out_strides[i];
+        t -= ratio * out_strides[i];
+        i_idx += ratio * in_strides[perm[i]];
+      }
+      if (conjugate) {
+        q[o_idx] = Eigen::numext::conj(p[i_idx]);
+      } else {
+        q[o_idx] = p[i_idx];
+      }
     }
-    q[o_idx] = p[i_idx];
+  };
+  double cycles_per_element =
+      (conjugate ? 1 : 0) + ndims * (Eigen::TensorOpCost::DivCost<int64>() +
+                                     2 * Eigen::TensorOpCost::MulCost<int64>() +
+                                     2 * Eigen::TensorOpCost::AddCost<int64>());
+  Eigen::TensorOpCost cost(/*bytes_loaded=*/sizeof(T),
+                           /*bytes_stored=*/sizeof(T), cycles_per_element);
+  device.parallelFor(in.NumElements(), cost, std::move(transpose_fn));
+}
+
+}  // namespace
+
+template <typename T, bool conjugate>
+struct Transpose<CPUDevice, T, conjugate> {
+  static void run(const CPUDevice& d, const Tensor& in,
+                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+    switch (in.dims()) {
+      case 2:
+        internal::TransposeUsingEigen<CPUDevice, T, 2>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      case 3:
+        internal::TransposeUsingEigen<CPUDevice, T, 3>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      case 4:
+        internal::TransposeUsingEigen<CPUDevice, T, 4>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      case 5:
+        internal::TransposeUsingEigen<CPUDevice, T, 5>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      case 6:
+        internal::TransposeUsingEigen<CPUDevice, T, 6>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      case 7:
+        internal::TransposeUsingEigen<CPUDevice, T, 7>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      case 8:
+        internal::TransposeUsingEigen<CPUDevice, T, 8>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      default:
+        TransposeSimple<T, conjugate>(d, in, perm, out);
+        break;
+    }
   }
-}
+};
 
-template <typename Device, typename T, int NDIMS>
-void TransposeUsingEigen(const Device& d, const Tensor& in,
-                         const gtl::ArraySlice<int32> perm, Tensor* out) {
-  Eigen::array<int, NDIMS> p;
-  for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
-  auto x = typename TTypes<T, NDIMS>::ConstTensor(
-      reinterpret_cast<const T*>(in.tensor_data().data()),
-      in.shape().AsEigenDSizes<NDIMS>());
-  auto y = typename TTypes<T, NDIMS>::Tensor(
-      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
-      out->shape().AsEigenDSizes<NDIMS>());
-  y.device(d) = x.shuffle(p);
-}
+#define INSTANTIATE(DEVICE)                                                 \
+  template <>                                                               \
+  Status DoTranspose(const DEVICE& device, const Tensor& in,                \
+                     const gtl::ArraySlice<int32> perm, Tensor* out) {      \
+    return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/false, \
+                                     out);                                  \
+  }                                                                         \
+  template <>                                                               \
+  Status DoConjugateTranspose(const DEVICE& device, const Tensor& in,       \
+                              const gtl::ArraySlice<int32> perm,            \
+                              Tensor* out) {                                \
+    return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/true,  \
+                                     out);                                  \
+  }                                                                         \
+  template <>                                                               \
+  Status DoMatrixTranspose(const DEVICE& device, const Tensor& in,          \
+                           Tensor* out) {                                   \
+    return internal::DoMatrixTransposeImpl(device, in, /*conjugate=*/false, \
+                                           out);                            \
+  }                                                                         \
+  template <>                                                               \
+  Status DoConjugateMatrixTranspose(const DEVICE& device, const Tensor& in, \
+                                    Tensor* out) {                          \
+    return internal::DoMatrixTransposeImpl(device, in, /*conjugate=*/true,  \
+                                           out);                            \
+  }
 
-}  // end namespace internal
+INSTANTIATE(CPUDevice)
 
-typedef Eigen::ThreadPoolDevice Device;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
 
-template <>
-Status DoTranspose<Device>(const Device& d, const Tensor& in,
-                           const gtl::ArraySlice<int32> perm, Tensor* out) {
-  CHECK_GE(in.dims(), 2);
-  CHECK_EQ(in.dims(), out->dims());
-  CHECK_EQ(in.dims(), perm.size());
-  CHECK_EQ(in.dtype(), out->dtype());
-  switch (in.dtype()) {
-    case DT_BOOL:
-    case DT_INT8:
-    case DT_QINT8:
-    case DT_QUINT8:
-    case DT_UINT8:
-      internal::Transpose<Device, uint8>(d, in, perm, out);
+namespace internal {
+template <typename T>
+void TransposeSYCL(const SYCLDevice& d, const Tensor& in,
+                   const gtl::ArraySlice<int32> perm, bool conjugate,
+                   Tensor* out) {
+  switch (in.dims()) {
+    case 1:
+      TransposeUsingEigen<SYCLDevice, T, 1>(d, in, perm, conjugate, out);
       break;
-
-    case DT_BFLOAT16:
-    case DT_HALF:
-    case DT_INT16:
-    case DT_QINT16:
-    case DT_QUINT16:
-    case DT_UINT16:
-      internal::Transpose<Device, uint16>(d, in, perm, out);
+    case 2:
+      TransposeUsingEigen<SYCLDevice, T, 2>(d, in, perm, conjugate, out);
       break;
-
-    case DT_FLOAT:
-    case DT_INT32:
-    case DT_QINT32:
-      internal::Transpose<Device, uint32>(d, in, perm, out);
+    case 3:
+      TransposeUsingEigen<SYCLDevice, T, 3>(d, in, perm, conjugate, out);
       break;
-
-    case DT_COMPLEX64:
-    case DT_DOUBLE:
-    case DT_INT64:
-      internal::Transpose<Device, uint64>(d, in, perm, out);
+    case 4:
+      TransposeUsingEigen<SYCLDevice, T, 4>(d, in, perm, conjugate, out);
       break;
-
-    case DT_COMPLEX128:
-      internal::Transpose<Device, complex128>(d, in, perm, out);
+    case 5:
+      TransposeUsingEigen<SYCLDevice, T, 5>(d, in, perm, conjugate, out);
       break;
-
-    case DT_STRING:
-      internal::Transpose<Device, string>(d, in, perm, out);
+    case 6:
+      TransposeUsingEigen<SYCLDevice, T, 6>(d, in, perm, conjugate, out);
       break;
-
+    case 7:
+      TransposeUsingEigen<SYCLDevice, T, 7>(d, in, perm, conjugate, out);
+      break;
+    case 8:
+      TransposeUsingEigen<SYCLDevice, T, 8>(d, in, perm, conjugate, out);
+      break;
     default:
-      return errors::Unimplemented("Unsupported dtype on CPU: ", in.dtype());
+      LOG(FATAL) << "Unsupported TransposeUsingEigen for: " << in.dims();
+      break;
   }
-  return Status::OK();
 }
+
+}  // namespace internal
+
+template <typename T, bool conjugate>
+struct Transpose<SYCLDevice, T, conjugate> {
+  static void run(const SYCLDevice& d, const Tensor& in,
+                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+    internal::TransposeSycl(d, in, perm, conjugate, out);
+  }
+};
+
+template <bool conjugate>
+struct Transpose<SYCLDevice, string, conjugate> {
+  static void run(const SYCLDevice& d, const Tensor& in,
+                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+    LOG(FATAL) << "DT_STRING not supported on SYCL device.";
+  }
+};
+
+// Explicit instantiation.
+template struct Transpose<SYCLDevice, string, false>;
+
+INSTANTIATE(SYCLDevice)
+#undef INSTANTIATE
+
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

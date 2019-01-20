@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import state_ops
+
 
 # TODO(b/31222613): These ops may be differentiable, and there may be
 # latent bugs here.
@@ -43,3 +43,14 @@ ops.NotDifferentiable("ScatterMul")
 
 
 ops.NotDifferentiable("ScatterDiv")
+
+
+ops.NotDifferentiable("ScatterNdUpdate")
+
+ops.NotDifferentiable("ScatterNdAdd")
+
+ops.NotDifferentiable("ScatterNdSub")
+
+ops.NotDifferentiable("ScatterNdMul")
+
+ops.NotDifferentiable("ScatterNdDiv")

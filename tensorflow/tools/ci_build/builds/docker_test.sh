@@ -19,7 +19,7 @@
 #
 # Usage: docker_test.sh <IMAGE_TYPE> <TAG> <WHL_PATH>
 # Arguments:
-#   IMAGE_TYPE : Type of the image: (CPU|GPU)
+#   IMAGE_TYPE : Type of the image: (CPU|GPU|ROCM)
 #   TAG        : Docker image tag
 #   WHL_PATH   : Path to the whl file to be installed inside the docker image
 #
@@ -60,6 +60,8 @@ if [[ "${IMAGE_TYPE}" == "cpu" ]]; then
   DOCKERFILE="tensorflow/tools/docker/Dockerfile"
 elif [[ "${IMAGE_TYPE}" == "gpu" ]]; then
   DOCKERFILE="tensorflow/tools/docker/Dockerfile.gpu"
+elif [[ "${IMAGE_TYPE}" == "rocm" ]]; then
+  DOCKERFILE="tensorflow/tools/docker/Dockerfile.rocm"
 else
   die "Unrecognized image type: $1"
 fi
@@ -106,15 +108,18 @@ if [ "${IMAGE_TYPE}" == "gpu" ]; then
   devices=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
   libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
   GPU_EXTRA_PARAMS="${devices} ${libs}"
+elif [ "${IMAGE_TYPE}" == "rocm" ]; then
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
 else
   GPU_EXTRA_PARAMS=""
+  ROCM_EXTRA_PARAMS=""
 fi
 
 # Run docker image with source directory mapped
 docker run -v ${BASE_DIR}:/tensorflow-src -w /tensorflow-src \
-${GPU_EXTRA_PARAMS} \
+${GPU_EXTRA_PARAMS} ${ROCM_EXTRA_PARAMS} \
 "${DOCKER_IMG_TAG}" \
-/bin/bash -c "tensorflow/tools/ci_build/builds/test_installation.sh && "\
+/bin/bash -c "tensorflow/tools/ci_build/builds/run_pip_tests.sh && "\
 "tensorflow/tools/ci_build/builds/test_tutorials.sh && "\
 "tensorflow/tools/ci_bukld/builds/integration_tests.sh"
 

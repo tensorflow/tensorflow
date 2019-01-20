@@ -34,6 +34,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA
 typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
@@ -111,17 +114,16 @@ class PackOp : public OpKernel {
       }
 #if GOOGLE_CUDA
       if (std::is_same<Device, GPUDevice>::value) {
-        // Switching indexing to int64 might cause performance issues.
-        // Hence, we keep int32 indexing in the GPU kernel unless we need to
-        // switch to int64.
-        if (output_size < std::numeric_limits<int32>::max()) {
-          ConcatGPU32<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
-        } else {
-          ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
-        }
+        ConcatGPU<T>(c, inputs_flat, output, &output_flat);
         return;
       }
 #endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+      if (std::is_same<Device, SYCLDevice>::value) {
+        ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, &output_flat);
+        return;
+      }
+#endif  // TENSORFLOW_USE_SYCL
       ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }
@@ -137,7 +139,12 @@ class PackOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_PACK);
 TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
-TF_CALL_bfloat16(REGISTER_PACK);
+
+#if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
+// Primarily used for SavedModel support on mobile.
+REGISTER_PACK(string);
+#endif  // defined(IS_MOBILE_PLATFORM) &&
+        // !defined(SUPPORT_SELECTIVE_REGISTRATION)
 
 #undef REGISTER_PACK
 
@@ -149,6 +156,9 @@ TF_CALL_bfloat16(REGISTER_PACK);
       PackOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
+REGISTER_GPU(bool);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
@@ -163,4 +173,19 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("Pack").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      PackOp<SYCLDevice, type>)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+REGISTER_KERNEL_BUILDER(Name("Pack")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("values")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        PackOp<CPUDevice, int32>);
+#undef REGISTER_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

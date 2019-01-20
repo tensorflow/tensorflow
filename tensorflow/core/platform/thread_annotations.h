@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_THREAD_ANNOTATIONS_H_
-#define TENSORFLOW_PLATFORM_THREAD_ANNOTATIONS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_THREAD_ANNOTATIONS_H_
+#define TENSORFLOW_CORE_PLATFORM_THREAD_ANNOTATIONS_H_
 
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/build_config/thread_annotations.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/thread_annotations.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
-#endif  // TENSORFLOW_PLATFORM_THREAD_ANNOTATIONS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_THREAD_ANNOTATIONS_H_

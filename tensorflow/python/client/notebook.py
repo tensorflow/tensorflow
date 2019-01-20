@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Notebook front-end to TensorFlow.
 
 When you run this binary, you'll see something like below, which indicates
@@ -31,27 +30,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
 import socket
 import sys
+
+from tensorflow.python.platform import app
 
 # pylint: disable=g-import-not-at-top
 # Official recommended way of turning on fast protocol buffers as of 10/21/14
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "cpp"
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION_VERSION"] = "2"
 
-from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
-
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string(
-    "password", None,
-    "Password to require. If set, the server will allow public access."
-    " Only used if notebook config file does not exist.")
-
-flags.DEFINE_string("notebook_dir", "experimental/brain/notebooks",
-                    "root location where to store notebooks")
+FLAGS = None
 
 ORIG_ARGV = sys.argv
 # Main notebook process calls itself with argv[1]="kernel" to start kernel
@@ -79,8 +70,8 @@ def main(unused_argv):
       notebookapp.ip = "0.0.0.0"
       notebookapp.password = passwd(FLAGS.password)
     else:
-      print ("\nNo password specified; Notebook server will only be available"
-             " on the local machine.\n")
+      print("\nNo password specified; Notebook server will only be available"
+            " on the local machine.\n")
     notebookapp.initialize(argv=["--notebook-dir", FLAGS.notebook_dir])
 
     if notebookapp.ip == "0.0.0.0":
@@ -108,6 +99,21 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      "--password",
+      type=str,
+      default=None,
+      help="""\
+      Password to require. If set, the server will allow public access. Only
+      used if notebook config file does not exist.\
+      """)
+  parser.add_argument(
+      "--notebook_dir",
+      type=str,
+      default="experimental/brain/notebooks",
+      help="root location where to store notebooks")
+
   # When the user starts the main notebook process, we don't touch sys.argv.
   # When the main process launches kernel subprocesses, it writes all flags
   # to a tmpfile and sets --flagfile to that tmpfile, so for kernel
@@ -116,6 +122,8 @@ if __name__ == "__main__":
   # kernel app.
   if IS_KERNEL:
     # Drop everything except --flagfile.
-    sys.argv = ([sys.argv[0]] +
-                [x for x in sys.argv[1:] if x.startswith("--flagfile")])
-  app.run()
+    sys.argv = (
+        [sys.argv[0]] + [x for x in sys.argv[1:] if x.startswith("--flagfile")])
+
+  FLAGS, unparsed = parser.parse_known_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -13,6 +13,7 @@
 // the License.
 // ==============================================================================
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -24,23 +25,74 @@ REGISTER_OP("WALSComputePartialLhsAndRhs")
     .Input("input_weights: float32")
     .Input("input_indices: int64")
     .Input("input_values: float32")
+    .Input("entry_weights: float32")
     .Input("input_block_size: int64")
     .Input("input_is_transpose: bool")
     .Output("partial_lhs: float32")
     .Output("partial_rhs: float32")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"(
-Computes the partial left-hand side and right-hand side of WALS update.
+Computes the partial left-hand side and right-hand side of WALS update. For
+observed entry input_indices[i]=[m, n] with value input_values[i]=v, the weight
+should be specified either through (1) entry_weights[i] or (2) through
+input_weights[m] * factor_weights[n] (if input_is_transpose is false) or
+input_weights[n] * factor_weights[m] (if input_is_transpose is true). Note it is
+not allowed to have both (1) and (2) specified at the same time: when one
+approach is used, the input tensors related to the other approach must be kept
+completely empty.
 
 factors: Matrix of size m * k.
-factor_weights: Vector of size m. Corresponds to column weights
+factor_weights: Vector of size m. Corresponds to column weights. Should be empty
+  if entry_weights is used.
 unobserved_weights: Scalar. Weight for unobserved input entries.
-input_weights: Vector of size n. Corresponds to row weights.
+input_weights: Vector of size n. Corresponds to row weights. Should be empty if
+  entry_weights is used.
 input_indices: Indices for the input SparseTensor.
 input_values: Values for the input SparseTensor.
+entry_weights: If not empty, this must be same length as input_vaues and is used
+  as the per-entry non-zero weight. If this is used, input_weights and
+  factor_weights must be empty.
 input_block_size: Scalar. Number of rows spanned by input.
 input_is_transpose: If true, logically transposes the input for processing.
 partial_lhs: 3-D tensor with size input_block_size x k x k.
 partial_rhs: Matrix with size input_block_size x k.
+)");
+
+REGISTER_OP("MaskedMatmul")
+    .Input("a: float32")
+    .Input("b: float32")
+    .Input("mask_indices: int64")
+    .Input("transpose_a: bool")
+    .Input("transpose_b: bool")
+    .Output("prod_values: float32")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"(
+Computes the product a * b, but only for indices (i, j) in mask_indices. The
+result is stored in prod_values, a rank 1 tensor, such that for all i,
+prod_values[i] = (a * b)[mask_indices[i, 0], mask_indices[i, 1]].
+Note that the shapes of the input matrices a, b should be compatible (after
+transposing as specified by the arguments transpose_a and transpose_b).
+
+Input arguments:
+a: A rank 2 tensor of shape [m, n].
+b: A rank 2 tensor of shape [s, t]. The inner dimensions of a and b should match
+  after transposition.
+mask_indices: A rank 2 tensor, of shape [nnz, 2] where nnz is the number of
+  non-zero elements in the output. The indices are not assumed to be in
+  lexicographic, or any particular order.
+  For all i, mask_indices[i, :] should represent a valid index of the product
+  matrix (a * b) (after transposition). That is:
+  mask_indices[i, 0] should be in [0, m) if !transpose_a, and in [0, n)
+    otherwise.
+  mask_indices[i, 1] should be in [0, t) if !transpose_b, and in [0, s)
+    otherwise.
+transpose_a: A boolean, specifies whether to transpose the matrix a.
+transpose_b: A boolean, specifies whether to transpose the matrix b.
+
+Output arguments:
+prod_values: A rank 1 tensor of shape [nnz], representing the values of the
+  non-zero elements in the product, such that for all i,
+  prod_values[i] = (a * b)[mask_indices[i, 0], mask_indices[i, 1]].
 )");
 
 }  // namespace tensorflow

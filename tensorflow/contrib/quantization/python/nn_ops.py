@@ -19,17 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.quantization.ops import gen_nn_ops
-from tensorflow.contrib.quantization.ops.gen_nn_ops import *
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-
-
-ops.RegisterShape("QuantizedAvgPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedBiasAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedConv2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedMaxPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedRelu")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedRelu6")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedReluX")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizeDownAndShrinkRange")(common_shapes.call_cpp_shape_fn)
+from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops.gen_nn_ops import *
+# pylint: enable=unused-import,wildcard-import

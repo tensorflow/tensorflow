@@ -58,23 +58,19 @@ class MatrixDiagPartOp : public OpKernel {
                     "input must be at least 2-dim, received shape: ",
                     input.shape().DebugString()));
 
-    // Check to make sure the last two dimensions have the same value
-    const int64 k = input_shape.dim_size(rank - 1);
-    OP_REQUIRES(
-        context, k == input_shape.dim_size(rank - 2),
-        errors::InvalidArgument(
-            "input's last two dimensions must be equal, received shape: ",
-            input.shape().DebugString()));
-
-    auto input_reshaped = input.flat_inner_dims<T, 3>();
-
-    TensorShape output_shape = input_shape;
-    output_shape.RemoveDim(rank - 1);
+    TensorShape output_shape;
+    for (int i = 0; i < rank - 2; ++i) {
+      output_shape.AddDim(input_shape.dim_size(i));
+    }
+    const int64 min_dim = std::min(input_shape.dim_size(rank - 2),
+                                   input_shape.dim_size(rank - 1));
+    output_shape.AddDim(min_dim);
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
     auto output_reshaped = output->flat_inner_dims<T, 2>();
+    auto input_reshaped = input.flat_inner_dims<T, 3>();
 
     functor::MatrixDiagPart<Device, T>::Compute(
         context->eigen_device<Device>(), input_reshaped, output_reshaped);
@@ -101,7 +97,6 @@ class MatrixDiagOp : public OpKernel {
                     "input must be at least 1-dim, received shape: ",
                     input.shape().DebugString()));
 
-    // Check to make sure the last two dimensions have the same value
     const int64 k = input_shape.dim_size(rank - 1);
     auto input_reshaped = input.flat_inner_dims<T, 2>();
 
@@ -128,7 +123,7 @@ class MatrixDiagOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MatrixDiagPart").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       MatrixDiagPartOp<CPUDevice, type>);
-TF_CALL_NUMBER_TYPES(REGISTER_MATRIX_DIAG);
+TF_CALL_POD_TYPES(REGISTER_MATRIX_DIAG);
 #undef REGISTER_MATRIX_DIAG
 
 // Registration of the deprecated kernel.
@@ -141,7 +136,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_MATRIX_DIAG);
                               .Device(DEVICE_CPU)                           \
                               .TypeConstraint<type>("T"),                   \
                           MatrixDiagPartOp<CPUDevice, type>);
-TF_CALL_NUMBER_TYPES(REGISTER_BATCH_MATRIX_DIAG);
+TF_CALL_POD_TYPES(REGISTER_BATCH_MATRIX_DIAG);
 #undef REGISTER_BATCH_MATRIX_DIAG
 
 // Implementation of the functor specialization for CPU.
@@ -192,6 +187,9 @@ namespace functor {
   extern template struct MatrixDiagPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bool(DECLARE_GPU_SPEC);
+TF_CALL_complex64(DECLARE_GPU_SPEC);
+TF_CALL_complex128(DECLARE_GPU_SPEC);
 
 }  // namespace functor
 
@@ -204,6 +202,9 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       Name("MatrixDiagPart").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       MatrixDiagPartOp<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_MATRIX_DIAG_GPU);
+TF_CALL_bool(REGISTER_MATRIX_DIAG_GPU);
+TF_CALL_complex64(REGISTER_MATRIX_DIAG_GPU);
+TF_CALL_complex128(REGISTER_MATRIX_DIAG_GPU);
 #undef REGISTER_MATRIX_DIAG_GPU
 
 // Registration of the deprecated kernel.

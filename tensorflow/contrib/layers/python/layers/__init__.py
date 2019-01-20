@@ -20,13 +20,17 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.layers.python.layers.embedding_ops import *
+from tensorflow.contrib.layers.python.layers.encoders import *
 from tensorflow.contrib.layers.python.layers.feature_column import *
 from tensorflow.contrib.layers.python.layers.feature_column_ops import *
 from tensorflow.contrib.layers.python.layers.initializers import *
 from tensorflow.contrib.layers.python.layers.layers import *
+from tensorflow.contrib.layers.python.layers.normalization import *
 from tensorflow.contrib.layers.python.layers.optimizers import *
 from tensorflow.contrib.layers.python.layers.regularizers import *
+from tensorflow.contrib.layers.python.layers.rev_block_lib import *
 from tensorflow.contrib.layers.python.layers.summaries import *
 from tensorflow.contrib.layers.python.layers.target_column import *
 from tensorflow.contrib.layers.python.ops.bucketization_op import *
 from tensorflow.contrib.layers.python.ops.sparse_feature_cross_op import *
+# pylint: enable=wildcard-import

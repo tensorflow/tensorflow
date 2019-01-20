@@ -1,0 +1,19 @@
+path: "tensorflow.python_io"
+tf_module {
+  member {
+    name: "TFRecordCompressionType"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TFRecordOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TFRecordWriter"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "tf_record_iterator"
+    argspec: "args=[\'path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

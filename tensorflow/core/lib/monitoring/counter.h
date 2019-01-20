@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
@@ -48,7 +48,7 @@ namespace monitoring {
 // This class is thread-safe.
 class CounterCell {
  public:
-  CounterCell(const int64 value) : value_(value) {}
+  CounterCell(int64 value) : value_(value) {}
   ~CounterCell() {}
 
   // Atomically increments the value by step.
@@ -155,7 +155,7 @@ CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
                 "Mismatch between Counter<NumLabels> and number of labels "
                 "provided in GetCell(...).");
 
-  const LabelArray& label_array = {labels...};
+  const LabelArray& label_array = {{labels...}};
   mutex_lock l(mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {
@@ -172,4 +172,4 @@ CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
 }  // namespace tensorflow
 
 #endif  // IS_MOBILE_PLATFORM
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_

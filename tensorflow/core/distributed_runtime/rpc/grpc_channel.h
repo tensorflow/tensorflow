@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
 
 #include <map>
 #include <memory>
@@ -22,9 +22,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "grpc++/grpc++.h"
+#include "grpcpp/grpcpp.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -66,6 +67,8 @@ class GrpcChannelCache {
   //  /job:<job identifier>/task:<task id>
   // e.g. /job:mnist/task:2
   virtual void ListWorkers(std::vector<string>* workers) = 0;
+  virtual void ListWorkersInJob(const string& job_name,
+                                std::vector<string>* workers) = 0;
 
   // If found, returns a gRPC channel that is connected to the remote
   // worker named by 'target'. 'target' is of the following
@@ -84,8 +87,16 @@ GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& channel_spec,
 
 // Below here are internal-only functions.
 
-SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target);
+::grpc::ChannelArguments GetChannelArguments(const RPCOptions* rpc_options);
+
+ChannelCreationFunction ConvertToChannelCreationFunction(
+    const std::function<Status(string, const RPCOptions*,
+                               SharedGrpcChannelPtr*)>& new_channel_func_ptr);
+
+Status NewHostPortGrpcChannel(const string& target,
+                              const RPCOptions* rpc_options,
+                              SharedGrpcChannelPtr* channel_pointer);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_

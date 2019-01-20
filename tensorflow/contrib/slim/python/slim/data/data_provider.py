@@ -1,10 +1,10 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Contains code for the DataProvider.
 
 A DataProvider is a class which provides some predefined data types from some
@@ -39,7 +38,10 @@ from __future__ import print_function
 
 import abc
 
+import six
 
+
+@six.add_metaclass(abc.ABCMeta)
 class DataProvider(object):
   """Maps a list of requested data items to tensors from a data source.
 
@@ -47,7 +49,6 @@ class DataProvider(object):
   method which returns arbitrary types of data. No assumption is made about the
   source of the data nor the mechanism for providing it.
   """
-  __metaclass__ = abc.ABCMeta
 
   def __init__(self, items_to_tensors, num_samples):
     """Constructs the Data Provider.
@@ -112,6 +113,5 @@ class DataProvider(object):
     valid_items = self.list_items()
     for item in items:
       if item not in valid_items:
-        raise ValueError(
-            'Item [%s] is invalid. Valid entries include: %s' %
-            (item, valid_items))
+        raise ValueError('Item [%s] is invalid. Valid entries include: %s' %
+                         (item, valid_items))

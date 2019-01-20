@@ -1,0 +1,37 @@
+path: "tensorflow.train.JobDef"
+tf_proto {
+  descriptor {
+    name: "JobDef"
+    field {
+      name: "name"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "tasks"
+      number: 2
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.JobDef.TasksEntry"
+    }
+    nested_type {
+      name: "TasksEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      options {
+        map_entry: true
+      }
+    }
+  }
+}

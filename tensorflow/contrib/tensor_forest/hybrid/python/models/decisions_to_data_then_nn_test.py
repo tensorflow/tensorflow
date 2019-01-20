@@ -20,16 +20,13 @@ from __future__ import print_function
 import random
 
 # pylint: disable=unused-import
-import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.hybrid.python.models import decisions_to_data_then_nn
 from tensorflow.contrib.tensor_forest.python import tensor_forest
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
-
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import googletest
 
@@ -83,7 +80,7 @@ class DecisionsToDataThenNNTest(test_util.TensorFlowTestCase):
         isinstance(self.params.num_trees, tensor_forest.ForestHParams))
 
     with variable_scope.variable_scope(
-        "DecisionsToDataThenNNTest_testContructionPollution"):
+        "DecisionsToDataThenNNTest_testConstructionPollution"):
       graph_builder = decisions_to_data_then_nn.DecisionsToDataThenNN(
           self.params)
 
@@ -98,7 +95,7 @@ class DecisionsToDataThenNNTest(test_util.TensorFlowTestCase):
          for _ in range(100)])
 
     with variable_scope.variable_scope(
-        "DecisionsToDataThenNNTest_testInferenceContruction"):
+        "DecisionsToDataThenNNTest_testInferenceConstruction"):
       graph_builder = decisions_to_data_then_nn.DecisionsToDataThenNN(
           self.params)
       graph = graph_builder.inference_graph(data, None)
@@ -114,7 +111,7 @@ class DecisionsToDataThenNNTest(test_util.TensorFlowTestCase):
     labels = [1 for _ in range(100)]
 
     with variable_scope.variable_scope(
-        "DecisionsToDataThenNNTest_testTrainingContruction"):
+        "DecisionsToDataThenNNTest_testTrainingConstruction"):
       graph_builder = decisions_to_data_then_nn.DecisionsToDataThenNN(
           self.params)
       graph = graph_builder.training_graph(data, labels, None)

@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 class CUDAExecutor;
@@ -41,8 +40,8 @@ class CUDAStream : public internal::StreamInterface {
   // Note: teardown is handled by a parent's call to DeallocateStream.
   ~CUDAStream() override {}
 
-  void *CudaStreamHack() override { return cuda_stream_; }
-  void **CudaStreamMemberHack() override {
+  void *GpuStreamHack() override { return cuda_stream_; }
+  void **GpuStreamMemberHack() override {
     return reinterpret_cast<void **>(&cuda_stream_);
   }
 
@@ -89,7 +88,6 @@ CUDAStream *AsCUDAStream(Stream *stream);
 CUstream AsCUDAStreamValue(Stream *stream);
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_

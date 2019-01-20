@@ -34,11 +34,13 @@ namespace tensorflow {
 //
 // If this environment variable is not defined, no logging is performed.
 //
-// The intended use is via the following 4 lines:
+// The intended use is via the following lines:
 //
 //  TestReporter reporter(test_name);
 //  TF_CHECK_OK(reporter.Initialize()));
 //  TF_CHECK_OK(reporter.Benchmark(iters, cpu_time, wall_time, throughput));
+//  TF_CHECK_OK(reporter.SetProperty("some_string_property", "some_value");
+//  TF_CHECK_OK(reporter.SetProperty("some_double_property", double_value);
 //  TF_CHECK_OK(reporter.Close());
 //
 // For example, if the environment variable
@@ -75,7 +77,14 @@ class TestReporter {
   Status Benchmark(int64 iters, double cpu_time, double wall_time,
                    double throughput);
 
-  ~TestReporter() { Close(); }  // Autoclose in destructor.
+  // Set property on Benchmark to the given value.
+  Status SetProperty(const string& name, double value);
+
+  // Set property on Benchmark to the given value.
+  Status SetProperty(const string& name, const string& value);
+
+  // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+  ~TestReporter() { Close().IgnoreError(); }  // Autoclose in destructor.
 
  private:
   static string GetLogEnv() {

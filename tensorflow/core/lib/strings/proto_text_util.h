@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -118,30 +118,6 @@ class ProtoTextOutput {
   TF_DISALLOW_COPY_AND_ASSIGN(ProtoTextOutput);
 };
 
-inline bool ProtoParseNumeric(StringPiece s, int32* value) {
-  return ::tensorflow::strings::safe_strto32(s, value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, uint32* value) {
-  return ::tensorflow::strings::safe_strtou32(s, value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, int64* value) {
-  return ::tensorflow::strings::safe_strto64(s, value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, uint64* value) {
-  return ::tensorflow::strings::safe_strtou64(s, value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, float* value) {
-  return ::tensorflow::strings::safe_strtof(s.ToString().c_str(), value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, double* value) {
-  return ::tensorflow::strings::safe_strtod(s.ToString().c_str(), value);
-}
-
 inline void ProtoSpaceAndComments(Scanner* scanner) {
   for (;;) {
     scanner->AnySpace();
@@ -164,7 +140,7 @@ bool ProtoParseNumericFromScanner(Scanner* scanner, T* value) {
 
   // Special case to disallow multiple leading zeroes, to match proto parsing.
   int leading_zero = 0;
-  for (int i = 0; i < numeric_str.size(); ++i) {
+  for (size_t i = 0; i < numeric_str.size(); ++i) {
     const char ch = numeric_str[i];
     if (ch == '0') {
       if (++leading_zero > 1) return false;
@@ -174,7 +150,7 @@ bool ProtoParseNumericFromScanner(Scanner* scanner, T* value) {
   }
 
   ProtoSpaceAndComments(scanner);
-  return ProtoParseNumeric(numeric_str, value);
+  return SafeStringToNumeric<T>(numeric_str, value);
 }
 
 // Parse the next boolean value from <scanner>, returning false if parsing
@@ -188,4 +164,4 @@ bool ProtoParseStringLiteralFromScanner(Scanner* scanner, string* value);
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_

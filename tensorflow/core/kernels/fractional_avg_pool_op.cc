@@ -24,6 +24,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
@@ -47,9 +48,20 @@ class FractionalAvgPoolOp : public OpKernel {
         errors::Unimplemented("Fractional average pooling is not yet "
                               "supported on the batch nor channel dimension."));
     OP_REQUIRES_OK(context, context->GetAttr("deterministic", &deterministic_));
-    pooling_region_generated_ = false;
-    // Initialize philox random generator.
-    OP_REQUIRES_OK(context, generator_.Init(context));
+    OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
+    OP_REQUIRES_OK(context, context->GetAttr("seed2", &seed2_));
+    if (deterministic_) {
+      // If both seeds are not set when deterministic_ is true, force set seeds.
+      if ((seed_ == 0) && (seed2_ == 0)) {
+        seed_ = random::New64();
+        seed2_ = random::New64();
+      }
+    } else {
+      OP_REQUIRES(
+          context, (seed_ == 0) && (seed2_ == 0),
+          errors::InvalidArgument(
+              "Both seed and seed2 should be 0 if deterministic is false."));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -64,47 +76,35 @@ class FractionalAvgPoolOp : public OpKernel {
     OP_REQUIRES(context, tensor_in.dims() == tensor_in_and_out_dims,
                 errors::InvalidArgument("tensor_in must be 4-dimensional"));
 
+    std::vector<int> input_size(tensor_in_and_out_dims);
+    std::vector<int> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
-      input_size_.push_back(tensor_in.dim_size(i));
+      input_size[i] = tensor_in.dim_size(i);
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
-      output_size_.push_back(
-          static_cast<int>(floor(input_size_[i] / pooling_ratio_[i])));
-      DCHECK_GT(output_size_[i], 0);
+      output_size[i] =
+          static_cast<int>(floor(input_size[i] / pooling_ratio_[i]));
+      DCHECK_GT(output_size[i], 0);
     }
 
     // Generate pooling sequence.
     std::vector<int64> row_cum_seq;
     std::vector<int64> col_cum_seq;
-    if (deterministic_) {
-      if (pooling_region_generated_) {
-        row_cum_seq = row_cum_seq_;
-        col_cum_seq = col_cum_seq_;
-      } else {
-        row_cum_seq = GeneratePoolingSequence(input_size_[1], output_size_[1],
-                                              &generator_, pseudo_random_);
-        col_cum_seq = GeneratePoolingSequence(input_size_[2], output_size_[2],
-                                              &generator_, pseudo_random_);
-        mutex_lock lock(mu_);
-        row_cum_seq_ = row_cum_seq;
-        col_cum_seq_ = col_cum_seq;
-        pooling_region_generated_ = true;
-      }
-    } else {
-      row_cum_seq = GeneratePoolingSequence(input_size_[1], output_size_[1],
-                                            &generator_, pseudo_random_);
-      col_cum_seq = GeneratePoolingSequence(input_size_[2], output_size_[2],
-                                            &generator_, pseudo_random_);
-    }
+    GuardedPhiloxRandom generator;
+    generator.Init(seed_, seed2_);
+    row_cum_seq = GeneratePoolingSequence(input_size[1], output_size[1],
+                                          &generator, pseudo_random_);
+    col_cum_seq = GeneratePoolingSequence(input_size[2], output_size[2],
+                                          &generator, pseudo_random_);
 
     // Prepare output.
     Tensor* output_tensor = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0, TensorShape({output_size_[0], output_size_[1],
-                                       output_size_[2], output_size_[3]}),
-                       &output_tensor));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0,
+                                TensorShape({output_size[0], output_size[1],
+                                             output_size[2], output_size[3]}),
+                                &output_tensor));
     Tensor* output_row_seq_tensor = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(
@@ -116,12 +116,11 @@ class FractionalAvgPoolOp : public OpKernel {
                        2, TensorShape({static_cast<int64>(col_cum_seq.size())}),
                        &output_col_seq_tensor));
 
-    ConstEigenMatrixMap in_mat(
-        tensor_in.flat<T>().data(), input_size_[3],
-        input_size_[2] * input_size_[1] * input_size_[0]);
+    ConstEigenMatrixMap in_mat(tensor_in.flat<T>().data(), input_size[3],
+                               input_size[2] * input_size[1] * input_size[0]);
 
-    EigenMatrixMap out_mat(output_tensor->flat<T>().data(), output_size_[3],
-                           output_size_[2] * output_size_[1] * output_size_[0]);
+    EigenMatrixMap out_mat(output_tensor->flat<T>().data(), output_size[3],
+                           output_size[2] * output_size[1] * output_size[0]);
     // out_count corresponds to number of elements in each pooling cell.
     Eigen::Matrix<T, Eigen::Dynamic, 1> out_count(out_mat.cols());
 
@@ -146,9 +145,9 @@ class FractionalAvgPoolOp : public OpKernel {
     // 1: row / row
     // 2: col / col
     // 3: depth / channel
-    const int64 row_max = input_size_[1] - 1;
-    const int64 col_max = input_size_[2] - 1;
-    for (int64 b = 0; b < input_size_[0]; ++b) {
+    const int64 row_max = input_size[1] - 1;
+    const int64 col_max = input_size[2] - 1;
+    for (int64 b = 0; b < input_size[0]; ++b) {
       // row sequence.
       for (int64 hs = 0; hs < row_cum_seq.size() - 1; ++hs) {
         // row start and end.
@@ -160,7 +159,7 @@ class FractionalAvgPoolOp : public OpKernel {
         // col sequence.
         for (int64 ws = 0; ws < col_cum_seq.size() - 1; ++ws) {
           const int64 out_offset =
-              (b * output_size_[1] + hs) * output_size_[2] + ws;
+              (b * output_size[1] + hs) * output_size[2] + ws;
           // col start and end.
           const int64 col_start = col_cum_seq[ws];
           int64 col_end =
@@ -169,7 +168,7 @@ class FractionalAvgPoolOp : public OpKernel {
           for (int64 h = row_start; h <= row_end; ++h) {
             for (int64 w = col_start; w <= col_end; ++w) {
               const int64 in_offset =
-                  (b * input_size_[1] + h) * input_size_[2] + w;
+                  (b * input_size[1] + h) * input_size[2] + w;
               out_mat.col(out_offset) += in_mat.col(in_offset);
               out_count(out_offset)++;
             }
@@ -183,18 +182,11 @@ class FractionalAvgPoolOp : public OpKernel {
 
  private:
   bool deterministic_;
-  // meaningful only when deterministic_ is true.
-  mutex mu_;
-  std::vector<int64> row_cum_seq_;
-  std::vector<int64> col_cum_seq_;
-  bool pooling_region_generated_;
-
-  std::vector<int32> input_size_;
-  std::vector<int32> output_size_;
+  int64 seed_;
+  int64 seed2_;
   std::vector<float> pooling_ratio_;
   bool pseudo_random_;
   bool overlapping_;
-  GuardedPhiloxRandom generator_;
 };
 
 #define REGISTER_FRACTIONALAVGPOOL(type)                                      \
@@ -231,7 +223,7 @@ class FractionalAvgPoolGradOp : public OpKernel {
     // Once we figure out the original contributors, we just need to evenly
     // divide the value of this element among these contributors.
     //
-    // Internally, we divide the out_backprop tensor and store it in a temparary
+    // Internally, we divide the out_backprop tensor and store it in a temporary
     // tensor of double type. And cast it to the corresponding type.
     typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
         ConstEigenMatrixMap;
@@ -240,8 +232,9 @@ class FractionalAvgPoolGradOp : public OpKernel {
 
     // Grab the inputs.
     const Tensor& orig_input_tensor_shape = context->input(0);
-    OP_REQUIRES(context, orig_input_tensor_shape.dims() == 1 &&
-                             orig_input_tensor_shape.NumElements() == 4,
+    OP_REQUIRES(context,
+                orig_input_tensor_shape.dims() == 1 &&
+                    orig_input_tensor_shape.NumElements() == 4,
                 errors::InvalidArgument("original input tensor shape must be"
                                         "1-dimensional and 4 elements"));
     const Tensor& out_backprop = context->input(1);
@@ -271,9 +264,9 @@ class FractionalAvgPoolGradOp : public OpKernel {
 
     // Create intermediate in_backprop.
     Tensor in_backprop_tensor_temp;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<double>::v(), in_shape,
-                                          &in_backprop_tensor_temp));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_temp(
+                                {0}, DataTypeToEnum<double>::v(), in_shape,
+                                &in_backprop_tensor_temp));
     in_backprop_tensor_temp.flat<double>().setZero();
     // Transform 4D tensor to 2D matrix.
     EigenDoubleMatrixMap in_backprop_tensor_temp_mat(
@@ -323,8 +316,8 @@ class FractionalAvgPoolGradOp : public OpKernel {
 
     // Depending on the type, cast double to type T.
     Tensor* in_backprop_tensor = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, in_shape, &in_backprop_tensor));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, in_shape, &in_backprop_tensor));
     auto in_backprop_tensor_flat = in_backprop_tensor->flat<T>();
     auto in_backprop_tensor_temp_flat = in_backprop_tensor_temp.flat<double>();
     for (int64 i = 0; i < in_backprop_tensor_flat.size(); ++i) {

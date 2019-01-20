@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_FILE_STATISTICS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_FILE_STATISTICS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_FILE_STATISTICS_H_
+#define TENSORFLOW_CORE_PLATFORM_FILE_STATISTICS_H_
 
 #include "tensorflow/core/platform/types.h"
 
@@ -29,9 +29,11 @@ struct FileStatistics {
   bool is_directory = false;
 
   FileStatistics() {}
+  FileStatistics(int64 length, int64 mtime_nsec, bool is_directory)
+      : length(length), mtime_nsec(mtime_nsec), is_directory(is_directory) {}
   ~FileStatistics() {}
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_FILE_STATISTICS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_FILE_STATISTICS_H_

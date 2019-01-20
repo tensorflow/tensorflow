@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -23,33 +25,41 @@ limitations under the License.
 namespace tensorflow {
 
 NodeDefBuilder::NodeOut::NodeOut(StringPiece n, int i, DataType dt)
-    : node(n.ToString()), index(i), data_type(dt) {}
+    : node(n), index(i), data_type(dt) {}
 
 NodeDefBuilder::NodeOut::NodeOut() {
   // uninitialized, call Reset() before use.
 }
 
 void NodeDefBuilder::NodeOut::Reset(StringPiece n, int i, DataType dt) {
-  node = n.ToString();
+  node = string(n);
   index = i;
   data_type = dt;
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
-                               const OpRegistryInterface* op_registry) {
-  node_def_.set_name(name.ToString());
-  const Status status = op_registry->LookUpOpDef(op_name.ToString(), &op_def_);
+                               const OpRegistryInterface* op_registry,
+                               const NodeDebugInfo* debug) {
+  node_def_.set_name(string(name));
+  const Status status = op_registry->LookUpOpDef(string(op_name), &op_def_);
   if (status.ok()) {
     Initialize();
   } else {
     errors_.push_back(status.error_message());
     inputs_specified_ = 0;
   }
+  if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
+}
+
+NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
+                               const NodeDebugInfo& debug)
+    : NodeDefBuilder(name, op_name) {
+  MergeDebugInfo(debug, &node_def_);
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, const OpDef* op_def)
     : op_def_(op_def) {
-  node_def_.set_name(name.ToString());
+  node_def_.set_name(string(name));
   Initialize();
 }
 
@@ -80,6 +90,25 @@ NodeDefBuilder& NodeDefBuilder::Input(FakeInputFunctor fake_input) {
     Status status = fake_input(*op_def_, inputs_specified_, node_def_, this);
     if (!status.ok()) errors_.push_back(status.error_message());
   }
+  return *this;
+}
+
+NodeDefBuilder& NodeDefBuilder::Input(StringPiece src_node, int src_index,
+                                      DataType dt) {
+  const OpDef::ArgDef* arg = NextArgDef();
+  if (arg != nullptr) SingleInput(arg, src_node, src_index, dt);
+  return *this;
+}
+
+NodeDefBuilder& NodeDefBuilder::Input(const NodeOut& src) {
+  Input(src.node, src.index, src.data_type);
+  return *this;
+}
+
+// For inputs that take a list of tensors.
+NodeDefBuilder& NodeDefBuilder::Input(gtl::ArraySlice<NodeOut> src_list) {
+  const OpDef::ArgDef* arg = NextArgDef();
+  if (arg != nullptr) ListInput(arg, src_list);
   return *this;
 }
 
@@ -150,7 +179,7 @@ void NodeDefBuilder::AddInput(StringPiece src_node, int src_index) {
   } else if (src_index > 0) {
     node_def_.add_input(strings::StrCat(src_node, ":", src_index));
   } else {
-    node_def_.add_input(src_node.ToString());
+    node_def_.add_input(string(src_node));
   }
 }
 
@@ -173,12 +202,12 @@ void NodeDefBuilder::VerifyInputRef(const OpDef::ArgDef* input_arg,
 }
 
 NodeDefBuilder& NodeDefBuilder::ControlInput(StringPiece src_node) {
-  control_inputs_.push_back(src_node.ToString());
+  control_inputs_.emplace_back(src_node);
   return *this;
 }
 
 NodeDefBuilder& NodeDefBuilder::Device(StringPiece device_spec) {
-  node_def_.set_device(device_spec.ToString());
+  node_def_.set_device(string(device_spec));
   return *this;
 }
 
@@ -228,14 +257,51 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def) const {
   }
 }
 
-void NodeDefBuilder::CheckInconsistency(StringPiece attr_name,
-                                        const AttrValue& found,
-                                        const AttrValue& attr_value) {
-  if (!AreAttrValuesEqual(found, attr_value)) {
-    errors_.push_back(strings::StrCat(
-        "Inconsistent values for attr '", attr_name, "' ",
-        SummarizeAttrValue(found), " vs. ", SummarizeAttrValue(attr_value)));
+NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, const AttrValue& value) {
+  if (const AttrValue* found = AttrSlice(node_def_).Find(name)) {
+    if (!AreAttrValuesEqual(*found, value)) {
+      errors_.push_back(strings::StrCat("Inconsistent values for attr '", name,
+                                        "' ", SummarizeAttrValue(*found),
+                                        " vs. ", SummarizeAttrValue(value)));
+    }
+  } else {
+    AddNodeAttr(name, value, &node_def_);
   }
+  return *this;
 }
+
+#define ATTR(T)                                                     \
+  NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, T value) { \
+    AttrValue attr_value;                                           \
+    SetAttrValue(value, &attr_value);                               \
+    return Attr(name, attr_value);                                  \
+  }
+ATTR(StringPiece)
+ATTR(const char*)
+ATTR(int32)
+ATTR(int64)
+ATTR(float)
+ATTR(double)
+ATTR(bool)
+ATTR(DataType)
+ATTR(const PartialTensorShape&)
+ATTR(const Tensor&)
+ATTR(const TensorProto&)
+ATTR(const NameAttrList&)
+ATTR(gtl::ArraySlice<StringPiece>)
+ATTR(gtl::ArraySlice<const char*>)
+ATTR(gtl::ArraySlice<string>)
+ATTR(gtl::ArraySlice<int32>)
+ATTR(gtl::ArraySlice<int64>)
+ATTR(gtl::ArraySlice<float>)
+ATTR(gtl::ArraySlice<bool>)
+ATTR(const std::vector<bool>&)
+ATTR(gtl::ArraySlice<DataType>)
+ATTR(gtl::ArraySlice<TensorShape>)
+ATTR(gtl::ArraySlice<PartialTensorShape>)
+ATTR(gtl::ArraySlice<TensorShapeProto>)
+ATTR(gtl::ArraySlice<Tensor>)
+ATTR(gtl::ArraySlice<NameAttrList>)
+#undef ATTR
 
 }  // namespace tensorflow

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
-#define TENSORFLOW_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
 
 #include <string>
 #include <vector>
@@ -35,10 +35,11 @@ namespace test {
 
 class Benchmark {
  public:
-  // "device" must be either "cpu" or "gpu".  Takes ownership of "g"
-  // and "init".
+  // "device" must be either "cpu" or "gpu".  Takes ownership of "g",
+  // "init", and one reference on "rendez" (if not null).
   Benchmark(const string& device, Graph* g,
-            const SessionOptions* options = nullptr, Graph* init = nullptr);
+            const SessionOptions* options = nullptr, Graph* init = nullptr,
+            Rendezvous* rendez = nullptr, const char* executor_type = "");
   ~Benchmark();
 
   // Executes the graph for "iters" times.
@@ -54,9 +55,9 @@ class Benchmark {
 
  private:
   thread::ThreadPool* pool_ = nullptr;
-  Device* device_ = nullptr;
+  std::unique_ptr<Device> device_ = nullptr;
   Rendezvous* rendez_ = nullptr;
-  Executor* exec_ = nullptr;
+  std::unique_ptr<Executor> exec_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Benchmark);
 };
@@ -64,4 +65,4 @@ class Benchmark {
 }  // end namespace test
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_

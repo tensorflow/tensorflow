@@ -1,0 +1,7 @@
+op {
+  graph_op_name: "MaxPoolWithArgmax"
+  endpoint {
+    name: "nn.max_pool_with_argmax"
+    deprecation_version: 2
+  }
+}

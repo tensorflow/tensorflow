@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/eigen_activations.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace Eigen {
@@ -23,7 +22,7 @@ namespace {
 void EigenApprox(float a, float b) {
   ASSERT_TRUE(std::abs(a - b) <= std::min(std::abs(a), std::abs(b)) * 1e-3);
 }
-}
+}  // namespace
 
 TEST(EigenBackwardSpatialConvolutionsTest, SigmoidFastDerivative) {
   const ptrdiff_t depth = 3;

@@ -1,0 +1,21 @@
+op {
+  graph_op_name: "StringJoin"
+  in_arg {
+    name: "inputs"
+    description: <<END
+A list of string tensors.  The tensors must all have the same shape,
+or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
+of non-scalar inputs.
+END
+  }
+  attr {
+    name: "separator"
+    description: <<END
+string, an optional join separator.
+END
+  }
+  summary: "Joins the strings in the given list of string tensors into one tensor;"
+  description: <<END
+with the given separator (default is an empty separator).
+END
+}

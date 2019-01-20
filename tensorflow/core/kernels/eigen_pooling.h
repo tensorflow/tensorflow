@@ -13,29 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_POOLING_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_POOLING_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_POOLING_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_POOLING_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/eigen_patch_3d.h"
+#include "tensorflow/core/kernels/eigen_volume_patch.h"
 
 namespace Eigen {
 
 /** SpatialMaxPooling
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Applies a max-pooling over a multichannel input image.
-  *
-  * The input parameter is expected to be a with a rank of 4 (channels, height,
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Applies a max-pooling over a multichannel input image.
+ *
+ * The input parameter is expected to be a with a rank of 4 (channels, height,
  * width, others in col-major, and the reverse of that in row-major).
-  *
-  * The result can be assigned to a tensor of rank equal to the rank of the
+ *
+ * The result can be assigned to a tensor of rank equal to the rank of the
  * input. The dimensions of the result will be channels, height, width, and
  * others (in col-major, and the reverse of that if the input was row-major).
-  *
-  * The order of the width and height dimensions can be swapped if needed.
-  *
-*/
+ *
+ * The order of the width and height dimensions can be swapped if needed.
+ *
+ */
 #if !defined(EIGEN_HAS_INDEX_LIST)
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
@@ -138,23 +138,23 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
 }
 
 /** CuboidMaxPooling
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Applies a max-pooling over a multichannel input volume.
-  *
-  * The input parameter is expected to be a tensor with a rank of 5 (channels,
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Applies a max-pooling over a multichannel input volume.
+ *
+ * The input parameter is expected to be a tensor with a rank of 5 (channels,
  * depth, height, width, others in col-major, and the reverse of that in
  * row-major).
-  *
-  * The result can be assigned to a tensor of rank equal to the rank of the
+ *
+ * The result can be assigned to a tensor of rank equal to the rank of the
  * input. The dimensions of the result will be channels, depth, height, width,
  * and others (in col-major, and the reverse of that if the input was
  * row-major).
-  *
-  * The order of the depth, width and height dimensions can be swapped if
+ *
+ * The order of the depth, width and height dimensions can be swapped if
  * needed.
-  *
-*/
+ *
+ */
 #if !defined(EIGEN_HAS_INDEX_LIST)
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
@@ -163,21 +163,8 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
         internal::MaxReducer<float>, const Eigen::array<int, 1>,
         const TensorReshapingOp<
             const Eigen::DSizes<DenseIndex, 3>,
-            // const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic, const Input>
-            const Eigen::TensorStridingOp<
-                const Eigen::array<typename internal::traits<Input>::Index, 8>,
-                const Eigen::TensorReshapingOp<
-                    const Eigen::DSizes<typename internal::traits<Input>::Index,
-                                        8>,
-                    const Eigen::TensorPatchOp<
-                        const Eigen::DSizes<
-                            typename internal::traits<Input>::Index, 5>,
-                        const Eigen::TensorPaddingOp<
-                            const Eigen::array<
-                                Eigen::IndexPair<
-                                    typename internal::traits<Input>::Index>,
-                                5>,
-                            const Input> > > > > > >
+            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
+                                      const Input> > > >
 #else
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
@@ -187,21 +174,8 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
         const Eigen::IndexList<Eigen::type2index<1> >,
         const TensorReshapingOp<
             const Eigen::DSizes<DenseIndex, 3>,
-            // const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic, const Input>
-            const Eigen::TensorStridingOp<
-                const Eigen::array<typename internal::traits<Input>::Index, 8>,
-                const Eigen::TensorReshapingOp<
-                    const Eigen::DSizes<typename internal::traits<Input>::Index,
-                                        8>,
-                    const Eigen::TensorPatchOp<
-                        const Eigen::DSizes<
-                            typename internal::traits<Input>::Index, 5>,
-                        const Eigen::TensorPaddingOp<
-                            const Eigen::array<
-                                Eigen::IndexPair<
-                                    typename internal::traits<Input>::Index>,
-                                5>,
-                            const Input> > > > > > >
+            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
+                                      const Input> > > >
 #endif
 CuboidMaxPooling(const Input& input, DenseIndex patchPlanes,
                  DenseIndex patchRows, DenseIndex patchCols,
@@ -272,29 +246,30 @@ CuboidMaxPooling(const Input& input, DenseIndex patchPlanes,
   // optimize the code.
   Eigen::IndexList<Eigen::type2index<1> > reduction_dims;
 #endif
-  return internal::Extract3DPatches(
-             input, patchPlanes, patchRows, patchCols, stridePlanes, strideRows,
-             strideCols, padding_type, -Eigen::NumTraits<float>::highest())
+  return input
+      .extract_volume_patches(patchPlanes, patchRows, patchCols, stridePlanes,
+                              strideRows, strideCols, padding_type,
+                              -Eigen::NumTraits<float>::highest())
       .reshape(pre_reduce_dims)
       .maximum(reduction_dims)
       .reshape(post_reduce_dims);
 }
 
 /** SpatialAvgPooling
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Applies an average pooling over a multichannel input image.
-  *
-  * The input parameter is expected to be a tensor with a rank of 4 (channels,
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Applies an average pooling over a multichannel input image.
+ *
+ * The input parameter is expected to be a tensor with a rank of 4 (channels,
  * height, width, others in col-major, and the reverse of that in row-major).
-  *
-  * The result can be assigned to a tensor of rank equal to the rank of the
+ *
+ * The result can be assigned to a tensor of rank equal to the rank of the
  * input. The dimensions of the result will be channels, height, width, and
  * others (in col-major, and the reverse of that if the input was row-major).
-  *
-  * The order of the width and height dimensions can be swapped if needed.
-  *
-*/
+ *
+ * The order of the width and height dimensions can be swapped if needed.
+ *
+ */
 namespace internal {
 
 template <typename T>
@@ -325,11 +300,25 @@ struct AvgPoolMeanReducer {
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalize(const T accum) const {
     eigen_assert(scalarCount_ > 0);
-    return accum / scalarCount_;
+    return accum / T(scalarCount_);
   }
 
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
-#ifdef EIGEN_VECTORIZE_AVX
+#ifdef EIGEN_VECTORIZE_AVX512
+#define pequal(a, b)   \
+  _mm512_castsi512_ps( \
+      _mm512_maskz_set1_epi32(_mm512_cmp_ps_mask(a, b, _CMP_EQ_UQ), -1))
+
+  // The ternarylogic function immediate determines the values in the result
+  // In the case below, 0xd8 implies (false_mask) ? (b) : (a)
+  // For details, refer to the vpternlogd instruction table at
+  // http://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2c-manual.pdf
+
+#define psel(a, b, false_mask)                        \
+  _mm512_castsi512_ps(_mm512_ternarylogic_epi32(      \
+      _mm512_castps_si512(a), _mm512_castps_si512(b), \
+      _mm512_castps_si512(false_mask), 0xd8))
+#elif defined EIGEN_VECTORIZE_AVX
 #define pequal(a, b) _mm256_cmp_ps(a, b, _CMP_EQ_UQ)
 #define psel(a, b, false_mask) _mm256_blendv_ps(a, b, false_mask)
 #else
@@ -345,7 +334,8 @@ struct AvgPoolMeanReducer {
   }
 
   template <typename Packet>
-  void reducePacketWithType(T, const Packet& p, Packet* accum) {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void reducePacketWithType(
+      T, const Packet& p, Packet* accum) {
     Packet skip_mask =
         pequal(p, pset1<Packet>(-Eigen::NumTraits<T>::highest()));
     (*accum) = padd<Packet>(*accum, psel(p, pset1<Packet>(0), skip_mask));
@@ -382,16 +372,23 @@ struct reducer_traits<AvgPoolMeanReducer<float>, Device> {
     Cost = 1,
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
     // We only support packet access for floats.
-    PacketAccess = true
+    PacketAccess = true,
 #else
-    PacketAccess = false
+    PacketAccess = false,
 #endif
+    IsStateful = true,
+    IsExactlyAssociative = false
   };
 };
 
 template <>
 struct reducer_traits<AvgPoolMeanReducer<float>, GpuDevice> {
-  enum { Cost = 1, PacketAccess = false };
+  enum {
+    Cost = 1,
+    PacketAccess = false,
+    IsStateful = true,
+    IsExactlyAssociative = false
+  };
 };
 
 }  // namespace internal
@@ -491,31 +488,29 @@ SpatialAvgPooling(const Input& input, DenseIndex patchRows,
                              Eigen::type2index<3> > >::type reduction_dims;
 #endif
   return input
-      .extract_image_patches(
-          patchRows, patchCols, strideRows, strideCols, in_strideRows,
-          in_strideCols, padding_type,
-          -Eigen::NumTraits<typename internal::remove_const<
-              typename internal::traits<Input>::Scalar>::type>::highest())
+      .extract_image_patches(patchRows, patchCols, strideRows, strideCols,
+                             in_strideRows, in_strideCols, padding_type,
+                             -Eigen::NumTraits<CoeffReturnType>::highest())
       .reduce(reduction_dims, mean_with_nan)
       .reshape(post_reduce_dims);
 }
 
 /** CuboidAvgPooling
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Applies an average pooling over a multichannel input volume.
-  *
-  * The input parameter is expected to be a tensor with a rank of 5 (channels,
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Applies an average pooling over a multichannel input volume.
+ *
+ * The input parameter is expected to be a tensor with a rank of 5 (channels,
  * depth, height, width, others, and the reverse of that in row-major).
-  *
-  * The result can be assigned to a tensor of rank equal to the rank of the
+ *
+ * The result can be assigned to a tensor of rank equal to the rank of the
  * input. The dimensions of the result will be channels, depth, width, and
  * others (in col-major, and the reverse of that if the input was row-major).
-  *
-  * The order of the depth, width and height dimensions can be swapped if
+ *
+ * The order of the depth, width and height dimensions can be swapped if
  * needed.
-  *
-*/
+ *
+ */
 #if !defined(EIGEN_HAS_INDEX_LIST)
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
@@ -524,22 +519,8 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
         internal::AvgPoolMeanReducer<float>, const Eigen::array<int, 1>,
         const TensorReshapingOp<
             const Eigen::DSizes<DenseIndex, 3>,
-            // const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic, const Input>
-            // > > >
-            const Eigen::TensorStridingOp<
-                const Eigen::array<typename internal::traits<Input>::Index, 8>,
-                const Eigen::TensorReshapingOp<
-                    const Eigen::DSizes<typename internal::traits<Input>::Index,
-                                        8>,
-                    const Eigen::TensorPatchOp<
-                        const Eigen::DSizes<
-                            typename internal::traits<Input>::Index, 5>,
-                        const Eigen::TensorPaddingOp<
-                            const Eigen::array<
-                                Eigen::IndexPair<
-                                    typename internal::traits<Input>::Index>,
-                                5>,
-                            const Input> > > > > > >
+            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
+                                      const Input> > > >
 #else
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
@@ -549,22 +530,8 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
         const Eigen::IndexList<Eigen::type2index<1> >,
         const TensorReshapingOp<
             const Eigen::DSizes<DenseIndex, 3>,
-            // const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic, const Input>
-            // > > >
-            const Eigen::TensorStridingOp<
-                const Eigen::array<typename internal::traits<Input>::Index, 8>,
-                const Eigen::TensorReshapingOp<
-                    const Eigen::DSizes<typename internal::traits<Input>::Index,
-                                        8>,
-                    const Eigen::TensorPatchOp<
-                        const Eigen::DSizes<
-                            typename internal::traits<Input>::Index, 5>,
-                        const Eigen::TensorPaddingOp<
-                            const Eigen::array<
-                                Eigen::IndexPair<
-                                    typename internal::traits<Input>::Index>,
-                                5>,
-                            const Input> > > > > > >
+            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
+                                      const Input> > > >
 #endif
 CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
                  DenseIndex patchRows, DenseIndex patchCols,
@@ -638,9 +605,10 @@ CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
   // optimize the code.
   Eigen::IndexList<Eigen::type2index<1> > reduction_dims;
 #endif
-  return internal::Extract3DPatches(
-             input, patchPlanes, patchRows, patchCols, stridePlanes, strideRows,
-             strideCols, padding_type, -Eigen::NumTraits<float>::highest())
+  return input
+      .extract_volume_patches(patchPlanes, patchRows, patchCols, stridePlanes,
+                              strideRows, strideCols, padding_type,
+                              -Eigen::NumTraits<float>::highest())
       .reshape(pre_reduce_dims)
       .reduce(reduction_dims, mean_with_nan)
       .reshape(post_reduce_dims);
@@ -648,4 +616,4 @@ CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
 
 }  // end namespace Eigen
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_POOLING_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_POOLING_H_

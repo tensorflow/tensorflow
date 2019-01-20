@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(skyewm): this is necessary to make the single_threaded_cpu_device.h
+// include work. Some other include must be including eigen without defining
+// this. Consider defining in this in a BUILD rule.
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/common_runtime/graph_runner.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -20,8 +25,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/single_threaded_cpu_device.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -33,24 +41,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-std::unique_ptr<Device> GetCPUDevice(Env* env) {
-  std::vector<Device*> devices;
-  SessionOptions session_options;
-  session_options.env = env;
-  Status s = DeviceFactory::GetFactory(DEVICE_CPU)
-                 ->CreateDevices(session_options, "", &devices);
-  if (s.ok() && !devices.empty()) {
-    return std::unique_ptr<Device>(devices[0]);
-  }
-  return nullptr;
-}
-
-thread::ThreadPool* GetThreadPool(Env* env) {
-  static thread::ThreadPool* thread_pool =
-      new thread::ThreadPool(env, "GraphRunnerCompute", 1);
-  return thread_pool;
-}
 
 // A simple rendezvous class.
 // Assumes a single sender and a single receiver, no duplicate sends, and no
@@ -66,7 +56,7 @@ class SimpleRendezvous : public Rendezvous {
     }
 
     mutex_lock l(mu_);
-    string edge_name = parsed.edge_name.ToString();
+    string edge_name(parsed.edge_name);
     if (table_.count(edge_name) > 0) {
       return errors::Internal("Send of an already sent tensor");
     }
@@ -79,7 +69,7 @@ class SimpleRendezvous : public Rendezvous {
     Tensor tensor;
     Status status = Status::OK();
     {
-      string key = parsed.edge_name.ToString();
+      string key(parsed.edge_name);
       mutex_lock l(mu_);
       if (table_.count(key) <= 0) {
         status = errors::Internal("Did not find key ", key);
@@ -101,23 +91,38 @@ class SimpleRendezvous : public Rendezvous {
 
 }  // namespace
 
-// static
+GraphRunner::GraphRunner(Env* env)
+    : device_deleter_(new SingleThreadedCpuDevice(env)),
+      device_(device_deleter_.get()) {}
+GraphRunner::GraphRunner(Device* device) : device_(device) {}
+
+GraphRunner::~GraphRunner() {}
+
 Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
-                        Env* env, const NamedTensorList& inputs,
+                        const NamedTensorList& inputs,
                         const std::vector<string>& output_names,
                         std::vector<Tensor>* outputs) {
+  if (device_ == nullptr) {
+    return errors::NotFound("Cannot find a device for GraphRunner.");
+  }
+
+  if (function_library && function_library->device() &&
+      function_library->device()->device_type() != device_->device_type()) {
+    // Mismatch between function_library's device_type and device_'s
+    // device_type.
+    // TODO(matthewmurray) Can we create a new FunctionLibraryRuntime that is
+    // identical to function_library except that it uses the given 'device_'?
+    VLOG(1) << "Cannot run on: " << device_->device_type()
+            << " with a function library for a "
+            << function_library->device()->device_type() << " device.";
+    function_library = nullptr;
+  }
+
   // TODO(vrv): Instead of copying the entire graph, consider modifying
   // the existing graph, and then removing those removed edges.
   // prior to returning.
   std::unique_ptr<Graph> graph_to_run(new Graph(graph->op_registry()));
   CopyGraph(*graph, graph_to_run.get());
-
-  std::unique_ptr<Device> device = GetCPUDevice(env);
-  thread::ThreadPool* thread_pool = GetThreadPool(env);
-  if (!device || !thread_pool) {
-    return errors::NotFound(
-        "Cannot find a device and/or a thread pool for GraphRunner.");
-  }
 
   SimpleRendezvous* rendez = new SimpleRendezvous;
   core::ScopedUnref rendez_unref(rendez);
@@ -127,8 +132,8 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   for (const auto& in : inputs) {
     const string& tensor_name = in.first;
     input_names.emplace_back(tensor_name);
-    string full_key = Rendezvous::CreateKey("/cpu:0", 1, "/cpu:1", tensor_name,
-                                            FrameAndIter(0, 0));
+    string full_key = Rendezvous::CreateKey("/device:CPU:0", 1, "/device:CPU:1",
+                                            tensor_name, FrameAndIter(0, 0));
     Rendezvous::ParsedKey parsed;
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(full_key, &parsed));
     TF_RETURN_IF_ERROR(rendez->Send(parsed, Rendezvous::Args(), in.second,
@@ -136,30 +141,32 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   }
 
   // Call RewriteGraphForExecution
+  subgraph::RewriteGraphMetadata metadata;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph_to_run.get(), input_names, output_names, {} /* target nodes */,
-      device->attributes()));
+      device_->attributes(), false /* use_function_convention */, &metadata));
 
   // Create the local executor and the Rendezvous for fetching back the
   // constants.
-  auto runner = [thread_pool](Executor::Args::Closure c) {
-    thread_pool->Schedule(c);
-  };
 
-  // Take ownership and pass to NewLocalExecutor
-  Graph* g = graph_to_run.release();
+  // Run operators on the local thread. We should not need concurrency here; we
+  // should not be running expensive operators.
+  auto runner = [](Executor::Args::Closure c) { c(); };
 
   LocalExecutorParams params;
-  params.device = device.get();
+  // The ownership of the output tensors are bound to this device's lifetime.
+  params.device = device_;
   params.function_library = function_library;
-  params.create_kernel = [&device, g](const NodeDef& ndef, OpKernel** kernel) {
-    return CreateNonCachedKernel(device.get(), nullptr, ndef,
-                                 g->versions().producer(), kernel);
+  const int producer = graph_to_run->versions().producer();
+  params.create_kernel = [this, producer](const NodeDef& ndef,
+                                          OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, nullptr, ndef, producer, kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
 
   Executor* executor;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g, &executor));
+  TF_RETURN_IF_ERROR(
+      NewLocalExecutor(params, std::move(graph_to_run), &executor));
   std::unique_ptr<Executor> executor_unref(executor);
 
   Executor::Args args;
@@ -169,19 +176,28 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   args.step_id = LogMemory::CONSTANT_FOLDING_STEP_ID;
   args.runner = runner;
   args.rendezvous = rendez;
+  // NOTE: Use of graph runner is limited to single-device executions
+  // so a CollectiveExecutor should never be required.
+  args.collective_executor = nullptr;
 
   // Run the graph.
   TF_RETURN_IF_ERROR(executor->Run(args));
 
   outputs->resize(output_names.size());
   for (size_t i = 0; i < output_names.size(); ++i) {
-    const string& output_key = Rendezvous::CreateKey(
-        "/cpu:0", 1, "/cpu:1", output_names[i], FrameAndIter(0, 0));
+    const string& output_key =
+        Rendezvous::CreateKey("/device:CPU:0", 1, "/device:CPU:1",
+                              output_names[i], FrameAndIter(0, 0));
     Rendezvous::ParsedKey parsed;
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(output_key, &parsed));
     bool is_dead;
+    Tensor output_tensor;
     TF_RETURN_IF_ERROR(
-        rendez->Recv(parsed, Rendezvous::Args(), &(*outputs)[i], &is_dead));
+        rendez->Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead));
+    // Does a deep copy so that ownership of the tensor isn't tied to the
+    // allocator of the cpu device we created above. The allocator could be
+    // deleted along with the device.
+    (*outputs)[i] = tensor::DeepCopy(output_tensor);
   }
 
   return Status::OK();

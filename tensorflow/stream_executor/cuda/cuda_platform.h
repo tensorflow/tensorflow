@@ -31,8 +31,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // Opaque and unique identifier for the CUDA platform plugin.
@@ -88,9 +87,6 @@ class CudaPlatform : public Platform {
   // This platform's name.
   string name_;
 
-  // mutex that guards internal state.
-  mutable mutex mu_;
-
   // Cache of created executors.
   ExecutorCache executor_cache_;
 
@@ -107,7 +103,6 @@ class CudaPlatform : public Platform {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_H_

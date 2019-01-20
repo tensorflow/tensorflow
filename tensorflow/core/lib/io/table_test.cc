@@ -74,7 +74,7 @@ static StringPiece CompressibleString(random::SimplePhilox* rnd,
   dst->resize(len);
   return StringPiece(*dst);
 }
-}
+}  // namespace test
 
 static void Increment(string* key) { key->push_back('\0'); }
 
@@ -90,15 +90,22 @@ struct STLLessThan {
 
 class StringSink : public WritableFile {
  public:
-  ~StringSink() {}
+  ~StringSink() override {}
 
   const string& contents() const { return contents_; }
 
-  virtual Status Close() { return Status::OK(); }
-  virtual Status Flush() { return Status::OK(); }
-  virtual Status Sync() { return Status::OK(); }
+  Status Close() override { return Status::OK(); }
+  Status Flush() override { return Status::OK(); }
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("StringSink does not support Name()");
+  }
+  Status Sync() override { return Status::OK(); }
+  Status Tell(int64* pos) override {
+    *pos = contents_.size();
+    return Status::OK();
+  }
 
-  virtual Status Append(const StringPiece& data) {
+  Status Append(StringPiece data) override {
     contents_.append(data.data(), data.size());
     return Status::OK();
   }
@@ -109,15 +116,19 @@ class StringSink : public WritableFile {
 
 class StringSource : public RandomAccessFile {
  public:
-  StringSource(const StringPiece& contents)
+  explicit StringSource(const StringPiece& contents)
       : contents_(contents.data(), contents.size()), bytes_read_(0) {}
 
-  virtual ~StringSource() {}
+  ~StringSource() override {}
 
   uint64 Size() const { return contents_.size(); }
 
-  virtual Status Read(uint64 offset, size_t n, StringPiece* result,
-                      char* scratch) const {
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("StringSource does not support Name()");
+  }
+
+  Status Read(uint64 offset, size_t n, StringPiece* result,
+              char* scratch) const override {
     if (offset > contents_.size()) {
       return errors::InvalidArgument("invalid Read offset");
     }
@@ -147,7 +158,7 @@ class Constructor {
   virtual ~Constructor() {}
 
   void Add(const string& key, const StringPiece& value) {
-    data_[key] = value.ToString();
+    data_[key] = string(value);
   }
 
   // Finish constructing the data structure with all the keys that have
@@ -177,18 +188,18 @@ class Constructor {
 
 class BlockConstructor : public Constructor {
  public:
-  BlockConstructor() : block_(NULL) {}
-  ~BlockConstructor() { delete block_; }
-  virtual Status FinishImpl(const Options& options, const KVMap& data) {
+  BlockConstructor() : block_(nullptr) {}
+  ~BlockConstructor() override { delete block_; }
+  Status FinishImpl(const Options& options, const KVMap& data) override {
     delete block_;
-    block_ = NULL;
+    block_ = nullptr;
     BlockBuilder builder(&options);
 
     for (KVMap::const_iterator it = data.begin(); it != data.end(); ++it) {
       builder.Add(it->first, it->second);
     }
     // Open the block
-    data_ = builder.Finish().ToString();
+    data_ = string(builder.Finish());
     BlockContents contents;
     contents.data = data_;
     contents.cachable = false;
@@ -196,7 +207,7 @@ class BlockConstructor : public Constructor {
     block_ = new Block(contents);
     return Status::OK();
   }
-  virtual Iterator* NewIterator() const { return block_->NewIterator(); }
+  Iterator* NewIterator() const override { return block_->NewIterator(); }
 
  private:
   string data_;
@@ -205,9 +216,9 @@ class BlockConstructor : public Constructor {
 
 class TableConstructor : public Constructor {
  public:
-  TableConstructor() : source_(NULL), table_(NULL) {}
-  ~TableConstructor() { Reset(); }
-  virtual Status FinishImpl(const Options& options, const KVMap& data) {
+  TableConstructor() : source_(nullptr), table_(nullptr) {}
+  ~TableConstructor() override { Reset(); }
+  Status FinishImpl(const Options& options, const KVMap& data) override {
     Reset();
     StringSink sink;
     TableBuilder builder(options, &sink);
@@ -227,7 +238,7 @@ class TableConstructor : public Constructor {
     return Table::Open(table_options, source_, sink.contents().size(), &table_);
   }
 
-  virtual Iterator* NewIterator() const { return table_->NewIterator(); }
+  Iterator* NewIterator() const override { return table_->NewIterator(); }
 
   uint64 ApproximateOffsetOf(const StringPiece& key) const {
     return table_->ApproximateOffsetOf(key);
@@ -239,8 +250,8 @@ class TableConstructor : public Constructor {
   void Reset() {
     delete table_;
     delete source_;
-    table_ = NULL;
-    source_ = NULL;
+    table_ = nullptr;
+    source_ = nullptr;
   }
 
   StringSource* source_;
@@ -262,11 +273,11 @@ static const int kNumTestArgs = sizeof(kTestArgList) / sizeof(kTestArgList[0]);
 
 class Harness : public ::testing::Test {
  public:
-  Harness() : constructor_(NULL) {}
+  Harness() : constructor_(nullptr) {}
 
   void Init(const TestArgs& args) {
     delete constructor_;
-    constructor_ = NULL;
+    constructor_ = nullptr;
     options_ = Options();
 
     options_.block_restart_interval = args.restart_interval;
@@ -283,7 +294,7 @@ class Harness : public ::testing::Test {
     }
   }
 
-  ~Harness() { delete constructor_; }
+  ~Harness() override { delete constructor_; }
 
   void Add(const string& key, const string& value) {
     constructor_->Add(key, value);
@@ -396,7 +407,7 @@ class Harness : public ::testing::Test {
           break;
         case 1: {
           // Attempt to return something smaller than an existing key
-          if (result.size() > 0 && result[result.size() - 1] > '\0') {
+          if (!result.empty() && result[result.size() - 1] > '\0') {
             result[result.size() - 1]--;
           }
           break;
@@ -515,7 +526,7 @@ TEST_F(Harness, Randomized) {
       for (int e = 0; e < num_entries; e++) {
         string v;
         Add(test::RandomKey(&rnd, rnd.Skewed(4)),
-            test::RandomString(&rnd, rnd.Skewed(5), &v).ToString());
+            string(test::RandomString(&rnd, rnd.Skewed(5), &v)));
       }
       Test(&rnd);
     }
@@ -526,8 +537,9 @@ static bool Between(uint64 val, uint64 low, uint64 high) {
   bool result = (val >= low) && (val <= high);
   if (!result) {
     fprintf(stderr, "Value %llu is not in range [%llu, %llu]\n",
-            (unsigned long long)(val), (unsigned long long)(low),
-            (unsigned long long)(high));
+            static_cast<unsigned long long>(val),
+            static_cast<unsigned long long>(low),
+            static_cast<unsigned long long>(high));
   }
   return result;
 }

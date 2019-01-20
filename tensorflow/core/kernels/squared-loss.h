@@ -13,11 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SQUARED_LOSS_H_
-#define TENSORFLOW_KERNELS_SQUARED_LOSS_H_
-
-#include <algorithm>
-#include <cmath>
+#ifndef TENSORFLOW_CORE_KERNELS_SQUARED_LOSS_H_
+#define TENSORFLOW_CORE_KERNELS_SQUARED_LOSS_H_
 
 #include "tensorflow/core/kernels/loss.h"
 
@@ -73,4 +70,4 @@ class SquaredLossUpdater : public DualLossUpdater {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SQUARED_LOSS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SQUARED_LOSS_H_

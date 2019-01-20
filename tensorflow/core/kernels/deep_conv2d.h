@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DEEP_CONV2D_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DEEP_CONV2D_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DEEP_CONV2D_H_
+#define TENSORFLOW_CORE_KERNELS_DEEP_CONV2D_H_
 
 #include "tensorflow/core/framework/types.h"
 
@@ -22,7 +22,7 @@ namespace tensorflow {
 
 class OpKernelContext;
 
-// DeepConv2D is a Conv2D implementation specialzied for deep (i.e. large
+// DeepConv2D is a Conv2D implementation specialized for deep (i.e. large
 // in_depth * out_depth product) convolutions (see deep_conv2d.cc for details).
 
 // DeepConv2DTransform is an interface for implementing transforms for
@@ -114,4 +114,4 @@ struct DeepConv2D {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DEEP_CONV2D_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DEEP_CONV2D_H_

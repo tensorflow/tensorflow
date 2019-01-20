@@ -16,24 +16,28 @@
 #
 # Tests distributed TensorFlow on a locally running TF GRPC cluster.
 #
-# This script peforms the following steps:
-# 1) Build the docker-in-docker (dind) image capable of running docker and
-#    Kubernetes (k8s) cluster inside.
+# This script performs the following steps:
+# 1) Build the docker image capable of running distributed TensorFlow in docker.
 # 2) Run a container from the aforementioned image and start docker service
 #    in it
-# 3) Call a script to launch a k8s TensorFlow GRPC cluster inside the container
+# 3) Call a script to launch a distributed TensorFlow GRPC cluster inside the container
 #    and run the distributed test suite.
 #
-# Usage: local_test.sh [--leave_container_running]
+# Usage: local_test.sh <whl_file_location>
+#                      [--leave_container_running]
 #                      [--model_name <MODEL_NAME>]
 #                      [--num_workers <NUM_WORKERS>]
 #                      [--num_parameter_servers <NUM_PARAMETER_SERVERS>]
 #                      [--sync_replicas]
 #
-# E.g., local_test.sh --model_name CENSUS_WIDENDEEP
-#       local_test.sh --num_workers 3 --num_parameter_servers 3
+# E.g., local_test.sh <whl_file_location> --model_name CENSUS_WIDENDEEP
+#       local_test.sh <whl_file_location> --num_workers 3 --num_parameter_servers 3
 #
 # Arguments:
+# whl_file_location: URL from which the TensorFlow whl file will be acquired.
+#   E.g.: https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0-cp27-none-linux_x86_64.whl
+#   E.g.: /path/to/folder/tensorflow-0.11.0rc1-cp27-none-linux_x86_64.whl
+#
 # --leave_container_running:  Do not stop the docker-in-docker container after
 #                             the termination of the tests, e.g., for debugging
 #
@@ -48,21 +52,17 @@
 #   (workers) will be aggregated before applied, which avoids stale parameter
 #   updates.
 #
+#
 # In addition, this script obeys the following environment variables:
 # TF_DIST_DOCKER_NO_CACHE:      do not use cache when building docker images
 
+die() {
+  echo $@
+  exit 1
+}
 
 # Configurations
 DOCKER_IMG_NAME="tensorflow/tf-dist-test-local-cluster"
-LOCAL_K8S_CACHE=${HOME}/kubernetes
-
-# Helper function
-get_container_id_by_image_name() {
-    # Get the id of a container by image name
-    # Usage: get_docker_container_id_by_image_name <img_name>
-
-    echo $(docker ps | grep $1 | awk '{print $1}')
-}
 
 # Parse input arguments
 LEAVE_CONTAINER_RUNNING=0
@@ -71,6 +71,11 @@ MODEL_NAME_FLAG=""
 NUM_WORKERS=2
 NUM_PARAMETER_SERVERS=2
 SYNC_REPLICAS_FLAG=""
+
+WHL_FILE_LOCATION=${1}
+if [[ -z "${WHL_FILE_LOCATION}" ]]; then
+  echo "WARNING: No wheel url passed. Will use latest tf-nightly cpu p2 wheel."
+fi
 
 while true; do
   if [[ $1 == "--leave_container_running" ]]; then
@@ -84,6 +89,8 @@ while true; do
     NUM_PARAMETER_SERVERS=$2
   elif [[ $1 == "--sync_replicas" ]]; then
     SYNC_REPLICAS_FLAG="--sync_replicas"
+  elif [[ $1 == "--WHL_FILE_LOCATION" ]]; then
+    WHL_FILE_LOCATION=$2
   fi
 
   shift
@@ -104,27 +111,47 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Get utility functions
 source ${DIR}/scripts/utils.sh
 
-
-# First, make sure that no docker-in-docker container of the same image
-# is already running
-if [[ ! -z $(get_container_id_by_image_name ${DOCKER_IMG_NAME}) ]]; then
-    die "It appears that there is already at least one Docker container "\
-"of image name ${DOCKER_IMG_NAME} running. Please stop it before trying again"
-fi
-
-# Build docker-in-docker image for local k8s cluster
+# Build docker image for local distributed TensorFlow cluster.
 NO_CACHE_FLAG=""
 if [[ ! -z "${TF_DIST_DOCKER_NO_CACHE}" ]] &&
    [[ "${TF_DIST_DOCKER_NO_CACHE}" != "0" ]]; then
   NO_CACHE_FLAG="--no-cache"
 fi
 
+# Create docker build context directory.
+BUILD_DIR=$(mktemp -d)
+echo ""
+echo "Using whl file location: ${WHL_FILE_LOCATION}"
+echo "Building in temporary directory: ${BUILD_DIR}"
+
+cp -r ${DIR}/* "${BUILD_DIR}"/ || \
+  die "Failed to copy files to ${BUILD_DIR}"
+
+# Download whl file into the build context directory.
+if [[ -z "${WHL_FILE_LOCATION}" ]]; then
+  pip2 download --no-deps tf-nightly
+  cp tf-nightly-*.whl "${BUILD_DIR}"/tensorflow-none-any.whl
+elif [[ $WHL_FILE_LOCATION =~ 'http://' || $WHL_FILE_LOCATION =~ 'https://' ]]; then
+    # Download whl file into the build context directory.
+    wget -P "${BUILD_DIR}" "${WHL_FILE_LOCATION}" || \
+        die "Failed to download tensorflow whl file from URL: ${WHL_FILE_LOCATION}"
+else
+    cp "${WHL_FILE_LOCATION}" "${BUILD_DIR}"
+fi
+
+# Build docker image for test.
 docker build ${NO_CACHE_FLAG} -t ${DOCKER_IMG_NAME} \
-   -f ${DIR}/Dockerfile.local ${DIR} || \
+   -f "${BUILD_DIR}/Dockerfile.local" "${BUILD_DIR}" || \
    die "Failed to build docker image: ${DOCKER_IMG_NAME}"
 
+# Clean up docker build context directory.
+rm -rf "${BUILD_DIR}"
+
+# Run docker image for test.
 docker run ${DOCKER_IMG_NAME} \
     /var/tf_dist_test/scripts/dist_mnist_test.sh \
-    --ps_hosts "localhost:2000,localhost:2001" \
-    --worker_hosts "localhost:3000,localhost:3001" \
+    --ps_hosts $(seq -f "localhost:%g" -s "," \
+                 2000 $((2000 + NUM_PARAMETER_SERVERS - 1))) \
+    --worker_hosts $(seq -f "localhost:%g" -s "," \
+                     3000 $((3000 + NUM_WORKERS - 1))) \
     --num_gpus 0 ${SYNC_REPLICAS_FLAG}

@@ -40,7 +40,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device, typename T, typename ArgFunctor>
+template <typename Device, typename T, typename Tout, typename ArgFunctor>
 class ArgOp : public OpKernel {
  public:
   explicit ArgOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -57,28 +57,34 @@ class ArgOp : public OpKernel {
     const int32 dim = internal::SubtleMustCopy(dimension.scalar<int32>()());
     const int input_dims = input.dims();
 
-    OP_REQUIRES(context, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
-    OP_REQUIRES(context, dim < input_dims,
-                errors::InvalidArgument("Minimum tensor rank: ", dim + 1,
-                                        " but got: ", input_dims));
+    int axis = dim < 0 ? dim + input_dims : dim;
+
+    OP_REQUIRES(context, FastBoundsCheck(axis, input_dims),
+                errors::InvalidArgument("Expected dimension in the range [",
+                                        -input_dims, ", ", input_dims,
+                                        "), but got ", dim));
     OP_REQUIRES(
-        context, input.dim_size(dim) > 0,
+        context, input.dim_size(axis) > 0,
         errors::InvalidArgument("Reduction axis ", dim, " is empty in shape ",
                                 input.shape().DebugString()));
 
     TensorShape output_shape;
     const TensorShape& input_shape = input.shape();
     for (int d = 0; d < input_dims - 1; ++d) {
-      output_shape.AddDim(input_shape.dim_size((d < dim) ? d : d + 1));
+      output_shape.AddDim(input_shape.dim_size((d < axis) ? d : d + 1));
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-#define HANDLE_DIM(NDIM)                                         \
-  case NDIM:                                                     \
-    ArgFunctor::Reduce##NDIM(context->eigen_device<Device>(),    \
-                             input.tensor<T, NDIM>(), dim,       \
-                             output->tensor<int64, NDIM - 1>()); \
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
+
+#define HANDLE_DIM(NDIM)                                        \
+  case NDIM:                                                    \
+    ArgFunctor::Reduce##NDIM(context->eigen_device<Device>(),   \
+                             input.tensor<T, NDIM>(), axis,     \
+                             output->tensor<Tout, NDIM - 1>()); \
     break;
 
     switch (input_dims) {
@@ -100,31 +106,47 @@ class ArgOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
 };
 
-template <typename Device, typename T>
-class ArgMaxOp : public ArgOp<Device, T, functor::ArgMax<Device, T> > {
+template <typename Device, typename T, typename Tout>
+class ArgMaxOp
+    : public ArgOp<Device, T, Tout, functor::ArgMax<Device, T, Tout> > {
  public:
   explicit ArgMaxOp(OpKernelConstruction* context)
-      : ArgOp<Device, T, functor::ArgMax<Device, T> >(context) {}
+      : ArgOp<Device, T, Tout, functor::ArgMax<Device, T, Tout> >(context) {}
 };
 
-template <typename Device, typename T>
-class ArgMinOp : public ArgOp<Device, T, functor::ArgMin<Device, T> > {
+template <typename Device, typename T, typename Tout>
+class ArgMinOp
+    : public ArgOp<Device, T, Tout, functor::ArgMin<Device, T, Tout> > {
  public:
   explicit ArgMinOp(OpKernelConstruction* context)
-      : ArgOp<Device, T, functor::ArgMin<Device, T> >(context) {}
+      : ArgOp<Device, T, Tout, functor::ArgMin<Device, T, Tout> >(context) {}
 };
 
-#define REGISTER_ARGMAX(type)                            \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                 \
-                              .Device(DEVICE_CPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dimension"),  \
-                          ArgMaxOp<CPUDevice, type>);    \
-  REGISTER_KERNEL_BUILDER(Name("ArgMin")                 \
-                              .Device(DEVICE_CPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dimension"),  \
-                          ArgMinOp<CPUDevice, type>);
+#define REGISTER_ARGMAX(type)                                       \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                            \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64>("output_type") \
+                              .HostMemory("dimension"),             \
+                          ArgMaxOp<CPUDevice, type, int64>);        \
+  REGISTER_KERNEL_BUILDER(Name("ArgMin")                            \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64>("output_type") \
+                              .HostMemory("dimension"),             \
+                          ArgMinOp<CPUDevice, type, int64>);        \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                            \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int32>("output_type") \
+                              .HostMemory("dimension"),             \
+                          ArgMaxOp<CPUDevice, type, int32>);        \
+  REGISTER_KERNEL_BUILDER(Name("ArgMin")                            \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int32>("output_type") \
+                              .HostMemory("dimension"),             \
+                          ArgMinOp<CPUDevice, type, int32>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_ARGMAX);
 
@@ -133,26 +155,33 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_ARGMAX);
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 
-#define DECLARE_GPU_SPEC(T, Dims)                                              \
-  template <>                                                                  \
-  void ArgMax<GPUDevice, T>::Reduce##Dims(                                     \
-      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,         \
-      const int32 dimension, typename TTypes<int64, Dims - 1>::Tensor output); \
-  template <>                                                                  \
-  void ArgMin<GPUDevice, T>::Reduce##Dims(                                     \
-      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,         \
-      const int32 dimension, typename TTypes<int64, Dims - 1>::Tensor output);
+#define DECLARE_GPU_SPEC(T, Tout, Dims)                                       \
+  template <>                                                                 \
+  void ArgMax<GPUDevice, T, Tout>::Reduce##Dims(                              \
+      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,        \
+      const int32 dimension, typename TTypes<Tout, Dims - 1>::Tensor output); \
+  template <>                                                                 \
+  void ArgMin<GPUDevice, T, Tout>::Reduce##Dims(                              \
+      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,        \
+      const int32 dimension, typename TTypes<Tout, Dims - 1>::Tensor output);
 
-#define DECLARE_GPU_SPECS(T) \
-  DECLARE_GPU_SPEC(T, 1);    \
-  DECLARE_GPU_SPEC(T, 2);    \
-  DECLARE_GPU_SPEC(T, 3);    \
-  DECLARE_GPU_SPEC(T, 4);    \
-  DECLARE_GPU_SPEC(T, 5);
+#define DECLARE_GPU_SPECS(T)     \
+  DECLARE_GPU_SPEC(T, int64, 1); \
+  DECLARE_GPU_SPEC(T, int64, 2); \
+  DECLARE_GPU_SPEC(T, int64, 3); \
+  DECLARE_GPU_SPEC(T, int64, 4); \
+  DECLARE_GPU_SPEC(T, int64, 5); \
+  DECLARE_GPU_SPEC(T, int32, 1); \
+  DECLARE_GPU_SPEC(T, int32, 2); \
+  DECLARE_GPU_SPEC(T, int32, 3); \
+  DECLARE_GPU_SPEC(T, int32, 4); \
+  DECLARE_GPU_SPEC(T, int32, 5);
 
-#define DECLARE_GPU_CLASS(T)                   \
-  extern template struct ArgMax<GPUDevice, T>; \
-  extern template struct ArgMin<GPUDevice, T>;
+#define DECLARE_GPU_CLASS(T)                          \
+  extern template struct ArgMax<GPUDevice, T, int64>; \
+  extern template struct ArgMin<GPUDevice, T, int64>; \
+  extern template struct ArgMax<GPUDevice, T, int32>; \
+  extern template struct ArgMin<GPUDevice, T, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
@@ -163,17 +192,35 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_ARGMAX_GPU(type)                        \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                 \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dimension"),  \
-                          ArgMaxOp<GPUDevice, type>);    \
-  REGISTER_KERNEL_BUILDER(Name("ArgMin")                 \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dimension"),  \
-                          ArgMinOp<GPUDevice, type>);
+#define REGISTER_ARGMAX_GPU(type)                                   \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                            \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64>("output_type") \
+                              .TypeConstraint<int32>("Tidx")        \
+                              .HostMemory("dimension"),             \
+                          ArgMaxOp<GPUDevice, type, int64>);        \
+  REGISTER_KERNEL_BUILDER(Name("ArgMin")                            \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64>("output_type") \
+                              .TypeConstraint<int32>("Tidx")        \
+                              .HostMemory("dimension"),             \
+                          ArgMinOp<GPUDevice, type, int64>);        \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                            \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int32>("output_type") \
+                              .TypeConstraint<int32>("Tidx")        \
+                              .HostMemory("dimension"),             \
+                          ArgMaxOp<GPUDevice, type, int32>);        \
+  REGISTER_KERNEL_BUILDER(Name("ArgMin")                            \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int32>("output_type") \
+                              .TypeConstraint<int32>("Tidx")        \
+                              .HostMemory("dimension"),             \
+                          ArgMinOp<GPUDevice, type, int32>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);
 

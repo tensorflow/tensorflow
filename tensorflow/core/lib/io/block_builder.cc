@@ -70,10 +70,12 @@ size_t BlockBuilder::CurrentSizeEstimate() const {
 
 StringPiece BlockBuilder::Finish() {
   // Append restart array
-  for (size_t i = 0; i < restarts_.size(); i++) {
-    core::PutFixed32(&buffer_, restarts_[i]);
+  CHECK_LE(restarts_.size(), std::numeric_limits<uint32_t>::max());
+  for (const auto r : restarts_) {
+    core::PutFixed32(&buffer_, r);
   }
-  core::PutFixed32(&buffer_, restarts_.size());
+  // Downcast safe because of the CHECK.
+  core::PutFixed32(&buffer_, static_cast<uint32_t>(restarts_.size()));
   finished_ = true;
   return StringPiece(buffer_);
 }
@@ -93,19 +95,24 @@ void BlockBuilder::Add(const StringPiece& key, const StringPiece& value) {
     }
   } else {
     // Restart compression
-    restarts_.push_back(buffer_.size());
+    CHECK_LE(buffer_.size(), std::numeric_limits<uint32_t>::max());
+    restarts_.push_back(static_cast<uint32_t>(buffer_.size()));
     counter_ = 0;
   }
   const size_t non_shared = key.size() - shared;
 
+  CHECK_LE(shared, std::numeric_limits<uint32_t>::max());
+  CHECK_LE(non_shared, std::numeric_limits<uint32_t>::max());
+  CHECK_LE(value.size(), std::numeric_limits<uint32_t>::max());
+
   // Add "<shared><non_shared><value_size>" to buffer_
-  core::PutVarint32(&buffer_, shared);
-  core::PutVarint32(&buffer_, non_shared);
-  core::PutVarint32(&buffer_, value.size());
+  core::PutVarint32(&buffer_, static_cast<uint32_t>(shared));
+  core::PutVarint32(&buffer_, static_cast<uint32_t>(non_shared));
+  core::PutVarint32(&buffer_, static_cast<uint32_t>(value.size()));
 
   // Add string delta to buffer_ followed by value
   buffer_.append(key.data() + shared, non_shared);
-  buffer_.append(value.data(), value.size());
+  buffer_.append(value.data(), static_cast<uint32_t>(value.size()));
 
   // Update state
   last_key_.resize(shared);

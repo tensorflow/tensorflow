@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
 
@@ -121,6 +120,82 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
   }
 }
 
+TEST(GrpcSessionTest, BasicCallable) {
+  GraphDef graph;
+  string node_names[3];
+  // c = a * b
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  for (int iters = 0; iters < 25; ++iters) {
+    TF_CHECK_OK(session->Create(graph));
+    {
+      // Just run to target node
+      CallableOptions opts;
+      opts.add_target(node_names[2]);
+      Session::CallableHandle handle;
+      TF_CHECK_OK(session->MakeCallable(opts, &handle));
+      TF_CHECK_OK(session->RunCallable(handle, {}, nullptr, nullptr));
+      TF_CHECK_OK(session->ReleaseCallable(handle));
+    }
+    {
+      // Run to a target node and a real tensor
+      CallableOptions opts;
+      opts.add_target(node_names[1]);
+      opts.add_fetch(node_names[2] + ":0");
+      Session::CallableHandle handle;
+      TF_CHECK_OK(session->MakeCallable(opts, &handle));
+      std::vector<Tensor> outputs;
+      TF_CHECK_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+      ASSERT_EQ(1, outputs.size());
+      ASSERT_TRUE(outputs[0].IsInitialized());
+      ASSERT_EQ(4.0, outputs[0].flat<float>()(0));
+      TF_CHECK_OK(session->ReleaseCallable(handle));
+    }
+
+    TF_CHECK_OK(session->Close());
+  }
+}
+
+TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
+  // Specifying feeds/fetch devices for remote sessions is not yet defined.
+  // Ensure that the error is graceful.
+  GraphDef graph;
+  string node_names[3];
+  // c = a * b
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+
+  std::vector<DeviceAttributes> devices;
+  TF_CHECK_OK(session->ListDevices(&devices));
+  ASSERT_GT(devices.size(), 0);
+  const string device_name = devices.back().name();
+
+  CallableOptions opts;
+  const string fetch = node_names[2] + ":0";
+  opts.add_fetch(fetch);
+  opts.mutable_fetch_devices()->insert({fetch, device_name});
+
+  Session::CallableHandle handle;
+  Status status = session->MakeCallable(opts, &handle);
+  EXPECT_EQ(error::UNIMPLEMENTED, status.code());
+  TF_CHECK_OK(session->Close());
+}
+
 TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
   GraphDef graph;
   string node_names[3];
@@ -179,11 +254,36 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
   {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[1].name(), &graph_copy);
-    TF_CHECK_OK(session->Create(graph_copy));
-    auto status = session->Run({}, {}, {node_names[2]}, nullptr);
+    auto status = session->Create(graph_copy);
     EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
-    TF_CHECK_OK(session->Close());
   }
+}
+
+TEST(GrpcSessionTest, FetchMultipleTimes) {
+  GraphDef graph;
+  string node_names[3];
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+  const std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+
+  const string node = node_names[2] + ":0";
+  TF_CHECK_OK(session->Run(inputs, {node, node}, {}, &outputs));
+  EXPECT_EQ(2, outputs.size());
+  for (int i = 0; i < outputs.size(); ++i) {
+    const Tensor& t = outputs[i];
+    ASSERT_TRUE(t.IsInitialized()) << i;
+    ASSERT_EQ(4.0, t.flat<float>()(0)) << i;
+  }
+  TF_CHECK_OK(session->Close());
 }
 
 // A = [3 2; -1 0]; x = rand(2, 1); We want to compute the largest
@@ -257,7 +357,7 @@ void FindMaxEigen(const string& target) {
 
 TEST(FindMaxEigenTest, RemoteDevice) {
   std::unique_ptr<test::TestCluster> cluster;
-  test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster);
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
   FindMaxEigen(cluster->targets()[0]);
 }
 
@@ -271,7 +371,9 @@ void SetDevice(GraphDef* graph, const string& name, const string& dev) {
   LOG(FATAL) << "Name '" << name << "' not found.";
 }
 
-TEST(GrpcSessionTest, MultiDevices) {
+// TODO(b/32636929): This test fails 1/1000 times. Disable it while we
+// figure out why.
+TEST(GrpcSessionTest, DISABLED_MultiDevices) {
   std::unique_ptr<test::TestCluster> cluster;
   TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
 
@@ -415,25 +517,23 @@ TEST(GrpcSessionTest, MultiDevices_String) {
       SetDevice(&def, a->name(), a_dev.name());
       SetDevice(&def, b->name(), b_dev.name());
 
-      TF_CHECK_OK(session->Create(def));
-      {
+      Status s = session->Create(def);
+      if (s.ok()) {
         std::vector<Tensor> outputs;
-        Status s = session->Run({}, {b->name()}, {}, &outputs);
-        if (s.ok()) {
-          ASSERT_EQ(1, outputs.size());
-          ASSERT_EQ(outputs[0].dtype(), DT_STRING);
-          ASSERT_EQ(outputs[0].NumElements(), 4);
-          for (int i = 0; i < outputs[0].NumElements(); ++i) {
-            EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
-          }
-        } else {
-          LOG(ERROR) << "Error: " << s;
-          ASSERT_TRUE((a_dev.device_type() == DEVICE_GPU) ||
-                      (b_dev.device_type() == DEVICE_GPU));
-          ASSERT_FALSE(s.ok());
+        TF_CHECK_OK(session->Run({}, {b->name()}, {}, &outputs));
+        ASSERT_EQ(1, outputs.size());
+        ASSERT_EQ(outputs[0].dtype(), DT_STRING);
+        ASSERT_EQ(outputs[0].NumElements(), 4);
+        for (int i = 0; i < outputs[0].NumElements(); ++i) {
+          EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
         }
+        TF_CHECK_OK(session->Close());
+      } else {
+        LOG(ERROR) << "Error: " << s;
+        ASSERT_TRUE((a_dev.device_type() == DEVICE_GPU) ||
+                    (b_dev.device_type() == DEVICE_GPU));
+        ASSERT_FALSE(s.ok());
       }
-      TF_CHECK_OK(session->Close());
     }
   }
 }
@@ -519,7 +619,67 @@ TEST(GrpcSessionTest, Error) {
     //
     // Subgraph for "b" sleeps at the node "b_delay". When the sleep
     // finishes, the subgraph "b" will continue execution till it
-    // notices that it is cancelled. Meanwhile, subgraph's executor
+    // notices that it is canceled. Meanwhile, subgraph's executor
+    // and its related state (registered ops) should still be alive.
+    auto b = test::graph::Constant(&g, Tensor());
+    b->set_assigned_device_name(dev_b);
+    auto b_delay = test::graph::Delay(&g, b, Microseconds(1000000));
+    b_delay->set_assigned_device_name(dev_b);
+    auto b2 = test::graph::Add(&g, b, b_delay);
+    b2->set_assigned_device_name(dev_b);
+    fetches.push_back(b2->name());
+    test::graph::ToGraphDef(&g, &gdef);
+  }
+  std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(gdef));
+  {
+    Status status = session->Run({}, fetches, {}, nullptr);
+    EXPECT_FALSE(status.ok());
+    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+  }
+  // session->Close() shall clean up all states related to the session->
+  // E.g., deregisters subgraph with workers, etc.
+  TF_CHECK_OK(session->Close());
+
+  // Sleep a bit so that most of asynchronous works finishes before
+  // the test process finishes.
+  Env::Default()->SleepForMicroseconds(2000000);
+}
+
+TEST(GrpcSessionTest, LongErrorMessage) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  const string& master = cluster->targets()[0];
+  const string& dev_a = cluster->devices()[0].name();
+  const string& dev_b = cluster->devices()[1].name();
+  LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
+  GraphDef gdef;
+  std::vector<string> fetches;
+  {
+    Graph g(OpRegistry::Global());
+
+    // a2 = a + error(a)
+    //
+    // Subgraph for "a" fails. The master will cancel the subgraph for
+    // "b" and then returns the Session::Run.
+    auto a = test::graph::Constant(&g, Tensor());
+    a->set_assigned_device_name(dev_a);
+    std::vector<char> long_string_buffer(1024 * 1024, 'x');
+    StringPiece long_string(long_string_buffer.data(), 1024 * 1024);
+    string name = strings::StrCat(long_string, "fantasia!");
+    auto a_err = test::graph::Error(&g, a, name);
+    a_err->set_assigned_device_name(dev_a);
+    auto a2 = test::graph::Add(&g, a, a_err);
+    a2->set_assigned_device_name(dev_a);
+    fetches.push_back(a2->name());
+
+    // b2 = b + delay(b)
+    //
+    // Subgraph for "b" sleeps at the node "b_delay". When the sleep
+    // finishes, the subgraph "b" will continue execution till it
+    // notices that it is canceled. Meanwhile, subgraph's executor
     // and its related state (registered ops) should still be alive.
     auto b = test::graph::Constant(&g, Tensor());
     b->set_assigned_device_name(dev_b);
@@ -816,7 +976,7 @@ TEST(SessionTest, ExtendValidation) {
 // Tests that Create() with "operation_timeout_in_ms" set times out.
 TEST(SessionTest, CreateTimeoutWithSessionOptions) {
   // Creates a RemoteSession with "operation_timeout_in_ms" set to 100.
-  SessionOptions options = Options("example.org", 1);
+  SessionOptions options = Options("example.org:2222", 1);
   options.config.set_operation_timeout_in_ms(100);
   std::unique_ptr<Session> session(NewRemote(options));
 
@@ -834,7 +994,7 @@ TEST(SessionTest, CreateTimeoutWithSessionOptions) {
 
 // Tests that Create() with "timeout_in_ms" in RunOptions set times out.
 TEST(SessionTest, CreateTimeoutWithRunOptions) {
-  SessionOptions options = Options("example.org", 1);
+  SessionOptions options = Options("example.org:2222", 1);
   std::unique_ptr<Session> session(NewRemote(options));
 
   // Creates a long running op.
@@ -904,6 +1064,33 @@ TEST(SessionTest, RunTimeoutWithRunOptions) {
   // GRPC_CHTTP2_INTERNAL_ERROR which is mapped to error::INTERNAL.
   EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
               error::INTERNAL == status.code());
+}
+
+TEST(SessionTest, TestCompression) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  SessionOptions options = Options(cluster->targets()[0], 100);
+  RPCOptions* rpc_options = options.config.mutable_rpc_options();
+  rpc_options->set_compression_algorithm("deflate");
+  rpc_options->set_compression_level(GRPC_COMPRESS_LEVEL_HIGH);
+
+  std::unique_ptr<Session> session(NewRemote(options));
+
+  static const float kTestValue = 409.1934f;
+  Graph graph(OpRegistry::Global());
+  Tensor tensor(DT_FLOAT, TensorShape({1, 1}));
+  tensor.flat<float>()(0) = kTestValue;
+  Node* b = test::graph::Constant(&graph, tensor);
+  GraphDef gdef;
+  graph.ToGraphDef(&gdef);
+  RunOptions run_options;
+  TF_CHECK_OK(session->Create(run_options, gdef));
+
+  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+  TF_CHECK_OK(session->Run(inputs, {b->name()}, {}, &outputs));
+  ASSERT_EQ(1, outputs.size());
+  IsSingleFloatValue(outputs[0], kTestValue);
 }
 
 }  // namespace tensorflow

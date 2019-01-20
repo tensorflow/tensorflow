@@ -99,7 +99,7 @@ def detach_inputs(sgv, control_inputs=False):
 
 
 def detach_outputs(sgv, control_outputs=None):
-  """Detach the outputa of a subgraph view.
+  """Detach the output of a subgraph view.
 
   Args:
     sgv: the subgraph view to be detached. This argument is converted to a
@@ -194,7 +194,7 @@ def connect(sgv0, sgv1, disconnect_first=False):
   if disconnect_first:
     detach_outputs(sgv0)
   sgv0_outputs = subgraph.SubGraphView(passthrough_ts=sgv0.outputs)
-  reroute.reroute_a2b_inputs(sgv0_outputs, sgv1)
+  reroute.reroute_inputs(sgv0_outputs, sgv1)
   return sgv0, sgv1
 
 
@@ -217,5 +217,5 @@ def bypass(sgv):
   sgv = subgraph.make_view(sgv)
   sgv_inputs = list(sgv.inputs)
   sgv, detached_inputs = detach_inputs(sgv)
-  reroute.reroute_a2b_ts(sgv_inputs, sgv.outputs)
+  reroute.reroute_ts(sgv_inputs, sgv.outputs)
   return sgv, detached_inputs

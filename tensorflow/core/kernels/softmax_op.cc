@@ -15,31 +15,68 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "tensorflow/core/lib/strings/str_util.h"
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/softmax_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/softmax_op_functor.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // Partial specialization for a CPUDevice, that uses the Eigen implementation
 // from SoftmaxEigenImpl.
 namespace functor {
-template <typename T>
-struct SoftmaxFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix logits,
+template <typename Device, typename T>
+struct SoftmaxFunctorBase {
+  void operator()(const Device& d, typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<T>::Matrix softmax, const bool log) {
-    SoftmaxEigenImpl<CPUDevice, T>::Compute(d, logits, softmax, log);
+    SoftmaxEigenImpl<Device, T>::Compute(d, logits, softmax, log);
   }
 };
+template <typename T>
+struct SoftmaxFunctor<CPUDevice, T> : SoftmaxFunctorBase<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct SoftmaxFunctor<SYCLDevice, T> : SoftmaxFunctorBase<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
+
+template <typename Device, typename T>
+class SoftmaxOp : public OpKernel {
+ public:
+  explicit SoftmaxOp(OpKernelConstruction* context) : OpKernel(context) {
+    log_ = str_util::StartsWith(type_string(), "Log");
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& logits_in = context->input(0);
+    OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(logits_in.shape()),
+                errors::InvalidArgument("logits must have >= 1 dimension, got ",
+                                        logits_in.shape().DebugString()));
+    Tensor* softmax_out = nullptr;
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, logits_in.shape(), &softmax_out));
+    if (logits_in.NumElements() > 0) {
+      functor::SoftmaxFunctor<Device, T> functor;
+      functor(context->eigen_device<Device>(), logits_in.flat_inner_dims<T>(),
+              softmax_out->flat_inner_dims<T>(), log_);
+    }
+  }
+
+ private:
+  bool log_;
+};
 
 #define REGISTER_CPU(T)                                          \
   REGISTER_KERNEL_BUILDER(                                       \
@@ -58,19 +95,12 @@ TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 
-#if GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    SoftmaxOp<GPUDevice, Eigen::half>);
+    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    SoftmaxOp<SYCLDevice, float>);
 REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    SoftmaxOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    SoftmaxOp<GPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(
-    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    SoftmaxOp<GPUDevice, float>);
-#endif  // GOOGLE_CUDA
-
+    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<double>("T"),
+    SoftmaxOp<SYCLDevice, double>);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

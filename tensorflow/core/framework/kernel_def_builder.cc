@@ -14,13 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb_text.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace tensorflow {
 
 KernelDefBuilder::KernelDefBuilder(const char* op_name) {
   kernel_def_ = new KernelDef;
   kernel_def_->set_op(op_name);
+}
+
+KernelDefBuilder::~KernelDefBuilder() {
+  DCHECK(kernel_def_ == nullptr) << "Did not call Build()";
 }
 
 KernelDefBuilder& KernelDefBuilder::Device(const char* device_type) {
@@ -58,6 +64,17 @@ KernelDefBuilder& KernelDefBuilder::Label(const char* label) {
       << "' in: " << ProtoShortDebugString(*kernel_def_);
   kernel_def_->set_label(label);
   return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::Priority(int32 priority) {
+  kernel_def_->set_priority(priority);
+  return *this;
+}
+
+const KernelDef* KernelDefBuilder::Build() {
+  KernelDef* r = kernel_def_;
+  kernel_def_ = nullptr;
+  return r;
 }
 
 }  // namespace tensorflow

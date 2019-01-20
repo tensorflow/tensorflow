@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_NODE_BUILDER_H_
-#define TENSORFLOW_GRAPH_NODE_BUILDER_H_
+#ifndef TENSORFLOW_CORE_GRAPH_NODE_BUILDER_H_
+#define TENSORFLOW_CORE_GRAPH_NODE_BUILDER_H_
 
 #include <vector>
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -49,13 +49,14 @@ class NodeBuilder {
   // ArraySlice.
   struct NodeOut {
     // For referencing an existing Node.
-    NodeOut(Node* n, int i = 0);
+    NodeOut(Node* n, int32 i = 0);
+    NodeOut(OutputTensor t);
 
     // For referencing Nodes not in the graph being built. It is
     // useful when preparing a graph for ExtendSession or creating a
     // back edge to a node that hasn't been added to the graph yet,
     // but will be.
-    NodeOut(StringPiece name, int i, DataType t);
+    NodeOut(StringPiece name, int32 i, DataType t);
 
     // Default constructor for std::vector<NodeOut>.
     NodeOut();
@@ -67,7 +68,7 @@ class NodeBuilder {
     // * an out-of-range index was passed to the NodeOut constructor.
     bool error;
     string name;
-    int index;
+    int32 index;
     DataType dt;
   };
 
@@ -76,7 +77,8 @@ class NodeBuilder {
   // specified by calling the methods below.
   // REQUIRES: The OpDef must satisfy ValidateOpDef().
   NodeBuilder(StringPiece name, StringPiece op_name,
-              const OpRegistryInterface* op_registry = OpRegistry::Global());
+              const OpRegistryInterface* op_registry = OpRegistry::Global(),
+              const NodeDebugInfo* debug = nullptr);
   NodeBuilder(StringPiece name, const OpDef* op_def);
 
   // Create a NodeBuilder from an existing NodeDefBuilder.
@@ -100,6 +102,12 @@ class NodeBuilder {
   // "assigned device" in the Node).
   NodeBuilder& Device(StringPiece device_spec);
 
+  // Sets the device name in the "assigned device" field in tensorflow::Node.
+  NodeBuilder& AssignedDevice(StringPiece device);
+
+  // Sets the _XlaCluster attribute in created node to `xla_cluster`.
+  NodeBuilder& XlaCluster(StringPiece xla_cluster);
+
   // Set the value of an attr.  attr_name must match the name of one of
   // attrs defined by the Op, and value must have the corresponding type
   // (see SetAttrValue() in ../framework/attr_value_util.h for legal
@@ -120,7 +128,7 @@ class NodeBuilder {
   const OpDef& op_def() const { return def_builder_.op_def(); }
 
  private:
-  static DataType SafeGetOutput(Node* node, int i, bool* error) {
+  static DataType SafeGetOutput(const Node* node, int i, bool* error) {
     if (node != nullptr && i >= 0 && i < node->num_outputs()) {
       *error = false;
       return node->output_type(i);
@@ -131,16 +139,17 @@ class NodeBuilder {
   }
 
   // If SafeGetOutput indicates a range error, add it to errors_.
-  void AddIndexError(Node* node, int i);
+  void AddIndexError(const Node* node, int i);
 
   // Set *dt and returns true if i is in range. Combines
   // SafeGetOutput() and AddIndexError().
-  bool GetOutputType(Node* node, int i, DataType* dt);
+  bool GetOutputType(const Node* node, int i, DataType* dt);
 
   NodeDefBuilder def_builder_;
   std::vector<NodeOut> inputs_;
   std::vector<Node*> control_inputs_;
   std::vector<string> errors_;
+  string assigned_device_;
 };
 
 // IMPLEMENTATION -------------------------------------------------------------
@@ -160,4 +169,4 @@ NodeBuilder& NodeBuilder::Attr(StringPiece attr_name,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_NODE_BUILDER_H_
+#endif  // TENSORFLOW_CORE_GRAPH_NODE_BUILDER_H_

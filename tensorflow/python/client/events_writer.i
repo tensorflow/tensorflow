@@ -23,11 +23,15 @@ limitations under the License.
 
 %nodefaultctor EventsWriter;
 
+%ignore tensorflow::Status::operator=;
+%include "tensorflow/core/lib/core/status.h"
+
 %ignoreall
 %unignore tensorflow;
 %unignore tensorflow::EventsWriter;
 %unignore tensorflow::EventsWriter::EventsWriter;
 %unignore tensorflow::EventsWriter::~EventsWriter;
+%unignore tensorflow::EventsWriter::InitWithSuffix;
 %unignore tensorflow::EventsWriter::FileName;
 %rename("_WriteSerializedEvent") tensorflow::EventsWriter::WriteSerializedEvent;
 %unignore tensorflow::EventsWriter::Flush;

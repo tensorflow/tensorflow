@@ -19,7 +19,7 @@ package tensorflow.grpc;
 option java_outer_classname = "MasterServiceProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/protobuf/master.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -79,7 +79,7 @@ import "tensorflow/core/protobuf/master.proto";
 //   // result of `fetches`, to determine whether to terminate. For
 //   // example, it might fetch the loss and evaluate whether it is less
 //   // than some threshold.
-// } whlie (!should_stop({fetches}));
+// } while (!should_stop({fetches}));
 // stub->CloseSession({handle})
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,6 +91,9 @@ service MasterService {
   // Extends a session.
   rpc ExtendSession(ExtendSessionRequest) returns (ExtendSessionResponse);
 
+  // Prepares future partial run calls.
+  rpc PartialRunSetup(PartialRunSetupRequest) returns (PartialRunSetupResponse);
+
   // Drives the graph computation.
   rpc RunStep(RunStepRequest) returns (RunStepResponse);
 
@@ -100,6 +103,17 @@ service MasterService {
   // List the devices usable by the master.
   rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
 
-  // Close all existing sessions.
+  // Close and abandon all existing sessions.  Ongoing computations
+  // will no longer affect fresh ones via the resources in containers listed in
+  // the ResetRequest.  See ResetRequest for more details.
   rpc Reset(ResetRequest) returns (ResetResponse);
+
+  // Registers a callable for execution with RunCallable.
+  rpc MakeCallable(MakeCallableRequest) returns (MakeCallableResponse);
+
+  // Executes a callable registered with MakeCallable.
+  rpc RunCallable(RunCallableRequest) returns (RunCallableResponse);
+
+  // Frees resources associated with a callable registered with MakeCallable.
+  rpc ReleaseCallable(ReleaseCallableRequest) returns (ReleaseCallableResponse);
 }

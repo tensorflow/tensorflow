@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "FloorMod"
+  endpoint {
+    name: "floormod"
+  }
+  endpoint {
+    name: "mod"
+  }
+}

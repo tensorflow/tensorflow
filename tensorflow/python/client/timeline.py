@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 import json
+import re
 
 # The timeline target is usually imported as part of BUILD target
 # "platform_test", which includes also includes the "platform"
@@ -274,7 +275,7 @@ class _TensorTracker(object):
       name:  The name of the Tensor as a string.
       object_id:  Chrome Trace object identifier assigned for this Tensor.
       timestamp:  The creation timestamp of this event as a long integer.
-      pid:  Process identifier of the assicaiated device, as an integer.
+      pid:  Process identifier of the associated device, as an integer.
       allocator:  Name of the allocator used to create the Tensor.
       num_bytes:  Number of bytes allocated (long integer).
 
@@ -384,12 +385,15 @@ class Timeline(object):
 
   def _parse_op_label(self, label):
     """Parses the fields in a node timeline label."""
-    nn, rest = label.split(' = ')
-    op, rest = rest.split('(')
-    if rest == ')':
+    # Expects labels of the form: name = op(arg, arg, ...).
+    match = re.match(r'(.*) = (.*)\((.*)\)', label)
+    if match is None:
+      return 'unknown', 'unknown', []
+    nn, op, inputs = match.groups()
+    if not inputs:
       inputs = []
     else:
-      inputs = rest[:-1].split(', ')
+      inputs = inputs.split(', ')
     return nn, op, inputs
 
   def _assign_lanes(self):
@@ -421,11 +425,14 @@ class Timeline(object):
     start = nodestats.all_start_micros
     duration = nodestats.all_end_rel_micros
     tid = nodestats.thread_id
+    inputs = []
     if is_gputrace:
       # Node names should always have the form 'name:op'.
       fields = node_name.split(':') + ['unknown']
       node_name, op = fields[:2]
-      inputs = []
+    elif node_name == 'RecvTensor':
+      # RPC tracing does not use the standard timeline_label format.
+      op = 'RecvTensor'
     else:
       _, op, inputs = self._parse_op_label(nodestats.timeline_label)
     args = {'name': node_name, 'op': op}
@@ -518,7 +525,7 @@ class Timeline(object):
         end_time = node_stats.all_start_micros + node_stats.all_end_rel_micros
         self._emit_op(node_stats, device_pid, is_gputrace)
 
-        if is_gputrace:
+        if is_gputrace or node_stats.node_name == 'RecvTensor':
           continue
 
         _, _, inputs = self._parse_op_label(node_stats.timeline_label)
@@ -581,7 +588,8 @@ class Timeline(object):
       alloc_tensor_set = set()
       alloc_maxes[allocator] = AllocationMaximum(
           timestamp=0, num_bytes=0, tensors=set())
-      for time, num_bytes, name in alloc_list:
+      for time, num_bytes, name in sorted(
+          alloc_list, key=lambda allocation: allocation[0]):
         total_bytes += num_bytes
         if num_bytes < 0:
           alloc_tensor_set.discard(name)

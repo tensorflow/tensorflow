@@ -1,0 +1,27 @@
+path: "tensorflow.summary"
+tf_module {
+  member {
+    name: "SummaryWriter"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "create_file_writer"
+    argspec: "args=[\'logdir\', \'max_queue\', \'flush_millis\', \'filename_suffix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "flush"
+    argspec: "args=[\'writer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "import_event"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "summary_scope"
+    argspec: "args=[\'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'summary\', \'None\'], "
+  }
+  member_method {
+    name: "write"
+    argspec: "args=[\'tag\', \'tensor\', \'step\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

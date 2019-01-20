@@ -21,6 +21,8 @@ get_cpu_count() {
       grep processor /proc/cpuinfo | wc -l ;;
     darwin*)
       sysctl hw.ncpu | awk '{print $2}' ;;
+    cygwin*)
+      grep processor /proc/cpuinfo | wc -l ;;
     *)
       echo "1"
       exit 1 ;;
@@ -29,7 +31,7 @@ get_cpu_count() {
 }
 
 get_job_count() {
-  echo $(($(get_cpu_count) * 2))
+  echo $(($(get_cpu_count)))
 }
 
 make_host_protoc() {
@@ -48,10 +50,31 @@ make_host_protoc() {
   mkdir -p "${HOST_GENDIR}"
   ./configure --disable-shared --prefix="${HOST_GENDIR}"
   make clean
-  make -j "$(get_job_count)"
+  make -j"$(get_job_count)"
   if [ $? -ne 0 ]; then
     echo "make failed"
     exit 1
   fi
   make install
+}
+
+download_and_push() {
+  URL="$1"
+  LOCAL_DEST="$2"
+  ANDROID_DEST="$3"
+  SKIP_DOWNLOAD_IF_EXIST="$4"
+  if [[ "${SKIP_DOWNLOAD_IF_EXIST}" == "true" ]]; then
+    ANDROID_DEST_FILE_PATH="${ANDROID_DEST}/$(basename "${LOCAL_DEST}")"
+    if adb shell test -f "${ANDROID_DEST_FILE_PATH}"; then
+        echo "${ANDROID_DEST_FILE_PATH} already existins, skip download" 1>&2
+      return 0
+    fi
+  fi
+
+  curl -Ls "${URL}" -o "${LOCAL_DEST}"
+
+  if [[ ! -z "${ANDROID_DEST}" ]]; then
+    adb shell mkdir -p "${ANDROID_DEST}"
+    adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
+  fi
 }

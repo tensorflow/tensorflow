@@ -20,7 +20,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 #include <atomic>
+#include <utility>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/lib/env.h"
@@ -35,16 +38,15 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace {
-bool FLAGS_check_gpu_leaks = false;
+bool FLAGS_check_device_leaks = false;
 }  // namespace
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace {
 
 string StackTraceIfVLOG10() {
   if (VLOG_IS_ON(10)) {
-    return port::StrCat(" ", port::CurrentStackTrace(), "\n");
+    return absl::StrCat(" ", port::CurrentStackTrace(), "\n");
   } else {
     return "";
   }
@@ -80,7 +82,7 @@ internal::StreamExecutorInterface *StreamExecutorImplementationFromPlatformKind(
   }
   if (factory == nullptr) {
     LOG(FATAL)
-        << "cannot create GPU executor implementation for platform kind: "
+        << "cannot create StreamExecutor implementation for platform kind: "
         << PlatformKindString(platform_kind);
   }
   return factory(plugin_config);
@@ -118,7 +120,7 @@ class ScopedTracer {
   void Trace(CallbackT callback, TraceArgsT... args) {
     {
       // Instance tracers held in a block to limit the lock lifetime.
-      shared_lock lock{stream_exec_->mu_};
+      tf_shared_lock lock{stream_exec_->mu_};
       for (TraceListener *listener : stream_exec_->listeners_) {
         (listener->*callback)(correlation_id_,
                               std::forward<TraceArgsT>(args)...);
@@ -163,21 +165,35 @@ StreamExecutor::StreamExecutor(PlatformKind platform_kind,
   CheckPlatformKindIsValid(platform_kind);
 }
 
+// Get per-device memory limit in bytes. Returns 0 if
+// TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
+static int64 GetMemoryLimitBytes() {
+  int64 value;
+  SE_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB",
+                                              0, &value));
+  return value * (1ll << 20);
+}
+
 StreamExecutor::StreamExecutor(
-    const Platform *platform, internal::StreamExecutorInterface *implementation)
+    const Platform *platform,
+    std::unique_ptr<internal::StreamExecutorInterface> implementation)
     : platform_(platform),
-      implementation_(implementation),
+      implementation_(std::move(implementation)),
       device_ordinal_(-1),
       background_threads_(new port::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
-      tracing_enabled_(false) {
+      tracing_enabled_(false),
+      mem_alloc_bytes_(0),
+      memory_limit_bytes_(GetMemoryLimitBytes()) {
   if (port::Lowercase(platform_->Name()) == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
   } else if (port::Lowercase(platform_->Name()) == "opencl") {
     platform_kind_ = PlatformKind::kOpenCL;
   } else if (port::Lowercase(platform_->Name()) == "host") {
     platform_kind_ = PlatformKind::kHost;
+  } else {
+    platform_kind_ = PlatformKind::kInvalid;
   }
 }
 
@@ -190,7 +206,7 @@ StreamExecutor::~StreamExecutor() {
                  << "especially if any stream is still active!";
   }
 
-  if (FLAGS_check_gpu_leaks) {
+  if (FLAGS_check_device_leaks) {
     for (auto it : mem_allocs_) {
       LOG(INFO) << "Memory alloced at executor exit: addr: "
                 << port::Printf("%p", it.first)
@@ -203,7 +219,7 @@ StreamExecutor::~StreamExecutor() {
 port::Status StreamExecutor::Init(int device_ordinal,
                                   DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
-  return implementation_->Init(device_ordinal, device_options);
+  return implementation_->Init(device_ordinal, std::move(device_options));
 }
 
 port::Status StreamExecutor::Init() {
@@ -213,6 +229,19 @@ port::Status StreamExecutor::Init() {
 bool StreamExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
                                KernelBase *kernel) {
   return implementation_->GetKernel(spec, kernel);
+}
+
+void StreamExecutor::UnloadKernel(const KernelBase *kernel) {
+  implementation_->UnloadKernel(kernel);
+}
+
+bool StreamExecutor::LoadModule(const MultiModuleLoaderSpec &spec,
+                                ModuleHandle *module_handle) {
+  return implementation_->LoadModule(spec, module_handle);
+}
+
+bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
+  return implementation_->UnloadModule(module_handle);
 }
 
 void StreamExecutor::Deallocate(DeviceMemoryBase *mem) {
@@ -227,7 +256,7 @@ void StreamExecutor::Deallocate(DeviceMemoryBase *mem) {
 }
 
 void StreamExecutor::GetMemAllocs(std::map<void *, AllocRecord> *records_out) {
-  shared_lock lock{mu_};
+  tf_shared_lock lock(mu_);
   *records_out = mem_allocs_;
 }
 
@@ -251,19 +280,23 @@ port::Status StreamExecutor::SetDeviceSharedMemoryConfig(
     string error_msg = port::Printf(
         "Invalid shared memory config specified: %d", static_cast<int>(config));
     LOG(ERROR) << error_msg;
-    return port::Status{port::error::INVALID_ARGUMENT, error_msg};
+    return port::Status(port::error::INVALID_ARGUMENT, error_msg);
   }
   return implementation_->SetDeviceSharedMemoryConfig(config);
 }
 
 const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (device_description_ != nullptr) {
     return *device_description_;
   }
 
   device_description_.reset(PopulateDeviceDescription());
   return *device_description_;
+}
+
+int64 StreamExecutor::GetDeviceLoad() const {
+  return implementation_->GetDeviceLoad();
 }
 
 int StreamExecutor::PlatformDeviceCount() const {
@@ -283,37 +316,68 @@ bool StreamExecutor::SupportsDnn() const {
 }
 
 bool StreamExecutor::GetConvolveAlgorithms(
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveAlgorithms(out_algorithms);
+  int cc_major, cc_minor;
+  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
+  return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused, cc_major,
+                                            cc_minor, out_algorithms);
+}
+
+bool StreamExecutor::GetRnnAlgorithms(
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return false;
+  }
+  return dnn_support->GetRnnAlgorithms(out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveBackwardDataAlgorithms(out_algorithms);
+  int cc_major, cc_minor;
+  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
+  return dnn_support->GetConvolveBackwardDataAlgorithms(
+      with_winograd_nonfused, cc_major, cc_minor, out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveBackwardFilterAlgorithms(out_algorithms);
+  int cc_major, cc_minor;
+  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
+  return dnn_support->GetConvolveBackwardFilterAlgorithms(
+      with_winograd_nonfused, cc_major, cc_minor, out_algorithms);
+}
+
+bool StreamExecutor::GetBlasGemmAlgorithms(
+    std::vector<blas::AlgorithmType> *out_algorithms) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return false;
+  }
+  return blas_support->GetBlasGemmAlgorithms(out_algorithms);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
-    int num_layers, int hidden_size, int input_size,
+    int num_layers, int hidden_size, int input_size, int batch_size,
     dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
-    dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout, uint64 seed,
+    dnn::RnnMode rnn_mode, dnn::DataType data_type,
+    const dnn::AlgorithmConfig &algorithm_config, float dropout, uint64 seed,
     ScratchAllocator *state_allocator) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
@@ -321,12 +385,13 @@ StreamExecutor::createRnnDescriptor(
                         "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
-      num_layers, hidden_size, input_size, input_mode, direction_mode, rnn_mode,
-      data_type, dropout, seed, state_allocator);
+      num_layers, hidden_size, input_size, batch_size, input_mode,
+      direction_mode, rnn_mode, data_type, algorithm_config, dropout, seed,
+      state_allocator);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
+StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   int batch_size, int data_size,
                                                   dnn::DataType data_type) {
   dnn::DnnSupport *dnn_support = AsDnn();
@@ -334,8 +399,21 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
     return port::Status(port::error::UNKNOWN,
                         "Fail to find the dnn implementation.");
   }
-  return dnn_support->createRnnSequenceTensorDescriptor(seq_length, batch_size,
-                                                        data_size, data_type);
+  return dnn_support->createRnnSequenceTensorDescriptor(
+      max_seq_length, batch_size, data_size, data_type);
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+StreamExecutor::createRnnSequenceTensorDescriptor(
+    int max_seq_length, int batch_size, int data_size,
+    const absl::Span<const int> &seq_lengths, dnn::DataType data_type) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnSequenceTensorDescriptor(
+      max_seq_length, batch_size, data_size, seq_lengths, data_type);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
@@ -352,7 +430,7 @@ StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
 }
 
 dnn::DnnSupport *StreamExecutor::AsDnn() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (dnn_ != nullptr) {
     return dnn_.get();
   }
@@ -362,7 +440,7 @@ dnn::DnnSupport *StreamExecutor::AsDnn() {
 }
 
 blas::BlasSupport *StreamExecutor::AsBlas() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (blas_ != nullptr) {
     return blas_.get();
   }
@@ -372,7 +450,7 @@ blas::BlasSupport *StreamExecutor::AsBlas() {
 }
 
 fft::FftSupport *StreamExecutor::AsFft() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (fft_ != nullptr) {
     return fft_.get();
   }
@@ -382,7 +460,7 @@ fft::FftSupport *StreamExecutor::AsFft() {
 }
 
 rng::RngSupport *StreamExecutor::AsRng() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (rng_ != nullptr) {
     return rng_.get();
   }
@@ -394,15 +472,15 @@ rng::RngSupport *StreamExecutor::AsRng() {
 bool StreamExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
                             const BlockDim &block_dims,
                             const KernelBase &kernel,
-                            const std::vector<KernelArg> &args) {
+                            const KernelArgsArrayBase &args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
-bool StreamExecutor::BlockHostUntilDone(Stream *stream) {
-  bool result;
+port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
+  port::Status result;
   SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
 
   result = implementation_->BlockHostUntilDone(stream);
@@ -410,6 +488,14 @@ bool StreamExecutor::BlockHostUntilDone(Stream *stream) {
 }
 
 void *StreamExecutor::Allocate(uint64 size) {
+  if (memory_limit_bytes_ > 0 &&
+      mem_alloc_bytes_ + size > memory_limit_bytes_) {
+    LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
+                 << device_ordinal_
+                 << " within provided limit. [used=" << mem_alloc_bytes_
+                 << ", limit=" << memory_limit_bytes_ << "]";
+    return nullptr;
+  }
   void *buf = implementation_->Allocate(size);
   VLOG(1) << "Called StreamExecutor::Allocate(size=" << size << ") returns "
           << buf << StackTraceIfVLOG10();
@@ -418,9 +504,48 @@ void *StreamExecutor::Allocate(uint64 size) {
   return buf;
 }
 
-bool StreamExecutor::GetSymbol(const string &symbol_name, void **mem,
+port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
+    const string &symbol_name, ModuleHandle module_handle) {
+  // If failed to get the symbol, opaque/bytes are unchanged. Initialize them to
+  // be nullptr/0 for consistency with DeviceMemory semantics.
+  void *opaque = nullptr;
+  size_t bytes = 0;
+  if (GetSymbol(symbol_name, module_handle, &opaque, &bytes)) {
+    return DeviceMemoryBase(opaque, bytes);
+  }
+
+  if (static_cast<bool>(module_handle)) {
+    return port::Status(
+        port::error::NOT_FOUND,
+        absl::StrCat("Check if module containing symbol ", symbol_name,
+                     " is loaded (module_handle = ",
+                     reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
+  } else {
+    return port::Status(
+        port::error::NOT_FOUND,
+        absl::StrCat("Check if kernel using the symbol is loaded: ",
+                     symbol_name));
+  }
+}
+
+bool StreamExecutor::GetSymbol(const string &symbol_name,
+                               ModuleHandle module_handle, void **mem,
                                size_t *bytes) {
-  return implementation_->GetSymbol(symbol_name, mem, bytes);
+  return implementation_->GetSymbol(symbol_name, module_handle, mem, bytes);
+}
+
+void *StreamExecutor::UnifiedMemoryAllocate(uint64 bytes) {
+  void *buffer = implementation_->UnifiedMemoryAllocate(bytes);
+  VLOG(1) << "Called StreamExecutor::UnifiedMemoryAllocate(size=" << bytes
+          << ") returns " << buffer << StackTraceIfVLOG10();
+  return buffer;
+}
+
+void StreamExecutor::UnifiedMemoryDeallocate(void *location) {
+  VLOG(1) << "Called StreamExecutor::UnifiedMemoryDeallocate(location="
+          << location << ")" << StackTraceIfVLOG10();
+
+  return implementation_->UnifiedMemoryDeallocate(location);
 }
 
 void *StreamExecutor::HostMemoryAllocate(uint64 size) {
@@ -482,98 +607,115 @@ bool StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
   return implementation_->SynchronousMemSet(location, value, size);
 }
 
-bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *device_dst,
                                        const void *host_src, uint64 size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(gpu_dst="
-          << gpu_dst->opaque() << ", host_src=" << host_src << ", size=" << size
-          << ") H2D" << StackTraceIfVLOG10();
+  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(device_dst="
+          << device_dst->opaque() << ", host_src=" << host_src
+          << ", size=" << size << ") H2D" << StackTraceIfVLOG10();
 
   // Tracing overloaded methods is very difficult due to issues with type
   // inference on template args. Since use of these overloaded methods is
   // discouraged anyway, this isn't a huge deal.
-  return implementation_->SynchronousMemcpy(gpu_dst, host_src, size);
+  port::Status status =
+      implementation_->SynchronousMemcpy(device_dst, host_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
 bool StreamExecutor::SynchronousMemcpy(void *host_dst,
-                                       const DeviceMemoryBase &gpu_src,
+                                       const DeviceMemoryBase &device_src,
                                        uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(host_dst=" << host_dst
-          << ", gpu_src=" << gpu_src.opaque() << ", size=" << size << ") D2H"
-          << StackTraceIfVLOG10();
+          << ", device_src=" << device_src.opaque() << ", size=" << size
+          << ") D2H" << StackTraceIfVLOG10();
 
-  return implementation_->SynchronousMemcpy(host_dst, gpu_src, size);
+  port::Status status =
+      implementation_->SynchronousMemcpy(host_dst, device_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
-bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                       const DeviceMemoryBase &gpu_src,
+bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *device_dst,
+                                       const DeviceMemoryBase &device_src,
                                        uint64 size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(gpu_dst="
-          << gpu_dst->opaque() << ", gpu_src=" << gpu_src.opaque()
+  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(device_dst="
+          << device_dst->opaque() << ", device_src=" << device_src.opaque()
           << ", size=" << size << ") D2D" << StackTraceIfVLOG10();
 
-  return implementation_->SynchronousMemcpyDeviceToDevice(gpu_dst, gpu_src,
-                                                          size);
+  port::Status status = implementation_->SynchronousMemcpyDeviceToDevice(
+      device_dst, device_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
 port::Status StreamExecutor::SynchronousMemcpyD2H(
-    const DeviceMemoryBase &gpu_src, int64 size, void *host_dst) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpyD2H(gpu_src="
-          << gpu_src.opaque() << ", size=" << size << ", host_dst=" << host_dst
-          << ")" << StackTraceIfVLOG10();
+    const DeviceMemoryBase &device_src, int64 size, void *host_dst) {
+  VLOG(1) << "Called StreamExecutor::SynchronousMemcpyD2H(device_src="
+          << device_src.opaque() << ", size=" << size
+          << ", host_dst=" << host_dst << ")" << StackTraceIfVLOG10();
 
-  port::Status result{port::Status::OK()};
-  SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H,
-               &result, gpu_src, size, host_dst);
+  port::Status result;
+  SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H, &result, device_src, size,
+               host_dst);
 
-  if (!implementation_->SynchronousMemcpy(host_dst, gpu_src, size)) {
-    return port::Status{
-        port::error::INTERNAL,
-        port::Printf(
-            "failed to synchronously memcpy device-to-host: GPU %p to host %p "
-            "size %lld",
-            gpu_src.opaque(), host_dst, size)};
+  result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
+  if (!result.ok()) {
+    result = port::Status(port::error::INTERNAL,
+                          port::Printf("failed to synchronously memcpy "
+                                       "device-to-host: device %p to host %p "
+                                       "size %lld: %s",
+                                       device_src.opaque(), host_dst, size,
+                                       result.ToString().c_str()));
   }
 
   return result;
 }
 
-port::Status StreamExecutor::SynchronousMemcpyH2D(const void *host_src,
-                                                  int64 size,
-                                                  DeviceMemoryBase *gpu_dst) {
+port::Status StreamExecutor::SynchronousMemcpyH2D(
+    const void *host_src, int64 size, DeviceMemoryBase *device_dst) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpyH2D(host_src=" << host_src
-          << ", size=" << size << ", gpu_dst" << gpu_dst->opaque() << ")"
+          << ", size=" << size << ", device_dst=" << device_dst->opaque() << ")"
           << StackTraceIfVLOG10();
 
-  port::Status result{port::Status::OK()};
-  SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D,
-               &result, host_src, size, gpu_dst);
+  port::Status result;
+  SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D, &result, host_src, size,
+               device_dst);
 
-  if (!implementation_->SynchronousMemcpy(gpu_dst, host_src, size)) {
-    result = port::Status{
+  result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
+  if (!result.ok()) {
+    result = port::Status(
         port::error::INTERNAL,
         port::Printf("failed to synchronously memcpy host-to-device: host "
-                     "%p to GPU %p size %lld",
-                     host_src, gpu_dst->opaque(), size)};
+                     "%p to device %p size %lld: %s",
+                     host_src, device_dst->opaque(), size,
+                     result.ToString().c_str()));
   }
 
   return result;
 }
 
 bool StreamExecutor::Memcpy(Stream *stream, void *host_dst,
-                            const DeviceMemoryBase &gpu_src, uint64 size) {
-  return implementation_->Memcpy(stream, host_dst, gpu_src, size);
+                            const DeviceMemoryBase &device_src, uint64 size) {
+  return implementation_->Memcpy(stream, host_dst, device_src, size);
 }
 
-bool StreamExecutor::Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
+bool StreamExecutor::Memcpy(Stream *stream, DeviceMemoryBase *device_dst,
                             const void *host_src, uint64 size) {
-  return implementation_->Memcpy(stream, gpu_dst, host_src, size);
+  return implementation_->Memcpy(stream, device_dst, host_src, size);
 }
 
 bool StreamExecutor::MemcpyDeviceToDevice(Stream *stream,
-                                          DeviceMemoryBase *gpu_dst,
-                                          const DeviceMemoryBase &gpu_src,
+                                          DeviceMemoryBase *device_dst,
+                                          const DeviceMemoryBase &device_src,
                                           uint64 size) {
-  return implementation_->MemcpyDeviceToDevice(stream, gpu_dst, gpu_src, size);
+  return implementation_->MemcpyDeviceToDevice(stream, device_dst, device_src,
+                                               size);
 }
 
 bool StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
@@ -590,7 +732,12 @@ bool StreamExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
 
 bool StreamExecutor::HostCallback(Stream *stream,
                                   std::function<void()> callback) {
-  return implementation_->HostCallback(stream, callback);
+  return implementation_->HostCallback(stream, std::move(callback));
+}
+
+bool StreamExecutor::HostCallback(Stream *stream,
+                                  std::function<port::Status()> callback) {
+  return implementation_->HostCallback(stream, std::move(callback));
 }
 
 port::Status StreamExecutor::AllocateEvent(Event *event) {
@@ -659,30 +806,27 @@ bool StreamExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
   return implementation_->DeviceMemoryUsage(free, total);
 }
 
-KernelArg StreamExecutor::DeviceMemoryToKernelArg(
-    const DeviceMemoryBase &gpu_mem) const {
-  return implementation_->DeviceMemoryToKernelArg(gpu_mem);
-}
-
 void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
-  background_threads_->Schedule(task);
+  background_threads_->Schedule(std::move(task));
 }
 
 void StreamExecutor::CreateAllocRecord(void *opaque, uint64 bytes) {
-  if (FLAGS_check_gpu_leaks && opaque != nullptr && bytes != 0) {
-    mutex_lock lock{mu_};
+  if (FLAGS_check_device_leaks && opaque != nullptr && bytes != 0) {
+    mutex_lock lock(mu_);
     mem_allocs_[opaque] = AllocRecord{
         bytes, ""};
+    mem_alloc_bytes_ += bytes;
   }
 }
 
 void StreamExecutor::EraseAllocRecord(void *opaque) {
-  if (FLAGS_check_gpu_leaks && opaque != nullptr) {
-    mutex_lock lock{mu_};
+  if (FLAGS_check_device_leaks && opaque != nullptr) {
+    mutex_lock lock(mu_);
     if (mem_allocs_.find(opaque) == mem_allocs_.end()) {
       LOG(ERROR) << "Deallocating unknown pointer: "
                  << port::Printf("0x%p", opaque);
     } else {
+      mem_alloc_bytes_ -= mem_allocs_[opaque].bytes;
       mem_allocs_.erase(opaque);
     }
   }
@@ -692,7 +836,7 @@ void StreamExecutor::EnableTracing(bool enabled) { tracing_enabled_ = enabled; }
 
 void StreamExecutor::RegisterTraceListener(TraceListener *listener) {
   {
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     if (listeners_.find(listener) != listeners_.end()) {
       LOG(INFO) << "Attempt to register already-registered listener, "
                 << listener;
@@ -706,7 +850,7 @@ void StreamExecutor::RegisterTraceListener(TraceListener *listener) {
 
 bool StreamExecutor::UnregisterTraceListener(TraceListener *listener) {
   {
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     if (listeners_.find(listener) == listeners_.end()) {
       LOG(INFO) << "Attempt to unregister unknown listener, " << listener;
       return false;
@@ -723,7 +867,7 @@ void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&... args) {
   if (tracing_enabled_) {
     {
       // instance tracers held in a block to limit the lock lifetime.
-      shared_lock lock{mu_};
+      tf_shared_lock lock(mu_);
       for (TraceListener *listener : listeners_) {
         (listener->*trace_call)(std::forward<ArgsT>(args)...);
       }
@@ -735,5 +879,4 @@ internal::StreamExecutorInterface *StreamExecutor::implementation() {
   return implementation_->GetUnderlyingExecutor();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

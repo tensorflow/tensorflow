@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_EXTRACT_IMAGE_PATCHES_OP_H_
-#define TENSORFLOW_KERNELS_EXTRACT_IMAGE_PATCHES_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EXTRACT_IMAGE_PATCHES_OP_H_
+#define TENSORFLOW_CORE_KERNELS_EXTRACT_IMAGE_PATCHES_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -32,15 +32,25 @@ struct ExtractImagePatchesForward {
                   typename TTypes<T, 4>::Tensor output) {
     // Need to swap row/col when calling Eigen, because our data is in
     // NHWC format while Eigen assumes NWHC format.
-    To32Bit(output).device(d) =
-        To32Bit(input)
-            .extract_image_patches(patch_cols, patch_rows, stride_cols,
-                                   stride_rows, rate_cols, rate_rows, padding)
-            .reshape(output.dimensions());
+    const int64 N = std::max(input.size(), output.size());
+    if (N <= std::numeric_limits<Index32>::max()) {
+      auto output_32bit = To32Bit(output);
+      output_32bit.device(d) =
+          To32Bit(input)
+              .extract_image_patches(patch_cols, patch_rows, stride_cols,
+                                     stride_rows, rate_cols, rate_rows, padding)
+              .reshape(output_32bit.dimensions());
+    } else {
+      output.device(d) =
+          input
+              .extract_image_patches(patch_cols, patch_rows, stride_cols,
+                                     stride_rows, rate_cols, rate_rows, padding)
+              .reshape(output.dimensions());
+    }
   }
 };
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_EXTRACT_IMAGE_PATCHES_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EXTRACT_IMAGE_PATCHES_OP_H_

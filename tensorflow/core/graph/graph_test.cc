@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <set>
+#include <unordered_map>
 #include <vector>
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -50,8 +54,8 @@ class GraphTest : public ::testing::Test {
   GraphTest() : graph_(OpRegistry::Global()) {}
   ~GraphTest() override {}
 
-  static void VerifyNodes(Node* node, std::vector<Node*> expected_in,
-                          std::vector<Node*> expected_out) {
+  static void VerifyNodes(Node* node, const std::vector<Node*>& expected_in,
+                          const std::vector<Node*>& expected_out) {
     std::vector<Node*> in;
     for (const Edge* e : node->in_edges()) {
       in.push_back(e->src());
@@ -102,6 +106,37 @@ class GraphTest : public ::testing::Test {
     return node;
   }
 
+  void FromGraphDef(const string& gdef_ascii) {
+    GraphDef gdef;
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+    GraphConstructorOptions opts;
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef, &graph_));
+  }
+
+  Node* FindNode(const string& name) {
+    for (Node* node : graph_.nodes()) {
+      if (node->name() == name) return node;
+    }
+    LOG(FATAL) << name;
+  }
+
+  bool ControlEdgeExistsInGraphOrNodeDef(const Node* src, const Node* dst) {
+    for (const Edge* e : dst->in_edges()) {
+      if (e->IsControlEdge() && e->src() == src &&
+          e->src_output() == Graph::kControlSlot &&
+          e->dst_input() == Graph::kControlSlot) {
+        return true;
+      }
+    }
+    std::string control_edge_name = strings::StrCat("^", src->name());
+    for (int i = 0; i < dst->def().input_size(); ++i) {
+      if (dst->def().input(i) == control_edge_name) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Graph graph_;
 
  private:
@@ -109,6 +144,7 @@ class GraphTest : public ::testing::Test {
   // are readable.
   static std::vector<string> Stringify(const std::vector<Node*>& nodes) {
     std::vector<string> result;
+    result.reserve(nodes.size());
     for (Node* n : nodes) {
       result.push_back(n->DebugString());
     }
@@ -211,6 +247,12 @@ TEST_F(GraphTest, NodeByIndex) {
   EXPECT_EQ(1, e->dst_input());
   EXPECT_EQ(t, e->src());
 
+  std::vector<const Edge*> t_input_edges;
+  TF_ASSERT_OK(t->input_edges(&t_input_edges));
+  ASSERT_EQ(2, t_input_edges.size());
+  EXPECT_EQ(a, t_input_edges[0]->src());
+  EXPECT_EQ(e, t_input_edges[1]);
+
   // Check out of bounds access
   EXPECT_FALSE(c->input_node(1, &a_copy).ok());
   EXPECT_FALSE(c->input_node(-1, &a_copy).ok());
@@ -240,6 +282,11 @@ TEST_F(GraphTest, NodeByIndex) {
 
   // Check that the second edge can still be retrieved
   TF_ASSERT_OK(c->input_edge(0, &b_new_c_edge));
+
+  std::vector<const Edge*> c_input_edges;
+  TF_ASSERT_OK(c->input_edges(&c_input_edges));
+  ASSERT_EQ(1, c_input_edges.size());
+  EXPECT_EQ(b_new_c_edge, c_input_edges[0]);
 }
 
 TEST_F(GraphTest, NodeIteration) {
@@ -306,21 +353,21 @@ TEST_F(GraphTest, AddAttr) {
   n1->AddAttr("_a", "new_attr");
 
   string attr;
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_a", &attr));
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
 
   Node* n2 = graph_.CopyNode(n1);
 
   n1->AddAttr("_b", "new_attr_2");
 
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_a", &attr));
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_b", &attr));
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_b", &attr));
   EXPECT_EQ("new_attr_2", attr);
 
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n2->def(), "_a", &attr));
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n2->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
-  EXPECT_NE(Status::OK(), GetNodeAttr(n2->def(), "_b", &attr));
+  EXPECT_NE(Status::OK(), GetNodeAttr(n2->attrs(), "_b", &attr));
 }
 
 // Convert edge iteration results into a sorted string.
@@ -363,35 +410,337 @@ TEST_F(GraphTest, NewName) {
   EXPECT_NE(a1, a2);
   EXPECT_NE(a1, b1);
   EXPECT_NE(a2, b1);
-  EXPECT_TRUE(StringPiece(a1).starts_with("A")) << a1;
+  EXPECT_TRUE(str_util::StartsWith(a1, "A")) << a1;
 }
 
-REGISTER_OP("Input").Output("o: float");
-REGISTER_OP("In2Out1").Input("a: float").Input("b: float").Output("o: float");
+TEST_F(GraphTest, IsValidNode) {
+  // Add 1 node to graph_
+  Node* g1_node1;
+  TF_CHECK_OK(NodeBuilder("g1_node1", "NoOp").Finalize(&graph_, &g1_node1));
 
-static void BM_InEdgeIteration(int iters, int num_nodes) {
-  testing::StopTiming();
+  // Add 2 nodes to graph2
+  Graph graph2(OpRegistry::Global());
+  Node* g2_node1;
+  Node* g2_node2;
+  TF_CHECK_OK(NodeBuilder("g2_node1", "NoOp").Finalize(&graph2, &g2_node1));
+  TF_CHECK_OK(NodeBuilder("g2_node2", "NoOp").Finalize(&graph2, &g2_node2));
+
+  // nullptr
+  Status s = graph_.IsValidNode(nullptr);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("Node is null"), s.error_message());
+
+  // node id_ is too high
+  s = graph_.IsValidNode(g2_node2);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("node id 3 is >= than number of nodes in graph 3"),
+            s.error_message());
+
+  // valid id_ but different ptr
+  s = graph_.IsValidNode(g2_node1);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
+                   "Does it belong to a different graph?"),
+            s.error_message());
+}
+
+TEST_F(GraphTest, AddControlEdge) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } ");
+  Node* a = FindNode("A");
+  Node* b = FindNode("B");
+  Node* c = FindNode("C");
+
+  // Add a control edge.
+  const Edge* edge = graph_.AddControlEdge(c, a);
+  ASSERT_TRUE(edge != nullptr);
+  // Check newly-created edge.
+  EXPECT_EQ(edge->src(), c);
+  EXPECT_EQ(edge->src_output(), Graph::kControlSlot);
+  EXPECT_EQ(edge->dst(), a);
+  EXPECT_EQ(edge->dst_input(), Graph::kControlSlot);
+  // Check A's NodeDef.
+  ASSERT_EQ(a->def().input_size(), 1);
+  EXPECT_EQ(a->def().input(0), "^C");
+
+  // Can add control edge redundant with data edge.
+  edge = graph_.AddControlEdge(a, b);
+  EXPECT_TRUE(edge != nullptr);
+  ASSERT_EQ(b->def().input_size(), 2);
+  EXPECT_EQ(b->def().input(0), "A:0");
+  EXPECT_EQ(b->def().input(1), "^A");
+
+  // Doesn't add edge redundant with control edge.
+  edge = graph_.AddControlEdge(a, b);
+  EXPECT_TRUE(edge == nullptr);
+  EXPECT_EQ(b->def().input_size(), 2);
+
+  // Can add redundant control edge with allow_duplicates.
+  edge = graph_.AddControlEdge(a, b, /*allow_duplicates=*/true);
+  EXPECT_TRUE(edge != nullptr);
+  // create_duplicate causes the NodeDef not to be updated.
+  ASSERT_EQ(b->def().input_size(), 2);
+  EXPECT_EQ(b->def().input(0), "A:0");
+  EXPECT_EQ(b->def().input(1), "^A");
+
+  // Add control edge from source.
+  edge = graph_.AddControlEdge(graph_.source_node(), b);
+  EXPECT_TRUE(edge != nullptr);
+  // Check that we don't include source input in the NodeDef.
+  EXPECT_EQ(b->def().input_size(), 2);
+  // Doesn't add redundant edge.
+  edge = graph_.AddControlEdge(graph_.source_node(), b);
+  EXPECT_TRUE(edge == nullptr);
+  EXPECT_EQ(b->def().input_size(), 2);
+}
+
+TEST_F(GraphTest, RemoveControlEdge) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } ");
+  Node* a = FindNode("A");
+  Node* b = FindNode("B");
+  Node* c = FindNode("C");
+
+  // Add a control edge.
+  const Edge* edge_1 = graph_.AddControlEdge(c, a);
+  const Edge* edge_2 = graph_.AddControlEdge(a, b);
+  ASSERT_TRUE(edge_1 != nullptr);
+  ASSERT_TRUE(edge_2 != nullptr);
+
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(a, b));
+
+  graph_.RemoveControlEdge(edge_1);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(a, b));
+
+  graph_.RemoveControlEdge(edge_2);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(a, b));
+
+  // Test removing a duplicate control edge.
+  // Note that unless allow_duplicates is true, the duplicate edge
+  // will not be added. That's why we expect edge_4 to be a null
+  // pointer. We are not testing with allow_duplicates set to true,
+  // as that is a highly unlikely use case that does not make much
+  // sense.
+  const Edge* edge_3 = graph_.AddControlEdge(c, a);
+  const Edge* edge_4 = graph_.AddControlEdge(c, a);
+  ASSERT_TRUE(edge_3 != nullptr);
+  ASSERT_TRUE(edge_4 == nullptr);
+
+  graph_.RemoveControlEdge(edge_3);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
+}
+
+TEST_F(GraphTest, UpdateEdge) {
+  // Build a little graph
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* b = FromNodeDef("B", "OneInputTwoOutputs", 1);
+  Node* c = FromNodeDef("C", "OneInputTwoOutputs", 1);
+  Node* d = FromNodeDef("D", "OneInput", 1);
+
+  graph_.AddControlEdge(graph_.source_node(), a);
+  graph_.AddControlEdge(a, graph_.sink_node());
+  graph_.AddEdge(a, 0, c, 0);
+
+  graph_.AddControlEdge(c, graph_.sink_node());
+  graph_.AddEdge(c, 0, b, 0);
+  graph_.AddEdge(c, 1, d, 0);
+
+  // Initial edge connections
+  EXPECT_EQ("0->1;0->2;2->1;2->4;4->1;4->3;4->5;", EdgeIter(graph_));
+
+  // Update the inputs, expect that Edge a to b (2->3) is now in the graph
+  // and c to b (4->3) no longer appears.
+  TF_EXPECT_OK(graph_.UpdateEdge(a, 0, b, 0));
+  // Check that the edge is connecting the correct nodes.
+  EXPECT_EQ("0->1;0->2;2->1;2->3;2->4;4->1;4->5;", EdgeIter(graph_));
+
+  // Update a's 0th output again.
+  TF_EXPECT_OK(graph_.UpdateEdge(a, 0, d, 0));
+  EXPECT_EQ("0->1;0->2;2->1;2->3;2->4;2->5;4->1;", EdgeIter(graph_));
+
+  // Update a's 1st output which is out of range.
+  Status s = graph_.UpdateEdge(a, 1, d, 0);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(
+      s.error_message(),
+      "Node 'A' (type: 'OneOutput', num of outputs: 1) does not have output 1");
+
+  // Update a's 1st input which is out of range.
+  s = graph_.UpdateEdge(c, 0, a, 0);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(
+      s.error_message(),
+      "Node 'A' (type: 'OneOutput', num of inputs: 0) does not have input 0");
+}
+
+TEST_F(GraphTest, InputEdges) {
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* b = FromNodeDef("B", "TwoInputsOneOutput", 2);
+  graph_.AddEdge(a, 0, b, 0);
+  std::vector<const Edge*> edges;
+  EXPECT_EQ(error::INVALID_ARGUMENT, b->input_edges(&edges).code());
+  graph_.AddEdge(a, 0, b, 1);
+  TF_EXPECT_OK(b->input_edges(&edges));
+}
+
+TEST_F(GraphTest, AddFunctionLibrary) {
+  // Basic functionality
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_function() = test::function::XTimesFour();
+  TF_EXPECT_OK(graph_.AddFunctionLibrary(proto));
+  EXPECT_TRUE(graph_.flib_def().Find("XTimesTwo") != nullptr);
+  EXPECT_TRUE(graph_.flib_def().Find("XTimesFour") != nullptr);
+
+  // Duplicate functions are ignored
+  TF_EXPECT_OK(graph_.AddFunctionLibrary(proto));
+  EXPECT_TRUE(graph_.flib_def().Find("XTimesTwo") != nullptr);
+  EXPECT_TRUE(graph_.flib_def().Find("XTimesFour") != nullptr);
+
+  // Duplicate names corresponding to different functions trigger an error
+  FunctionDefLibrary error_proto = proto;
+  *error_proto.mutable_function(0)->add_node_def() =
+      error_proto.function(0).node_def(0);
+  Status s = graph_.AddFunctionLibrary(error_proto);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Cannot add function 'XTimesTwo' because a different function with "
+            "the same name already exists.");
+
+  // Function with same name as an existing op triggers an error
+  error_proto = proto;
+  error_proto.mutable_function(0)->mutable_signature()->set_name("Add");
+  s = graph_.AddFunctionLibrary(error_proto);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Cannot add function 'Add' because an op with the same name "
+            "already exists.");
+
+  // Adding a gradient function to an existing function is ok
+  GradientDef* grad = proto.add_gradient();
+  grad->set_function_name("XTimesTwo");
+  grad->set_gradient_func("Undefined");  // undefined funcs in grads are ok
+  TF_EXPECT_OK(graph_.AddFunctionLibrary(proto));
+  EXPECT_EQ(graph_.flib_def().FindGradient("XTimesTwo"), "Undefined");
+
+  // Duplicate gradients are ignored
+  TF_EXPECT_OK(graph_.AddFunctionLibrary(proto));
+  EXPECT_EQ(graph_.flib_def().FindGradient("XTimesTwo"), "Undefined");
+
+  // Conflicting gradient triggers an error
+  error_proto = proto;
+  error_proto.mutable_gradient(0)->set_gradient_func("Undefined2");
+  s = graph_.AddFunctionLibrary(error_proto);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Cannot assign gradient function 'Undefined2' to 'XTimesTwo' "
+            "because it already has gradient function 'Undefined'");
+}
+
+TEST_F(GraphTest, BuildNodeNameIndex) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } ");
+
+  auto node_name_index = graph_.BuildNodeNameIndex();
+  EXPECT_EQ(node_name_index.size(), 5);
+
+  std::vector<string> node_names{"_SOURCE", "_SINK", "A", "B", "C"};
+  for (const string& node_name : node_names) {
+    EXPECT_NE(node_name_index.find(node_name), node_name_index.end());
+    EXPECT_EQ(node_name_index[node_name], FindNode(node_name));
+  }
+}
+
+REGISTER_OP("Input").Output("y: float");
+REGISTER_OP("Output")
+    .Input("x: N * float")
+    .Attr("N: int >= 1")
+    .Output("y: float");
+REGISTER_OP("In2Out1").Input("a: float").Input("b: float").Output("y: float");
+REGISTER_OP("In4Out1")
+    .Input("a: float")
+    .Input("b: float")
+    .Input("c: float")
+    .Input("d: float")
+    .Output("y: float");
+REGISTER_OP("In8Out1")
+    .Input("a: float")
+    .Input("b: float")
+    .Input("c: float")
+    .Input("d: float")
+    .Input("e: float")
+    .Input("f: float")
+    .Input("g: float")
+    .Input("h: float")
+    .Output("y: float");
+REGISTER_OP("In16Out1")
+    .Input("a: float")
+    .Input("b: float")
+    .Input("c: float")
+    .Input("d: float")
+    .Input("e: float")
+    .Input("f: float")
+    .Input("g: float")
+    .Input("h: float")
+    .Input("i: float")
+    .Input("j: float")
+    .Input("k: float")
+    .Input("l: float")
+    .Input("m: float")
+    .Input("n: float")
+    .Input("o: float")
+    .Input("p: float")
+    .Output("y: float");
+
+GraphDef CreateGraphDef(int num_nodes, int num_edges_per_node) {
+  const int kNumInNodes = 10 * num_edges_per_node;
   string s;
-  for (int in = 0; in < 10; in++) {
+  for (int in = 0; in < kNumInNodes; in++) {
     s += strings::Printf("node { name: 'in%04d' op: 'Input' }", in);
   }
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   for (int op = 0; op < num_nodes; op++) {
-    s += strings::Printf(
-        "node { name: 'op%04d' op: 'In2Out1' input: ['in%04d', 'in%04d' ] }",
-        op, rnd.Uniform(10), rnd.Uniform(10));
+    s += strings::Printf("node { name: 'op%05d' op: 'In%dOut1' input: [ ", op,
+                         num_edges_per_node);
+    for (int edge = 0; edge < num_edges_per_node - 1; ++edge) {
+      s += strings::Printf("'in%04d', ", rnd.Uniform(kNumInNodes));
+    }
+    s += strings::Printf("'in%04d' ] } ", rnd.Uniform(kNumInNodes));
   }
-
-  Graph graph(OpRegistry::Global());
+  // Add a single sink node. Otherwise a lot of time is spent in
+  // FixupSourceAndSinkEdges().
+  s += strings::Printf("node { name: 'out' op: 'Output' input: [ ");
+  for (int op = 0; op < num_nodes - 1; op++) {
+    s += strings::Printf("'op%05d', ", op);
+  }
+  s += strings::Printf("'op%05d' ], attr: { key: 'N' value { i: %d } } } ",
+                       num_nodes - 1, num_nodes);
   GraphDef graph_def;
   CHECK(protobuf::TextFormat::ParseFromString(s, &graph_def));
+  return graph_def;
+}
+
+static void BM_InEdgeIteration(int iters, int num_nodes,
+                               int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def = CreateGraphDef(num_nodes, num_edges_per_node);
+  Graph graph(OpRegistry::Global());
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
 
   int64 sum = 0;
   testing::StartTiming();
-  for (int i = 0; i < iters; i += graph.num_node_ids()) {
+  for (int i = 0; i < iters; ++i) {
     for (const Node* node : graph.nodes()) {
       for (auto e : node->in_edges()) {
         sum += e->id();
@@ -399,8 +748,106 @@ static void BM_InEdgeIteration(int iters, int num_nodes) {
     }
   }
   VLOG(1) << sum;
+  testing::StopTiming();
 }
-BENCHMARK(BM_InEdgeIteration)->Range(10, 100000);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(10, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(10, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(10, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(10, 16);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 15, 16);
+
+static void BM_GraphCreation(int iters, int num_nodes, int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def = CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  // Warmup step.
+  Graph graph(registry);
+  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  int64 sum = 0;
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    Graph graph(registry);
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+    sum += graph.num_node_ids();
+  }
+  VLOG(1) << sum;
+  testing::StopTiming();
+}
+BENCHMARK(BM_GraphCreation)->ArgPair(10, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(10, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(10, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(10, 16);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 16);
+
+static void BM_ToGraphDef(int iters, int num_nodes, int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def = CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  // Warmup step.
+  Graph graph(registry);
+  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  int64 sum = 0;
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    GraphDef graph_def;
+    graph.ToGraphDef(&graph_def);
+    sum += graph_def.node_size();
+  }
+  VLOG(1) << sum;
+  testing::StopTiming();
+}
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 16);
 
 }  // namespace
 }  // namespace tensorflow

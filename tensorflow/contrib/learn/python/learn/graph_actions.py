@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""High level operations on graphs."""
+"""High level operations on graphs (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,28 +33,27 @@ import numpy as np
 
 from six import reraise
 
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
-from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
-from tensorflow.contrib.learn.python.learn import summary_writer_cache
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_manager as session_manager_lib
+from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor as tf_supervisor
+from tensorflow.python.util.deprecation import deprecated
 
 # Singleton for SummaryWriter per logdir folder.
 _SUMMARY_WRITERS = {}
@@ -57,12 +61,19 @@ _SUMMARY_WRITERS = {}
 # Lock protecting _SUMMARY_WRITERS
 _summary_writer_lock = threading.Lock()
 
+_graph_action_deprecation = deprecated(
+    '2017-02-15',
+    'graph_actions.py will be deleted. Use tf.train.* utilities instead. '
+    'You can use learn/estimators/estimator.py as an example.')
 
+
+@_graph_action_deprecation
 def clear_summary_writers():
   """Clear cached summary writers. Currently only used for unit tests."""
-  return summary_writer_cache.SummaryWriterCache.clear()
+  return summary_io.SummaryWriterCache.clear()
 
 
+@deprecated(None, 'Use `SummaryWriterCache.get` directly.')
 def get_summary_writer(logdir):
   """Returns single SummaryWriter per logdir in current run.
 
@@ -73,11 +84,12 @@ def get_summary_writer(logdir):
     Existing `SummaryWriter` object or new one if never wrote to given
     directory.
   """
-  return summary_writer_cache.SummaryWriterCache.get(logdir)
+  return summary_io.SummaryWriterCache.get(logdir)
 
 
 def _make_saver(graph, keep_checkpoint_max=5):
-  vars_to_save = graph.get_collection(ops.GraphKeys.VARIABLES)
+  vars_to_save = (graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
+                  graph.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
   if vars_to_save:
     return tf_saver.Saver(vars_to_save,
                           sharded=True,
@@ -88,7 +100,6 @@ def _make_saver(graph, keep_checkpoint_max=5):
 
 def _restore_from_checkpoint(session, graph, checkpoint_path, saver=None):
   logging.info('Loading model from checkpoint: %s.', checkpoint_path)
-  assert gfile.Glob(checkpoint_path)
   saver = saver or _make_saver(graph)
   if saver:
     saver.restore(session, checkpoint_path)
@@ -114,183 +125,7 @@ def _run_with_monitors(session, step, tensors, feed_dict, monitors):
   return outputs, should_stop
 
 
-def _monitored_train(graph,
-                     output_dir,
-                     train_op,
-                     loss_op,
-                     global_step_tensor=None,
-                     init_op=None,
-                     init_feed_dict=None,
-                     init_fn=None,
-                     log_every_steps=10,
-                     supervisor_is_chief=True,
-                     supervisor_master='',
-                     supervisor_save_model_secs=600,
-                     keep_checkpoint_max=5,
-                     supervisor_save_summaries_steps=100,
-                     feed_fn=None,
-                     steps=None,
-                     fail_on_nan_loss=True,
-                     hooks=None,
-                     max_steps=None):
-  """Train a model via monitored_session.
-
-  Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
-  run a training loop. The given `train_op` performs one step of training on the
-  model. The `loss_op` represents the objective function of the training. It is
-  expected to increment the `global_step_tensor`, a scalar integer tensor
-  counting training steps. This function uses `Supervisor` to initialize the
-  graph (from a checkpoint if one is available in `output_dir`), write summaries
-  defined in the graph, and write regular checkpoints as defined by
-  `supervisor_save_model_secs`.
-
-  Training continues until `global_step_tensor` evaluates to `max_steps`, or, if
-  `fail_on_nan_loss`, until `loss_op` evaluates to `NaN`. In that case the
-  program is terminated with exit code 1.
-
-  Args:
-    graph: A graph to train. It is expected that this graph is not in use
-      elsewhere.
-    output_dir: A directory to write outputs to.
-    train_op: An op that performs one training step when run.
-    loss_op: A scalar loss tensor.
-    global_step_tensor: A tensor representing the global step. If none is given,
-      one is extracted from the graph using the same logic as in `Supervisor`.
-    init_op: An op that initializes the graph. If `None`, use `Supervisor`'s
-      default.
-    init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
-      This feed dictionary will be used when `init_op` is evaluated.
-    init_fn: Optional callable passed to Supervisor to initialize the model.
-    log_every_steps: Output logs regularly. The logs contain timing data and the
-      current loss. A `0` or negative value disables logging.
-    supervisor_is_chief: Whether the current process is the chief supervisor in
-      charge of restoring the model and running standard services.
-    supervisor_master: The master string to use when preparing the session.
-    supervisor_save_model_secs: Save model every
-      `supervisor_save_model_secs` seconds when training.
-    keep_checkpoint_max: The maximum number of recent checkpoint files to
-      keep. As new files are created, older files are deleted. If None or 0,
-      all checkpoint files are kept. This is simply passed as the max_to_keep
-      arg to tf.Saver constructor.
-    supervisor_save_summaries_steps: Save summaries every
-      `supervisor_save_summaries_steps` seconds when training.
-    feed_fn: A function that is called every iteration to produce a `feed_dict`
-      passed to `session.run` calls. Optional.
-    steps: Trains for this many steps (e.g. current global step + `steps`).
-    fail_on_nan_loss: If true, raise `NanLossDuringTrainingError` if `loss_op`
-      evaluates to `NaN`. If false, continue training as if nothing happened.
-    hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-      inside the training loop.
-    max_steps: Number of total steps for which to train model. If `None`,
-      train forever. Two calls fit(steps=100) means 200 training iterations.
-      On the other hand two calls of fit(max_steps=100) means, second call
-      will not do any iteration since first call did all 100 steps.
-
-  Returns:
-    The final loss value.
-
-  Raises:
-    ValueError: If `output_dir`, `train_op`, `loss_op`, or `global_step_tensor`
-      is not provided. See `tf.contrib.framework.get_global_step` for how we
-      look up the latter if not provided explicitly.
-    NanLossDuringTrainingError: If `fail_on_nan_loss` is `True`, and loss ever
-      evaluates to `NaN`.
-    ValueError: If both `steps` and `max_steps` are not `None`.
-  """
-  if (steps is not None) and (max_steps is not None):
-    raise ValueError('Can not provide both steps and max_steps.')
-  if not output_dir:
-    raise ValueError('Output directory should be non-empty %s.' % output_dir)
-  if train_op is None:
-    raise ValueError('Missing train_op.')
-  if loss_op is None:
-    raise ValueError('Missing loss_op.')
-  if hooks is None:
-    hooks = []
-  if not isinstance(hooks, list):
-    raise ValueError('Hooks should be a list.')
-  with graph.as_default():
-    global_step_tensor = contrib_variables.assert_or_get_global_step(
-        graph, global_step_tensor)
-  if global_step_tensor is None:
-    raise ValueError('No "global_step" was provided or found in the graph.')
-
-  if max_steps is not None:
-    try:
-      start_step = checkpoints.load_variable(output_dir,
-                                             global_step_tensor.name)
-      if max_steps <= start_step:
-        logging.info('Skipping training since max_steps has already saved.')
-        return None
-    except:  # pylint: disable=bare-except
-      pass
-
-  # Adapted SessionRunHooks such as ExportMonitor depend on the
-  # CheckpointSaverHook to be executed before they should be executed.
-  # The `hooks` param comprises of deprecated monitor hooks
-  # (such as ExportMonitor). Appending them after the basic_session_run_hooks.
-  all_hooks = []
-  with graph.as_default():
-    all_hooks.append(basic_session_run_hooks.NanTensorHook(
-        loss_op, fail_on_nan_loss=fail_on_nan_loss))
-    if log_every_steps > 0:
-      all_hooks.append(basic_session_run_hooks.LoggingTensorHook({
-          'loss': loss_op.name,
-          'step': global_step_tensor.name
-      }, every_n_iter=log_every_steps))
-
-    def make_saver():
-      return tf_saver.Saver(
-          sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True)
-
-    scaffold = monitored_session.Scaffold(
-        init_op=init_op,
-        init_feed_dict=init_feed_dict,
-        init_fn=init_fn,
-        saver=monitored_session.Scaffold.get_or_default('saver',
-                                                        ops.GraphKeys.SAVERS,
-                                                        make_saver))
-
-    if not supervisor_is_chief:
-      session_creator = monitored_session.WorkerSessionCreator(
-          scaffold=scaffold,
-          master=supervisor_master)
-    else:
-      session_creator = monitored_session.ChiefSessionCreator(
-          scaffold=scaffold,
-          checkpoint_dir=output_dir,
-          master=supervisor_master)
-      summary_writer = summary_writer_cache.SummaryWriterCache.get(output_dir)
-      all_hooks.append(
-          basic_session_run_hooks.StepCounterHook(
-              summary_writer=summary_writer))
-      all_hooks.append(
-          basic_session_run_hooks.SummarySaverHook(
-              save_steps=supervisor_save_summaries_steps,
-              summary_writer=summary_writer,
-              scaffold=scaffold))
-      if supervisor_save_model_secs > 0:
-        all_hooks.append(
-            basic_session_run_hooks.CheckpointSaverHook(
-                output_dir,
-                save_secs=supervisor_save_model_secs,
-                scaffold=scaffold))
-
-    if steps is not None or max_steps is not None:
-      all_hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
-    all_hooks.extend(hooks)
-
-    with monitored_session.MonitoredSession(
-        session_creator=session_creator,
-        hooks=all_hooks) as super_sess:
-      loss = None
-      while not super_sess.should_stop():
-        _, loss = super_sess.run([train_op, loss_op], feed_fn() if feed_fn else
-                                 None)
-      return loss
-
-
-# TODO(ispir): Deprecate train in favor of supervised_train
+@_graph_action_deprecation
 def train(graph,
           output_dir,
           train_op,
@@ -348,7 +183,7 @@ def train(graph,
     keep_checkpoint_max: The maximum number of recent checkpoint files to
       keep. As new files are created, older files are deleted. If None or 0,
       all checkpoint files are kept. This is simply passed as the max_to_keep
-      arg to tf.Saver constructor.
+      arg to tf.train.Saver constructor.
     supervisor_save_summaries_steps: Save summaries every
       `supervisor_save_summaries_steps` seconds when training.
     feed_fn: A function that is called every iteration to produce a `feed_dict`
@@ -437,8 +272,7 @@ def _train_internal(graph,
 
     # Get current step.
     try:
-      start_step = checkpoints.load_variable(
-          output_dir, global_step_tensor.name)
+      start_step = load_variable(output_dir, global_step_tensor.name)
     except (errors.NotFoundError, ValueError):
       start_step = 0
 
@@ -586,7 +420,7 @@ def _get_first_op_from_collection(collection_name):
 def _get_saver():
   """Lazy init and return saver."""
   saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
-  if saver is None and variables.all_variables():
+  if saver is None and variables.global_variables():
     saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
@@ -601,11 +435,14 @@ def _get_ready_op():
 
 
 def _get_local_init_op():
+  """Returns the local init ops to initialize tables and local variables."""
   local_init_op = _get_first_op_from_collection(
       ops.GraphKeys.LOCAL_INIT_OP)
   if local_init_op is None:
-    op_list = [variables.initialize_local_variables(),
-               data_flow_ops.initialize_all_tables()]
+    op_list = [
+        variables.local_variables_initializer(),
+        lookup_ops.tables_initializer()
+    ]
     if op_list:
       local_init_op = control_flow_ops.group(*op_list)
       ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, local_init_op)
@@ -613,12 +450,12 @@ def _get_local_init_op():
 
 
 def _eval_results_to_str(eval_results):
-  return ', '.join('%s = %s' % (k, v) for k, v in eval_results.items())
+  return ', '.join('%s = %s' % (k, v) for k, v in sorted(eval_results.items()))
 
 
 def _write_summary_results(output_dir, eval_results, current_global_step):
   """Writes eval results into summary file in given dir."""
-  logging.info('Saving evaluation summary for %d step: %s', current_global_step,
+  logging.info('Saving evaluation summary for step %d: %s', current_global_step,
                _eval_results_to_str(eval_results))
   summary_writer = get_summary_writer(output_dir)
   summary = summary_pb2.Summary()
@@ -637,6 +474,7 @@ def _write_summary_results(output_dir, eval_results, current_global_step):
   summary_writer.flush()
 
 
+@_graph_action_deprecation
 def evaluate(graph,
              output_dir,
              checkpoint_path,
@@ -670,7 +508,7 @@ def evaluate(graph,
       evaluated in every logging step. The result of the final evaluation is
       returned. If `update_op` is None, then it's evaluated in every step. If
       `max_steps` is `None`, this should depend on a reader that will raise an
-      end-of-inupt exception when the inputs are exhausted.
+      end-of-input exception when the inputs are exhausted.
     update_op: A `Tensor` which is run in every step.
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.
@@ -701,11 +539,14 @@ def evaluate(graph,
     # Create or get summary op, global_step and saver.
     saver = _get_saver()
     local_init_op = _get_local_init_op()
+    ready_for_local_init_op = _get_first_op_from_collection(
+        ops.GraphKeys.READY_FOR_LOCAL_INIT_OP)
     ready_op = _get_ready_op()
 
     session_manager = session_manager_lib.SessionManager(
         local_init_op=local_init_op,
-        ready_op=ready_op)
+        ready_op=ready_op,
+        ready_for_local_init_op=ready_for_local_init_op)
     session, initialized = session_manager.recover_session(
         master=supervisor_master,
         saver=saver,
@@ -719,7 +560,7 @@ def evaluate(graph,
     if not initialized:
       logging.warning('Failed to initialize from %s.', checkpoint_path)
       # TODO(ipolosukhin): This should be failing, but old code relies on that.
-      session.run(variables.initialize_all_variables())
+      session.run(variables.global_variables_initializer())
       if checkpoint_path:
         _restore_from_checkpoint(session, graph, checkpoint_path, saver)
 
@@ -787,6 +628,7 @@ def evaluate(graph,
   return eval_results, current_global_step
 
 
+@_graph_action_deprecation
 def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
   """Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
 
@@ -808,7 +650,7 @@ def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
       restore_checkpoint_path=restore_checkpoint_path)
 
 
-# TODO(ptucker): Add save_checkpoint_path.
+@_graph_action_deprecation
 def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
   """Run `output_dict` tensors with each input in `feed_dicts`.
 
@@ -837,15 +679,17 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
     raise ValueError('feed_dicts is invalid: %s.' % feed_dicts)
 
   graph = contrib_ops.get_graph_from_inputs(output_dict.values())
-
   with graph.as_default() as g:
     with tf_session.Session('') as session:
+      session.run(
+          resources.initialize_resources(resources.shared_resources() +
+                                         resources.local_resources()))
       if restore_checkpoint_path:
         _restore_from_checkpoint(session, g, restore_checkpoint_path)
       else:
-        session.run(variables.initialize_all_variables())
-      session.run(variables.initialize_local_variables())
-      session.run(data_flow_ops.initialize_all_tables())
+        session.run(variables.global_variables_initializer())
+      session.run(variables.local_variables_initializer())
+      session.run(lookup_ops.tables_initializer())
       coord = coordinator.Coordinator()
       threads = None
       try:
@@ -858,11 +702,13 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
           coord.join(threads, stop_grace_period_secs=120)
 
 
+@_graph_action_deprecation
 def run_feeds(*args, **kwargs):
   """See run_feeds_iter(). Returns a `list` instead of an iterator."""
   return list(run_feeds_iter(*args, **kwargs))
 
 
+@_graph_action_deprecation
 def infer(restore_checkpoint_path, output_dict, feed_dict=None):
   """Restore graph from `restore_checkpoint_path` and run `output_dict` tensors.
 

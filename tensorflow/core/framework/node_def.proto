@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "NodeProto";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/attr_value.proto";
 
 message NodeDef {
@@ -29,19 +29,17 @@ message NodeDef {
   // node should be placed.
   // The expected syntax for this string is as follows:
   //
-  // DEVICE_SPEC ::= COLOCATED_NODE | PARTIAL_SPEC
+  // DEVICE_SPEC ::= PARTIAL_SPEC
   //
-  // COLOCATED_NODE ::= "@" NODE_NAME  // See NodeDef.name above.
   // PARTIAL_SPEC ::= ("/" CONSTRAINT) *
   // CONSTRAINT ::= ("job:" JOB_NAME)
   //              | ("replica:" [1-9][0-9]*)
   //              | ("task:" [1-9][0-9]*)
-  //              | ( ("gpu" | "cpu") ":" ([1-9][0-9]* | "*") )
+  //              | ("device:" [A-Za-z]* ":" ([1-9][0-9]* | "*") )
   //
   // Valid values for this string include:
-  // * "@other/node"                         (colocate with "other/node")
-  // * "/job:worker/replica:0/task:1/gpu:3"  (full specification)
-  // * "/job:worker/gpu:3"                   (partial specification)
+  // * "/job:worker/replica:0/task:1/device:GPU:3"  (full specification)
+  // * "/job:worker/device:GPU:3"                   (partial specification)
   // * ""                                    (no specification)
   //
   // If the constraints do not resolve to a single device (or if this
@@ -62,4 +60,18 @@ message NodeDef {
   // attr's type field.
   // TODO(josh11b): Add some examples here showing best practices.
   map<string, AttrValue> attr = 5;
+
+  message ExperimentalDebugInfo {
+    // Opaque string inserted into error messages created by the runtime.
+    //
+    // This is intended to store the list of names of the nodes from the
+    // original graph that this node was derived. For example if this node, say
+    // C, was result of a fusion of 2 nodes A and B, then 'original_node' would
+    // be {A, B}. This information can be used to map errors originating at the
+    // current node to some top level source code.
+    repeated string original_node_names = 1;
+  };
+
+  // This stores debug information associated with the node.
+  ExperimentalDebugInfo experimental_debug_info = 6;
 };

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -38,9 +38,9 @@ namespace {
 Status BatchSizesMatch(const Tensor& input, const Tensor& output) {
   // Ensure the number of outputs match the number of inputs.
   if (input.dim_size(0) != output.dim_size(0)) {
-    return errors::Internal(
-        strings::StrCat("Input batch size did not match output batch size: ",
-                        input.dim_size(0), " vs. ", output.dim_size(0)));
+    return errors::Internal(strings::StrCat(
+        "Input batch size did not match output batch size: ", input.dim_size(0),
+        " vs. ", output.dim_size(0)));
   }
   return Status::OK();
 }
@@ -100,8 +100,8 @@ Status GetNamedClassificationSignature(
   const auto& it = signatures.named_signatures().find(name);
   if (it == signatures.named_signatures().end()) {
     return errors::NotFound(
-        strings::StrCat("Missing signature named \"", name, "\" in: ",
-                        DebugStringIfAvailable(signatures)));
+        strings::StrCat("Missing signature named \"", name,
+                        "\" in: ", DebugStringIfAvailable(signatures)));
   }
   if (!it->second.has_classification_signature()) {
     return errors::FailedPrecondition(
@@ -232,8 +232,8 @@ Status GetNamedSignature(const string& name,
   const auto& it = signatures.named_signatures().find(name);
   if (it == signatures.named_signatures().end()) {
     return errors::NotFound(
-        strings::StrCat("Missing signature named \"", name, "\" in: ",
-                        DebugStringIfAvailable(signatures)));
+        strings::StrCat("Missing signature named \"", name,
+                        "\" in: ", DebugStringIfAvailable(signatures)));
   }
   *signature = it->second;
   return Status::OK();

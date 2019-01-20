@@ -16,8 +16,8 @@ limitations under the License.
 // Class and associated machinery for specifying an Op's OpDef and shape
 // inference function for Op registration.
 
-#ifndef TENSORFLOW_FRAMEWORK_OP_DEF_BUILDER_H_
-#define TENSORFLOW_FRAMEWORK_OP_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_
 
 #include <string>
 #include <vector>
@@ -38,16 +38,20 @@ struct OpRegistrationData {
  public:
   OpRegistrationData() {}
   OpRegistrationData(const OpDef& def) : op_def(def) {}
+  OpRegistrationData(const OpDef& def, const OpShapeInferenceFn& fn,
+                     bool is_function = false)
+      : op_def(def), shape_inference_fn(fn), is_function_op(is_function) {}
 
   OpDef op_def;
   OpShapeInferenceFn shape_inference_fn;
+  bool is_function_op = false;
 };
 
 // Builder class passed to the REGISTER_OP() macro.
 class OpDefBuilder {
  public:
   // Constructs an OpDef with just the name field set.
-  explicit OpDefBuilder(StringPiece op_name);
+  explicit OpDefBuilder(string op_name);
 
   // Adds an attr to this OpDefBuilder (and returns *this). The spec has
   // format "<name>:<type>" or "<name>:<type>=<default>"
@@ -55,8 +59,10 @@ class OpDefBuilder {
   // (by convention only using capital letters for attrs that can be inferred)
   // <type> can be:
   //   "string", "int", "float", "bool", "type", "shape", or "tensor"
-  //   "numbertype", "realnumbertype", "quantizedtype", "{int32,int64}"
+  //   "numbertype", "realnumbertype", "quantizedtype"
   //       (meaning "type" with a restriction on valid values)
+  //   "{int32,int64}" or {realnumbertype,quantizedtype,string}"
+  //       (meaning "type" with a restriction containing unions of value types)
   //   "{\"foo\", \"bar\n baz\"}", or "{'foo', 'bar\n baz'}"
   //       (meaning "string" with a restriction on valid values)
   //   "list(string)", ..., "list(tensor)", "list(numbertype)", ...
@@ -78,7 +84,7 @@ class OpDefBuilder {
   // * Ability to restrict the type of the tensor like the existing
   //   restrictions for type attrs.
   // Perhaps by linking the type of the tensor to a type attr?
-  OpDefBuilder& Attr(StringPiece spec);
+  OpDefBuilder& Attr(string spec);
 
   // Adds an input or output to this OpDefBuilder (and returns *this).
   // The spec has form "<name>:<type-expr>" or "<name>:Ref(<type-expr>)"
@@ -95,8 +101,8 @@ class OpDefBuilder {
   // in the spec?
   // TODO(josh11b): SparseInput() and SparseOutput() matching the Python
   // handling?
-  OpDefBuilder& Input(StringPiece spec);
-  OpDefBuilder& Output(StringPiece spec);
+  OpDefBuilder& Input(string spec);
+  OpDefBuilder& Output(string spec);
 
   // Turns on the indicated boolean flag in this OpDefBuilder (and
   // returns *this).
@@ -106,7 +112,7 @@ class OpDefBuilder {
   OpDefBuilder& SetAllowsUninitializedInput();
 
   // Deprecate the op at a certain GraphDef version.
-  OpDefBuilder& Deprecated(int version, StringPiece explanation);
+  OpDefBuilder& Deprecated(int version, string explanation);
 
   // Adds docs to this OpDefBuilder (and returns *this).
   // Docs have the format:
@@ -122,11 +128,16 @@ class OpDefBuilder {
   // to suppress the automatically-generated type documentation in
   // generated output.
 #ifndef TF_LEAN_BINARY
-  OpDefBuilder& Doc(StringPiece text);
+  OpDefBuilder& Doc(string text);
 #else
-  OpDefBuilder& Doc(StringPiece text) { return *this; }
+  OpDefBuilder& Doc(string text) { return *this; }
 #endif
 
+  // Sets the shape function to be used for shape inference.
+  //
+  // Note that currently (October 2016), python code still requires a
+  // RegisterShape call to invoke this; see call_cpp_shape_fn in
+  // python/framework/common_shapes.py
   OpDefBuilder& SetShapeFn(Status (*fn)(shape_inference::InferenceContext*));
 
   // Sets op_reg_data->op_def to the requested OpDef and
@@ -151,4 +162,4 @@ class OpDefBuilder {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_OP_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_

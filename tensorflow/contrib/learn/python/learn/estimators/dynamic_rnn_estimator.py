@@ -12,617 +12,691 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Estimator for Dynamic RNNs."""
+"""Estimator for Dynamic RNNs (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import abc
-import six
-
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
+from tensorflow.contrib.layers.python.layers import optimizers
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
+from tensorflow.contrib.learn.python.learn.estimators import rnn_common
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.training import momentum as momentum_opt
-from tensorflow.python.training import optimizer as opt
+from tensorflow.python.util import nest
 
 
-# TODO(jamieas): move `_padding_mask` to array_ops.
-def _padding_mask(sequence_lengths, padded_length):
-  """Creates a mask used for calculating losses with padded input.
-
-  Args:
-    sequence_lengths: a `Tensor` of shape `[batch_size]` containing the unpadded
-      length of  each sequence.
-    padded_length: a scalar `Tensor` indicating the length of the sequences
-      after padding
-  Returns:
-    A boolean `Tensor` M of shape `[batch_size, padded_length]` where
-    `M[i, j] == True` when `lengths[i] > j`.
-
-  """
-  range_tensor = math_ops.range(padded_length)
-  return math_ops.less(array_ops.expand_dims(range_tensor, 0),
-                       array_ops.expand_dims(sequence_lengths, 1))
+# TODO(jtbates): Remove PredictionType when all non-experimental targets which
+# depend on it point to rnn_common.PredictionType.
+class PredictionType(object):
+  SINGLE_VALUE = 1
+  MULTIPLE_VALUE = 2
 
 
-def _mask_activations_and_targets(activations, targets, sequence_lengths):
-  """Remove entries outside `sequence_lengths` and returned flattened results.
+def _get_state_name(i):
+  """Constructs the name string for state component `i`."""
+  return '{}_{}'.format(rnn_common.RNNKeys.STATE_PREFIX, i)
+
+
+def state_tuple_to_dict(state):
+  """Returns a dict containing flattened `state`.
 
   Args:
-    activations: output of the RNN, shape `[batch_size, padded_length, k]`.
-    targets: target values, shape `[batch_size, padded_length]`.
-    sequence_lengths: a `Tensor` of shape `[batch_size]` with the unpadded
-      length of each sequence. If `None`, then each sequence is unpadded.
+    state: A `Tensor` or a nested tuple of `Tensors`. All of the `Tensor`s must
+    have the same rank and agree on all dimensions except the last.
 
   Returns:
-    activations_masked: `logit` values with those beyond `sequence_lengths`
-    removed for each batch. Batches are then concatenated. Shape
-      `[tf.sum(sequence_lengths), k]` if `sequence_lengths` is not `None` and
-      shape `[batch_size * padded_length, k]` otherwise.
-    targets_masked: target values after removing unneeded entries. Shape
-      `[tf.sum(sequence_lengths)]` if `sequence_lengths` is not `None` and shape
-      `[batch_size * padded_length]` otherwise.
+    A dict containing the `Tensor`s that make up `state`. The keys of the dict
+    are of the form "STATE_PREFIX_i" where `i` is the place of this `Tensor`
+    in a depth-first traversal of `state`.
   """
-  with ops.name_scope('mask_activations_and_targets',
-                      values=[activations, targets, sequence_lengths]):
-    targets_shape = array_ops.shape(targets)
-    batch_size = targets_shape[0]
-    padded_length = targets_shape[1]
-    if sequence_lengths is None:
-      flattened_dimension = padded_length * batch_size
-      activations_masked = array_ops.reshape(activations,
-                                             [flattened_dimension, -1])
-      targets_masked = array_ops.reshape(targets, [flattened_dimension])
+  with ops.name_scope('state_tuple_to_dict'):
+    flat_state = nest.flatten(state)
+    state_dict = {}
+    for i, state_component in enumerate(flat_state):
+      state_name = _get_state_name(i)
+      state_value = (None if state_component is None
+                     else array_ops.identity(state_component, name=state_name))
+      state_dict[state_name] = state_value
+  return state_dict
+
+
+def dict_to_state_tuple(input_dict, cell):
+  """Reconstructs nested `state` from a dict containing state `Tensor`s.
+
+  Args:
+    input_dict: A dict of `Tensor`s.
+    cell: An instance of `RNNCell`.
+  Returns:
+    If `input_dict` does not contain keys 'STATE_PREFIX_i' for `0 <= i < n`
+    where `n` is the number of nested entries in `cell.state_size`, this
+    function returns `None`. Otherwise, returns a `Tensor` if `cell.state_size`
+    is an `int` or a nested tuple of `Tensor`s if `cell.state_size` is a nested
+    tuple.
+  Raises:
+    ValueError: State is partially specified. The `input_dict` must contain
+      values for all state components or none at all.
+  """
+  flat_state_sizes = nest.flatten(cell.state_size)
+  state_tensors = []
+  with ops.name_scope('dict_to_state_tuple'):
+    for i, state_size in enumerate(flat_state_sizes):
+      state_name = _get_state_name(i)
+      state_tensor = input_dict.get(state_name)
+      if state_tensor is not None:
+        rank_check = check_ops.assert_rank(
+            state_tensor, 2, name='check_state_{}_rank'.format(i))
+        shape_check = check_ops.assert_equal(
+            array_ops.shape(state_tensor)[1],
+            state_size,
+            name='check_state_{}_shape'.format(i))
+        with ops.control_dependencies([rank_check, shape_check]):
+          state_tensor = array_ops.identity(state_tensor, name=state_name)
+        state_tensors.append(state_tensor)
+    if not state_tensors:
+      return None
+    elif len(state_tensors) == len(flat_state_sizes):
+      dummy_state = cell.zero_state(batch_size=1, dtype=dtypes.bool)
+      return nest.pack_sequence_as(dummy_state, state_tensors)
     else:
-      mask = _padding_mask(sequence_lengths, padded_length)
-      activations_masked = array_ops.boolean_mask(activations, mask)
-      targets_masked = array_ops.boolean_mask(targets, mask)
-    return activations_masked, targets_masked
+      raise ValueError(
+          'RNN state was partially specified.'
+          'Expected zero or {} state Tensors; got {}'.
+          format(len(flat_state_sizes), len(state_tensors)))
 
 
-def _select_last_activations(activations, sequence_lengths):
-  """Selects the nth set of activations for each n in `sequence_length`.
+def _concatenate_context_input(sequence_input, context_input):
+  """Replicates `context_input` across all timesteps of `sequence_input`.
 
-  Reuturns a `Tensor` of shape `[batch_size, k]`. If `sequence_length` is not
-  `None`, then `output[i, :] = activations[i, sequence_length[i], :]`. If
-  `sequence_length` is `None`, then `output[i, :] = activations[i, -1, :]`.
+  Expands dimension 1 of `context_input` then tiles it `sequence_length` times.
+  This value is appended to `sequence_input` on dimension 2 and the result is
+  returned.
 
   Args:
-    activations: a `Tensor` with shape `[batch_size, padded_length, k]`.
-    sequence_lengths: a `Tensor` with shape `[batch_size]` or `None`.
+    sequence_input: A `Tensor` of dtype `float32` and shape `[batch_size,
+      padded_length, d0]`.
+    context_input: A `Tensor` of dtype `float32` and shape `[batch_size, d1]`.
+
   Returns:
-    A `Tensor` of shape `[batch_size, k]`.
+    A `Tensor` of dtype `float32` and shape `[batch_size, padded_length,
+    d0 + d1]`.
+
+  Raises:
+    ValueError: If `sequence_input` does not have rank 3 or `context_input` does
+      not have rank 2.
   """
-  with ops.name_scope('select_last_activations',
-                      values=[activations, sequence_lengths]):
-    activations_shape = array_ops.shape(activations)
-    batch_size = activations_shape[0]
-    padded_length = activations_shape[1]
-    num_label_columns = activations_shape[2]
-    if sequence_lengths is None:
-      sequence_lengths = padded_length
-    reshaped_activations = array_ops.reshape(activations,
-                                             [-1, num_label_columns])
-    indices = math_ops.range(batch_size) * padded_length + sequence_lengths - 1
-    last_activations = array_ops.gather(reshaped_activations, indices)
-    last_activations.set_shape(
-        [activations.get_shape()[0], activations.get_shape()[2]])
-    return last_activations
+  seq_rank_check = check_ops.assert_rank(
+      sequence_input,
+      3,
+      message='sequence_input must have rank 3',
+      data=[array_ops.shape(sequence_input)])
+  seq_type_check = check_ops.assert_type(
+      sequence_input,
+      dtypes.float32,
+      message='sequence_input must have dtype float32; got {}.'.format(
+          sequence_input.dtype))
+  ctx_rank_check = check_ops.assert_rank(
+      context_input,
+      2,
+      message='context_input must have rank 2',
+      data=[array_ops.shape(context_input)])
+  ctx_type_check = check_ops.assert_type(
+      context_input,
+      dtypes.float32,
+      message='context_input must have dtype float32; got {}.'.format(
+          context_input.dtype))
+  with ops.control_dependencies(
+      [seq_rank_check, seq_type_check, ctx_rank_check, ctx_type_check]):
+    padded_length = array_ops.shape(sequence_input)[1]
+    tiled_context_input = array_ops.tile(
+        array_ops.expand_dims(context_input, 1),
+        array_ops.concat([[1], [padded_length], [1]], 0))
+  return array_ops.concat([sequence_input, tiled_context_input], 2)
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _DynamicRNNEstimator(estimator.BaseEstimator):
-  """Estimator that uses a dynamic RNN for sequences."""
+def build_sequence_input(features,
+                         sequence_feature_columns,
+                         context_feature_columns,
+                         weight_collections=None,
+                         scope=None):
+  """Combine sequence and context features into input for an RNN.
+
+  Args:
+    features: A `dict` containing the input and (optionally) sequence length
+      information and initial state.
+    sequence_feature_columns: An iterable containing all the feature columns
+      describing sequence features. All items in the set should be instances
+      of classes derived from `FeatureColumn`.
+    context_feature_columns: An iterable containing all the feature columns
+      describing context features i.e. features that apply across all time
+      steps. All items in the set should be instances of classes derived from
+      `FeatureColumn`.
+    weight_collections: List of graph collections to which weights are added.
+    scope: Optional scope, passed through to parsing ops.
+  Returns:
+    A `Tensor` of dtype `float32` and shape `[batch_size, padded_length, ?]`.
+    This will be used as input to an RNN.
+  """
+  features = features.copy()
+  features.update(layers.transform_features(
+      features,
+      list(sequence_feature_columns) + list(context_feature_columns or [])))
+  sequence_input = layers.sequence_input_from_feature_columns(
+      columns_to_tensors=features,
+      feature_columns=sequence_feature_columns,
+      weight_collections=weight_collections,
+      scope=scope)
+  if context_feature_columns is not None:
+    context_input = layers.input_from_feature_columns(
+        columns_to_tensors=features,
+        feature_columns=context_feature_columns,
+        weight_collections=weight_collections,
+        scope=scope)
+    sequence_input = _concatenate_context_input(sequence_input, context_input)
+  return sequence_input
+
+
+def construct_rnn(initial_state,
+                  sequence_input,
+                  cell,
+                  num_label_columns,
+                  dtype=dtypes.float32,
+                  parallel_iterations=32,
+                  swap_memory=True):
+  """Build an RNN and apply a fully connected layer to get the desired output.
+
+  Args:
+    initial_state: The initial state to pass the RNN. If `None`, the
+      default starting state for `self._cell` is used.
+    sequence_input: A `Tensor` with shape `[batch_size, padded_length, d]`
+      that will be passed as input to the RNN.
+    cell: An initialized `RNNCell`.
+    num_label_columns: The desired output dimension.
+    dtype: dtype of `cell`.
+    parallel_iterations: Number of iterations to run in parallel. Values >> 1
+      use more memory but take less time, while smaller values use less memory
+      but computations take longer.
+    swap_memory: Transparently swap the tensors produced in forward inference
+      but needed for back prop from GPU to CPU.  This allows training RNNs
+      which would typically not fit on a single GPU, with very minimal (or no)
+      performance penalty.
+  Returns:
+    activations: The output of the RNN, projected to `num_label_columns`
+      dimensions.
+    final_state: A `Tensor` or nested tuple of `Tensor`s representing the final
+      state output by the RNN.
+  """
+  with ops.name_scope('RNN'):
+    rnn_outputs, final_state = rnn.dynamic_rnn(
+        cell=cell,
+        inputs=sequence_input,
+        initial_state=initial_state,
+        dtype=dtype,
+        parallel_iterations=parallel_iterations,
+        swap_memory=swap_memory,
+        time_major=False)
+    activations = layers.fully_connected(
+        inputs=rnn_outputs,
+        num_outputs=num_label_columns,
+        activation_fn=None,
+        trainable=True)
+    return activations, final_state
+
+
+def _single_value_predictions(activations,
+                              sequence_length,
+                              target_column,
+                              problem_type,
+                              predict_probabilities):
+  """Maps `activations` from the RNN to predictions for single value models.
+
+  If `predict_probabilities` is `False`, this function returns a `dict`
+  containing single entry with key `PREDICTIONS_KEY`. If `predict_probabilities`
+  is `True`, it will contain a second entry with key `PROBABILITIES_KEY`. The
+  value of this entry is a `Tensor` of probabilities with shape
+  `[batch_size, num_classes]`.
+
+  Args:
+    activations: Output from an RNN. Should have dtype `float32` and shape
+      `[batch_size, padded_length, ?]`.
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
+      containing the length of each sequence in the batch. If `None`, sequences
+      are assumed to be unpadded.
+    target_column: An initialized `TargetColumn`, calculate predictions.
+    problem_type: Either `ProblemType.CLASSIFICATION` or
+      `ProblemType.LINEAR_REGRESSION`.
+    predict_probabilities: A Python boolean, indicating whether probabilities
+      should be returned. Should only be set to `True` for
+      classification/logistic regression problems.
+  Returns:
+    A `dict` mapping strings to `Tensors`.
+  """
+  with ops.name_scope('SingleValuePrediction'):
+    last_activations = rnn_common.select_last_activations(
+        activations, sequence_length)
+    predictions_name = (prediction_key.PredictionKey.CLASSES
+                        if problem_type == constants.ProblemType.CLASSIFICATION
+                        else prediction_key.PredictionKey.SCORES)
+    if predict_probabilities:
+      probabilities = target_column.logits_to_predictions(
+          last_activations, proba=True)
+      prediction_dict = {
+          prediction_key.PredictionKey.PROBABILITIES: probabilities,
+          predictions_name: math_ops.argmax(probabilities, 1)}
+    else:
+      predictions = target_column.logits_to_predictions(
+          last_activations, proba=False)
+      prediction_dict = {predictions_name: predictions}
+    return prediction_dict
+
+
+def _multi_value_loss(
+    activations, labels, sequence_length, target_column, features):
+  """Maps `activations` from the RNN to loss for multi value models.
+
+  Args:
+    activations: Output from an RNN. Should have dtype `float32` and shape
+      `[batch_size, padded_length, ?]`.
+    labels: A `Tensor` with length `[batch_size, padded_length]`.
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
+      containing the length of each sequence in the batch. If `None`, sequences
+      are assumed to be unpadded.
+    target_column: An initialized `TargetColumn`, calculate predictions.
+    features: A `dict` containing the input and (optionally) sequence length
+      information and initial state.
+  Returns:
+    A scalar `Tensor` containing the loss.
+  """
+  with ops.name_scope('MultiValueLoss'):
+    activations_masked, labels_masked = rnn_common.mask_activations_and_labels(
+        activations, labels, sequence_length)
+    return target_column.loss(activations_masked, labels_masked, features)
+
+
+def _single_value_loss(
+    activations, labels, sequence_length, target_column, features):
+  """Maps `activations` from the RNN to loss for multi value models.
+
+  Args:
+    activations: Output from an RNN. Should have dtype `float32` and shape
+      `[batch_size, padded_length, ?]`.
+    labels: A `Tensor` with length `[batch_size]`.
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
+      containing the length of each sequence in the batch. If `None`, sequences
+      are assumed to be unpadded.
+    target_column: An initialized `TargetColumn`, calculate predictions.
+    features: A `dict` containing the input and (optionally) sequence length
+      information and initial state.
+  Returns:
+    A scalar `Tensor` containing the loss.
+  """
+
+  with ops.name_scope('SingleValueLoss'):
+    last_activations = rnn_common.select_last_activations(
+        activations, sequence_length)
+    return target_column.loss(last_activations, labels, features)
+
+
+def _get_output_alternatives(prediction_type,
+                             problem_type,
+                             prediction_dict):
+  """Constructs output alternatives dict for `ModelFnOps`.
+
+  Args:
+    prediction_type: either `MULTIPLE_VALUE` or `SINGLE_VALUE`.
+    problem_type: either `CLASSIFICATION` or `LINEAR_REGRESSION`.
+    prediction_dict: a dictionary mapping strings to `Tensor`s containing
+      predictions.
+
+  Returns:
+    `None` or a dictionary mapping a string to an output alternative.
+
+  Raises:
+    ValueError: `prediction_type` is not one of `SINGLE_VALUE` or
+    `MULTIPLE_VALUE`.
+  """
+  if prediction_type == rnn_common.PredictionType.MULTIPLE_VALUE:
+    return None
+  if prediction_type == rnn_common.PredictionType.SINGLE_VALUE:
+    prediction_dict_no_state = {
+        k: v
+        for k, v in prediction_dict.items()
+        if rnn_common.RNNKeys.STATE_PREFIX not in k
+    }
+    return {'dynamic_rnn_output': (problem_type, prediction_dict_no_state)}
+  raise ValueError('Unrecognized prediction_type: {}'.format(prediction_type))
+
+
+def _get_dynamic_rnn_model_fn(
+    cell_type,
+    num_units,
+    target_column,
+    problem_type,
+    prediction_type,
+    optimizer,
+    sequence_feature_columns,
+    context_feature_columns=None,
+    predict_probabilities=False,
+    learning_rate=None,
+    gradient_clipping_norm=None,
+    dropout_keep_probabilities=None,
+    sequence_length_key=rnn_common.RNNKeys.SEQUENCE_LENGTH_KEY,
+    dtype=dtypes.float32,
+    parallel_iterations=None,
+    swap_memory=True,
+    name='DynamicRNNModel'):
+  """Creates an RNN model function for an `Estimator`.
+
+  The model function returns an instance of `ModelFnOps`. When
+  `problem_type == ProblemType.CLASSIFICATION` and
+  `predict_probabilities == True`, the returned `ModelFnOps` includes an output
+  alternative containing the classes and their associated probabilities. When
+  `predict_probabilities == False`, only the classes are included. When
+  `problem_type == ProblemType.LINEAR_REGRESSION`, the output alternative
+  contains only the predicted values.
+
+  Args:
+    cell_type: A string, a subclass of `RNNCell` or an instance of an `RNNCell`.
+    num_units: A single `int` or a list of `int`s. The size of the `RNNCell`s.
+    target_column: An initialized `TargetColumn`, used to calculate prediction
+      and loss.
+    problem_type: `ProblemType.CLASSIFICATION` or
+      `ProblemType.LINEAR_REGRESSION`.
+    prediction_type: `PredictionType.SINGLE_VALUE` or
+      `PredictionType.MULTIPLE_VALUE`.
+    optimizer: A subclass of `Optimizer`, an instance of an `Optimizer` or a
+      string.
+    sequence_feature_columns: An iterable containing all the feature columns
+      describing sequence features. All items in the set should be instances
+      of classes derived from `FeatureColumn`.
+    context_feature_columns: An iterable containing all the feature columns
+      describing context features, i.e., features that apply across all time
+      steps. All items in the set should be instances of classes derived from
+      `FeatureColumn`.
+    predict_probabilities: A boolean indicating whether to predict probabilities
+      for all classes. Must only be used with
+      `ProblemType.CLASSIFICATION`.
+    learning_rate: Learning rate used for optimization. This argument has no
+      effect if `optimizer` is an instance of an `Optimizer`.
+    gradient_clipping_norm: A float. Gradients will be clipped to this value.
+    dropout_keep_probabilities: a list of dropout keep probabilities or `None`.
+      If a list is given, it must have length `len(num_units) + 1`.
+    sequence_length_key: The key that will be used to look up sequence length in
+      the `features` dict.
+    dtype: The dtype of the state and output of the given `cell`.
+    parallel_iterations: Number of iterations to run in parallel. Values >> 1
+      use more memory but take less time, while smaller values use less memory
+      but computations take longer.
+    swap_memory: Transparently swap the tensors produced in forward inference
+      but needed for back prop from GPU to CPU.  This allows training RNNs
+      which would typically not fit on a single GPU, with very minimal (or no)
+      performance penalty.
+    name: A string that will be used to create a scope for the RNN.
+
+  Returns:
+    A model function to be passed to an `Estimator`.
+
+  Raises:
+    ValueError: `problem_type` is not one of
+      `ProblemType.LINEAR_REGRESSION` or `ProblemType.CLASSIFICATION`.
+    ValueError: `prediction_type` is not one of `PredictionType.SINGLE_VALUE`
+      or `PredictionType.MULTIPLE_VALUE`.
+    ValueError: `predict_probabilities` is `True` for `problem_type` other
+      than `ProblemType.CLASSIFICATION`.
+    ValueError: `len(dropout_keep_probabilities)` is not `len(num_units) + 1`.
+  """
+  if problem_type not in (constants.ProblemType.CLASSIFICATION,
+                          constants.ProblemType.LINEAR_REGRESSION):
+    raise ValueError(
+        'problem_type must be ProblemType.LINEAR_REGRESSION or '
+        'ProblemType.CLASSIFICATION; got {}'.
+        format(problem_type))
+  if prediction_type not in (rnn_common.PredictionType.SINGLE_VALUE,
+                             rnn_common.PredictionType.MULTIPLE_VALUE):
+    raise ValueError(
+        'prediction_type must be PredictionType.MULTIPLE_VALUEs or '
+        'PredictionType.SINGLE_VALUE; got {}'.
+        format(prediction_type))
+  if (problem_type != constants.ProblemType.CLASSIFICATION
+      and predict_probabilities):
+    raise ValueError(
+        'predict_probabilities can only be set to True for problem_type'
+        ' ProblemType.CLASSIFICATION; got {}.'.format(problem_type))
+  def _dynamic_rnn_model_fn(features, labels, mode):
+    """The model to be passed to an `Estimator`."""
+    with ops.name_scope(name):
+      sequence_length = features.get(sequence_length_key)
+      sequence_input = build_sequence_input(features,
+                                            sequence_feature_columns,
+                                            context_feature_columns)
+      dropout = (dropout_keep_probabilities
+                 if mode == model_fn.ModeKeys.TRAIN
+                 else None)
+      # This class promises to use the cell type selected by that function.
+      cell = rnn_common.construct_rnn_cell(num_units, cell_type, dropout)
+      initial_state = dict_to_state_tuple(features, cell)
+      rnn_activations, final_state = construct_rnn(
+          initial_state,
+          sequence_input,
+          cell,
+          target_column.num_label_columns,
+          dtype=dtype,
+          parallel_iterations=parallel_iterations,
+          swap_memory=swap_memory)
+
+      loss = None  # Created below for modes TRAIN and EVAL.
+      if prediction_type == rnn_common.PredictionType.MULTIPLE_VALUE:
+        prediction_dict = rnn_common.multi_value_predictions(
+            rnn_activations, target_column, problem_type, predict_probabilities)
+        if mode != model_fn.ModeKeys.INFER:
+          loss = _multi_value_loss(
+              rnn_activations, labels, sequence_length, target_column, features)
+      elif prediction_type == rnn_common.PredictionType.SINGLE_VALUE:
+        prediction_dict = _single_value_predictions(
+            rnn_activations, sequence_length, target_column,
+            problem_type, predict_probabilities)
+        if mode != model_fn.ModeKeys.INFER:
+          loss = _single_value_loss(
+              rnn_activations, labels, sequence_length, target_column, features)
+      state_dict = state_tuple_to_dict(final_state)
+      prediction_dict.update(state_dict)
+
+      eval_metric_ops = None
+      if mode != model_fn.ModeKeys.INFER:
+        eval_metric_ops = rnn_common.get_eval_metric_ops(
+            problem_type, prediction_type, sequence_length, prediction_dict,
+            labels)
+
+      train_op = None
+      if mode == model_fn.ModeKeys.TRAIN:
+        train_op = optimizers.optimize_loss(
+            loss=loss,
+            global_step=None,  # Get it internally.
+            learning_rate=learning_rate,
+            optimizer=optimizer,
+            clip_gradients=gradient_clipping_norm,
+            summaries=optimizers.OPTIMIZER_SUMMARIES)
+
+    output_alternatives = _get_output_alternatives(prediction_type,
+                                                   problem_type,
+                                                   prediction_dict)
+
+    return model_fn.ModelFnOps(mode=mode,
+                               predictions=prediction_dict,
+                               loss=loss,
+                               train_op=train_op,
+                               eval_metric_ops=eval_metric_ops,
+                               output_alternatives=output_alternatives)
+  return _dynamic_rnn_model_fn
+
+
+class DynamicRnnEstimator(estimator.Estimator):
+  """Dynamically unrolled RNN (deprecated).
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
 
   def __init__(self,
-               cell,
-               target_column,
-               optimizer,
+               problem_type,
+               prediction_type,
+               sequence_feature_columns,
+               context_feature_columns=None,
+               num_classes=None,
+               num_units=None,
+               cell_type='basic_rnn',
+               optimizer='SGD',
+               learning_rate=0.1,
+               predict_probabilities=False,
+               momentum=None,
+               gradient_clipping_norm=5.0,
+               dropout_keep_probabilities=None,
                model_dir=None,
-               config=None,
-               gradient_clipping_norm=None,
-               inputs_key='inputs',
-               sequence_length_key='sequence_length',
-               initial_state_key='initial_state',
-               dtype=None,
-               parallel_iterations=None,
-               swap_memory=False,
-               name=None):
-    """Initialize `DynamicRNNEstimator`.
+               feature_engineering_fn=None,
+               config=None):
+    """Initializes a `DynamicRnnEstimator`.
+
+    The input function passed to this `Estimator` optionally contains keys
+    `RNNKeys.SEQUENCE_LENGTH_KEY`. The value corresponding to
+    `RNNKeys.SEQUENCE_LENGTH_KEY` must be vector of size `batch_size` where
+    entry `n` corresponds to the length of the `n`th sequence in the batch. The
+    sequence length feature is required for batches of varying sizes. It will be
+    used to calculate loss and evaluation metrics. If
+    `RNNKeys.SEQUENCE_LENGTH_KEY` is not included, all sequences are assumed to
+    have length equal to the size of dimension 1 of the input to the RNN.
+
+    In order to specify an initial state, the input function must include keys
+    `STATE_PREFIX_i` for all `0 <= i < n` where `n` is the number of nested
+    elements in `cell.state_size`. The input function must contain values for
+    all state components or none of them. If none are included, then the default
+    (zero) state is used as an initial state. See the documentation for
+    `dict_to_state_tuple` and `state_tuple_to_dict` for further details.
+    The input function can call rnn_common.construct_rnn_cell() to obtain the
+    same cell type that this class will select from arguments to __init__.
+
+    The `predict()` method of the `Estimator` returns a dictionary with keys
+    `STATE_PREFIX_i` for `0 <= i < n` where `n` is the number of nested elements
+    in `cell.state_size`, along with `PredictionKey.CLASSES` for problem type
+    `CLASSIFICATION` or `PredictionKey.SCORES` for problem type
+    `LINEAR_REGRESSION`.  The value keyed by
+    `PredictionKey.CLASSES` or `PredictionKey.SCORES` has shape
+    `[batch_size, padded_length]` in the multi-value case and shape
+    `[batch_size]` in the single-value case.  Here, `padded_length` is the
+    largest value in the `RNNKeys.SEQUENCE_LENGTH` `Tensor` passed as input.
+    Entry `[i, j]` is the prediction associated with sequence `i` and time step
+    `j`. If the problem type is `CLASSIFICATION` and `predict_probabilities` is
+    `True`, it will also include key`PredictionKey.PROBABILITIES`.
 
     Args:
-      cell: an initialized `RNNCell` to be used in the RNN.
-      target_column: an initialized `TargetColumn`, used to calculate loss and
-        metrics.
-      optimizer: an initialized `tensorflow.Optimizer`.
+      problem_type: whether the `Estimator` is intended for a regression or
+        classification problem. Value must be one of
+        `ProblemType.CLASSIFICATION` or `ProblemType.LINEAR_REGRESSION`.
+      prediction_type: whether the `Estimator` should return a value for each
+        step in the sequence, or just a single value for the final time step.
+        Must be one of `PredictionType.SINGLE_VALUE` or
+        `PredictionType.MULTIPLE_VALUE`.
+      sequence_feature_columns: An iterable containing all the feature columns
+        describing sequence features. All items in the iterable should be
+        instances of classes derived from `FeatureColumn`.
+      context_feature_columns: An iterable containing all the feature columns
+        describing context features, i.e., features that apply across all time
+        steps. All items in the set should be instances of classes derived from
+        `FeatureColumn`.
+      num_classes: the number of classes for a classification problem. Only
+        used when `problem_type=ProblemType.CLASSIFICATION`.
+      num_units: A list of integers indicating the number of units in the
+        `RNNCell`s in each layer.
+      cell_type: A subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
+      optimizer: The type of optimizer to use. Either a subclass of
+        `Optimizer`, an instance of an `Optimizer`, a callback that returns an
+        optimizer, or a string. Strings must be one of 'Adagrad', 'Adam',
+        'Ftrl', 'Momentum', 'RMSProp' or 'SGD. See `layers.optimize_loss` for
+        more details.
+      learning_rate: Learning rate. This argument has no effect if `optimizer`
+        is an instance of an `Optimizer`.
+      predict_probabilities: A boolean indicating whether to predict
+        probabilities for all classes. Used only if `problem_type` is
+        `ProblemType.CLASSIFICATION`
+      momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
+      gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
+        then no clipping is performed.
+      dropout_keep_probabilities: a list of dropout probabilities or `None`.
+        If a list is given, it must have length `len(num_units) + 1`. If
+        `None`, then no dropout is applied.
       model_dir: The directory in which to save and restore the model graph,
         parameters, etc.
+      feature_engineering_fn: Takes features and labels which are the output of
+        `input_fn` and returns features and labels which will be fed into
+        `model_fn`. Please check `model_fn` for a definition of features and
+        labels.
       config: A `RunConfig` instance.
-      gradient_clipping_norm: parameter used for gradient clipping. If `None`,
-        then no clipping is performed.
-      inputs_key: the key for input values in the features dict passed to
-        `fit()`.
-      sequence_length_key: the key for the sequence length tensor in the
-        features dict passed to `fit()`.
-      initial_state_key: the key for input values in the features dict passed to
-        `fit()`.
-      dtype: Parameter passed ot `dynamic_rnn`. The dtype of the state and
-        output returned by `RNNCell`.
-      parallel_iterations: Parameter passed ot `dynamic_rnn`. The number of
-        iterations to run in parallel.
-      swap_memory: Parameter passed ot `dynamic_rnn`. Transparently swap the
-        tensors produced in forward inference but needed for back prop from GPU
-        to CPU.
-      name: Optional name for the `Estimator`.
-    """
-    super(_DynamicRNNEstimator, self).__init__(
-        model_dir=model_dir, config=config)
-    self._cell = cell
-    self._target_column = target_column
-    self._optimizer = optimizer
-    self._gradient_clipping_norm = gradient_clipping_norm
-    self._inputs_key = inputs_key
-    self._sequence_length_key = sequence_length_key
-    self._initial_state_key = initial_state_key
-    self._dtype = dtype or dtypes.float32
-    self._parallel_iterations = parallel_iterations
-    self._swap_memory = swap_memory
-    self._name = name or 'DynamicRnnEstimator'
-
-  def _construct_rnn(self, features):
-    """Apply an RNN to `features`.
-
-    The `features` dict must contain `self._inputs_key`, and the corresponding
-    input should be a `Tensor` of shape `[batch_size, padded_length, k]`
-    where `k` is the dimension of the input for each element of a sequence.
-
-    `activations` has shape `[batch_size, sequence_length, n]` where `n` is
-    `self._target_column.num_label_columns`. In the case of a multiclass
-    classifier, `n` is the number of classes.
-
-    `final_state` has shape determined by `self._cell` and its dtype must match
-    `self._dtype`.
-
-    Args:
-      features: a `dict` containing the input for the RNN and (optionally) an
-        initial state and information about sequence lengths.
-
-    Returns:
-      activations: the output of the RNN, projected to the appropriate number of
-        dimensions.
-      final_state: the final state output by the RNN.
 
     Raises:
-      KeyError: if `features` does not contain `self._inputs_key`.
+      ValueError: `problem_type` is not one of
+        `ProblemType.LINEAR_REGRESSION` or `ProblemType.CLASSIFICATION`.
+      ValueError: `problem_type` is `ProblemType.CLASSIFICATION` but
+        `num_classes` is not specified.
+      ValueError: `prediction_type` is not one of
+        `PredictionType.MULTIPLE_VALUE` or `PredictionType.SINGLE_VALUE`.
     """
-    with ops.name_scope('RNN'):
-      inputs = features.get(self._inputs_key)
-      if inputs is None:
-        raise KeyError('features must contain the key {}'.format(
-            self._inputs_key))
-      if inputs.dtype != self._dtype:
-        inputs = math_ops.cast(inputs, self._dtype)
-      initial_state = features.get(self._initial_state_key)
-      rnn_outputs, final_state = rnn.dynamic_rnn(
-          cell=self._cell,
-          inputs=inputs,
-          initial_state=initial_state,
-          dtype=self._dtype,
-          parallel_iterations=self._parallel_iterations,
-          swap_memory=self._swap_memory,
-          time_major=False)
-      activations = layers.fully_connected(
-          inputs=rnn_outputs,
-          num_outputs=self._target_column.num_label_columns,
-          activation_fn=None,
-          trainable=False)
-      return activations, final_state
+    if prediction_type == rnn_common.PredictionType.MULTIPLE_VALUE:
+      name = 'MultiValueDynamicRNN'
+    elif prediction_type == rnn_common.PredictionType.SINGLE_VALUE:
+      name = 'SingleValueDynamicRNN'
+    else:
+      raise ValueError(
+          'prediction_type must be one of PredictionType.MULTIPLE_VALUE or '
+          'PredictionType.SINGLE_VALUE; got {}'.format(prediction_type))
 
-  @abc.abstractmethod
-  def _activations_to_loss(self, features, activations, targets):
-    """Map `activations` and `targets` to a loss `Tensor`.
+    if problem_type == constants.ProblemType.LINEAR_REGRESSION:
+      name += 'Regressor'
+      target_column = layers.regression_target()
+    elif problem_type == constants.ProblemType.CLASSIFICATION:
+      if not num_classes:
+        raise ValueError('For CLASSIFICATION problem_type, num_classes must be '
+                         'specified.')
+      target_column = layers.multi_class_target(n_classes=num_classes)
+      name += 'Classifier'
+    else:
+      raise ValueError(
+          'problem_type must be either ProblemType.LINEAR_REGRESSION '
+          'or ProblemType.CLASSIFICATION; got {}'.format(
+              problem_type))
 
-    `activations` has shape `[batch_size, padded_length,
-     self._target_column.num_label_columns]`. It is the output of
-    `_construct_rnn`.
+    if optimizer == 'Momentum':
+      optimizer = momentum_opt.MomentumOptimizer(learning_rate, momentum)
+    dynamic_rnn_model_fn = _get_dynamic_rnn_model_fn(
+        cell_type=cell_type,
+        num_units=num_units,
+        target_column=target_column,
+        problem_type=problem_type,
+        prediction_type=prediction_type,
+        optimizer=optimizer,
+        sequence_feature_columns=sequence_feature_columns,
+        context_feature_columns=context_feature_columns,
+        predict_probabilities=predict_probabilities,
+        learning_rate=learning_rate,
+        gradient_clipping_norm=gradient_clipping_norm,
+        dropout_keep_probabilities=dropout_keep_probabilities,
+        name=name)
 
-    `targets` is a `Tensor` of shape `[batch_size, padded_length]`. The type
-    of `targets` depends on what type of `TargetColumn` is being used.
-
-    Args:
-      features: a `dict` containing the input and (optionally) sequence length
-        information and initial state. This is the same `features` passed to
-        `_construct_rnn`.
-      activations: a `Tensor` of activations representing the output of the RNN.
-      targets: a `Tensor` of target values.
-
-    Returns:
-      loss: A scalar `Tensor` representing the aggregated loss for the batch.
-    """
-    raise NotImplementedError()
-
-  @abc.abstractmethod
-  def _activations_to_predictions(self, features, activations):
-    """Map `activations` to predictions.
-
-    `activations` has shape [batch_size, time, num_labels]. `TargetColumn`s
-    require shape [n, num_labels]. `activations` is flattened before being
-    converted to labels. Afterwards, its shape is reconstituted.
-
-    Args:
-      features: a `dict` containing the input and (optionally) sequence length
-        information and initial state.
-      activations: logit values returned by `_construct_rnn`.
-
-    Returns:
-      A set of predictions. The type of prediction is dependent on
-      `_target_column`.
-    """
-    raise NotImplementedError()
-
-  def _process_gradients(self, gradients_vars):
-    """Process gradients (e.g. clipping) before applying them to weights."""
-    with ops.name_scope('process_gradients'):
-      gradients, variables = zip(*gradients_vars)
-      if self._gradient_clipping_norm is not None:
-        gradients, _ = clip_ops.clip_by_global_norm(
-            gradients, self._gradient_clipping_norm)
-      return zip(gradients, variables)
-
-  def _loss_to_train_op(self, loss):
-    """Map `loss` to a training op."""
-    with ops.name_scope('loss_to_train_op'):
-      trainable_variables = ops.get_default_graph().get_collection(
-          ops.GraphKeys.TRAINABLE_VARIABLES)
-      global_step = contrib_framework.get_global_step()
-      gradients = self._optimizer.compute_gradients(
-          loss=loss, var_list=trainable_variables)
-      processed_gradients = self._process_gradients(gradients)
-      return self._optimizer.apply_gradients(
-          processed_gradients, global_step=global_step)
-
-  @abc.abstractmethod
-  def _activations_to_eval_ops(self, features, activations, targets, metrics):
-    """Map `activations` to eval operations.
-
-    `activations` has shape [batch_size, time, num_labels]. `TargetColumn`s
-    require shape [n, num_labels]. `activations` is flattened before being
-    converted to labels. Afterwards, its shape is reconstituted.
-
-    Args:
-      features: a `dict` containing the input and (optionally) sequence length
-        information and initial state.
-      activations: logit values returned by `_construct_rnn`.
-      targets: a `Tensor` of target values.
-      metrics: a list of `Metric`s to evaluate. Possibly `None`.
-
-    Returns:
-      A dict of named eval ops.
-    """
-    raise NotImplementedError()
-
-  def _get_train_ops(self, features, targets):
-    with ops.name_scope(self._name):
-      if isinstance(features, ops.Tensor):
-        features = {self._inputs_key: features}
-      activations, _ = self._construct_rnn(features)
-      loss = self._activations_to_loss(features, activations, targets)
-      train_op = self._loss_to_train_op(loss)
-      return train_op, loss
-
-  def _get_eval_ops(self, features, targets, metrics):
-    with ops.name_scope(self._name):
-      if isinstance(features, ops.Tensor):
-        features = {self._inputs_key: features}
-      activations, _ = self._construct_rnn(features)
-      return self._activations_to_eval_ops(features, activations, targets,
-                                           metrics)
-
-  def _get_predict_ops(self, features):
-    with ops.name_scope(self._name):
-      if isinstance(features, ops.Tensor):
-        features = {self._inputs_key: features}
-      activations, state = self._construct_rnn(features)
-      predictions = self._activations_to_predictions(features, activations)
-      return {'predictions': predictions, 'state': state}
-
-
-class _MultiValueRNNEstimator(_DynamicRNNEstimator):
-  """An `Estimator` that maps sequences of inputs to sequences of outputs."""
-
-  def _activations_to_loss(self, features, activations, targets):
-    sequence_length = features.get(self._sequence_length_key)
-    # Mask the activations and targets past `sequence_length`. Note that the
-    # `Tensor`s returned by `_mask_activations_and_targets` are flattened.
-    with ops.name_scope('activations_to_loss'):
-      activations_masked, targets_masked = _mask_activations_and_targets(
-          activations, targets, sequence_length)
-      return self._target_column.loss(activations_masked, targets_masked,
-                                      features)
-
-  def _activations_to_predictions(self, unused_features, activations):
-    with ops.name_scope('activations_to_predictions'):
-      activations_shape = array_ops.shape(activations)
-      flattened_activations = array_ops.reshape(activations,
-                                                [-1, activations_shape[2]])
-      predictions = self._target_column.activations_to_predictions(
-          flattened_activations, proba=False)
-      reshaped_predictions = array_ops.reshape(
-          predictions, [activations_shape[0], activations_shape[1], -1])
-      return array_ops.squeeze(reshaped_predictions, [2])
-
-  def _activations_to_eval_ops(self, features, activations, targets, metrics):
-    with ops.name_scope('activations_to_eval_ops'):
-      activations_masked, targets_masked = _mask_activations_and_targets(
-          activations, targets, features.get(self._sequence_length_key))
-
-      return self._target_column.get_eval_ops(features=features,
-                                              logits=activations_masked,
-                                              targets=targets_masked,
-                                              metrics=metrics)
-
-
-class _SingleValueRNNEstimator(_DynamicRNNEstimator):
-  """An `Estimator` that maps sequences of inputs to single outputs."""
-
-  def _activations_to_loss(self, features, activations, targets):
-    with ops.name_scope('activations_to_loss'):
-      sequence_lengths = features.get(self._sequence_length_key)
-      last_activations = _select_last_activations(activations, sequence_lengths)
-      return self._target_column.loss(last_activations, targets, features)
-
-  def _activations_to_predictions(self, features, activations):
-    with ops.name_scope('activations_to_predictions'):
-      sequence_lengths = features.get(self._sequence_length_key)
-      last_activations = _select_last_activations(activations, sequence_lengths)
-      return self._target_column.activations_to_predictions(
-          last_activations, proba=False)
-
-  def _activations_to_eval_ops(self, features, activations, targets, metrics):
-    with ops.name_scope('activations_to_eval_ops'):
-      sequence_lengths = features.get(self._sequence_length_key)
-      last_activations = _select_last_activations(activations, sequence_lengths)
-      return self._target_column.get_eval_ops(features=features,
-                                              logits=last_activations,
-                                              targets=targets,
-                                              metrics=metrics)
-
-
-def _get_optimizer(optimizer_type, learning_rate, momentum):
-  """Constructs and returns an `Optimizer`.
-
-  Args:
-    optimizer_type: either a string identifying the `Optimizer` type, or a
-      subclass of `Optimizer`.
-    learning_rate: the learning rate used to initialize the `Optimizer`.
-    momentum: used only when `optimizer_type` is 'Momentum'.
-  Returns:
-    An initialized `Optimizer`.
-  Raises:
-    ValueError: `optimizer_type` is an invalid optimizer name.
-    TypeError: `optimizer_type` is not a string or a subclass of `Optimizer`.
-  """
-  if isinstance(optimizer_type, str):
-    optimizer_type = layers.OPTIMIZER_CLS_NAMES.get(optimizer_type)
-  if optimizer_type is None:
-    raise ValueError('optimizer must be one of {}; got "{}".'.format(
-        list(layers.OPTIMIZER_CLS_NAMES.keys()), optimizer_type))
-  if not issubclass(optimizer_type, opt.Optimizer):
-    raise TypeError(
-        'optimizer_type must be a subclass of Optimizer or one of {}'.format(
-            list(layers.OPTIMZIER.keys())))
-  if optimizer_type == momentum_opt.MomentumOptimizer:
-    return optimizer_type(learning_rate, momentum)
-  return optimizer_type(learning_rate)
-
-
-_CELL_TYPES = {'basic_rnn': rnn_cell.BasicRNNCell,
-               'lstm': rnn_cell.LSTMCell,
-               'gru': rnn_cell.GRUCell,}
-
-
-def _get_rnn_cell(cell_type, num_units, num_layers):
-  """Constructs and return an `RNNCell`.
-
-  Args:
-    cell_type: either a string identifying the `RNNCell` type, or a subclass of
-      `RNNCell`.
-    num_units: the number of units in the `RNNCell`.
-    num_layers: the number of layers in the RNN.
-  Returns:
-    An initialized `RNNCell`.
-  Raises:
-    ValueError: `cell_type` is an invalid `RNNCell` name.
-    TypeError: `cell_type` is not a string or a subclass of `RNNCell`.
-  """
-  if isinstance(cell_type, str):
-    cell_type = _CELL_TYPES.get(cell_type)
-    if cell_type is None:
-      raise ValueError('The supported cell types are {}; got {}'.format(
-          list(_CELL_TYPES.keys()), cell_type))
-  if not issubclass(cell_type, rnn_cell.RNNCell):
-    raise TypeError(
-        'cell_type must be a subclass of RNNCell or one of {}.'.format(
-            list(_CELL_TYPES.keys())))
-  cell = cell_type(num_units=num_units)
-  if num_layers > 1:
-    cell = rnn_cell.MultiRNNCell(
-        [cell] * num_layers, state_is_tuple=True)
-  return cell
-
-
-def multi_value_rnn_regressor(num_units,
-                              cell_type='basic_rnn',
-                              cell_dtype=dtypes.float32,
-                              num_rnn_layers=1,
-                              optimizer_type='SGD',
-                              learning_rate=0.1,
-                              momentum=None,
-                              gradient_clipping_norm=10.0,
-                              model_dir=None,
-                              config=None):
-  """Creates a RNN `Estimator` that predicts sequences of values.
-
-  Args:
-    num_units: the size of the RNN cells.
-    cell_type: subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
-    cell_dtype: the dtype of the state and output for the given `cell_type`.
-    num_rnn_layers: number of RNN layers.
-    optimizer_type: the type of optimizer to use. Either a subclass of
-      `Optimizer` or a string.
-    learning_rate: learning rate.
-    momentum: momentum value. Only used if `optimizer_type` is 'Momentum'.
-    gradient_clipping_norm: parameter used for gradient clipping. If `None`,
-      then no clipping is performed.
-    model_dir: directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
-    config: A `RunConfig` instance.
-  Returns:
-    An initialized instance of `_MultiValueRNNEstimator`.
-  """
-  optimizer = _get_optimizer(optimizer_type, learning_rate, momentum)
-  cell = _get_rnn_cell(cell_type, num_units, num_rnn_layers)
-  target_column = layers.regression_target()
-  return _MultiValueRNNEstimator(cell,
-                                 target_column,
-                                 optimizer,
-                                 model_dir,
-                                 config,
-                                 gradient_clipping_norm,
-                                 dtype=cell_dtype)
-
-
-def multi_value_rnn_classifier(num_classes,
-                               num_units,
-                               cell_type='basic_rnn',
-                               cell_dtype=dtypes.float32,
-                               num_rnn_layers=1,
-                               optimizer_type='SGD',
-                               learning_rate=0.1,
-                               momentum=None,
-                               gradient_clipping_norm=10.0,
-                               model_dir=None,
-                               config=None):
-  """Creates a RNN `Estimator` that predicts sequences of labels.
-
-  Args:
-    num_classes: the number of classes for categorization.
-    num_units: the size of the RNN cells.
-    cell_type: subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
-    cell_dtype: the dtype of the state and output for the given `cell_type`.
-    num_rnn_layers: number of RNN layers.
-    optimizer_type: the type of optimizer to use. Either a subclass of
-      `Optimizer` or a string.
-    learning_rate: learning rate.
-    momentum: momentum value. Only used if `optimizer_type` is 'Momentum'.
-    gradient_clipping_norm: parameter used for gradient clipping. If `None`,
-      then no clipping is performed.
-    model_dir: directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
-    config: A `RunConfig` instance.
-  Returns:
-    An initialized instance of `_MultiValueRNNEstimator`.
-  """
-  optimizer = _get_optimizer(optimizer_type, learning_rate, momentum)
-  cell = _get_rnn_cell(cell_type, num_units, num_rnn_layers)
-  target_column = layers.multi_class_target(n_classes=num_classes)
-  return _MultiValueRNNEstimator(cell,
-                                 target_column,
-                                 optimizer,
-                                 model_dir,
-                                 config,
-                                 gradient_clipping_norm,
-                                 dtype=cell_dtype)
-
-
-def single_value_rnn_regressor(num_units,
-                               cell_type='basic_rnn',
-                               cell_dtype=dtypes.float32,
-                               num_rnn_layers=1,
-                               optimizer_type='SGD',
-                               learning_rate=0.1,
-                               momentum=None,
-                               gradient_clipping_norm=10.0,
-                               model_dir=None,
-                               config=None):
-  """Create a RNN `Estimator` that predicts single values.
-
-  Args:
-    num_units: the size of the RNN cells.
-    cell_type: subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
-    cell_dtype: the dtype of the state and output for the given `cell_type`.
-    num_rnn_layers: number of RNN layers.
-    optimizer_type: the type of optimizer to use. Either a subclass of
-      `Optimizer` or a string.
-    learning_rate: learning rate.
-    momentum: momentum value. Only used if `optimizer_type` is 'Momentum'.
-    gradient_clipping_norm: parameter used for gradient clipping. If `None`,
-      then no clipping is performed.
-    model_dir: directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
-    config: A `RunConfig` instance.
-  Returns:
-    An initialized instance of `_MultiValueRNNEstimator`.
-  """
-  optimizer = _get_optimizer(optimizer_type, learning_rate, momentum)
-  cell = _get_rnn_cell(cell_type, num_units, num_rnn_layers)
-  target_column = layers.regression_target()
-  return _SingleValueRNNEstimator(cell,
-                                  target_column,
-                                  optimizer,
-                                  model_dir,
-                                  config,
-                                  gradient_clipping_norm,
-                                  dtype=cell_dtype)
-
-
-def single_value_rnn_classifier(num_classes,
-                                num_units,
-                                cell_type='basic_rnn',
-                                cell_dtype=dtypes.float32,
-                                num_rnn_layers=1,
-                                optimizer_type='SGD',
-                                learning_rate=0.1,
-                                momentum=None,
-                                gradient_clipping_norm=10.0,
-                                model_dir=None,
-                                config=None):
-  """Creates a RNN `Estimator` that predicts single labels.
-
-  Args:
-    num_classes: the number of classes for categorization.
-    num_units: the size of the RNN cells.
-    cell_type: subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
-    cell_dtype: the dtype of the state and output for the given `cell_type`.
-    num_rnn_layers: number of RNN layers.
-    optimizer_type: the type of optimizer to use. Either a subclass of
-      `Optimizer` or a string.
-    learning_rate: learning rate.
-    momentum: momentum value. Only used if `optimizer_type` is 'Momentum'.
-    gradient_clipping_norm: parameter used for gradient clipping. If `None`,
-      then no clipping is performed.
-    model_dir: directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
-    config: A `RunConfig` instance.
-  Returns:
-    An initialized instance of `_MultiValueRNNEstimator`.
-  """
-  optimizer = _get_optimizer(optimizer_type, learning_rate, momentum)
-  cell = _get_rnn_cell(cell_type, num_units, num_rnn_layers)
-  target_column = layers.multi_class_target(n_classes=num_classes)
-  return _SingleValueRNNEstimator(cell,
-                                  target_column,
-                                  optimizer,
-                                  model_dir,
-                                  config,
-                                  gradient_clipping_norm,
-                                  dtype=cell_dtype)
+    super(DynamicRnnEstimator, self).__init__(
+        model_fn=dynamic_rnn_model_fn,
+        model_dir=model_dir,
+        config=config,
+        feature_engineering_fn=feature_engineering_fn)

@@ -27,6 +27,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
@@ -95,7 +96,8 @@ namespace {
 enum CONV_OP {
   CONV_OP_FORWARD = 0,
   CONV_OP_BACKPROP_INPUT = 1,
-  CONV_OP_BACKPROP_FILTER = 2
+  CONV_OP_BACKPROP_FILTER = 2,
+  CONV_OP_FUSED = 3,
 };
 
 }  // namespace
@@ -153,9 +155,22 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   SetConstSizesOp("input_sizes",
                   std::vector<int32>({batch, rows, cols, in_depth}),
                   graph.add_node());
-  SetConstSizesOp("filter_sizes", std::vector<int32>({filter_rows, filter_cols,
-                                                      in_depth, out_depth}),
+  SetConstSizesOp(
+      "filter_sizes",
+      std::vector<int32>({filter_rows, filter_cols, in_depth, out_depth}),
+      graph.add_node());
+  SetConstSizesOp("resize_size", std::vector<int32>({rows, cols}),
                   graph.add_node());
+
+  TensorShape paddings_shape({4, 2});
+  Tensor paddings_tensor(DT_INT32, paddings_shape);
+  for (int64 i = 0; i < paddings_tensor.NumElements(); ++i) {
+    paddings_tensor.flat<int32>()(i) = 0;
+  }
+  TF_CHECK_OK(NodeDefBuilder("paddings", "Const")
+                  .Attr("dtype", DT_INT32)
+                  .Attr("value", paddings_tensor)
+                  .Finalize(graph.add_node()));
 
   // Now add the convolution op
   NodeDef* conv = graph.add_node();
@@ -186,12 +201,25 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(conv));
       break;
+    case CONV_OP_FUSED:
+      TF_CHECK_OK(NodeDefBuilder("conv2d", "FusedResizeAndPadConv2D")
+                      .Input("input", 0, data_type)
+                      .Input("resize_size", 0, DT_INT32)
+                      .Input("paddings", 0, DT_INT32)
+                      .Input("filter", 0, data_type)
+                      .Attr("mode", "REFLECT")
+                      .Attr("strides", {1, stride, stride, 1})
+                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
+                      .Attr("resize_align_corners", false)
+                      .Finalize(conv));
+      break;
   }
   Graph* g = new Graph(OpRegistry::Global());
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
 
   string device = use_gpu ? "gpu" : "cpu";
+  testing::UseRealTime();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -216,6 +244,18 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
                                  KR, "_", KC, "_", STR, "_", PAD, "_f_cpu4")); \
   }                                                                            \
+  static void BM_ConvFloatFusedCPU1_##LABEL(int iters) {                       \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FUSED, 1, STR, PAD,  \
+                 false, DT_FLOAT,                                              \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_f_cpu1")); \
+  }                                                                            \
+  static void BM_ConvFloatFusedCPU4_##LABEL(int iters) {                       \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FUSED, 4, STR, PAD,  \
+                 false, DT_FLOAT,                                              \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_f_cpu4")); \
+  }                                                                            \
   static void BM_ConvFloatFwdGPU_##LABEL(int iters) {                          \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 1, STR,     \
                  PAD, true, DT_FLOAT,                                          \
@@ -230,6 +270,8 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   }                                                                            \
   BENCHMARK(BM_ConvFloatFwdCPU1_##LABEL);                                      \
   BENCHMARK(BM_ConvFloatFwdCPU4_##LABEL);                                      \
+  BENCHMARK(BM_ConvFloatFusedCPU1_##LABEL);                                    \
+  BENCHMARK(BM_ConvFloatFusedCPU4_##LABEL);                                    \
   BENCHMARK(BM_ConvFloatFwdGPU_##LABEL);                                       \
   BENCHMARK(BM_ConvHalfFwdGPU_##LABEL)
 
@@ -557,6 +599,7 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
 
   string device = use_gpu ? "gpu" : "cpu";
+  testing::UseRealTime();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -610,6 +653,8 @@ BM_ConvFloatDepthwiseFwd(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6);
 // Benchmarks with different stride and padding options.
 BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, SAME, conv7);
 BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8);
+BM_ConvFloatDepthwiseFwd(1, 100, 100, 72, 1, 72, 3, 3, 1, SAME, conv9);
+BM_ConvFloatDepthwiseFwd(1, 100, 100, 72, 1, 72, 5, 5, 1, SAME, conv10);
 
 #define BM_ConvFloatDepthwiseBk(BS, R, C, ID, DM, OD, KR, KC, STR, PAD, LABEL) \
   static void BM_ConvFloatDepthwiseBkInCPU1_##LABEL(int iters) {               \
@@ -669,9 +714,18 @@ BM_ConvFloatDepthwiseBk(32, 56, 56, 128, 1, 128, 3, 3, 2, SAME, conv3);
 BM_ConvFloatDepthwiseBk(32, 28, 28, 128, 1, 128, 3, 3, 1, SAME, conv4);
 BM_ConvFloatDepthwiseBk(32, 14, 14, 512, 1, 512, 3, 3, 1, SAME, conv5);
 BM_ConvFloatDepthwiseBk(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6);
-// Benchmarks with different stride and padding options.
+// Benchmarks with different stride and padding options, varying depth
+// multiplier.
 BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 2, SAME, conv7);
 BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8);
+
+// Vary depth multiplier.
+BM_ConvFloatDepthwiseBk(32, 112, 112, 1, 24, 24, 3, 3, 1, SAME, conv9);
+BM_ConvFloatDepthwiseBk(32, 112, 112, 2, 12, 24, 3, 3, 1, SAME, conv10);
+BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv11);
+BM_ConvFloatDepthwiseBk(32, 112, 112, 8, 3, 24, 3, 3, 1, SAME, conv12);
+BM_ConvFloatDepthwiseBk(32, 112, 112, 12, 2, 24, 3, 3, 1, SAME, conv13);
+BM_ConvFloatDepthwiseBk(32, 112, 112, 24, 1, 24, 3, 3, 1, SAME, conv14);
 
 static void BM_LRNFloat(int iters, int depth, int cols, int rows,
                         int batch_size, int range, int num_threads,
@@ -1067,15 +1121,16 @@ static void BM_MaxPoolBk(int iters, int batch_size, int rows, int cols,
   output_diff.flat<float>().setRandom();
 
   CHECK_EQ(kernel_rows, kernel_cols);
-  ops::MaxPoolGrad(root, input_data, output_data, output_diff,
-                   {1, kernel_rows, kernel_cols, 1} /* ksize */,
-                   {1, stride, stride, 1} /* stride */,
-                   padding == VALID ? "VALID" : "SAME");
+  ops::internal::MaxPoolGrad(root, input_data, output_data, output_diff,
+                             {1, kernel_rows, kernel_cols, 1} /* ksize */,
+                             {1, stride, stride, 1} /* stride */,
+                             padding == VALID ? "VALID" : "SAME");
   TF_CHECK_OK(root.status());
-  Graph g(OpRegistry::Global());
-  root.ToGraph(&g);
+  Graph* g = new Graph(OpRegistry::Global());
+  TF_CHECK_OK(root.ToGraph(g));
   string device = use_gpu ? "gpu" : "cpu";
-  test::Benchmark(device, &g).Run(iters);
+  testing::UseRealTime();
+  test::Benchmark(device, g).Run(iters);
 
   testing::ItemsProcessed(batch_size * rows * cols * depth * iters);
   testing::SetLabel(label);
@@ -1200,66 +1255,141 @@ BM_Relu(32, 28, 28, 352, 4, "relu4");
 BM_Relu(32, 14, 14, 576, 4, "relu10");
 
 static void BM_ImageNetSoftmaxFwd(int iters, int batch_size, int node_depth,
-                                  int num_threads, const string& label) {
-  tensorflow::testing::StopTiming();
-  std::unique_ptr<Device> device(
-      DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
+                                  int num_threads, bool use_gpu,
+                                  const string& label) {
+  auto root = Scope::NewRootScope().ExitOnError();
 
-  thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
-  device->set_eigen_cpu_device(&eigen_cpu_device);
+  Tensor input(DT_FLOAT, TensorShape({batch_size, node_depth}));
+  input.flat<float>().setRandom();
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TensorShape shape1({node_depth, batch_size});
-  Tensor* input1 = new Tensor(DT_FLOAT, shape1);
-  test::FillIota<float>(input1, 1.0);
-  inputs.push_back({nullptr, input1});
+  auto softmax = ops::Softmax(root, input);
 
-  // Softmax op.
-  NodeDef softmax_node_def;
-  TF_CHECK_OK(NodeDefBuilder("softmax_op", "Softmax")
-                  .Input("input", 0, DT_FLOAT)
-                  .Finalize(&softmax_node_def));
-  Status status;
-  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
-                                              cpu_allocator(), softmax_node_def,
-                                              TF_GRAPH_DEF_VERSION, &status));
-  TF_CHECK_OK(status);
-  OpKernelContext::Params params;
-  params.device = device.get();
-  params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
-  params.op_kernel = op.get();
-  std::vector<AllocatorAttributes> attrs;
-  test::SetOutputAttrs(&params, &attrs);
-
-  std::unique_ptr<OpKernelContext> softmax_context(
-      new OpKernelContext(&params));
-
-  op->Compute(softmax_context.get());
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
-    delete softmax_context->release_output(0).tensor;
-    op->Compute(softmax_context.get());
-  }
-  tensorflow::testing::StopTiming();
-  testing::ItemsProcessed(softmax_context->mutable_output(0)->NumElements() *
-                          iters);
+  TF_CHECK_OK(root.status());
+  Graph* g = new Graph(OpRegistry::Global());
+  TF_CHECK_OK(root.ToGraph(g));
+  string device = use_gpu ? "gpu" : "cpu";
+  SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(1);
+  opts.config.set_intra_op_parallelism_threads(num_threads);
+  opts.config.set_use_per_session_threads(true);
+  opts.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions_Level_L0);
+  testing::UseRealTime();
+  test::Benchmark(device, g, &opts).Run(iters);
+  testing::ItemsProcessed(batch_size * node_depth * iters);
   testing::SetLabel(label);
 }
 
-#define BM_ImageNetSoftmaxFwdCPU(BATCH_SIZE, NODE_DEPTH, TH, LABEL)     \
-  static void BM_ImageNetSoftmaxFwd_##BATCH_SIZE##_##NODE_DEPTH##_##TH( \
-      int iters) {                                                      \
-    BM_ImageNetSoftmaxFwd(iters, BATCH_SIZE, NODE_DEPTH, TH, LABEL);    \
-  }                                                                     \
-  BENCHMARK(BM_ImageNetSoftmaxFwd_##BATCH_SIZE##_##NODE_DEPTH##_##TH)
+#define BM_ImageNetSoftmaxFwd(BATCH_SIZE, NODE_DEPTH, TH, GPU, LABEL)     \
+  static void                                                             \
+      BM_ImageNetSoftmaxFwd_##BATCH_SIZE##_##NODE_DEPTH##_##TH##_##GPU(   \
+          int iters) {                                                    \
+    BM_ImageNetSoftmaxFwd(iters, BATCH_SIZE, NODE_DEPTH, TH, GPU, LABEL); \
+  }                                                                       \
+  BENCHMARK(BM_ImageNetSoftmaxFwd_##BATCH_SIZE##_##NODE_DEPTH##_##TH##_##GPU)
 
 // Labels are taken from the 2014-July-24 version of imagenet
-BM_ImageNetSoftmaxFwdCPU(32, 1008, 1, "softmax32");
-BM_ImageNetSoftmaxFwdCPU(128, 1008, 1, "softmax128");
-BM_ImageNetSoftmaxFwdCPU(32, 1008, 4, "softmax32");
-BM_ImageNetSoftmaxFwdCPU(128, 1008, 4, "softmax128");
+BM_ImageNetSoftmaxFwd(32, 1008, 1, false, "softmax32");
+BM_ImageNetSoftmaxFwd(128, 1008, 1, false, "softmax128");
+BM_ImageNetSoftmaxFwd(32, 1008, 4, false, "softmax32");
+BM_ImageNetSoftmaxFwd(128, 1008, 4, false, "softmax128");
+BM_ImageNetSoftmaxFwd(32, 1008, 1, true, "softmax32");
+BM_ImageNetSoftmaxFwd(128, 1008, 1, true, "softmax128");
+BM_ImageNetSoftmaxFwd(8192, 1024, 1, true, "softmax32");
+BM_ImageNetSoftmaxFwd(8192, 32768, 1, true, "softmax128");
+
+static void BM_TopK(int iters, int rows, int cols, int k, int num_threads,
+                    bool use_gpu, const string& label) {
+  testing::StopTiming();
+  auto root = Scope::NewRootScope().ExitOnError();
+
+  Tensor input(DT_FLOAT, TensorShape({rows, cols}));
+  input.flat<float>().setRandom();
+
+  Tensor input_k(DT_INT32, TensorShape({}));
+  input_k.scalar<int32>()() = k;
+
+  auto top_k = ops::TopK(root, input, input_k, ops::TopK::Sorted(true));
+
+  TF_CHECK_OK(root.status());
+  Graph* g = new Graph(OpRegistry::Global());
+  TF_CHECK_OK(root.ToGraph(g));
+  string device = use_gpu ? "gpu" : "cpu";
+  SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(1);
+  opts.config.set_intra_op_parallelism_threads(num_threads);
+  opts.config.set_use_per_session_threads(true);
+  opts.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions_Level_L0);
+  testing::UseRealTime();
+  testing::StartTiming();
+  test::Benchmark(device, g, &opts).Run(iters);
+  testing::ItemsProcessed(rows * cols * iters);
+  testing::SetLabel(label);
+}
+
+// IR: input_rows
+// IC: input_cols
+// IK: k
+// TH: number of threads
+#define BM_TopKGPU(IR, IC, IK, TH, LABEL)                        \
+  static void BM_TopK_GPU_##IR##_##IC##_##IK##_##TH(int iters) { \
+    BM_TopK(iters, IR, IC, IK, TH, true, LABEL);                 \
+  }                                                              \
+  BENCHMARK(BM_TopK_GPU_##IR##_##IC##_##IK##_##TH)
+
+#define BM_TopKCPU(IR, IC, IK, TH, LABEL)                        \
+  static void BM_TopK_CPU_##IR##_##IC##_##IK##_##TH(int iters) { \
+    BM_TopK(iters, IR, IC, IK, TH, false, LABEL);                \
+  }                                                              \
+  BENCHMARK(BM_TopK_CPU_##IR##_##IC##_##IK##_##TH)
+
+// clang-format on
+
+BM_TopKCPU(1, 100, 1, 16, "topk_r_1_c_100_k_1_th_16");
+BM_TopKCPU(1, 100, 2, 16, "topk_r_1_c_100_k_2_th_16");
+BM_TopKCPU(1, 100, 10, 16, "topk_r_1_c_100_k_10_th_16");
+BM_TopKCPU(1, 100, 50, 16, "topk_r_1_c_100_k_50_th_16");
+BM_TopKCPU(1, 100, 100, 16, "topk_r_1_c_100_k_100_th_16");
+BM_TopKCPU(32, 100, 1, 16, "topk_r_32_c_100_k_1_th_16");
+BM_TopKCPU(32, 100, 2, 16, "topk_r_32_c_100_k_2_th_16");
+BM_TopKCPU(32, 100, 10, 16, "topk_r_32_c_100_k_10_th_16");
+BM_TopKCPU(32, 100, 50, 16, "topk_r_32_c_100_k_50_th_16");
+BM_TopKCPU(32, 100, 100, 16, "topk_r_32_c_100_k_100_th_16");
+BM_TopKCPU(128, 100, 1, 16, "topk_r_128_c_100_k_1_th_16");
+BM_TopKCPU(128, 100, 2, 16, "topk_r_128_c_100_k_2_th_16");
+BM_TopKCPU(128, 100, 10, 16, "topk_r_128_c_100_k_10_th_16");
+BM_TopKCPU(128, 100, 50, 16, "topk_r_128_c_100_k_50_th_16");
+BM_TopKCPU(128, 100, 100, 16, "topk_r_128_c_100_k_100_th_16");
+BM_TopKCPU(128, 1000, 1, 16, "topk_r_128_c_1000_k_1_th_16");
+BM_TopKCPU(128, 1000, 2, 16, "topk_r_128_c_1000_k_2_th_16");
+BM_TopKCPU(128, 1000, 10, 16, "topk_r_128_c_1000_k_10_th_16");
+BM_TopKCPU(128, 1000, 50, 16, "topk_r_128_c_1000_k_50_th_16");
+BM_TopKCPU(128, 1000, 100, 16, "topk_r_128_c_1000_k_100_th_16");
+BM_TopKCPU(128, 1000, 500, 16, "topk_r_128_c_1000_k_500_th_16");
+BM_TopKCPU(128, 1000, 1000, 16, "topk_r_128_c_1000_k_1000_th_16");
+
+// From NMT Codebase:
+//   batch_sizes: 16, 128
+//   vocab_sizes: 10000 for small dataset, 35000 for large.
+//   beam_widths: 1, 2, 5, 10
+BM_TopKCPU(16, 10000, 10000, 16, "topk_nmt_r_16_c_10000_k_10000_th_16");
+BM_TopKCPU(16, 20000, 20000, 16, "topk_nmt_r_16_c_20000_k_20000_th_16");
+BM_TopKCPU(16, 50000, 50000, 16, "topk_nmt_r_16_c_50000_k_50000_th_16");
+BM_TopKCPU(16, 100000, 100000, 16, "topk_nmt_r_16_c_100000_k_100000_th_16");
+BM_TopKCPU(16, 35000, 35000, 16, "topk_nmt_r_16_c_35000_k_35000_th_16");
+BM_TopKCPU(16, 70000, 70000, 16, "topk_nmt_r_16_c_70000_k_70000_th_16");
+BM_TopKCPU(16, 175000, 175000, 16, "topk_nmt_r_16_c_175000_k_175000_th_16");
+BM_TopKCPU(16, 350000, 350000, 16, "topk_nmt_r_16_c_350000_k_350000_th_16");
+BM_TopKCPU(128, 10000, 10000, 16, "topk_nmt_r_128_c_10000_k_10000_th_16");
+BM_TopKCPU(128, 20000, 20000, 16, "topk_nmt_r_128_c_20000_k_20000_th_16");
+BM_TopKCPU(128, 50000, 50000, 16, "topk_nmt_r_128_c_50000_k_50000_th_16");
+BM_TopKCPU(128, 100000, 100000, 16, "topk_nmt_r_128_c_100000_k_100000_th_16");
+BM_TopKCPU(128, 35000, 35000, 16, "topk_nmt_r_128_c_35000_k_35000_th_16");
+BM_TopKCPU(128, 70000, 70000, 16, "topk_nmt_r_128_c_70000_k_70000_th_16");
+BM_TopKCPU(128, 175000, 175000, 16, "topk_nmt_r_128_c_175000_k_175000_th_16");
+BM_TopKCPU(128, 350000, 350000, 16, "topk_nmt_r_128_c_350000_k_350000_th_16");
 
 }  // namespace tensorflow

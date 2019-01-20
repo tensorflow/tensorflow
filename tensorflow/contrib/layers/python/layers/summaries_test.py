@@ -18,78 +18,77 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.contrib.layers.python.layers import summaries as summaries_lib
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class SummariesTest(tf.test.TestCase):
-
-  def test_duplicate_tag(self):
-    with self.test_session():
-      var = tf.Variable([1, 2, 3])
-      tf.contrib.layers.summarize_tensor(var)
-      with self.assertRaises(ValueError):
-        tf.contrib.layers.summarize_tensor(var)
+class SummariesTest(test.TestCase):
 
   def test_summarize_scalar_tensor(self):
-    with self.test_session():
-      scalar_var = tf.Variable(1)
-      summary_op = tf.contrib.layers.summarize_tensor(scalar_var)
-      self.assertTrue(summary_op.op.type == 'ScalarSummary')
+    with self.cached_session():
+      scalar_var = variables.Variable(1)
+      summary_op = summaries_lib.summarize_tensor(scalar_var)
+      self.assertEquals(summary_op.op.type, 'ScalarSummary')
 
   def test_summarize_multidim_tensor(self):
-    with self.test_session():
-      tensor_var = tf.Variable([1, 2, 3])
-      summary_op = tf.contrib.layers.summarize_tensor(tensor_var)
-      self.assertTrue(summary_op.op.type == 'HistogramSummary')
+    with self.cached_session():
+      tensor_var = variables.Variable([1, 2, 3])
+      summary_op = summaries_lib.summarize_tensor(tensor_var)
+      self.assertEquals(summary_op.op.type, 'HistogramSummary')
 
   def test_summarize_activation(self):
-    with self.test_session():
-      var = tf.Variable(1)
-      op = tf.identity(var, name='SummaryTest')
-      summary_op = tf.contrib.layers.summarize_activation(op)
+    with self.cached_session():
+      var = variables.Variable(1)
+      op = array_ops.identity(var, name='SummaryTest')
+      summary_op = summaries_lib.summarize_activation(op)
 
-      self.assertTrue(summary_op.op.type == 'HistogramSummary')
-      names = [op.op.name for op in tf.get_collection(tf.GraphKeys.SUMMARIES)]
+      self.assertEquals(summary_op.op.type, 'HistogramSummary')
+      names = [op.op.name for op in ops.get_collection(ops.GraphKeys.SUMMARIES)]
       self.assertEquals(len(names), 1)
-      self.assertTrue(u'SummaryTest/activation_summary' in names)
+      self.assertIn(u'SummaryTest/activation', names)
 
   def test_summarize_activation_relu(self):
-    with self.test_session():
-      var = tf.Variable(1)
-      op = tf.nn.relu(var, name='SummaryTest')
-      summary_op = tf.contrib.layers.summarize_activation(op)
+    with self.cached_session():
+      var = variables.Variable(1)
+      op = nn_ops.relu(var, name='SummaryTest')
+      summary_op = summaries_lib.summarize_activation(op)
 
-      self.assertTrue(summary_op.op.type == 'HistogramSummary')
-      names = [op.op.name for op in tf.get_collection(tf.GraphKeys.SUMMARIES)]
+      self.assertEquals(summary_op.op.type, 'HistogramSummary')
+      names = [op.op.name for op in ops.get_collection(ops.GraphKeys.SUMMARIES)]
       self.assertEquals(len(names), 2)
-      self.assertTrue(u'SummaryTest/zeros_summary' in names)
-      self.assertTrue(u'SummaryTest/activation_summary' in names)
+      self.assertIn(u'SummaryTest/zeros', names)
+      self.assertIn(u'SummaryTest/activation', names)
 
   def test_summarize_activation_relu6(self):
-    with self.test_session():
-      var = tf.Variable(1)
-      op = tf.nn.relu6(var, name='SummaryTest')
-      summary_op = tf.contrib.layers.summarize_activation(op)
+    with self.cached_session():
+      var = variables.Variable(1)
+      op = nn_ops.relu6(var, name='SummaryTest')
+      summary_op = summaries_lib.summarize_activation(op)
 
-      self.assertTrue(summary_op.op.type == 'HistogramSummary')
-      names = [op.op.name for op in tf.get_collection(tf.GraphKeys.SUMMARIES)]
+      self.assertEquals(summary_op.op.type, 'HistogramSummary')
+      names = [op.op.name for op in ops.get_collection(ops.GraphKeys.SUMMARIES)]
       self.assertEquals(len(names), 3)
-      self.assertTrue(u'SummaryTest/zeros_summary' in names)
-      self.assertTrue(u'SummaryTest/sixes_summary' in names)
-      self.assertTrue(u'SummaryTest/activation_summary' in names)
+      self.assertIn(u'SummaryTest/zeros', names)
+      self.assertIn(u'SummaryTest/sixes', names)
+      self.assertIn(u'SummaryTest/activation', names)
 
   def test_summarize_collection_regex(self):
-    with self.test_session():
-      var = tf.Variable(1)
-      tf.identity(var, name='Test1')
-      tf.add_to_collection('foo', tf.identity(var, name='Test2'))
-      tf.add_to_collection('foo', tf.identity(var, name='Foobar'))
-      tf.add_to_collection('foo', tf.identity(var, name='Test3'))
-      summaries = tf.contrib.layers.summarize_collection('foo', r'Test[123]')
+    with self.cached_session():
+      var = variables.Variable(1)
+      array_ops.identity(var, name='Test1')
+      ops.add_to_collection('foo', array_ops.identity(var, name='Test2'))
+      ops.add_to_collection('foo', array_ops.identity(var, name='Foobar'))
+      ops.add_to_collection('foo', array_ops.identity(var, name='Test3'))
+      summaries = summaries_lib.summarize_collection('foo', r'Test[123]')
       names = [op.op.name for op in summaries]
       self.assertEquals(len(names), 2)
-      self.assertTrue(u'Test2_summary' in names)
-      self.assertTrue(u'Test3_summary' in names)
+      self.assertIn(u'Test2_summary', names)
+      self.assertIn(u'Test3_summary', names)
+
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

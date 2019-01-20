@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,9 +42,9 @@ static inline void ParseAttributeVec4(OpKernelConstruction* context,
   OP_REQUIRES_OK(context, context->GetAttr(attr_name, attr));
   OP_REQUIRES(
       context, (*attr)[0] == 1 && (*attr)[3] == 1,
-      errors::Unimplemented("Only support", attr_name, "across space."));
+      errors::Unimplemented("Only support ", attr_name, " across space."));
   OP_REQUIRES(context, (*attr)[1] >= 1 && (*attr)[2] >= 1,
-              errors::OutOfRange(attr_name, "is out of range."));
+              errors::OutOfRange(attr_name, " is out of range."));
 }
 
 template <typename Device, typename T>

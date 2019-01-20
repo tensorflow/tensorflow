@@ -23,22 +23,29 @@ import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary as _summary
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
-from tensorflow.python.training import summary_io
 from tensorflow.python.training import training_util
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export(v1=["train.Supervisor"])
 class Supervisor(object):
   """A training helper that checkpoints models and computes summaries.
+
+  This class is deprecated. Please use
+  `tf.train.MonitoredTrainingSession` instead.
 
   The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
   and a `SessionManager` that takes care of common needs of TensorFlow
@@ -127,11 +134,11 @@ class Supervisor(object):
 
   * Specifying `'local'` requests a session that uses the RPC-based
     "Master interface" to run TensorFlow programs. See
-    [`tf.train.Server.create_local_server()`](#Server.create_local_server) for
+    `tf.train.Server.create_local_server` for
     details.
 
   * Specifying `'grpc://hostname:port'` requests a session that uses
-    the RPC interface to a specific , and also allows the in-process
+    the RPC interface to a specific host, and also allows the in-process
     master to access remote tensorflow workers. Often, it is
     appropriate to pass `server.target` (for some `tf.train.Server`
     named `server).
@@ -147,14 +154,14 @@ class Supervisor(object):
   Example: Start a thread to print losses.  We want this thread to run
   every 60 seconds, so we launch it with `sv.loop()`.
 
-    ```python
-    ...
-    sv = Supervisor(logdir='/tmp/mydir')
-    with sv.managed_session(FLAGS.master) as sess:
-      sv.loop(60, print_loss, (sess))
-      while not sv.should_stop():
-        sess.run(my_train_op)
-    ```
+  ```python
+  ...
+  sv = Supervisor(logdir='/tmp/mydir')
+  with sv.managed_session(FLAGS.master) as sess:
+    sv.loop(60, print_loss, (sess, ))
+    while not sv.should_stop():
+      sess.run(my_train_op)
+  ```
 
   ##### Launching fewer services
 
@@ -166,22 +173,22 @@ class Supervisor(object):
 
   Example: Create summaries manually every 100 steps in the chief.
 
-    ```python
-    # Create a Supervisor with no automatic summaries.
-    sv = Supervisor(logdir='/tmp/mydir', is_chief=is_chief, summary_op=None)
-    # As summary_op was None, managed_session() does not start the
-    # summary thread.
-    with sv.managed_session(FLAGS.master) as sess:
-      for step in xrange(1000000):
-        if sv.should_stop():
-          break
-        if is_chief and step % 100 == 0:
-          # Create the summary every 100 chief steps.
-          sv.summary_computed(sess, sess.run(my_summary_op))
-        else:
-          # Train normally
-          sess.run(my_train_op)
-    ```
+  ```python
+  # Create a Supervisor with no automatic summaries.
+  sv = Supervisor(logdir='/tmp/mydir', is_chief=is_chief, summary_op=None)
+  # As summary_op was None, managed_session() does not start the
+  # summary thread.
+  with sv.managed_session(FLAGS.master) as sess:
+    for step in xrange(1000000):
+      if sv.should_stop():
+        break
+      if is_chief and step % 100 == 0:
+        # Create the summary every 100 chief steps.
+        sv.summary_computed(sess, sess.run(my_summary_op))
+      else:
+        # Train normally
+        sess.run(my_train_op)
+  ```
 
   ##### Custom model initialization
 
@@ -190,19 +197,6 @@ class Supervisor(object):
   initialization needs, see how to specify a `local_init_op` when creating the
   supervisor.  You can also use the `SessionManager` directly to create a
   session and check if it could be initialized automatically.
-
-  @@__init__
-  @@managed_session
-  @@prepare_or_wait_for_session
-  @@start_standard_services
-  @@start_queue_runners
-  @@summary_computed
-
-  @@stop
-  @@request_stop
-  @@should_stop
-  @@stop_on_exception
-  @@wait_for_stop
   """
 
   # Value to pass for the 'ready_op', 'init_op', 'summary_op', 'saver',
@@ -210,6 +204,8 @@ class Supervisor(object):
   # the default behavior should be used.
   USE_DEFAULT = 0
 
+  @deprecation.deprecated(None,
+                          "Please switch to tf.train.MonitoredTrainingSession")
   def __init__(self,
                graph=None,
                ready_op=USE_DEFAULT,
@@ -229,7 +225,8 @@ class Supervisor(object):
                checkpoint_basename="model.ckpt",
                session_manager=None,
                summary_writer=USE_DEFAULT,
-               init_fn=None):
+               init_fn=None,
+               local_init_run_options=None):
     """Create a `Supervisor`.
 
     Args:
@@ -245,16 +242,15 @@ class Supervisor(object):
       ready_for_local_init_op: 1-D string `Tensor`.  This tensor is evaluated by
         supervisors in `prepare_or_wait_for_session()` to check if the model is
         ready to run the local_init_op.
-        The model is considered ready if it returns an empty array.  Defaults to
-        the tensor returned from
-        `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
-        model is not checked for readiness before running local_init_op.
+        The model is considered ready if it returns an empty array. Defaults to
+        `None`. If `None`, the model is not checked for readiness before running
+        local_init_op.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
         on a chief supervisor for inits and restore.
       init_op: `Operation`.  Used by chief supervisors to initialize the model
         when it can not be recovered.  Defaults to an `Operation` that
-        initializes all variables.  If `None`, no initialization is done
+        initializes all global variables.  If `None`, no initialization is done
         automatically unless you pass a value for `init_fn`, see below.
       init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
         This feed dictionary will be used when `init_op` is evaluated.
@@ -268,7 +264,7 @@ class Supervisor(object):
         The directory will be created if it does not exist.
       summary_op: An `Operation` that returns a Summary for the event logs.
         Used by chief supervisors if a `logdir` was specified.  Defaults to the
-        operation returned from merge_all_summaries().  If `None`, summaries are
+        operation returned from summary.merge_all().  If `None`, summaries are
         not computed automatically.
       saver: A Saver object.  Used by chief supervisors if a `logdir` was
         specified.  Defaults to the saved returned by Saver().
@@ -276,7 +272,7 @@ class Supervisor(object):
       global_step: An integer Tensor of size 1 that counts steps.  The value
         from 'global_step' is used in summaries and checkpoint filenames.
         Default to the op named 'global_step' in the graph if it exists, is of
-        rank 1, size 1, and of type tf.int32 ot tf.int64.  If `None` the global
+        rank 1, size 1, and of type tf.int32 or tf.int64.  If `None` the global
         step is not recorded in summaries and checkpoint files.  Used by chief
         supervisors if a `logdir` was specified.
       save_summaries_secs: Number of seconds between the computation of
@@ -298,10 +294,21 @@ class Supervisor(object):
       init_fn: Optional callable used to initialize the model. Called
         after the optional `init_op` is called.  The callable must accept one
         argument, the session being initialized.
+      local_init_run_options: RunOptions to be passed as the SessionManager
+        local_init_run_options parameter.
 
     Returns:
       A `Supervisor`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    `Supervisor`s are not supported when eager execution is enabled.
+    @end_compatibility
     """
+    if context.executing_eagerly():
+      raise RuntimeError("Supervisors are compatible with eager execution.")
     # Set default values of arguments.
     if graph is None:
       graph = ops.get_default_graph()
@@ -314,11 +321,15 @@ class Supervisor(object):
       self._init_summary_op(summary_op=summary_op)
       self._init_global_step(global_step=global_step)
     self._graph = graph
+    self._meta_graph_def = meta_graph.create_meta_graph_def(
+        graph_def=graph.as_graph_def(add_shapes=True),
+        saver_def=self._saver.saver_def if self._saver else None)
     self._is_chief = is_chief
     self._coord = coordinator.Coordinator()
     self._recovery_wait_secs = recovery_wait_secs
     self._stop_grace_secs = stop_grace_secs
     self._init_fn = init_fn
+    self._local_init_run_options = local_init_run_options
 
     # Set all attributes related to checkpointing and writing events to None.
     # Afterwards, set them appropriately for chief supervisors, as these are
@@ -337,7 +348,7 @@ class Supervisor(object):
         self._save_path = os.path.join(self._logdir, checkpoint_basename)
       if summary_writer is Supervisor.USE_DEFAULT:
         if self._logdir:
-          self._summary_writer = summary_io.SummaryWriter(self._logdir)
+          self._summary_writer = _summary.FileWriter(self._logdir)
       else:
         self._summary_writer = summary_writer
       self._graph_added_to_summary = False
@@ -354,7 +365,8 @@ class Supervisor(object):
           ready_op=self._ready_op,
           ready_for_local_init_op=self._ready_for_local_init_op,
           graph=self._graph,
-          recovery_wait_secs=self._recovery_wait_secs)
+          recovery_wait_secs=self._recovery_wait_secs,
+          local_init_run_options=self._local_init_run_options)
     else:
       self._session_manager = session_manager
 
@@ -418,7 +430,7 @@ class Supervisor(object):
     if init_op is Supervisor.USE_DEFAULT:
       init_op = self._get_first_op_from_collection(ops.GraphKeys.INIT_OP)
       if init_op is None:
-        init_op = variables.initialize_all_variables()
+        init_op = variables.global_variables_initializer()
         ops.add_to_collection(ops.GraphKeys.INIT_OP, init_op)
     self._init_op = init_op
     self._init_feed_dict = init_feed_dict
@@ -436,8 +448,10 @@ class Supervisor(object):
       local_init_op = self._get_first_op_from_collection(
           ops.GraphKeys.LOCAL_INIT_OP)
       if local_init_op is None:
-        op_list = [variables.initialize_local_variables(),
-                   data_flow_ops.initialize_all_tables()]
+        op_list = [
+            variables.local_variables_initializer(),
+            lookup_ops.tables_initializer()
+        ]
         if op_list:
           local_init_op = control_flow_ops.group(*op_list)
           ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, local_init_op)
@@ -452,7 +466,7 @@ class Supervisor(object):
     """
     if saver is Supervisor.USE_DEFAULT:
       saver = self._get_first_op_from_collection(ops.GraphKeys.SAVERS)
-      if saver is None and variables.all_variables():
+      if saver is None and variables.global_variables():
         saver = saver_mod.Saver()
         ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
     self._saver = saver
@@ -467,7 +481,7 @@ class Supervisor(object):
     if summary_op is Supervisor.USE_DEFAULT:
       summary_op = self._get_first_op_from_collection(ops.GraphKeys.SUMMARY_OP)
       if summary_op is None:
-        summary_op = logging_ops.merge_all_summaries()
+        summary_op = _summary.merge_all()
         if summary_op is not None:
           ops.add_to_collection(ops.GraphKeys.SUMMARY_OP, summary_op)
     self._summary_op = summary_op
@@ -620,6 +634,7 @@ class Supervisor(object):
                                 self._logdir, "graph.pbtxt")
     if self._summary_writer and not self._graph_added_to_summary:
       self._summary_writer.add_graph(self._graph)
+      self._summary_writer.add_meta_graph(self._meta_graph_def)
       self._graph_added_to_summary = True
 
   def start_standard_services(self, sess):
@@ -715,12 +730,14 @@ class Supervisor(object):
           init_feed_dict=self._init_feed_dict, init_fn=self._init_fn)
       self._write_graph()
       if start_standard_services:
+        logging.info("Starting standard services.")
         self.start_standard_services(sess)
     else:
       sess = self._session_manager.wait_for_session(master,
                                                     config=config,
                                                     max_wait_secs=max_wait_secs)
     if start_standard_services:
+      logging.info("Starting queue runners.")
       self.start_queue_runners(sess)
     return sess
 
@@ -740,7 +757,17 @@ class Supervisor(object):
 
     Returns:
       The list of threads started for the `QueueRunners`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    Queues are not compatible with eager execution. To ingest data when eager
+    execution is enabled, use the `tf.data` API.
+    @end_compatibility
     """
+    if context.executing_eagerly():
+      raise RuntimeError("Queues are not compatible with eager execution.")
     if queue_runners is None:
       queue_runners = self._graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS)
     threads = []
@@ -773,7 +800,10 @@ class Supervisor(object):
     looper.start()
     return looper
 
-  def stop(self, threads=None, close_summary_writer=True):
+  def stop(self,
+           threads=None,
+           close_summary_writer=True,
+           ignore_live_threads=False):
     """Stop the services and the coordinator.
 
     This does not close the session.
@@ -787,14 +817,19 @@ class Supervisor(object):
       close_summary_writer: Whether to close the `summary_writer`.  Defaults to
         `True` if the summary writer was created by the supervisor, `False`
         otherwise.
+      ignore_live_threads: If `True` ignores threads that remain running after
+        a grace period when joining threads via the coordinator, instead of
+        raising a RuntimeError.
     """
     self._coord.request_stop()
     try:
       # coord.join() re-raises the first reported exception; the "finally"
       # block ensures that we clean up whether or not an exception was
       # reported.
-      self._coord.join(threads,
-                       stop_grace_period_secs=self._stop_grace_secs)
+      self._coord.join(
+          threads,
+          stop_grace_period_secs=self._stop_grace_secs,
+          ignore_live_threads=ignore_live_threads)
     finally:
       # Close the writer last, in case one of the running threads was using it.
       if close_summary_writer and self._summary_writer:
@@ -885,7 +920,7 @@ class Supervisor(object):
     # In that case all Variables must have their device set.
     if not self._is_chief:
       for op in self._graph.get_operations():
-        if op.type == "Variable" and not op.device:
+        if op.type in ["Variable", "VariableV2"] and not op.device:
           raise ValueError("When using replicas, all Variables must have "
                            "their device set: %s" % op)
 
@@ -1001,34 +1036,39 @@ class SVSummaryThread(coordinator.LooperThread):
       summary_strs = self._sess.run(self._sv.summary_op)
       global_step = None
     if self._sv.summary_writer:
+      logging.info("Recording summary at step %s.", global_step)
       self._sv.summary_writer.add_summary(summary_strs, global_step)
 
 
 class SVStepCounterThread(coordinator.LooperThread):
   """Threads to count steps and measure their duration."""
 
-  def __init__(self, sv, sess):
+  def __init__(self, sv, sess, step_counter=None):
     """Create a `SVStepCounterThread`.
 
     Args:
       sv: A `Supervisor`.
       sess: A `Session`.
+      step_counter: A `Tensor` holding the step counter. By defaults, it uses
+        sv.global_step.
     """
     super(SVStepCounterThread, self).__init__(sv.coord, sv.save_summaries_secs)
     self._sv = sv
     self._sess = sess
     self._last_time = 0.0
     self._last_step = 0
-    self._summary_tag = "%s/sec" % self._sv.global_step.op.name
+    step_counter = sv.global_step if step_counter is None else step_counter
+    self._step_counter = step_counter
+    self._summary_tag = "%s/sec" % self._step_counter.op.name
 
   def start_loop(self):
     self._last_time = time.time()
     self._last_step = training_util.global_step(
-        self._sess, self._sv.global_step)
+        self._sess, self._step_counter)
 
   def run_loop(self):
     # Count the steps.
-    current_step = training_util.global_step(self._sess, self._sv.global_step)
+    current_step = training_util.global_step(self._sess, self._step_counter)
     added_steps = current_step - self._last_step
     self._last_step = current_step
     # Measure the elapsed time.
@@ -1036,7 +1076,10 @@ class SVStepCounterThread(coordinator.LooperThread):
     elapsed_time = current_time - self._last_time
     self._last_time = current_time
     # Reports the number of steps done per second
-    steps_per_sec = added_steps / elapsed_time
+    if elapsed_time > 0.:
+      steps_per_sec = added_steps / elapsed_time
+    else:
+      steps_per_sec = float("inf")
     summary = Summary(value=[Summary.Value(tag=self._summary_tag,
                                            simple_value=steps_per_sec)])
     if self._sv.summary_writer:
@@ -1060,6 +1103,7 @@ class SVTimerCheckpointThread(coordinator.LooperThread):
     self._sess = sess
 
   def run_loop(self):
+    logging.info("Saving checkpoint to path %s", self._sv.save_path)
     self._sv.saver.save(self._sess, self._sv.save_path,
                         global_step=self._sv.global_step)
     if self._sv.summary_writer and self._sv.global_step is not None:

@@ -20,9 +20,11 @@ option cc_enable_arenas = true;
 option java_outer_classname = "DistributedRuntimeProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/lib/core/error_codes.proto";
 import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 
@@ -38,6 +40,9 @@ message CreateSessionRequest {
 
   // Configuration options.
   ConfigProto config = 2;
+
+  // The target string used from the client's perspective.
+  string target = 3;
 }
 
 message CreateSessionResponse {
@@ -122,6 +127,17 @@ message RunStepRequest {
 
   // Options for the run call.
   RunOptions options = 5;
+
+  // Partial run handle (optional). If specified, this will be a partial run
+  // execution, run up to the specified fetches.
+  string partial_run_handle = 6;
+
+  // If true then some errors, e.g., execution errors that have long
+  // error messages, may return an OK RunStepResponse with the actual
+  // error saved in the status_code/status_error_message fields of the
+  // response body. This is a workaround since the RPC subsystem may
+  // truncate long metadata messages.
+  bool store_errors_in_response_body = 7;
 }
 
 message RunStepResponse {
@@ -131,6 +147,49 @@ message RunStepResponse {
 
   // Returned metadata if requested in the options.
   RunMetadata metadata = 2;
+
+  // If store_errors_in_response_body is true in the request, then
+  // optionally the server may return an OK status for the RPC and
+  // fill the true status into the fields below, to allow for messages
+  // that are too long to fit in metadata.
+  error.Code status_code = 3;
+  string status_error_message = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// PartialRunSetup method request/response protos.
+//
+// The caller should provide the future partial run feeds, fetches, and targets.
+// Then the caller can use RunStepRequest with is_partial set to make partial
+// run calls.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message PartialRunSetupRequest {
+  // REQUIRED: session_handle must be returned by a CreateSession call
+  // to the same master service.
+  string session_handle = 1;
+
+  // Tensors to be fed in future steps.
+  repeated string feed = 2;
+
+  // Fetches. A list of tensor names. The caller expects a tensor to be returned
+  // for each fetch[i] (see RunStepResponse.tensor), for corresponding partial
+  // RunStepRequests. The order of specified fetches does not change the
+  // execution order.
+  repeated string fetch = 3;
+
+  // Target Nodes. A list of node names. The named nodes will be run in future
+  // steps, but their outputs will not be fetched.
+  repeated string target = 4;
+}
+
+message PartialRunSetupResponse {
+  // The unique handle corresponding to the ongoing partial run call setup by
+  // the invocation to PartialRunSetup. This handle may be passed to
+  // RunStepRequest to send and receive tensors for this partial run.
+  string partial_run_handle = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -148,15 +207,34 @@ message CloseSessionRequest {
 message CloseSessionResponse {
 }
 
+// Reset() allows misbehaving or slow sessions to be aborted and closed, and
+// causes their resources eventually to be released.  Reset() does not wait
+// for the computations in old sessions to cease; it merely starts the
+// process of tearing them down.  However, if a new session is started after
+// a Reset(), the new session is isolated from changes that old sessions
+// (started prior to the Reset()) may continue to make to resources, provided
+// all those resources are in containers listed in "containers".
+//
+// Old sessions may continue to have side-effects on resources not in
+// containers listed in "containers", and thus may affect future
+// sessions' results in ways that are hard to predict.  Thus, if well-defined
+// behavior is desired, is it recommended that all containers be listed in
+// "containers".  Similarly, if a device_filter is specified, results may be
+// hard to predict.
 message ResetRequest {
   // A list of container names, which may be empty.
   //
-  // If 'container' is not empty, releases resoures in the given
+  // If 'container' is not empty, releases resources in the given
   // containers in all devices.
   //
   // If 'container' is empty, releases resources in the default
   // container in all devices.
   repeated string container = 1;
+
+  // When any filters are present, only devices that match the filters
+  // will be reset. Each filter can be partially specified,
+  // e.g. "/job:ps" "/job:worker/replica:3", etc.
+  repeated string device_filters = 2;
 }
 
 message ResetResponse {
@@ -172,9 +250,85 @@ message ResetResponse {
 ////////////////////////////////////////////////////////////////////////////////
 
 message ListDevicesRequest {
+  // Optional: session_handle must be returned by a CreateSession call to the
+  // same master service.
+  //
+  // When session_handle is empty, the ClusterSpec provided when the master was
+  // started is used to compute the available devices. If the session_handle is
+  // provided but not recognized, an error is returned. Finally, if a valid
+  // session_handle is provided, the cluster configuration for that session is
+  // used when computing the response.
+  string session_handle = 1;
 }
 
 message ListDevicesResponse {
   repeated DeviceAttributes local_device = 1;
   repeated DeviceAttributes remote_device = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// MakeCallable method request/response protos.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message MakeCallableRequest {
+  // REQUIRED: session_handle must be returned by a CreateSession call
+  // to the same master service.
+  string session_handle = 1;
+
+  // Options that define the behavior of the created callable.
+  CallableOptions options = 2;
+}
+
+message MakeCallableResponse {
+  // A handle to the created callable.
+  int64 handle = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// RunCallable method request/response protos.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message RunCallableRequest {
+  // REQUIRED: session_handle must be returned by a CreateSession call
+  // to the same master service.
+  string session_handle = 1;
+  // REQUIRED: handle must be returned by a MakeCallable call to the same
+  // master service.
+  int64 handle = 2;
+
+  // Values of the tensors passed as arguments to the callable, in the order
+  // defined in the CallableOptions.feed field passed to MakeCallable.
+  repeated TensorProto feed = 3;
+}
+
+message RunCallableResponse {
+  // Values of the tensors returned by the callable, in the order defined in the
+  // CallableOptions.fetch field passed to MakeCallable.
+  repeated TensorProto fetch = 1;
+
+  // Returned metadata if requested in the options.
+  RunMetadata metadata = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// ReleaseCallable method request/response protos.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message ReleaseCallableRequest {
+  // REQUIRED: session_handle must be returned by a CreateSession call
+  // to the same master service.
+  string session_handle = 1;
+
+  // REQUIRED: handle must be returned by a MakeCallable call to the same
+  // master service.
+  int64 handle = 2;
+}
+
+message ReleaseCallableResponse {
 }

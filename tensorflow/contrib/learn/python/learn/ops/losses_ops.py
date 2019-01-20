@@ -13,29 +13,39 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow Ops for loss computation."""
+"""TensorFlow Ops for loss computation (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.losses.python.losses import loss_ops
+from tensorflow.contrib.framework import deprecated
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops.losses import losses
 
 
+@deprecated('2016-12-01', 'Use `tf.losses.mean_squared_error` '
+            'and explicit logits computation.')
 def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
   """Returns prediction and loss for mean squared error regression."""
-  with ops.name_scope(name, "mean_squared_error_regressor",
+  with ops.name_scope(name, 'mean_squared_error_regressor',
                       [tensor_in, labels]):
     predictions = nn.xw_plus_b(tensor_in, weights, biases)
     if len(labels.get_shape()) == 1 and len(predictions.get_shape()) == 2:
-      predictions = array_ops_.squeeze(predictions, squeeze_dims=[1])
-    return predictions, loss_ops.sum_of_squares(predictions, labels)
+      predictions = array_ops_.squeeze(predictions, axis=[1])
+    return predictions, losses.mean_squared_error(labels, predictions)
 
 
+@deprecated('2016-12-01', 'Use `tf.losses.softmax_cross_entropy` '
+            'and explicit logits computation.')
 def softmax_classifier(tensor_in,
                        labels,
                        weights,
@@ -44,9 +54,15 @@ def softmax_classifier(tensor_in,
                        name=None):
   """Returns prediction and loss for softmax classifier.
 
+  This function returns "probabilities" and a cross entropy loss. To obtain
+  predictions, use `tf.argmax` on the returned probabilities.
+
+  This function requires labels to be passed in one-hot encoding.
+
   Args:
     tensor_in: Input tensor, [batch_size, feature_size], features.
-    labels: Tensor, [batch_size, n_classes], labels of the output classes.
+    labels: Tensor, [batch_size, n_classes], one-hot labels of the output
+      classes.
     weights: Tensor, [batch_size, feature_size], linear transformation
       matrix.
     biases: Tensor, [batch_size], biases.
@@ -55,10 +71,10 @@ def softmax_classifier(tensor_in,
     name: Operation name.
 
   Returns:
-    Prediction and loss tensors.
+    `tuple` of softmax predictions and loss `Tensor`s.
   """
-  with ops.name_scope(name, "softmax_classifier", [tensor_in, labels]):
+  with ops.name_scope(name, 'softmax_classifier', [tensor_in, labels]):
     logits = nn.xw_plus_b(tensor_in, weights, biases)
     if class_weight is not None:
-      logits = math_ops.mul(logits, class_weight)
-    return nn.softmax(logits), loss_ops.softmax_cross_entropy(logits, labels)
+      logits = math_ops.multiply(logits, class_weight)
+    return nn.softmax(logits), losses.softmax_cross_entropy(labels, logits)

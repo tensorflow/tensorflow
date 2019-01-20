@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_OP_H_
-#define TENSORFLOW_FRAMEWORK_OP_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_OP_H_
+#define TENSORFLOW_CORE_FRAMEWORK_OP_H_
 
 #include <functional>
 #include <unordered_map>
 
 #include <vector>
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -70,13 +69,14 @@ class OpRegistry : public OpRegistryInterface {
   OpRegistry();
   ~OpRegistry() override;
 
-  void Register(OpRegistrationDataFactory op_data_factory);
+  void Register(const OpRegistrationDataFactory& op_data_factory);
 
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
 
   // Fills *ops with all registered OpDefs (except those with names
-  // starting with '_' if include_internal == false).
+  // starting with '_' if include_internal == false) sorted in
+  // ascending alphabetical order.
   void Export(bool include_internal, OpList* ops) const;
 
   // Returns ASCII-format OpList for all registered OpDefs (except
@@ -88,6 +88,9 @@ class OpRegistry : public OpRegistryInterface {
 
   // Get all registered ops.
   void GetRegisteredOps(std::vector<OpDef>* op_defs);
+
+  // Get all `OpRegistrationData`s.
+  void GetOpRegistrationData(std::vector<OpRegistrationData>* op_data);
 
   // Watcher, a function object.
   // The watcher, if set by SetWatcher(), is called every time an op is
@@ -138,8 +141,8 @@ class OpRegistry : public OpRegistryInterface {
   // Add 'def' to the registry with additional data 'data'. On failure, or if
   // there is already an OpDef with that name registered, returns a non-okay
   // status.
-  Status RegisterAlreadyLocked(OpRegistrationDataFactory op_data_factory) const
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status RegisterAlreadyLocked(const OpRegistrationDataFactory& op_data_factory)
+      const EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
@@ -170,12 +173,6 @@ class OpListOpRegistry : public OpRegistryInterface {
   // Values are owned.
   std::unordered_map<string, const OpRegistrationData*> index_;
 };
-
-// Treats 'registry_ptr' as a pointer to OpRegistry, and calls
-// registry_ptr->Register(op_def) for each op_def that has been registered with
-// the current library's global op registry (obtained by calling
-// OpRegistry::Global().
-extern "C" void RegisterOps(void* registry_ptr);
 
 // Support for defining the OpDef (specifying the semantics of the Op and how
 // it should be created) and registering it in the OpRegistry::Global()
@@ -211,18 +208,17 @@ class OpDefBuilderWrapper;
 template <>
 class OpDefBuilderWrapper<true> {
  public:
-  typedef OpDefBuilderWrapper<true> WrapperType;
   OpDefBuilderWrapper(const char name[]) : builder_(name) {}
-  OpDefBuilderWrapper<true>& Attr(StringPiece spec) {
-    builder_.Attr(spec);
+  OpDefBuilderWrapper<true>& Attr(string spec) {
+    builder_.Attr(std::move(spec));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Input(StringPiece spec) {
-    builder_.Input(spec);
+  OpDefBuilderWrapper<true>& Input(string spec) {
+    builder_.Input(std::move(spec));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Output(StringPiece spec) {
-    builder_.Output(spec);
+  OpDefBuilderWrapper<true>& Output(string spec) {
+    builder_.Output(std::move(spec));
     return *this;
   }
   OpDefBuilderWrapper<true>& SetIsCommutative() {
@@ -241,12 +237,12 @@ class OpDefBuilderWrapper<true> {
     builder_.SetAllowsUninitializedInput();
     return *this;
   }
-  OpDefBuilderWrapper<true>& Deprecated(int version, StringPiece explanation) {
-    builder_.Deprecated(version, explanation);
+  OpDefBuilderWrapper<true>& Deprecated(int version, string explanation) {
+    builder_.Deprecated(version, std::move(explanation));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Doc(StringPiece text) {
-    builder_.Doc(text);
+  OpDefBuilderWrapper<true>& Doc(string text) {
+    builder_.Doc(std::move(text));
     return *this;
   }
   OpDefBuilderWrapper<true>& SetShapeFn(
@@ -299,6 +295,18 @@ struct OpDefBuilderReceiver {
           ::tensorflow::register_op::OpDefBuilderWrapper<SHOULD_REGISTER_OP( \
               name)>(name)
 
+// The `REGISTER_SYSTEM_OP()` macro acts as `REGISTER_OP()` except
+// that the op is registered unconditionally even when selective
+// registration is used.
+#define REGISTER_SYSTEM_OP(name) \
+  REGISTER_SYSTEM_OP_UNIQ_HELPER(__COUNTER__, name)
+#define REGISTER_SYSTEM_OP_UNIQ_HELPER(ctr, name) \
+  REGISTER_SYSTEM_OP_UNIQ(ctr, name)
+#define REGISTER_SYSTEM_OP_UNIQ(ctr, name)                                \
+  static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr \
+      TF_ATTRIBUTE_UNUSED =                                               \
+          ::tensorflow::register_op::OpDefBuilderWrapper<true>(name)
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_OP_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_OP_H_

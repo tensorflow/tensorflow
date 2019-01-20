@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"  // for BusAdjacency
+#include "tensorflow/core/framework/device_attributes.pb.h"  // for DeviceLocality
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -35,20 +35,22 @@ class WorkerCacheInterface {
 
   // Updates *workers with strings naming the remote worker tasks to
   // which open channels have been established.
-  virtual void ListWorkers(std::vector<string>* workers) = 0;
+  virtual void ListWorkers(std::vector<string>* workers) const = 0;
+  virtual void ListWorkersInJob(const string& job_name,
+                                std::vector<string>* workers) const = 0;
 
   // If "target" names a remote task for which an RPC channel exists
-  // or can be constructed, returns a new WorkerInterface object
-  // wrapping that channel.  Ownership passes to the caller.
-  // TODO(tucker): rename this to CreateWorker() or something that
-  // makes it more obvious this is a constructor that transfers
-  // ownership, not a cache lookup.
+  // or can be constructed, returns a pointer to a WorkerInterface object
+  // wrapping that channel. The returned value must be destroyed by
+  // calling `this->ReleaseWorker(target, ret)`
+  // TODO(mrry): rename this to GetOrCreateWorker() or something that
+  // makes it more obvious that this method returns a potentially
+  // shared object.
   virtual WorkerInterface* CreateWorker(const string& target) = 0;
 
   // Release a worker previously returned by this->CreateWorker(target).
   //
   // TODO(jeff,sanjay): Consider moving target into WorkerInterface.
-  // TODO(jeff,sanjay): Consider disallowing direct deletion of WorkerInterface.
   // TODO(jeff,sanjay): Unify all worker-cache impls and factor out a
   //                    per-rpc-subsystem WorkerInterface creator.
   virtual void ReleaseWorker(const string& target, WorkerInterface* worker) {
@@ -56,20 +58,19 @@ class WorkerCacheInterface {
     delete worker;
   }
 
-  // Set *ba with the BusAdjacency of the specified remote device
-  // within its local environment.  Returns true if the device bus
-  // affinity was set, using only locally cached data.  Returns false
+  // Set *locality with the DeviceLocality of the specified remote device
+  // within its local environment.  Returns true if *locality
+  // was set, using only locally cached data.  Returns false
   // if status data for that device was not available.  Never blocks.
-  // TODO(mrry,tucker): Maybe remove.
-  virtual bool GetDeviceBusNonBlocking(const string& device,
-                                       BusAdjacency* ba) = 0;
+  virtual bool GetDeviceLocalityNonBlocking(const string& device,
+                                            DeviceLocality* locality) = 0;
 
-  // Set *ba with the BusAdjacency of the specified remote device
-  // within its local environment.  Callback gets Status::OK if the
-  // device bus affinity was set.
-  // TODO(mrry,tucker): Maybe remove.
-  virtual void GetDeviceBusAsync(const string& device, BusAdjacency* ba,
-                                 StatusCallback done) = 0;
+  // Set *locality with the DeviceLocality of the specified remote device
+  // within its local environment.  Callback gets Status::OK if *locality
+  // was set.
+  virtual void GetDeviceLocalityAsync(const string& device,
+                                      DeviceLocality* locality,
+                                      StatusCallback done) = 0;
 
   // Start/stop logging activity.
   virtual void SetLogging(bool active) {}

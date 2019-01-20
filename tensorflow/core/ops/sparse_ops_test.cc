@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -51,6 +50,18 @@ TEST(SparseOpsTest, SparseAddGrad_ShapeFn) {
 
   // input[1].dim(0) and input[2].dim(0) determine output.
   INFER_OK(op, "?;[?,?];[?,?];?", "[d1_0];[d2_0]");
+}
+
+TEST(SparseOpsTest, SparseSliceGrad_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSliceGrad");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "?;[1];?;?");
+
+  INFER_OK(op, "?;?;?;?", "[?]");
+
+  // input[1].dim(0) determine output.
+  INFER_OK(op, "?;[?,?];?;?", "[d1_0]");
 }
 
 TEST(SparseOpsTest, SparseReorder_ShapeFn) {
@@ -122,6 +133,13 @@ TEST(SparseOpsTest, SparseToDense_ShapeFn) {
 
 TEST(SparseOpsTest, SparseReduceSum_ShapeFn) {
   ShapeInferenceTestOp op("SparseReduceSum");
+  TF_ASSERT_OK(NodeDefBuilder("test", "SparseReduceSum")
+                   .Input({"input_indices", 0, DT_INT64})
+                   .Input({"input_values", 1, DT_INT64})
+                   .Input({"input_shape", 2, DT_INT64})
+                   .Input({"reduction_axes", 3, DT_INT32})
+                   .Attr("keep_dims", false)
+                   .Finalize(&op.node_def));
 
   // Shape fn always yields unknown.
   INFER_OK(op, "?;?;?;?", "?");
@@ -165,33 +183,55 @@ TEST(SparseOpsTest, DeserializeManySparse_ShapeFn) {
 
 TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
   ShapeInferenceTestOp op("SparseTensorDenseMatMul");
-  auto set_adjoint_b = [&op](bool adjoint_b) {
-    TF_ASSERT_OK(NodeDefBuilder("test", "SparseSplit")
+  auto set_adjoints = [&op](bool adjoint_a, bool adjoint_b) {
+    TF_ASSERT_OK(NodeDefBuilder("test", "SparseTensorDenseMatMul")
                      .Input({"a_indices", 1, DT_INT64})
                      .Input({"a_values", 2, DT_INT64})
                      .Input({"a_shape", 3, DT_INT64})
                      .Input({"b", 3, DT_INT64})
+                     .Attr("adjoint_a", adjoint_a)
                      .Attr("adjoint_b", adjoint_b)
                      .Finalize(&op.node_def));
   };
 
   // Inputs are a_indices, a_values, a_shape, b.
+  set_adjoints(false, false);
 
   // Rank checks.
   INFER_ERROR("must be rank 2", op, "[1];?;?;?");
   INFER_ERROR("must be rank 1", op, "?;[];?;?");
   INFER_ERROR("must be rank 1", op, "?;?;[];?");
-  INFER_ERROR("must be 2", op, "?;?;[3];?");
+  INFER_ERROR("must be rank 2", op, "?;?;[3];?");
   INFER_ERROR("must be rank 2", op, "?;?;?;[]");
 
   // second output dim comes from b, depending on adjoint_b value.
-  set_adjoint_b(false);
   INFER_OK(op, "?;?;?;?", "[?,?]");
-  INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");  // use d3_1, !adjoint_b.
-  INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
-  set_adjoint_b(true);
+  INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");    // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");    // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;[2];[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
+
+  set_adjoints(false, true);
   INFER_OK(op, "?;?;?;[?,?]", "[?,d3_0]");  // use d3_0, adjoint_b.
   INFER_OK(op, "?;?;?;[1,2]", "[?,d3_0]");  // use d3_0, adjoint_b.
+
+  // first output comes from a, depending on adjoint_a value.
+  // When input tensor is known, its values determine output shape.
+  Tensor a_shape_t = test::AsTensor<int64>(std::vector<int64>{3, 1});
+  op.input_tensors.resize(4);
+  op.input_tensors[2] = &a_shape_t;
+
+  // Multiplying matrices of shape [3, 1] x [1, 2]
+  set_adjoints(false, false);
+  INFER_OK(op, "?;?;[2];[1,2]", "[3,d3_1]");  // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[1,2]", "[3,d3_1]");    // use d3_1, !adjoint_b.
+
+  set_adjoints(true, false);
+  // Trying to multiply matrices of [1, 3] x [1, 2]
+  INFER_ERROR("must be equal", op, "?;?;[2];[1,2]");  // adjoint_a, !adjoint_b.
+
+  // Try with shape tensor describing shape of rank 3.
+  a_shape_t = test::AsTensor<int64>(std::vector<int64>{3, 1, 2});
+  INFER_ERROR("must be rank 2 but is rank 3", op, "?;?;[3];[1,2]");
 }
 
 TEST(SparseOpsTest, SparseSoftmax_ShapeFn) {
@@ -233,6 +273,7 @@ TEST(SparseOpsTest, SparseConcat_ShapeFn) {
   ShapeInferenceTestOp op("SparseConcat");
   std::vector<NodeDefBuilder::NodeOut> src_list;
   int n = 2;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_INT64);
   TF_ASSERT_OK(NodeDefBuilder("test", "SparseConcat")
                    .Input(src_list)
@@ -290,6 +331,41 @@ TEST(SparseOpsTest, SparseDenseCwise_ShapeFn) {
     // Rank checks.
     INFER_ERROR("must be rank 2", op, "[1];?;?;?");
   }
+}
+
+TEST(SparseOpsTest, AddSparseToTensorsMap_ShapeFn) {
+  ShapeInferenceTestOp op("AddSparseToTensorsMap");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "[1];?;?");
+  INFER_ERROR("must be rank 1", op, "?;[];?");
+  INFER_ERROR("must be rank 1", op, "?;?;[]");
+
+  // output is always scalar
+  INFER_OK(op, "?;?;?", "[]");
+}
+
+TEST(SparseOpsTest, AddManySparseToTensorsMap_ShapeFn) {
+  ShapeInferenceTestOp op("AddManySparseToTensorsMap");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "[1];?;?");
+  INFER_ERROR("must be rank 1", op, "?;[];?");
+  INFER_ERROR("must be rank 1", op, "?;?;[]");
+
+  // output is always matrix of [?].
+  INFER_OK(op, "?;?;?", "[?]");
+}
+
+TEST(SparseOpsTest, TakeManySparseFromTensorsMap_ShapeFn) {
+  ShapeInferenceTestOp op("TakeManySparseFromTensorsMap");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 1", op, "[?,1]");
+
+  // output is always [?,?];[?];[?].
+  INFER_OK(op, "?", "[?,?];[?];[?]");
+  INFER_OK(op, "[?]", "[?,?];[?];[?]");
 }
 
 }  // end namespace tensorflow

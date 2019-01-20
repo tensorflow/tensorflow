@@ -28,29 +28,17 @@ set -e
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 shift 1
 
-# Enable support for Google Cloud Platform (GCP)
-export TF_NEED_GCP=1
-# Enable support for HDFS
-export TF_NEED_HDFS=1
-
-if [[ "$1" == "--disable-gcp" ]]; then
-  export TF_NEED_GCP=0
-  shift 1
-fi
-
 COMMAND=("$@")
 
 export CI_BUILD_PYTHON="${CI_BUILD_PYTHON:-python}"
 export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which ${CI_BUILD_PYTHON})}"
-if [ "${CONTAINER_TYPE}" == "gpu" ]; then
-  export TF_NEED_CUDA=1
-else
-  export TF_NEED_CUDA=0
+# XLA currently does not build under Android, so disable it for now.
+if [[ "${CONTAINER_TYPE}" == 'android' ]]; then
+  export TF_ENABLE_XLA=0
 fi
 
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
-echo '' > test_input.txt
-./configure < test_input.txt
+yes "" | $PYTHON_BIN_PATH configure.py
 popd
 
 # Gather and print build information

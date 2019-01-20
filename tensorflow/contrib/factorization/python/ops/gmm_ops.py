@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Gaussian mixture models Operations."""
 # TODO(xavigonzalvo): Factor out covariance matrix operations to make
 # code reusable for different types (e.g. diag).
@@ -22,9 +21,19 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.embedding_ops import embedding_lookup
 
 # Machine epsilon.
@@ -44,13 +53,13 @@ def _covariance(x, diag):
     A Tensor representing the covariance of x. In the case of
   diagonal matrix just the diagonal is returned.
   """
-  num_points = tf.to_float(tf.shape(x)[0])
-  x -= tf.reduce_mean(x, 0, keep_dims=True)
+  num_points = math_ops.to_float(array_ops.shape(x)[0])
+  x -= math_ops.reduce_mean(x, 0, keepdims=True)
   if diag:
-    cov = tf.reduce_sum(
-        tf.square(x), 0, keep_dims=True) / (num_points - 1)
+    cov = math_ops.reduce_sum(
+        math_ops.square(x), 0, keepdims=True) / (num_points - 1)
   else:
-    cov = tf.matmul(x, x, transpose_a=True)  / (num_points - 1)
+    cov = math_ops.matmul(x, x, transpose_a=True) / (num_points - 1)
   return cov
 
 
@@ -66,25 +75,33 @@ def _init_clusters_random(data, num_clusters, random_seed):
     A Tensor with num_clusters random rows of data.
   """
   assert isinstance(data, list)
-  num_data = tf.add_n([tf.shape(inp)[0] for inp in data])
-  with tf.control_dependencies([tf.assert_less_equal(num_clusters, num_data)]):
-    indices = tf.random_uniform([num_clusters],
-                                minval=0,
-                                maxval=tf.cast(num_data, tf.int64),
-                                seed=random_seed,
-                                dtype=tf.int64)
-  indices = tf.cast(indices, tf.int32) % num_data
+  num_data = math_ops.add_n([array_ops.shape(inp)[0] for inp in data])
+  with ops.control_dependencies(
+      [check_ops.assert_less_equal(num_clusters, num_data)]):
+    indices = random_ops.random_uniform(
+        [num_clusters],
+        minval=0,
+        maxval=math_ops.cast(num_data, dtypes.int64),
+        seed=random_seed,
+        dtype=dtypes.int64)
+  indices %= math_ops.cast(num_data, dtypes.int64)
   clusters_init = embedding_lookup(data, indices, partition_strategy='div')
   return clusters_init
 
 
 class GmmAlgorithm(object):
   """Tensorflow Gaussian mixture model clustering class."""
+  CLUSTERS_WEIGHT = 'alphas'
   CLUSTERS_VARIABLE = 'clusters'
   CLUSTERS_COVS_VARIABLE = 'clusters_covs'
 
-  def __init__(self, data, num_classes, initial_means=None, params='wmc',
-               covariance_type=FULL_COVARIANCE, random_seed=0):
+  def __init__(self,
+               data,
+               num_classes,
+               initial_means=None,
+               params='wmc',
+               covariance_type=FULL_COVARIANCE,
+               random_seed=0):
     """Constructor.
 
     Args:
@@ -121,19 +138,39 @@ class GmmAlgorithm(object):
     # Number of examples in a class.
     self._points_in_k = [None] * num_shards
     first_shard = data[0]
-    self._dimensions = tf.shape(first_shard)[1]
+    self._dimensions = array_ops.shape(first_shard)[1]
     self._num_classes = num_classes
     # Small value to guarantee that covariances are invertible.
-    self._min_var = tf.diag(tf.ones(tf.pack([self._dimensions]))) * 1e-3
-    self._create_variables(data, initial_means)
+    self._min_var = array_ops.diag(
+        array_ops.ones(array_ops.stack([self._dimensions]))) * 1e-3
+    self._create_variables()
+    self._initialize_variables(data, initial_means)
     # Operations of partial statistics for the computation of the means.
     self._w_mul_x = []
     # Operations of partial statistics for the computation of the covariances.
     self._w_mul_x2 = []
     self._define_graph(data)
 
-  def _create_variables(self, data, initial_means=None):
-    """Initializes GMM algorithm.
+  def _create_variables(self):
+    """Initializes GMM algorithm."""
+    init_value = array_ops.constant([], dtype=dtypes.float32)
+    self._means = variables.VariableV1(init_value,
+                                       name=self.CLUSTERS_VARIABLE,
+                                       validate_shape=False)
+    self._covs = variables.VariableV1(
+        init_value, name=self.CLUSTERS_COVS_VARIABLE, validate_shape=False)
+    # Mixture weights, representing the probability that a randomly
+    # selected unobservable data (in EM terms) was generated by component k.
+    self._alpha = variable_scope.variable(
+        array_ops.tile([1.0 / self._num_classes], [self._num_classes]),
+        name=self.CLUSTERS_WEIGHT,
+        validate_shape=False)
+    self._cluster_centers_initialized = variables.VariableV1(False,
+                                                             dtype=dtypes.bool,
+                                                             name='initialized')
+
+  def _initialize_variables(self, data, initial_means=None):
+    """Initializes variables.
 
     Args:
       data: a list of Tensors with data, each row is a new example.
@@ -142,36 +179,58 @@ class GmmAlgorithm(object):
     first_shard = data[0]
     # Initialize means: num_classes X 1 X dimensions.
     if initial_means is not None:
-      self._means = tf.Variable(tf.expand_dims(initial_means, 1),
-                                name=self.CLUSTERS_VARIABLE,
-                                validate_shape=False, dtype=tf.float32)
+      means = array_ops.expand_dims(initial_means, 1)
     else:
       # Sample data randomly
-      self._means = tf.Variable(tf.expand_dims(
-          _init_clusters_random(data, self._num_classes, self._random_seed), 1),
-                                name=self.CLUSTERS_VARIABLE,
-                                validate_shape=False)
+      means = array_ops.expand_dims(
+          _init_clusters_random(data, self._num_classes, self._random_seed), 1)
 
     # Initialize covariances.
     if self._covariance_type == FULL_COVARIANCE:
       cov = _covariance(first_shard, False) + self._min_var
       # A matrix per class, num_classes X dimensions X dimensions
-      covs = tf.tile(
-          tf.expand_dims(cov, 0), [self._num_classes, 1, 1])
+      covs = array_ops.tile(
+          array_ops.expand_dims(cov, 0), [self._num_classes, 1, 1])
     elif self._covariance_type == DIAG_COVARIANCE:
       cov = _covariance(first_shard, True) + self._min_var
       # A diagonal per row, num_classes X dimensions.
-      covs = tf.tile(tf.expand_dims(tf.diag_part(cov), 0),
-                     [self._num_classes, 1])
-    self._covs = tf.Variable(covs, name='clusters_covs', validate_shape=False)
-    # Mixture weights, representing the probability that a randomly
-    # selected unobservable data (in EM terms) was generated by component k.
-    self._alpha = tf.Variable(tf.tile([1.0 / self._num_classes],
-                                      [self._num_classes]))
+      covs = array_ops.tile(
+          array_ops.expand_dims(array_ops.diag_part(cov), 0),
+          [self._num_classes, 1])
+
+    with ops.colocate_with(self._cluster_centers_initialized):
+      initialized = control_flow_ops.with_dependencies(
+          [means, covs],
+          array_ops.identity(self._cluster_centers_initialized))
+    self._init_ops = []
+    with ops.colocate_with(self._means):
+      init_means = state_ops.assign(self._means, means, validate_shape=False)
+      init_means = control_flow_ops.with_dependencies(
+          [init_means],
+          state_ops.assign(self._cluster_centers_initialized, True))
+      self._init_ops.append(control_flow_ops.cond(initialized,
+                                                  control_flow_ops.no_op,
+                                                  lambda: init_means).op)
+    with ops.colocate_with(self._covs):
+      init_covs = state_ops.assign(self._covs, covs, validate_shape=False)
+      init_covs = control_flow_ops.with_dependencies(
+          [init_covs],
+          state_ops.assign(self._cluster_centers_initialized, True))
+      self._init_ops.append(control_flow_ops.cond(initialized,
+                                                  control_flow_ops.no_op,
+                                                  lambda: init_covs).op)
+
+  def init_ops(self):
+    """Returns the initialization operation."""
+    return control_flow_ops.group(*self._init_ops)
 
   def training_ops(self):
     """Returns the training operation."""
-    return self._train_ops
+    return control_flow_ops.group(*self._train_ops)
+
+  def is_initialized(self):
+    """Returns a boolean operation for initialized variables."""
+    return self._cluster_centers_initialized
 
   def alphas(self):
     return self._alpha
@@ -188,18 +247,20 @@ class GmmAlgorithm(object):
     """Returns a list of Tensors with the matrix of assignments per shard."""
     ret = []
     for w in self._w:
-      ret.append(tf.argmax(w, 1))
+      ret.append(math_ops.argmax(w, 1))
     return ret
 
   def scores(self):
-    """Returns the distances to each class.
+    """Returns the per-sample likelihood fo the data.
 
     Returns:
-      A tuple with two Tensors. The first contains the distance to
-    each class. The second contains the distance to the assigned
-    class.
+      Log probabilities of each data point.
     """
-    return (self._all_scores, self._scores)
+    return self._scores
+
+  def log_likelihood_op(self):
+    """Returns the log-likelihood operation."""
+    return self._log_likelihood_op
 
   def _define_graph(self, data):
     """Define graph for a single iteration.
@@ -208,17 +269,18 @@ class GmmAlgorithm(object):
       data: a list of Tensors defining the training data.
     """
     for shard_id, shard in enumerate(data):
-      self._num_examples = tf.shape(shard)[0]
-      shard = tf.expand_dims(shard, 0)
+      self._num_examples = array_ops.shape(shard)[0]
+      shard = array_ops.expand_dims(shard, 0)
       self._define_log_prob_operation(shard_id, shard)
       self._define_prior_log_prob_operation(shard_id)
       self._define_expectation_operation(shard_id)
       self._define_partial_maximization_operation(shard_id, shard)
     self._define_maximization_operation(len(data))
-    self._define_distance_to_clusters(data)
+    self._define_loglikelihood_operation()
+    self._define_score_samples()
 
   def _define_full_covariance_probs(self, shard_id, shard):
-    """Defines the full covariance probabilties per example in a class.
+    """Defines the full covariance probabilities per example in a class.
 
     Updates a matrix with dimension num_examples X num_classes.
 
@@ -227,16 +289,16 @@ class GmmAlgorithm(object):
       shard: current data shard, 1 X num_examples X dimensions.
     """
     diff = shard - self._means
-    cholesky = tf.cholesky(self._covs + self._min_var)
-    log_det_covs = 2.0 * tf.reduce_sum(tf.log(tf.matrix_diag_part(cholesky)), 1)
-    x_mu_cov = tf.square(
-        tf.matrix_triangular_solve(
-            cholesky, tf.transpose(
+    cholesky = linalg_ops.cholesky(self._covs + self._min_var)
+    log_det_covs = 2.0 * math_ops.reduce_sum(
+        math_ops.log(array_ops.matrix_diag_part(cholesky)), 1)
+    x_mu_cov = math_ops.square(
+        linalg_ops.matrix_triangular_solve(
+            cholesky, array_ops.transpose(
                 diff, perm=[0, 2, 1]), lower=True))
-    diag_m = tf.transpose(tf.reduce_sum(x_mu_cov, 1))
-    self._probs[shard_id] = -0.5 * (
-        diag_m + tf.to_float(self._dimensions) * tf.log(2 * np.pi) +
-        log_det_covs)
+    diag_m = array_ops.transpose(math_ops.reduce_sum(x_mu_cov, 1))
+    self._probs[shard_id] = -0.5 * (diag_m + math_ops.to_float(self._dimensions)
+                                    * math_ops.log(2 * np.pi) + log_det_covs)
 
   def _define_diag_covariance_probs(self, shard_id, shard):
     """Defines the diagonal covariance probabilities per example in a class.
@@ -250,17 +312,17 @@ class GmmAlgorithm(object):
     # num_classes X 1
     # TODO(xavigonzalvo): look into alternatives to log for
     # reparametrization of variance parameters.
-    det_expanded = tf.reduce_sum(tf.log(self._covs + 1e-3),
-                                 1, keep_dims=True)
+    det_expanded = math_ops.reduce_sum(
+        math_ops.log(self._covs + 1e-3), 1, keepdims=True)
     diff = shard - self._means
-    x2 = tf.square(diff)
-    cov_expanded = tf.expand_dims(1.0 / (self._covs + 1e-3), 2)
+    x2 = math_ops.square(diff)
+    cov_expanded = array_ops.expand_dims(1.0 / (self._covs + 1e-3), 2)
     # num_classes X num_examples
-    x2_cov = tf.batch_matmul(x2, cov_expanded)
-    x2_cov = tf.transpose(tf.squeeze(x2_cov, [2]))
+    x2_cov = math_ops.matmul(x2, cov_expanded)
+    x2_cov = array_ops.transpose(array_ops.squeeze(x2_cov, [2]))
     self._probs[shard_id] = -0.5 * (
-        tf.to_float(self._dimensions) * tf.log(2.0 * np.pi) +
-        tf.transpose(det_expanded) + x2_cov)
+        math_ops.to_float(self._dimensions) * math_ops.log(2.0 * np.pi) +
+        array_ops.transpose(det_expanded) + x2_cov)
 
   def _define_log_prob_operation(self, shard_id, shard):
     """Probability per example in a class.
@@ -277,32 +339,32 @@ class GmmAlgorithm(object):
       self._define_full_covariance_probs(shard_id, shard)
     elif self._covariance_type == DIAG_COVARIANCE:
       self._define_diag_covariance_probs(shard_id, shard)
-    self._probs[shard_id] += tf.log(self._alpha)
+    self._probs[shard_id] += math_ops.log(self._alpha)
 
   def _define_prior_log_prob_operation(self, shard_id):
     """Computes the prior probability of all samples.
 
-    Updates a vector where each item is the prior probabibility of an
+    Updates a vector where each item is the prior probability of an
     input example.
 
     Args:
       shard_id: id of current shard_id.
     """
-    self._prior_probs[shard_id] = tf.log(
-        tf.reduce_sum(tf.exp(self._probs[shard_id]), 1, keep_dims=True))
+    self._prior_probs[shard_id] = math_ops.reduce_logsumexp(
+        self._probs[shard_id], axis=1, keepdims=True)
 
   def _define_expectation_operation(self, shard_id):
     # Shape broadcasting.
-    probs = tf.expand_dims(self._probs[shard_id], 0)
+    probs = array_ops.expand_dims(self._probs[shard_id], 0)
     # Membership weights are computed as:
-    # w_{ik} = \frac{\alpha_k f(\mathbf{y_i}|\mathbf{\theta}_k)}
-    #               {\sum_{m=1}^{K}\alpha_mf(\mathbf{y_i}|\mathbf{\theta}_m)}
+    # $$w_{ik} = \frac{\alpha_k f(\mathbf{y_i}|\mathbf{\theta}_k)}$$
+    # $$            {\sum_{m=1}^{K}\alpha_mf(\mathbf{y_i}|\mathbf{\theta}_m)}$$
     # where "i" is the i-th example, "k" is the k-th mixture, theta are
     # the model parameters and y_i the observations.
     # These are defined for each shard.
-    self._w[shard_id] = tf.reshape(
-        tf.exp(probs - self._prior_probs[shard_id]),
-        tf.pack([self._num_examples, self._num_classes]))
+    self._w[shard_id] = array_ops.reshape(
+        math_ops.exp(probs - self._prior_probs[shard_id]),
+        array_ops.stack([self._num_examples, self._num_classes]))
 
   def _define_partial_maximization_operation(self, shard_id, shard):
     """Computes the partial statistics of the means and covariances.
@@ -312,111 +374,95 @@ class GmmAlgorithm(object):
       shard: current data shard, 1 X num_examples X dimensions.
     """
     # Soft assignment of each data point to each of the two clusters.
-    self._points_in_k[shard_id] = tf.reduce_sum(self._w[shard_id], 0,
-                                                keep_dims=True)
+    self._points_in_k[shard_id] = math_ops.reduce_sum(
+        self._w[shard_id], 0, keepdims=True)
     # Partial means.
-    w_mul_x = tf.expand_dims(
-        tf.matmul(self._w[shard_id],
-                  tf.squeeze(shard, [0]), transpose_a=True), 1)
+    w_mul_x = array_ops.expand_dims(
+        math_ops.matmul(
+            self._w[shard_id], array_ops.squeeze(shard, [0]), transpose_a=True),
+        1)
     self._w_mul_x.append(w_mul_x)
     # Partial covariances.
-    x = tf.concat(0, [shard for _ in range(self._num_classes)])
-    x_trans = tf.transpose(x, perm=[0, 2, 1])
-    x_mul_w = tf.concat(0, [
-        tf.expand_dims(x_trans[k, :, :] * self._w[shard_id][:, k], 0)
-        for k in range(self._num_classes)])
-    self._w_mul_x2.append(tf.batch_matmul(x_mul_w, x))
+    x = array_ops.concat([shard for _ in range(self._num_classes)], 0)
+    x_trans = array_ops.transpose(x, perm=[0, 2, 1])
+    x_mul_w = array_ops.concat([
+        array_ops.expand_dims(x_trans[k, :, :] * self._w[shard_id][:, k], 0)
+        for k in range(self._num_classes)
+    ], 0)
+    self._w_mul_x2.append(math_ops.matmul(x_mul_w, x))
 
   def _define_maximization_operation(self, num_batches):
     """Maximization operations."""
     # TODO(xavigonzalvo): some of these operations could be moved to C++.
     # Compute the effective number of data points assigned to component k.
-    with tf.control_dependencies(self._w):
-      points_in_k = tf.squeeze(tf.add_n(self._points_in_k), squeeze_dims=[0])
+    with ops.control_dependencies(self._w):
+      points_in_k = array_ops.squeeze(
+          math_ops.add_n(self._points_in_k), axis=[0])
       # Update alpha.
       if 'w' in self._params:
         final_points_in_k = points_in_k / num_batches
-        num_examples = tf.to_float(tf.reduce_sum(final_points_in_k))
-        self._alpha_op = self._alpha.assign(
-            final_points_in_k / (num_examples + MEPS))
+        num_examples = math_ops.to_float(math_ops.reduce_sum(final_points_in_k))
+        self._alpha_op = self._alpha.assign(final_points_in_k /
+                                            (num_examples + MEPS))
       else:
-        self._alpha_op = tf.no_op()
+        self._alpha_op = control_flow_ops.no_op()
       self._train_ops = [self._alpha_op]
 
       # Update means.
-      points_in_k_expanded = tf.reshape(points_in_k,
-                                        [self._num_classes, 1, 1])
+      points_in_k_expanded = array_ops.reshape(points_in_k,
+                                               [self._num_classes, 1, 1])
       if 'm' in self._params:
         self._means_op = self._means.assign(
-            tf.div(tf.add_n(self._w_mul_x), points_in_k_expanded + MEPS))
+            math_ops.div(
+                math_ops.add_n(self._w_mul_x), points_in_k_expanded + MEPS))
       else:
-        self._means_op = tf.no_op()
+        self._means_op = control_flow_ops.no_op()
       # means are (num_classes x 1 x dims)
 
       # Update covariances.
-      with tf.control_dependencies([self._means_op]):
-        b = tf.add_n(self._w_mul_x2) / (points_in_k_expanded + MEPS)
+      with ops.control_dependencies([self._means_op]):
+        b = math_ops.add_n(self._w_mul_x2) / (points_in_k_expanded + MEPS)
         new_covs = []
         for k in range(self._num_classes):
-          mean = self._means.ref()[k, :, :]
-          square_mean = tf.matmul(mean, mean, transpose_a=True)
+          mean = self._means.value()[k, :, :]
+          square_mean = math_ops.matmul(mean, mean, transpose_a=True)
           new_cov = b[k, :, :] - square_mean + self._min_var
           if self._covariance_type == FULL_COVARIANCE:
-            new_covs.append(tf.expand_dims(new_cov, 0))
+            new_covs.append(array_ops.expand_dims(new_cov, 0))
           elif self._covariance_type == DIAG_COVARIANCE:
-            new_covs.append(tf.expand_dims(tf.diag_part(new_cov), 0))
-        new_covs = tf.concat(0, new_covs)
+            new_covs.append(
+                array_ops.expand_dims(array_ops.diag_part(new_cov), 0))
+        new_covs = array_ops.concat(new_covs, 0)
         if 'c' in self._params:
           # Train operations don't need to take care of the means
           # because covariances already depend on it.
-          with tf.control_dependencies([self._means_op, new_covs]):
+          with ops.control_dependencies([self._means_op, new_covs]):
             self._train_ops.append(
-                tf.assign(self._covs, new_covs, validate_shape=False))
-
-  def _define_distance_to_clusters(self, data):
-    """Defines the Mahalanobis distance to the assigned Gaussian."""
-    # TODO(xavigonzalvo): reuse (input - mean) * cov^-1 * (input -
-    # mean) from log probability function.
-    self._all_scores = []
-    for shard in data:
-      all_scores = []
-      shard = tf.expand_dims(shard, 0)
-      for c in xrange(self._num_classes):
-        if self._covariance_type == FULL_COVARIANCE:
-          cov = self._covs[c, :, :]
-        elif self._covariance_type == DIAG_COVARIANCE:
-          cov = tf.diag(self._covs[c, :])
-        inverse = tf.matrix_inverse(cov + self._min_var)
-        inv_cov = tf.tile(
-            tf.expand_dims(inverse, 0),
-            tf.pack([self._num_examples, 1, 1]))
-        diff = tf.transpose(shard - self._means[c, :, :], perm=[1, 0, 2])
-        m_left = tf.batch_matmul(diff, inv_cov)
-        all_scores.append(tf.sqrt(tf.batch_matmul(
-            m_left, tf.transpose(diff, perm=[0, 2, 1])
-        )))
-      self._all_scores.append(tf.reshape(
-          tf.concat(1, all_scores),
-          tf.pack([self._num_examples, self._num_classes])))
-
-    # Distance to the associated class.
-    self._all_scores = tf.concat(0, self._all_scores)
-    assignments = tf.concat(0, self.assignments())
-    rows = tf.to_int64(tf.range(0, self._num_examples))
-    indices = tf.concat(1, [tf.expand_dims(rows, 1),
-                            tf.expand_dims(assignments, 1)])
-    self._scores = tf.gather_nd(self._all_scores, indices)
+                state_ops.assign(
+                    self._covs, new_covs, validate_shape=False))
 
   def _define_loglikelihood_operation(self):
     """Defines the total log-likelihood of current iteration."""
-    self._ll_op = []
+    op = []
     for prior_probs in self._prior_probs:
-      self._ll_op.append(tf.reduce_sum(tf.log(prior_probs)))
-    tf.scalar_summary('ll', tf.reduce_sum(self._ll_op))
+      op.append(math_ops.reduce_logsumexp(prior_probs))
+    self._log_likelihood_op = math_ops.reduce_logsumexp(op)
+
+  def _define_score_samples(self):
+    """Defines the likelihood of each data sample."""
+    op = []
+    for shard_id, prior_probs in enumerate(self._prior_probs):
+      op.append(prior_probs + math_ops.log(self._w[shard_id]))
+    self._scores = array_ops.squeeze(
+        math_ops.reduce_logsumexp(op, axis=2, keepdims=True), axis=0)
 
 
-def gmm(inp, initial_clusters, num_clusters, random_seed,
-        covariance_type=FULL_COVARIANCE, params='wmc'):
+def gmm(inp,
+        initial_clusters,
+        num_clusters,
+        random_seed,
+        covariance_type=FULL_COVARIANCE,
+        params='wmc'):
   """Creates the graph for Gaussian mixture model (GMM) clustering.
 
   Args:
@@ -436,26 +482,23 @@ def gmm(inp, initial_clusters, num_clusters, random_seed,
   Returns:
     Note: tuple of lists returned to be consistent with skflow
     A tuple consisting of:
-    all_scores: A matrix (or list of matrices) of dimensions (num_input,
-      num_clusters) where the value is the distance of an input vector and a
-      cluster center.
     assignments: A vector (or list of vectors). Each element in the vector
       corresponds to an input row in 'inp' and specifies the cluster id
       corresponding to the input.
-    scores: Similar to assignments but specifies the distance to the
-      assigned cluster instead.
     training_op: an op that runs an iteration of training.
+    init_op: an op that runs the initialization.
   """
   initial_means = None
-  if initial_clusters != 'random' and not isinstance(
-      initial_clusters, tf.Tensor):
-    initial_means = tf.constant(initial_clusters, dtype=tf.float32)
+  if initial_clusters != 'random' and not isinstance(initial_clusters,
+                                                     ops.Tensor):
+    initial_means = constant_op.constant(initial_clusters, dtype=dtypes.float32)
 
   # Implementation of GMM.
   inp = inp if isinstance(inp, list) else [inp]
   gmm_tool = GmmAlgorithm(inp, num_clusters, initial_means, params,
                           covariance_type, random_seed)
-  training_ops = gmm_tool.training_ops()
   assignments = gmm_tool.assignments()
-  all_scores, scores = gmm_tool.scores()
-  return [all_scores], [assignments], [scores], tf.group(*training_ops)
+  scores = gmm_tool.scores()
+  loss = gmm_tool.log_likelihood_op()
+  return (loss, scores, [assignments], gmm_tool.training_ops(),
+          gmm_tool.init_ops(), gmm_tool.is_initialized())

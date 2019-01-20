@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_OPS_STANDARD_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CC_OPS_STANDARD_OPS_H_
+#ifndef TENSORFLOW_CC_OPS_STANDARD_OPS_H_
+#define TENSORFLOW_CC_OPS_STANDARD_OPS_H_
 
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/candidate_sampling_ops.h"
@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/io_ops.h"
 #include "tensorflow/cc/ops/linalg_ops.h"
 #include "tensorflow/cc/ops/logging_ops.h"
+#include "tensorflow/cc/ops/lookup_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/no_op.h"
@@ -36,4 +37,4 @@ limitations under the License.
 #include "tensorflow/cc/ops/training_ops.h"
 #include "tensorflow/cc/ops/user_ops.h"
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_OPS_STANDARD_OPS_H_
+#endif  // TENSORFLOW_CC_OPS_STANDARD_OPS_H_
