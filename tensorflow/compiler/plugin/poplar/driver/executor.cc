@@ -191,21 +191,18 @@ void PoplarExecutor::ConnectInfeedToStreamCallback(
   // Buffer is already placed into xfeed manager by client->TransferToInfeed
   for (int i = 0; i < infeed_instructions.size(); ++i) {
     const auto& instr = infeed_instructions[i];
-    if (instr->infeed_config() == "dequeue") {
-      current_engine_->connectStreamToCallback(
-          infeed_instructions[i]->name(), [&](void* dest) {
-            auto* xfeed_manager = GetXfeedManager(ordinal_);
-            auto* xfeed_buffer =
-                xfeed_manager->infeed()->BlockingDequeueBuffer();
+    current_engine_->connectStreamToCallback(
+        infeed_instructions[i]->name(), [&](void* dest) {
+          auto* xfeed_manager = GetXfeedManager(ordinal_);
+          auto* xfeed_buffer = xfeed_manager->infeed()->BlockingDequeueBuffer();
 
-            const void* src = xfeed_buffer->data();
-            auto N = xfeed_buffer->length();
-            std::memcpy(dest, src, N);
+          const void* src = xfeed_buffer->data();
+          auto N = xfeed_buffer->length();
+          std::memcpy(dest, src, N);
 
-            xfeed_manager->infeed()->ReleaseCurrentBuffer(
-                xfeed_buffer->length(), xfeed_buffer->data(), Shape{});
-          });
-    }
+          xfeed_manager->infeed()->ReleaseCurrentBuffer(
+              xfeed_buffer->length(), xfeed_buffer->data(), Shape{});
+        });
   }
 }
 

@@ -1138,6 +1138,25 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "datastream_test",
+    size = "medium",
+    srcs = ["tests/datastream_test.py"],
+    deps = [
+        ":ipu_ops_py",
+        ":pop_datastream_ops_py",
+        "//tensorflow/compiler/xla/python:xla_client",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/ops/poplar:poplar",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -1190,6 +1209,7 @@ test_suite(
         "not_supported_scatter_expander_test",
         "ipu_infeed_test",
         "group_norm_test",
+        "datastream_test"
     ],
 )
 

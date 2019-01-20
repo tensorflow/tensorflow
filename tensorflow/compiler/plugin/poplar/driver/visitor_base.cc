@@ -417,28 +417,20 @@ Status BaseVisitor::HandleReducePrecision(HloInstruction* inst) {
 Status BaseVisitor::HandleInfeed(HloInstruction* inst) {
   HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(inst);
   poplar::Graph& graph = GetGraph(resources_, inst);
-
   resources_.annotations.infeed_instructions.push_back(inst);
-  std::string infeed_config = infeed->infeed_config();
-  if (infeed_config == "enqueue") {
-    // Do nothing, enqueue should only interact with
-    // transfer manager object
-  } else if (infeed_config == "dequeue") {
-    poplar::program::Sequence& seq = sequence;
 
-    poplar::Tensor out;
+  poplar::program::Sequence& seq = sequence;
+  poplar::Tensor out;
+  const Shape& shape = infeed->infeed_shape();
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, 0), shape,
+                                     resources_, tensor_map));
 
-    const Shape& shape = infeed->infeed_shape();
-    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, 0), shape,
-                                       resources_, tensor_map));
+  auto fifo = graph.addHostToDeviceFIFO(inst->name(), out.elementType(),
+                                        out.numElements());
 
-    auto fifo = graph.addHostToDeviceFIFO(inst->name(), out.elementType(),
-                                          out.numElements());
+  seq.add(poplar::program::Copy(fifo, out, false));
 
-    seq.add(poplar::program::Copy(fifo, out, false));
-
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
-  }
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return Status::OK();
 }

@@ -42,7 +42,7 @@ class InfeedTest : public ClientLibraryTestBase {
     ASSERT_IS_OK(client_->TransferToInfeed(literal));
 
     XlaBuilder builder(TestName());
-    Infeed(&builder, literal.shape(), "dequeue");
+    Infeed(&builder, literal.shape());
     if (literal.shape().IsTuple()) {
       ComputeAndCompareTuple(&builder, literal, {});
     } else {
@@ -103,7 +103,7 @@ TEST_F(InfeedTest, SingleInfeedInWhile) {
   {
     XlaBuilder builder("body");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
-    auto infeed = Infeed(&builder, infeed_shape, "dequeue");
+    auto infeed = Infeed(&builder, infeed_shape);
     auto addend = Reduce(infeed, ConstantR0<float>(&builder, 0.0f),
                          CreateScalarAddComputation(F32, &builder), {0});
     Add(prev, addend);

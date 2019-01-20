@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
@@ -34,40 +35,54 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/transfer_manager.h"
 
 #include "absl/container/flat_hash_set.h"
 
 namespace tensorflow {
 
-class PopDatastreamInfeedEnqueueOp : public XlaOpKernel {
+class PopDatastreamInfeedEnqueueOp : public OpKernel {
  public:
   explicit PopDatastreamInfeedEnqueueOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {}
+      : OpKernel(ctx), device_ordinal_(0) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
 
-  void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(ctx, ctx->num_inputs() == 1,
-                errors::InvalidArgument(absl::StrFormat(
-                    "Enqueue supports only single tensor input")));
+    OP_REQUIRES(ctx, device_ordinal_ >= 0,
+                errors::InvalidArgument("Need device_ordinal >= 0, got ",
+                                        device_ordinal_));
+  }
+  ~PopDatastreamInfeedEnqueueOp() override{};
 
-    xla::PrimitiveType input_type;
-    OP_REQUIRES_OK(ctx,
-                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
+  void Compute(OpKernelContext* ctx) override {
+    auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
+    OP_REQUIRES(ctx, platform.ok(), platform.status());
+    auto* p =
+        static_cast<xla::poplarplugin::PoplarPlatform*>(platform.ValueOrDie());
 
-    const TensorShape input_shape = ctx->InputShape(0);
+    auto executor = p->ExecutorForDevice(device_ordinal_).ValueOrDie();
 
-    xla::Shape xla_shape =
-        TensorShapeToXLAShape(input_type, ctx->InputShape(0));
+    const Tensor& input = ctx->input(0);
+    const TensorShape& tensor_shape = input.shape();
+    const DataType& tensor_dtype = input.dtype();
+    tensorflow::StringPiece tensor_data = input.tensor_data();
 
-    xla::XlaBuilder* b = ctx->builder();
+    xla::PrimitiveType xla_type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(tensor_dtype, &xla_type));
+    auto xla_shape = TensorShapeToXLAShape(xla_type, tensor_shape);
 
-    xla::XlaOp infeed_op = xla::Infeed(b, xla_shape, "enqueue");
+    auto* transfer_manager =
+        xla::TransferManager::GetForPlatform(p).ValueOrDie();
+    auto literal_input = xla::BorrowingLiteral(tensor_data.data(), xla_shape);
+    transfer_manager->TransferLiteralToInfeed(executor, literal_input);
   }
 
  private:
+  int device_ordinal_;
   TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamInfeedEnqueueOp);
 };
 
-REGISTER_IPU_OP("PopDatastreamInfeedEnqueue", PopDatastreamInfeedEnqueueOp);
+REGISTER_KERNEL_BUILDER(Name("PopDatastreamInfeedEnqueue").Device(DEVICE_CPU),
+                        PopDatastreamInfeedEnqueueOp);
 
 class PopDatastreamInfeedDequeueOp : public XlaOpKernel {
  public:
@@ -81,11 +96,7 @@ class PopDatastreamInfeedDequeueOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::Shape xla_shape;
-    auto status = TensorShapeToXLAShape(type_, shape_, &xla_shape);
-    if (status != Status::OK()) {
-      VLOG(1) << "shape conversion error";
-    }
-
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(type_, shape_, &xla_shape));
     xla::XlaBuilder* b = ctx->builder();
     xla::XlaOp infeed_op = xla::Infeed(b, xla_shape, "dequeue");
     ctx->SetOutput(0, infeed_op);
