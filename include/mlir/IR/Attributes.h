@@ -348,6 +348,10 @@ public:
   static DenseElementsAttr get(VectorOrTensorType type,
                                ArrayRef<Attribute> values);
 
+  /// Return the value at the given index. If index does not refer to a valid
+  /// element, then a null attribute is returned.
+  Attribute getValue(ArrayRef<uint64_t> index) const;
+
   void getValues(SmallVectorImpl<Attribute> &values) const;
 
   ArrayRef<char> getRawData() const;
@@ -427,10 +431,11 @@ public:
 /// This class uses COO (coordinate list) encoding to represent the sparse
 /// elements in an element attribute. Specifically, the sparse vector/tensor
 /// stores the indices and values as two separate dense elements attributes. The
-/// dense elements attribute indices is a 2-D tensor with shape [N, ndims],
-/// which specifies the indices of the elements in the sparse tensor that
-/// contains nonzero values. The dense elements attribute values is a 1-D tensor
-/// with shape [N], and it supplies the corresponding values for the indices.
+/// dense elements attribute indices is a 2-D tensor of 64-bit integer elements
+/// with shape [N, ndims], which specifies the indices of the elements in the
+/// sparse tensor that contains nonzero values. The dense elements attribute
+/// values is a 1-D tensor with shape [N], and it supplies the corresponding
+/// values for the indices.
 ///
 /// For example,
 /// `sparse<tensor<3x4xi32>, [[0, 0], [1, 2]], [1, 5]>` represents tensor
@@ -450,8 +455,8 @@ public:
 
   DenseElementsAttr getValues() const;
 
-  /// Return the value at the given index.
-  Attribute getValue(ArrayRef<unsigned> index) const;
+  /// Return the value of the element at the given index.
+  Attribute getValue(ArrayRef<uint64_t> index) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::SparseElements; }

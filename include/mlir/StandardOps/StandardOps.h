@@ -523,6 +523,8 @@ public:
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
 private:
   friend class OperationInst;

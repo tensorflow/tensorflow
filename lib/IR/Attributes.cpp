@@ -149,6 +149,53 @@ Attribute SplatElementsAttr::getValue() const {
 
 /// DenseElementsAttr
 
+/// Return the value at the given index. If index does not refer to a valid
+/// element, then a null attribute is returned.
+Attribute DenseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
+  auto type = getType();
+
+  // Verify that the rank of the indices matches the held type.
+  auto rank = type.getRank();
+  if (rank != index.size())
+    return Attribute();
+
+  // Verify that all of the indices are within the shape dimensions.
+  auto shape = type.getShape();
+  for (unsigned i = 0; i != rank; ++i)
+    if (shape[i] <= index[i])
+      return Attribute();
+
+  // Reduce the provided multidimensional index into a 1D index.
+  uint64_t valueIndex = 0;
+  uint64_t dimMultiplier = 1;
+  for (int i = rank - 1; i >= 0; --i) {
+    valueIndex += index[i] * dimMultiplier;
+    dimMultiplier *= shape[i];
+  }
+
+  // Return the element stored at the 1D index.
+
+  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
+  // with double semantics.
+  auto elementType = getType().getElementType();
+  size_t bitWidth =
+      elementType.isBF16() ? 64 : elementType.getIntOrFloatBitWidth();
+  APInt rawValueData =
+      readBits(getRawData().data(), valueIndex * bitWidth, bitWidth);
+
+  // Convert the raw value data to an attribute value.
+  switch (getKind()) {
+  case Attribute::Kind::DenseIntElements:
+    return IntegerAttr::get(elementType, rawValueData);
+  case Attribute::Kind::DenseFPElements:
+    return FloatAttr::get(
+        elementType, APFloat(elementType.cast<FloatType>().getFloatSemantics(),
+                             rawValueData));
+  default:
+    llvm_unreachable("unexpected element type");
+  }
+}
+
 void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   auto elementType = getType().getElementType();
   switch (getKind()) {
@@ -188,8 +235,8 @@ void DenseElementsAttr::getRawValues(SmallVectorImpl<APInt> &values) const {
   auto elementNum = getType().getNumElements();
   values.reserve(elementNum);
 
-  // FIXME: using 64 bits for BF16 because it is currently stored with double
-  // semantics.
+  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
+  // with double semantics.
   size_t bitWidth =
       elementType.isBF16() ? 64 : elementType.getIntOrFloatBitWidth();
   const auto *rawData = getRawData().data();
@@ -280,4 +327,41 @@ DenseIntElementsAttr SparseElementsAttr::getIndices() const {
 
 DenseElementsAttr SparseElementsAttr::getValues() const {
   return static_cast<ImplType *>(attr)->values;
+}
+
+/// Return the value of the element at the given index.
+Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
+  auto type = getType();
+
+  // Verify that the rank of the indices matches the held type.
+  auto rank = type.getRank();
+  if (rank != index.size())
+    return Attribute();
+
+  // The sparse indices are 64-bit integers, so we can reinterpret the raw data
+  // as a 1-D index array.
+  auto sparseIndices = getIndices();
+  const uint64_t *sparseIndexValues =
+      reinterpret_cast<const uint64_t *>(sparseIndices.getRawData().data());
+
+  // Build a mapping between known indices and the offset of the stored element.
+  llvm::SmallDenseMap<llvm::ArrayRef<uint64_t>, size_t> mappedIndices;
+  size_t numSparseIndices = sparseIndices.getType().getDimSize(0);
+  for (size_t i = 0, e = numSparseIndices; i != e; ++i)
+    mappedIndices.try_emplace(
+        {sparseIndexValues + (i * rank), static_cast<size_t>(rank)}, i);
+
+  // Look for the provided index key within the mapped indices. If the provided
+  // index is not found, then return a zero attribute.
+  auto it = mappedIndices.find(index);
+  if (it == mappedIndices.end()) {
+    auto eltType = type.getElementType();
+    if (eltType.isa<FloatType>())
+      return FloatAttr::get(eltType, 0);
+    assert(eltType.isa<IntegerType>() && "unexpected element type");
+    return IntegerAttr::get(eltType, 0);
+  }
+
+  // Otherwise, return the held sparse value element.
+  return getValues().getValue(it->second);
 }

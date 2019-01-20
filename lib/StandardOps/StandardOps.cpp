@@ -1136,6 +1136,41 @@ bool ExtractElementOp::verify() const {
   return false;
 }
 
+Attribute ExtractElementOp::constantFold(ArrayRef<Attribute> operands,
+                                         MLIRContext *context) const {
+  assert(operands.size() > 1 && "extract_element takes atleast one operands");
+
+  // The aggregate operand must be a known constant.
+  Attribute aggregate = operands.front();
+  if (!aggregate)
+    return Attribute();
+
+  // If this is a splat elements attribute, simply return the value. All of the
+  // elements of a splat attribute are the same.
+  if (auto splatAggregate = aggregate.dyn_cast<SplatElementsAttr>())
+    return splatAggregate.getValue();
+
+  // Otherwise, collect the constant indices into the aggregate.
+  SmallVector<uint64_t, 8> indices;
+  for (Attribute indice : llvm::drop_begin(operands, 1)) {
+    if (!indice || !indice.isa<IntegerAttr>())
+      return Attribute();
+    indices.push_back(indice.cast<IntegerAttr>().getInt());
+  }
+
+  // Get the element value of the aggregate attribute with the given constant
+  // indices.
+  switch (aggregate.getKind()) {
+  case Attribute::Kind::DenseFPElements:
+  case Attribute::Kind::DenseIntElements:
+    return aggregate.cast<DenseElementsAttr>().getValue(indices);
+  case Attribute::Kind::SparseElements:
+    return aggregate.cast<SparseElementsAttr>().getValue(indices);
+  default:
+    return Attribute();
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // LoadOp
 //===----------------------------------------------------------------------===//

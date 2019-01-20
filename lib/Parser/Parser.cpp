@@ -1076,7 +1076,7 @@ Attribute Parser::parseAttribute(Type type) {
     switch (getToken().getKind()) {
     case Token::l_square: {
       /// Parse indices
-      auto indicesEltType = builder.getIntegerType(32);
+      auto indicesEltType = builder.getIntegerType(64);
       auto indices =
           parseDenseElementsAttr(indicesEltType, type.isa<VectorType>());
       if (!indices)

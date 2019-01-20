@@ -320,6 +320,36 @@ func @cmpi() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
   return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9 : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
 }
 
+// CHECK-LABEL: func @fold_extract_element
+func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
+  %const_0 = constant 0 : index
+  %const_1 = constant 1 : index
+  %const_3 = constant 3 : index
+
+  // Fold an extract into a splat.
+  // CHECK-NEXT: {{.*}} = constant 4.500000e+00 : f32
+  %0 = constant splat<tensor<4xf32>, 4.5> : tensor<4xf32>
+  %ext_1 = extract_element %0[%arg0] : tensor<4xf32>
+
+  // Fold an extract into a sparse with a sparse index.
+  // CHECK-NEXT: {{.*}} = constant -2.000000e+00 : f16
+  %1 = constant sparse<vector<1x1x1xf16>, [[0, 0, 0], [1, 1, 1]],  [-5.0, -2.0]> : vector<1x1x1xf16>
+  %ext_2 = extract_element %1[%const_1, %const_1, %const_1] : vector<1x1x1xf16>
+
+  // Fold an extract into a sparse with a non sparse index.
+  // CHECK-NEXT: {{.*}} = constant 0.000000e+00 : f16
+  %2 = constant sparse<vector<1x1x1xf16>, [[1, 1, 1]],  [-2.0]> : vector<1x1x1xf16>
+  %ext_3 = extract_element %2[%const_0, %const_0, %const_0] : vector<1x1x1xf16>
+
+  // Fold an extract into a dense tensor.
+  // CHECK-NEXT: {{.*}} = constant 64 : i32
+  %3 = constant dense<tensor<2x1x4xi32>, [[[1, -2, 1, 36]], [[0, 2, -1, 64]]]> : tensor<2x1x4xi32>
+  %ext_4 = extract_element %3[%const_1, %const_0, %const_3] : tensor<2x1x4xi32>
+
+  // CHECK-NEXT: return
+  return %ext_1, %ext_2, %ext_3, %ext_4 : f32, f16, f16, i32
+}
+
 // --------------------------------------------------------------------------//
 // IMPORTANT NOTE: the operations in this test are exactly those produced by
 // lowering affine_apply (i) -> (i mod 42) to standard operations.  Please only

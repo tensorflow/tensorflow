@@ -1074,8 +1074,8 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
   assert(values.size() == type.getNumElements() &&
          "expected 'values' to contain the same number of elements as 'type'");
 
-  // FIXME: using 64 bits for BF16 because it is currently stored with double
-  // semantics.
+  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
+  // with double semantics.
   auto eltType = type.getElementType();
   size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
 
@@ -1136,6 +1136,9 @@ OpaqueElementsAttr OpaqueElementsAttr::get(VectorOrTensorType type,
 SparseElementsAttr SparseElementsAttr::get(VectorOrTensorType type,
                                            DenseIntElementsAttr indices,
                                            DenseElementsAttr values) {
+  assert(indices.getType().getElementType().isInteger(64) &&
+         "expected sparse indices to be 64-bit integer values");
+
   auto &impl = type.getContext()->getImpl();
 
   // Look to see if we already have this.
