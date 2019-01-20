@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,16 @@
 ## This package provides optimizers to train linear models.
 
 @@SdcaModel
+@@SparseFeatureColumn
+@@SDCAOptimizer
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
+from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
+from tensorflow.contrib.linear_optimizer.python.sdca_optimizer import SDCAOptimizer
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)

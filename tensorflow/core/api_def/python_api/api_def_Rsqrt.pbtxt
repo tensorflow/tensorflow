@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Rsqrt"
+  endpoint {
+    name: "math.rsqrt"
+  }
+  endpoint {
+    name: "rsqrt"
+    deprecation_version: 2
+  }
+}

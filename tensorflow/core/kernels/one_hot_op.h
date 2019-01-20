@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc
 
-#ifndef TENSORFLOW_KERNELS_ONE_HOT_OP_H_
-#define TENSORFLOW_KERNELS_ONE_HOT_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_ONE_HOT_OP_H_
+#define TENSORFLOW_CORE_KERNELS_ONE_HOT_OP_H_
 // Generator definition for OneHotOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -69,4 +69,4 @@ struct OneHot {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_ONE_HOT_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_ONE_HOT_OP_H_

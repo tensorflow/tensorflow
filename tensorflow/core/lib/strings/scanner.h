@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -75,20 +76,22 @@ class Scanner {
   // Consume the next s.size() characters of the input, if they match <s>. If
   // they don't match <s>, this is a no-op.
   Scanner& ZeroOrOneLiteral(StringPiece s) {
-    cur_.Consume(s);
+    str_util::ConsumePrefix(&cur_, s);
     return *this;
   }
 
   // Consume the next s.size() characters of the input, if they match <s>. If
   // they don't match <s>, then GetResult will ultimately return false.
   Scanner& OneLiteral(StringPiece s) {
-    if (!cur_.Consume(s)) {
+    if (!str_util::ConsumePrefix(&cur_, s)) {
       error_ = true;
     }
     return *this;
   }
 
-  // Consume characters from the input as long as they match <clz>.
+  // Consume characters from the input as long as they match <clz>. Zero
+  // characters is still considered a match, so it will never cause GetResult to
+  // return false.
   Scanner& Any(CharClass clz) {
     while (!cur_.empty() && Matches(clz, cur_[0])) {
       cur_.remove_prefix(1);
@@ -128,10 +131,16 @@ class Scanner {
   Scanner& AnySpace() { return Any(SPACE); }
 
   // This scans input until <end_ch> is reached. <end_ch> is NOT consumed.
+  Scanner& ScanUntil(char end_ch) {
+    ScanUntilImpl(end_ch, false);
+    return *this;
+  }
+
+  // This scans input until <end_ch> is reached. <end_ch> is NOT consumed.
   // Backslash escape sequences are skipped.
   // Used for implementing quoted string scanning.
   Scanner& ScanEscapedUntil(char end_ch) {
-    ScanEscapedUntilImpl(end_ch);
+    ScanUntilImpl(end_ch, true);
     return *this;
   }
 
@@ -154,7 +163,7 @@ class Scanner {
                  StringPiece* capture = nullptr);
 
  private:
-  void ScanEscapedUntilImpl(char end_ch);
+  void ScanUntilImpl(char end_ch, bool escaped);
 
   Scanner& Error() {
     error_ = true;

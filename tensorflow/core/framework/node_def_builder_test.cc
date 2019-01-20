@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -32,7 +33,9 @@ class NodeDefBuilderTest : public ::testing::Test {
  protected:
   // Specify an OpDef via an OpDefBuilder.
   void Op(const OpDefBuilder& op_def_builder) {
-    TF_EXPECT_OK(op_def_builder.Finalize(&op_def_));
+    OpRegistrationData op_reg_data;
+    TF_EXPECT_OK(op_def_builder.Finalize(&op_reg_data));
+    op_def_ = op_reg_data.op_def;
   }
 
   // Resets builder_ with a new NodeDefBuilder using the Op from the last call
@@ -80,7 +83,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
     for (const string& message : messages) {
-      EXPECT_TRUE(StringPiece(status.error_message()).contains(message))
+      EXPECT_TRUE(str_util::StrContains(status.error_message(), message))
           << status << ", " << message;
     }
   }
@@ -101,7 +104,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     }
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
-    EXPECT_TRUE(StringPiece(status.error_message()).contains(message))
+    EXPECT_TRUE(str_util::StrContains(status.error_message(), message))
         << "Actual error: " << status.error_message()
         << "\nDoes not contain: " << message;
   }
@@ -153,7 +156,8 @@ TEST_F(NodeDefBuilderTest, Simple) {
 
   {  // Finalize() twice.
     NodeDefBuilder& builder = Builder();
-    builder.Input(FakeInput()).Finalize(nullptr);  // First call to Finalize()
+    // First call to Finalize()
+    TF_EXPECT_OK(builder.Input(FakeInput()).Finalize(nullptr));
     // ExpectSuccess() also calls Finalize().
     ExpectSuccess(builder, {DT_INT32}, {DT_FLOAT}, R"proto(
         op: "Simple" input: "a" )proto");
@@ -205,9 +209,8 @@ TEST_F(NodeDefBuilderTest, OpDoesNotExist) {
       .ControlInput("y")
       .Attr("foo", 12)
       .Device("device");
-  ExpectFailure(
-      builder,
-      "Op type not registered 'Op Does Not Exist' while building NodeDef 'n'");
+  ExpectFailures(builder, {"Op type not registered 'Op Does Not Exist'",
+                           "while building NodeDef 'n'"});
 }
 
 TEST_F(NodeDefBuilderTest, Polymorphic) {

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPH_GRADIENTS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPH_GRADIENTS_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRADIENTS_H_
+#define TENSORFLOW_CORE_GRAPH_GRADIENTS_H_
 
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -55,4 +55,4 @@ Status AddSymbolicGradients(gtl::ArraySlice<NodeOut> y_node_outputs,
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPH_GRADIENTS_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRADIENTS_H_

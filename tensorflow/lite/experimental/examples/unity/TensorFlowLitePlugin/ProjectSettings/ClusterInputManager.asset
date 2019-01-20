@@ -1,0 +1,6 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!236 &1
+ClusterInputManager:
+  m_ObjectHideFlags: 0
+  m_Inputs: []

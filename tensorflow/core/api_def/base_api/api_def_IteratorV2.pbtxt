@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "IteratorV2"
+  visibility: HIDDEN
+}

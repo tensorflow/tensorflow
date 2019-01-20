@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -130,11 +130,13 @@ static const char kFFCharacter = '\000';  // Combined with kEscape2
 static const char kEscape1_Separator[2] = {kEscape1, kSeparator};
 
 // Append to "*dest" the "len" bytes starting from "*src".
-inline static void AppendBytes(string* dest, const char* src, int len) {
+inline static void AppendBytes(string* dest, const char* src, size_t len) {
   dest->append(src, len);
 }
 
-inline bool IsSpecialByte(char c) { return ((unsigned char)(c + 1)) < 2; }
+inline bool IsSpecialByte(char c) {
+  return (static_cast<unsigned char>(c + 1)) < 2;
+}
 
 // Return a pointer to the first byte in the range "[start..limit)"
 // whose value is 0 or 255 (kEscape1 or kEscape2).  If no such byte
@@ -201,7 +203,7 @@ void OrderedCode::WriteNumIncreasing(string* dest, uint64 val) {
     buf[9 - len] = (val & 0xff);
     val >>= 8;
   }
-  buf[9 - len - 1] = (unsigned char)len;
+  buf[9 - len - 1] = len;
   len++;
   AppendBytes(dest, reinterpret_cast<const char*>(buf + 9 - len), len);
 }
@@ -470,7 +472,8 @@ void OrderedCode::WriteSignedNumIncreasing(string* dest, int64 val) {
   // buf = val in network byte order, sign extended to 10 bytes
   const char sign_byte = val < 0 ? '\xff' : '\0';
   char buf[10] = {
-      sign_byte, sign_byte,
+      sign_byte,
+      sign_byte,
   };
   StoreBigEndian64(buf + 2, val);
   static_assert(sizeof(buf) == kMaxSigned64Length, "max length size mismatch");

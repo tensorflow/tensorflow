@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,9 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
+template struct functor::InflatePadAndShuffle<GPUDevice, double, 4, int>;
+template struct functor::InflatePadAndShuffle<GPUDevice, double, 4,
+                                              Eigen::DenseIndex>;
 template struct functor::InflatePadAndShuffle<GPUDevice, float, 4, int>;
 template struct functor::InflatePadAndShuffle<GPUDevice, float, 4,
                                               Eigen::DenseIndex>;

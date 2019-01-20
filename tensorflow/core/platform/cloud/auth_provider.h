@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_AUTH_PROVIDER_H_
-#define TENSORFLOW_CORE_PLATFORM_AUTH_PROVIDER_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_AUTH_PROVIDER_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_AUTH_PROVIDER_H_
 
 #include <string>
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,7 +27,9 @@ class AuthProvider {
  public:
   virtual ~AuthProvider() {}
 
-  /// Returns the short-term authentication bearer token.
+  /// \brief Returns the short-term authentication bearer token.
+  ///
+  /// Safe for concurrent use by multiple threads.
   virtual Status GetToken(string* t) = 0;
 
   static Status GetToken(AuthProvider* provider, string* token) {
@@ -49,4 +51,4 @@ class EmptyAuthProvider : public AuthProvider {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_AUTH_PROVIDER_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_AUTH_PROVIDER_H_

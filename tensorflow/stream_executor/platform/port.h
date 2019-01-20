@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+// IWYU pragma: private, include "third_party/tensorflow/stream_executor/stream_executor.h"
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_PORT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_PORT_H_
@@ -22,8 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 using tensorflow::int8;
 using tensorflow::int16;
@@ -39,21 +38,16 @@ using tensorflow::uint64;
 using std::string;
 #endif
 
-#if !defined(COMPILER_MSVC)
-#define ARRAYSIZE(a)              \
-    ((sizeof(a) / sizeof(*(a))) / \
-    static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
-#endif
-
 using tensorflow::LinkerInitialized;
 using tensorflow::LINKER_INITIALIZED;
 
 #define SE_FALLTHROUGH_INTENDED TF_FALLTHROUGH_INTENDED
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #define SE_DISALLOW_COPY_AND_ASSIGN TF_DISALLOW_COPY_AND_ASSIGN
 #define SE_MUST_USE_RESULT TF_MUST_USE_RESULT
+#define SE_PREDICT_TRUE TF_PREDICT_TRUE
+#define SE_PREDICT_FALSE TF_PREDICT_FALSE
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_PORT_H_

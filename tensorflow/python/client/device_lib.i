@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,73 +15,99 @@ limitations under the License.
 
 %include "tensorflow/python/platform/base.i"
 
+%typemap(in) const tensorflow::ConfigProto& (tensorflow::ConfigProto temp) {
+  char* c_string;
+  Py_ssize_t py_size;
+  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
+    // Python has raised an error (likely TypeError or UnicodeEncodeError).
+    SWIG_fail;
+  }
+
+  if (!temp.ParseFromString(string(c_string, py_size))) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "The ConfigProto could not be parsed as a valid protocol buffer");
+    SWIG_fail;
+  }
+  $1 = &temp;
+}
+
 %{
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-%}
 
-%typemap(in, numinputs=0) const tensorflow::SessionOptions& options (
-    tensorflow::SessionOptions temp) {
-  $1 = &temp;
-}
+namespace tensorflow {
+namespace swig {
 
-%typemap(in, numinputs=0) std::vector<tensorflow::Device*>* devices (
-    std::vector<tensorflow::Device*> temp) {
-  $1 = &temp;
-}
-
-// Handle string input into AddDevices
-%typemap(in, numinputs=0) const string& name_prefix (
-    string temp) {
-  // Always pass an empty name_prefix.
-  $1 = &temp;
-}
-
-%typemap(argout) std::vector<tensorflow::Device*>* devices {
-  std::vector< std::unique_ptr<tensorflow::Device> > safe_devices;
-  for (auto* device : *$1) safe_devices.emplace_back(device);
-
-  auto temp_string_list = tensorflow::make_safe(PyList_New(0));
-  if (!temp_string_list) {
-    SWIG_fail;
+static std::vector<string> ListDevicesWithSessionConfig(
+    const tensorflow::ConfigProto& config, TF_Status* out_status) {
+  std::vector<string> output;
+  SessionOptions options;
+  options.config = config;
+  std::vector<std::unique_ptr<Device>> devices;
+  Status status = DeviceFactory::AddDevices(
+      options, "" /* name_prefix */, &devices);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
   }
 
-  for (const auto& device : safe_devices) {
-    const tensorflow::DeviceAttributes& attr = device->attributes();
+  for (const std::unique_ptr<Device>& device : devices) {
+    const DeviceAttributes& attr = device->attributes();
     string attr_serialized;
     if (!attr.SerializeToString(&attr_serialized)) {
-      PyErr_SetString(PyExc_RuntimeError,
-                      "Unable to serialize DeviceAttributes");
-      SWIG_fail;
+      Set_TF_Status_from_Status(
+          out_status,
+          errors::Internal("Could not serialize device string"));
+      output.clear();
+      return output;
     }
-
-    tensorflow::Safe_PyObjectPtr safe_attr_string = tensorflow::make_safe(
-    %#if PY_MAJOR_VERSION < 3
-      PyString_FromStringAndSize(
-    %#else
-      PyBytes_FromStringAndSize(
-    %#endif
-        reinterpret_cast<const char*>(
-          attr_serialized.data()), attr_serialized.size()));
-
-    if (PyList_Append(temp_string_list.get(), safe_attr_string.get()) == -1) {
-      SWIG_fail;
-    }
+    output.push_back(attr_serialized);
   }
 
-  $result = temp_string_list.release();
+  return output;
 }
 
+std::vector<string> ListDevices(TF_Status* out_status) {
+  tensorflow::ConfigProto session_config;
+  return ListDevicesWithSessionConfig(session_config, out_status);
+}
+
+}  // namespace swig
+}  // namespace tensorflow
+
+%}
 
 %ignoreall
 
 %unignore tensorflow;
-%unignore tensorflow::DeviceFactory;
-%unignore tensorflow::DeviceFactory::AddDevices;
+%unignore tensorflow::swig;
+%unignore tensorflow::swig::ListDevicesWithSessionConfig;
+%unignore tensorflow::swig::ListDevices;
 
-%include "tensorflow/core/common_runtime/device_factory.h"
+// Wrap this function
+namespace tensorflow {
+namespace swig {
+std::vector<string> ListDevices(TF_Status* out_status);
+static std::vector<string> ListDevicesWithSessionConfig(
+    const tensorflow::ConfigProto& config, TF_Status* out_status);
+}  // namespace swig
+}  // namespace tensorflow
+
+%insert("python") %{
+def list_devices(session_config=None):
+  from tensorflow.python.framework import errors
+
+  with errors.raise_exception_on_not_ok_status() as status:
+    if session_config:
+      return ListDevicesWithSessionConfig(session_config.SerializeToString(),
+                                          status)
+    else:
+      return ListDevices(status)
+%}
 
 %unignoreall
 

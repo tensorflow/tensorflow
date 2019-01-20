@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,19 +36,17 @@ IntraProcessRendezvous::IntraProcessRendezvous(const DeviceMgr* device_mgr)
 
 IntraProcessRendezvous::~IntraProcessRendezvous() { local_->Unref(); }
 
-Status IntraProcessRendezvous::Send(const string& key,
+Status IntraProcessRendezvous::Send(const ParsedKey& parsed,
                                     const Rendezvous::Args& args,
                                     const Tensor& val, const bool is_dead) {
-  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << key;
+  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << parsed.FullKey();
   {
     mutex_lock l(mu_);
     if (!status_.ok()) return status_;
   }
-  Rendezvous::ParsedKey parsed;
-  TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, &parsed));
 
   // Buffers "val" and "device_context" in local_.
-  return local_->Send(key, args, val, is_dead);
+  return local_->Send(parsed, args, val, is_dead);
 }
 
 Status IntraProcessRendezvous::ParseKey(const string& key, bool is_src,
@@ -78,8 +76,9 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   }
 
   // This copy must involve a non-CPU device. Hence, "in" must support DMA
-  // (e.g., string tensors do not work on GPU).
-  if (!DataTypeCanUseMemcpy(in.dtype())) {
+  // (e.g., string tensors do not work on GPU).  Variant copy DMA
+  // checks happen inside CopyTensor::ViaDMA.
+  if (!DataTypeCanUseMemcpy(in.dtype()) && in.dtype() != DT_VARIANT) {
     done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
                                  " tensor may not be copied from/to a GPU."));
     return;
@@ -102,47 +101,56 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
-  Tensor copy(out_allocator, in.dtype(), in.shape());
-  *out = copy;
+  if (in.dtype() != DT_VARIANT) {
+    // Variants are handled by CopyTensor::ViaDMA.
+    Tensor copy(out_allocator, in.dtype(), in.shape());
+    *out = copy;
+  }
 
   CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
                      recv_args.device_context, src_device, dst_device,
                      send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
-                     done);
+                     0 /*dev_to_dev_stream_index*/, std::move(done));
 }
 
-void IntraProcessRendezvous::RecvAsync(const string& key,
+void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
                                        const Rendezvous::Args& recv_args,
                                        DoneCallback done) {
-  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << key;
-
-  Rendezvous::ParsedKey parsed;
-  Status s = ParseKey(key, false /*!is_src*/, &parsed);
-  if (!s.ok()) {
-    done(s, Args(), recv_args, Tensor(), false);
-    return;
-  }
+  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << parsed.FullKey();
 
   // Recv the tensor from local_.
-  local_->RecvAsync(key, recv_args, [this, parsed, done](
-                                        const Status& status,
-                                        const Rendezvous::Args& send_args,
-                                        const Rendezvous::Args& recv_args,
-                                        const Tensor& in, bool is_dead) {
-    Status s = status;
-    Tensor* out = new Tensor;
-    StatusCallback final_callback = [done, send_args, recv_args, out,
-                                     is_dead](const Status& s) {
-      done(s, send_args, recv_args, *out, is_dead);
-      delete out;
-    };
+  local_->RecvAsync(
+      parsed, recv_args,
+      std::bind(
+          [this, parsed](DoneCallback done,
+                         // Begin unbound arguments.
+                         const Status& status,
+                         const Rendezvous::Args& send_args,
+                         const Rendezvous::Args& recv_args, const Tensor& in,
+                         bool is_dead) {
+            // If "in" is an uninitialized tensor, do copy-construction to
+            // preserve the uninitialized state, along with data type and shape
+            // info, which is useful for debugger purposes.
+            Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
 
-    if (s.ok()) {
-      SameWorkerRecvDone(parsed, send_args, recv_args, in, out, final_callback);
-    } else {
-      final_callback(s);
-    }
-  });
+            auto final_callback = std::bind(
+                [send_args, recv_args, out, is_dead](DoneCallback done,
+                                                     // Begin unbound arguments.
+                                                     const Status& s) {
+                  done(s, send_args, recv_args, *out, is_dead);
+                  delete out;
+                },
+                std::move(done), std::placeholders::_1);
+
+            if (status.ok() && in.IsInitialized()) {
+              SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
+                                 std::move(final_callback));
+            } else {
+              final_callback(status);
+            }
+          },
+          std::move(done), std::placeholders::_1, std::placeholders::_2,
+          std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 }
 
 void IntraProcessRendezvous::StartAbort(const Status& s) {

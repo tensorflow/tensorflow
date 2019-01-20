@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_UTIL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_UTIL_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -26,8 +26,6 @@ namespace tensorflow {
 
 class RecvTensorResponse;
 class TensorProto;
-
-namespace gpu = ::perftools::gputools;
 
 class GPUUtil {
  public:
@@ -66,15 +64,15 @@ class GPUUtil {
   // (up to a limit).  "device" can be either a CPU or a GPU device.
   static string MemoryDebugString(const Device* device, Tensor* tensor);
 
-  static perftools::gputools::DeviceMemory<float> AsGPUFloat(const Tensor& t);
-
   // Map a Tensor as a DeviceMemory object wrapping the given typed
   // buffer.
+  //
+  // NOTE: will be removed soon, see StreamExecutorUtil::AsDeviceMemory
+  // instead.
   template <typename T>
-  perftools::gputools::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
+  static se::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
     T* ptr = reinterpret_cast<T*>(const_cast<void*>(DMAHelper::base(&t)));
-    return perftools::gputools::DeviceMemory<T>(
-        perftools::gputools::DeviceMemoryBase(ptr, t.TotalBytes()));
+    return se::DeviceMemory<T>(se::DeviceMemoryBase(ptr, t.TotalBytes()));
   }
 
   // Computes a checksum over the contents of "tensor", which is allocated
@@ -92,14 +90,22 @@ class GPUUtil {
                                  Device* gpu_device, Tensor* gpu_tensor,
                                  StatusCallback done);
 
-  static void DeviceToDeviceCopy(DeviceContext* send_dev_context,
-                                 DeviceContext* recv_dev_context, Device* src,
-                                 Device* dst,
-                                 AllocatorAttributes src_alloc_attr,
-                                 AllocatorAttributes dst_alloc_attr,
-                                 const Tensor* input, Tensor* output,
-                                 StatusCallback done);
+  static void DeviceToDeviceCopy(
+      DeviceContext* send_dev_context, DeviceContext* recv_dev_context,
+      Device* src, Device* dst, AllocatorAttributes src_alloc_attr,
+      AllocatorAttributes dst_alloc_attr, const Tensor* input, Tensor* output,
+      int dev_to_dev_stream_index, StatusCallback done);
+
+  // Deep-copying of GPU tensor on the same device.
+  // 'src_gpu_tensor''s and 'dst_gpu_tensor''s backing memory must be on
+  // 'gpu_device' and 'dst_cpu_tensor' must be allocated to be of the same
+  // size as 'src_gpu_tensor'.
+  static void CopyGPUTensorToSameGPU(Device* gpu_device,
+                                     const DeviceContext* device_context,
+                                     const Tensor* src_gpu_tensor,
+                                     Tensor* dst_gpu_tensor,
+                                     StatusCallback done);
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_UTIL_H_

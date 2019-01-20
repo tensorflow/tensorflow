@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,24 +19,27 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/one_hot_op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/one_hot_op.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_SPEC_INDEX(T, TI)                   \
-  template class generator::OneGenerator<T, TI>;       \
+#define DEFINE_GPU_SPEC_INDEX(T, TI)             \
+  template class generator::OneGenerator<T, TI>; \
   template struct functor::OneHot<GPUDevice, T, TI>;
 
-#define DEFINE_GPU_SPEC(T)           \
-  DEFINE_GPU_SPEC_INDEX(T, int32);   \
+#define DEFINE_GPU_SPEC(T)         \
+  DEFINE_GPU_SPEC_INDEX(T, uint8); \
+  DEFINE_GPU_SPEC_INDEX(T, int32); \
   DEFINE_GPU_SPEC_INDEX(T, int64)
 
-
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
+TF_CALL_bool(DEFINE_GPU_SPEC);
+TF_CALL_int32(DEFINE_GPU_SPEC);
+TF_CALL_int64(DEFINE_GPU_SPEC);
 
 #undef DEFINE_GPU_SPEC_INDEX
 #undef DEFINE_GPU_SPEC

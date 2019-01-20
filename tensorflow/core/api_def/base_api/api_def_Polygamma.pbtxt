@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "Polygamma"
+  summary: "Compute the polygamma function \\\\(\\psi^{(n)}(x)\\\\)."
+  description: <<END
+The polygamma function is defined as:
+
+
+\\(\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)\\)
+
+where \\(\psi(x)\\) is the digamma function.
+END
+}

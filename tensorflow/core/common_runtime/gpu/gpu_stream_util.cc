@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ Status AssignStreams(const Graph* graph, const AssignStreamsOpts& opts,
     // Determine a suitable stream to use.
     int stream_id = highest_stream_id + 1;
     for (const Edge* e : n->in_edges()) {
-      const int fanout = e->src()->out_edges().size();
+      const size_t fanout = e->src()->out_edges().size();
       if (fanout == 1) {
         stream_id = (*node_to_stream_id)[e->src()->id()];
         break;

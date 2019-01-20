@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,8 +26,6 @@ limitations under the License.
 namespace tensorflow {
 namespace strings {
 
-AlphaNum gEmptyAlphaNum("");
-
 AlphaNum::AlphaNum(Hex hex) {
   char *const end = &digits_[kFastToBufferSize];
   char *writer = end;
@@ -36,14 +34,14 @@ AlphaNum::AlphaNum(Hex hex) {
   // We accomplish minimum width by OR'ing in 0x10000 to the user's value,
   // where 0x10000 is the smallest hex number that is as wide as the user
   // asked for.
-  uint64 mask = ((static_cast<uint64>(1) << (width - 1) * 4)) | value;
+  uint64 mask = (static_cast<uint64>(1) << (width - 1) * 4) | value;
   static const char hexdigits[] = "0123456789abcdef";
   do {
     *--writer = hexdigits[value & 0xF];
     value >>= 4;
     mask >>= 4;
   } while (mask != 0);
-  piece_.set(writer, end - writer);
+  piece_ = StringPiece(writer, end - writer);
 }
 
 // ----------------------------------------------------------------------

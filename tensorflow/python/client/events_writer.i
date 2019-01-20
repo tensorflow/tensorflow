@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,11 +23,15 @@ limitations under the License.
 
 %nodefaultctor EventsWriter;
 
+%ignore tensorflow::Status::operator=;
+%include "tensorflow/core/lib/core/status.h"
+
 %ignoreall
 %unignore tensorflow;
 %unignore tensorflow::EventsWriter;
 %unignore tensorflow::EventsWriter::EventsWriter;
 %unignore tensorflow::EventsWriter::~EventsWriter;
+%unignore tensorflow::EventsWriter::InitWithSuffix;
 %unignore tensorflow::EventsWriter::FileName;
 %rename("_WriteSerializedEvent") tensorflow::EventsWriter::WriteSerializedEvent;
 %unignore tensorflow::EventsWriter::Flush;

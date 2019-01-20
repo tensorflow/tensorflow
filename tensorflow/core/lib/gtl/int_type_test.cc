@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,9 +42,10 @@ class IntTypeTest : public ::testing::Test {
 
 // All tests below will be executed on all supported IntTypes.
 typedef ::testing::Types<Int8_IT, UInt8_IT, Int16_IT, UInt16_IT, Int32_IT,
-                         Int64_IT, UInt64_IT, Long_IT> SupportedIntTypes;
+                         Int64_IT, UInt64_IT, Long_IT>
+    SupportedIntTypes;
 
-TYPED_TEST_CASE(IntTypeTest, SupportedIntTypes);
+TYPED_TEST_SUITE(IntTypeTest, SupportedIntTypes);
 
 TYPED_TEST(IntTypeTest, TestInitialization) {
   constexpr typename TestFixture::T a;
@@ -232,7 +233,8 @@ TYPED_TEST(IntTypeTest, TestOperators) {
 
 TYPED_TEST(IntTypeTest, TestHashFunctor) {
   std::unordered_map<typename TestFixture::T, char,
-                     typename TestFixture::T::Hasher> map;
+                     typename TestFixture::T::Hasher>
+      map;
   typename TestFixture::T a(0);
   map[a] = 'c';
   EXPECT_EQ('c', map[a]);

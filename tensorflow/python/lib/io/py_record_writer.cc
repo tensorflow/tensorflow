@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/python/lib/io/py_record_writer.h"
 
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_writer.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -25,34 +27,70 @@ namespace io {
 
 PyRecordWriter::PyRecordWriter() {}
 
-PyRecordWriter* PyRecordWriter::New(const string& filename) {
-  WritableFile* file;
+PyRecordWriter* PyRecordWriter::New(const string& filename,
+                                    const io::RecordWriterOptions& options,
+                                    TF_Status* out_status) {
+  std::unique_ptr<WritableFile> file;
   Status s = Env::Default()->NewWritableFile(filename, &file);
   if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
     return nullptr;
   }
   PyRecordWriter* writer = new PyRecordWriter;
-  writer->file_ = file;
-  writer->writer_ = new RecordWriter(writer->file_);
+  writer->file_ = std::move(file);
+  writer->writer_.reset(new RecordWriter(writer->file_.get(), options));
   return writer;
 }
 
 PyRecordWriter::~PyRecordWriter() {
-  delete writer_;
-  delete file_;
+  // Writer depends on file during close for zlib flush, so destruct first.
+  writer_.reset();
+  file_.reset();
 }
 
-bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
-  if (writer_ == nullptr) return false;
+void PyRecordWriter::WriteRecord(tensorflow::StringPiece record,
+                                 TF_Status* out_status) {
+  if (writer_ == nullptr) {
+    TF_SetStatus(out_status, TF_FAILED_PRECONDITION,
+                 "Writer not initialized or previously closed");
+    return;
+  }
   Status s = writer_->WriteRecord(record);
-  return s.ok();
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
+  }
 }
 
-void PyRecordWriter::Close() {
-  delete writer_;
-  delete file_;
-  writer_ = nullptr;
-  file_ = nullptr;
+void PyRecordWriter::Flush(TF_Status* out_status) {
+  if (writer_ == nullptr) {
+    TF_SetStatus(out_status, TF_FAILED_PRECONDITION,
+                 "Writer not initialized or previously closed");
+    return;
+  }
+  Status s = writer_->Flush();
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
+    return;
+  }
+}
+
+void PyRecordWriter::Close(TF_Status* out_status) {
+  if (writer_ != nullptr) {
+    Status s = writer_->Close();
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    writer_.reset(nullptr);
+  }
+  if (file_ != nullptr) {
+    Status s = file_->Close();
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    file_.reset(nullptr);
+  }
 }
 
 }  // namespace io

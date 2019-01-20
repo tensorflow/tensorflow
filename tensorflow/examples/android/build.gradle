@@ -1,0 +1,194 @@
+// This file provides basic support for building the TensorFlow demo
+// in Android Studio with Gradle.
+//
+// Note that Bazel is still used by default to compile the native libs,
+// and should be installed at the location noted below. This build file
+// automates the process of calling out to it and copying the compiled
+// libraries back into the appropriate directory.
+//
+// Alternatively, experimental support for Makefile builds is provided by
+// setting nativeBuildSystem below to 'makefile'. This will allow building the demo
+// on Windows machines, but note that full equivalence with the Bazel
+// build is not yet guaranteed. See comments below for caveats and tips
+// for speeding up the build, such as enabling ccache.
+// NOTE: Running a make build will cause subsequent Bazel builds to *fail*
+// unless the contrib/makefile/downloads/ and gen/ dirs are deleted afterwards.
+
+// The cmake build only creates libtensorflow_demo.so. In this situation,
+// libtensorflow_inference.so will be acquired via the tensorflow.aar dependency.
+
+// It is necessary to customize Gradle's build directory, as otherwise
+// it will conflict with the BUILD file used by Bazel on case-insensitive OSs.
+project.buildDir = 'gradleBuild'
+getProject().setBuildDir('gradleBuild')
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.0.1'
+        classpath 'org.apache.httpcomponents:httpclient:4.5.4'
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+    }
+}
+
+// set to 'bazel', 'cmake', 'makefile', 'none'
+def nativeBuildSystem = 'bazel'
+
+// Controls output directory in APK and CPU type for Bazel builds.
+// NOTE: Does not affect the Makefile build target API (yet), which currently
+// assumes armeabi-v7a. If building with make, changing this will require
+// editing the Makefile as well.
+// The CMake build has only been tested with armeabi-v7a; others may not work.
+def cpuType = 'armeabi-v7a'
+
+// Output directory in the local directory for packaging into the APK.
+def nativeOutDir = 'libs/' + cpuType
+
+// Default to building with Bazel and override with make if requested.
+def nativeBuildRule = 'buildNativeBazel'
+def demoLibPath = '../../../bazel-bin/tensorflow/examples/android/libtensorflow_demo.so'
+def inferenceLibPath = '../../../bazel-bin/tensorflow/contrib/android/libtensorflow_inference.so'
+
+// Override for Makefile builds.
+if (nativeBuildSystem == 'makefile') {
+    nativeBuildRule = 'buildNativeMake'
+    demoLibPath = '../../../tensorflow/contrib/makefile/gen/lib/android_' + cpuType + '/libtensorflow_demo.so'
+    inferenceLibPath = '../../../tensorflow/contrib/makefile/gen/lib/android_' + cpuType + '/libtensorflow_inference.so'
+}
+
+// If building with Bazel, this is the location of the bazel binary.
+// NOTE: Bazel does not yet support building for Android on Windows,
+// so in this case the Makefile build must be used as described above.
+def bazelLocation = '/usr/local/bin/bazel'
+
+// import DownloadModels task
+project.ext.ASSET_DIR = projectDir.toString() + '/assets'
+project.ext.TMP_DIR   = project.buildDir.toString() + '/downloads'
+
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 23
+    buildToolsVersion '26.0.2'
+
+    if (nativeBuildSystem == 'cmake') {
+        defaultConfig {
+            applicationId = 'org.tensorflow.demo'
+            minSdkVersion 21
+            targetSdkVersion 23
+            ndk {
+                abiFilters "${cpuType}"
+            }
+            externalNativeBuild {
+                cmake {
+                    arguments '-DANDROID_TOOLCHAIN=gcc', '-DANDROID_STL=gnustl_static'
+                }
+            }
+        }
+        externalNativeBuild {
+            cmake {
+                path './jni/CMakeLists.txt'
+            }
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+
+    sourceSets {
+        main {
+            if (nativeBuildSystem == 'bazel' || nativeBuildSystem == 'makefile') {
+                // TensorFlow Java API sources.
+                java {
+                    srcDir '../../java/src/main/java'
+                    exclude '**/examples/**'
+                }
+
+                // Android TensorFlow wrappers, etc.
+                java {
+                    srcDir '../../contrib/android/java'
+                }
+            }
+            // Android demo app sources.
+            java {
+                srcDir 'src'
+            }
+
+            manifest.srcFile 'AndroidManifest.xml'
+            resources.srcDirs = ['src']
+            aidl.srcDirs = ['src']
+            renderscript.srcDirs = ['src']
+            res.srcDirs = ['res']
+            assets.srcDirs = [project.ext.ASSET_DIR]
+            jniLibs.srcDirs = ['libs']
+        }
+
+        debug.setRoot('build-types/debug')
+        release.setRoot('build-types/release')
+    }
+}
+
+task buildNativeBazel(type: Exec) {
+    workingDir '../../..'
+    commandLine bazelLocation, 'build', '-c', 'opt',  \
+         'tensorflow/examples/android:tensorflow_native_libs',  \
+         '--crosstool_top=//external:android/crosstool',  \
+         '--cpu=' + cpuType,  \
+         '--host_crosstool_top=@bazel_tools//tools/cpp:toolchain'
+}
+
+task buildNativeMake(type: Exec) {
+    environment "NDK_ROOT", android.ndkDirectory
+    // Tip: install ccache and uncomment the following to speed up
+    // builds significantly.
+    // environment "CC_PREFIX", 'ccache'
+    workingDir '../../..'
+    commandLine 'tensorflow/contrib/makefile/build_all_android.sh',  \
+         '-s',  \
+         'tensorflow/contrib/makefile/sub_makefiles/android/Makefile.in',  \
+         '-t',  \
+         'libtensorflow_inference.so libtensorflow_demo.so all'  \
+         , '-a', cpuType  \
+         //, '-T'  // Uncomment to skip protobuf and speed up subsequent builds.
+}
+
+
+task copyNativeLibs(type: Copy) {
+    from demoLibPath
+    from inferenceLibPath
+    into nativeOutDir
+    duplicatesStrategy = 'include'
+    dependsOn nativeBuildRule
+    fileMode 0644
+}
+
+tasks.whenTaskAdded { task ->
+    if (nativeBuildSystem == 'bazel' || nativeBuildSystem == 'makefile') {
+        if (task.name == 'assembleDebug') {
+            task.dependsOn 'copyNativeLibs'
+        }
+        if (task.name == 'assembleRelease') {
+            task.dependsOn 'copyNativeLibs'
+        }
+    }
+}
+
+// Download default models; if you wish to use your own models then
+// place them in the "assets" directory and comment out this line.
+apply from: "download-models.gradle"
+
+
+dependencies {
+    if (nativeBuildSystem == 'cmake' || nativeBuildSystem == 'none') {
+        compile 'org.tensorflow:tensorflow-android:+'
+    }
+}

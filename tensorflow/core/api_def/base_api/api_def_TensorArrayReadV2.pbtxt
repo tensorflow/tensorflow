@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TensorArrayReadV2"
+  visibility: SKIP
+  summary: "Deprecated. Use TensorArrayReadV3"
+}

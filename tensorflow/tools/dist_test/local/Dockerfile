@@ -1,10 +1,10 @@
 FROM jpetazzo/dind
 
-MAINTAINER Shanqing Cai <cais@google.com>
+LABEL maintainer="Shanqing Cai <cais@google.com>"
 
 RUN apt-get update
 
-RUN apt-get install -y \
+RUN apt-get install -y --no-install-recommends \
     build-essential \
     git \
     software-properties-common

@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow Ops to work with embeddings.
+"""TensorFlow Ops to work with embeddings (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 Note: categorical variables are handled via embeddings in many cases.
 For example, in case of words.
@@ -24,6 +27,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
@@ -31,7 +35,8 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 
 
-def embedding_lookup(params, ids, name="embedding_lookup"):
+@deprecated('2016-12-01', 'Use `tf.embedding_lookup` instead.')
+def embedding_lookup(params, ids, name='embedding_lookup'):
   """Provides a N dimensional version of tf.embedding_lookup.
 
   Ids are flattened to a 1d tensor before being passed to embedding_lookup
@@ -51,19 +56,20 @@ def embedding_lookup(params, ids, name="embedding_lookup"):
   Raises:
     ValueError: if some parameters are invalid.
   """
-  with ops.op_scope([params, ids], name, "embedding_lookup"):
+  with ops.name_scope(name, 'embedding_lookup', [params, ids]):
     params = ops.convert_to_tensor(params)
     ids = ops.convert_to_tensor(ids)
     shape = array_ops_.shape(ids)
     ids_flat = array_ops_.reshape(
-        ids, math_ops.reduce_prod(shape, keep_dims=True))
+        ids, math_ops.reduce_prod(shape, keepdims=True))
     embeds_flat = nn.embedding_lookup(params, ids_flat, name)
-    embed_shape = array_ops_.concat(0, [shape, [-1]])
+    embed_shape = array_ops_.concat([shape, [-1]], 0)
     embeds = array_ops_.reshape(embeds_flat, embed_shape)
     embeds.set_shape(ids.get_shape().concatenate(params.get_shape()[1:]))
     return embeds
 
 
+@deprecated('2016-12-01', 'Use `tf.contrib.layers.embed_sequence` instead.')
 def categorical_variable(tensor_in, n_classes, embedding_size, name):
   """Creates an embedding for categorical variable with given number of classes.
 
@@ -81,6 +87,6 @@ def categorical_variable(tensor_in, n_classes, embedding_size, name):
     tensor, where each row is representation of the class.
   """
   with vs.variable_scope(name):
-    embeddings = vs.get_variable(name + "_embeddings",
+    embeddings = vs.get_variable(name + '_embeddings',
                                  [n_classes, embedding_size])
     return embedding_lookup(embeddings, tensor_in)

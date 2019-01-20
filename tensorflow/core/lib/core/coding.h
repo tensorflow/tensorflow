@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ limitations under the License.
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
 
-#ifndef TENSORFLOW_LIB_CORE_CODING_H_
-#define TENSORFLOW_LIB_CORE_CODING_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_CODING_H_
+#define TENSORFLOW_CORE_LIB_CORE_CODING_H_
 
 #include "tensorflow/core/lib/core/raw_coding.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -27,6 +27,12 @@ limitations under the License.
 
 namespace tensorflow {
 namespace core {
+
+// Maximum number of bytes occupied by a varint32.
+static const int kMaxVarint32Bytes = 5;
+
+// Maximum number of bytes occupied by a varint64.
+static const int kMaxVarint64Bytes = 10;
 
 // Lower-level versions of Put... that write directly into a character buffer
 // REQUIRES: dst has enough space for the value being written
@@ -61,6 +67,7 @@ inline const char* GetVarint32Ptr(const char* p, const char* limit,
   return GetVarint32PtrFallback(p, limit, value);
 }
 
+extern char* EncodeVarint32(char* dst, uint32 v);
 extern char* EncodeVarint64(char* dst, uint64 v);
 
 // Returns the length of the varint32 or varint64 encoding of "v"
@@ -69,4 +76,4 @@ extern int VarintLength(uint64_t v);
 }  // namespace core
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_CODING_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_CODING_H_

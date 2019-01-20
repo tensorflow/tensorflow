@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ limitations under the License.
 //      strings::SPrintf(&result, "%d %s\n", 10, "hello");
 //      strings::Appendf(&result, "%d %s\n", 20, "there");
 
-#ifndef TENSORFLOW_LIB_STRINGS_STRINGPRINTF_H_
-#define TENSORFLOW_LIB_STRINGS_STRINGPRINTF_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_STRINGPRINTF_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_STRINGPRINTF_H_
 
 #include <stdarg.h>
 #include <string>
@@ -49,4 +49,4 @@ extern void Appendv(string* dst, const char* format, va_list ap);
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_STRINGPRINTF_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_STRINGPRINTF_H_

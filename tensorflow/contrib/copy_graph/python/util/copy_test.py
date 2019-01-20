@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,99 +12,106 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for contrib.copy_graph.python.util.copy."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import tensorflow as tf
-from tensorflow.contrib.framework.python.framework import tensor_util
-
-graph1 = tf.Graph()
-graph2 = tf.Graph()
-
-
-class CopyVariablesTest(tf.test.TestCase):
-
-    def testVariableCopy(self):
-
-        with graph1.as_default():
-            #Define a Variable in graph1
-            some_var = tf.Variable(2)
-            #Initialize session
-            sess1 = tf.Session()
-            #Initialize the Variable
-            tf.initialize_all_variables().run(session=sess1)
-
-        #Make a copy of some_var in the defsult scope in graph2
-        copy1 = tf.contrib.copy_graph.copy_variable_to_graph(
-            some_var, graph2)
-
-        #Make another copy with different scope
-        copy2 = tf.contrib.copy_graph.copy_variable_to_graph(
-            some_var, graph2, "test_scope")
-
-        #Initialize both the copies
-        with graph2.as_default():
-            #Initialize Session
-            sess2 = tf.Session()
-            #Initialize the Variables
-            tf.initialize_all_variables().run(session=sess2)
-
-        #Ensure values in all three variables are the same
-        v1 = some_var.eval(session=sess1)
-        v2 = copy1.eval(session=sess2)
-        v3 = copy2.eval(session=sess2)
-
-        assert isinstance(copy1, tf.Variable)
-        assert isinstance(copy2, tf.Variable)
-        assert v1 == v2 == v3 == 2
+from tensorflow.contrib.copy_graph.python.util import copy_elements
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class CopyOpsTest(tf.test.TestCase):
+class CopyVariablesTest(test.TestCase):
 
-    def testOpsCopy(self):
+  def setUp(self):
+    self.graph1 = ops.Graph()
+    self.graph2 = ops.Graph()
 
-        with graph1.as_default():
-            #Initialize a basic expression y = ax + b
-            x = tf.placeholder("float")
-            a = tf.Variable(3.0)
-            b = tf.constant(4.0)
-            ax = tf.mul(x, a)
-            y = tf.add(ax, b)
-            #Initialize session
-            sess1 = tf.Session()
-            #Initialize the Variable
-            tf.initialize_all_variables().run(session=sess1)
+  def testVariableCopy(self):
 
-        #First, initialize a as a Variable in graph2
-        a1 = tf.contrib.copy_graph.copy_variable_to_graph(
-            a, graph2)
+    with self.graph1.as_default():
+      #Define a Variable in graph1
+      some_var = variables.VariableV1(2)
+      #Initialize session
+      sess1 = session_lib.Session()
+      #Initialize the Variable
+      variables.global_variables_initializer().run(session=sess1)
 
-        #Initialize a1 in graph2
-        with graph2.as_default():
-            #Initialize session
-            sess2 = tf.Session()
-            #Initialize the Variable
-            tf.initialize_all_variables().run(session=sess2)
+    #Make a copy of some_var in the defsult scope in graph2
+    copy1 = copy_elements.copy_variable_to_graph(some_var, self.graph2)
 
-        #Initialize a copy of y in graph2
-        y1 = tf.contrib.copy_graph.copy_op_to_graph(
-            y, graph2, [a1])
+    #Make another copy with different scope
+    copy2 = copy_elements.copy_variable_to_graph(some_var,
+                                                 self.graph2,
+                                                 "test_scope")
 
-        #Now that y has been copied, x must be copied too.
-        #Get that instance
-        x1 = tf.contrib.copy_graph.get_copied_op(x, graph2)
+    #Initialize both the copies
+    with self.graph2.as_default():
+      #Initialize Session
+      sess2 = session_lib.Session()
+      #Initialize the Variables
+      variables.global_variables_initializer().run(session=sess2)
 
-        #Compare values of y & y1 for a sample input
-        #and check if they match
-        v1 = y.eval({x: 5}, session=sess1)
-        v2 = y1.eval({x1: 5}, session=sess2)
+    #Ensure values in all three variables are the same
+    v1 = some_var.eval(session=sess1)
+    v2 = copy1.eval(session=sess2)
+    v3 = copy2.eval(session=sess2)
 
-        assert v1 == v2
+    assert isinstance(copy1, variables.Variable)
+    assert isinstance(copy2, variables.Variable)
+    assert v1 == v2 == v3 == 2
+
+
+class CopyOpsTest(test.TestCase):
+
+  def setUp(self):
+    self.graph1 = ops.Graph()
+    self.graph2 = ops.Graph()
+
+  def testOpsCopy(self):
+
+    with self.graph1.as_default():
+      #Initialize a basic expression y = ax + b
+      x = array_ops.placeholder("float")
+      a = variables.VariableV1(3.0)
+      b = constant_op.constant(4.0)
+      ax = math_ops.multiply(x, a)
+      y = math_ops.add(ax, b)
+      #Initialize session
+      sess1 = session_lib.Session()
+      #Initialize the Variable
+      variables.global_variables_initializer().run(session=sess1)
+
+    #First, initialize a as a Variable in graph2
+    a1 = copy_elements.copy_variable_to_graph(a, self.graph2)
+
+    #Initialize a1 in graph2
+    with self.graph2.as_default():
+      #Initialize session
+      sess2 = session_lib.Session()
+      #Initialize the Variable
+      variables.global_variables_initializer().run(session=sess2)
+
+    #Initialize a copy of y in graph2
+    y1 = copy_elements.copy_op_to_graph(y, self.graph2, [a1])
+
+    #Now that y has been copied, x must be copied too.
+    #Get that instance
+    x1 = copy_elements.get_copied_op(x, self.graph2)
+
+    #Compare values of y & y1 for a sample input
+    #and check if they match
+    v1 = y.eval({x: 5}, session=sess1)
+    v2 = y1.eval({x1: 5}, session=sess2)
+
+    assert v1 == v2
 
 
 if __name__ == "__main__":
-    tf.test.main()
+  test.main()

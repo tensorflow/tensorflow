@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_STRINGS_NUMBERS_H_
-#define TENSORFLOW_LIB_STRINGS_NUMBERS_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_
 
 #include <string>
 
@@ -60,19 +60,18 @@ static const int kFastToBufferSize = 32;
 // the output.  The buffer should typically be at least kFastToBufferSize
 // bytes.
 //
-// Returns a pointer to the end of the string (i.e. the null character
-// terminating the string).
+// Returns the number of characters written.
 // ----------------------------------------------------------------------
 
-char* FastInt32ToBufferLeft(int32 i, char* buffer);    // at least 12 bytes
-char* FastUInt32ToBufferLeft(uint32 i, char* buffer);  // at least 12 bytes
-char* FastInt64ToBufferLeft(int64 i, char* buffer);    // at least 22 bytes
-char* FastUInt64ToBufferLeft(uint64 i, char* buffer);  // at least 22 bytes
+size_t FastInt32ToBufferLeft(int32 i, char* buffer);    // at least 12 bytes
+size_t FastUInt32ToBufferLeft(uint32 i, char* buffer);  // at least 12 bytes
+size_t FastInt64ToBufferLeft(int64 i, char* buffer);    // at least 22 bytes
+size_t FastUInt64ToBufferLeft(uint64 i, char* buffer);  // at least 22 bytes
 
 // Required buffer size for DoubleToBuffer is kFastToBufferSize.
 // Required buffer size for FloatToBuffer is kFastToBufferSize.
-char* DoubleToBuffer(double i, char* buffer);
-char* FloatToBuffer(float i, char* buffer);
+size_t DoubleToBuffer(double value, char* buffer);
+size_t FloatToBuffer(float value, char* buffer);
 
 // Convert a 64-bit fingerprint value to an ASCII representation.
 string FpToString(Fprint fp);
@@ -115,19 +114,66 @@ bool safe_strtou64(StringPiece str, uint64* value);
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
-bool safe_strtof(const char* str, float* value);
+// Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
+bool safe_strtof(StringPiece str, float* value);
 
 // Convert strings to double precision floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
-bool safe_strtod(const char* str, double* value);
+// Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
+bool safe_strtod(StringPiece str, double* value);
+
+inline bool ProtoParseNumeric(StringPiece s, int32* value) {
+  return safe_strto32(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, uint32* value) {
+  return safe_strtou32(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, int64* value) {
+  return safe_strto64(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, uint64* value) {
+  return safe_strtou64(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, float* value) {
+  return safe_strtof(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, double* value) {
+  return safe_strtod(s, value);
+}
+
+// Convert strings to number of type T.
+// Leading and trailing spaces are allowed.
+// Values may be rounded on over- and underflow.
+template <typename T>
+bool SafeStringToNumeric(StringPiece s, T* value) {
+  return ProtoParseNumeric(s, value);
+}
+
+// Converts from an int64 to a human readable string representing the
+// same number, using decimal powers.  e.g. 1200000 -> "1.20M".
+string HumanReadableNum(int64 value);
 
 // Converts from an int64 representing a number of bytes to a
 // human readable string representing the same number.
 // e.g. 12345678 -> "11.77MiB".
 string HumanReadableNumBytes(int64 num_bytes);
 
+// Converts a time interval as double to a human readable
+// string. For example:
+//   0.001       -> "1 ms"
+//   10.0        -> "10 s"
+//   933120.0    -> "10.8 days"
+//   39420000.0  -> "1.25 years"
+//   -10         -> "-10 s"
+string HumanReadableElapsedTime(double seconds);
+
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_NUMBERS_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_

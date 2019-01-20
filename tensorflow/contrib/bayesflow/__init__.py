@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +14,23 @@
 # ==============================================================================
 """Ops for representing Bayesian computation.
 
-## This package provides classes for Bayesian computation with TensorFlow.
+Use [tfp](/probability/api_docs/python/tfp) instead.
 
+## This package provides classes for Bayesian computation with TensorFlow.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+# pylint: disable=unused-import,line-too-long
+from tensorflow.contrib.bayesflow.python.ops import monte_carlo
+# pylint: enable=unused-import,line-too-long
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+
+_allowed_symbols = [
+    'monte_carlo',
+]
+
+remove_undocumented(__name__, _allowed_symbols)

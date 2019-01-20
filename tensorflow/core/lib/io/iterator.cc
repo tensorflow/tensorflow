@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,14 +19,14 @@ namespace tensorflow {
 namespace table {
 
 Iterator::Iterator() {
-  cleanup_.function = NULL;
-  cleanup_.next = NULL;
+  cleanup_.function = nullptr;
+  cleanup_.next = nullptr;
 }
 
 Iterator::~Iterator() {
-  if (cleanup_.function != NULL) {
+  if (cleanup_.function != nullptr) {
     (*cleanup_.function)(cleanup_.arg1, cleanup_.arg2);
-    for (Cleanup* c = cleanup_.next; c != NULL;) {
+    for (Cleanup* c = cleanup_.next; c != nullptr;) {
       (*c->function)(c->arg1, c->arg2);
       Cleanup* next = c->next;
       delete c;
@@ -36,9 +36,9 @@ Iterator::~Iterator() {
 }
 
 void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
-  assert(func != NULL);
+  assert(func != nullptr);
   Cleanup* c;
-  if (cleanup_.function == NULL) {
+  if (cleanup_.function == nullptr) {
     c = &cleanup_;
   } else {
     c = new Cleanup;
@@ -53,20 +53,20 @@ void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
 namespace {
 class EmptyIterator : public Iterator {
  public:
-  EmptyIterator(const Status& s) : status_(s) {}
-  virtual bool Valid() const { return false; }
-  virtual void Seek(const StringPiece& target) {}
-  virtual void SeekToFirst() {}
-  virtual void Next() { assert(false); }
-  StringPiece key() const {
+  explicit EmptyIterator(const Status& s) : status_(s) {}
+  bool Valid() const override { return false; }
+  void Seek(const StringPiece& target) override {}
+  void SeekToFirst() override {}
+  void Next() override { assert(false); }
+  StringPiece key() const override {
     assert(false);
     return StringPiece();
   }
-  StringPiece value() const {
+  StringPiece value() const override {
     assert(false);
     return StringPiece();
   }
-  virtual Status status() const { return status_; }
+  Status status() const override { return status_; }
 
  private:
   Status status_;

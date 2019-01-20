@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
-#define TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_
 // Functor definition for SoftplusOp and SoftplusGradOp, must be compilable by
 // nvcc.
 
@@ -33,9 +33,24 @@ struct Softplus {
   // activations: same shape as "features".
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
-    activations.device(d) =
-        (features > features.constant(T(30)))
-            .select(features, (features.exp() + features.constant(T(1))).log());
+    // Choose a threshold on x below which exp(x) may underflow
+    // when added to 1, but for which exp(x) is always within epsilon of the
+    // true softplus(x).  Offset of 2 from machine epsilon checked
+    // experimentally for float16, float32, float64.  Checked against
+    // softplus implemented with numpy's log1p and numpy's logaddexp.
+    static const T threshold =
+        Eigen::numext::log(Eigen::NumTraits<T>::epsilon()) + T(2);
+    // Value above which exp(x) may overflow, but softplus(x) == x
+    // is within machine epsilon.
+    auto too_large = features > features.constant(-threshold);
+    // Value below which exp(x) may underflow, but softplus(x) == exp(x)
+    // is within machine epsilon.
+    auto too_small = features < features.constant(threshold);
+    auto features_exp = features.exp();
+    activations.device(d) = too_large.select(
+        features,                       // softplus(x) ~= x for x large
+        too_small.select(features_exp,  // softplus(x) ~= exp(x) for x small
+                         (features_exp + features.constant(T(1))).log()));
   }
 };
 
@@ -58,4 +73,4 @@ struct SoftplusGrad {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_

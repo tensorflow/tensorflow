@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,9 +24,11 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_SPEC(T)                       \
-  template struct functor::ArgMax<GPUDevice, T>; \
-  template struct functor::ArgMin<GPUDevice, T>;
+#define DEFINE_GPU_SPEC(T)                              \
+  template struct functor::ArgMax<GPUDevice, T, int64>; \
+  template struct functor::ArgMin<GPUDevice, T, int64>; \
+  template struct functor::ArgMax<GPUDevice, T, int32>; \
+  template struct functor::ArgMin<GPUDevice, T, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
 

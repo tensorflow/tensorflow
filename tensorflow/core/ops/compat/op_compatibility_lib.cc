@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,11 +82,9 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
   {  // Read op history.
     printf("Reading op history from %s...\n", op_history_file_.c_str());
     string op_history_str;
-    Status status = ReadFileToString(env, op_history_file_, &op_history_str);
-    if (!errors::IsNotFound(status)) {
-      if (!status.ok()) return status;
-      protobuf::TextFormat::ParseFromString(op_history_str, &in_op_history);
-    }
+    TF_RETURN_IF_ERROR(
+        ReadFileToString(env, op_history_file_, &op_history_str));
+    protobuf::TextFormat::ParseFromString(op_history_str, &in_op_history);
   }
 
   int cur = 0;
@@ -147,6 +145,11 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
           TF_RETURN_IF_ERROR(
               OpDefCompatible(in_op_history.op(i), op_list_.op(cur)));
         }
+
+        // Verify default value of attrs has not been added/removed/modified
+        // as compared to only the last historical version.
+        TF_RETURN_IF_ERROR(OpDefAttrDefaultsUnchanged(in_op_history.op(end - 1),
+                                                      op_list_.op(cur)));
 
         // Check that attrs missing from in_op_history.op(start) don't
         // change their defaults.

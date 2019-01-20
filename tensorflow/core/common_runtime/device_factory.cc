@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -31,7 +33,7 @@ namespace tensorflow {
 namespace {
 
 static mutex* get_device_factory_lock() {
-  static mutex device_factory_lock;
+  static mutex device_factory_lock(LINKER_INITIALIZED);
   return &device_factory_lock;
 }
 
@@ -45,8 +47,22 @@ std::unordered_map<string, FactoryItem>& device_factories() {
       new std::unordered_map<string, FactoryItem>;
   return *factories;
 }
+
 }  // namespace
 
+// static
+int32 DeviceFactory::DevicePriority(const string& device_type) {
+  mutex_lock l(*get_device_factory_lock());
+  std::unordered_map<string, FactoryItem>& factories = device_factories();
+  auto iter = factories.find(device_type);
+  if (iter != factories.end()) {
+    return iter->second.priority;
+  }
+
+  return -1;
+}
+
+// static
 void DeviceFactory::Register(const string& device_type, DeviceFactory* factory,
                              int priority) {
   mutex_lock l(*get_device_factory_lock());
@@ -74,50 +90,51 @@ DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
   return it->second.factory.get();
 }
 
-void DeviceFactory::AddDevices(const SessionOptions& options,
-                               const string& name_prefix,
-                               std::vector<Device*>* devices) {
-  // CPU first.
+Status DeviceFactory::AddDevices(
+    const SessionOptions& options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
+  // CPU first. A CPU device is required.
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
-    LOG(FATAL)
-        << "CPU Factory not registered.  Did you link in threadpool_device?";
+    return errors::NotFound(
+        "CPU Factory not registered.  Did you link in threadpool_device?");
   }
   size_t init_size = devices->size();
-  cpu_factory->CreateDevices(options, name_prefix, devices);
+  TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(options, name_prefix, devices));
   if (devices->size() == init_size) {
-    LOG(FATAL) << "No CPU devices are available in this process";
+    return errors::NotFound("No CPU devices are available in this process");
   }
 
-  // Then GPU.
-  auto gpu_factory = GetFactory("GPU");
-  if (gpu_factory) {
-    gpu_factory->CreateDevices(options, name_prefix, devices);
-  }
-
-  // Then the rest.
+  // Then the rest (including GPU).
   mutex_lock l(*get_device_factory_lock());
   for (auto& p : device_factories()) {
     auto factory = p.second.factory.get();
-    if (factory != cpu_factory && factory != gpu_factory) {
-      factory->CreateDevices(options, name_prefix, devices);
+    if (factory != cpu_factory) {
+      TF_RETURN_IF_ERROR(factory->CreateDevices(options, name_prefix, devices));
     }
   }
+
+  return Status::OK();
 }
 
-Device* DeviceFactory::NewDevice(const string& type,
-                                 const SessionOptions& options,
-                                 const string& name_prefix) {
+std::unique_ptr<Device> DeviceFactory::NewDevice(const string& type,
+                                                 const SessionOptions& options,
+                                                 const string& name_prefix) {
   auto device_factory = GetFactory(type);
   if (!device_factory) {
     return nullptr;
   }
   SessionOptions opt = options;
   (*opt.config.mutable_device_count())[type] = 1;
-  std::vector<Device*> devices;
-  device_factory->CreateDevices(opt, name_prefix, &devices);
-  CHECK_EQ(devices.size(), size_t{1});
-  return devices[0];
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(device_factory->CreateDevices(opt, name_prefix, &devices));
+  int expected_num_devices = 1;
+  auto iter = options.config.device_count().find(type);
+  if (iter != options.config.device_count().end()) {
+    expected_num_devices = iter->second;
+  }
+  DCHECK_EQ(devices.size(), static_cast<size_t>(expected_num_devices));
+  return std::move(devices[0]);
 }
 
 }  // namespace tensorflow

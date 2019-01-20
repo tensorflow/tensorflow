@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,3 +25,4 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import, line-too-long
 from tensorflow.contrib.grid_rnn.python.ops.grid_rnn_cell import *
+# pylint: enable=unused-import,wildcard-import,line-too-long

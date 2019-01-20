@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,6 +37,10 @@ namespace gtl {
 template <typename IteratorT>
 class iterator_range {
  public:
+  using value_type = decltype(*std::declval<IteratorT>());
+  using iterator = IteratorT;
+  using const_iterator = IteratorT;
+
   iterator_range() : begin_iterator_(), end_iterator_() {}
   iterator_range(IteratorT begin_iterator, IteratorT end_iterator)
       : begin_iterator_(std::move(begin_iterator)),

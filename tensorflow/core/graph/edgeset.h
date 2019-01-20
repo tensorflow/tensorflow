@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ class EdgeSet {
  private:
   // Up to kInline elements are stored directly in ptrs_ (nullptr means none).
   // If ptrs_[0] == this then ptrs_[1] points to a set<const Edge*>.
-  static const int kInline = 2;  // Must be >= 2.
+  static const int kInline = 4;  // Must be >= 2.
   const void* ptrs_[kInline];
 
   std::set<const Edge*>* get_set() const {

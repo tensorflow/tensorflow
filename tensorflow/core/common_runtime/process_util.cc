@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/process_util.h"
 
+#ifdef INTEL_MKL
+#ifdef _OPENMP
+#include <omp.h>
+#endif  // _OPENMP
+#endif  // INTEL_MKL
 #include <string.h>
 
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -46,24 +53,56 @@ thread::ThreadPool* ComputePool(const SessionOptions& options) {
   return compute_pool;
 }
 
-void SchedClosure(std::function<void()> closure) {
-  if (port::Tracing::IsActive()) {
-    const uint64 id = port::Tracing::UniqueId();
-    port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
-                               id);
-    std::function<void()> wrapper = [closure, id]() {
-      port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, id);
-      closure();
-    };
-    Env::Default()->SchedClosure(wrapper);
-  } else {
-    Env::Default()->SchedClosure(closure);
+int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
+  const int32 inter_op = options.config.inter_op_parallelism_threads();
+  if (inter_op != 0) return inter_op;
+#ifdef INTEL_MKL
+  if (!DisableMKL()) {
+    // MKL library executes ops in parallel using OMP threads
+    // Set inter_op conservatively to avoid thread oversubscription that could
+    // lead to severe perf degradations and OMP resource exhaustion
+    int mkl_intra_op = 1;
+#ifdef _OPENMP
+    mkl_intra_op = omp_get_max_threads();
+#endif  // _OPENMP
+    DCHECK_GE(mkl_intra_op, 1);
+    const int32 mkl_inter_op = std::max(
+        (port::NumSchedulableCPUs() + mkl_intra_op - 1) / mkl_intra_op, 2);
+    VLOG(0)
+        << "Creating new thread pool with default inter op setting: "
+        << mkl_inter_op
+        << ". Tune using inter_op_parallelism_threads for best performance.";
+    return mkl_inter_op;
   }
+#endif  // INTEL_MKL
+  // Default to using the number of cores available in the process.
+  return port::NumSchedulableCPUs();
 }
 
-void SchedNonBlockingClosureAfter(int micros, std::function<void()> closure) {
-  Env::Default()->SchedClosureAfter(micros, closure);
+thread::ThreadPool* NewThreadPoolFromSessionOptions(
+    const SessionOptions& options) {
+  const int32 num_threads = NumInterOpThreadsFromSessionOptions(options);
+  VLOG(1) << "Direct session inter op parallelism threads: " << num_threads;
+  return new thread::ThreadPool(options.env, "Compute", num_threads);
+}
+
+void SchedClosure(std::function<void()> closure) {
+  if (!tracing::EventCollector::IsEnabled()) {
+    return Env::Default()->SchedClosure(std::move(closure));
+  }
+  uint64 id = tracing::GetUniqueArg();
+  tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
+
+  Env::Default()->SchedClosure(std::bind(
+      [id](std::function<void()> closure) {
+        tracing::ScopedRegion region(tracing::EventCategory::kRunClosure, id);
+        closure();
+      },
+      std::move(closure)));
+}
+
+void SchedNonBlockingClosureAfter(int64 micros, std::function<void()> closure) {
+  Env::Default()->SchedClosureAfter(micros, std::move(closure));
 }
 
 }  // namespace tensorflow

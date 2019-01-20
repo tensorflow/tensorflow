@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,13 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import load_library
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
-
-_bucketization_op = load_library.load_op_library(
-    resource_loader.get_path_to_datafile("_bucketization_op.so"))
-assert _bucketization_op, "Could not load _bucketization_op.so."
+from tensorflow.python.ops import math_ops
 
 
 def bucketize(input_tensor, boundaries, name=None):
@@ -43,10 +37,5 @@ def bucketize(input_tensor, boundaries, name=None):
   Raises:
     TypeError: If boundaries is not a list.
   """
-  if not isinstance(boundaries, list):
-    raise TypeError("boundaries must be a list")
-
-  return _bucketization_op.bucketize(input_tensor, boundaries, name=name)
-
-
-ops.NoGradient("Bucketize")
+  return math_ops._bucketize(  # pylint: disable=protected-access
+      input_tensor, boundaries=boundaries, name=name)

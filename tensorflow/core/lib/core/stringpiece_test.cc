@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+
+#include <unordered_map>
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -53,14 +55,9 @@ TEST(StringPiece, Ctor) {
   }
 }
 
-TEST(StringPiece, Contains) {
-  StringPiece a("abcdefg");
-  StringPiece b("abcd");
-  StringPiece c("efg");
-  StringPiece d("gh");
-  EXPECT_TRUE(a.contains(b));
-  EXPECT_TRUE(a.contains(c));
-  EXPECT_TRUE(!a.contains(d));
+TEST(StringPiece, ConversionToString) {
+  EXPECT_EQ("", string(StringPiece("")));
+  EXPECT_EQ("foo", string(StringPiece("foo")));
 }
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -26,6 +27,7 @@ REGISTER_OP("_Send")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Sends the named tensor from send_device to recv_device.
 
@@ -49,6 +51,7 @@ REGISTER_OP("_Recv")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Receives the named tensor from send_device on recv_device.
 
@@ -72,6 +75,7 @@ REGISTER_OP("_HostSend")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Sends the named tensor from send_device to recv_device.
 
@@ -98,6 +102,7 @@ REGISTER_OP("_HostRecv")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Receives the named tensor from send_device on recv_device.
 

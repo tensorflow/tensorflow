@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,8 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
 REGISTER2(BinaryOp, CPU, "Igamma", functor::igamma, float, double);
+REGISTER2(BinaryOp, CPU, "IgammaGradA", functor::igamma_grad_a, float, double);
 REGISTER2(BinaryOp, CPU, "Igammac", functor::igammac, float, double);
+#if GOOGLE_CUDA
+REGISTER2(BinaryOp, GPU, "Igamma", functor::igamma, float, double);
+REGISTER2(BinaryOp, GPU, "IgammaGradA", functor::igamma_grad_a, float, double);
+REGISTER2(BinaryOp, GPU, "Igammac", functor::igammac, float, double);
+#endif
 }  // namespace tensorflow

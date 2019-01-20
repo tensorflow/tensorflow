@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,11 +23,9 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_
 
-#include "tensorflow/stream_executor/cuda/multi_op_activation.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class StreamExecutor;
 
@@ -44,16 +42,13 @@ class ScopedActivateExecutorContext {
 
   // Form that takes a pImpl executor and extracts a CUDA implementation --
   // fatal failure if it is not CUDA inside.
-  explicit ScopedActivateExecutorContext(
-      StreamExecutor* stream_exec,
-      MultiOpActivation unused = MultiOpActivation::kNo);
+  explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
+
+  ScopedActivateExecutorContext(ScopedActivateExecutorContext&& other);
 
   ~ScopedActivateExecutorContext();
 
  private:
-  // The CUDA executor implementation whose context is activated.
-  CUDAExecutor* cuda_exec_;
-
   // The cuda.h-using datatype that we wrap.
   ScopedActivateContext* driver_scoped_activate_context_;
 
@@ -61,7 +56,6 @@ class ScopedActivateExecutorContext {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_

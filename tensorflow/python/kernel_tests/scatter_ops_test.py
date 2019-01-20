@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.tf.scatter."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
 def _AsType(v, vtype):
@@ -33,17 +39,102 @@ def _NumpyAdd(ref, indices, updates):
     ref[indx] += updates[i]
 
 
+def _NumpyAddScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] += update
+
+
 def _NumpySub(ref, indices, updates):
   for i, indx in np.ndenumerate(indices):
     ref[indx] -= updates[i]
 
 
-class ScatterTest(tf.test.TestCase):
+def _NumpySubScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] -= update
 
-  def _VariableRankTest(self, np_scatter, tf_scatter, vtype, itype, use_gpu,
-                        repeat_indices=False):
+
+def _NumpyMul(ref, indices, updates):
+  for i, indx in np.ndenumerate(indices):
+    ref[indx] *= updates[i]
+
+
+def _NumpyMulScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] *= update
+
+
+def _NumpyDiv(ref, indices, updates):
+  for i, indx in np.ndenumerate(indices):
+    ref[indx] /= updates[i]
+
+
+def _NumpyDivScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] /= update
+
+
+def _NumpyMin(ref, indices, updates):
+  for i, indx in np.ndenumerate(indices):
+    ref[indx] = np.minimum(ref[indx], updates[i])
+
+
+def _NumpyMinScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] = np.minimum(ref[indx], update)
+
+
+def _NumpyMax(ref, indices, updates):
+  for i, indx in np.ndenumerate(indices):
+    ref[indx] = np.maximum(ref[indx], updates[i])
+
+
+def _NumpyMaxScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] = np.maximum(ref[indx], update)
+
+
+def _NumpyUpdate(ref, indices, updates):
+  for i, indx in np.ndenumerate(indices):
+    ref[indx] = updates[i]
+
+
+def _NumpyUpdateScalar(ref, indices, update):
+  for _, indx in np.ndenumerate(indices):
+    ref[indx] = update
+
+
+_TF_OPS_TO_NUMPY = {
+    state_ops.scatter_update: _NumpyUpdate,
+    state_ops.scatter_add: _NumpyAdd,
+    state_ops.scatter_sub: _NumpySub,
+    state_ops.scatter_mul: _NumpyMul,
+    state_ops.scatter_div: _NumpyDiv,
+    state_ops.scatter_min: _NumpyMin,
+    state_ops.scatter_max: _NumpyMax,
+}
+
+_TF_OPS_TO_NUMPY_SCALAR = {
+    state_ops.scatter_update: _NumpyUpdateScalar,
+    state_ops.scatter_add: _NumpyAddScalar,
+    state_ops.scatter_sub: _NumpySubScalar,
+    state_ops.scatter_mul: _NumpyMulScalar,
+    state_ops.scatter_div: _NumpyDivScalar,
+    state_ops.scatter_min: _NumpyMinScalar,
+    state_ops.scatter_max: _NumpyMaxScalar,
+}
+
+
+class ScatterTest(test.TestCase):
+
+  def _VariableRankTest(self,
+                        tf_scatter,
+                        vtype,
+                        itype,
+                        repeat_indices=False,
+                        updates_are_scalar=False):
     np.random.seed(8)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=True):
       for indices_shape in (), (2,), (3, 7), (3, 4, 7):
         for extra_shape in (), (5,), (5, 9):
           # Generate random indices with no duplicates for easy numpy comparison
@@ -54,110 +145,228 @@ class ScatterTest(tf.test.TestCase):
           indices = indices[:size]
           if size > 1 and repeat_indices:
             # Add some random repeats.
-            indices = indices[:size//2]
-            for _ in range(size-size//2):
+            indices = indices[:size // 2]
+            for _ in range(size - size // 2):
               # Randomly append some repeats.
-              indices = np.append(indices, indices[np.random.randint(size//2)])
+              indices = np.append(indices,
+                                  indices[np.random.randint(size // 2)])
             np.random.shuffle(indices)
           indices = indices.reshape(indices_shape)
-          updates = _AsType(np.random.randn(*(indices_shape + extra_shape)),
-                            vtype)
+          if updates_are_scalar:
+            updates = _AsType(np.random.randn(), vtype)
+          else:
+            updates = _AsType(
+                np.random.randn(*(indices_shape + extra_shape)), vtype)
+
+          # Clips small values to avoid division by zero.
+          def clip_small_values(x):
+            threshold = 1e-4
+            sign = np.sign(x)
+
+            if isinstance(x, np.int32):
+              threshold = 1
+              sign = np.random.choice([-1, 1])
+            return threshold * sign if np.abs(x) < threshold else x
+
+          updates = np.vectorize(clip_small_values)(updates)
           old = _AsType(np.random.randn(*((first_dim,) + extra_shape)), vtype)
 
           # Scatter via numpy
           new = old.copy()
+          if updates_are_scalar:
+            np_scatter = _TF_OPS_TO_NUMPY_SCALAR[tf_scatter]
+          else:
+            np_scatter = _TF_OPS_TO_NUMPY[tf_scatter]
           np_scatter(new, indices, updates)
           # Scatter via tensorflow
-          ref = tf.Variable(old)
+          ref = variables.VariableV1(old)
           ref.initializer.run()
           tf_scatter(ref, indices, updates).eval()
-          # Compare
           self.assertAllClose(ref.eval(), new)
 
-  def _VariableRankTests(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64):
-      for itype in (np.int32, np.int64):
-        for use_gpu in (False, True):
-          self._VariableRankTest(np_scatter, tf_scatter, vtype, itype, use_gpu)
+  def _VariableRankTests(self,
+                         tf_scatter,
+                         repeat_indices=False,
+                         updates_are_scalar=False):
+    vtypes = [np.float32, np.float64]
+    if tf_scatter != state_ops.scatter_div:
+      vtypes.append(np.int32)
 
+    if (tf_scatter == state_ops.scatter_min or
+        tf_scatter == state_ops.scatter_max):
+      vtypes.append(np.float16)
+
+    for vtype in vtypes:
+      for itype in (np.int32, np.int64):
+        self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices,
+                               updates_are_scalar)
+
+  @test_util.run_deprecated_v1
   def testVariableRankUpdate(self):
-    def update(ref, indices, updates):
-      ref[indices] = updates
-    self._VariableRankTests(update, tf.scatter_update)
+    self._VariableRankTests(state_ops.scatter_update, False)
 
+  @test_util.run_deprecated_v1
   def testVariableRankAdd(self):
-    self._VariableRankTests(_NumpyAdd, tf.scatter_add)
+    self._VariableRankTests(state_ops.scatter_add, False)
 
+  @test_util.run_deprecated_v1
   def testVariableRankSub(self):
-    self._VariableRankTests(_NumpySub, tf.scatter_sub)
+    self._VariableRankTests(state_ops.scatter_sub, False)
 
-  def _ScatterRepeatIndicesTest(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64):
-      for itype in (np.int32, np.int64):
-        for use_gpu in (False, True):
-          self._VariableRankTest(np_scatter, tf_scatter, vtype, itype, use_gpu,
-                                 repeat_indices=True)
+  @test_util.run_deprecated_v1
+  def testVariableRankMul(self):
+    self._VariableRankTests(state_ops.scatter_mul, False)
 
-  def testScatterRepeatIndices(self):
-    """This tests scatter_add using indices that repeat."""
-    self._ScatterRepeatIndicesTest(_NumpyAdd, tf.scatter_add)
-    self._ScatterRepeatIndicesTest(_NumpySub, tf.scatter_sub)
+  @test_util.run_deprecated_v1
+  def testVariableRankDiv(self):
+    self._VariableRankTests(state_ops.scatter_div, False)
 
+  @test_util.run_deprecated_v1
+  def testVariableRankMin(self):
+    self._VariableRankTests(state_ops.scatter_min, False)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankMax(self):
+    self._VariableRankTests(state_ops.scatter_max, False)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesAdd(self):
+    self._VariableRankTests(state_ops.scatter_add, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesSub(self):
+    self._VariableRankTests(state_ops.scatter_sub, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesMul(self):
+    self._VariableRankTests(state_ops.scatter_mul, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesDiv(self):
+    self._VariableRankTests(state_ops.scatter_div, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesMin(self):
+    self._VariableRankTests(state_ops.scatter_min, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesMax(self):
+    self._VariableRankTests(state_ops.scatter_max, True)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankUpdateScalar(self):
+    self._VariableRankTests(state_ops.scatter_update, False, True)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankAddScalar(self):
+    self._VariableRankTests(state_ops.scatter_add, False, True)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankSubScalar(self):
+    self._VariableRankTests(state_ops.scatter_sub, False, True)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankMulScalar(self):
+    self._VariableRankTests(state_ops.scatter_mul, False, True)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankDivScalar(self):
+    self._VariableRankTests(state_ops.scatter_div, False, True)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankMinScalar(self):
+    self._VariableRankTests(state_ops.scatter_min, False, True)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankMaxScalar(self):
+    self._VariableRankTests(state_ops.scatter_max, False, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesAddScalar(self):
+    self._VariableRankTests(state_ops.scatter_add, True, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesSubScalar(self):
+    self._VariableRankTests(state_ops.scatter_sub, True, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesMulScalar(self):
+    self._VariableRankTests(state_ops.scatter_mul, True, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesDivScalar(self):
+    self._VariableRankTests(state_ops.scatter_div, True, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesMinScalar(self):
+    self._VariableRankTests(state_ops.scatter_min, True, True)
+
+  @test_util.run_deprecated_v1
+  def testRepeatIndicesMaxScalar(self):
+    self._VariableRankTests(state_ops.scatter_max, True, True)
+
+  @test_util.run_deprecated_v1
   def testBooleanScatterUpdate(self):
-    with self.test_session(use_gpu=False) as session:
-      var = tf.Variable([True, False])
-      update0 = tf.scatter_update(var, 1, True)
-      update1 = tf.scatter_update(var, tf.constant(0, dtype=tf.int64), False)
-      var.initializer.run()
+    if not test.is_gpu_available():
+      with self.session(use_gpu=False) as session:
+        var = variables.Variable([True, False])
+        update0 = state_ops.scatter_update(var, 1, True)
+        update1 = state_ops.scatter_update(
+            var, constant_op.constant(
+                0, dtype=dtypes.int64), False)
+        var.initializer.run()
 
-      session.run([update0, update1])
+        session.run([update0, update1])
 
-      self.assertAllEqual([False, True], var.eval())
+        self.assertAllEqual([False, True], self.evaluate(var))
 
+  @test_util.run_deprecated_v1
   def testScatterOutOfRangeCpu(self):
-    for op in (tf.scatter_add, tf.scatter_sub, tf.scatter_update):
+    for op, _ in _TF_OPS_TO_NUMPY.items():
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
-      with self.test_session(use_gpu=False):
-        ref = tf.Variable(params)
-        ref.initializer.run()
+      if not test.is_gpu_available():
+        with self.session(use_gpu=False):
+          ref = variables.VariableV1(params)
+          ref.initializer.run()
 
-        # Indices all in range, no problem.
-        indices = np.array([2, 0, 5])
-        op(ref, indices, updates).eval()
-
-        # Test some out of range errors.
-        indices = np.array([-1, 0, 5])
-        with self.assertRaisesOpError(r'indices\[0\] = -1 is not in \[0, 6\)'):
+          # Indices all in range, no problem.
+          indices = np.array([2, 0, 5])
           op(ref, indices, updates).eval()
 
-        indices = np.array([2, 0, 6])
-        with self.assertRaisesOpError(r'indices\[2\] = 6 is not in \[0, 6\)'):
-          op(ref, indices, updates).eval()
+          # Test some out of range errors.
+          indices = np.array([-1, 0, 5])
+          with self.assertRaisesOpError(
+              r'indices\[0\] = -1 is not in \[0, 6\)'):
+            op(ref, indices, updates).eval()
+
+          indices = np.array([2, 0, 6])
+          with self.assertRaisesOpError(r'indices\[2\] = 6 is not in \[0, 6\)'):
+            op(ref, indices, updates).eval()
 
   # TODO(fpmc): Re-enable this test when gpu_pip test actually runs on a GPU.
   def _disabledTestScatterOutOfRangeGpu(self):
-    if not tf.test.IsBuiltWithCuda():
+    if test.is_gpu_available():
       return
-    for op in (tf.scatter_add, tf.scatter_sub, tf.scatter_update):
+    for op, _ in _TF_OPS_TO_NUMPY.items():
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       # With GPU, the code ignores indices that are out of range.
       # We don't test the implementation; just test there's no failures.
-      with self.test_session(force_gpu=True):
-        ref = tf.Variable(params)
+      with test_util.force_gpu():
+        ref = variables.Variable(params)
         ref.initializer.run()
 
         # Indices all in range, no problem.
         indices = np.array([2, 0, 5])
-        op(ref, indices, updates).eval()
+        self.evaluate(op(ref, indices, updates))
 
         # Indicies out of range should not fail.
         indices = np.array([-1, 0, 5])
-        op(ref, indices, updates).eval()
+        self.evaluate(op(ref, indices, updates))
         indices = np.array([2, 0, 6])
-        op(ref, indices, updates).eval()
+        self.evaluate(op(ref, indices, updates))
 
 
-if __name__ == "__main__":
-  tf.test.main()
+if __name__ == '__main__':
+  test.main()

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,12 +68,10 @@ BCast::BCast(const Vec& sx, const Vec& sy, const bool fewer_dims_optimization) {
       // Output shape.
       State curr = UNKNOWN;
       const int64 x_i = x[i];  // i-th dimension of x.
-      CHECK_GE(x_i, 0);
       const int64 y_i = y[i];  // i-th dimension of y.
-      CHECK_GE(y_i, 0);
-      int64 o_i;   // i-th dimension of the output.
-      int64 bx_i;  // i-th broadcast for x.
-      int64 by_i;  // i-th broadcast for y.
+      int64 o_i;               // i-th dimension of the output.
+      int64 bx_i;              // i-th broadcast for x.
+      int64 by_i;              // i-th broadcast for y.
       // Invariant:
       //   o_i = x_i * bx_i = y_i * by_i
       if (x_i == y_i) {

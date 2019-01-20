@@ -3,7 +3,7 @@ syntax = "proto3";
 
 import "google/protobuf/any.proto";
 
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "TestLogProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.util.testlog";
@@ -57,12 +57,15 @@ message BuildConfiguration {
 
 message CommitId {
   oneof kind {
+    // Submitted changelist.
     int64 changelist = 1;
     string hash = 2;
   }
   // Hash of intermediate change between hash/changelist and what was tested.
   // Not used if the build is from a commit without modifications.
   string snapshot = 3;
+  // Changelist tested if the change list is not already submitted.
+  int64 pending_changelist = 4;
 };
 
 message CPUInfo {
@@ -171,4 +174,23 @@ message TestResults {
 
   // Run-specific parameters (arguments, etc)
   RunConfiguration run_configuration = 8;
+
+  // Benchmark target identifier.
+  string name = 9;
+
+  // The type of benchmark.
+  enum BenchmarkType {
+    UNKNOWN = 0;  // Fallback for protos written before Type was introduced.
+    CPP_MICROBENCHMARK = 1;
+    PYTHON_BENCHMARK = 2;
+    ANDROID_BENCHMARK = 3;
+  }
+  BenchmarkType benchmark_type = 10;
+
+  // Used for differentiating between continuous and debug builds.
+  // Must be one of:
+  // * cbuild: results from continuous build.
+  // * presubmit: results from oneshot requests.
+  // * culprit: results from culprit finder rerun.
+  string run_mode = 11;
 };

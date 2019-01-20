@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER2(UnaryOp, CPU, "Asin", functor::asin, float, double);
+
 #if GOOGLE_CUDA
 REGISTER2(UnaryOp, GPU, "Asin", functor::asin, float, double);
 #endif
+
+#if TENSORFLOW_USE_SYCL
+REGISTER2(UnaryOp, SYCL, "Asin", functor::asin, float, double);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
+#define TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
 
 #include <string.h>  // for memcpy
 
@@ -25,6 +25,5 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/casts.h"
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_

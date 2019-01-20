@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -105,6 +105,7 @@ TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_KERNEL);
   REGISTER_KERNEL_BUILDER(                                        \
       Name("Cross").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       CrossOp<GPUDevice, type>);
+
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif

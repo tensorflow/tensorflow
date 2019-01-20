@@ -1,0 +1,11 @@
+path: "tensorflow.lite.constants"
+tf_module {
+  member {
+    name: "GRAPHVIZ_DOT"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "TFLITE"
+    mtype: "<type \'int\'>"
+  }
+}

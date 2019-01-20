@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_EXAMPLE_EXAMPLE_PARSER_CONFIGURATION_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_EXAMPLE_EXAMPLE_PARSER_CONFIGURATION_H_
+#ifndef TENSORFLOW_CORE_EXAMPLE_EXAMPLE_PARSER_CONFIGURATION_H_
+#define TENSORFLOW_CORE_EXAMPLE_EXAMPLE_PARSER_CONFIGURATION_H_
 
 #include <string>
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/example_parser_configuration.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -42,6 +43,14 @@ Status ExtractExampleParserConfiguration(
     std::vector<FixedLenFeature>* fixed_len_features,
     std::vector<VarLenFeature>* var_len_features);
 
+// Given a config proto, ostensibly extracted via python,
+// fill a vector of C++ structs suitable for calling
+// the tensorflow.Example -> Tensor conversion code.
+Status ExampleParserConfigurationProtoToFeatureVectors(
+    const ExampleParserConfiguration& config_proto,
+    std::vector<FixedLenFeature>* fixed_len_features,
+    std::vector<VarLenFeature>* var_len_features);
+
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_EXAMPLE_EXAMPLE_PARSE_CONFIGURATION_H_
+#endif  // TENSORFLOW_CORE_EXAMPLE_EXAMPLE_PARSER_CONFIGURATION_H_

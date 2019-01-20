@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
-#define TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
+#ifndef TENSORFLOW_CORE_UTIL_SPARSE_DIM_COMPARATOR_H_
+#define TENSORFLOW_CORE_UTIL_SPARSE_DIM_COMPARATOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -46,14 +46,14 @@ class DimComparator {
  public:
   typedef typename gtl::ArraySlice<int64> VarDimArray;
 
-  inline DimComparator(const TTypes<int64>::Matrix& ix,
-                       const VarDimArray& order, int dims)
-      : ix_(ix), order_(order), dims_(dims) {
-    CHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
-    CHECK_LE(order.size(), dims_) << "Can only sort up to dims";
+  DimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
+                const VarDimArray& shape)
+      : ix_(ix), order_(order), dims_(shape.size()) {
+    DCHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
+    DCHECK_LE(order.size(), shape.size()) << "Can only sort up to dims";
     for (size_t d = 0; d < order.size(); ++d) {
-      CHECK_GE(order[d], 0);
-      CHECK_LT(order[d], dims);
+      DCHECK_GE(order[d], 0);
+      DCHECK_LT(order[d], shape.size());
     }
   }
 
@@ -84,12 +84,36 @@ class DimComparator {
     return 0;
   }
 
+ protected:
   const TTypes<int64>::Matrix ix_;
   const VarDimArray order_;
   const int dims_;
+  const std::vector<int64>* ix_order_;
+};
+
+template <int ORDER_DIM>
+class FixedDimComparator : DimComparator {
+ public:
+  FixedDimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
+                     const VarDimArray& shape)
+      : DimComparator(ix, order, shape) {
+    DCHECK_EQ(order.size(), ORDER_DIM);
+  }
+  inline bool operator()(const int64 i, const int64 j) const {
+    bool value = false;
+    for (int di = 0; di < ORDER_DIM; ++di) {
+      const int64 d = order_[di];
+      if (ix_(i, d) < ix_(j, d)) {
+        value = true;
+        break;
+      }
+      if (ix_(i, d) > ix_(j, d)) break;
+    }
+    return value;
+  }
 };
 
 }  // namespace sparse
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
+#endif  // TENSORFLOW_CORE_UTIL_SPARSE_DIM_COMPARATOR_H_

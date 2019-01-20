@@ -1,0 +1,43 @@
+op {
+  graph_op_name: "StatelessIf"
+  in_arg { name: "cond"  description: "The predicate." }
+  in_arg {
+    name: "cond"
+    description: <<END
+      A Tensor. If the tensor is a scalar of non-boolean type, the
+      scalar is converted to a boolean according to the
+      following rule: if the scalar is a numerical value, non-zero means
+      `True` and zero means False; if the scalar is a string, non-empty
+      means `True` and empty means `False`. If the tensor is not a scalar,
+      being empty means False and being non-empty means True.
+
+      This should only be used when the if then/else body functions do not
+      have stateful ops.
+END
+  }
+  in_arg {
+    name: "input"
+    description: "A list of input tensors."
+  }
+  out_arg {
+    name: "output"
+    description: "A list of return values."
+  }
+  attr { name: "Tin"  description: "A list of input types." }
+  attr { name: "Tout"  description: "A list of output types." }
+  attr {
+    name: "then_branch"
+    description: <<END
+      A function that takes 'inputs' and returns a list of tensors, whose
+      types are the same as what else_branch returns.
+END
+  }
+  attr {
+    name: "else_branch"
+    description: <<END
+    A function that takes 'inputs' and returns a list of tensors, whose
+    types are the same as what then_branch returns.
+END
+  }
+  summary: "output = cond ? then_branch(input) : else_branch(input)"
+}

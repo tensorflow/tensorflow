@@ -1,0 +1,32 @@
+// Test description and protos to work with it.
+
+syntax = "proto2";
+
+package tensorflow.contrib.rpc;
+
+// A TestCase holds a sequence of values.
+message TestCase {
+  repeated int32 values = 1;
+};
+
+service TestCaseService {
+  // Copy input, and increment each entry in 'values' by 1.
+  rpc Increment(TestCase) returns (TestCase) {
+  }
+
+  // Sleep forever.
+  rpc SleepForever(TestCase) returns (TestCase) {
+  }
+
+  // Sleep forever 50% of the time, return immediately the other 50%.
+  rpc SometimesSleepForever(TestCase) returns (TestCase) {
+  }
+
+  // Always fails with InvalidArgument.
+  rpc AlwaysFailWithInvalidArgument(TestCase) returns (TestCase) {
+  }
+
+  // Fails with InvalidArgument 50% of the time.
+  rpc SometimesFailWithInvalidArgument(TestCase) returns (TestCase) {
+  }
+};

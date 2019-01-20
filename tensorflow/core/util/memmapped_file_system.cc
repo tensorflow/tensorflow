@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/memmapped_file_system.pb.h"
 
@@ -55,15 +56,21 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
   ~RandomAccessFileFromMemmapped() override = default;
 
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented(
+        "RandomAccessFileFromMemmapped does not support Name()");
+  }
+
   Status Read(uint64 offset, size_t to_read, StringPiece* result,
               char* scratch) const override {
     if (offset >= length_) {
-      result->set(scratch, 0);
+      *result = StringPiece(scratch, 0);
       return Status(error::OUT_OF_RANGE, "Read after file end");
     }
     const uint64 region_left =
         std::min(length_ - offset, static_cast<uint64>(to_read));
-    result->set(reinterpret_cast<const uint8*>(data_) + offset, region_left);
+    *result =
+        StringPiece(reinterpret_cast<const char*>(data_) + offset, region_left);
     return (region_left == to_read)
                ? Status::OK()
                : Status(error::OUT_OF_RANGE, "Read less bytes than requested");
@@ -79,16 +86,19 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 MemmappedFileSystem::MemmappedFileSystem() {}
 
-bool MemmappedFileSystem::FileExists(const string& fname) {
+Status MemmappedFileSystem::FileExists(const string& fname) {
   if (!mapped_memory_) {
-    return false;
+    return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
   const auto dir_element = directory_.find(fname);
-  return dir_element != directory_.end();
+  if (dir_element != directory_.end()) {
+    return Status::OK();
+  }
+  return errors::NotFound(fname, " not found");
 }
 
-Status MemmappedFileSystem::NewRandomAccessFile(const string& filename,
-                                                RandomAccessFile** result) {
+Status MemmappedFileSystem::NewRandomAccessFile(
+    const string& filename, std::unique_ptr<RandomAccessFile>* result) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -96,14 +106,14 @@ Status MemmappedFileSystem::NewRandomAccessFile(const string& filename,
   if (dir_element == directory_.end()) {
     return errors::NotFound("Region ", filename, " is not found");
   }
-  *result = new RandomAccessFileFromMemmapped(
+  result->reset(new RandomAccessFileFromMemmapped(
       GetMemoryWithOffset(dir_element->second.offset),
-      dir_element->second.length);
+      dir_element->second.length));
   return Status::OK();
 }
 
 Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& filename, ReadOnlyMemoryRegion** result) {
+    const string& filename, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -111,9 +121,9 @@ Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
   if (dir_element == directory_.end()) {
     return errors::NotFound("Region ", filename, " is not found");
   }
-  *result = new ReadOnlyMemoryRegionFromMemmapped(
+  result->reset(new ReadOnlyMemoryRegionFromMemmapped(
       GetMemoryWithOffset(dir_element->second.offset),
-      dir_element->second.length);
+      dir_element->second.length));
   return Status::OK();
 }
 
@@ -129,19 +139,34 @@ Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size) {
   return Status::OK();
 }
 
+Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat) {
+  uint64 size;
+  auto status = GetFileSize(fname, &size);
+  if (status.ok()) {
+    stat->length = size;
+  }
+  return status;
+}
+
 Status MemmappedFileSystem::NewWritableFile(const string& filename,
-                                            WritableFile** wf) {
+                                            std::unique_ptr<WritableFile>* wf) {
   return errors::Unimplemented("memmapped format doesn't support writing");
 }
 
-Status MemmappedFileSystem::NewAppendableFile(const string& filename,
-                                              WritableFile** result) {
+Status MemmappedFileSystem::NewAppendableFile(
+    const string& filename, std::unique_ptr<WritableFile>* result) {
   return errors::Unimplemented("memmapped format doesn't support writing");
 }
 
 Status MemmappedFileSystem::GetChildren(const string& filename,
                                         std::vector<string>* strings) {
   return errors::Unimplemented("memmapped format doesn't support GetChildren");
+}
+
+Status MemmappedFileSystem::GetMatchingPaths(const string& pattern,
+                                             std::vector<string>* results) {
+  return errors::Unimplemented(
+      "memmapped format doesn't support GetMatchingPaths");
 }
 
 Status MemmappedFileSystem::DeleteFile(const string& filename) {
@@ -165,14 +190,18 @@ const void* MemmappedFileSystem::GetMemoryWithOffset(uint64 offset) const {
   return reinterpret_cast<const uint8*>(mapped_memory_->data()) + offset;
 }
 
+#if defined(_MSC_VER)
+constexpr char* MemmappedFileSystem::kMemmappedPackagePrefix;
+constexpr char* MemmappedFileSystem::kMemmappedPackageDefaultGraphDef;
+#else
 constexpr char MemmappedFileSystem::kMemmappedPackagePrefix[];
 constexpr char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
+#endif
 
 Status MemmappedFileSystem::InitializeFromFile(Env* env,
                                                const string& filename) {
-  ReadOnlyMemoryRegion* region;
-  TF_RETURN_IF_ERROR(env->NewReadOnlyMemoryRegionFromFile(filename, &region));
-  mapped_memory_.reset(region);
+  TF_RETURN_IF_ERROR(
+      env->NewReadOnlyMemoryRegionFromFile(filename, &mapped_memory_));
   directory_.clear();
   if (mapped_memory_->length() <= sizeof(uint64)) {
     return errors::DataLoss("Corrupted memmapped model file: ", filename,
@@ -219,7 +248,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
-  return StringPiece(filename).starts_with(kMemmappedPackagePrefix);
+  return str_util::StartsWith(filename, kMemmappedPackagePrefix);
 }
 
 namespace {

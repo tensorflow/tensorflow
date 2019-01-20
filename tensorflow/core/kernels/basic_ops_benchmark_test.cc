@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// We focus on the single thread performance of runing ops.
+// We focus on the single thread performance of running ops.
 static SessionOptions InitOptions() {
   SessionOptions opts;
   opts.config.set_intra_op_parallelism_threads(1);

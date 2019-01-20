@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
 
 #include <memory>
 #include "include/json/json.h"
@@ -51,9 +51,6 @@ class OAuthClient {
                                     uint64 request_timestamp_sec, string* token,
                                     uint64* expiration_timestamp_sec);
 
-  /// The max size of the JSON response from an OAuth 2.0 server, in bytes.
-  static constexpr size_t kResponseBufferSize = 1000;
-
  private:
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
   Env* env_;
@@ -62,4 +59,4 @@ class OAuthClient {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_

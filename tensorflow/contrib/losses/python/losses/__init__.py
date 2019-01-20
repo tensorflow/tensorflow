@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A module containing TensorFlow ops whose API may change in the future."""
+"""Ops for building neural network losses.
+
+See [Contrib Losses](https://tensorflow.org/api_guides/python/contrib.losses).
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.losses.python.losses.loss_ops import absolute_difference
-from tensorflow.contrib.losses.python.losses.loss_ops import add_loss
-from tensorflow.contrib.losses.python.losses.loss_ops import cosine_distance
-from tensorflow.contrib.losses.python.losses.loss_ops import get_losses
-from tensorflow.contrib.losses.python.losses.loss_ops import get_total_loss
-from tensorflow.contrib.losses.python.losses.loss_ops import log
-from tensorflow.contrib.losses.python.losses.loss_ops import sigmoid_cross_entropy
-from tensorflow.contrib.losses.python.losses.loss_ops import softmax_cross_entropy
-from tensorflow.contrib.losses.python.losses.loss_ops import sum_of_pairwise_squares
-from tensorflow.contrib.losses.python.losses.loss_ops import sum_of_squares
+# pylint: disable=wildcard-import
+from tensorflow.contrib.losses.python.losses.loss_ops import *
+# pylint: enable=wildcard-import

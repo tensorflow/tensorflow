@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,12 @@ Status GetInitializableLookupTable(const string& input_name,
 // table's data types.
 Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
                            DataType value_dtype, const string& table_name);
+
+Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
+                                   char delimiter, int32 key_index,
+                                   int32 value_index, Env* env,
+                                   InitializableLookupTable* table);
+
 }  // namespace lookup
 }  // namespace tensorflow
 

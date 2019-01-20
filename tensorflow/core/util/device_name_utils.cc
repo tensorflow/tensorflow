@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -85,41 +85,61 @@ static bool ConsumeNumber(StringPiece* in, int* val) {
   }
 }
 
-/* static */
-string DeviceNameUtils::FullName(const string& job, int replica, int task,
-                                 const string& type, int id) {
+// Returns a fully qualified device name given the parameters.
+static string DeviceName(const string& job, int replica, int task,
+                         const string& device_prefix, const string& device_type,
+                         int id) {
   CHECK(IsJobName(job)) << job;
   CHECK_LE(0, replica);
   CHECK_LE(0, task);
-  CHECK(!type.empty());
+  CHECK(!device_type.empty());
   CHECK_LE(0, id);
   return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task,
-                         "/device:", type, ":", id);
+                         device_prefix, device_type, ":", id);
 }
+
+/* static */
+string DeviceNameUtils::FullName(const string& job, int replica, int task,
+                                 const string& type, int id) {
+  return DeviceName(job, replica, task, "/device:", type, id);
+}
+
+namespace {
+string LegacyName(const string& job, int replica, int task, const string& type,
+                  int id) {
+  return DeviceName(job, replica, task, "/", str_util::Lowercase(type), id);
+}
+}  // anonymous namespace
 
 bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   p->Clear();
   if (fullname == "/") {
     return true;
   }
-  StringPiece tmp;
   while (!fullname.empty()) {
+    bool progress = false;
     if (str_util::ConsumePrefix(&fullname, "/job:")) {
       p->has_job = !str_util::ConsumePrefix(&fullname, "*");
       if (p->has_job && !ConsumeJobName(&fullname, &p->job)) {
         return false;
       }
-    } else if (str_util::ConsumePrefix(&fullname, "/replica:")) {
+      progress = true;
+    }
+    if (str_util::ConsumePrefix(&fullname, "/replica:")) {
       p->has_replica = !str_util::ConsumePrefix(&fullname, "*");
       if (p->has_replica && !ConsumeNumber(&fullname, &p->replica)) {
         return false;
       }
-    } else if (str_util::ConsumePrefix(&fullname, "/task:")) {
+      progress = true;
+    }
+    if (str_util::ConsumePrefix(&fullname, "/task:")) {
       p->has_task = !str_util::ConsumePrefix(&fullname, "*");
       if (p->has_task && !ConsumeNumber(&fullname, &p->task)) {
         return false;
       }
-    } else if (str_util::ConsumePrefix(&fullname, "/device:")) {
+      progress = true;
+    }
+    if (str_util::ConsumePrefix(&fullname, "/device:")) {
       p->has_type = !str_util::ConsumePrefix(&fullname, "*");
       if (p->has_type && !ConsumeDeviceType(&fullname, &p->type)) {
         return false;
@@ -132,28 +152,97 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
           return false;
         }
       }
+      progress = true;
+    }
 
-    } else if (str_util::ConsumePrefix(&fullname, "/cpu:") ||
-               str_util::ConsumePrefix(&fullname, "/CPU:")) {
+    // Handle legacy naming convention for cpu and gpu.
+    if (str_util::ConsumePrefix(&fullname, "/cpu:") ||
+        str_util::ConsumePrefix(&fullname, "/CPU:")) {
       p->has_type = true;
       p->type = "CPU";  // Treat '/cpu:..' as uppercase '/device:CPU:...'
       p->has_id = !str_util::ConsumePrefix(&fullname, "*");
       if (p->has_id && !ConsumeNumber(&fullname, &p->id)) {
         return false;
       }
-    } else if (str_util::ConsumePrefix(&fullname, "/gpu:") ||
-               str_util::ConsumePrefix(&fullname, "/GPU:")) {
+      progress = true;
+    }
+    if (str_util::ConsumePrefix(&fullname, "/gpu:") ||
+        str_util::ConsumePrefix(&fullname, "/GPU:")) {
       p->has_type = true;
       p->type = "GPU";  // Treat '/gpu:..' as uppercase '/device:GPU:...'
       p->has_id = !str_util::ConsumePrefix(&fullname, "*");
       if (p->has_id && !ConsumeNumber(&fullname, &p->id)) {
         return false;
       }
-    } else {
+      progress = true;
+    }
+
+    if (!progress) {
       return false;
     }
   }
   return true;
+}
+
+namespace {
+
+void CompleteName(const DeviceNameUtils::ParsedName& parsed_basename,
+                  DeviceNameUtils::ParsedName* parsed_name) {
+  if (!parsed_name->has_job) {
+    parsed_name->job = parsed_basename.job;
+    parsed_name->has_job = true;
+  }
+  if (!parsed_name->has_replica) {
+    parsed_name->replica = parsed_basename.replica;
+    parsed_name->has_replica = true;
+  }
+  if (!parsed_name->has_task) {
+    parsed_name->task = parsed_basename.task;
+    parsed_name->has_task = true;
+  }
+  if (!parsed_name->has_type) {
+    parsed_name->type = parsed_basename.type;
+    parsed_name->has_type = true;
+  }
+  if (!parsed_name->has_id) {
+    parsed_name->id = parsed_basename.id;
+    parsed_name->has_id = true;
+  }
+}
+
+}  // namespace
+
+/* static */
+Status DeviceNameUtils::CanonicalizeDeviceName(StringPiece fullname,
+                                               StringPiece basename,
+                                               string* canonical_name) {
+  *canonical_name = "";
+  ParsedName parsed_basename;
+  if (!ParseFullName(basename, &parsed_basename)) {
+    return errors::InvalidArgument("Could not parse basename: ", basename,
+                                   " into a device specification.");
+  }
+  if (!(parsed_basename.has_job && parsed_basename.has_replica &&
+        parsed_basename.has_task && parsed_basename.has_type &&
+        parsed_basename.has_id)) {
+    return errors::InvalidArgument("Basename: ", basename,
+                                   " should be fully "
+                                   "specified.");
+  }
+  ParsedName parsed_name;
+  if (ParseLocalName(fullname, &parsed_name)) {
+    CompleteName(parsed_basename, &parsed_name);
+    *canonical_name = ParsedNameToString(parsed_name);
+    return Status::OK();
+  }
+  if (ParseFullName(fullname, &parsed_name)) {
+    CompleteName(parsed_basename, &parsed_name);
+    *canonical_name = ParsedNameToString(parsed_name);
+    return Status::OK();
+  }
+  return errors::InvalidArgument("Could not parse ", fullname,
+                                 " into a device "
+                                 "specification.");
 }
 
 /* static */
@@ -163,7 +252,7 @@ string DeviceNameUtils::ParsedNameToString(const ParsedName& pn) {
   if (pn.has_replica) strings::StrAppend(&buf, "/replica:", pn.replica);
   if (pn.has_task) strings::StrAppend(&buf, "/task:", pn.task);
   if (pn.has_type) {
-    strings::StrAppend(&buf, "/", pn.type, ":");
+    strings::StrAppend(&buf, "/device:", pn.type, ":");
     if (pn.has_id) {
       strings::StrAppend(&buf, pn.id);
     } else {
@@ -310,8 +399,16 @@ bool DeviceNameUtils::IsSameAddressSpace(StringPiece src, StringPiece dst) {
 
 /* static */
 string DeviceNameUtils::LocalName(StringPiece type, int id) {
+  return strings::StrCat("/device:", type, ":", id);
+}
+
+namespace {
+// Returns the legacy local device name given its "type" and "id" (which is
+// '/device:type:id').
+string LegacyLocalName(StringPiece type, int id) {
   return strings::StrCat(type, ":", id);
 }
+}  // anonymous namespace
 
 /* static */
 string DeviceNameUtils::LocalName(StringPiece fullname) {
@@ -322,16 +419,17 @@ string DeviceNameUtils::LocalName(StringPiece fullname) {
 
 /* static */
 bool DeviceNameUtils::ParseLocalName(StringPiece name, ParsedName* p) {
-  ParsedName x;
   if (!ConsumeDeviceType(&name, &p->type)) {
     return false;
   }
+  p->has_type = true;
   if (!str_util::ConsumePrefix(&name, ":")) {
     return false;
   }
   if (!ConsumeNumber(&name, &p->id)) {
     return false;
   }
+  p->has_id = true;
   return name.empty();
 }
 
@@ -340,14 +438,58 @@ bool DeviceNameUtils::SplitDeviceName(StringPiece name, string* task,
                                       string* device) {
   ParsedName pn;
   if (ParseFullName(name, &pn) && pn.has_type && pn.has_id) {
-    *task = strings::StrCat(
-        (pn.has_job ? strings::StrCat("/job:", pn.job) : ""),
-        (pn.has_replica ? strings::StrCat("/replica:", pn.replica) : ""),
-        (pn.has_task ? strings::StrCat("/task:", pn.task) : ""));
-    *device = strings::StrCat(pn.type, ":", pn.id);
+    task->clear();
+    task->reserve(
+        (pn.has_job ? (5 + pn.job.size()) : 0) +
+        (pn.has_replica ? (9 + 4 /*estimated UB for # replica digits*/) : 0) +
+        (pn.has_task ? (6 + 4 /*estimated UB for # task digits*/) : 0));
+    if (pn.has_job) {
+      strings::StrAppend(task, "/job:", pn.job);
+    }
+    if (pn.has_replica) {
+      strings::StrAppend(task, "/replica:", pn.replica);
+    }
+    if (pn.has_task) {
+      strings::StrAppend(task, "/task:", pn.task);
+    }
+    device->clear();
+    strings::StrAppend(device, pn.type, ":", pn.id);
     return true;
   }
   return false;
+}
+
+std::vector<string> DeviceNameUtils::GetNamesForDeviceMappings(
+    const ParsedName& pn) {
+  if (pn.has_job && pn.has_replica && pn.has_task && pn.has_type && pn.has_id) {
+    return {
+        DeviceNameUtils::FullName(pn.job, pn.replica, pn.task, pn.type, pn.id),
+        LegacyName(pn.job, pn.replica, pn.task, pn.type, pn.id)};
+  } else {
+    return {};
+  }
+}
+
+std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
+    const ParsedName& pn) {
+  if (pn.has_type && pn.has_id) {
+    return {DeviceNameUtils::LocalName(pn.type, pn.id),
+            LegacyLocalName(pn.type, pn.id)};
+  } else {
+    return {};
+  }
+}
+
+/*static*/ Status DeviceNameUtils::DeviceNameToCpuDeviceName(
+    const string& device_name, string* host_device_name) {
+  DeviceNameUtils::ParsedName device;
+  if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
+    return errors::Internal("Could not parse device name ", device_name);
+  }
+  device.type = "CPU";
+  device.id = 0;
+  *host_device_name = DeviceNameUtils::ParsedNameToString(device);
+  return Status::OK();
 }
 
 }  // namespace tensorflow

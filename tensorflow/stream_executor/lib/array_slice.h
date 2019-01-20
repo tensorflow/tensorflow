@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ARRAY_SLICE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_ARRAY_SLICE_H_
 
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "absl/types/span.h"
+
+namespace stream_executor {
+namespace port {
+
+template <typename T>
+using ArraySlice = absl::Span<const T>;
+template <typename T>
+using MutableArraySlice = absl::Span<T>;
+
+}  // namespace port
+}  // namespace stream_executor
 
 namespace perftools {
 namespace gputools {
-namespace port {
 
-using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::MutableArraySlice;
+// Temporarily pull stream_executor into perftools::gputools while we migrate
+// code to the new namespace.  TODO(b/77980417): Remove this once we've
+// completed the migration.
+using namespace stream_executor;  // NOLINT[build/namespaces]
 
-}  // namespace port
 }  // namespace gputools
 }  // namespace perftools
 

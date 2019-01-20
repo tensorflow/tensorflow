@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,11 +41,12 @@ class SummaryScalarOp : public OpKernel {
     const Tensor& values = c->input(1);
 
     OP_REQUIRES(
-        c, tags.IsSameSize(values) ||
-               (IsLegacyScalar(tags.shape()) && IsLegacyScalar(values.shape())),
-        errors::InvalidArgument("tags and values not the same shape: ",
-                                tags.shape().DebugString(), " != ",
-                                values.shape().DebugString(), SingleTag(tags)));
+        c,
+        tags.IsSameSize(values) ||
+            (IsLegacyScalar(tags.shape()) && IsLegacyScalar(values.shape())),
+        errors::InvalidArgument(
+            "tags and values not the same shape: ", tags.shape().DebugString(),
+            " != ", values.shape().DebugString(), SingleTag(tags)));
     auto Ttags = tags.flat<string>();
     auto Tvalues = values.flat<T>();
     Summary s;
@@ -86,17 +87,17 @@ class SummaryHistoOp : public OpKernel {
     // Build histogram of values in "values" tensor
     histogram::Histogram histo;
     for (int64 i = 0; i < flat.size(); i++) {
-      T v = flat(i);
-      if (Eigen::numext::isnan(v)) {
+      const double double_val = static_cast<double>(flat(i));
+      if (Eigen::numext::isnan(double_val)) {
         c->SetStatus(
             errors::InvalidArgument("Nan in summary histogram for: ", name()));
         break;
-      } else if (Eigen::numext::isinf(v)) {
+      } else if (Eigen::numext::isinf(double_val)) {
         c->SetStatus(errors::InvalidArgument(
             "Infinity in summary histogram for: ", name()));
         break;
       }
-      histo.Add(static_cast<double>(v));
+      histo.Add(double_val);
     }
 
     Summary s;
@@ -123,7 +124,9 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER)
 struct HistogramResource : public ResourceBase {
   histogram::ThreadSafeHistogram histogram;
 
-  string DebugString() override { return "A histogram summary. Stats ..."; }
+  string DebugString() const override {
+    return "A histogram summary. Stats ...";
+  }
 };
 
 class SummaryMergeOp : public OpKernel {
@@ -146,10 +149,12 @@ class SummaryMergeOp : public OpKernel {
         }
 
         for (int v = 0; v < summary_in.value_size(); v++) {
-          if (!tags.insert(summary_in.value(v).tag()).second) {
-            c->SetStatus(errors::InvalidArgument(
-                strings::StrCat("Duplicate tag ", summary_in.value(v).tag(),
-                                " found in summary inputs")));
+          const string& tag = summary_in.value(v).tag();
+          // The tag is unused by the TensorSummary op, so no need to check
+          // for duplicates.
+          if ((!tag.empty()) && !tags.insert(tag).second) {
+            c->SetStatus(errors::InvalidArgument(strings::StrCat(
+                "Duplicate tag ", tag, " found in summary inputs")));
             return;
           }
           *s.add_value() = summary_in.value(v);

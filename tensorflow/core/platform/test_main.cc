@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,16 +26,18 @@ limitations under the License.
 
 #include <iostream>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/stacktrace_handler.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 GTEST_API_ int main(int argc, char** argv) {
   std::cout << "Running main() from test_main.cc\n";
 
+  tensorflow::testing::InstallStacktraceHandler();
   testing::InitGoogleTest(&argc, argv);
   for (int i = 1; i < argc; i++) {
-    if (tensorflow::StringPiece(argv[i]).starts_with("--benchmarks=")) {
+    if (tensorflow::str_util::StartsWith(argv[i], "--benchmarks=")) {
       const char* pattern = argv[i] + strlen("--benchmarks=");
       tensorflow::testing::Benchmark::Run(pattern);
       return 0;

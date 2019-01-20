@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_
 
-#include "tensorflow/stream_executor/platform/port.h"
+#include <map>
 
+#include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Indicates a set of options for a device's usage, which generally must be
 // provided at StreamExecutor device-initialization time.
@@ -75,11 +75,14 @@ struct DeviceOptions {
     return flags_ == 0 ? "none" : "kDoNotReclaimStackAllocation";
   }
 
+  // Platform-specific device options. Expressed as key-value pairs to avoid
+  // DeviceOptions subclass proliferation.
+  std::map<string, string> non_portable_tags;
+
  private:
   unsigned flags_;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_

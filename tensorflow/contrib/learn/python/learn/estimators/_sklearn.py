@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""sklearn cross-support."""
+"""sklearn cross-support (deprecated)."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -43,7 +42,8 @@ class _BaseEstimator(object):
 
     Args:
       deep: boolean, optional
-        If True, will return the parameters for this estimator and
+
+        If `True`, will return the parameters for this estimator and
         contained subobjects that are estimators.
 
     Returns:
@@ -129,8 +129,10 @@ class _TransformerMixin():
   """Mixin class for all transformer estimators."""
 
 
-class _NotFittedError(ValueError, AttributeError):
+class NotFittedError(ValueError, AttributeError):
   """Exception class to raise if estimator is used before fitting.
+
+  USE OF THIS EXCEPTION IS DEPRECATED.
 
   This class inherits from both ValueError and AttributeError to help with
   exception handling and backward compatibility.
@@ -175,11 +177,11 @@ def _train_test_split(*args, **options):
     train_size = 0.75
   elif train_size is None:
     train_size = 1 - test_size
-  train_size *= args[0].shape[0]
+  train_size = int(train_size * args[0].shape[0])
 
   np.random.seed(random_state)
   indices = np.random.permutation(args[0].shape[0])
-  train_idx, test_idx = indices[:train_size], indices[:train_size]
+  train_idx, test_idx = indices[:train_size], indices[train_size:]
   result = []
   for x in args:
     result += [x.take(train_idx, axis=0), x.take(test_idx, axis=0)]
@@ -192,23 +194,21 @@ if TRY_IMPORT_SKLEARN:
   # pylint: disable=g-import-not-at-top,g-multiple-import,unused-import
   from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
   from sklearn.metrics import accuracy_score, log_loss, mean_squared_error
-  from sklearn.cross_validation import train_test_split
+  from sklearn.model_selection import train_test_split
   try:
     from sklearn.exceptions import NotFittedError
   except ImportError:
     try:
       from sklearn.utils.validation import NotFittedError
     except ImportError:
-      NotFittedError = _NotFittedError
+      pass
 else:
   # Naive implementations of sklearn classes and functions.
   BaseEstimator = _BaseEstimator
   ClassifierMixin = _ClassifierMixin
   RegressorMixin = _RegressorMixin
   TransformerMixin = _TransformerMixin
-  NotFittedError = _NotFittedError
   accuracy_score = _accuracy_score
   log_loss = None
   mean_squared_error = _mean_squared_error
   train_test_split = _train_test_split
-

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 // CTC is Connectionist Temporal Classification.  See util/ctc/ for details.
 
@@ -26,28 +31,35 @@ REGISTER_OP("CTCLoss")
     .Input("sequence_length: int32")
     .Attr("preprocess_collapse_repeated: bool = false")
     .Attr("ctc_merge_repeated: bool = true")
+    .Attr("ignore_longer_outputs_than_inputs: bool = false")
     .Output("loss: float")
     .Output("gradient: float")
-    .Doc(R"doc(
-Calculates the CTC Loss (log probability) for each batch entry.  Also calculates
-the gradient.  This class performs the softmax operation for you, so inputs
-should be e.g. linear projections of outputs by an LSTM.
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle inputs;
+      ShapeHandle labels_indices;
+      ShapeHandle labels_values;
+      ShapeHandle sequence_length;
 
-inputs: 3-D, shape: `(max_time x batch_size x num_classes)`, the logits.
-labels_indices: The indices of a `SparseTensor<int32, 2>`.
-  `labels_indices(i, :) == [b, t]` means `labels_values(i)` stores the id for
-  `(batch b, time t)`.
-labels_values: The values (labels) associated with the given batch and time.
-sequence_length: A vector containing sequence lengths (batch).
-preprocess_collapse_repeated: Scalar, if true then repeated labels are
-  collapsed prior to the CTC calculation.
-ctc_merge_repeated: Scalar.  If set to false, *during* CTC calculation
-  repeated non-blank labels will not be merged and are interpreted as
-  individual labels.  This is a simplified version of CTC.
-loss: A vector (batch) containing log-probabilities.
-gradient: The gradient of `loss`.  3-D, shape:
-  `(max_time x batch_size x num_classes)`.
-)doc");
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &inputs));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &labels_indices));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &labels_values));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &sequence_length));
+
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(labels_indices, 0),
+                                  c->Dim(labels_values, 0), &unused));
+
+      // Get batch size from inputs and sequence_length, and update inputs
+      // with the merged batch_size since it is returned.
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(inputs, 1), c->Dim(sequence_length, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->ReplaceDim(inputs, 1, batch_size, &inputs));
+
+      c->set_output(0, c->Vector(batch_size));
+      c->set_output(1, inputs);
+      return Status::OK();
+    });
 
 REGISTER_OP("CTCGreedyDecoder")
     .Input("inputs: float")
@@ -57,31 +69,25 @@ REGISTER_OP("CTCGreedyDecoder")
     .Output("decoded_values: int64")
     .Output("decoded_shape: int64")
     .Output("log_probability: float")
-    .Doc(R"doc(
-Performs greedy decoding on the logits given in inputs.
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle inputs;
+      ShapeHandle sequence_length;
 
-A note about the attribute merge_repeated: if enabled, when
-consecutive logits' maximum indices are the same, only the first of
-these is emitted.  Labeling the blank '*', the sequence "A B B * B B"
-becomes "A B" if merge_repeated = True and "A B B B B" if
-merge_repeated = False.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &inputs));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &sequence_length));
 
-Regardless of the value of merge_repeated, if the maximum index of a given
-time and batch corresponds to the blank, index `(num_classes - 1)`, no new
-element is emitted.
+      // Get batch size from inputs and sequence_length.
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(inputs, 1), c->Dim(sequence_length, 0), &batch_size));
 
-inputs: 3-D, shape: `(max_time x batch_size x num_classes)`, the logits.
-sequence_length: A vector containing sequence lengths, size `(batch_size)`.
-merge_repeated: If True, merge repeated classes in output.
-decoded_indices: Indices matrix, size `(total_decoded_outputs x 2)`,
-  of a `SparseTensor<int64, 2>`.  The rows store: [batch, time].
-decoded_values: Values vector, size: `(total_decoded_outputs)`,
-  of a `SparseTensor<int64, 2>`.  The vector stores the decoded classes.
-decoded_shape: Shape vector, size `(2)`, of the decoded SparseTensor.
-  Values are: `[batch_size, max_decoded_length]`.
-log_probability: Matrix, size `(batch_size x 1)`, containing sequence
-  log-probabilities.
-)doc");
+      DimensionHandle total_decoded_outputs = c->UnknownDim();
+      c->set_output(0, c->Matrix(total_decoded_outputs, 2));
+      c->set_output(1, c->Vector(total_decoded_outputs));
+      c->set_output(2, c->Vector(2));
+      c->set_output(3, c->Matrix(batch_size, 1));
+      return Status::OK();
+    });
 
 REGISTER_OP("CTCBeamSearchDecoder")
     .Input("inputs: float")
@@ -93,31 +99,35 @@ REGISTER_OP("CTCBeamSearchDecoder")
     .Output("decoded_values: top_paths * int64")
     .Output("decoded_shape: top_paths * int64")
     .Output("log_probability: float")
-    .Doc(R"doc(
-Performs beam search decoding on the logits given in input.
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle inputs;
+      ShapeHandle sequence_length;
 
-A note about the attribute merge_repeated: For the beam search decoder,
-this means that if consecutive entries in a beam are the same, only
-the first of these is emitted.  That is, when the top path is "A B B B B",
-"A B" is returned if merge_repeated = True but "A B B B B" is
-returned if merge_repeated = False.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &inputs));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &sequence_length));
 
-inputs: 3-D, shape: `(max_time x batch_size x num_classes)`, the logits.
-sequence_length: A vector containing sequence lengths, size `(batch)`.
-beam_width: A scalar >= 0 (beam search beam width).
-top_paths: A scalar >= 0, <= beam_width (controls output size).
-merge_repeated: If true, merge repeated classes in output.
-decoded_indices: A list (length: top_paths) of indices matrices.  Matrix j,
-  size `(total_decoded_outputs[j] x 2)`, has indices of a
-  `SparseTensor<int64, 2>`.  The rows store: [batch, time].
-decoded_values: A list (length: top_paths) of values vectors.  Vector j,
-  size `(length total_decoded_outputs[j])`, has the values of a
-  `SparseTensor<int64, 2>`.  The vector stores the decoded classes for beam j.
-decoded_shape: A list (length: top_paths) of shape vector.  Vector j,
-  size `(2)`, stores the shape of the decoded `SparseTensor[j]`.
-  Its values are: `[batch_size, max_decoded_length[j]]`.
-log_probability: A matrix, shaped: `(batch_size x top_paths)`.  The
-  sequence log-probabilities.
-)doc");
+      // Get batch size from inputs and sequence_length.
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(inputs, 1), c->Dim(sequence_length, 0), &batch_size));
+
+      int32 top_paths;
+      TF_RETURN_IF_ERROR(c->GetAttr("top_paths", &top_paths));
+
+      // Outputs.
+      int out_idx = 0;
+      for (int i = 0; i < top_paths; ++i) {  // decoded_indices
+        c->set_output(out_idx++, c->Matrix(InferenceContext::kUnknownDim, 2));
+      }
+      for (int i = 0; i < top_paths; ++i) {  // decoded_values
+        c->set_output(out_idx++, c->Vector(InferenceContext::kUnknownDim));
+      }
+      ShapeHandle shape_v = c->Vector(2);
+      for (int i = 0; i < top_paths; ++i) {  // decoded_shape
+        c->set_output(out_idx++, shape_v);
+      }
+      c->set_output(out_idx++, c->Matrix(batch_size, top_paths));
+      return Status::OK();
+    });
 
 }  // namespace tensorflow

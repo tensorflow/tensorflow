@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,63 +16,117 @@
 
 set -e
 
+# We don't apt-get install so that we can install a newer version of pip.
+# Only needed for Ubuntu 14.04 and 16.04; not needed for 18.04 and Debian 8,9?
+# Run easy_install before easy_install3, so that the default pip points to pip2,
+# to match the default python version of 2.7.
+easy_install3 -U pip==9.0.3
+easy_install -U pip==9.0.3
+
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
-# Use pip to install numpy to the latest version, instead of 1.8.2 through
-# apt-get
-wget -q https://pypi.python.org/packages/17/f3/404bc85be67150663024d2bb5af654c7d16cf678077690dda27b91be14eb/numpy-1.8.2-cp27-cp27mu-manylinux1_x86_64.whl#md5=3ccf5c004fc99bd06dd443de80d622e6
-mv numpy-1.8.2-cp27-cp27mu-manylinux1_x86_64.whl \
-   numpy-1.8.2-cp27-none-linux_x86_64.whl
-pip install numpy-1.8.2-cp27-none-linux_x86_64.whl
-rm numpy-1.8.2-cp27-none-linux_x86_64.whl
+# Pin wheel==0.31.1 to work around issue
+# https://github.com/pypa/auditwheel/issues/102
+pip2 install wheel==0.31.1
+pip3 install wheel==0.31.1
 
-wget -q https://pypi.python.org/packages/33/7d/46d8905d39f462e0f6d1f38e1d165adc2939b9f91ca800e1cba8ef0c0f24/numpy-1.8.2-cp34-cp34m-manylinux1_x86_64.whl#md5=528b2b555d2b6979f10e444cacc04fc9
-mv numpy-1.8.2-cp34-cp34m-manylinux1_x86_64.whl \
-   numpy-1.8.2-cp34-none-linux_x86_64.whl
-pip3 install numpy-1.8.2-cp34-none-linux_x86_64.whl
-rm numpy-1.8.2-cp34-none-linux_x86_64.whl
+# Install last working version of setuptools. This must happen before we install
+# absl-py, which uses install_requires notation introduced in setuptools 20.5.
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0
 
-# Use pip to install scipy to get the latest version, instead of 0.13 through
-# apt-get.
-# pip install scipy==0.15.1
-wget -q https://pypi.python.org/packages/00/0f/060ec52cb74dc8df1a7ef1a524173eb0bcd329110404869b392685cfc5c8/scipy-0.15.1-cp27-cp27mu-manylinux1_x86_64.whl#md5=aaac02e6535742ab02f2075129890714
-mv scipy-0.15.1-cp27-cp27mu-manylinux1_x86_64.whl \
-   scipy-0.15.1-cp27-none-linux_x86_64.whl
-pip install scipy-0.15.1-cp27-none-linux_x86_64.whl
-rm scipy-0.15.1-cp27-none-linux_x86_64.whl
+pip2 install virtualenv
+pip3 install virtualenv
 
-# pip3 install scipy==0.15.1
-wget -q https://pypi.python.org/packages/56/c5/e0d36aaf719aa02ee3da19151045912e240d145586612e53b5eaa706e1db/scipy-0.15.1-cp34-cp34m-manylinux1_x86_64.whl#md5=d5243b0f9d85f4f4cb62514c82af93d4
-mv scipy-0.15.1-cp34-cp34m-manylinux1_x86_64.whl \
-   scipy-0.15.1-cp34-cp34m-linux_x86_64.whl
-pip3 install scipy-0.15.1-cp34-cp34m-linux_x86_64.whl
-rm scipy-0.15.1-cp34-cp34m-linux_x86_64.whl
+# Install six.
+pip2 install --upgrade six==1.10.0
+pip3 install --upgrade six==1.10.0
 
-# pip install sklearn
-wget -q https://pypi.python.org/packages/bf/80/06e77e5a682c46a3880ec487a5f9d910f5c8d919df9aca58052089687c7e/scikit_learn-0.17.1-cp27-cp27mu-manylinux1_x86_64.whl#md5=337b91f502138ba7fd722803138f6dfd
-mv scikit_learn-0.17.1-cp27-cp27mu-manylinux1_x86_64.whl \
-   scikit_learn-0.17.1-cp27-none-linux_x86_64.whl
-pip install scikit_learn-0.17.1-cp27-none-linux_x86_64.whl
-rm scikit_learn-0.17.1-cp27-none-linux_x86_64.whl
+# Install absl-py.
+pip2 install --upgrade absl-py
+pip3 install --upgrade absl-py
 
-# pip3 install scikit-learn
-wget -q https://pypi.python.org/packages/7e/f1/1cc8a1ae2b4de89bff0981aee904ff05779c49a4c660fa38178f9772d3a7/scikit_learn-0.17.1-cp34-cp34m-manylinux1_x86_64.whl#md5=a722a7372b64ec9f7b49a2532d21372b
-mv scikit_learn-0.17.1-cp34-cp34m-manylinux1_x86_64.whl \
-   scikit_learn-0.17.1-cp34-cp34m-linux_x86_64.whl
-pip3 install scikit_learn-0.17.1-cp34-cp34m-linux_x86_64.whl
-rm scikit_learn-0.17.1-cp34-cp34m-linux_x86_64.whl
+# Install werkzeug.
+pip2 install --upgrade werkzeug==0.11.10
+pip3 install --upgrade werkzeug==0.11.10
 
-# pandas required by tf.learn/inflow
-pip install pandas==0.18.1
-pip3 install pandas==0.18.1
+# Install bleach. html5lib will be picked up as a dependency.
+pip2 install --upgrade bleach==2.0.0
+pip3 install --upgrade bleach==2.0.0
+
+# Install markdown.
+pip2 install --upgrade markdown==2.6.8
+pip3 install --upgrade markdown==2.6.8
+
+# Install protobuf.
+pip2 install --upgrade protobuf==3.6.1
+pip3 install --upgrade protobuf==3.6.1
+
+# Remove obsolete version of six, which can sometimes confuse virtualenv.
+rm -rf /usr/lib/python3/dist-packages/six*
+
+# numpy needs to be installed from source to fix segfaults. See:
+# https://github.com/tensorflow/tensorflow/issues/6968
+# This workaround isn't needed for Ubuntu 16.04 or later.
+if $(cat /etc/*-release | grep -q 14.04); then
+  pip2 install --no-binary=:all: --upgrade numpy==1.14.5
+  pip3 install --no-binary=:all: --upgrade numpy==1.14.5
+else
+  pip2 install --upgrade numpy==1.14.5
+  pip3 install --upgrade numpy==1.14.5
+fi
+
+pip2 install scipy==1.1.0
+pip3 install scipy==1.1.0
+
+pip2 install scikit-learn==0.18.1
+pip3 install scikit-learn==0.18.1
+
+# pandas required by `inflow`
+pip2 install pandas==0.19.2
+pip3 install pandas==0.19.2
 
 # Benchmark tests require the following:
-pip install psutil
+pip2 install psutil
 pip3 install psutil
-pip install py-cpuinfo
+pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
 # pylint tests require the following:
-pip install pylint
-pip3 install pylint
+pip2 install pylint==1.6.4
+pip3 install pylint==1.6.4
+
+# pep8 tests require the following:
+pip2 install pep8
+pip3 install pep8
+
+# tf.mock require the following for python2:
+pip2 install mock
+
+pip2 install portpicker
+pip3 install portpicker
+
+# TensorFlow Serving integration tests require the following:
+pip2 install grpcio
+pip3 install grpcio
+
+# Eager-to-graph execution needs astor, gast and termcolor:
+pip2 install --upgrade astor
+pip3 install --upgrade astor
+pip2 install --upgrade gast
+pip3 install --upgrade gast
+pip2 install --upgrade termcolor
+pip3 install --upgrade termcolor
+
+# Keras
+pip2 install keras_applications==1.0.6 --no-deps
+pip3 install keras_applications==1.0.6 --no-deps
+pip2 install keras_preprocessing==1.0.5 --no-deps
+pip3 install keras_preprocessing==1.0.5 --no-deps
+pip2 install --upgrade h5py==2.8.0
+pip3 install --upgrade h5py==2.8.0
+
+# Estimator
+pip2 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
+pip3 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
