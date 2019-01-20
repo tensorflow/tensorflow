@@ -65,7 +65,7 @@ you can easily explore the code in a cross-platform IDE.
 
 ## Building Portable Reference Code using Make
 
-It's easy to build portable reference code directly from Github using make if
+It's easy to build portable reference code directly from GitHub using make if
 you're on a Linux or OS X machine.
 
 -   Open a terminal
@@ -261,7 +261,7 @@ You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
 02:25:22.4253 [DEBUG] uart0: [+0.16ms host +0s virt 0.28s virt from start]   Progam has exited with code:0x00000000
 ```
 
-## Building for Ambiq Micro Apollo3Blue EVB
+## Building for Ambiq Micro Apollo3Blue EVB using Make
 
 Follow these steps to get the pushbutton yes/no example working on Apollo 3:
 
@@ -713,7 +713,7 @@ exist.
 
 So far, I've recommended that you use the standalone generated projects for your
 system. You might be wondering why you're not just checking out the full
-[TensorFlow codebase from Github](https://github.com/tensorflow/tensorflow/)?
+[TensorFlow codebase from GitHub](https://github.com/tensorflow/tensorflow/)?
 The main reason is that there is a lot more diversity of architectures, IDEs,
 support libraries, and operating systems in the embedded world. Many of the
 toolchains require their own copy of source files, or a list of sources to be
@@ -749,7 +749,7 @@ wider community? The first step is to pick a tag name for your platform. This
 can either be the operating system (for example 'mbed'), the name of a device
 ('bluepill'), or some other text that describes it. This should be a short
 string with no spaces or special characters. Log in or create an account on
-Github, fork the full
+GitHub, fork the full
 [TensorFlow codebase](https://github.com/tensorflow/tensorflow/) using the
 'Fork' button on the top left, and then grab your fork by using a command like
 `git clone https://github.com/<your user name>/tensorflow`.
