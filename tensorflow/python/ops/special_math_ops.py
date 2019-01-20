@@ -236,12 +236,6 @@ def einsum(equation, *inputs, **kwargs):
       output_axis_labels = ''.join(
           sorted(ax for ax in indices if counts[ax] == 1))
 
-    for a in axis_labels:
-      for input_labels in input_axis_labels:
-        if input_labels.count(a) > 1:
-          raise ValueError(
-              'Subscript not supported: an axis appears more than once: %s' %
-              input_labels)
 
     for a in axis_labels:
       input_count = sum(1 for s in input_axis_labels if a in s)
@@ -267,7 +261,12 @@ def einsum(equation, *inputs, **kwargs):
           i for i, a in enumerate(temp_axis_labels)
           if a not in output_axis_labels
       ]
-      temp = math_ops.reduce_sum(temp, axis=axis)
+      for a in axis_labels:
+          for input_labels in input_axis_labels:
+            if input_labels.count(a) == 2:
+                temp = math_ops.trace(temp)
+            else:
+                temp = math_ops.reduce_sum(temp, axis=axis)
       temp_axis_labels = ''.join(
           a for a in temp_axis_labels if a in output_axis_labels)
 
