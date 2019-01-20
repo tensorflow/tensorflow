@@ -53,6 +53,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/timer.h"
 
+// LOG(ERROR) uses a const named ERROR, so a macro with the same name is
+// always unwanted. This happens on Windows that defines such a macro.
+#undef ERROR
+
 #ifdef PLATFORMS_GPUS_CUDA_DYNAMIC_LIBCUDA_DYNAMIC_LIBCUDA_H_
 #error \
     "No driver calls in this file, wrap driver functionality in cuda_driver.cc."

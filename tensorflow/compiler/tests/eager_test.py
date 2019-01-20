@@ -463,7 +463,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(x, y):
         return x[0::2, y:, ...]
 
-      x = array_ops.ones([2, 3, 4])
+      x = array_ops.ones([2, 3, 4], dtype=dtypes.float32)
       y = array_ops.ones([], dtype=dtypes.int32)
       with backprop.GradientTape() as tape:
         tape.watch(x)
@@ -479,15 +479,15 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
       @function.defun
       def times_two(x):
-        return 2 * x
+        return 2. * x
 
       @function.defun
       def two_x_plus_1(x):
-        return times_two(x) + 1
+        return times_two(x) + 1.
 
-      x = constant_op.constant([2, 3, 4])
+      x = constant_op.constant([2., 3., 4.])
       y = two_x_plus_1(x)
-      self.assertAllEqual([5, 7, 9], y.numpy())
+      self.assertAllEqual([5., 7., 9.], y.numpy())
 
   def testNestedDefunWithVariable(self):
     with self.test_scope():
@@ -506,7 +506,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       x = constant_op.constant(3.0)
       y = f(x)
 
-    self.assertEqual(75, y.numpy())
+    self.assertEqual(75.0, y.numpy())
 
   def testNestedDefunInGradientTape(self):
     with self.test_scope():

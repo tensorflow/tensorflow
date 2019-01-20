@@ -77,7 +77,7 @@ namespace tensorflow {
 class ResourceBase : public core::RefCounted {
  public:
   // Returns a debug string for *this.
-  virtual string DebugString() = 0;
+  virtual string DebugString() const = 0;
 
   // Returns memory used by this resource.
   virtual int64 MemoryUsed() const { return 0; }

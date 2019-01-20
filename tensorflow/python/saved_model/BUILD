@@ -71,7 +71,7 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:training",
+        "//tensorflow/python:saver",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
@@ -271,6 +271,7 @@ py_library(
         ":builder",
         ":constants",
         ":function_serialization",
+        ":revived_types",
         ":saved_object_graph_py",
         ":signature_constants",
         ":signature_def_utils",
@@ -320,6 +321,7 @@ py_library(
         ":constants",
         ":function_deserialization",
         ":loader",
+        ":revived_types",
         ":saved_object_graph_py",
         ":utils",
         "//tensorflow/python:function",
@@ -342,6 +344,27 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/checkpointable:tracking",
+    ],
+)
+
+py_library(
+    name = "revived_types",
+    srcs = [
+        "revived_types.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":saved_object_graph_py",
+    ],
+)
+
+tf_py_test(
+    name = "revived_types_test",
+    srcs = ["revived_types_test.py"],
+    additional_deps = [
+        ":revived_types",
+        ":saved_object_graph_py",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

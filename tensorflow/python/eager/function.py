@@ -41,6 +41,8 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import error_interpolation
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -50,6 +52,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -72,6 +75,24 @@ CacheKey = collections.namedtuple("CacheKey", [
     "input_signature", "parent_graph", "device_functions", "colocation_stack",
     "uses_xla"
 ])
+
+
+def is_same_structure(structure1,
+                      structure2,
+                      check_values=False):
+  """Check two structures for equality, optionally of types and of values."""
+  try:
+    nest.assert_same_structure(structure1, structure2)
+  except (ValueError, TypeError):
+    return False
+  if check_values:
+    flattened1 = nest.flatten(structure1)
+    flattened2 = nest.flatten(structure2)
+    # First check the types to avoid AttributeErrors.
+    if any(type(f1) != type(f2) for f1, f2 in zip(flattened1, flattened2)):
+      return False
+    return flattened1 == flattened2
+  return True
 
 
 def _parse_func_attrs(attributes):
@@ -105,12 +126,52 @@ def _parse_func_attrs(attributes):
       attrs[key] = attr_value_pb2.AttrValue(i=value)
     elif isinstance(value, float):
       attrs[key] = attr_value_pb2.AttrValue(f=value)
-    elif isinstance(value, (str, bytes)):
+    elif isinstance(value, (str, bytes, six.text_type)):
       attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(value))
     else:
       raise ValueError("Unsupported attribute type for %s with type %s" %
                        (key, type(value)))
   return attrs
+
+
+class _InterpolateFunctionError(object):
+  """Context Manager that interpolates the exception from 'top_level_func'."""
+
+  def __init__(self, top_level_func):
+    self._func = top_level_func
+
+  def __enter__(self):
+    pass
+
+  def __exit__(self, typ, exc, tb):
+    if not exc or not isinstance(exc, errors.OpError):
+      return False
+    message = compat.as_text(exc.message)
+    _, tags = error_interpolation.parse_message(message)
+    g = None
+    func_stack = []
+    # pylint: disable=protected-access
+    for t in tags:
+      if t.type == "function_node":
+        if t.name == compat.as_str(self._func.name):
+          g = self._func._graph
+        elif g:
+          next_func = g._get_function(t.name)
+          if next_func is not None and isinstance(next_func,
+                                                  _EagerDefinedFunction):
+            g = next_func._graph
+        if g:
+          func_stack.append(g.name)
+        else:
+          func_stack.append("<unknown>")
+    # pylint: enable=protected-access
+    if g:
+      message = error_interpolation.interpolate(message, g)
+      message += "\n\nFunction call stack:\n"
+      message += " -> ".join(func_stack)
+      message += "\n"
+      exc._message = message  # pylint: disable=protected-access
+    return False
 
 
 def _forward_name(n):
@@ -132,7 +193,7 @@ def _inference_name(n):
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
 class _EagerDefinedFunction(object):
-  """Callable with the interface of `framework.function._DefinedFunction.`
+  """Callable with the interface of `framework.function._DefinedFunction`.
 
   `_EagerDefinedFunction` encapsulates a function definition and its properties,
   and it provides a method for calling the encapsulated function. Some Ops
@@ -224,50 +285,60 @@ class _EagerDefinedFunction(object):
     Raises:
       ValueError: if the number of arguments is incorrect.
     """
+    if len(args) != len(self.signature.input_arg):
+      raise ValueError(
+          "Arguments and signature arguments do not match: %s %s " %
+          (len(args), len(list(self.signature.input_arg))))
+
+    function_call_options = ctx.get_function_call_options()
+    if function_call_options.config_proto_serialized is None:
+      config = function_utils.get_disabled_rewriter_config()
+    else:
+      config = function_call_options.config_proto_serialized
+    executor_type = function_call_options.executor_type or ""
 
     executing_eagerly = ctx.executing_eagerly()
-
-    if self._graph._xla_compile:  # pylint: disable=protected-access
-      # XLA compilation relies upon a custom kernel creator to run functions.
-      signature = self.signature
-      if executing_eagerly:
+    if executing_eagerly:
+      with _InterpolateFunctionError(self):
         outputs = execute.execute(
-            str(signature.name),
+            str(self.signature.name),
             num_outputs=self._num_outputs,
             inputs=args,
-            attrs=None,
+            attrs=("executor_type", executor_type,
+                   "config_proto", config),
             ctx=ctx)
+      # Replace empty list with None
+      outputs = outputs or None
+    elif self._graph._xla_compile:  # pylint: disable=protected-access
+      g = ops.get_default_graph()
+      self.add_to_graph(g)
+      signature = self.signature
+      op = g.create_op(
+          signature.name,
+          [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
+          tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
+          op_def=signature,
+          name="FunctionCall",
+          compute_shapes=False)
+      outputs = op.outputs
+      if not outputs:
+        return op
+      if isinstance(outputs, (ops.Tensor, type(None))):
+        outputs = [outputs]
       else:
-        g = ops.get_default_graph()
-        self.add_to_graph(g)
-        op = g.create_op(
-            signature.name,
-            [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
-            tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
-            op_def=signature,
-            name="FunctionCall",
-            compute_shapes=False)
-        outputs = op.outputs
-        if not outputs:
-          return op
-        outputs = [outputs] if isinstance(
-            outputs, (ops.Tensor, type(None))) else list(outputs)
+        outputs = list(outputs)
     else:
       # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
       # creates `PartitionedCallOp` kernels by default, or remove the previous
       # branch if a TPU kernel is registered for `PartitionedCall`.
-      if len(args) != len(self.signature.input_arg):
-        raise ValueError(
-            "Arguments and signature arguments do not match: %s %s " %
-            (len(args), len(list(self.signature.input_arg))))
-      function_call_options = ctx.get_function_call_options()
-      outputs = functional_ops.partitioned_call(
-          args=args,
-          f=self,
-          tout=self._output_types,
-          executing_eagerly=executing_eagerly,
-          config=function_call_options.config_proto_serialized,
-          executor_type=function_call_options.executor_type)
+      with _InterpolateFunctionError(self):
+        outputs = functional_ops.partitioned_call(
+            args=args,
+            f=self,
+            tout=self._output_types,
+            executing_eagerly=executing_eagerly,
+            config=config,
+            executor_type=executor_type)
 
     if executing_eagerly:
       return outputs
@@ -383,8 +454,8 @@ class Function(object):
     """
     return self._call_flat(
         (t for t in nest.flatten((args, kwargs))
-         if isinstance(
-             t, (ops.Tensor, resource_variable_ops.ResourceVariable))))
+         if isinstance(t, (ops.Tensor,
+                           resource_variable_ops.ResourceVariable))))
 
   def _call_flat(self, args):
     """Executes the wrapped function.
@@ -499,8 +570,13 @@ class Function(object):
 
   @property
   def outputs(self):
-    """Returns tensors in `self.graph` corresponding to return values."""
+    """Returns tensors in `self.graph` corresponding to returned tensors."""
     return self._func_graph.outputs
+
+  @property
+  def structured_outputs(self):
+    """Returns outputs in `self.graph` as returned by the original function."""
+    return self._func_graph.structured_outputs
 
   @property
   def captured_inputs(self):
@@ -753,17 +829,30 @@ class UnknownArgument(object):
   pass
 
 
-def _encode_arg_for_serialization(arg):
-  """A representation for this argument, for serializing signatures."""
-  if isinstance(arg, ops.Tensor):
-    return tensor_spec.TensorSpec(arg.shape, arg.dtype)
-  if isinstance(arg, int):
-    return arg
-  if isinstance(arg, float):
-    return arg
-  if isinstance(arg, bool):
-    return arg
-  return UnknownArgument()
+def convert_structure_to_signature(structure):
+  """Convert a potentially nested structure to a signature.
+
+  Args:
+    structure: Structure to convert.
+
+  Returns:
+    Identical structure that has TensorSpec objects instead of Tensors and
+    UknownArgument instead of any unsupported types.
+  """
+
+  def encode_arg(arg, name=None):
+    """A representation for this argument, for converting into signatures."""
+    if isinstance(arg, ops.Tensor):
+      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+    if isinstance(arg, (int, float, bool)):
+      return arg
+    return UnknownArgument()
+
+  # We are using the flattened paths to name the TensorSpecs. We need an
+  # explicit name for them downstream.
+  flattened_with_paths = nest.flatten_with_joined_string_paths(structure)
+  mapped = [encode_arg(arg, path) for path, arg in flattened_with_paths]
+  return nest.pack_sequence_as(structure, mapped)
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -776,14 +865,6 @@ def _deterministic_dict_values(dictionary):
 
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
-
-  def as_tuple(self):
-    return (self._fullargspec, self._is_method, self._args_to_prepend,
-            self._kwargs_to_include, self.input_signature)
-
-  @staticmethod
-  def from_tuple(spec_tuple):
-    return FunctionSpec(*spec_tuple)
 
   @staticmethod
   def from_function_and_signature(python_function, input_signature):
@@ -831,7 +912,7 @@ class FunctionSpec(object):
     }
     self._default_values_start_index = offset
     if input_signature is None:
-      self.input_signature = None
+      self._input_signature = None
     else:
       if fullargspec.varkw is not None or fullargspec.kwonlyargs:
         raise ValueError("Cannot define a TensorFlow function from a Python "
@@ -842,8 +923,32 @@ class FunctionSpec(object):
         raise TypeError("input_signature must be either a tuple or a "
                         "list, received " + str(type(input_signature)))
 
-      self.input_signature = tuple(input_signature)
-      self.flat_input_signature = tuple(nest.flatten(input_signature))
+      self._input_signature = tuple(input_signature)
+      self._flat_input_signature = tuple(nest.flatten(input_signature))
+
+  @property
+  def fullargspec(self):
+    return self._fullargspec
+
+  @property
+  def is_method(self):
+    return self._is_method
+
+  @property
+  def args_to_prepend(self):
+    return self._args_to_prepend
+
+  @property
+  def kwargs_to_include(self):
+    return self._kwargs_to_include
+
+  @property
+  def input_signature(self):
+    return self._input_signature
+
+  @property
+  def flat_input_signature(self):
+    return self._flat_input_signature
 
   def canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
@@ -891,7 +996,7 @@ class FunctionSpec(object):
         if index is not None:
           arg_indices_to_values[index] = value
           consumed_args.append(arg)
-        elif self.input_signature is not None:
+        elif self._input_signature is not None:
           raise ValueError("Cannot define a TensorFlow function from a Python "
                            "function with keyword arguments when "
                            "input_signature is provided.")
@@ -914,15 +1019,13 @@ class FunctionSpec(object):
     if need_packing:
       inputs = nest.pack_sequence_as(
           structure=inputs, flat_sequence=flat_inputs)
-    if self.input_signature is None:
+    if self._input_signature is None:
       return inputs, kwargs
     else:
       assert not kwargs
-      signature_relevant_inputs = inputs[:len(self.input_signature)]
-      try:
-        nest.assert_same_structure(self.input_signature,
-                                   signature_relevant_inputs)
-      except (ValueError, TypeError):
+      signature_relevant_inputs = inputs[:len(self._input_signature)]
+      if not is_same_structure(self._input_signature,
+                               signature_relevant_inputs):
         raise ValueError("Structure of Python function inputs does not match "
                          "input_signature.")
       signature_inputs_flat = nest.flatten(signature_relevant_inputs)
@@ -931,10 +1034,10 @@ class FunctionSpec(object):
         raise ValueError("When input_signature is provided, all inputs to "
                          "the Python function must be Tensors.")
       if any(not spec.is_compatible_with(other) for spec, other in zip(
-          self.flat_input_signature, signature_inputs_flat)):
+          self._flat_input_signature, signature_inputs_flat)):
         raise ValueError("Python inputs incompatible with input_signature: "
                          "inputs (%s), input_signature (%s)" %
-                         (str(inputs), str(self.input_signature)))
+                         (str(inputs), str(self._input_signature)))
       return inputs, {}
 
 
@@ -1049,9 +1152,7 @@ class PolymorphicFunction(object):
                          "input_signature is provided.")
       if args:
         # If args are provided, they must match the input signature.
-        try:
-          nest.assert_same_structure(self._input_signature, args)
-        except (ValueError, TypeError):
+        if not is_same_structure(self._input_signature, args):
           raise ValueError("Structure of Python function inputs does not match "
                            "input_signature.")
         flat_inputs = nest.flatten(args)
@@ -1249,8 +1350,7 @@ class PolymorphicFunction(object):
         if self._input_signature:
           python_call_signature = self._input_signature
         else:
-          python_call_signature = tuple(
-              _encode_arg_for_serialization(arg) for arg in args)
+          python_call_signature = tuple(convert_structure_to_signature(args))
         # pylint: disable=protected-access
         # Save information about non-Tensor arguments with the concrete
         # function. Used to serialize PolymorphicFunctions.

@@ -18,28 +18,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.factorization.python.ops import gen_clustering_ops
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.factorization.python.ops.gen_clustering_ops import *
-# pylint: enable=wildcard-import
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_clustering_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.embedding_ops import embedding_lookup
-from tensorflow.python.platform import resource_loader
-
-_clustering_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile('_clustering_ops.so'))
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
+from tensorflow.python.ops.gen_clustering_ops import *
+# pylint: enable=wildcard-import
 
 # Euclidean distance between vectors U and V is defined as \\(||U - V||_F\\)
 # which is the square root of the sum of the absolute squares of the elements

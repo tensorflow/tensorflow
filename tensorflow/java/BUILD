@@ -296,6 +296,19 @@ tf_java_test(
 )
 
 tf_java_test(
+    name = "GeneratedOperationsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/GeneratedOperationsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.GeneratedOperationsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
     name = "GradientsTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/op/core/GradientsTest.java"],

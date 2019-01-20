@@ -349,11 +349,12 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
     ShapeTree<bool> param_indices_to_copy(param->shape());
 
     module->input_output_alias_config().ForEachAlias(
-        [&](const ShapeIndex& output_index, int64 param_number,
-            const ShapeIndex& param_index) {
-          if (param_number == param->parameter_number()) {
+        [&](const ShapeIndex& output_index,
+            const HloInputOutputAliasConfig::Alias& alias) {
+          if (alias.parameter_number == param->parameter_number()) {
             param_has_alias = true;
-            *(param_indices_to_copy.mutable_element(param_index)) = true;
+            *(param_indices_to_copy.mutable_element(alias.parameter_index)) =
+                true;
             *(output_indices_to_copy.mutable_element(output_index)) = true;
           }
         });
@@ -395,13 +396,14 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
 
   // Add control dependencies between the input/output copies.
   TF_RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
-      [&](const ShapeIndex& output_index, int64 param_number,
-          const ShapeIndex& input_index) -> Status {
-        if (!copied_parameters[param_number]) {
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) -> Status {
+        if (!copied_parameters[alias.parameter_number]) {
           return Status::OK();
         }
         HloInstruction* from =
-            copied_parameters[param_number]->element(input_index);
+            copied_parameters[alias.parameter_number]->element(
+                alias.parameter_index);
         HloInstruction* to = output_copy_tree.element(output_index);
 
         TF_RET_CHECK(from != nullptr);

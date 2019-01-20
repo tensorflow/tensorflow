@@ -165,10 +165,10 @@ XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower, bool transpose_a,
     // The first or last  diagonal element should be set to 1 instead of -1
     // though, since we never update it
     auto pos_one = Reshape(One(builder, shape.element_type()), {1, 1});
-    auto start_index = (lower) ? 0 : block_size - 1;
-    auto output_block = DynamicUpdateSlice(
-        neg_identity, pos_one,
-        /*start_indices=*/ConstantR1<int>(builder, 2, start_index));
+    auto start_index = ConstantR0<int>(builder, (lower) ? 0 : block_size - 1);
+    auto output_block =
+        DynamicUpdateSlice(neg_identity, pos_one,
+                           /*start_indices=*/{start_index, start_index});
 
     // Broadcast diag([1, -1, -1, ...]) to every block
     XlaOp output = Broadcast(output_block,
@@ -211,12 +211,10 @@ XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower, bool transpose_a,
       auto body_out = GetTupleElement(input_tuple, 1);
       auto body_input = GetTupleElement(input_tuple, 2);
 
-      auto zero = ConstantR1<int32>(bodyb.get(), 1, 0);
+      auto zero = ConstantR0<int32>(bodyb.get(), 0);
       auto j = (lower) ? i : ScalarLike(i, block_size - 1) - i;
-      auto start_indices =
-          ConcatInDim(bodyb.get(), {zero, Reshape(j, {1}), zero}, 0);
       auto input_row =
-          DynamicSlice(body_input, start_indices,
+          DynamicSlice(body_input, {zero, j, zero},
                        /*slice_sizes=*/{num_blocks, 1, block_size});
 
       // We want -L21 L11^{-1}
@@ -230,7 +228,7 @@ XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower, bool transpose_a,
       precision_proto.add_operand_precision(precision);
       auto update = -DotGeneral(input_row, body_out, dnums, &precision_proto);
 
-      body_out = DynamicUpdateSlice(body_out, update, start_indices);
+      body_out = DynamicUpdateSlice(body_out, update, {zero, j, zero});
 
       auto next_i = i + ScalarLike(i, 1);
       Tuple(bodyb.get(), {next_i, body_out, body_input});

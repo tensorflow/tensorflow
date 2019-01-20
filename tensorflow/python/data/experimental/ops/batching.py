@@ -553,8 +553,12 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
 
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
-        map_func, "tf.data.experimental.map_and_batch()", dataset=input_dataset)
+    if isinstance(map_func, dataset_ops.StructuredFunctionWrapper):
+      self._map_func = map_func
+    else:
+      self._map_func = dataset_ops.StructuredFunctionWrapper(
+          map_func, "tf.data.experimental.map_and_batch()",
+          dataset=input_dataset)
     self._batch_size_t = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
     self._num_parallel_calls_t = ops.convert_to_tensor(

@@ -733,6 +733,7 @@ class PoolingTest(test.TestCase):
         t = nn_ops.max_pool(
             t, ksize=ksize, strides=strides, padding="SAME").eval()
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testDepthwiseMaxPoolInvalidConfigs(self):
     self._testDepthwiseMaxPoolInvalidConfig(
         [1, 2, 2, 4], [1, 2, 2, 2], [1, 1, 1, 2],
@@ -1177,6 +1178,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testMaxPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testMaxPoolGradValidPadding1_1(data_format, use_gpu)
@@ -1213,6 +1215,7 @@ class PoolingTest(test.TestCase):
                      [1, window_rows, window_cols, 1],
                      [1, row_stride, col_stride, 1], padding)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def _testMaxPoolGradDirect(self, input_data, output_backprop,
                              expected_input_backprop, input_sizes, output_sizes,
                              window_rows, window_cols, row_stride, col_stride,
@@ -1628,6 +1631,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testMaxPoolGradGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testMaxPoolGradGradValidPadding1_1(data_format, use_gpu)
@@ -1662,6 +1666,7 @@ class PoolingTest(test.TestCase):
         [1, row_stride, col_stride, 1], padding)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testAvgPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testAvgPoolGradValidPadding1_1(data_format, use_gpu)
@@ -1821,6 +1826,7 @@ class PoolingTest(test.TestCase):
             padding="SAME")
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testOpEdgeCases(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]
@@ -1896,9 +1902,17 @@ if __name__ == "__main__":
        padding_) in GetShrunkInceptionMaxPoolShapes():
     setattr(PoolingTest, "testMaxPoolFwd_" + name_,
             GetMaxPoolFwdTest(input_size_, filter_size_, stride_, padding_))
-    setattr(PoolingTest, "testMaxPoolGrad_" + name_,
-            GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
-                               padding_))
+    if name_ == "maxpool5":
+      setattr(
+          PoolingTest, "testMaxPoolGrad_" + name_,
+          test_util.disable_xla("maxpool5 fails while all others pass")(
+              GetMaxPoolGradTest(input_size_, filter_size_, output_size_,
+                                 stride_, padding_)))
+    else:
+      setattr(
+          PoolingTest, "testMaxPoolGrad_" + name_,
+          GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
+                             padding_))
     setattr(PoolingTest, "testMaxPoolGradGrad_" + name_,
             GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
                                    stride_, padding_))

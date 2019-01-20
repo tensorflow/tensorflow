@@ -136,6 +136,37 @@ StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
   return std::move(result);
 }
 
+template <>
+StatusOr<Literal> Compare<complex128>(const Shape& shape, HloOpcode opcode,
+                                      LiteralSlice lhs_literal,
+                                      LiteralSlice rhs_literal) {
+  std::function<bool(complex128, complex128)> compare_op;
+  switch (opcode) {
+    case HloOpcode::kEq:
+      compare_op = [](complex128 lhs_el, complex128 rhs_el) {
+        return lhs_el == rhs_el;
+      };
+      break;
+    case HloOpcode::kNe:
+      compare_op = [](complex128 lhs_el, complex128 rhs_el) {
+        return lhs_el != rhs_el;
+      };
+      break;
+    default:
+      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
+                 << HloOpcodeString(opcode);
+  }
+
+  Literal result(shape);
+  TF_RETURN_IF_ERROR(
+      result.Populate<bool>([&](absl::Span<const int64> multi_index) {
+        return compare_op(lhs_literal.Get<complex128>(multi_index),
+                          rhs_literal.Get<complex128>(multi_index));
+      }));
+
+  return std::move(result);
+}
+
 }  // namespace
 
 // Note that unsupported types by the typed visitor does not necessarily imply
@@ -150,22 +181,14 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   typed_visitors_[U8] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint8>>(this);
   typed_visitors_[U16] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
-        return Unimplemented(
-            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-            "U16.");
-      });
+      absl::make_unique<HloEvaluatorTypedVisitor<uint16>>(this);
   typed_visitors_[U32] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
   typed_visitors_[U64] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint64>>(this);
   typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
   typed_visitors_[S16] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
-        return Unimplemented(
-            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-            "S16.");
-      });
+      absl::make_unique<HloEvaluatorTypedVisitor<int16>>(this);
   typed_visitors_[S32] =
       absl::make_unique<HloEvaluatorTypedVisitor<int32>>(this);
   typed_visitors_[S64] =
@@ -178,6 +201,8 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
       absl::make_unique<HloEvaluatorTypedVisitor<double>>(this);
   typed_visitors_[C64] =
       absl::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
+  typed_visitors_[C128] =
+      absl::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
 
   // Most of the evaluator computations we use don't support BF16 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with BF16, we set all
@@ -233,14 +258,18 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   for (const auto& literal_ptr : arg_literals) {
     arg_literals_.push_back(&*literal_ptr);
   }
+
+  // Re-seed RNG, either from the configuration's seed or a monotonic
+  // per-evaluator seed (which prevents two evaluators from returning the same
+  // random sequence).
   if (computation.parent()->config().seed()) {
     seed_ = computation.parent()->config().seed();
   } else {
-    std::random_device rd;
-    seed_ = rd();
+    // Start global_seed at a (true) random value.
+    static std::atomic<uint64> global_seed{std::random_device()()};
+    seed_ = global_seed.fetch_add(1);
   }
-
-  engine_ = std::minstd_rand0(seed_);
+  engine_.seed(seed_);
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
   return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
@@ -361,16 +390,45 @@ Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleGetDimensionSize(
+    HloInstruction* get_dimension_size) {
+  HloInstruction* operand = get_dimension_size->mutable_operand(0);
+  int64 dim = get_dimension_size->dimension();
+  if (dynamic_dimension_inference_ == nullptr) {
+    return InvalidArgument(
+        "Evaluator cannot evaluate get_dimension_size without "
+        "set_dynamic_dimension_inference.");
+  }
+  HloInstruction* dynamic_size =
+      dynamic_dimension_inference_->GetDynamicSize(operand, {}, dim);
+  if (dynamic_size != nullptr) {
+    evaluated_[get_dimension_size] =
+        GetEvaluatedLiteralFor(dynamic_size).Clone();
+    return Status::OK();
+  }
+
+  const Shape& shape = get_dimension_size->operand(0)->shape();
+  Literal output(ShapeUtil::MakeShape(U32, {}));
+  output.PopulateWithValue(
+      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+  evaluated_[get_dimension_size] = std::move(output);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
+  // Nothing to do other than sanity checks. Parameters' values are stored in
+  // arg_literals_.
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
+
+#ifndef NDEBUG
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
   DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()))
       << "parameter shape is: " << ShapeUtil::HumanString(parameter->shape())
       << ", but input literal shape is: "
       << ShapeUtil::HumanString(input_literal->shape());
+#endif
 
-  evaluated_[parameter] = input_literal->Clone();
   return Status::OK();
 }
 
@@ -483,6 +541,13 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
       TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
       break;
     }
+    case C128: {
+      auto result_or = ElementWiseUnaryOpImpl<float, complex128>(
+          real, [](complex128 elem_operand) { return std::real(elem_operand); },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+      break;
+    }
     case F16: {
       auto result_or = ElementWiseUnaryOpImpl<Eigen::half, Eigen::half>(
           real, [](Eigen::half elem_operand) { return elem_operand; },
@@ -513,11 +578,29 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
 }
 
 Status HloEvaluator::HandleImag(HloInstruction* imag) {
-  auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
-      imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
-      GetEvaluatedLiteralFor(imag->operand(0)));
+  auto operand = imag->operand(0);
+  switch (operand->shape().element_type()) {
+    case C64: {
+      auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
+          imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
 
-  TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case C128: {
+      auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
+          imag, [](complex128 elem_operand) { return std::imag(elem_operand); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    default:
+      LOG(FATAL) << "HandleImag: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(operand->shape().element_type());
+  }
+
   return Status::OK();
 }
 
@@ -527,11 +610,27 @@ Status HloEvaluator::HandleComplex(HloInstruction* complex) {
   TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
 
   Literal result(complex->shape());
-  TF_RETURN_IF_ERROR(
-      result.Populate<complex64>([&](absl::Span<const int64> multi_index) {
-        return std::complex<float>(real.Get<float>(multi_index),
-                                   imag.Get<float>(multi_index));
-      }));
+  switch (complex->shape().element_type()) {
+    case C64: {
+      TF_RETURN_IF_ERROR(
+          result.Populate<complex64>([&](absl::Span<const int64> multi_index) {
+            return std::complex<float>(real.Get<float>(multi_index),
+                                       imag.Get<float>(multi_index));
+          }));
+      break;
+    }
+    case C128: {
+      TF_RETURN_IF_ERROR(
+          result.Populate<complex128>([&](absl::Span<const int64> multi_index) {
+            return std::complex<float>(real.Get<double>(multi_index),
+                                       imag.Get<double>(multi_index));
+          }));
+      break;
+    }
+    default:
+      LOG(FATAL) << "HandleComplex: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(complex->shape().element_type());
+  }
 
   evaluated_[complex] = std::move(result);
   return Status::OK();
@@ -570,8 +669,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<uint8>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case U16:
-      return Unimplemented("unhandled primitive type: U16.");
+    case U16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<uint16>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case U32: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
@@ -587,8 +689,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<int8>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case S16:
-      return Unimplemented("unhandled primitive type: S16.");
+    case S16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<int16>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case S32: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
@@ -623,6 +728,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
                           Compare<complex64>(compare->shape(), opcode,
                                              lhs_literal, rhs_literal));
+    } break;
+    case C128: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<complex128>(compare->shape(), opcode,
+                                              lhs_literal, rhs_literal));
     } break;
     default:
       LOG(FATAL) << "HandleCompare: unknown primitive type: "
@@ -1080,6 +1190,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
                        .ConsumeValueOrDie();
 
@@ -1113,6 +1225,8 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   }
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result =
       embedded_evaluator.Evaluate(*readded_computation, arg_literals)
           .ConsumeValueOrDie();
@@ -1132,6 +1246,8 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   auto* false_computation = conditional->false_computation();
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result;
   if (pred.Get<bool>({})) {
     result =
@@ -1186,7 +1302,10 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   bool keep_going = true;
   int64 iteration_count = 0;
   HloEvaluator cond_evaluator(max_loop_iterations_);
+  cond_evaluator.set_dynamic_dimension_inference(dynamic_dimension_inference_);
   HloEvaluator loop_body_evaluator(max_loop_iterations_);
+  loop_body_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
       return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",

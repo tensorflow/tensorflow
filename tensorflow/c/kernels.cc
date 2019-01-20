@@ -158,3 +158,12 @@ void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
     cc_ctx->set_output(i, cc_tensor);
   }
 }
+
+TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  return static_cast<TF_DataType>(cc_ctx->expected_output_dtype(i));
+}
+
+int64_t TF_StepId(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
+}

@@ -93,60 +93,38 @@ static Shape ColMajorShape(const Shape& old_shape) {
   return new_shape;
 }
 
+static bool OperandsAndResultMustHaveRowMajorLayout(
+    const HloInstruction& instr,
+    const TargetMachineFeatures& target_machine_features) {
+  if (instr.opcode() == HloOpcode::kConvolution) {
+    return PotentiallyImplementedAsEigenConvolution(instr,
+                                                    target_machine_features);
+  } else if (instr.opcode() == HloOpcode::kDot) {
+    return DotOperandsAndResultMustHaveRowMajorLayout(instr,
+                                                      target_machine_features);
+  }
+  return false;
+}
+
 Status CpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   ShouldMakeOperandColMajorCache cache;
 
   const HloComputation* computation = constraints->computation();
   for (auto* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kConvolution &&
-        PotentiallyImplementedAsEigenConvolution(*instruction,
-                                                 target_machine_features_)) {
-      const HloInstruction* convolution = instruction;
-      const HloInstruction* lhs_instruction = convolution->operand(0);
-      const HloInstruction* rhs_instruction = convolution->operand(1);
-
-      // In order to implement `convolution` with Eigen convolution, the layouts
-      // of the input, filter, and output need to be row-major.
-      //
-      // These constraints are not hard constraints. Ideally, we should decide
-      // which layouts to choose according to some cost model.
-      Shape output_shape(RowMajorShape(convolution->shape()));
-      Shape input_shape(RowMajorShape(lhs_instruction->shape()));
-      Shape filter_shape(RowMajorShape(rhs_instruction->shape()));
-
-      // Set layouts of the instructions' shapes.
-      TF_RETURN_IF_ERROR(
-          constraints->SetOperandLayout(input_shape, convolution, 0));
-      TF_RETURN_IF_ERROR(
-          constraints->SetOperandLayout(filter_shape, convolution, 1));
-      TF_RETURN_IF_ERROR(
-          constraints->SetInstructionLayout(output_shape, convolution));
+    if (OperandsAndResultMustHaveRowMajorLayout(*instruction,
+                                                target_machine_features_)) {
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          RowMajorShape(instruction->shape()), instruction));
+      for (int i = 0; i < instruction->operand_count(); i++) {
+        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+            RowMajorShape(instruction->operand(i)->shape()), instruction, i));
+      }
     } else if (optional<int64> op_idx =
                    ShouldMakeOperandColumnMajor(&cache, *instruction)) {
       const HloInstruction* op = instruction->operand(*op_idx);
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
           ColMajorShape(op->shape()), instruction, *op_idx));
-    } else if (PotentiallyImplementedAsEigenDot(*instruction,
-                                                target_machine_features_)) {
-      const HloInstruction* dot = instruction;
-      // In order to implement `dot` with Eigen dot, the layouts of the lhs,
-      // rhs, and output need to be row-major.
-      //
-      // These constraints are not hard constraints. Ideally, we should decide
-      // which layouts to choose according to some cost model.
-      Shape output_shape(RowMajorShape(dot->shape()));
-
-      const HloInstruction* lhs_instruction = dot->operand(0);
-      Shape lhs_shape(RowMajorShape(lhs_instruction->shape()));
-      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(lhs_shape, dot, 0));
-
-      const HloInstruction* rhs_instruction = dot->operand(1);
-      Shape rhs_shape(RowMajorShape(rhs_instruction->shape()));
-      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, dot, 1));
-
-      // Set layouts of the instructions' shapes.
-      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(output_shape, dot));
     } else {
       for (int64 operand_no = 0; operand_no < instruction->operand_count();
            ++operand_no) {

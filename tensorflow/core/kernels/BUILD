@@ -31,7 +31,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
-    "if_not_v2",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_test",
@@ -151,6 +150,33 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "clustering_ops",
+    prefix = "clustering_ops",
+    deps = [
+        "//tensorflow/core:clustering_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "clustering_ops_test",
+    srcs = ["clustering_ops_test.cc"],
+    deps = [
+        ":clustering_ops",
+        "//tensorflow/core:clustering_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1015,7 +1041,16 @@ tf_kernel_library(
     hdrs = ["tile_functor.h"],
     gpu_srcs = [
         "tile_functor.h",
-        "tile_functor_gpu.cu.cc",
+        "tile_functor_gpu.h",
+        "tile_functor_gpu_bool.cu.cc",
+        "tile_functor_gpu_complex64.cu.cc",
+        "tile_functor_gpu_complex128.cu.cc",
+        "tile_functor_gpu_double.cu.cc",
+        "tile_functor_gpu_float.cu.cc",
+        "tile_functor_gpu_half.cu.cc",
+        "tile_functor_gpu_int16.cu.cc",
+        "tile_functor_gpu_int32.cu.cc",
+        "tile_functor_gpu_int64.cu.cc",
     ],
     prefix = "tile_ops",
     deps = ARRAY_DEPS,
@@ -2253,6 +2288,7 @@ tf_kernel_library(
     ],
     deps = [
         ":concat_lib",
+        ":fill_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:list_ops_op_lib",
@@ -2309,6 +2345,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/stream_executor:stream",
     ],
 )
 
@@ -2517,6 +2554,7 @@ tf_cc_tests(
         ":eigen_helpers",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3278,7 +3316,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "scan_ops",
-    prefix = "scan_ops",
+    srcs = ["scan_ops.cc"],
+    hdrs = ["scan_ops.h"],
+    gpu_srcs = [
+        "scan_ops.h",
+        "scan_ops_gpu.h",
+        "scan_ops_gpu_double.cu.cc",
+        "scan_ops_gpu_float.cu.cc",
+        "scan_ops_gpu_half.cu.cc",
+    ],
     deps = MATH_DEPS + if_cuda(["@cub_archive//:cub"]),
 )
 
@@ -3703,7 +3749,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "depthwise_conv_op",
-    prefix = "depthwise_conv_op",
+    srcs = ["depthwise_conv_op.cc"],
+    hdrs = ["depthwise_conv_op.h"],
+    gpu_srcs = [
+        "depthwise_conv_op.h",
+        "depthwise_conv_op_gpu.h",
+        "depthwise_conv_op_gpu_double.cu.cc",
+        "depthwise_conv_op_gpu_float.cu.cc",
+        "depthwise_conv_op_gpu_half.cu.cc",
+    ],
     deps = [
         ":bounds_check",
         ":conv_ops",
@@ -3774,7 +3828,6 @@ NN_DEPS = [
     ":conv_2d",
     ":eigen_contraction_kernel",
     ":ops_util",
-    ":pooling_ops",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
@@ -3801,6 +3854,8 @@ tf_kernel_library(
     deps = NN_DEPS + if_cuda_is_configured([
         ":reduction_ops",
         "@cub_archive//:cub",
+        "//tensorflow/core:stream_executor",
+        "//tensorflow/stream_executor/cuda:cuda_stream",
     ]) + if_rocm_is_configured([
         ":reduction_ops",
         "@rocprim_archive//:rocprim",
@@ -3857,7 +3912,21 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "topk_op",
-    prefix = "topk_op",
+    srcs = ["topk_op.cc"],
+    hdrs = ["topk_op.h"],
+    gpu_srcs = [
+        "topk_op.h",
+        "topk_op_gpu.h",
+        "topk_op_gpu_double.cu.cc",
+        "topk_op_gpu_float.cu.cc",
+        "topk_op_gpu_half.cu.cc",
+        "topk_op_gpu_int64.cu.cc",
+        "topk_op_gpu_int32.cu.cc",
+        "topk_op_gpu_int16.cu.cc",
+        "topk_op_gpu_uint16.cu.cc",
+        "topk_op_gpu_int8.cu.cc",
+        "topk_op_gpu_uint8.cu.cc",
+    ],
     deps = NN_DEPS + if_cuda(["@cub_archive//:cub"]) + if_rocm(["@rocprim_archive//:rocprim"]),
 )
 
@@ -4459,7 +4528,13 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         ":bounds_check",
         "//third_party/eigen3",
-    ],
+    ] + if_cuda_is_configured([
+        ":reduction_ops",
+        "@cub_archive//:cub",
+    ]) + if_rocm_is_configured([
+        ":reduction_ops",
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_kernel_library(
@@ -4951,11 +5026,17 @@ tf_kernel_library(
         ":random_op",
         ":random_ops",
         ":stateless_random_ops",
+        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
-    ],
+    ] + if_cuda_is_configured([
+        ":reduction_ops",
+        "@cub_archive//:cub",
+    ]) + if_rocm_is_configured([
+        ":reduction_ops",
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_cuda_cc_test(
@@ -6895,11 +6976,10 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core/lib/db:sqlite",
-    ] + if_not_v2([
-        "//tensorflow/contrib/tensorboard/db:schema",
-        "//tensorflow/contrib/tensorboard/db:summary_db_writer",
-        "//tensorflow/contrib/tensorboard/db:summary_file_writer",
-    ]),
+        "//tensorflow/core/summary:schema",
+        "//tensorflow/core/summary:summary_db_writer",
+        "//tensorflow/core/summary:summary_file_writer",
+    ],
 )
 
 tf_kernel_library(

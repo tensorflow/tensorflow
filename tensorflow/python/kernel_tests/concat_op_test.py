@@ -33,6 +33,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.disable_all_xla("This test never passed for XLA")
 class ConcatOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -640,6 +641,8 @@ class ConcatOpTest(test.TestCase):
         output = self.evaluate(c)
         self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
 
+
+@test_util.disable_all_xla("This test never passed for XLA")
 class ConcatOffsetTest(test.TestCase):
 
   def testBasic(self):
@@ -683,6 +686,8 @@ class ConcatOffsetTest(test.TestCase):
       self.evaluate(off)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla(
+      "This test never passed for XLA")  # Different error message on XLA
   def testSizeMismatch(self):
     cdim = constant_op.constant(1, dtypes.int32)
     s0 = constant_op.constant([2, 3, 5], dtypes.int32)

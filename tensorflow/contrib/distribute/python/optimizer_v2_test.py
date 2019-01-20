@@ -49,9 +49,10 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
         iterator = ds.make_initializable_iterator()
 
       def run_step():
-        return control_flow_ops.group(distribution.unwrap(
-            distribution.call_for_each_replica(
-                model_fn, args=(iterator.get_next(),))))
+        return control_flow_ops.group(
+            distribution.unwrap(
+                distribution.extended.call_for_each_replica(
+                    model_fn, args=(iterator.get_next(),))))
 
       if not context.executing_eagerly():
         with self.cached_session() as sess:

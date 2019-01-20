@@ -62,8 +62,7 @@ class HloEvaluatorTest : public HloTestBase {
     if (use_bfloat16_) {
       HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
     }
-    return HloEvaluator()
-        .Evaluate(*m_->entry_computation(), arg_literals)
+    return evaluator_.Evaluate(*m_->entry_computation(), arg_literals)
         .ConsumeValueOrDie();
   }
 
@@ -75,8 +74,7 @@ class HloEvaluatorTest : public HloTestBase {
     if (use_bfloat16_) {
       HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
     }
-    return HloEvaluator()
-        .Evaluate(*module->entry_computation(), arg_literals)
+    return evaluator_.Evaluate(*module->entry_computation(), arg_literals)
         .ConsumeValueOrDie();
   }
 
@@ -115,6 +113,7 @@ class HloEvaluatorTest : public HloTestBase {
 
  protected:
   explicit HloEvaluatorTest(bool use_bfloat16) : use_bfloat16_(use_bfloat16) {}
+  HloEvaluator evaluator_;
 
   const bool use_bfloat16_;
   std::unique_ptr<HloModule> m_ = CreateNewVerifiedModule();
@@ -1740,12 +1739,14 @@ TEST_P(HloEvaluatorBf16Test, DynamicSlice) {
   HloInstruction* operand = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(operand_literal)));
 
-  auto start_indices = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({0, 1})));
+  auto zero = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  auto one = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
-                                                      start_indices, {2, 3}));
+  b.AddInstruction(
+      HloInstruction::CreateDynamicSlice(shape, operand, {zero, one}, {2, 3}));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1776,12 +1777,14 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceModSlice) {
   HloInstruction* operand = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(operand_literal)));
 
-  auto start_indices = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2, 1})));
+  auto two = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
+  auto one = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
-                                                      start_indices, {2, 3}));
+  b.AddInstruction(
+      HloInstruction::CreateDynamicSlice(shape, operand, {two, one}, {2, 3}));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1810,15 +1813,17 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceUpdate) {
   HloInstruction* operand = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(operand_literal)));
 
-  auto start_indices = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int64>({0, 1})));
+  auto zero = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  auto one = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
   auto update = b.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<double>({{-2.0, -3.0}, {-6.0, -7.0}})));
 
   Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      shape, operand, update, start_indices));
+      shape, operand, update, {zero, one}));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -2872,6 +2877,39 @@ ENTRY main {
             static_cast<int32>(-(pow31 + pow30)));
   EXPECT_EQ(actual[2].GetFirstElement<int32>(),
             static_cast<int32>(pow31 * pow31));
+}
+
+TEST_F(HloEvaluatorTest, GetDimensionSize) {
+  constexpr absl::string_view hlo_text = R"(
+HloModule Test
+
+ENTRY main {
+  size = u32[] parameter(0)
+
+  data = s32[4] parameter(1)
+
+  sum = s32[4] add(data, data)
+
+  ROOT dynamic_size = u32[] get-dimension-size(sum), dimensions={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(m_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{0, {}},
+      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
+
+  TF_ASSERT_OK_AND_ASSIGN(DynamicDimensionInference dynamic_dimension_inference,
+                          DynamicDimensionInference::Run(m_.get()));
+
+  evaluator_.set_dynamic_dimension_inference(&dynamic_dimension_inference);
+  Literal size_arg = LiteralUtil::CreateR0<uint32>(3);
+  Literal data_arg = LiteralUtil::CreateR1<int32>({1, 2, 3, 4});
+
+  Literal actual = Evaluate({&size_arg, &data_arg});
+
+  EXPECT_EQ(actual.GetFirstElement<uint32>(), static_cast<uint32>(3));
 }
 
 // Check that we get a useful error if we pass inputs of the wrong shape.

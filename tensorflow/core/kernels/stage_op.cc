@@ -132,7 +132,7 @@ class Buffer : public ResourceBase {
     notify_inserters_if_bounded(&lock);
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     std::unique_lock<std::mutex> lock(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }
@@ -170,7 +170,7 @@ class Buffer : public ResourceBase {
   std::size_t capacity_;
   std::size_t memory_limit_;
   std::size_t current_bytes_;
-  std::mutex mu_;
+  mutable std::mutex mu_;
   std::condition_variable non_empty_cond_var_;
   std::condition_variable full_cond_var_;
   std::deque<Tuple> buf_;

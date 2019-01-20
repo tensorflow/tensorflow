@@ -72,8 +72,10 @@ py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
     ],
     deps = [

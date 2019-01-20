@@ -2780,12 +2780,8 @@ class NumericColumn(
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
     kwargs = config.copy()
-    # TODO(b/118820158): Simplify if deserialize_keras_object supports None.
-    if config['normalizer_fn']:
-      kwargs['normalizer_fn'] = utils.deserialize_keras_object(
-          config['normalizer_fn'], custom_objects=custom_objects)
-    else:
-      kwargs['normalizer_fn'] = None
+    kwargs['normalizer_fn'] = utils.deserialize_keras_object(
+        config['normalizer_fn'], custom_objects=custom_objects)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
     return cls(**kwargs)
 
@@ -3168,12 +3164,8 @@ class EmbeddingColumn(
     kwargs = config.copy()
     kwargs['categorical_column'] = deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
-    # TODO(b/118820158): Simplify if deserialize_keras_object supports None.
-    if config['initializer']:
-      kwargs['initializer'] = utils.deserialize_keras_object(
-          config['initializer'], custom_objects=custom_objects)
-    else:
-      kwargs['initializer'] = None
+    kwargs['initializer'] = utils.deserialize_keras_object(
+        config['initializer'], custom_objects=custom_objects)
     return cls(**kwargs)
 
 
@@ -4681,7 +4673,7 @@ def deserialize_feature_column(config,
           IdentityCategoricalColumn, IndicatorColumn, NumericColumn,
           SequenceCategoricalColumn, SequenceDenseColumn, SharedEmbeddingColumn,
           VocabularyFileCategoricalColumn, VocabularyListCategoricalColumn,
-          WeightedCategoricalColumn
+          WeightedCategoricalColumn, init_ops.TruncatedNormal
       ]
   }
   if columns_by_name is None:

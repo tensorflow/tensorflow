@@ -102,9 +102,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       std::unique_ptr<ParallelMapFunctor> parallel_map_functor(nullptr);
       if (indices_.empty()) {
-        parallel_map_functor.reset(new ParallelMapDatasetFunctor(this));
+        parallel_map_functor =
+            absl::make_unique<ParallelMapDatasetFunctor>(this);
       } else {
-        parallel_map_functor.reset(new ShortCircuitFunctor(this));
+        parallel_map_functor = absl::make_unique<ShortCircuitFunctor>(this);
       }
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParallelMap")}, input_,

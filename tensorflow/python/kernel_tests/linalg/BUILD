@@ -22,6 +22,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -38,6 +39,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -60,6 +62,7 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -76,6 +79,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -98,6 +102,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -120,6 +125,7 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -144,6 +150,7 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -166,6 +173,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -187,6 +195,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -209,6 +218,7 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -229,6 +239,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -251,6 +262,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -270,6 +282,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -290,6 +303,7 @@ cuda_py_test(
         "noasan",  # times out
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -310,6 +324,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -328,4 +343,5 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = ["optonly"],  # Test is flaky without optimization.
+    xla_enable_strict_auto_jit = True,
 )

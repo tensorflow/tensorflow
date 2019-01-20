@@ -233,7 +233,7 @@ class BatchResource : public ResourceBase {
     return Status::OK();
   }
 
-  string DebugString() final { return "BatchResource"; }
+  string DebugString() const final { return "BatchResource"; }
 
   // Ingests data from one invocation of the batch op. The data is enqueued to
   // be combined with others into a batch, asynchronously.
@@ -878,7 +878,7 @@ class UnbatchResource : public ResourceBase {
     timeout_enforcer_ = nullptr;
   }
 
-  string DebugString() final { return "UnbatchResource"; }
+  string DebugString() const final { return "UnbatchResource"; }
 
   Status Compute(OpKernelContext* context, AsyncOpKernel::DoneCallback done) {
     const Tensor& data_t = context->input(0);
@@ -1094,7 +1094,7 @@ class UnbatchGradResource : public ResourceBase {
  public:
   UnbatchGradResource() {}
 
-  string DebugString() final { return "UnbatchGradResource"; }
+  string DebugString() const final { return "UnbatchGradResource"; }
 
   // Flushes the information for one batch, given its context and done
   // callback. Clears all information about it from the available_tensors_.

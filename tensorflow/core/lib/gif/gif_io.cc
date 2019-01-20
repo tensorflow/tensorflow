@@ -82,9 +82,20 @@ uint8* Decode(const void* srcdata, int datasize,
     return nullptr;
   }
 
+  // Don't request more memory than needed for each frame, preventing OOM
+  int max_frame_width = 0;
+  int max_frame_height = 0;
+  for (int k = 0; k < gif_file->ImageCount; k++) {
+    SavedImage* si = &gif_file->SavedImages[k];
+    if (max_frame_height < si->ImageDesc.Height)
+      max_frame_height = si->ImageDesc.Height;
+    if (max_frame_width < si->ImageDesc.Width)
+      max_frame_width = si->ImageDesc.Width;
+  }
+
   const int num_frames = gif_file->ImageCount;
-  const int width = gif_file->SWidth;
-  const int height = gif_file->SHeight;
+  const int width = max_frame_width;    // gif_file->SWidth;
+  const int height = max_frame_height;  // gif_file->SHeight;
   const int channel = 3;
 
   uint8* const dstdata = allocate_output(num_frames, width, height, channel);

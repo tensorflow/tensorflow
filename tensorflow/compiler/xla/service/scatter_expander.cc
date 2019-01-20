@@ -59,7 +59,7 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
   TF_ASSIGN_OR_RETURN(
       HloInstruction * transposed_scatter_indices,
       TransposeIndexVectorDimToLast(scatter_indices, index_vector_dim));
-  if (ShapeUtil::Rank(scatter_indices->shape()) == index_vector_dim + 1 &&
+  if (scatter_indices->shape().rank() == index_vector_dim + 1 &&
       scatter_indices->shape().dimensions(index_vector_dim) == 1) {
     auto new_shape =
         ShapeUtil::DeleteDimension(index_vector_dim, scatter_indices->shape());

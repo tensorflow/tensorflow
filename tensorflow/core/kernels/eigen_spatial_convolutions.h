@@ -1683,8 +1683,6 @@ EIGEN_DEVICE_FUNC
     kernel_dims[0] = kernelChannels * kernelRows * kernelCols;
     kernel_dims[1] = kernelFilters;
   }
-  // TODO(yangke): choose() is defined in TensorContraction.h -- consider
-  // moving it to somewhere more "common".
   return choose(
       Cond<internal::traits<Input>::Layout == ColMajor>(),
       kernel.reshape(kernel_dims)
