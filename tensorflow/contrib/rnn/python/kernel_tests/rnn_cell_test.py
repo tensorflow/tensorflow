@@ -30,7 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import initializers
-# from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1152,38 +1152,38 @@ class RNNCellTest(test.TestCase):
         # Smoke test
         self.assertAllClose(res[0], [[0.15535763, 0.15535763]])
 
-  # def testCFNCellEndToEnd(self):
-  #   with self.cached_session() as sess:
-  #     input_shape = 10
-  #     output_shape = 5
-  #     timestep = 4
-  #     batch = 100
-  #     (x_train, y_train), _ = testing_utils.get_test_data(
-  #         train_samples=batch,
-  #         test_samples=0,
-  #         input_shape=(timestep, input_shape),
-  #         num_classes=output_shape)
-  #     y_train = utils.to_categorical(y_train)
-  #     cell = contrib_rnn_cell.CFNCell(output_shape)
+  def testCFNCellEndToEnd(self):
+    with self.cached_session() as sess:
+      input_shape = 10
+      output_shape = 5
+      timestep = 4
+      batch = 100
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=output_shape)
+      y_train = utils.to_categorical(y_train)
+      cell = contrib_rnn_cell.CFNCell(output_shape)
 
-  #     inputs = array_ops.placeholder(
-  #         dtypes.float32, shape=(None, timestep, input_shape))
-  #     predict = array_ops.placeholder(
-  #         dtypes.float32, shape=(None, output_shape))
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      predict = array_ops.placeholder(
+          dtypes.float32, shape=(None, output_shape))
 
-  #     outputs, state = rnn.dynamic_rnn(
-  #         cell, inputs, dtype=dtypes.float32)
-  #     self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
-  #     self.assertEqual(state.shape.as_list(), [None, output_shape])
-  #     loss = losses.softmax_cross_entropy(predict, state)
-  #     train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(state.shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state)
+      train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
 
-  #     sess.run([variables.global_variables_initializer()])
-  #     _, outputs, state = sess.run(
-  #         [train_op, outputs, state], {inputs: x_train, predict: y_train})
+      sess.run([variables.global_variables_initializer()])
+      _, outputs, state = sess.run(
+          [train_op, outputs, state], {inputs: x_train, predict: y_train})
 
-  #     self.assertEqual(len(outputs), batch)
-  #     self.assertEqual(len(state), batch)
+      self.assertEqual(len(outputs), batch)
+      self.assertEqual(len(state), batch)
 
   def testMinimalRNNCell(self):
     with self.cached_session() as sess:
@@ -1219,38 +1219,38 @@ class RNNCellTest(test.TestCase):
         # Smoke test
         self.assertAllClose(res[0], [[0.19554167, 0.19554167]])
 
-  # def testMinimalRNNCellEndToEnd(self):
-  #   with self.cached_session() as sess:
-  #     input_shape = 10
-  #     output_shape = 5
-  #     timestep = 4
-  #     batch = 100
-  #     (x_train, y_train), _ = testing_utils.get_test_data(
-  #         train_samples=batch,
-  #         test_samples=0,
-  #         input_shape=(timestep, input_shape),
-  #         num_classes=output_shape)
-  #     y_train = utils.to_categorical(y_train)
-  #     cell = contrib_rnn_cell.MinimalRNNCell(output_shape)
+  def testMinimalRNNCellEndToEnd(self):
+    with self.cached_session() as sess:
+      input_shape = 10
+      output_shape = 5
+      timestep = 4
+      batch = 100
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=output_shape)
+      y_train = utils.to_categorical(y_train)
+      cell = contrib_rnn_cell.MinimalRNNCell(output_shape)
 
-  #     inputs = array_ops.placeholder(
-  #         dtypes.float32, shape=(None, timestep, input_shape))
-  #     predict = array_ops.placeholder(
-  #         dtypes.float32, shape=(None, output_shape))
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      predict = array_ops.placeholder(
+          dtypes.float32, shape=(None, output_shape))
 
-  #     outputs, state = rnn.dynamic_rnn(
-  #         cell, inputs, dtype=dtypes.float32)
-  #     self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
-  #     self.assertEqual(state.shape.as_list(), [None, output_shape])
-  #     loss = losses.softmax_cross_entropy(predict, state)
-  #     train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(state.shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state)
+      train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
 
-  #     sess.run([variables.global_variables_initializer()])
-  #     _, outputs, state = sess.run(
-  #         [train_op, outputs, state], {inputs: x_train, predict: y_train})
+      sess.run([variables.global_variables_initializer()])
+      _, outputs, state = sess.run(
+          [train_op, outputs, state], {inputs: x_train, predict: y_train})
 
-  #     self.assertEqual(len(outputs), batch)
-  #     self.assertEqual(len(state), batch)
+      self.assertEqual(len(outputs), batch)
+      self.assertEqual(len(state), batch)
 
   def testNTMCell(self):
     expected_output = np.array(
