@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""sklearn cross-support."""
+"""sklearn cross-support (deprecated)."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -132,6 +132,8 @@ class _TransformerMixin():
 class NotFittedError(ValueError, AttributeError):
   """Exception class to raise if estimator is used before fitting.
 
+  USE OF THIS EXCEPTION IS DEPRECATED.
+
   This class inherits from both ValueError and AttributeError to help with
   exception handling and backward compatibility.
 
@@ -192,7 +194,7 @@ if TRY_IMPORT_SKLEARN:
   # pylint: disable=g-import-not-at-top,g-multiple-import,unused-import
   from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
   from sklearn.metrics import accuracy_score, log_loss, mean_squared_error
-  from sklearn.cross_validation import train_test_split
+  from sklearn.model_selection import train_test_split
   try:
     from sklearn.exceptions import NotFittedError
   except ImportError:

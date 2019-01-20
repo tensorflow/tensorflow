@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <condition_variable>
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
@@ -24,21 +25,36 @@ namespace port {
 
 TEST(Port, AlignedMalloc) {
   for (size_t alignment = 1; alignment <= 1 << 20; alignment <<= 1) {
-    void* p = aligned_malloc(1, alignment);
-    ASSERT_TRUE(p != NULL) << "aligned_malloc(1, " << alignment << ")";
+    void* p = AlignedMalloc(1, alignment);
+    ASSERT_TRUE(p != nullptr) << "AlignedMalloc(1, " << alignment << ")";
     uintptr_t pval = reinterpret_cast<uintptr_t>(p);
     EXPECT_EQ(pval % alignment, 0);
-    aligned_free(p);
+    AlignedFree(p);
   }
+}
+
+TEST(Port, GetCurrentCPU) {
+  const int cpu = GetCurrentCPU();
+#if !defined(__APPLE__)
+  // GetCurrentCPU does not currently work on MacOS.
+  EXPECT_GE(cpu, 0);
+  EXPECT_LT(cpu, NumTotalCPUs());
+#endif
 }
 
 TEST(ConditionVariable, WaitForMilliseconds_Timeout) {
   mutex m;
   mutex_lock l(m);
   condition_variable cv;
-  time_t start = time(NULL);
-  EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), kCond_Timeout);
-  time_t finish = time(NULL);
+  ConditionResult result = kCond_MaybeNotified;
+  time_t start = time(nullptr);
+  // Condition variables are subject to spurious wakeups on some platforms,
+  // so need to check for a timeout within a loop.
+  while (result == kCond_MaybeNotified) {
+    result = WaitForMilliseconds(&l, &cv, 3000);
+  }
+  EXPECT_EQ(result, kCond_Timeout);
+  time_t finish = time(nullptr);
   EXPECT_GE(finish - start, 3);
 }
 
@@ -47,17 +63,26 @@ TEST(ConditionVariable, WaitForMilliseconds_Signalled) {
   mutex m;
   mutex_lock l(m);
   condition_variable cv;
-  time_t start = time(NULL);
+  time_t start = time(nullptr);
   // Sleep for just 1 second then notify.  We have a timeout of 3 secs,
   // so the condition variable will notice the cv signal before the timeout.
   pool.Schedule([&m, &cv]() {
-    sleep(1);
+    Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
     mutex_lock l(m);
     cv.notify_all();
   });
   EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), kCond_MaybeNotified);
-  time_t finish = time(NULL);
+  time_t finish = time(nullptr);
   EXPECT_LT(finish - start, 3);
+}
+
+TEST(TestCPUFeature, TestFeature) {
+  // We don't know what the result should be on this platform, so just make
+  // sure it's callable.
+  const bool has_avx = TestCPUFeature(CPUFeature::AVX);
+  LOG(INFO) << "has_avx = " << has_avx;
+  const bool has_avx2 = TestCPUFeature(CPUFeature::AVX2);
+  LOG(INFO) << "has_avx2 = " << has_avx2;
 }
 
 }  // namespace port

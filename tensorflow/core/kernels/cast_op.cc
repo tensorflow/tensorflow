@@ -34,12 +34,17 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 #define CURRY_TYPES2(FN, arg0)   \
   FN(arg0, bool);                \
   FN(arg0, uint8);               \
-  FN(arg0, int8);                \
   FN(arg0, uint16);              \
+  FN(arg0, uint32);              \
+  FN(arg0, uint64);              \
+  FN(arg0, int8);                \
   FN(arg0, int16);               \
   FN(arg0, int32);               \
   FN(arg0, int64);               \
@@ -49,86 +54,119 @@ typedef Eigen::GpuDevice GPUDevice;
   FN(arg0, std::complex<float>); \
   FN(arg0, std::complex<double>)
 
-class CastOpBase : public OpKernel {
- public:
-  explicit CastOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("SrcT", &src_dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &dst_dtype_));
+CastOpBase::CastOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("SrcT", &external_src_dtype_));
+
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &external_dst_dtype_));
+
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("Truncate", &use_truncation_));
+
+  // Quantized data types use the same underlying format as their non quantized
+  // version so we use the non quantized implementation for casting.
+  if (external_dst_dtype_ == DT_QUINT8) {
+    dst_dtype_ = DT_UINT8;
+  } else if (external_dst_dtype_ == DT_QINT8) {
+    dst_dtype_ = DT_INT8;
+  } else if (external_dst_dtype_ == DT_QINT32) {
+    dst_dtype_ = DT_INT32;
+  } else if (external_dst_dtype_ == DT_QINT16) {
+    dst_dtype_ = DT_INT16;
+  } else if (external_dst_dtype_ == DT_QUINT16) {
+    dst_dtype_ = DT_UINT16;
+  } else {
+    dst_dtype_ = external_dst_dtype_;
   }
 
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& inp = ctx->input(0);
-    if (work_ == nullptr) {
-      ctx->set_output(0, inp);
+  if (external_src_dtype_ == DT_QUINT8) {
+    src_dtype_ = DT_UINT8;
+  } else if (external_src_dtype_ == DT_QINT8) {
+    src_dtype_ = DT_INT8;
+  } else if (external_src_dtype_ == DT_QINT32) {
+    src_dtype_ = DT_INT32;
+  } else if (external_src_dtype_ == DT_QINT16) {
+    src_dtype_ = DT_INT16;
+  } else if (external_src_dtype_ == DT_QUINT16) {
+    src_dtype_ = DT_UINT16;
+  } else {
+    src_dtype_ = external_src_dtype_;
+  }
+}
+
+void CastOpBase::Compute(OpKernelContext* ctx) {
+  const Tensor& inp = ctx->input(0);
+  if (work_ == nullptr) {
+    ctx->set_output(0, inp);
+  } else {
+    Tensor in;
+    if (external_src_dtype_ != src_dtype_) {
+      // If the type is a quantized type we need to do an UnsafeCopyFromInternal
+      // since the src_dtype_ is different from external_src_type_.
+      in.UnsafeCopyFromInternal(inp, src_dtype_, inp.shape());
     } else {
-      Tensor* out = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, inp.shape(), &out));
-      work_(ctx, inp, out);
+      in = inp;
     }
+    Tensor* out = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in.shape(), &out));
+    out->set_dtype(dst_dtype_);
+    work_(ctx, in, out, use_truncation_);
+    out->set_dtype(external_dst_dtype_);
+  }
+}
+
+Status CastOpBase::Unimplemented() {
+  return errors::Unimplemented("Cast ", DataTypeString(external_src_dtype_),
+                               " to ", DataTypeString(external_dst_dtype_),
+                               " is not supported");
+}
+
+CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
+  OP_REQUIRES_OK(ctx, Prepare());
+}
+
+Status CpuCastOp::Prepare() {
+  if (external_src_dtype_ == external_dst_dtype_) {
+    work_ = nullptr;  // Identity
+    return Status::OK();
+  }
+  if (src_dtype_ == DT_BOOL) {
+    work_ = GetCpuCastFromBool(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT8) {
+    work_ = GetCpuCastFromUint8(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT16) {
+    work_ = GetCpuCastFromUint16(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT32) {
+    work_ = GetCpuCastFromUint32(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT64) {
+    work_ = GetCpuCastFromUint64(dst_dtype_);
+  } else if (src_dtype_ == DT_INT8) {
+    work_ = GetCpuCastFromInt8(dst_dtype_);
+  } else if (src_dtype_ == DT_INT16) {
+    work_ = GetCpuCastFromInt16(dst_dtype_);
+  } else if (src_dtype_ == DT_INT32) {
+    work_ = GetCpuCastFromInt32(dst_dtype_);
+  } else if (src_dtype_ == DT_INT64) {
+    work_ = GetCpuCastFromInt64(dst_dtype_);
+  } else if (src_dtype_ == DT_HALF) {
+    work_ = GetCpuCastFromHalf(dst_dtype_);
+  } else if (src_dtype_ == DT_FLOAT) {
+    work_ = GetCpuCastFromFloat(dst_dtype_);
+  } else if (src_dtype_ == DT_DOUBLE) {
+    work_ = GetCpuCastFromDouble(dst_dtype_);
+  } else if (src_dtype_ == DT_COMPLEX64) {
+    work_ = GetCpuCastFromComplex64(dst_dtype_);
+  } else if (src_dtype_ == DT_COMPLEX128) {
+    work_ = GetCpuCastFromComplex128(dst_dtype_);
+  } else if (src_dtype_ == DT_BFLOAT16) {
+    work_ = GetCpuCastFromBfloat(dst_dtype_);
   }
 
- protected:
-  DataType src_dtype_;
-  DataType dst_dtype_;
-  std::function<void(OpKernelContext*, const Tensor&, Tensor*)> work_ = nullptr;
+  // TODO(sesse): If CPU casting to or from Eigen::half ever becomes a
+  // bottleneck, we could probably implement specialized support for
+  // vectorized versions (not the least based on F16C for Haswell
+  // or newer).
 
-  Status Unimplemented() {
-    return errors::Unimplemented("Cast ", DataTypeString(src_dtype_), " to ",
-                                 DataTypeString(dst_dtype_),
-                                 " is not supported");
-  }
-
-  TF_DISALLOW_COPY_AND_ASSIGN(CastOpBase);
-};
-
-class CpuCastOp : public CastOpBase {
- public:
-  explicit CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
-    OP_REQUIRES_OK(ctx, Prepare());
-  }
-
- private:
-  Status Prepare() {
-    if (src_dtype_ == dst_dtype_) {
-      work_ = nullptr;  // Identity
-      return Status::OK();
-    }
-    if (src_dtype_ == DT_BOOL) {
-      work_ = GetCpuCastFromBool(dst_dtype_);
-    } else if (src_dtype_ == DT_UINT8) {
-      work_ = GetCpuCastFromUint8(dst_dtype_);
-    } else if (src_dtype_ == DT_INT8) {
-      work_ = GetCpuCastFromInt8(dst_dtype_);
-    } else if (src_dtype_ == DT_UINT16) {
-      work_ = GetCpuCastFromUint16(dst_dtype_);
-    } else if (src_dtype_ == DT_INT16) {
-      work_ = GetCpuCastFromInt16(dst_dtype_);
-    } else if (src_dtype_ == DT_INT32) {
-      work_ = GetCpuCastFromInt32(dst_dtype_);
-    } else if (src_dtype_ == DT_INT64) {
-      work_ = GetCpuCastFromInt64(dst_dtype_);
-    } else if (src_dtype_ == DT_HALF) {
-      work_ = GetCpuCastFromHalf(dst_dtype_);
-    } else if (src_dtype_ == DT_FLOAT) {
-      work_ = GetCpuCastFromFloat(dst_dtype_);
-    } else if (src_dtype_ == DT_DOUBLE) {
-      work_ = GetCpuCastFromDouble(dst_dtype_);
-    } else if (src_dtype_ == DT_COMPLEX64) {
-      work_ = GetCpuCastFromComplex64(dst_dtype_);
-    } else if (src_dtype_ == DT_COMPLEX128) {
-      work_ = GetCpuCastFromComplex128(dst_dtype_);
-    } else if (src_dtype_ == DT_BFLOAT16) {
-      work_ = GetCpuCastFromBfloat(dst_dtype_);
-    }
-
-    // TODO(sesse): If CPU casting to or from Eigen::half ever becomes a
-    // bottleneck, we could probably implement specialized support for
-    // vectorized versions (not the least based on F16C for Haswell
-    // or newer).
-
-    return work_ == nullptr ? Unimplemented() : Status::OK();
-  }
-};
+  return work_ == nullptr ? Unimplemented() : Status::OK();
+}
 
 #if GOOGLE_CUDA
 class GpuCastOp : public CastOpBase {
@@ -139,7 +177,7 @@ class GpuCastOp : public CastOpBase {
 
  private:
   Status Prepare() {
-    if (src_dtype_ == dst_dtype_) {
+    if (external_src_dtype_ == external_dst_dtype_) {
       work_ = nullptr;  // Identity
       return Status::OK();
     }
@@ -147,10 +185,14 @@ class GpuCastOp : public CastOpBase {
       work_ = GetGpuCastFromBool(dst_dtype_);
     } else if (src_dtype_ == DT_UINT8) {
       work_ = GetGpuCastFromUint8(dst_dtype_);
-    } else if (src_dtype_ == DT_INT8) {
-      work_ = GetGpuCastFromInt8(dst_dtype_);
     } else if (src_dtype_ == DT_UINT16) {
       work_ = GetGpuCastFromUint16(dst_dtype_);
+    } else if (src_dtype_ == DT_UINT32) {
+      work_ = GetGpuCastFromUint32(dst_dtype_);
+    } else if (src_dtype_ == DT_UINT64) {
+      work_ = GetGpuCastFromUint64(dst_dtype_);
+    } else if (src_dtype_ == DT_INT8) {
+      work_ = GetGpuCastFromInt8(dst_dtype_);
     } else if (src_dtype_ == DT_INT16) {
       work_ = GetGpuCastFromInt16(dst_dtype_);
     } else if (src_dtype_ == DT_INT32) {
@@ -190,8 +232,10 @@ REGISTER_KERNEL_BUILDER(Name("Cast").Device(DEVICE_CPU), CpuCastOp);
 
 CURRY_TYPES2(REGISTER_CAST_GPU, bool);
 CURRY_TYPES2(REGISTER_CAST_GPU, uint8);
-CURRY_TYPES2(REGISTER_CAST_GPU, int8);
 CURRY_TYPES2(REGISTER_CAST_GPU, uint16);
+CURRY_TYPES2(REGISTER_CAST_GPU, uint32);
+CURRY_TYPES2(REGISTER_CAST_GPU, uint64);
+CURRY_TYPES2(REGISTER_CAST_GPU, int8);
 CURRY_TYPES2(REGISTER_CAST_GPU, int16);
 CURRY_TYPES2(REGISTER_CAST_GPU, int32);
 CURRY_TYPES2(REGISTER_CAST_GPU, int64);
@@ -206,6 +250,51 @@ REGISTER_CAST_GPU(bfloat16, float);
 #undef REGISTER_CAST_GPU
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+class SyclCastOp : public CastOpBase {
+ public:
+  explicit SyclCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
+    OP_REQUIRES_OK(ctx, Prepare());
+  }
+
+ private:
+  Status Prepare() {
+    if (external_src_dtype_ == external_dst_dtype_) {
+      work_ = nullptr;  // Identity
+      return Status::OK();
+    }
+    if (src_dtype_ == DT_BOOL) {
+      work_ = GetSyclCastFromBool(dst_dtype_);
+    } else if (src_dtype_ == DT_INT32) {
+      work_ = GetSyclCastFromInt32(dst_dtype_);
+    } else if (src_dtype_ == DT_INT64) {
+      work_ = GetSyclCastFromInt64(dst_dtype_);
+    } else if (src_dtype_ == DT_FLOAT) {
+      work_ = GetSyclCastFromFloat(dst_dtype_);
+    } else if (src_dtype_ == DT_DOUBLE) {
+      work_ = GetSyclCastFromDouble(dst_dtype_);
+    }
+
+    return work_ == nullptr ? Unimplemented() : Status::OK();
+  }
+};
+
+#define REGISTER_CAST_SYCL(srctype, dsttype)                   \
+  REGISTER_KERNEL_BUILDER(Name("Cast")                         \
+                              .TypeConstraint<srctype>("SrcT") \
+                              .TypeConstraint<dsttype>("DstT") \
+                              .Device(DEVICE_SYCL),            \
+                          SyclCastOp)
+CURRY_TYPES2(REGISTER_CAST_SYCL, bool);
+CURRY_TYPES2(REGISTER_CAST_SYCL, int32);
+CURRY_TYPES2(REGISTER_CAST_SYCL, int64);
+CURRY_TYPES2(REGISTER_CAST_SYCL, float);
+CURRY_TYPES2(REGISTER_CAST_SYCL, double);
+
+#undef REGISTER_CAST_SYCL
+
+#endif  // TENSORFLOW_USE_SYCL
+
 #undef CURRY_TYPES2
 
 // HostCast differs from Cast in that its input and output are in host memory.
@@ -213,5 +302,9 @@ REGISTER_KERNEL_BUILDER(Name("_HostCast").Device(DEVICE_CPU), CpuCastOp);
 REGISTER_KERNEL_BUILDER(
     Name("_HostCast").Device(DEVICE_GPU).HostMemory("x").HostMemory("y"),
     CpuCastOp);
-
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("_HostCast").Device(DEVICE_SYCL).HostMemory("x").HostMemory("y"),
+    CpuCastOp);
+#endif  // TENSORFLOW_USE_SYCL
 }  // end namespace tensorflow

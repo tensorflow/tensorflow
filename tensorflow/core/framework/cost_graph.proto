@@ -5,6 +5,9 @@ option cc_enable_arenas = true;
 option java_outer_classname = "CostGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
 
 message CostGraphDef {
   message Node {
@@ -34,14 +37,31 @@ message CostGraphDef {
       // may itself be an alias. The algorithm will therefore need to follow
       // those pointers.
       int64 alias_input_port = 2;
+      TensorShapeProto shape = 3;
+      DataType dtype = 4;
     }
     repeated OutputInfo output_info = 5;
 
     // Temporary memory used by this node.
     int64 temporary_memory_size = 6;
 
-    // Estimate of the computational cost of this node.
+    // Persistent memory used by this node.
+    int64 persistent_memory_size = 12;
+
+    int64 host_temp_memory_size = 10 [deprecated = true];
+    int64 device_temp_memory_size = 11 [deprecated = true];
+    int64 device_persistent_memory_size = 16 [deprecated = true];
+
+    // Estimate of the computational cost of this node, in microseconds.
     int64 compute_cost = 9;
+
+    // Analytical estimate of the computational cost of this node, in
+    // microseconds.
+    int64 compute_time = 14;
+
+    // Analytical estimate of the memory access cost of this node, in
+    // microseconds.
+    int64 memory_time = 15;
 
     // If true, the output is permanent: it can't be discarded, because this
     // node is part of the "final output". Nodes may depend on final nodes.
@@ -49,6 +69,9 @@ message CostGraphDef {
 
     // Ids of the control inputs for this node.
     repeated int32 control_input = 8;
+
+    // Are the costs inaccurate?
+    bool inaccurate = 17;
   }
   repeated Node node = 1;
 }

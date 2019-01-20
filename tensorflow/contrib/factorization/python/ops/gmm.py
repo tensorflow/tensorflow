@@ -12,33 +12,65 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Implementation of Gaussian mixture model (GMM) clustering.
-
-This goes on top of skflow API.
-"""
+"""Implementation of Gaussian mixture model (GMM) clustering using tf.Learn."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import numpy as np
 
-import tensorflow as tf
-
+from tensorflow.contrib import framework
 from tensorflow.contrib.factorization.python.ops import gmm_ops
+from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
-from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
+from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import logging_ops as logging
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops.control_flow_ops import with_dependencies
+from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training_util
 
 
-class GMM(estimator.Estimator, TransformerMixin):
-  """GMM clustering."""
+def _streaming_sum(scalar_tensor):
+  """Create a sum metric and update op."""
+  sum_metric = framework.local_variable(constant_op.constant(0.0))
+  sum_update = sum_metric.assign_add(scalar_tensor)
+  return sum_metric, sum_update
+
+
+class _InitializeClustersHook(session_run_hook.SessionRunHook):
+  """Initializes clusters or waits for cluster initialization."""
+
+  def __init__(self, init_op, is_initialized_op, is_chief):
+    self._init_op = init_op
+    self._is_chief = is_chief
+    self._is_initialized_op = is_initialized_op
+
+  def after_create_session(self, session, _):
+    assert self._init_op.graph == ops.get_default_graph()
+    assert self._is_initialized_op.graph == self._init_op.graph
+    while True:
+      try:
+        if session.run(self._is_initialized_op):
+          break
+        elif self._is_chief:
+          session.run(self._init_op)
+        else:
+          time.sleep(1)
+      except RuntimeError as e:
+        logging.info(e)
+
+
+class GMM(estimator.Estimator):
+  """An estimator for GMM clustering."""
   SCORES = 'scores'
+  LOG_LIKELIHOOD = 'loss'
   ASSIGNMENTS = 'assignments'
-  ALL_SCORES = 'all_scores'
 
   def __init__(self,
                num_clusters,
@@ -47,11 +79,7 @@ class GMM(estimator.Estimator, TransformerMixin):
                params='wmc',
                initial_clusters='random',
                covariance_type='full',
-               batch_size=128,
-               steps=10,
-               continue_training=False,
-               config=None,
-               verbose=1):
+               config=None):
     """Creates a model for running GMM training and inference.
 
     Args:
@@ -64,157 +92,92 @@ class GMM(estimator.Estimator, TransformerMixin):
       initial_clusters: specifies how to initialize the clusters for training.
         See gmm_ops.gmm for the possible values.
       covariance_type: one of "full", "diag".
-      batch_size: See TensorFlowEstimator
-      steps: See TensorFlowEstimator
-      continue_training: See TensorFlowEstimator
-      config: See TensorFlowEstimator
-      verbose: See TensorFlowEstimator
+      config: See Estimator
     """
-    super(GMM, self).__init__(
-        model_dir=model_dir,
-        config=config)
-    self.batch_size = batch_size
-    self.steps = steps
-    self.continue_training = continue_training
-    self.verbose = verbose
     self._num_clusters = num_clusters
     self._params = params
     self._training_initial_clusters = initial_clusters
     self._covariance_type = covariance_type
     self._training_graph = None
     self._random_seed = random_seed
+    super(GMM, self).__init__(
+        model_fn=self._model_builder(), model_dir=model_dir, config=config)
 
-  def fit(self, x, y=None, monitors=None, logdir=None, steps=None):
-    """Trains a GMM clustering on x.
+  def predict_assignments(self, input_fn=None, batch_size=None, outputs=None):
+    """See BaseEstimator.predict."""
+    results = self.predict(input_fn=input_fn,
+                           batch_size=batch_size,
+                           outputs=outputs)
+    for result in results:
+      yield result[GMM.ASSIGNMENTS]
 
-    Note: See TensorFlowEstimator for logic for continuous training and graph
-      construction across multiple calls to fit.
-
-    Args:
-      x: training input matrix of shape [n_samples, n_features].
-      y: labels. Should be None.
-      monitors: List of `Monitor` objects to print training progress and
-        invoke early stopping.
-      logdir: the directory to save the log file that can be used for optional
-        visualization.
-      steps: number of training steps. If not None, overrides the value passed
-        in constructor.
-
-    Returns:
-      Returns self.
-    """
-    if logdir is not None:
-      self._model_dir = logdir
-    self._data_feeder = data_feeder.setup_train_data_feeder(
-        x, None, self._num_clusters, self.batch_size)
-    self._train_model(input_fn=self._data_feeder.input_builder,
-                      feed_fn=self._data_feeder.get_feed_dict_fn(),
-                      steps=steps or self.steps,
-                      monitors=monitors,
-                      init_feed_fn=self._data_feeder.get_feed_dict_fn())
-    return self
-
-  def predict(self, x, batch_size=None):
-    """Predict cluster id for each element in x.
+  def score(self, input_fn=None, batch_size=None, steps=None):
+    """Predict total log-likelihood.
 
     Args:
-      x: 2-D matrix or iterator.
-      batch_size: size to use for batching up x for querying the model.
+      input_fn: see predict.
+      batch_size: see predict.
+      steps: see predict.
 
     Returns:
-      Array with same number of rows as x, containing cluster ids.
+      Total log-likelihood.
     """
-    return np.array([
-        prediction[GMM.ASSIGNMENTS] for prediction in
-        super(GMM, self).predict(x=x, batch_size=batch_size, as_iterable=True)])
+    results = self.evaluate(input_fn=input_fn, batch_size=batch_size,
+                            steps=steps)
+    return np.log(np.sum(np.exp(results[GMM.SCORES])))
 
-  def score(self, x, batch_size=None):
-    """Predict total sum of distances to nearest clusters.
-
-    Args:
-      x: 2-D matrix or iterator.
-      batch_size: size to use for batching up x for querying the model.
-
-    Returns:
-      Total score.
-    """
-    return np.sum(self.evaluate(x=x, batch_size=batch_size)[GMM.SCORES])
-
-  def transform(self, x, batch_size=None):
-    """Transforms each element in x to distances to cluster centers.
-
-    Args:
-      x: 2-D matrix or iterator.
-      batch_size: size to use for batching up x for querying the model.
-
-    Returns:
-      Array with same number of rows as x, and num_clusters columns, containing
-      distances to the cluster centers.
-    """
-    return np.array([
-        prediction[GMM.ALL_SCORES] for prediction in
-        super(GMM, self).predict(x=x, batch_size=batch_size, as_iterable=True)])
+  def weights(self):
+    """Returns the cluster weights."""
+    return checkpoint_utils.load_variable(
+        self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_WEIGHT)
 
   def clusters(self):
     """Returns cluster centers."""
-    clusters = tf.contrib.framework.load_variable(
+    clusters = checkpoint_utils.load_variable(
         self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_VARIABLE)
     return np.squeeze(clusters, 1)
 
   def covariances(self):
     """Returns the covariances."""
-    return tf.contrib.framework.load_variable(
-        self.model_dir,
-        gmm_ops.GmmAlgorithm.CLUSTERS_COVS_VARIABLE)
+    return checkpoint_utils.load_variable(
+        self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_COVS_VARIABLE)
 
   def _parse_tensor_or_dict(self, features):
     if isinstance(features, dict):
-      return array_ops.concat(1, [features[k] for k in sorted(features.keys())])
+      return array_ops.concat([features[k] for k in sorted(features.keys())],
+                              1)
     return features
 
-  def _get_train_ops(self, features, _):
-    (_,
-     _,
-     losses,
-     training_op) = gmm_ops.gmm(
-         self._parse_tensor_or_dict(features),
-         self._training_initial_clusters,
-         self._num_clusters,
-         self._random_seed,
-         self._covariance_type,
-         self._params)
-    incr_step = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-    loss = tf.reduce_sum(losses)
-    training_op = with_dependencies([training_op, incr_step], loss)
-    return training_op, loss
+  def _model_builder(self):
+    """Creates a model function."""
 
-  def _get_predict_ops(self, features):
-    (all_scores,
-     model_predictions,
-     _,
-     _) = gmm_ops.gmm(
-         self._parse_tensor_or_dict(features),
-         self._training_initial_clusters,
-         self._num_clusters,
-         self._random_seed,
-         self._covariance_type,
-         self._params)
-    return {
-        GMM.ALL_SCORES: all_scores[0],
-        GMM.ASSIGNMENTS: model_predictions[0][0],
-    }
+    def _model_fn(features, labels, mode, config):
+      """Model function."""
+      assert labels is None, labels
+      (loss,
+       scores,
+       model_predictions,
+       training_op,
+       init_op,
+       is_initialized) = gmm_ops.gmm(self._parse_tensor_or_dict(features),
+                                     self._training_initial_clusters,
+                                     self._num_clusters, self._random_seed,
+                                     self._covariance_type,
+                                     self._params)
+      incr_step = state_ops.assign_add(training_util.get_global_step(), 1)
+      training_op = with_dependencies([training_op, incr_step], loss)
+      training_hooks = [_InitializeClustersHook(
+          init_op, is_initialized, config.is_chief)]
+      predictions = {
+          GMM.ASSIGNMENTS: model_predictions[0][0],
+      }
+      eval_metric_ops = {
+          GMM.SCORES: scores,
+          GMM.LOG_LIKELIHOOD: _streaming_sum(loss),
+      }
+      return model_fn_lib.ModelFnOps(mode=mode, predictions=predictions,
+                                     eval_metric_ops=eval_metric_ops,
+                                     loss=loss, train_op=training_op,
+                                     training_hooks=training_hooks)
 
-  def _get_eval_ops(self, features, _, unused_metrics):
-    (_,
-     _,
-     losses,
-     _) = gmm_ops.gmm(
-         self._parse_tensor_or_dict(features),
-         self._training_initial_clusters,
-         self._num_clusters,
-         self._random_seed,
-         self._covariance_type,
-         self._params)
-    return {
-        GMM.SCORES: tf.reduce_sum(losses),
-    }
+    return _model_fn

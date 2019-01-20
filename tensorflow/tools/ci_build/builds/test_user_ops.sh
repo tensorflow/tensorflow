@@ -76,14 +76,17 @@ echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}"
 
 pushd "${TMP_DIR}"
 
-# Obtain paths include and lib paths to the TensorFlow installation
-TF_INC=$("${PYTHON_BIN_PATH}" \
-         -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+# Obtain compilation and linking flags
+TF_CFLAGS=( $("${PYTHON_BIN_PATH}" \
+	      -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )
+TF_LFLAGS=( $("${PYTHON_BIN_PATH}" \
+	      -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
 
-if [[ -z "${TF_INC}" ]]; then
-  die "FAILED to determine TensorFlow include path"
+if [[ -z "${TF_CFLAGS[*]}" || -z "${TF_LFLAGS[*]}" ]]; then
+  die "FAILED to determine TensorFlow compilation or linking flags"
 else
-  echo "TensorFlow include path: ${TF_INC}"
+  echo "TensorFlow compile flags: ${TF_CFLAGS[*]}"
+  echo "TensorFlow link flags: ${TF_LFLAGS[*]}"
 fi
 
 # Check g++ availability
@@ -123,7 +126,7 @@ if [[ ${IS_GPU} == "0" ]]; then
   EXPECTED_OUTPUT="[42, 0, 0]"
 
   # Locate the op kernel C++ file
-  OP_KERNEL_CC="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/zero_out_op_kernel_1.cc"
+  OP_KERNEL_CC="${SCRIPT_DIR}/user_ops/zero_out_op_kernel_1.cc"
   OP_KERNEL_CC=$(realpath "${OP_KERNEL_CC}")
 
   if [[ ! -f "${OP_KERNEL_CC}" ]]; then
@@ -142,7 +145,7 @@ if [[ ${IS_GPU} == "0" ]]; then
 
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
     -shared "${SRC_FILE}" -o "${USER_OP_SO}" \
-    -fPIC -I "${TF_INC}" || \
+    -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]}  || \
     die "g++ compilation of ${SRC_FILE} FAILED"
 
 else
@@ -162,13 +165,13 @@ else
   "${NVCC_BIN}" --version
   echo ""
 
-  OP_KERNEL_CU="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/cuda_op_kernel.cu.cc"
+  OP_KERNEL_CU="${SCRIPT_DIR}/user_ops/cuda_op_kernel.cu.cc"
   OP_KERNEL_CU=$(realpath "${OP_KERNEL_CU}")
   if [[ ! -f "${OP_KERNEL_CU}" ]]; then
     die "ERROR: Unable to find user-op kernel CUDA file at: ${OP_KERNEL_CU}"
   fi
 
-  OP_KERNEL_CC="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/cuda_op_kernel.cc"
+  OP_KERNEL_CC="${SCRIPT_DIR}/user_ops/cuda_op_kernel.cc"
   OP_KERNEL_CC=$(realpath "${OP_KERNEL_CC}")
   if [[ ! -f "${OP_KERNEL_CC}" ]]; then
     die "ERROR: Unable to find user-op kernel C++ file at: ${OP_KERNEL_CC}"
@@ -181,14 +184,26 @@ else
   OP_KERNEL_O=$(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.o/')
   "${NVCC_BIN}" -std=c++11 \
       -c -o "${OP_KERNEL_O}" "${OP_KERNEL_CU}" \
-      -I "${TF_INC}" -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
+      ${TF_CFLAGS[@]} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
       die "nvcc compilation of ${OP_KERNEL_CC} FAILED"
+
+  CUDA_LIB_DIR="/usr/local/cuda/lib64"
+  if [[ ! -d "${CUDA_LIB_DIR}" ]]; then
+    CUDA_LIB_DIR="/usr/local/cuda/lib"
+  fi
+  if [[ ! -d "${CUDA_LIB_DIR}" ]]; then
+    die "ERROR: Failed to find CUDA library directory at either of "
+"/usr/local/cuda/lib and /usr/local/cuda/lib64"
+  fi
+
+  echo "Found CUDA library diretory at: ${CUDA_LIB_DIR}"
+  echo ""
 
   # USER_OP_SO=$(basename $(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.so/'))
   USER_OP_SO="add_one.so"
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" -I "${TF_INC}" -L "/usr/local/cuda/lib64" \
+      "${OP_KERNEL_O}" ${TF_CFLAGS[@]} -L "${CUDA_LIB_DIR}" ${TF_LFLAGS[@]} \
       -fPIC -lcudart || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi
@@ -198,27 +213,42 @@ USER_OP=$(echo "${USER_OP_SO}" | sed -e 's/\.so//')
 echo "Invoking user op ${USER_OP} defined in file ${USER_OP_SO} "\
 "via pip installation"
 
-ORIG_OUTPUT=$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; print(tf.Session('').run(tf.load_op_library('./${USER_OP_SO}').${USER_OP}(${OP_INPUT})))")
+function run_op() {
+  local ORIG_OUTPUT=$1
+  local ADDITIONAL_LOG=$2
 
-# Format OUTPUT for analysis
-if [[ -z $(echo "${ORIG_OUTPUT}" | grep -o ',') ]]; then
-  if [[ ${IS_MAC} == "1" ]]; then
-    OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -E -e 's/[ \t]+/,/g')
+  # Format OUTPUT for analysis
+  if [[ -z $(echo "${ORIG_OUTPUT}" | grep -o ',') ]]; then
+    if [[ ${IS_MAC} == "1" ]]; then
+      local OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -E -e 's/[ \t]+/,/g')
+    else
+      local OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -r -e 's/[ \t]+/,/g')
+    fi
   else
-    OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -r -e 's/[ \t]+/,/g')
+    local OUTPUT="${ORIG_OUTPUT}"
   fi
+
+  local EQUALS_EXPECTED=$("${PYTHON_BIN_PATH}" -c "print(${OUTPUT} == ${EXPECTED_OUTPUT})")
+
+  if [[ "${EQUALS_EXPECTED}" != "True" ]]; then
+    local ERROR="FAILED: Output from user op (${OUTPUT}) does not match expected "\
+  "output ${EXPECTED_OUTPUT}"${ADDITIONAL_LOG}
+    die ${ERROR}
+  else
+    echo "Output from user op (${OUTPUT}) matches expected output"
+  fi
+}
+
+printf "\nTesting execution of user-defined op under graph mode:\n\n"
+run_op "$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; print(tf.Session('').run(tf.load_op_library('./${USER_OP_SO}').${USER_OP}(${OP_INPUT})))")"
+
+if [[ "${IS_GPU}" == "0" ]]; then
+  printf "\nTesting execution of user-defined op under eager mode:\n\n"
+  run_op "$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; tf.enable_eager_execution(); print(tf.load_op_library('./${USER_OP_SO}').${USER_OP}(${OP_INPUT}).numpy())")" " in eager mode"
 else
-  OUTPUT="${ORIG_OUTPUT}"
+  printf "\nSKIPPING the testing of execution of user-defined GPU kernel under eager mode. See b/122972785.\n\n"
 fi
 
-EQUALS_EXPECTED=$("${PYTHON_BIN_PATH}" -c "print(${OUTPUT} == ${EXPECTED_OUTPUT})")
-
-if [[ "${EQUALS_EXPECTED}" != "True" ]]; then
-  die "FAILED: Output from user op (${OUTPUT}) does not match expected "\
-"output ${EXPECTED_OUTPUT}"
-else
-  echo "Output from user op (${OUTPUT}) matches expected output"
-fi
 
 popd
 

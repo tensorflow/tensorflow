@@ -29,13 +29,15 @@ class LSTMOpsTest : public ::testing::Test {
     TF_Status* status = TF_NewStatus();
     auto* lib = TF_LoadLibrary(
         "tensorflow/contrib/rnn/python/ops/_lstm_ops.so", status);
-    CHECK_EQ(TF_OK, TF_GetCode(status));
-    TF_DeleteLibraryHandle(lib);
+    TF_Code code = TF_GetCode(status);
+    string status_msg(TF_Message(status));
     TF_DeleteStatus(status);
+    ASSERT_EQ(TF_OK, code) << status_msg;
+    TF_DeleteLibraryHandle(lib);
   }
 };
 
-static string JoinedCopies(string s, int copies) {
+static string JoinedCopies(const string& s, int copies) {
   string res;
   for (int i = 0; i < copies; ++i) {
     strings::StrAppend(&res, i > 0 ? ";" : "", s);
@@ -79,118 +81,86 @@ TEST_F(LSTMOpsTest, LSTMBlockCellGrad_ShapeFn) {
 TEST_F(LSTMOpsTest, BlockLSTM_ShapeFn) {
   ShapeInferenceTestOp op("BlockLSTM");
 
-  auto set_op = [&op](int max_len) {
-    std::vector<NodeDefBuilder::NodeOut> x_list;
-    for (int i = 0; i < max_len; ++i) x_list.emplace_back("a", 0, DT_FLOAT);
-    TF_ASSERT_OK(NodeDefBuilder("test", "BlockLSTM")
-                     .Input({"seq_len_max", 0, DT_INT64})
-                     .Input(x_list)
-                     .Input({"cs_prev", 0, DT_FLOAT})
-                     .Input({"h_prev", 0, DT_FLOAT})
-                     .Input({"w", 0, DT_FLOAT})
-                     .Input({"wci", 0, DT_FLOAT})
-                     .Input({"wcf", 0, DT_FLOAT})
-                     .Input({"wco", 0, DT_FLOAT})
-                     .Input({"b", 0, DT_FLOAT})
-                     .Attr("max_len", max_len)
-                     .Finalize(&op.node_def));
-  };
+  TF_ASSERT_OK(NodeDefBuilder("test", "BlockLSTM")
+                   .Input({"seq_len_max", 0, DT_INT64})
+                   .Input({"x", 0, DT_FLOAT})
+                   .Input({"cs_prev", 0, DT_FLOAT})
+                   .Input({"h_prev", 0, DT_FLOAT})
+                   .Input({"w", 0, DT_FLOAT})
+                   .Input({"wci", 0, DT_FLOAT})
+                   .Input({"wcf", 0, DT_FLOAT})
+                   .Input({"wco", 0, DT_FLOAT})
+                   .Input({"b", 0, DT_FLOAT})
+                   .Finalize(&op.node_def));
 
-  for (int max_len = 1; max_len < 11; max_len += 3) {
-    set_op(max_len);
-    int num_in = max_len + 8;
-    int num_out = max_len * 7;
+  // Middle inputs don't affect shape inference.
+  string infix = ";" + JoinedCopies("?", 6) + ";";
 
-    // Middle inputs don't affect shape inference.
-    string infix = ";" + JoinedCopies("?", num_in - 3) + ";";
+  // Rank checks.
+  INFER_ERROR("must be rank 3", op, "?;[?]" + infix + "?");
+  INFER_ERROR("must be rank 1", op, "?;?" + infix + "[?,?]");
 
-    // Rank checks.
-    INFER_ERROR("must be rank 2", op, "?;[?]" + infix + "?");
-    INFER_ERROR("must be rank 1", op, "?;?" + infix + "[?,?]");
+  // Output
+  INFER_OK(op, "?;?" + infix + "?", JoinedCopies("[?,?,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "?", JoinedCopies("[d1_0,d1_1,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "[?]", JoinedCopies("[d1_0,d1_1,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "[20]", JoinedCopies("[d1_0,d1_1,5]", 7));
 
-    // Output
-    INFER_OK(op, "?;?" + infix + "?", JoinedCopies("[?,?]", num_out));
-    INFER_OK(op, "?;[?,?]" + infix + "?", JoinedCopies("[d1_0,?]", num_out));
-    INFER_OK(op, "?;[?,?]" + infix + "[?]", JoinedCopies("[d1_0,?]", num_out));
-    INFER_OK(op, "?;[?,?]" + infix + "[20]", JoinedCopies("[d1_0,5]", num_out));
-
-    // cell_size must be divisible by 4.
-    INFER_ERROR("must be evenly divisible", op, "?;?" + infix + "[11]");
-  }
+  // cell_size must be divisible by 4.
+  INFER_ERROR("must be evenly divisible", op, "?;?" + infix + "[11]");
 }
 
 TEST_F(LSTMOpsTest, BlockLSTMGrad_ShapeFn) {
   ShapeInferenceTestOp op("BlockLSTMGrad");
+  TF_ASSERT_OK(NodeDefBuilder("test", "BlockLSTMGrad")
+                   .Input({"seq_len_max", 0, DT_INT64})
+                   .Input({"x", 0, DT_FLOAT})
+                   .Input({"cs_prev", 0, DT_FLOAT})
+                   .Input({"h_prev", 0, DT_FLOAT})
+                   .Input({"w", 0, DT_FLOAT})
+                   .Input({"wci", 0, DT_FLOAT})
+                   .Input({"wcf", 0, DT_FLOAT})
+                   .Input({"wco", 0, DT_FLOAT})
+                   .Input({"b", 0, DT_FLOAT})
+                   .Input({"i", 0, DT_FLOAT})
+                   .Input({"cs", 0, DT_FLOAT})
+                   .Input({"f", 0, DT_FLOAT})
+                   .Input({"o", 0, DT_FLOAT})
+                   .Input({"ci", 0, DT_FLOAT})
+                   .Input({"co", 0, DT_FLOAT})
+                   .Input({"h", 0, DT_FLOAT})
+                   .Input({"cs_grad", 0, DT_FLOAT})
+                   .Input({"h_grad", 0, DT_FLOAT})
+                   .Finalize(&op.node_def));
 
-  auto set_op = [&op](int max_len) {
-    std::vector<NodeDefBuilder::NodeOut> x_list;
-    for (int i = 0; i < max_len; ++i) x_list.emplace_back("a", 0, DT_FLOAT);
-    TF_ASSERT_OK(NodeDefBuilder("test", "BlockLSTMGrad")
-                     .Input({"seq_len_max", 0, DT_INT64})
-                     .Input(x_list)
-                     .Input({"cs_prev", 0, DT_FLOAT})
-                     .Input({"h_prev", 0, DT_FLOAT})
-                     .Input({"w", 0, DT_FLOAT})
-                     .Input({"wci", 0, DT_FLOAT})
-                     .Input({"wcf", 0, DT_FLOAT})
-                     .Input({"wco", 0, DT_FLOAT})
-                     .Input({"b", 0, DT_FLOAT})
-                     .Input(x_list)
-                     .Input(x_list)
-                     .Input(x_list)
-                     .Input(x_list)
-                     .Input(x_list)
-                     .Input(x_list)
-                     .Input(x_list)
-                     .Input(x_list)
-                     .Input(x_list)
-                     .Attr("max_len", max_len)
-                     .Finalize(&op.node_def));
-  };
+  // Last inputs don't affect shape inference.
+  string suffix = ";" + JoinedCopies("?", 9);
 
-  for (int max_len = 1; max_len < 11; max_len += 3) {
-    set_op(max_len);
-    int num_in = max_len * 10 + 8;
-    int num_out = max_len + 7;
+  // Rank check for x
+  INFER_ERROR("must be rank 3", op, "?;[?];?;?;?;?;?;?;?" + suffix);
 
-    // Last inputs don't affect shape inference.
-    string suffix = ";" + JoinedCopies("?", 9 * max_len);
+  // Rank checks for cs_prev through b.
+  INFER_ERROR("must be rank 2", op, "?;?;[1];?;?;?;?;?;?" + suffix);
+  INFER_ERROR("must be rank 2", op, "?;?;?;[1];?;?;?;?;?" + suffix);
+  INFER_ERROR("must be rank 2", op, "?;?;?;?;[1];?;?;?;?" + suffix);
+  INFER_ERROR("must be rank 1", op, "?;?;?;?;?;[1,?];?;?;?" + suffix);
+  INFER_ERROR("must be rank 1", op, "?;?;?;?;?;?;[1,?];?;?" + suffix);
+  INFER_ERROR("must be rank 1", op, "?;?;?;?;?;?;?;[1,?];?" + suffix);
+  INFER_ERROR("must be rank 1", op, "?;?;?;?;?;?;?;?;[1,?]" + suffix);
 
-    // Rank check for x
-    string invalid_x = JoinedCopies("[?]", max_len);
-    INFER_ERROR("must be rank 2", op,
-                "?;" + invalid_x + ";?;?;?;?;?;?;?" + suffix);
+  // Output with all input knowns makes known rank outputs.
+  INFER_OK(
+      op, JoinedCopies("?", 18),
+      "[?,?,?];" + JoinedCopies("[?,?]", 3) + ";" + JoinedCopies("[?]", 4));
 
-    // Rank checks for cs_prev through b.
-    string unknown_x = JoinedCopies("?", max_len);
-    INFER_ERROR("must be rank 2", op,
-                "?;" + unknown_x + ";[1];?;?;?;?;?;?" + suffix);
-    INFER_ERROR("must be rank 2", op,
-                "?;" + unknown_x + ";?;[1];?;?;?;?;?" + suffix);
-    INFER_ERROR("must be rank 2", op,
-                "?;" + unknown_x + ";?;?;[1];?;?;?;?" + suffix);
-    INFER_ERROR("must be rank 1", op,
-                "?;" + unknown_x + ";?;?;?;[1,?];?;?;?" + suffix);
-    INFER_ERROR("must be rank 1", op,
-                "?;" + unknown_x + ";?;?;?;?;[1,?];?;?" + suffix);
-    INFER_ERROR("must be rank 1", op,
-                "?;" + unknown_x + ";?;?;?;?;?;[1,?];?" + suffix);
-    INFER_ERROR("must be rank 1", op,
-                "?;" + unknown_x + ";?;?;?;?;?;?;[1,?]" + suffix);
-
-    // Output with all input knowns makes known rank outputs.
-    INFER_OK(op, JoinedCopies("?", num_in),
-             JoinedCopies("[?,?]", num_out - 4) + ";" + JoinedCopies("[?]", 4));
-
-    // Output with copies input shapes to output.
-    string input = strings::StrCat("?;", JoinedCopies("[?,?]", max_len + 3),
-                                   ";", JoinedCopies("[?]", 4), suffix);
-    string expected = JoinedCopies("in1", max_len);  // copies of x;
-    for (int i = max_len; i < num_out; ++i) {
-      strings::StrAppend(&expected, ";in", (i + 1));
-    }
-    INFER_OK(op, input, expected);
+  // Output with copies input shapes to output.
+  string input = strings::StrCat("?;[?,?,?];", JoinedCopies("[?,?]", 3), ";",
+                                 JoinedCopies("[?]", 4), suffix);
+  string expected = "in1";
+  for (int i = 1; i < 8; ++i) {
+    strings::StrAppend(&expected, ";in", (i + 1));
   }
+  INFER_OK(op, input, expected);
 }
 
 }  // namespace tensorflow

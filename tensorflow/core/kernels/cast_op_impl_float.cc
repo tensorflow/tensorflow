@@ -22,31 +22,24 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetCpuCastFromFloat(DataType dst_dtype) {
+CastFunctorType GetCpuCastFromFloat(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, float);
-  if (dst_dtype == DT_BFLOAT16) {
-    return [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
-      int64 N = out->NumElements();
-      auto worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
-      auto work = [&inp, &out](int64 start, int64 end) {
-        FloatToBFloat16(inp.flat<float>().data() + start,
-                        out->flat<bfloat16>().data() + start, end - start);
-      };
-      Shard(worker_threads->num_threads, worker_threads->workers, N, 2, work);
-    };
-  }
-
   return nullptr;
 }
 
 #if GOOGLE_CUDA
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetGpuCastFromFloat(DataType dst_dtype) {
+CastFunctorType GetGpuCastFromFloat(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, GPUDevice, float);
-  CAST_CASE(GPUDevice, float, bfloat16);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+CastFunctorType GetSyclCastFromFloat(DataType dst_dtype) {
+  CURRY_TYPES3_NO_HALF(CAST_CASE, SYCLDevice, float);
+  return nullptr;
+}
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

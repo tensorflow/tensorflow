@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TYPE_TRAITS_H_
-#define TENSORFLOW_FRAMEWORK_TYPE_TRAITS_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TYPE_TRAITS_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TYPE_TRAITS_H_
 
 #include <limits>
 #include <utility>
 
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -58,16 +58,17 @@ struct is_complex<std::complex<float>> : true_type {};
 template <>
 struct is_complex<std::complex<double>> : true_type {};
 
-// All types not specialized are marked invalid.
-template <class T>
-struct IsValidDataType {
-  static constexpr bool value = false;
-};
-
-// Extra validity checking; not part of public API.
-struct TestIsValidDataType {
-  static_assert(IsValidDataType<int64>::value, "Incorrect impl for int64");
-  static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
+// is_simple_type<T>::value if T[] can be safely constructed and destructed
+// without running T() and ~T().  We do not use std::is_trivial<T>
+// directly because std::complex<float> and std::complex<double> are
+// not trivial, but their arrays can be constructed and destructed
+// without running their default ctors and dtors.
+template <typename T>
+struct is_simple_type {
+  static constexpr bool value =
+      std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
+      std::is_same<T, complex64>::value || std::is_same<T, complex128>::value ||
+      is_quantized<T>::value || std::is_same<T, bfloat16>::value;
 };
 
 }  // namespace tensorflow
@@ -105,4 +106,4 @@ struct is_signed<tensorflow::qint32> : public is_signed<tensorflow::int32> {};
 
 }  // namespace std
 
-#endif  // TENSORFLOW_FRAMEWORK_TYPE_TRAITS_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TYPE_TRAITS_H_

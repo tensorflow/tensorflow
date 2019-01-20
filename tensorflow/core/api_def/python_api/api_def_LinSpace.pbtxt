@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "LinSpace"
+  endpoint {
+    name: "lin_space"
+    deprecation_version: 2
+  }
+  endpoint {
+    name: "linspace"
+  }
+}

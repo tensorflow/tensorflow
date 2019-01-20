@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Tools to allow different io formats (deprecated).
 
-"""Tools to allow different io formats."""
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,8 +31,13 @@ from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_batch_e
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_batch_features
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_batch_record_features
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_keyed_batch_examples
+from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_keyed_batch_examples_shared_queue
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_keyed_batch_features
+from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_keyed_batch_features_shared_queue
+from tensorflow.contrib.learn.python.learn.learn_io.numpy_io import numpy_input_fn
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_data
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_labels
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_matrix
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import HAS_PANDAS
+from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import pandas_input_fn
+from tensorflow.contrib.learn.python.learn.learn_io.generator_io import generator_input_fn

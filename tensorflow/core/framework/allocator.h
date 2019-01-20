@@ -13,19 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
-#define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
 
 #include <limits>
 
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+class Variant;
 
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
@@ -65,8 +70,8 @@ struct AllocatorStats {
 // device memory.
 class Allocator {
  public:
-  // Align to 32 byte boundary.
-  static constexpr size_t kAllocatorAlignment = 32;
+  // Align to 64 byte boundary.
+  static constexpr size_t kAllocatorAlignment = 64;
 
   virtual ~Allocator();
 
@@ -149,8 +154,9 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t RequestedSize(void* ptr) {
+  virtual size_t RequestedSize(const void* ptr) {
     CHECK(false) << "allocator doesn't track sizes";
+    return size_t(0);
   }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
@@ -161,7 +167,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSize(void* ptr) { return RequestedSize(ptr); }
+  virtual size_t AllocatedSize(const void* ptr) { return RequestedSize(ptr); }
 
   // Returns either 0 or an identifier assigned to the buffer at 'ptr'
   // when the buffer was returned by AllocateRaw. If non-zero, the
@@ -172,7 +178,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual int64 AllocationId(void* ptr) { return 0; }
+  virtual int64 AllocationId(const void* ptr) { return 0; }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns 0. This method can be called when
@@ -180,34 +186,24 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSizeSlow(void* ptr) {
+  virtual size_t AllocatedSizeSlow(const void* ptr) {
     if (TracksAllocationSizes()) {
       return AllocatedSize(ptr);
     }
     return 0;
   }
 
-  // is_simple<T>::value if T[] can be safely constructed and destructed
-  // without running T() and ~T().  We do not use std::is_trivial<T>
-  // directly because std::complex<float> and std::complex<double> are
-  // not trival, but their arrays can be constructed and destructed
-  // without running their default ctors and dtors.
-  template <typename T>
-  struct is_simple {
-    static constexpr bool value =
-        std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
-        std::is_same<T, complex64>::value ||
-        std::is_same<T, complex128>::value || is_quantized<T>::value;
-  };
-
   // Fills in 'stats' with statistics collected by this allocator.
   virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
+
+  // Clears the internal stats except for the `in_use` field.
+  virtual void ClearStats() {}
 
  private:
   // No constructors or destructors are run for simple types
   template <typename T>
   void RunCtor(T* p, size_t n) {
-    static_assert(is_simple<T>::value, "T is not a simple type.");
+    static_assert(is_simple_type<T>::value, "T is not a simple type.");
   }
 
   template <typename T>
@@ -226,14 +222,22 @@ class Allocator {
     for (size_t i = 0; i < n; ++p, ++i) p->~string();
   }
 
+  virtual void RunResourceCtor(ResourceHandle* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
+  }
+
+  // Runs string's default destructor for  p[0], p[1], ..., p[n-1].
+  virtual void RunResourceDtor(ResourceHandle* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+  }
+
+  virtual void RunVariantCtor(Variant* p, size_t n);
+
+  virtual void RunVariantDtor(Variant* p, size_t n);
+
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
   // allocation, number of bytes free on device, etc.)
-};
-
-template <>
-struct Allocator::is_simple<bfloat16> {
-  static const bool value = true;
 };
 
 // Allocator-specific constructors and destructors are used for
@@ -247,6 +251,80 @@ template <>
 inline void Allocator::RunDtor(string* p, size_t n) {
   RunStringDtor(p, n);
 }
+
+template <>
+inline void Allocator::RunCtor(ResourceHandle* p, size_t n) {
+  RunResourceCtor(p, n);
+}
+
+template <>
+inline void Allocator::RunDtor(ResourceHandle* p, size_t n) {
+  RunResourceDtor(p, n);
+}
+
+template <>
+inline void Allocator::RunCtor(Variant* p, size_t n) {
+  RunVariantCtor(p, n);
+}
+
+template <>
+inline void Allocator::RunDtor(Variant* p, size_t n) {
+  RunVariantDtor(p, n);
+}
+
+// An implementation of Allocator that delegates all calls to another Allocator.
+//
+// Useful to clients who want to override part of the functionality of another
+// allocator.
+class AllocatorWrapper : public Allocator {
+ public:
+  explicit AllocatorWrapper(Allocator* wrapped) : wrapped_(wrapped) {}
+
+  ~AllocatorWrapper() override {}
+
+  // Returns the wrapped allocator to which all calls are delegated.
+  Allocator* wrapped() const { return wrapped_; }
+
+  string Name() override { return wrapped_->Name(); }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return wrapped_->AllocateRaw(alignment, num_bytes);
+  }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes,
+                    const AllocationAttributes& allocation_attr) override {
+    return wrapped_->AllocateRaw(alignment, num_bytes, allocation_attr);
+  }
+
+  void DeallocateRaw(void* ptr) override { wrapped_->DeallocateRaw(ptr); }
+
+  bool TracksAllocationSizes() override {
+    return wrapped_->TracksAllocationSizes();
+  }
+
+  bool ShouldAllocateEmptyTensors() override {
+    return wrapped_->TracksAllocationSizes();
+  }
+
+  size_t RequestedSize(const void* ptr) override {
+    return wrapped_->RequestedSize(ptr);
+  }
+
+  size_t AllocatedSize(const void* ptr) override {
+    return wrapped_->AllocatedSize(ptr);
+  }
+
+  int64 AllocationId(const void* ptr) override {
+    return wrapped_->AllocationId(ptr);
+  }
+
+  size_t AllocatedSizeSlow(const void* ptr) override {
+    return wrapped_->AllocatedSizeSlow(ptr);
+  }
+
+ private:
+  Allocator* const wrapped_;
+};
 
 // A tensorflow Op may need access to different kinds of memory that
 // are not simply a function of the device to which the Op has been
@@ -275,38 +353,82 @@ struct AllocatorAttributes {
   bool nic_compatible() const { return value & (0x1 << 1); }
   void set_gpu_compatible(bool v) { value |= (static_cast<int>(v) << 2); }
   bool gpu_compatible() const { return value & (0x1 << 2); }
-  void set_track_sizes(bool v) { value |= (static_cast<int>(v) << 3); }
-  bool track_sizes() const { return value & (0x1 << 3); }
-  void Merge(AllocatorAttributes other) { value |= other.value; }
+  void Merge(AllocatorAttributes other) {
+    value |= other.value;
+    scope_id = (scope_id > 0 && other.scope_id == 0)
+                   ? scope_id
+                   : ((scope_id == 0) ? other.scope_id : 0);
+  }
+  // Returns true if the fields set in *this is a subset of or equal to
+  // those set in other.
+  bool IsEqualOrLessRestrictiveThan(const AllocatorAttributes& other) const {
+    return (value | other.value) == other.value;
+  }
 
   // NOTE: The upper 8 bits of the value are reserved for
   // device-specific uses.  Implementors of a device can interpret these
   // upper 8 bits in device-specific ways, and ops implemented for those
   // devices are responsible for setting those 8 bits appropriately.
   uint32 value = 0;
+  // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
+  // a named special-purpose allocator on the same device.
+  int32 scope_id = 0;
 };
 
-// Returns a trivial implementation of Allocator which uses the system
-// default malloc. The returned allocator is a process singleton.
-Allocator* cpu_allocator();
+// Returns a trivial implementation of Allocator, which is a process singleton.
+// Access through this function is only intended for use by restricted parts
+// of the infrastructure.
+Allocator* cpu_allocator_base();
 
-// If 'enable' is true, the process-wide cpu allocator collects
+// If available, calls ProcessState::GetCPUAllocator(numa_node).
+// If not, falls back to cpu_allocator_base().
+// Intended for use in contexts where ProcessState is not visible at
+// compile time. Where ProcessState is visible, it's preferable to
+// call it directly.
+Allocator* cpu_allocator(int numa_node = port::kNUMANoAffinity);
+
+// If 'enable' is true, the default CPU allocator implementation will collect
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
+bool CPUAllocatorStatsEnabled();
 
-// If 'enable' is true, the process-wide cpu allocator collects full
-// statistics. By default, it's disabled.
+// If 'enable' is true, the default CPU allocator implementation will collect
+// full statistics. By default, it's disabled.
 void EnableCPUAllocatorFullStats(bool enable);
+bool CPUAllocatorFullStatsEnabled();
 
-// Abstract interface of an object that does the underlying suballoc/free of
-// memory for a higher-level allocator.
+// An object that does the underlying suballoc/free of memory for a higher-level
+// allocator.  The expectation is that the higher-level allocator is doing some
+// kind of cache or pool management so that it will call SubAllocator::Alloc and
+// Free relatively infrequently, compared to the number of times its own
+// AllocateRaw and Free methods are called.
 class SubAllocator {
  public:
+  // Visitor gets called with a pointer to a memory area and its
+  // size in bytes.  The index value will be numa_node for a CPU
+  // allocator and GPU id for a GPU allocator.
+  typedef std::function<void(void*, int index, size_t)> Visitor;
+
+  SubAllocator(const std::vector<Visitor>& alloc_visitors,
+               const std::vector<Visitor>& free_visitors);
+
   virtual ~SubAllocator() {}
   virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;
+
+ protected:
+  // Implementation of Alloc() method must call this on newly allocated
+  // value.
+  void VisitAlloc(void* ptr, int index, size_t num_bytes);
+
+  // Implementation of Free() method must call this on value to be
+  // freed immediately before deallocation.
+  void VisitFree(void* ptr, int index, size_t num_bytes);
+
+  const std::vector<Visitor> alloc_visitors_;
+  const std::vector<Visitor> free_visitors_;
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_

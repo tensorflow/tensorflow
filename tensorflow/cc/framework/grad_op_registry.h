@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRAD_OP_REGISTRY_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRAD_OP_REGISTRY_H_
+#ifndef TENSORFLOW_CC_FRAMEWORK_GRAD_OP_REGISTRY_H_
+#define TENSORFLOW_CC_FRAMEWORK_GRAD_OP_REGISTRY_H_
 
 #include <unordered_map>
 
@@ -24,30 +24,30 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
-// GradFunc is the signature for all gradient functions in GradOpRegistry.
-// Implementations should add operations to compute the gradient outputs of 'op'
-// (returned in 'grad_outputs') using 'scope' and 'grad_inputs'.
+/// GradFunc is the signature for all gradient functions in GradOpRegistry.
+/// Implementations should add operations to compute the gradient outputs of
+/// 'op' (returned in 'grad_outputs') using 'scope' and 'grad_inputs'.
 typedef Status (*GradFunc)(const Scope& scope, const Operation& op,
                            const std::vector<Output>& grad_inputs,
                            std::vector<Output>* grad_outputs);
 
-// GradOpRegistry maintains a static registry of gradient functions.
-// Gradient functions are indexed in the registry by the forward op name (i.e.
-// "MatMul" -> MatMulGrad func).
+/// GradOpRegistry maintains a static registry of gradient functions.
+/// Gradient functions are indexed in the registry by the forward op name (i.e.
+/// "MatMul" -> MatMulGrad func).
 class GradOpRegistry {
  public:
-  // Registers 'func' as the the gradient function for 'op'.
-  // Returns true if registration was succesful, check fails otherwise.
+  /// Registers 'func' as the gradient function for 'op'.
+  /// Returns true if registration was successful, check fails otherwise.
   bool Register(const string& op, GradFunc func);
 
-  // Sets 'func' to the gradient function for 'op' and returns Status OK if
-  // the gradient function for 'op' exists in the registry.
-  // Note that 'func' can be null for ops that have registered no-gradient with
-  // the registry.
-  // Returns error status otherwise.
+  /// Sets 'func' to the gradient function for 'op' and returns Status OK if
+  /// the gradient function for 'op' exists in the registry.
+  /// Note that 'func' can be null for ops that have registered no-gradient with
+  /// the registry.
+  /// Returns error status otherwise.
   Status Lookup(const string& op, GradFunc* func) const;
 
-  // Returns a pointer to the global gradient function registry.
+  /// Returns a pointer to the global gradient function registry.
   static GradOpRegistry* Global();
 
  private:
@@ -72,4 +72,4 @@ class GradOpRegistry {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRAD_OP_REGISTRY_H_
+#endif  // TENSORFLOW_CC_FRAMEWORK_GRAD_OP_REGISTRY_H_

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/optimizer_cse.h"
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -85,7 +86,7 @@ class OptimizerCSETest : public ::testing::Test {
                            str_util::Join(edges, ";"));
   }
 
-  string DoCSE(std::function<bool(const Node*)> consider_fn = nullptr) {
+  string DoCSE(const std::function<bool(const Node*)>& consider_fn = nullptr) {
     string before = CanonicalGraphString(&graph_);
     LOG(ERROR) << "Before rewrites: " << before;
 
@@ -114,8 +115,8 @@ TEST_F(OptimizerCSETest, Simple) {
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'B'] }");
   EXPECT_EQ(DoCSE(),
-            "A(Input);B(Input);D(Mul)|"
-            "A->D;B->D:1");
+            "A(Input);B(Input);C(Mul)|"
+            "A->C;B->C:1");
 }
 
 TEST_F(OptimizerCSETest, Simple_ThreeEquivalent) {
@@ -129,8 +130,8 @@ TEST_F(OptimizerCSETest, Simple_ThreeEquivalent) {
       "node { name: 'E' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'B'] }");
   EXPECT_EQ(DoCSE(),
-            "A(Input);B(Input);E(Mul)|"
-            "A->E;B->E:1");
+            "A(Input);B(Input);C(Mul)|"
+            "A->C;B->C:1");
 }
 
 TEST_F(OptimizerCSETest, Simple_WithFixups) {
@@ -144,8 +145,8 @@ TEST_F(OptimizerCSETest, Simple_WithFixups) {
       "node { name: 'E' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['C', 'D'] }");
   EXPECT_EQ(DoCSE(),
-            "A(Input);B(Input);D(Mul);E(Mul)|"
-            "A->D;B->D:1;D->E;D->E:1");
+            "A(Input);B(Input);C(Mul);E(Mul)|"
+            "A->C;B->C:1;C->E;C->E:1");
 }
 
 TEST_F(OptimizerCSETest, Simple_Commutative) {
@@ -157,8 +158,8 @@ TEST_F(OptimizerCSETest, Simple_Commutative) {
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'A'] }");
   EXPECT_EQ(DoCSE(),
-            "A(Input);B(Input);D(Mul)|"
-            "A->D:1;B->D");
+            "A(Input);B(Input);C(Mul)|"
+            "A->C;B->C:1");
 }
 
 static bool IsNotMultiply(const Node* n) { return n->type_string() != "Mul"; }
@@ -209,8 +210,8 @@ TEST_F(OptimizerCSETest, Simple_SameOps_SameAttrs1) {
       " input: ['A', 'B'] attr { key: 'shape'"
       "    value { shape: { dim: { size: 37 name: 'SAME_NAME' } } } } }");
   EXPECT_EQ(DoCSE(),
-            "A(Input);B(Input);D(Mul)|"
-            "A->D;B->D:1");
+            "A(Input);B(Input);C(Mul)|"
+            "A->C;B->C:1");
 }
 
 TEST_F(OptimizerCSETest, Simple_SameOps_SameAttrs2) {
@@ -228,8 +229,8 @@ TEST_F(OptimizerCSETest, Simple_SameOps_SameAttrs2) {
       "    attr { key: 't' value { type: DT_INT32 } }"
       "    attr { key: 'a' value { i: 3 } } }");
   EXPECT_EQ(DoCSE(),
-            "A(Input);B(Input);D(Mul)|"
-            "A->D;B->D:1");
+            "A(Input);B(Input);C(Mul)|"
+            "A->C;B->C:1");
 }
 
 TEST_F(OptimizerCSETest, SameConstants) {
@@ -248,8 +249,8 @@ TEST_F(OptimizerCSETest, SameConstants) {
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_INT32 } }"
       " input: ['A', 'B'] }");
   EXPECT_EQ(DoCSE(),
-            "B(Const);D(Mul)|"
-            "B->D;B->D:1");
+            "A(Const);D(Mul)|"
+            "A->D;A->D:1");
 }
 
 TEST_F(OptimizerCSETest, DifferentConstants) {
@@ -337,8 +338,8 @@ TEST_F(OptimizerCSETest, Constant_Dedup) {
             "n/_0(Const);n/_1(Const);n/_2(Const);n/_3(Const);"
             "n/_4(Const);n/_5(Const);n/_6(Const);n/_7(Const)|");
   // In theory, there are 2^4 possible correct output of CSE.  In this
-  // test, it happens to eliminate the first 4 nodes.
-  EXPECT_EQ(DoCSE(), "n/_4(Const);n/_5(Const);n/_6(Const);n/_7(Const)|");
+  // test, it happens to eliminate the last 4 nodes.
+  EXPECT_EQ(DoCSE(), "n/_0(Const);n/_1(Const);n/_2(Const);n/_3(Const)|");
 }
 
 static void BM_CSE(int iters, int op_nodes) {

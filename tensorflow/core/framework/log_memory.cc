@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/log_memory.h"
 
-#include "tensorflow/core/framework/log_memory.pb.h"
 #include "tensorflow/core/framework/log_memory.pb_text.h"
+#include "tensorflow/core/framework/log_memory.pb.h"
 
 namespace tensorflow {
 

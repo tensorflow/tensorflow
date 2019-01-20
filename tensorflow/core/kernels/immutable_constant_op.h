@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_KERNELS_IMMUTABLE_CONSTANT_OP_H_
-#define TENSORFLOW_KERNELS_IMMUTABLE_CONSTANT_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMMUTABLE_CONSTANT_OP_H_
+#define TENSORFLOW_CORE_KERNELS_IMMUTABLE_CONSTANT_OP_H_
 
 #include <memory>
 
@@ -33,9 +33,9 @@ class ImmutableConstantOp : public OpKernel {
   ~ImmutableConstantOp() override;
 
   // Names of attributes that are used by this op
-  static constexpr char kDTypeAttr[] = "dtype";
-  static constexpr char kShapeAttr[] = "shape";
-  static constexpr char kMemoryRegionNameAttr[] = "memory_region_name";
+  static constexpr char const* kDTypeAttr = "dtype";
+  static constexpr char const* kShapeAttr = "shape";
+  static constexpr char const* kMemoryRegionNameAttr = "memory_region_name";
 
  private:
   string region_name_;
@@ -46,4 +46,4 @@ class ImmutableConstantOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_IMMUTABLE_CONSTANT_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMMUTABLE_CONSTANT_OP_H_

@@ -19,15 +19,41 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
+class CollectiveExecutorMgrInterface;
 class Device;
+class DeviceSet;
 class Env;
-class MasterSessionInterface;
+class MasterSession;
 class OpRegistryInterface;
-class WorkerCacheInterface;
+
+// Options passed to the worker_cache_factory function.
+struct WorkerCacheFactoryOptions {
+  const ClusterDef* cluster_def = nullptr;
+  const string* job_name = nullptr;
+  int task_index;
+  const string* protocol = nullptr;
+
+  WorkerCacheFactoryOptions() {}
+
+  // Construct from a ServerDef proto.
+  //
+  // Note: server_def must outlive WorkerCacheFactoryOptions!
+  WorkerCacheFactoryOptions(const ServerDef& server_def) {
+    if (server_def.has_cluster() && !server_def.job_name().empty()) {
+      cluster_def = &server_def.cluster();
+      job_name = &server_def.job_name();
+      task_index = server_def.task_index();
+      protocol = &server_def.protocol();
+    }
+  }
+};
 
 // The master environment class, which holds a bag of pointers to
 // per-master state.
@@ -52,15 +78,25 @@ struct MasterEnv {
   // vector of devices.
   //
   // The caller of the function takes ownership of the returned
-  // `MasterSessionInterface`, which may not be null. Ownership of the
-  // `MasterEnv*` is retained by the caller. The callee takes
-  // ownership of the `std::vector<Device*>*` argument, but does not
-  // take ownership of the `Device*` objects in the vector.
-  std::function<MasterSessionInterface*(const SessionOptions&, MasterEnv*,
-                                        std::vector<Device*>*)>
+  // `MasterSession`, which may not be null. Ownership of the
+  // `MasterEnv*` is retained by the caller.
+  std::function<MasterSession*(
+      SessionOptions, MasterEnv*,
+      std::unique_ptr<std::vector<std::unique_ptr<Device>>>,
+      std::unique_ptr<WorkerCacheInterface>,
+      std::unique_ptr<DeviceSet> device_set,
+      std::vector<string> filtered_worker_list)>
       master_session_factory;
+
+  std::function<Status(const WorkerCacheFactoryOptions&,
+                       WorkerCacheInterface**)>
+      worker_cache_factory;
+
+  // Generates per-step CollectiveExecutors and has access to utilities
+  // supporting collective operations.
+  CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr;
 };
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MASTER_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MASTER_ENV_H_

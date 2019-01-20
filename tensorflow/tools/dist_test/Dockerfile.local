@@ -19,23 +19,19 @@
 
 FROM ubuntu:16.04
 
-MAINTAINER Shanqing Cai <cais@google.com>
+LABEL maintainer="Shanqing Cai <cais@google.com>"
 
 # Pick up some TF dependencies.
 RUN apt-get update && apt-get install -y \
-        curl \
-        python-numpy \
         python-pip \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
-    python get-pip.py && \
-    rm get-pip.py
-
-# Install TensorFlow CPU version from nightly build.
-RUN pip --no-cache-dir install \
-    https://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.10.0-cp27-none-linux_x86_64.whl
+# Install TensorFlow pip whl
+# TODO(cais): Should we build it locally instead?
+COPY tensorflow-*.whl /
+RUN pip install /tensorflow-*.whl
+RUN rm -f /tensorflow-*.whl
 
 ADD . /var/tf_dist_test

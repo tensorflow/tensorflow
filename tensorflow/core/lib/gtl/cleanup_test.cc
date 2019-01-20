@@ -65,15 +65,14 @@ TEST(CleanupTest, Release) {
 TEST(FinallyTest, TypeErasedWithoutFactory) {
   string s = "active";
   {
-    AnyCleanup s_cleaner([&s]{ s.append(" clean"); });
+    AnyCleanup s_cleaner([&s] { s.append(" clean"); });
     EXPECT_EQ("active", s);
   }
   EXPECT_EQ("active clean", s);
 }
 
 struct Appender {
-  Appender(string* s, const string& msg)
-      : s_(s), msg_(msg) {}
+  Appender(string* s, const string& msg) : s_(s), msg_(msg) {}
   void operator()() const { s_->append(msg_); }
   string* s_;
   string msg_;
@@ -163,7 +162,12 @@ class CleanupReferenceTest : public ::testing::Test {
     int* i;
     F(int* cp, int* i) : cp(cp), i(i) {}
     F(const F& o) : cp(o.cp), i(o.i) { ++*cp; }
-    F& operator=(const F& o) { cp = o.cp; i = o.i; ++*cp; return *this; }
+    F& operator=(const F& o) {
+      cp = o.cp;
+      i = o.i;
+      ++*cp;
+      return *this;
+    }
     F(F&&) = default;
     F& operator=(F&&) = default;
     void operator()() const { ++*i; }
@@ -279,7 +283,7 @@ BENCHMARK(BM_AnyCleanup);
 
 void BM_AnyCleanupNoFactory(int iters) {
   while (iters--) {
-    AnyCleanup fin([]{Incr();});
+    AnyCleanup fin([] { Incr(); });
   }
 }
 BENCHMARK(BM_AnyCleanupNoFactory);

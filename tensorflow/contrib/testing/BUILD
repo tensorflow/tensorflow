@@ -15,16 +15,10 @@ py_library(
         "python/framework/util_test.py",
     ],
     srcs_version = "PY2AND3",
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
 )

@@ -1,0 +1,15 @@
+op {
+  graph_op_name: "SparseMatMul"
+  summary: "Multiply matrix \"a\" by matrix \"b\"."
+  description: <<END
+The inputs must be two-dimensional matrices and the inner dimension of "a" must
+match the outer dimension of "b". Both "a" and "b" must be `Tensor`s not
+`SparseTensor`s.  This op is optimized for the case where at least one of "a" or
+"b" is sparse, in the sense that they have a large proportion of zero values.
+The breakeven for using this versus a dense matrix multiply on one platform was
+30% zero values in the sparse matrix.
+
+The gradient computation of this operation will only take advantage of sparsity
+in the input gradient when that gradient comes from a Relu.
+END
+}

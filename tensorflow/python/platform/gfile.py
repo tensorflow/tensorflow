@@ -14,47 +14,60 @@
 # ==============================================================================
 
 """Import router for file_io."""
-# pylint: disable=wildcard-import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.lib.io import file_io
+# pylint: disable=unused-import
+from tensorflow.python.lib.io.file_io import copy as Copy
+from tensorflow.python.lib.io.file_io import create_dir as MkDir
+from tensorflow.python.lib.io.file_io import delete_file as Remove
+from tensorflow.python.lib.io.file_io import delete_recursively as DeleteRecursively
+from tensorflow.python.lib.io.file_io import file_exists as Exists
+from tensorflow.python.lib.io.file_io import FileIO as _FileIO
+from tensorflow.python.lib.io.file_io import get_matching_files as Glob
+from tensorflow.python.lib.io.file_io import is_directory as IsDirectory
+from tensorflow.python.lib.io.file_io import list_directory as ListDirectory
+from tensorflow.python.lib.io.file_io import recursive_create_dir as MakeDirs
+from tensorflow.python.lib.io.file_io import rename as Rename
+from tensorflow.python.lib.io.file_io import stat as Stat
+from tensorflow.python.lib.io.file_io import walk as Walk
+# pylint: enable=unused-import
+from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
-class GFile(file_io.FileIO):
-  """File I/O wrappers with thread locking."""
+@tf_export('io.gfile.GFile', v1=['gfile.GFile', 'gfile.Open', 'io.gfile.GFile'])
+class GFile(_FileIO):
+  """File I/O wrappers without thread locking.
+
+  Note, that this  is somewhat like builtin Python  file I/O, but
+  there are  semantic differences to  make it more  efficient for
+  some backing filesystems.  For example, a write  mode file will
+  not  be opened  until the  first  write call  (to minimize  RPC
+  invocations in network filesystems).
+  """
 
   def __init__(self, name, mode='r'):
-    mode = mode.replace('b', '')
     super(GFile, self).__init__(name=name, mode=mode)
 
 
-class FastGFile(file_io.FileIO):
-  """File I/O wrappers without thread locking."""
+@tf_export(v1=['gfile.FastGFile'])
+class FastGFile(_FileIO):
+  """File I/O wrappers without thread locking.
 
+  Note, that this  is somewhat like builtin Python  file I/O, but
+  there are  semantic differences to  make it more  efficient for
+  some backing filesystems.  For example, a write  mode file will
+  not  be opened  until the  first  write call  (to minimize  RPC
+  invocations in network filesystems).
+  """
+
+  @deprecated(None, 'Use tf.gfile.GFile.')
   def __init__(self, name, mode='r'):
-    mode = mode.replace('b', '')
     super(FastGFile, self).__init__(name=name, mode=mode)
 
-
-# This should be kept consistent with the OSS implementation
-# of the gfile interface.
 
 # Does not alias to Open so that we use our version of GFile to strip
 # 'b' mode.
 Open = GFile
-
-# pylint: disable=invalid-name
-Exists = file_io.file_exists
-IsDirectory = file_io.is_directory
-Glob = file_io.get_matching_files
-MkDir = file_io.create_dir
-MakeDirs = file_io.recursive_create_dir
-Remove = file_io.delete_file
-DeleteRecursively = file_io.delete_recursively
-ListDirectory = file_io.list_directory
-Walk = file_io.walk
-Stat = file_io.stat
-Rename = file_io.rename
-Copy = file_io.copy

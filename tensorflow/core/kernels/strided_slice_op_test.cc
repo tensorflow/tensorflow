@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -83,6 +82,12 @@ static void BM_SliceFloat(int iters, int dim2) {
 
 BENCHMARK(BM_SliceFloat)->Arg(100)->Arg(1000)->Arg(10000);
 
+static void BM_SliceComplex64(int iters, int dim2) {
+  SliceHelper<std::complex<float>>(iters, dim2);
+}
+
+BENCHMARK(BM_SliceComplex64)->Arg(100)->Arg(1000)->Arg(10000);
+
 static void BM_SliceBFloat16(int iters, int dim2) {
   SliceHelper<bfloat16>(iters, dim2);
 }
@@ -110,13 +115,11 @@ static void BM_ValidateStridedSliceOp(int iters) {
     const int32 new_axis_mask = 0;
     const int32 shrink_axis_mask = 0;
 
-    ShapeReadWriteFromTensorShape wrapped_processing_shape(&processing_shape);
-    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
     TF_CHECK_OK(ValidateStridedSliceOp(
-        begin, end, strides, ShapeReadWriteFromTensorShape(&input_shape),
-        begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
-        &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
-        &is_simple_slice, &slice_dim0, &begin_out, &end_out, &strides_out));
+        &begin, &end, strides, input_shape, begin_mask, end_mask, ellipsis_mask,
+        new_axis_mask, shrink_axis_mask, &processing_shape, &final_shape,
+        &is_identity, &is_simple_slice, &slice_dim0, &begin_out, &end_out,
+        &strides_out));
   }
 }
 

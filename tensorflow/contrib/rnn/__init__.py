@@ -12,28 +12,94 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Additional RNN operations and cells.
+"""RNN Cells and additional RNN operations.
 
-## This package provides additional contributed RNNCells.
+<!--From core-->
+@@RNNCell
+@@LayerRNNCell
+@@BasicRNNCell
+@@BasicLSTMCell
+@@GRUCell
+@@LSTMCell
+@@LSTMStateTuple
+@@DropoutWrapper
+@@MultiRNNCell
+@@DeviceWrapper
+@@ResidualWrapper
 
-### Fused RNNCells
+<!--Used to be in core, but kept in contrib.-->
+@@EmbeddingWrapper
+@@InputProjectionWrapper
+@@OutputProjectionWrapper
+
+<!--Created in contrib, eventual plans to move to core.-->
+@@LayerNormBasicLSTMCell
+@@LSTMBlockWrapper
 @@LSTMBlockCell
 @@GRUBlockCell
-
-### LSTM-like cells
+@@GRUBlockCellV2
+@@FusedRNNCell
+@@FusedRNNCellAdaptor
+@@TimeReversedFusedRNN
+@@LSTMBlockFusedCell
 @@CoupledInputForgetGateLSTMCell
 @@TimeFreqLSTMCell
 @@GridLSTMCell
+@@BidirectionalGridLSTMCell
+@@NASCell
+@@UGRNNCell
+@@IntersectionRNNCell
+@@PhasedLSTMCell
+@@ConvLSTMCell
+@@Conv1DLSTMCell
+@@Conv2DLSTMCell
+@@Conv3DLSTMCell
+@@HighwayWrapper
+@@GLSTMCell
+@@SRUCell
+@@IndRNNCell
+@@IndyGRUCell
+@@IndyLSTMCell
 
-### RNNCell wrappers
+<!--RNNCell wrappers-->
 @@AttentionCellWrapper
+@@CompiledWrapper
+
+<!--RNN functions-->
+@@static_rnn
+@@static_state_saving_rnn
+@@static_bidirectional_rnn
+@@stack_bidirectional_dynamic_rnn
+@@stack_bidirectional_rnn
+
+<!--RNN utilities-->
+@@transpose_batch_time
+@@best_effort_input_batch_size
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import, line-too-long
+# pylint: disable=unused-import,wildcard-import,line-too-long
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import EmbeddingWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import InputProjectionWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import OutputProjectionWrapper
+
+from tensorflow.contrib.rnn.python.ops.fused_rnn_cell import *
 from tensorflow.contrib.rnn.python.ops.gru_ops import *
 from tensorflow.contrib.rnn.python.ops.lstm_ops import *
+from tensorflow.contrib.rnn.python.ops.rnn import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *
+
+from tensorflow.python.ops.rnn import _best_effort_input_batch_size as best_effort_input_batch_size
+from tensorflow.python.ops.rnn import _transpose_batch_time as transpose_batch_time
+from tensorflow.python.ops.rnn import static_bidirectional_rnn
+from tensorflow.python.ops.rnn import static_rnn
+from tensorflow.python.ops.rnn import static_state_saving_rnn
+
+from tensorflow.python.ops.rnn_cell import *
+# pylint: enable=unused-import,wildcard-import,line-too-long
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)

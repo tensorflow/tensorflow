@@ -56,9 +56,10 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
       errors::InvalidArgument("input rank should be >= ", 1 + block_dims,
                               " instead of ", orig_input_tensor.dims()));
 
-  OP_REQUIRES(context, TensorShapeUtils::IsMatrix(orig_crops.shape()) &&
-                           block_dims == orig_crops.dim_size(0) &&
-                           2 == orig_crops.dim_size(1),
+  OP_REQUIRES(context,
+              TensorShapeUtils::IsMatrix(orig_crops.shape()) &&
+                  block_dims == orig_crops.dim_size(0) &&
+                  2 == orig_crops.dim_size(1),
               errors::InvalidArgument("crops should have shape [", block_dims,
                                       ", 2] instead of ",
                                       orig_crops.shape().DebugString()));
@@ -97,6 +98,10 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
     block_shape_product *= block_shape[block_dim];
   }
+  OP_REQUIRES(
+      context, block_shape_product > 0,
+      errors::InvalidArgument("Product of block sizes must be positive, got ",
+                              block_shape_product));
 
   const int64 orig_input_batch_size = orig_input_tensor.dim_size(0);
   OP_REQUIRES(
@@ -275,7 +280,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
                               .HostMemory("crops"),        \
                           BatchToSpaceOp<GPUDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 #endif  // GOOGLE_CUDA
 

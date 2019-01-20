@@ -14,100 +14,169 @@
 # ==============================================================================
 """Classes representing statistical distributions and ops for working with them.
 
-## Classes for statistical distributions.
-
-Classes that represent batches of statistical distributions.  Each class is
-initialized with parameters that define the distributions.
-
-### Base classes
-
-@@Distribution
-
-### Univariate (scalar) distributions
-
-@@Binomial
-@@Bernoulli
-@@Beta
-@@Categorical
-@@Chi2
-@@Exponential
-@@Gamma
-@@InverseGamma
-@@Laplace
-@@Normal
-@@Poisson
-@@StudentT
-@@Uniform
-
-### Multivariate distributions
-
-#### Multivariate normal
-
-@@MultivariateNormalDiag
-@@MultivariateNormalFull
-@@MultivariateNormalCholesky
-@@matrix_diag_transform
-
-#### Other multivariate distributions
-
-@@Dirichlet
-@@DirichletMultinomial
-@@Multinomial
-@@WishartCholesky
-@@WishartFull
-
-### Transformed distributions
-
-@@TransformedDistribution
-@@QuantizedDistribution
-
-### Mixture Models
-
-@@Mixture
-
-## Posterior inference with conjugate priors.
-
-Functions that transform conjugate prior/likelihood pairs to distributions
-representing the posterior or posterior predictive.
-
-### Normal likelihood with conjugate prior.
-
-@@normal_conjugates_known_sigma_posterior
-@@normal_congugates_known_sigma_predictive
-
-## Kullback Leibler Divergence
-
-@@kl
-@@RegisterKL
+Use [tfp.distributions](/probability/api_docs/python/tfp/distributions) instead.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
+from tensorflow.python.util import deprecation
 
-from tensorflow.contrib.distributions.python.ops.bernoulli import *
-from tensorflow.contrib.distributions.python.ops.beta import *
-from tensorflow.contrib.distributions.python.ops.binomial import *
-from tensorflow.contrib.distributions.python.ops.categorical import *
-from tensorflow.contrib.distributions.python.ops.chi2 import *
-from tensorflow.contrib.distributions.python.ops.dirichlet import *
-from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
-from tensorflow.contrib.distributions.python.ops.distribution import *
-from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
-from tensorflow.contrib.distributions.python.ops.exponential import *
-from tensorflow.contrib.distributions.python.ops.gamma import *
-from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
-from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
-from tensorflow.contrib.distributions.python.ops.laplace import *
-from tensorflow.contrib.distributions.python.ops.mixture import *
-from tensorflow.contrib.distributions.python.ops.multinomial import *
-from tensorflow.contrib.distributions.python.ops.mvn import *
-from tensorflow.contrib.distributions.python.ops.normal import *
-from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
-from tensorflow.contrib.distributions.python.ops.poisson import *
-from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
-from tensorflow.contrib.distributions.python.ops.student_t import *
-from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
-from tensorflow.contrib.distributions.python.ops.uniform import *
-from tensorflow.contrib.distributions.python.ops.wishart import *
+
+# pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member,g-import-not-at-top
+
+with deprecation.silence():
+  from tensorflow.contrib.distributions.python.ops import bijectors
+  from tensorflow.contrib.distributions.python.ops.autoregressive import *
+  from tensorflow.contrib.distributions.python.ops.batch_reshape import *
+  from tensorflow.contrib.distributions.python.ops.binomial import *
+  from tensorflow.contrib.distributions.python.ops.cauchy import *
+  from tensorflow.contrib.distributions.python.ops.chi2 import *
+  from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
+  from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
+  from tensorflow.contrib.distributions.python.ops.deterministic import *
+  from tensorflow.contrib.distributions.python.ops.distribution_util import fill_triangular
+  from tensorflow.contrib.distributions.python.ops.distribution_util import fill_triangular_inverse
+  from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
+  from tensorflow.contrib.distributions.python.ops.distribution_util import reduce_weighted_logsumexp
+  from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
+  from tensorflow.contrib.distributions.python.ops.distribution_util import tridiag
+  from tensorflow.contrib.distributions.python.ops.estimator import *
+  from tensorflow.contrib.distributions.python.ops.geometric import *
+  from tensorflow.contrib.distributions.python.ops.half_normal import *
+  from tensorflow.contrib.distributions.python.ops.independent import *
+  from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
+  from tensorflow.contrib.distributions.python.ops.kumaraswamy import *
+  from tensorflow.contrib.distributions.python.ops.logistic import *
+  from tensorflow.contrib.distributions.python.ops.mixture import *
+  from tensorflow.contrib.distributions.python.ops.mixture_same_family import *
+  from tensorflow.contrib.distributions.python.ops.moving_stats import *
+  from tensorflow.contrib.distributions.python.ops.mvn_diag import *
+  from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
+  from tensorflow.contrib.distributions.python.ops.mvn_full_covariance import *
+  from tensorflow.contrib.distributions.python.ops.mvn_tril import *
+  from tensorflow.contrib.distributions.python.ops.negative_binomial import *
+  from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
+  from tensorflow.contrib.distributions.python.ops.onehot_categorical import *
+  from tensorflow.contrib.distributions.python.ops.poisson import *
+  from tensorflow.contrib.distributions.python.ops.poisson_lognormal import *
+  from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
+  from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
+  from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
+  from tensorflow.contrib.distributions.python.ops.sample_stats import *
+  from tensorflow.contrib.distributions.python.ops.seed_stream import *
+  from tensorflow.contrib.distributions.python.ops.sinh_arcsinh import *
+  from tensorflow.contrib.distributions.python.ops.test_util import *
+  from tensorflow.contrib.distributions.python.ops.vector_diffeomixture import *
+  from tensorflow.contrib.distributions.python.ops.vector_exponential_diag import *
+  from tensorflow.contrib.distributions.python.ops.vector_laplace_diag import *
+  from tensorflow.contrib.distributions.python.ops.vector_sinh_arcsinh_diag import *
+  from tensorflow.contrib.distributions.python.ops.wishart import *
+  from tensorflow.python.ops.distributions.bernoulli import *
+  from tensorflow.python.ops.distributions.beta import *
+  from tensorflow.python.ops.distributions.categorical import *
+  from tensorflow.python.ops.distributions.dirichlet import *
+  from tensorflow.python.ops.distributions.dirichlet_multinomial import *
+  from tensorflow.python.ops.distributions.distribution import *
+  from tensorflow.python.ops.distributions.exponential import *
+  from tensorflow.python.ops.distributions.gamma import *
+  from tensorflow.python.ops.distributions.kullback_leibler import *
+  from tensorflow.python.ops.distributions.laplace import *
+  from tensorflow.python.ops.distributions.multinomial import *
+  from tensorflow.python.ops.distributions.normal import *
+  from tensorflow.python.ops.distributions.student_t import *
+  from tensorflow.python.ops.distributions.transformed_distribution import *
+  from tensorflow.python.ops.distributions.uniform import *
+
+# pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = [
+    'auto_correlation',
+    'bijectors',
+    'Cauchy',
+    'ConditionalDistribution',
+    'ConditionalTransformedDistribution',
+    'FULLY_REPARAMETERIZED',
+    'NOT_REPARAMETERIZED',
+    'ReparameterizationType',
+    'Distribution',
+    'Autoregressive',
+    'BatchReshape',
+    'Bernoulli',
+    'Beta',
+    'Binomial',
+    'BetaWithSoftplusConcentration',
+    'Categorical',
+    'Chi2',
+    'Chi2WithAbsDf',
+    'Deterministic',
+    'VectorDeterministic',
+    'Exponential',
+    'ExponentialWithSoftplusRate',
+    'VectorExponentialDiag',
+    'Gamma',
+    'GammaWithSoftplusConcentrationRate',
+    'Geometric',
+    'HalfNormal',
+    'Independent',
+    'InverseGamma',
+    'InverseGammaWithSoftplusConcentrationRate',
+    'Kumaraswamy',
+    'Laplace',
+    'LaplaceWithSoftplusScale',
+    'Logistic',
+    'NegativeBinomial',
+    'Normal',
+    'NormalWithSoftplusScale',
+    'Poisson',
+    'PoissonLogNormalQuadratureCompound',
+    'SeedStream',
+    'SinhArcsinh',
+    'StudentT',
+    'StudentTWithAbsDfSoftplusScale',
+    'Uniform',
+    'MultivariateNormalDiag',
+    'MultivariateNormalFullCovariance',
+    'MultivariateNormalTriL',
+    'MultivariateNormalDiagPlusLowRank',
+    'MultivariateNormalDiagWithSoftplusScale',
+    'Dirichlet',
+    'DirichletMultinomial',
+    'Multinomial',
+    'VectorDiffeomixture',
+    'VectorLaplaceDiag',
+    'VectorSinhArcsinhDiag',
+    'WishartCholesky',
+    'WishartFull',
+    'TransformedDistribution',
+    'QuantizedDistribution',
+    'Mixture',
+    'MixtureSameFamily',
+    'ExpRelaxedOneHotCategorical',
+    'OneHotCategorical',
+    'RelaxedBernoulli',
+    'RelaxedOneHotCategorical',
+    'kl_divergence',
+    'RegisterKL',
+    'fill_triangular',
+    'fill_triangular_inverse',
+    'matrix_diag_transform',
+    'reduce_weighted_logsumexp',
+    'softplus_inverse',
+    'tridiag',
+    'normal_conjugates_known_scale_posterior',
+    'normal_conjugates_known_scale_predictive',
+    'percentile',
+    'assign_moving_mean_variance',
+    'assign_log_moving_mean_exp',
+    'moving_mean_variance',
+    'estimator_head_distribution_regression',
+    'quadrature_scheme_softmaxnormal_gauss_hermite',
+    'quadrature_scheme_softmaxnormal_quantiles',
+    'quadrature_scheme_lognormal_gauss_hermite',
+    'quadrature_scheme_lognormal_quantiles',
+]
+
+remove_undocumented(__name__, _allowed_symbols)

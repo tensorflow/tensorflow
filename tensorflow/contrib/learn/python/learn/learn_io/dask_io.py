@@ -13,13 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Methods to allow dask.DataFrame."""
+"""Methods to allow dask.DataFrame (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
+from tensorflow.python.util.deprecation import deprecated
 
 try:
   # pylint: disable=g-import-not-at-top
@@ -60,16 +67,50 @@ def _construct_dask_df_with_divisions(df):
     return dd.Series(merge(dsk, df.dask), name, df.name, divisions)
 
 
+@deprecated(None, 'Please feed input to tf.data to support dask.')
 def extract_dask_data(data):
-  """Extract data from dask.Series or dask.DataFrame for predictors."""
+  """Extract data from dask.Series or dask.DataFrame for predictors.
+
+  Given a distributed dask.DataFrame or dask.Series containing columns or names
+  for one or more predictors, this operation returns a single dask.DataFrame or
+  dask.Series that can be iterated over.
+
+  Args:
+    data: A distributed dask.DataFrame or dask.Series.
+
+  Returns:
+    A dask.DataFrame or dask.Series that can be iterated over.
+    If the supplied argument is neither a dask.DataFrame nor a dask.Series this
+    operation returns it without modification.
+  """
   if isinstance(data, allowed_classes):
     return _construct_dask_df_with_divisions(data)
   else:
     return data
 
 
+@deprecated(None, 'Please feed input to tf.data to support dask.')
 def extract_dask_labels(labels):
-  """Extract data from dask.Series for labels."""
+  """Extract data from dask.Series or dask.DataFrame for labels.
+
+  Given a distributed dask.DataFrame or dask.Series containing exactly one
+  column or name, this operation returns a single dask.DataFrame or dask.Series
+  that can be iterated over.
+
+  Args:
+    labels: A distributed dask.DataFrame or dask.Series with exactly one
+            column or name.
+
+  Returns:
+    A dask.DataFrame or dask.Series that can be iterated over.
+    If the supplied argument is neither a dask.DataFrame nor a dask.Series this
+    operation returns it without modification.
+
+  Raises:
+    ValueError: If the supplied dask.DataFrame contains more than one
+                column or the supplied dask.Series contains more than
+                one name.
+  """
   if isinstance(labels, dd.DataFrame):
     ncol = labels.columns
   elif isinstance(labels, dd.Series):

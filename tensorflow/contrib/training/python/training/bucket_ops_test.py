@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tf.contrib.training.bucket."""
 from __future__ import absolute_import
 from __future__ import division
@@ -21,7 +20,19 @@ from __future__ import print_function
 import random
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.contrib.training.python.training import bucket_ops
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
 def _which_bucket(bucket_edges, v):
@@ -46,21 +57,25 @@ def _which_bucket(bucket_edges, v):
   return found[0]
 
 
-class BucketTest(tf.test.TestCase):
+class BucketTest(test.TestCase):
 
   def setUp(self):
-    tf.reset_default_graph()
+    ops.reset_default_graph()
 
-    self.scalar_int_feed = tf.placeholder(tf.int32, ())
-    self.unk_int64_feed = tf.placeholder(tf.int64, (None,))
-    self.vec3_str_feed = tf.placeholder(tf.string, (3,))
+    self.scalar_int_feed = array_ops.placeholder(dtypes_lib.int32, ())
+    self.unk_int64_feed = array_ops.placeholder(dtypes_lib.int64, (None,))
+    self.vec3_str_feed = array_ops.placeholder(dtypes_lib.string, (3,))
+    self.sparse_c = sparse_tensor.SparseTensor(
+        indices=[[0]],
+        values=[1.0],
+        dense_shape=[1])
 
-    self._coord = tf.train.Coordinator()
+    self._coord = coordinator.Coordinator()
     # Make capacity very large so we can feed all the inputs in the
     # main thread without blocking
-    input_queue = tf.PaddingFIFOQueue(
+    input_queue = data_flow_ops.PaddingFIFOQueue(
         5000,
-        dtypes=[tf.int32, tf.int64, tf.string],
+        dtypes=[dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.string],
         shapes=[(), (None,), (3,)])
 
     self._input_enqueue_op = input_queue.enqueue(
@@ -77,7 +92,7 @@ class BucketTest(tf.test.TestCase):
     # Store session to be able to close inputs later
     if self._sess is None:
       self._sess = sess
-    self._threads = tf.train.start_queue_runners(coord=self._coord)
+    self._threads = queue_runner_impl.start_queue_runners(coord=self._coord)
 
   def tearDown(self):
     if self._sess is not None:
@@ -86,24 +101,24 @@ class BucketTest(tf.test.TestCase):
     self._coord.join(self._threads)
 
   def testSingleBucket(self):
-    bucketed_dynamic = tf.contrib.training.bucket(
-        tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
-        which_bucket=tf.constant(0),
+    bucketed_dynamic = bucket_ops.bucket(
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
+        which_bucket=constant_op.constant(0),
         num_buckets=2,
         batch_size=32,
         num_threads=10,
         dynamic_pad=True)
     # Check shape inference on bucketing outputs
     self.assertAllEqual(
-        [[32], [32, None], [32, 3]],
+        [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(32):
-        self.enqueue_inputs(
-            sess,
-            {self.scalar_int_feed: v,
-             self.unk_int64_feed: v * [v],
-             self.vec3_str_feed: 3 * [str(v)]})
+        self.enqueue_inputs(sess, {
+            self.scalar_int_feed: v,
+            self.unk_int64_feed: v * [v],
+            self.vec3_str_feed: 3 * [str(v)]
+        })
       self.start_queue_runners(sess)
 
       # Get a single minibatch
@@ -113,7 +128,7 @@ class BucketTest(tf.test.TestCase):
       self.assertEqual(2, len(bucketed_values))
 
       # Count number of bucket_tensors.
-      self.assertEqual(3, len(bucketed_values[1]))
+      self.assertEqual(4, len(bucketed_values[1]))
 
       # Ensure bucket 0 was used for all minibatch entries.
       self.assertAllEqual(0, bucketed_values[0])
@@ -131,10 +146,55 @@ class BucketTest(tf.test.TestCase):
       self.assertAllEqual(expected_unk_int64, bucketed_values[1][1][resort])
       self.assertAllEqual(expected_vec3_str, bucketed_values[1][2][resort])
 
+  def testBatchSizePerBucket(self):
+    which_bucket = control_flow_ops.cond(self.scalar_int < 5,
+                                         lambda: constant_op.constant(0),
+                                         lambda: constant_op.constant(1))
+    batch_sizes = [5, 10]
+    bucketed_dynamic = bucket_ops.bucket(
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
+        which_bucket=which_bucket,
+        num_buckets=2,
+        batch_size=batch_sizes,
+        num_threads=1,
+        dynamic_pad=True)
+    # Check shape inference on bucketing outputs
+    self.assertAllEqual(
+        [[None], [None, None], [None, 3], [None, None]],
+        [out.get_shape().as_list() for out in bucketed_dynamic[1]])
+    with self.cached_session() as sess:
+      for v in range(15):
+        self.enqueue_inputs(sess, {
+            self.scalar_int_feed: v,
+            self.unk_int64_feed: v * [v],
+            self.vec3_str_feed: 3 * [str(v)]
+        })
+      self.start_queue_runners(sess)
+
+      # Get two minibatches (one with small values, one with large).
+      bucketed_values_0 = sess.run(bucketed_dynamic)
+      bucketed_values_1 = sess.run(bucketed_dynamic)
+
+      # Figure out which output has the small values
+      if bucketed_values_0[0] < 5:
+        bucketed_values_large, bucketed_values_small = (bucketed_values_1,
+                                                        bucketed_values_0)
+      else:
+        bucketed_values_small, bucketed_values_large = (bucketed_values_0,
+                                                        bucketed_values_1)
+
+      # Ensure bucket 0 was used for all minibatch entries.
+      self.assertAllEqual(0, bucketed_values_small[0])
+      self.assertAllEqual(1, bucketed_values_large[0])
+
+      # Check that the batch sizes differ per bucket
+      self.assertEqual(5, len(bucketed_values_small[1][0]))
+      self.assertEqual(10, len(bucketed_values_large[1][0]))
+
   def testEvenOddBuckets(self):
     which_bucket = (self.scalar_int % 2)
-    bucketed_dynamic = tf.contrib.training.bucket(
-        tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+    bucketed_dynamic = bucket_ops.bucket(
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
         which_bucket=which_bucket,
         num_buckets=2,
         batch_size=32,
@@ -142,15 +202,15 @@ class BucketTest(tf.test.TestCase):
         dynamic_pad=True)
     # Check shape inference on bucketing outputs
     self.assertAllEqual(
-        [[32], [32, None], [32, 3]],
+        [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(64):
-        self.enqueue_inputs(
-            sess,
-            {self.scalar_int_feed: v,
-             self.unk_int64_feed: v * [v],
-             self.vec3_str_feed: 3 * [str(v)]})
+        self.enqueue_inputs(sess, {
+            self.scalar_int_feed: v,
+            self.unk_int64_feed: v * [v],
+            self.vec3_str_feed: 3 * [str(v)]
+        })
       self.start_queue_runners(sess)
 
       # Get two minibatches (one containing even values, one containing odds)
@@ -162,17 +222,17 @@ class BucketTest(tf.test.TestCase):
       self.assertEqual(2, len(bucketed_values_1))
 
       # Count number of bucket_tensors.
-      self.assertEqual(3, len(bucketed_values_0[1]))
-      self.assertEqual(3, len(bucketed_values_1[1]))
+      self.assertEqual(4, len(bucketed_values_0[1]))
+      self.assertEqual(4, len(bucketed_values_1[1]))
 
       # Figure out which output has the even values (there's
       # randomness due to the multithreaded nature of bucketing)
       if bucketed_values_0[0] % 2 == 1:
-        bucketed_values_even, bucketed_values_odd = (
-            bucketed_values_1, bucketed_values_0)
+        bucketed_values_even, bucketed_values_odd = (bucketed_values_1,
+                                                     bucketed_values_0)
       else:
-        bucketed_values_even, bucketed_values_odd = (
-            bucketed_values_0, bucketed_values_1)
+        bucketed_values_even, bucketed_values_odd = (bucketed_values_0,
+                                                     bucketed_values_1)
 
       # Ensure bucket 0 was used for all minibatch entries.
       self.assertAllEqual(0, bucketed_values_even[0])
@@ -182,9 +242,9 @@ class BucketTest(tf.test.TestCase):
       expected_scalar_int = np.arange(0, 32 * 2, 2)
       expected_unk_int64 = np.zeros((32, 31 * 2)).astype(np.int64)
       for i in range(0, 32):
-        expected_unk_int64[i, :2*i] = 2*i
-      expected_vec3_str = np.vstack(
-          3 * [np.arange(0, 32 * 2, 2).astype(bytes)]).T
+        expected_unk_int64[i, :2 * i] = 2 * i
+      expected_vec3_str = np.vstack(3 *
+                                    [np.arange(0, 32 * 2, 2).astype(bytes)]).T
 
       # Must resort the output because num_threads > 1 leads to
       # sometimes-inconsistent insertion order.
@@ -193,14 +253,13 @@ class BucketTest(tf.test.TestCase):
                           bucketed_values_even[1][0][resort])
       self.assertAllEqual(expected_unk_int64,
                           bucketed_values_even[1][1][resort])
-      self.assertAllEqual(expected_vec3_str,
-                          bucketed_values_even[1][2][resort])
+      self.assertAllEqual(expected_vec3_str, bucketed_values_even[1][2][resort])
 
       # Test the second bucket outputted, the odds starting at 1
       expected_scalar_int = np.arange(1, 32 * 2 + 1, 2)
       expected_unk_int64 = np.zeros((32, 31 * 2 + 1)).astype(np.int64)
       for i in range(0, 32):
-        expected_unk_int64[i, :2*i + 1] = 2*i + 1
+        expected_unk_int64[i, :2 * i + 1] = 2 * i + 1
       expected_vec3_str = np.vstack(
           3 * [np.arange(1, 32 * 2 + 1, 2).astype(bytes)]).T
 
@@ -209,15 +268,13 @@ class BucketTest(tf.test.TestCase):
       resort = np.argsort(bucketed_values_odd[1][0])
       self.assertAllEqual(expected_scalar_int,
                           bucketed_values_odd[1][0][resort])
-      self.assertAllEqual(expected_unk_int64,
-                          bucketed_values_odd[1][1][resort])
-      self.assertAllEqual(expected_vec3_str,
-                          bucketed_values_odd[1][2][resort])
+      self.assertAllEqual(expected_unk_int64, bucketed_values_odd[1][1][resort])
+      self.assertAllEqual(expected_vec3_str, bucketed_values_odd[1][2][resort])
 
   def testEvenOddBucketsFilterOutAllOdd(self):
     which_bucket = (self.scalar_int % 2)
-    keep_input = tf.equal(which_bucket, 0)
-    bucketed_dynamic = tf.contrib.training.bucket(
+    keep_input = math_ops.equal(which_bucket, 0)
+    bucketed_dynamic = bucket_ops.bucket(
         tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
         which_bucket=which_bucket,
         num_buckets=2,
@@ -229,13 +286,13 @@ class BucketTest(tf.test.TestCase):
     self.assertAllEqual(
         [[32], [32, None], [32, 3]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(128):
-        self.enqueue_inputs(
-            sess,
-            {self.scalar_int_feed: v,
-             self.unk_int64_feed: v * [v],
-             self.vec3_str_feed: 3 * [str(v)]})
+        self.enqueue_inputs(sess, {
+            self.scalar_int_feed: v,
+            self.unk_int64_feed: v * [v],
+            self.vec3_str_feed: 3 * [str(v)]
+        })
       self.start_queue_runners(sess)
 
       # Get two minibatches ([0, 2, ...] and [64, 66, ...])
@@ -247,99 +304,122 @@ class BucketTest(tf.test.TestCase):
       self.assertAllEqual(0, bucketed_values_even1[0])
 
       # Merge their output for sorting and comparison
-      bucketed_values_all_elem0 = np.concatenate(
-          (bucketed_values_even0[1][0],
-           bucketed_values_even1[1][0]))
+      bucketed_values_all_elem0 = np.concatenate((bucketed_values_even0[1][0],
+                                                  bucketed_values_even1[1][0]))
 
       self.assertAllEqual(
           np.arange(0, 128, 2), sorted(bucketed_values_all_elem0))
 
+  def testFailOnWrongBucketCapacities(self):
+    with self.assertRaisesRegexp(ValueError, r"must have exactly num_buckets"):
+      bucket_ops.bucket(  # 2 buckets and 3 capacities raises ValueError.
+          tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+          which_bucket=constant_op.constant(0), num_buckets=2,
+          batch_size=32, bucket_capacities=[3, 4, 5])
 
-class BucketBySequenceLengthTest(tf.test.TestCase):
 
-  def _testBucketBySequenceLength(self, allow_small_batch):
-    tf.reset_default_graph()
+class BucketBySequenceLengthTest(test.TestCase):
+
+  def _testBucketBySequenceLength(self,
+                                  allow_small_batch,
+                                  bucket_capacities=None,
+                                  drain_entire_queue=True):
+    ops.reset_default_graph()
 
     # All inputs must be identical lengths across tuple index.
     # The input reader will get input_length from the first tuple
     # entry.
     data_len = 4
-    target_len = 3
-    input_pairs = [
-        (length,
-         ([np.int64(length)] * data_len,
-          [str(length).encode("ascii")] * target_len))
-        for length in (1, 3, 4, 5, 6, 10)]
+    labels_len = 3
+    input_pairs = [(length, ([np.int64(length)] * data_len,
+                             [str(length).encode("ascii")] * labels_len))
+                   for length in (1, 3, 4, 5, 6, 10)]
 
-    lengths = tf.placeholder(tf.int32, ())
-    data = tf.placeholder(tf.int64, (data_len,))
-    targets = tf.placeholder(tf.string, (target_len,))
+    lengths = array_ops.placeholder(dtypes_lib.int32, ())
+    data = array_ops.placeholder(dtypes_lib.int64, (data_len,))
+    labels = array_ops.placeholder(dtypes_lib.string, (labels_len,))
 
     batch_size = 8
     bucket_boundaries = [3, 4, 5, 10]
+    num_pairs_to_enqueue = 50 * batch_size + 100
 
     # Make capacity very large so we can feed all the inputs in the
     # main thread without blocking
-    input_queue = tf.FIFOQueue(
-        5000, (tf.int32, tf.int64, tf.string),
-        ((), (data_len,), (target_len,)))
-    input_enqueue_op = input_queue.enqueue((lengths, data, targets))
-    lengths_t, data_t, targets_t = input_queue.dequeue()
+    input_queue = data_flow_ops.FIFOQueue(
+        5000, (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.string), (
+            (), (data_len,), (labels_len,)))
+    input_enqueue_op = input_queue.enqueue((lengths, data, labels))
+    lengths_t, data_t, labels_t = input_queue.dequeue()
     close_input_op = input_queue.close()
 
-    (out_lengths_t, data_and_targets_t) = (
-        tf.contrib.training.bucket_by_sequence_length(
-            input_length=lengths_t,
-            tensors=[data_t, targets_t],
-            batch_size=batch_size,
-            bucket_boundaries=bucket_boundaries,
-            allow_smaller_final_batch=allow_small_batch,
-            num_threads=10))
+    (out_lengths_t, data_and_labels_t) = (bucket_ops.bucket_by_sequence_length(
+        input_length=lengths_t,
+        tensors=[data_t, labels_t],
+        batch_size=batch_size,
+        bucket_boundaries=bucket_boundaries,
+        bucket_capacities=bucket_capacities,
+        allow_smaller_final_batch=allow_small_batch,
+        num_threads=10))
 
     expected_batch_size = None if allow_small_batch else batch_size
-    self.assertEqual(out_lengths_t.get_shape().as_list(),
-                     [expected_batch_size])
-    self.assertEqual(data_and_targets_t[0].get_shape().as_list(),
+    self.assertEqual(out_lengths_t.get_shape().as_list(), [expected_batch_size])
+    self.assertEqual(data_and_labels_t[0].get_shape().as_list(),
                      [expected_batch_size, data_len])
-    self.assertEqual(data_and_targets_t[1].get_shape().as_list(),
-                     [expected_batch_size, target_len])
+    self.assertEqual(data_and_labels_t[1].get_shape().as_list(),
+                     [expected_batch_size, labels_len])
 
     def _read_test(sess):
-      for _ in range(50):
-        (out_lengths, (data, targets)) = sess.run(
-            (out_lengths_t, data_and_targets_t))
+      num_pairs_dequeued = 0
+      try:
+        while drain_entire_queue or num_pairs_dequeued < 40 * batch_size:
+          (out_lengths, (data, labels)) = sess.run(
+              (out_lengths_t, data_and_labels_t))
+          num_pairs_dequeued += out_lengths.shape[0]
+          if allow_small_batch:
+            self.assertEqual(data_len, data.shape[1])
+            self.assertEqual(labels_len, labels.shape[1])
+            self.assertGreaterEqual(batch_size, out_lengths.shape[0])
+            self.assertGreaterEqual(batch_size, data.shape[0])
+            self.assertGreaterEqual(batch_size, labels.shape[0])
+          else:
+            self.assertEqual((batch_size, data_len), data.shape)
+            self.assertEqual((batch_size, labels_len), labels.shape)
+            self.assertEqual((batch_size,), out_lengths.shape)
+          for (lr, dr, tr) in zip(out_lengths, data, labels):
+            # Make sure length matches data (here it's the same value).
+            self.assertEqual(dr[0], lr)
+            # Make sure data & labels match.
+            self.assertEqual(dr[0], int(tr[0].decode("ascii")))
+            # Make sure for each row, data came from the same bucket.
+            self.assertEqual(
+                _which_bucket(bucket_boundaries, dr[0]),
+                _which_bucket(bucket_boundaries, dr[1]))
+      except errors.OutOfRangeError:
         if allow_small_batch:
-          self.assertEqual(data_len, data.shape[1])
-          self.assertEqual(target_len, targets.shape[1])
-          self.assertGreaterEqual(batch_size, out_lengths.shape[0])
-          self.assertGreaterEqual(batch_size, data.shape[0])
-          self.assertGreaterEqual(batch_size, targets.shape[0])
+          self.assertEqual(num_pairs_to_enqueue, num_pairs_dequeued)
         else:
-          self.assertEqual((batch_size, data_len), data.shape)
-          self.assertEqual((batch_size, target_len), targets.shape)
-          self.assertEqual((batch_size,), out_lengths.shape)
-        for (lr, dr, tr) in zip(out_lengths, data, targets):
-          # Make sure length matches data (here it's the same value)
-          self.assertEqual(dr[0], lr)
-          # Make sure data & targets match
-          self.assertEqual(dr[0], int(tr[0].decode("ascii")))
-          # Make sure for each row, data came from the same bucket.
-          self.assertEqual(_which_bucket(bucket_boundaries, dr[0]),
-                           _which_bucket(bucket_boundaries, dr[1]))
+          # Maximum left over in the queues should be at most one less than the
+          # batch_size, for every bucket.
+          num_buckets = len(bucket_boundaries) + 2
+          self.assertLessEqual(
+              num_pairs_to_enqueue - (batch_size - 1) * num_buckets,
+              num_pairs_dequeued)
 
-    with self.test_session() as sess:
-      coord = tf.train.Coordinator()
+    with self.cached_session() as sess:
+      coord = coordinator.Coordinator()
 
       # Feed the inputs, then close the input thread.
-      for _ in range(50 * batch_size + 100):
+      for _ in range(num_pairs_to_enqueue):
         which = random.randint(0, len(input_pairs) - 1)
         length, pair = input_pairs[which]
-        sess.run(input_enqueue_op, feed_dict={
-            lengths: length, data: pair[0], targets: pair[1]})
+        sess.run(input_enqueue_op,
+                 feed_dict={lengths: length,
+                            data: pair[0],
+                            labels: pair[1]})
       sess.run(close_input_op)
 
       # Start the queue runners
-      threads = tf.train.start_queue_runners(coord=coord)
+      threads = queue_runner_impl.start_queue_runners(coord=coord)
       # Read off the top of the bucket and ensure correctness of output
       _read_test(sess)
       coord.request_stop()
@@ -351,6 +431,20 @@ class BucketBySequenceLengthTest(tf.test.TestCase):
   def testBucketBySequenceLengthAllow(self):
     self._testBucketBySequenceLength(allow_small_batch=True)
 
+  def testBucketBySequenceLengthBucketCapacities(self):
+    # Above bucket_boundaries = [3, 4, 5, 10] so we need 5 capacities.
+    with self.assertRaisesRegexp(ValueError, r"must have exactly num_buckets"):
+      self._testBucketBySequenceLength(allow_small_batch=False,
+                                       bucket_capacities=[32, 32, 32, 32])
+    # Test with different capacities.
+    capacities = [48, 40, 32, 24, 16]
+    self._testBucketBySequenceLength(allow_small_batch=True,
+                                     bucket_capacities=capacities)
+
+  def testBucketBySequenceLengthShutdown(self):
+    self._testBucketBySequenceLength(allow_small_batch=True,
+                                     drain_entire_queue=False)
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

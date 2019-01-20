@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for gmm_ops."""
 
 from __future__ import absolute_import
@@ -23,19 +22,24 @@ import time
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
 from tensorflow.contrib.factorization.python.ops import gmm_ops
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed as random_seed_lib
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 
-class GmmOpsTest(tf.test.TestCase):
+class GmmOpsTest(test.TestCase):
 
   def setUp(self):
     self.num_examples = 1000
     self.iterations = 40
     self.seed = 4
-    tf.set_random_seed(self.seed)
+    random_seed_lib.set_random_seed(self.seed)
     np.random.seed(self.seed * 2)
     self.data, self.true_assignments = self.make_data(self.num_examples)
     # Generate more complicated data.
@@ -57,12 +61,11 @@ class GmmOpsTest(tf.test.TestCase):
     classes = []
     for _ in xrange(num_vectors):
       if np.random.random() > 0.5:
-        vectors.append([np.random.normal(2.0, 0.6),
-                        np.random.normal(2.0, 0.9)])
+        vectors.append([np.random.normal(2.0, 0.6), np.random.normal(2.0, 0.9)])
         classes.append(0)
       else:
-        vectors.append([np.random.normal(-1.0, 0.4),
-                        np.random.normal(-1.0, 0.5)])
+        vectors.append(
+            [np.random.normal(-1.0, 0.4), np.random.normal(-1.0, 0.5)])
         classes.append(1)
     return np.asarray(vectors), classes
 
@@ -81,10 +84,11 @@ class GmmOpsTest(tf.test.TestCase):
     classes = []
     for _ in xrange(num_vectors):
       current_class = np.random.random_integers(0, len(centers) - 1)
-      vectors.append([np.random.normal(centers[current_class][0],
-                                       np.random.random_sample()),
-                      np.random.normal(centers[current_class][1],
-                                       np.random.random_sample())])
+      vectors.append([
+          np.random.normal(centers[current_class][0],
+                           np.random.random_sample()),
+          np.random.normal(centers[current_class][1], np.random.random_sample())
+      ])
       classes.append(current_class)
     return np.asarray(vectors), len(centers)
 
@@ -95,14 +99,14 @@ class GmmOpsTest(tf.test.TestCase):
     logging.info('Numpy took %f', time.time() - start_time)
 
     start_time = time.time()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       op = gmm_ops._covariance(
-          tf.constant(data.T, dtype=tf.float32),
-          False)
+          constant_op.constant(
+              data.T, dtype=dtypes.float32), False)
       op_diag = gmm_ops._covariance(
-          tf.constant(data.T, dtype=tf.float32),
-          True)
-      tf.initialize_all_variables().run()
+          constant_op.constant(
+              data.T, dtype=dtypes.float32), True)
+      variables.global_variables_initializer().run()
       tf_cov = sess.run(op)
       np.testing.assert_array_almost_equal(np_cov, tf_cov)
       logging.info('Tensorflow took %f', time.time() - start_time)
@@ -113,34 +117,41 @@ class GmmOpsTest(tf.test.TestCase):
   def test_simple_cluster(self):
     """Tests that the clusters are correct."""
     num_classes = 2
-    graph = tf.Graph()
+    graph = ops.Graph()
     with graph.as_default() as g:
       g.seed = 5
-      with self.test_session() as sess:
-        data = tf.constant(self.data, dtype=tf.float32)
-        _, assignments, _, training_op = tf.contrib.factorization.gmm(
+      with self.cached_session() as sess:
+        data = constant_op.constant(self.data, dtype=dtypes.float32)
+        loss_op, scores, assignments, training_op, init_op, _ = gmm_ops.gmm(
             data, 'random', num_classes, random_seed=self.seed)
 
-        tf.initialize_all_variables().run()
+        variables.global_variables_initializer().run()
+        sess.run(init_op)
+        first_loss = sess.run(loss_op)
         for _ in xrange(self.iterations):
           sess.run(training_op)
         assignments = sess.run(assignments)
+        end_loss = sess.run(loss_op)
+        scores = sess.run(scores)
+        self.assertEqual((self.num_examples, 1), scores.shape)
         accuracy = np.mean(
             np.asarray(self.true_assignments) == np.squeeze(assignments))
         logging.info('Accuracy: %f', accuracy)
+        logging.info('First loss: %f, end loss: %f', first_loss, end_loss)
+        self.assertGreater(end_loss, first_loss)
         self.assertGreater(accuracy, 0.98)
 
   def testParams(self):
     """Tests that the params work as intended."""
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Experiment 1. Update weights only.
-      data = tf.constant(self.data, dtype=tf.float32)
-      gmm_tool = tf.contrib.factorization.GmmAlgorithm([data], num_classes,
-                                                       [[3.0, 3.0], [0.0, 0.0]],
-                                                       'w')
+      data = constant_op.constant(self.data, dtype=dtypes.float32)
+      gmm_tool = gmm_ops.GmmAlgorithm([data], num_classes,
+                                      [[3.0, 3.0], [0.0, 0.0]], 'w')
       training_ops = gmm_tool.training_ops()
-      tf.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
+      sess.run(gmm_tool.init_ops())
       for _ in xrange(self.iterations):
         sess.run(training_ops)
 
@@ -154,11 +165,11 @@ class GmmOpsTest(tf.test.TestCase):
       np.testing.assert_almost_equal(covs[0], covs[1])
 
       # Experiment 2. Update means and covariances.
-      gmm_tool = tf.contrib.factorization.GmmAlgorithm([data], num_classes,
-                                                       [[3.0, 3.0], [0.0, 0.0]],
-                                                       'mc')
+      gmm_tool = gmm_ops.GmmAlgorithm([data], num_classes,
+                                      [[3.0, 3.0], [0.0, 0.0]], 'mc')
       training_ops = gmm_tool.training_ops()
-      tf.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
+      sess.run(gmm_tool.init_ops())
       for _ in xrange(self.iterations):
         sess.run(training_ops)
       alphas = sess.run(gmm_tool.alphas())
@@ -168,17 +179,16 @@ class GmmOpsTest(tf.test.TestCase):
           np.expand_dims([[2.0, 2.0], [-1.0, -1.0]], 1), means, decimal=1)
       covs = sess.run(gmm_tool.covariances())
       np.testing.assert_almost_equal(
-          [[0.371111, -0.0050774], [-0.0050774, 0.8651744]],
-          covs[0], decimal=4)
+          [[0.371111, -0.0050774], [-0.0050774, 0.8651744]], covs[0], decimal=4)
       np.testing.assert_almost_equal(
-          [[0.146976, 0.0259463], [0.0259463, 0.2543971]],
-          covs[1], decimal=4)
+          [[0.146976, 0.0259463], [0.0259463, 0.2543971]], covs[1], decimal=4)
 
       # Experiment 3. Update covariances only.
-      gmm_tool = tf.contrib.factorization.GmmAlgorithm(
-          [data], num_classes, [[-1.0, -1.0], [1.0, 1.0]], 'c')
+      gmm_tool = gmm_ops.GmmAlgorithm([data], num_classes,
+                                      [[-1.0, -1.0], [1.0, 1.0]], 'c')
       training_ops = gmm_tool.training_ops()
-      tf.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
+      sess.run(gmm_tool.init_ops())
       for _ in xrange(self.iterations):
         sess.run(training_ops)
       alphas = sess.run(gmm_tool.alphas())
@@ -188,12 +198,10 @@ class GmmOpsTest(tf.test.TestCase):
           np.expand_dims([[-1.0, -1.0], [1.0, 1.0]], 1), means)
       covs = sess.run(gmm_tool.covariances())
       np.testing.assert_almost_equal(
-          [[0.1299582, 0.0435872], [0.0435872, 0.2558578]],
-          covs[0], decimal=5)
+          [[0.1299582, 0.0435872], [0.0435872, 0.2558578]], covs[0], decimal=5)
       np.testing.assert_almost_equal(
-          [[3.195385, 2.6989155], [2.6989155, 3.3881593]],
-          covs[1], decimal=5)
+          [[3.195385, 2.6989155], [2.6989155, 3.3881593]], covs[1], decimal=5)
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

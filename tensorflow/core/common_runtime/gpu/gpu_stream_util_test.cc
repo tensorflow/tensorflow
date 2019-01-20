@@ -36,7 +36,7 @@ class GpuStreamUtilTest : public OpsTestBase {
 TEST_F(GpuStreamUtilTest, BogusOpts) {
   auto root = Scope::NewRootScope().ExitOnError();
   Graph g(OpRegistry::Global());
-  root.ToGraph(&g);
+  TF_ASSERT_OK(root.ToGraph(&g));
   std::unordered_map<int, int> node_to_stream_id;
   gpu_stream_util::AssignStreamsOpts opts;
   Status status;
@@ -56,7 +56,7 @@ TEST_F(GpuStreamUtilTest, BogusOpts) {
 TEST_F(GpuStreamUtilTest, EmptyGraph) {
   auto root = Scope::NewRootScope().ExitOnError();
   Graph g(OpRegistry::Global());
-  root.ToGraph(&g);
+  TF_ASSERT_OK(root.ToGraph(&g));
   std::unordered_map<int, int> node_to_stream_id;
   gpu_stream_util::AssignStreamsOpts opts;
   TF_ASSERT_OK(gpu_stream_util::AssignStreams(&g, opts, &node_to_stream_id));
@@ -64,7 +64,7 @@ TEST_F(GpuStreamUtilTest, EmptyGraph) {
 }
 
 TEST_F(GpuStreamUtilTest, SimpleGraphOneStream) {
-  auto root = Scope::NewRootScope().ExitOnError();
+  auto root = Scope::DisabledShapeInferenceScope().ExitOnError();
   ops::MatMul(root, {}, {});
   Graph g(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(&g));
@@ -83,7 +83,7 @@ TEST_F(GpuStreamUtilTest, SimpleGraphOneStream) {
 }
 
 TEST_F(GpuStreamUtilTest, SimpleGraphManyStreams) {
-  auto root = Scope::NewRootScope().ExitOnError();
+  auto root = Scope::DisabledShapeInferenceScope().ExitOnError();
   ops::MatMul(root, {}, {});
   Graph g(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(&g));
@@ -104,11 +104,12 @@ TEST_F(GpuStreamUtilTest, SimpleGraphManyStreams) {
 }
 
 TEST_F(GpuStreamUtilTest, StreamOverrides) {
-  auto root = Scope::NewRootScope().ExitOnError();
+  auto root = Scope::DisabledShapeInferenceScope().ExitOnError();
   ops::_Recv(root.WithOpName("input"), DT_FLOAT, "input", "/cpu:0", 0,
-             "/gpu:0");
-  ops::Output n = ops::MatMul(root, {}, {});
-  ops::_Send(root.WithOpName("output"), n, "output", "/gpu:0", 0, "/cpu:0");
+             "/device:GPU:0");
+  Output n = ops::MatMul(root, {}, {});
+  ops::_Send(root.WithOpName("output"), n, "output", "/device:GPU:0", 0,
+             "/cpu:0");
   Graph g(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(&g));
 

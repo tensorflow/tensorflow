@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -49,6 +50,14 @@ Status ValidateGraphDefAgainstOpList(const GraphDef& graph_def,
 // Get an OpList from `*op_registry` with all the descriptions removed.
 void GetOpListForValidation(
     OpList* op_list, const OpRegistry& op_registry = *OpRegistry::Global());
+
+// Validate that the graph has no cycle except for legal while loop cycles.
+// This traverses the specified nodes in topological order to verify there are
+// no cycles. Starting with inputless nodes, it visits nodes whose inputs have
+// all been visited, and counts the total number of visited nodes. If there is a
+// cycle, nodes in the cycle will never be visited, and the visited count will
+// be less than the total node count.
+Status ValidateGraphHasNoCycle(const Graph& graph);
 
 }  // namespace graph
 }  // namespace tensorflow

@@ -12,30 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for integer division by zero."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
+from tensorflow.python.platform import test
 
 
-class ZeroDivisionTest(tf.test.TestCase):
+class ZeroDivisionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testZeros(self):
-    with self.test_session(use_gpu=True):
-      for dtype in tf.uint8, tf.int16, tf.int32, tf.int64:
-        zero = tf.constant(0, dtype=dtype)
-        one = tf.constant(1, dtype=dtype)
+    with test_util.use_gpu():
+      for dtype in dtypes.uint8, dtypes.int16, dtypes.int32, dtypes.int64:
+        zero = constant_op.constant(0, dtype=dtype)
+        one = constant_op.constant(1, dtype=dtype)
         bads = [one // zero]
-        if dtype in (tf.int32, tf.int64):
+        if dtype in (dtypes.int32, dtypes.int64):
           bads.append(one % zero)
         for bad in bads:
           try:
-            result = bad.eval()
-          except tf.OpError as e:
+            result = self.evaluate(bad)
+          except errors_impl.OpError as e:
             # Ideally, we'd get a nice exception.  In theory, this should only
             # happen on CPU, but 32 bit integer GPU division is actually on
             # CPU due to a placer bug.
@@ -47,9 +51,9 @@ class ZeroDivisionTest(tf.test.TestCase):
             # means 32 bits set, so we allow 0xffffffff as well.  This isn't
             # very portable, so we may need to expand this list if other GPUs
             # do different things.
-            self.assertTrue(tf.test.is_gpu_available())
+            self.assertTrue(test.is_gpu_available())
             self.assertIn(result, (-1, 0xff, 0xffffffff))
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

@@ -18,69 +18,75 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.metrics.python.ops import histogram_ops
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class Strict1dCumsumTest(tf.test.TestCase):
+class Strict1dCumsumTest(test.TestCase):
   """Test this private function."""
 
   def test_empty_tensor_returns_empty(self):
-    with self.test_session():
-      tensor = tf.constant([])
+    with self.cached_session():
+      tensor = constant_op.constant([])
       result = histogram_ops._strict_1d_cumsum(tensor, 0)
-      expected = tf.constant([])
+      expected = constant_op.constant([])
       np.testing.assert_array_equal(expected.eval(), result.eval())
 
   def test_length_1_tensor_works(self):
-    with self.test_session():
-      tensor = tf.constant([3], dtype=tf.float32)
+    with self.cached_session():
+      tensor = constant_op.constant([3], dtype=dtypes.float32)
       result = histogram_ops._strict_1d_cumsum(tensor, 1)
-      expected = tf.constant([3], dtype=tf.float32)
+      expected = constant_op.constant([3], dtype=dtypes.float32)
       np.testing.assert_array_equal(expected.eval(), result.eval())
 
   def test_length_3_tensor_works(self):
-    with self.test_session():
-      tensor = tf.constant([1, 2, 3], dtype=tf.float32)
+    with self.cached_session():
+      tensor = constant_op.constant([1, 2, 3], dtype=dtypes.float32)
       result = histogram_ops._strict_1d_cumsum(tensor, 3)
-      expected = tf.constant([1, 3, 6], dtype=tf.float32)
+      expected = constant_op.constant([1, 3, 6], dtype=dtypes.float32)
       np.testing.assert_array_equal(expected.eval(), result.eval())
 
 
-class AUCUsingHistogramTest(tf.test.TestCase):
+class AUCUsingHistogramTest(test.TestCase):
 
   def setUp(self):
     self.rng = np.random.RandomState(0)
 
   def test_empty_labels_and_scores_gives_nan_auc(self):
-    with self.test_session():
-      labels = tf.constant([], shape=[0], dtype=tf.bool)
-      scores = tf.constant([], shape=[0], dtype=tf.float32)
+    with self.cached_session():
+      labels = constant_op.constant([], shape=[0], dtype=dtypes.bool)
+      scores = constant_op.constant([], shape=[0], dtype=dtypes.float32)
       score_range = [0, 1.]
-      auc, update_op = tf.contrib.metrics.auc_using_histogram(labels, scores,
-                                                              score_range)
-      tf.initialize_local_variables().run()
+      auc, update_op = histogram_ops.auc_using_histogram(labels, scores,
+                                                         score_range)
+      variables.local_variables_initializer().run()
       update_op.run()
       self.assertTrue(np.isnan(auc.eval()))
 
   def test_perfect_scores_gives_auc_1(self):
-    self._check_auc(nbins=100,
-                    desired_auc=1.0,
-                    score_range=[0, 1.],
-                    num_records=50,
-                    frac_true=0.5,
-                    atol=0.05,
-                    num_updates=1)
+    self._check_auc(
+        nbins=100,
+        desired_auc=1.0,
+        score_range=[0, 1.],
+        num_records=50,
+        frac_true=0.5,
+        atol=0.05,
+        num_updates=1)
 
   def test_terrible_scores_gives_auc_0(self):
-    self._check_auc(nbins=100,
-                    desired_auc=0.0,
-                    score_range=[0, 1.],
-                    num_records=50,
-                    frac_true=0.5,
-                    atol=0.05,
-                    num_updates=1)
+    self._check_auc(
+        nbins=100,
+        desired_auc=0.0,
+        score_range=[0, 1.],
+        num_records=50,
+        frac_true=0.5,
+        atol=0.05,
+        num_updates=1)
 
   def test_many_common_conditions(self):
     for nbins in [50]:
@@ -88,35 +94,38 @@ class AUCUsingHistogramTest(tf.test.TestCase):
         for score_range in [[-1, 1], [-10, 0]]:
           for frac_true in [0.3, 0.8]:
             # Tests pass with atol = 0.03.  Moved up to 0.05 to avoid flakes.
-            self._check_auc(nbins=nbins,
-                            desired_auc=desired_auc,
-                            score_range=score_range,
-                            num_records=100,
-                            frac_true=frac_true,
-                            atol=0.05,
-                            num_updates=50)
+            self._check_auc(
+                nbins=nbins,
+                desired_auc=desired_auc,
+                score_range=score_range,
+                num_records=100,
+                frac_true=frac_true,
+                atol=0.05,
+                num_updates=50)
 
   def test_large_class_imbalance_still_ok(self):
     # With probability frac_true ** num_records, each batch contains only True
     # records.  In this case, ~ 95%.
     # Tests pass with atol = 0.02.  Increased to 0.05 to avoid flakes.
-    self._check_auc(nbins=100,
-                    desired_auc=0.8,
-                    score_range=[-1, 1.],
-                    num_records=10,
-                    frac_true=0.995,
-                    atol=0.05,
-                    num_updates=1000)
+    self._check_auc(
+        nbins=100,
+        desired_auc=0.8,
+        score_range=[-1, 1.],
+        num_records=10,
+        frac_true=0.995,
+        atol=0.05,
+        num_updates=1000)
 
   def test_super_accuracy_with_many_bins_and_records(self):
     # Test passes with atol = 0.0005.  Increased atol to avoid flakes.
-    self._check_auc(nbins=1000,
-                    desired_auc=0.75,
-                    score_range=[0, 1.],
-                    num_records=1000,
-                    frac_true=0.5,
-                    atol=0.005,
-                    num_updates=100)
+    self._check_auc(
+        nbins=1000,
+        desired_auc=0.75,
+        score_range=[0, 1.],
+        num_records=1000,
+        frac_true=0.5,
+        atol=0.005,
+        num_updates=100)
 
   def _check_auc(self,
                  nbins=100,
@@ -146,14 +155,12 @@ class AUCUsingHistogramTest(tf.test.TestCase):
         from synthetic data.
     """
     score_range = [0, 1.] or score_range
-    with self.test_session():
-      labels = tf.placeholder(tf.bool, shape=[num_records])
-      scores = tf.placeholder(tf.float32, shape=[num_records])
-      auc, update_op = tf.contrib.metrics.auc_using_histogram(labels,
-                                                              scores,
-                                                              score_range,
-                                                              nbins=nbins)
-      tf.initialize_local_variables().run()
+    with self.cached_session():
+      labels = array_ops.placeholder(dtypes.bool, shape=[num_records])
+      scores = array_ops.placeholder(dtypes.float32, shape=[num_records])
+      auc, update_op = histogram_ops.auc_using_histogram(
+          labels, scores, score_range, nbins=nbins)
+      variables.local_variables_initializer().run()
       # Updates, then extract auc.
       for _ in range(num_updates):
         labels_a, scores_a = synthetic_data(desired_auc, score_range,
@@ -245,4 +252,4 @@ def synthetic_data(desired_auc, score_range, num_records, rng, frac_true):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

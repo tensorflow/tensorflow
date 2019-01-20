@@ -1,0 +1,131 @@
+path: "tensorflow.dtypes"
+tf_module {
+  member {
+    name: "DType"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "QUANTIZED_DTYPES"
+    mtype: "<type \'frozenset\'>"
+  }
+  member {
+    name: "bfloat16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "bool"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "complex128"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "complex64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "double"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "half"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "int16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "int32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "int64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "int8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "qint16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "qint32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "qint8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "quint16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "quint8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "resource"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "string"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "variant"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member_method {
+    name: "as_dtype"
+    argspec: "args=[\'type_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_string"
+    argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'False\', \'False\', \'-1\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "cast"
+    argspec: "args=[\'x\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "complex"
+    argspec: "args=[\'real\', \'imag\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "saturate_cast"
+    argspec: "args=[\'value\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

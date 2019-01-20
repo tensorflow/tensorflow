@@ -27,8 +27,10 @@ import six
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.Coordinator")
 class Coordinator(object):
   """A coordinator for threads.
 
@@ -62,7 +64,7 @@ class Coordinator(object):
   #### Exception handling:
 
   A thread can report an exception to the coordinator as part of the
-  `should_stop()` call.  The exception will be re-raised from the
+  `request_stop()` call.  The exception will be re-raised from the
   `coord.join()` call.
 
   Thread code:
@@ -106,7 +108,7 @@ class Coordinator(object):
   After a thread has called `coord.request_stop()` the other threads have a
   fixed time to stop, this is called the 'stop grace period' and defaults to 2
   minutes.  If any of the threads is still alive after the grace period expires
-  `coord.join()` raises a RuntimeException reporting the laggards.
+  `coord.join()` raises a RuntimeError reporting the laggards.
 
   ```python
   try:
@@ -117,7 +119,7 @@ class Coordinator(object):
     ...start thread N...(coord, ...)
     # Wait for all the threads to terminate, give them 10s grace period
     coord.join(threads, stop_grace_period_secs=10)
-  except RuntimeException:
+  except RuntimeError:
     ...one of the threads took more than 10s to stop after request_stop()
     ...was called.
   except Exception:
@@ -212,9 +214,9 @@ class Coordinator(object):
       if not self._stop_event.is_set():
         if ex and self._exc_info_to_raise is None:
           if isinstance(ex, tuple):
-            logging.info("Error reported to Coordinator: %s, %s",
-                         type(ex[1]),
-                         compat.as_str_any(ex[1]))
+            logging.info("Error reported to Coordinator: %s",
+                         compat.as_str_any(ex[1]),
+                         exc_info=ex)
             self._exc_info_to_raise = ex
           else:
             logging.info("Error reported to Coordinator: %s, %s",
@@ -284,19 +286,17 @@ class Coordinator(object):
     ```python
     try:
       ...body...
-    exception Exception as ex:
-      coord.request_stop(ex)
+    except:
+      coord.request_stop(sys.exc_info())
     ```
 
     Yields:
       nothing.
     """
-    # pylint: disable=broad-except
     try:
       yield
-    except Exception as ex:
-      self.request_stop(ex)
-    # pylint: enable=broad-except
+    except:  # pylint: disable=bare-except
+      self.request_stop(ex=sys.exc_info())
 
   def wait_for_stop(self, timeout=None):
     """Wait till the Coordinator is told to stop.
@@ -319,7 +319,8 @@ class Coordinator(object):
     with self._lock:
       self._registered_threads.add(thread)
 
-  def join(self, threads=None, stop_grace_period_secs=120):
+  def join(self, threads=None, stop_grace_period_secs=120,
+           ignore_live_threads=False):
     """Wait for threads to terminate.
 
     This call blocks until a set of threads have terminated.  The set of thread
@@ -341,6 +342,8 @@ class Coordinator(object):
         addition to the registered threads.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `request_stop()` has been called.
+      ignore_live_threads: If `False`, raises an error if any of the threads are
+        still alive after `stop_grace_period_secs`.
 
     Raises:
       RuntimeError: If any thread is still alive after `request_stop()`
@@ -363,7 +366,7 @@ class Coordinator(object):
     # If any thread is still alive, wait for the grace period to expire.
     # By the time this check is executed, threads may still be shutting down,
     # so we add a sleep of increasing duration to give them a chance to shut
-    # down without loosing too many cycles.
+    # down without losing too many cycles.
     # The sleep duration is limited to the remaining grace duration.
     stop_wait_secs = 0.001
     while any(t.is_alive() for t in threads) and stop_grace_period_secs >= 0.0:
@@ -385,16 +388,27 @@ class Coordinator(object):
       if self._exc_info_to_raise:
         six.reraise(*self._exc_info_to_raise)
       elif stragglers:
-        raise RuntimeError(
-            "Coordinator stopped with threads still running: %s" %
-            " ".join(stragglers))
+        if ignore_live_threads:
+          logging.info("Coordinator stopped with threads still running: %s",
+                       " ".join(stragglers))
+        else:
+          raise RuntimeError(
+              "Coordinator stopped with threads still running: %s" %
+              " ".join(stragglers))
 
   @property
   def joined(self):
     return self._joined
 
+  def raise_requested_exception(self):
+    """If an exception has been passed to `request_stop`, this raises it."""
+    with self._lock:
+      if self._exc_info_to_raise:
+        six.reraise(*self._exc_info_to_raise)
+
 
 # Threads for the standard services.
+@tf_export(v1=["train.LooperThread"])
 class LooperThread(threading.Thread):
   """A thread that runs code repeatedly, optionally on a timer.
 

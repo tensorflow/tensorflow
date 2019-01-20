@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+import "tensorflow/core/protobuf/checkpointable_object_graph.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/versions.proto";
+import "tensorflow/python/saved_model/struct.proto";
+
+option cc_enable_arenas = true;
+
+package tensorflow;
+
+// A SavedObjectGraph is part of object-based SavedModels in TF 2.0. It
+// describes the directed graph of Python objects (or equivalent in other
+// languages) that make up a model, with nodes[0] at the root.
+
+// SavedObjectGraph shares some structure with CheckpointableObjectGraph, but
+// ObjectGraph belongs to the SavedModel and contains pointers to functions and
+// type information, while CheckpointableObjectGraph lives in the checkpoint and
+// contains pointers only to variable values.
+
+// NOTE: This protocol buffer format is experimental and subject to change.
+
+message SavedObjectGraph {
+  // List of objects in the SavedModel.
+  //
+  // The position of the object in this list indicates its id.
+  // Nodes[0] is considered the root node.
+  repeated SavedObject nodes = 1;
+}
+
+message SavedObject {
+  // Objects which this object depends on: named edges in the dependency
+  // graph.
+  //
+  // Note: only valid if kind == "object".
+  repeated CheckpointableObjectGraph.CheckpointableObject.ObjectReference
+      children = 1;
+
+  // Removed when forking from CheckpointableObjectGraph.
+  reserved "attributes";
+  reserved 2;
+
+  // Slot variables owned by this object. This describes the three-way
+  // (optimizer, variable, slot variable) relationship; none of the three
+  // depend on the others directly.
+  //
+  // Note: only valid if kind == "object".
+  repeated CheckpointableObjectGraph.CheckpointableObject.SlotVariableReference
+      slot_variables = 3;
+
+  oneof kind {
+    SavedUserObject user_object = 4;
+    SavedAsset asset = 5;
+    SavedFunction function = 6;
+    SavedVariable variable = 7;
+    SavedConcreteFunction concrete_function = 8;
+  }
+}
+
+// A SavedUserObject is an object (in the object-oriented language of the
+// TensorFlow program) of some user- or framework-defined class other than
+// those handled specifically by the other kinds of SavedObjects.
+//
+// This object cannot be evaluated as a tensor, and therefore cannot be bound
+// to an input of a function.
+message SavedUserObject {
+  // Corresponds to a registration of the type to use in the loading program.
+  string identifier = 1;
+  // Version information from the producer of this SavedUserObject.
+  VersionDef version = 2;
+}
+
+// A SavedAsset represents a file in a SavedModel.
+//
+// When bound to a function this object evaluates to a Variable from which the
+// absolute filename can be read. Users should not expect the filename to be
+// maintained.
+message SavedAsset {
+  // Index into `MetaGraphDef.asset_file_def[]` that describes the Asset.
+  //
+  // Only the field `AssetFileDef.filename` is used. Other fields, such as
+  // `AssetFileDef.tensor_info`, MUST be ignored.
+  int32 asset_file_def_index = 1;
+}
+
+// A function with multiple signatures, possibly with non-Tensor arguments.
+message SavedFunction {
+  repeated SavedConcreteFunction concrete_function = 1;
+  FunctionSpec function_spec = 2;
+}
+
+message SavedConcreteFunction {
+  // A reference to a TensorFlow function in the MetaGraph's FunctionDefLibrary
+  string name = 1;
+
+  // Bound inputs to the function. The SavedObjects identified by the node ids
+  // given here are appended as extra inputs to the caller-supplied inputs.
+  // The only types of SavedObjects valid here are SavedVariable, SavedResource
+  // and SavedAsset.
+  repeated int32 bound_inputs = 2;
+  // Input in canonicalized form that was received to create this concrete
+  // function.
+  StructuredValue canonicalized_input_signature = 3;
+  // Output that was the return value of this function after replacing all
+  // Tensors with TensorSpecs. This can be an arbitrary nested function and will
+  // be used to reconstruct the full structure from pure tensors.
+  StructuredValue output_signature = 4;
+}
+
+// Represents a Variable that is initialized by loading the contents from the
+// SavedModel checkpoint.
+message SavedVariable {
+  DataType dtype = 1;
+  TensorShapeProto shape = 2;
+  bool trainable = 3;
+
+  // TODO(andresp): Add save_slice_info_def?
+}
+
+// Represents `FunctionSpec` used in `Function`. This represents a
+// function that has been wrapped as a TensorFlow `Function`.
+message FunctionSpec {
+  // Full arg spec from inspect.getfullargspec().
+  StructuredValue fullargspec = 1;
+  // Whether this represents a class method.
+  bool is_method = 2;
+  // Which arguments to always prepend, in case the original function is based
+  // on a functools.partial.
+  StructuredValue args_to_prepend = 3;
+  // Which kwargs to always include, in case the original function is based on a
+  // functools.partial.
+  StructuredValue kwargs_to_include = 4;
+  // The input signature, if specified.
+  StructuredValue input_signature = 5;
+}

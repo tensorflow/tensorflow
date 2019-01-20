@@ -106,6 +106,10 @@ limitations under the License.
   $1 = &temp;
 }
 
+%typemap(out) int64_t {
+  $result = PyLong_FromLongLong($1);
+}
+
 %typemap(out) string {
   $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }
@@ -194,6 +198,21 @@ _COPY_TYPEMAPS(unsigned long long, uint64);
 _COPY_TYPEMAPS(long long, int64);
 _COPY_TYPEMAPS(unsigned int, mode_t);
 
+// Proto input arguments to C API functions are passed as a (const
+// void*, size_t) pair. In Python, typemap these to a single string
+// argument.  This typemap does *not* make a copy of the input.
+%typemap(in) (const void* proto, size_t proto_len) {
+  char* c_string;
+  Py_ssize_t py_size;
+  // PyBytes_AsStringAndSize() does not copy but simply interprets the input
+  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
+    // Python has raised an error (likely TypeError or UnicodeEncodeError).
+    SWIG_fail;
+  }
+  $1 = static_cast<void*>(c_string);
+  $2 = static_cast<size_t>(py_size);
+}
+
 // SWIG macros for explicit API declaration.
 // Usage:
 //
@@ -210,3 +229,25 @@ _COPY_TYPEMAPS(unsigned int, mode_t);
 %define final %enddef
 %define override %enddef
 #endif
+
+// Typemaps to automatically raise a Python exception from bad output TF_Status.
+// TODO(b/77295559): expand this to all TF_Status* output params and deprecate
+// raise_exception_on_not_ok_status (currently it only affects the C API).
+%typemap(in, numinputs=0) TF_Status* status {
+  $1 = TF_NewStatus();
+}
+
+%typemap(freearg) (TF_Status* status) {
+ TF_DeleteStatus($1);
+}
+
+%typemap(argout) TF_Status* status {
+  TF_Code code = TF_GetCode($1);
+  if (code != TF_OK) {
+    PyObject* exc = tensorflow::PyExceptionRegistry::Lookup(code);
+    // Arguments to OpError.
+    PyObject* exc_args = Py_BuildValue("sss", nullptr, nullptr, TF_Message($1));
+    SWIG_SetErrorObj(exc, exc_args);
+    SWIG_fail;
+  }
+}

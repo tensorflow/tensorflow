@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
 
 REGISTER_OP("Assert")
     .Input("condition: bool")
@@ -25,17 +28,9 @@ REGISTER_OP("Assert")
     .SetIsStateful()
     .Attr("T: list(type)")
     .Attr("summarize: int = 3")
-    .SetShapeFn(shape_inference::NoOutputs)
-    .Doc(R"doc(
-Asserts that the given condition is true.
+    .SetShapeFn(shape_inference::NoOutputs);
 
-If `condition` evaluates to false, print the list of tensors in `data`.
-`summarize` determines how many entries of the tensors to print.
-
-condition: The condition to evaluate.
-data: The tensors to print out when condition is false.
-summarize: Print this many entries of each tensor.
-)doc");
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Assert");
 
 REGISTER_OP("Print")
     .Input("input: T")
@@ -43,143 +38,85 @@ REGISTER_OP("Print")
     .Output("output: T")
     .SetIsStateful()
     .Attr("T: type")
-    .Attr("U: list(type)")
+    .Attr("U: list(type) >= 0")
     .Attr("message: string = ''")
     .Attr("first_n: int = -1")
     .Attr("summarize: int = 3")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Prints a list of tensors.
+    .SetShapeFn(shape_inference::UnchangedShape);
 
-Passes `input` through to `output` and prints `data` when evaluating.
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Print");
 
-input: The tensor passed to `output`
-data: A list of tensors to print out when op is evaluated.
-output:= The unmodified `input` tensor
-message: A string, prefix of the error message.
-first_n: Only log `first_n` number of times. -1 disables logging.
-summarize: Only print this many entries of each tensor.
-)doc");
+REGISTER_OP("PrintV2")
+    .Input("input: string")
+    .SetIsStateful()
+    .Attr("output_stream: string = 'stderr'")
+    .SetShapeFn([](InferenceContext* c) {
+      // Make sure that the input is a scalar.
+      if (c->Rank(c->input(0)) != 0) {
+        return errors::InvalidArgument("input must be a scalar, but has rank: ",
+                                       c->Rank(c->input(0)));
+      }
+      return Status::OK();
+    });
+
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("PrintV2");
 
 // ----------------------------------------------------------------------------
 // Operators that deal with SummaryProtos (encoded as DT_STRING tensors) as
 // inputs or outputs in various ways.
 
+REGISTER_OP("TensorSummaryV2")
+    .Input("tag: string")
+    .Input("tensor: T")
+    // This serialized summary metadata field describes a summary value,
+    // specifically which plugins may use that summary.
+    .Input("serialized_summary_metadata: string")
+    .Output("summary: string")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("TensorSummary")
     .Input("tensor: T")
     .Output("summary: string")
     .Attr("T: type")
-    .Attr("display_name: string")
     .Attr("description: string = ''")
     .Attr("labels: list(string) = []")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Outputs a `Summary` protocol buffer with a tensor.
-
-tensor: A tensor to serialize.
-display_name: A name to associate with the data series.
-description: An optional long description of the data being output.
-labels: a list of strings used to specify how the data can be interpreted, e.g.
-  a string tensor containing jpg images should have 'encoding:image/jpg'; a
-  string tensor with foo protos should have 'encoding:proto/X/Y/foo.proto';
-  a numeric tensor containing bounding boxes may have
-  'bounding_box:x1,y1,x2,y2,'. If the tensor is a part of a group of related
-  outputs, that can be encoded through a 'group:$groupName/$roleInGroup' label.
-  Labels may be formatted as 'prefix:value'. The prefix may be re-used.
-)doc");
+    .Attr("display_name: string = ''")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ScalarSummary")
     .Input("tags: string")
     .Input("values: T")
     .Output("summary: string")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Outputs a `Summary` protocol buffer with scalar values.
-
-The input `tags` and `values` must have the same shape.  The generated summary
-has a summary value for each tag-value pair in `tags` and `values`.
-
-tags: Tags for the summary.
-values: Same shape as `tags.  Values for the summary.
-summary: Scalar.  Serialized `Summary` protocol buffer.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("HistogramSummary")
     .Input("tag: string")
     .Input("values: T")
     .Output("summary: string")
     .Attr("T: realnumbertype = DT_FLOAT")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Outputs a `Summary` protocol buffer with a histogram.
-
-The generated
-[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-has one summary value containing a histogram for `values`.
-
-This op reports an `InvalidArgument` error if any value is not finite.
-
-tag: Scalar.  Tag to use for the `Summary.Value`.
-values: Any shape. Values to use to build the histogram.
-summary: Scalar. Serialized `Summary` protocol buffer.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ImageSummary")
     .Input("tag: string")
     .Input("tensor: T")
     .Output("summary: string")
     .Attr("max_images: int >= 1 = 3")
-    .Attr("T: {uint8, float, half} = DT_FLOAT")
+    .Attr("T: {uint8, float, half, float64} = DT_FLOAT")
     .Attr(
         "bad_color: tensor = { dtype: DT_UINT8 "
         "tensor_shape: { dim { size: 4 } } "
         "int_val: 255 int_val: 0 int_val: 0 int_val: 255 }")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Outputs a `Summary` protocol buffer with images.
+    .SetShapeFn(shape_inference::ScalarShape);
 
-The summary has up to `max_images` summary values containing images. The
-images are built from `tensor` which must be 4-D with shape `[batch_size,
-height, width, channels]` and where `channels` can be:
-
-*  1: `tensor` is interpreted as Grayscale.
-*  3: `tensor` is interpreted as RGB.
-*  4: `tensor` is interpreted as RGBA.
-
-The images have the same number of channels as the input tensor. For float
-input, the values are normalized one image at a time to fit in the range
-`[0, 255]`.  `uint8` values are unchanged.  The op uses two different
-normalization algorithms:
-
-*  If the input values are all positive, they are rescaled so the largest one
-   is 255.
-
-*  If any input value is negative, the values are shifted so input value 0.0
-   is at 127.  They are then rescaled so that either the smallest value is 0,
-   or the largest one is 255.
-
-The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
-build the `tag` of the summary values:
-
-*  If `max_images` is 1, the summary value tag is '*tag*/image'.
-*  If `max_images` is greater than 1, the summary value tags are
-   generated sequentially as '*tag*/image/0', '*tag*/image/1', etc.
-
-The `bad_color` argument is the color to use in the generated images for
-non-finite input values.  It is a `unit8` 1-D tensor of length `channels`.
-Each element must be in the range `[0, 255]` (It represents the value of a
-pixel in the output image).  Non-finite values in the input tensor are
-replaced by this tensor in the output image.  The default value is the color
-red.
-
-tag: Scalar. Used to build the `tag` attribute of the summary values.
-tensor: 4-D of shape `[batch_size, height, width, channels]` where
-  `channels` is 1, 3, or 4.
-max_images: Max number of batch elements to generate images for.
-bad_color: Color to use for pixels with non-finite values.
-summary: Scalar. Serialized `Summary` protocol buffer.
-)doc");
+REGISTER_OP("AudioSummaryV2")
+    .Input("tag: string")
+    .Input("tensor: float")
+    .Input("sample_rate: float")
+    .Output("summary: string")
+    .Attr("max_outputs: int >= 1 = 3")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("AudioSummary")
     .Input("tag: string")
@@ -188,47 +125,19 @@ REGISTER_OP("AudioSummary")
     .Attr("sample_rate: float")
     .Attr("max_outputs: int >= 1 = 3")
     .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Outputs a `Summary` protocol buffer with audio.
-
-The summary has up to `max_outputs` summary values containing audio. The
-audio is built from `tensor` which must be 3-D with shape `[batch_size,
-frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
-assumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.
-
-The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
-build the `tag` of the summary values:
-
-*  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
-*  If `max_outputs` is greater than 1, the summary value tags are
-   generated sequentially as '*tag*/audio/0', '*tag*/audio/1', etc.
-
-tag: Scalar. Used to build the `tag` attribute of the summary values.
-tensor: 2-D of shape `[batch_size, frames]`.
-sample_rate: The sample rate of the signal in hertz.
-max_outputs: Max number of batch elements to generate audio for.
-summary: Scalar. Serialized `Summary` protocol buffer.
-)doc");
+    .Deprecated(15, "Use AudioSummaryV2.");
 
 REGISTER_OP("MergeSummary")
     .Input("inputs: N * string")
     .Output("summary: string")
     .Attr("N : int >= 1")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Merges summaries.
+    .SetShapeFn(shape_inference::ScalarShape);
 
-This op creates a
-[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-protocol buffer that contains the union of all the values in the input
-summaries.
+REGISTER_OP("Timestamp")
+    .Output("ts: float64")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
 
-When the Op is run, it reports an `InvalidArgument` error if multiple values
-in the summaries to merge use the same tag.
-
-inputs: Can be of any shape.  Each must contain serialized `Summary` protocol
-  buffers.
-summary: Scalar. Serialized `Summary` protocol buffer.
-)doc");
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Timestamp");
 
 }  // end namespace tensorflow

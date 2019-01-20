@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/edit_distance.h"
 
+#include <cctype>
 #include <vector>
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -37,6 +38,8 @@ class LevenshteinDistanceTest : public ::testing::Test {
   std::string grandmother_;
   std::string lower_;
   std::string upper_;
+  std::vector<char> ebab_;
+  std::vector<char> abcd_;
 
   void SetUp() override {
     s1_ = "1";
@@ -48,11 +51,18 @@ class LevenshteinDistanceTest : public ::testing::Test {
     grandmother_ = "grandmother";
     lower_ = "lower case";
     upper_ = "UPPER case";
+    ebab_ = {'e', 'b', 'a', 'b'};
+    abcd_ = {'a', 'b', 'c', 'd'};
   }
 };
 
 TEST_F(LevenshteinDistanceTest, BothEmpty) {
   ASSERT_EQ(LevenshteinDistance(empty_, empty_, std::equal_to<char>()), 0);
+}
+
+TEST_F(LevenshteinDistanceTest, Symmetry) {
+  ASSERT_EQ(LevenshteinDistance(ebab_, abcd_, std::equal_to<char>()), 3);
+  ASSERT_EQ(LevenshteinDistance(abcd_, ebab_, std::equal_to<char>()), 3);
 }
 
 TEST_F(LevenshteinDistanceTest, OneEmpty) {

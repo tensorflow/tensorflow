@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_THREADPOOL_H_
-#define TENSORFLOW_LIB_CORE_THREADPOOL_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_
+#define TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_
 
 #include <functional>
 #include <memory>
@@ -22,32 +22,66 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
+namespace Eigen {
+class Allocator;
+}  // namespace Eigen
 namespace tensorflow {
 namespace thread {
 
 class ThreadPool {
  public:
-  // Construct a pool that contains "num_threads" threads with specified "name".
-  // env->StartThread() is used to create individual threads.
+  // Constructs a pool that contains "num_threads" threads with specified
+  // "name". env->StartThread() is used to create individual threads with the
+  // given ThreadOptions. If "low_latency_hint" is true the thread pool
+  // implementation may use it as a hint that lower latency is preferred at the
+  // cost of higher CPU usage, e.g. by letting one or more idle threads spin
+  // wait. Conversely, if the threadpool is used to schedule high-latency
+  // operations like I/O the hint should be set to false.
   //
+  // REQUIRES: num_threads > 0
+  ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
+             int num_threads, bool low_latency_hint,
+             Eigen::Allocator* allocator = nullptr);
+
+  // Constructs a pool for low-latency ops that contains "num_threads" threads
+  // with specified "name". env->StartThread() is used to create individual
+  // threads.
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const string& name, int num_threads);
 
-  // Construct a pool that contains "num_threads" threads with specified "name".
-  // env->StartThread() is used to create individual threads.
-  //
+  // Constructs a pool for low-latency ops that contains "num_threads" threads
+  // with specified "name". env->StartThread() is used to create individual
+  // threads with the given ThreadOptions.
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
              int num_threads);
 
-  // Wait until all scheduled work has finished and then destroy the
+  // Waits until all scheduled work has finished and then destroy the
   // set of threads.
   ~ThreadPool();
 
-  // Schedule fn() for execution in the pool of threads.
+  // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
 
-  // ParallelFor shards the "total" unit of work assuming each unit of work
+  void SetStealPartitions(
+      const std::vector<std::pair<unsigned, unsigned>>& partitions);
+
+  void ScheduleWithHint(std::function<void()> fn, int start, int limit);
+  // Requires 0 < block_size <= total.
+  // Spawns k threads and calls fn(i*block_size, (i+1)*block_size) from the
+  // ith thread (i>=0). When (i+1)*block_size > total, fn(i*block_size, total)
+  // is called instead. k = NumShardsUsedByTransformRangeConcurrently(...).
+  // Note that when there aren't enough threads in the pool to achieve full
+  // parallelism, function calls will be automatically queued.
+  void TransformRangeConcurrently(const int64 block_size, const int64 total,
+                                  const std::function<void(int64, int64)>& fn);
+
+  // Returns the number of threads spawned by calling TransformRangeConcurrently
+  // with these parameters.
+  int NumShardsUsedByTransformRangeConcurrently(const int64 block_size,
+                                                const int64 total);
+
+  // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
   // indexed 0, 1, ..., total - 1. Each shard contains 1 or more units of work
   // and the total cost of each shard is roughly the same.
@@ -59,6 +93,25 @@ class ThreadPool {
   // parallelism.
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn);
+
+  // Shards the "total" units of work. For more details, see "ParallelFor".
+  //
+  // The function is passed a thread_id between 0 and NumThreads() *inclusive*.
+  // This is because some work can happen on the caller thread while the threads
+  // in the pool are also being used.
+  //
+  // The caller can allocate NumThreads() + 1 separate buffers for each thread.
+  // Each thread can safely write to the buffer given by its id without
+  // synchronization. However, the worker fn may be called multiple times
+  // sequentially with the same id.
+  //
+  // At most NumThreads() unique ids will actually be used, and only a few may
+  // be used for small workloads. If each buffer is expensive, the buffers
+  // should be stored in an array initially filled with null, and a buffer
+  // should be allocated by fn the first time that the id is used.
+  void ParallelForWithWorkerId(
+      int64 total, int64 cost_per_unit,
+      const std::function<void(int64, int64, int)>& fn);
 
   // Returns the number of threads in the pool.
   int NumThreads() const;
@@ -77,4 +130,4 @@ class ThreadPool {
 }  // namespace thread
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_THREADPOOL_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_

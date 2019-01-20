@@ -188,9 +188,9 @@ Status RegisterTensorSlice(
     }
     if (type != tss->type()) {
       return errors::Internal("Incompatible tensor types detected for tensor ",
-                              name, ": existing = ",
-                              DataTypeString(tss->type()), ", new = ",
-                              DataTypeString(type));
+                              name,
+                              ": existing = ", DataTypeString(tss->type()),
+                              ", new = ", DataTypeString(type));
     }
   }
   // Register the tensor slices without the actual data.

@@ -19,13 +19,23 @@ from __future__ import division
 from __future__ import print_function
 
 import time
-import tensorflow as tf
 
-tf.app.flags.DEFINE_integer("batch_size", 64, "batch size.")
-FLAGS = tf.app.flags.FLAGS
+from six.moves import xrange  # pylint: disable=redefined-builtin
+from tensorflow.contrib import rnn as contrib_rnn
+from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
+from tensorflow.contrib.rnn.python.ops import lstm_ops
+from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class CudnnRNNBenchmark(tf.test.Benchmark):
+class CudnnRNNBenchmark(test.Benchmark):
   """Benchmarks Cudnn LSTM and other related models.
   """
 
@@ -34,19 +44,19 @@ class CudnnRNNBenchmark(tf.test.Benchmark):
         "large": {
             "num_layers": 4,
             "num_units": 1024,
-            "seq_length": 40,
+            "seq_length": 50,
             "batch_size": 64,
         },
         "medium": {
             "num_layers": 4,
             "num_units": 512,
-            "seq_length": 30,
+            "seq_length": 50,
             "batch_size": 64,
         },
         "small": {
             "num_layers": 4,
             "num_units": 128,
-            "seq_length": 20,
+            "seq_length": 50,
             "batch_size": 64,
         },
     }
@@ -61,9 +71,9 @@ class CudnnRNNBenchmark(tf.test.Benchmark):
 
   def _BenchmarkOp(self, op, desc):
     burn_in_steps = 10
-    benchmark_steps = 40
-    with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+    benchmark_steps = 20
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
       for i in xrange(burn_in_steps + benchmark_steps):
         if i == burn_in_steps:
           start_time = time.time()
@@ -83,22 +93,27 @@ class CudnnRNNBenchmark(tf.test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with tf.Graph().as_default(), tf.device("/gpu:0"):
-        model = tf.contrib.cudnn_rnn.CudnnLSTM(num_layers, num_units, num_units)
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
+        model = cudnn_rnn_ops.CudnnLSTM(num_layers, num_units, num_units)
         params_size_t = model.params_size()
-        input_data = tf.Variable(tf.ones([seq_length, batch_size, num_units]))
-        input_h = tf.Variable(tf.ones([num_layers, batch_size, num_units]))
-        input_c = tf.Variable(tf.ones([num_layers, batch_size, num_units]))
-        params = tf.Variable(tf.ones([params_size_t]), validate_shape=False)
+        input_data = variables.Variable(
+            array_ops.ones([seq_length, batch_size, num_units]))
+        input_h = variables.Variable(
+            array_ops.ones([num_layers, batch_size, num_units]))
+        input_c = variables.Variable(
+            array_ops.ones([num_layers, batch_size, num_units]))
+        params = variables.Variable(
+            array_ops.ones([params_size_t]), validate_shape=False)
         output, output_h, output_c = model(
             is_training=True,
             input_data=input_data,
             input_h=input_h,
             input_c=input_c,
             params=params)
-        all_grads = tf.gradients([output, output_h, output_c],
-                                 [params, input_data, input_h, input_c])
-        training_op = tf.group(*all_grads)
+        all_grads = gradients_impl.gradients(
+            [output, output_h, output_c],
+            [params, input_data, input_h, input_c])
+        training_op = control_flow_ops.group(*all_grads)
         self._BenchmarkOp(training_op, "cudnn_lstm %s %s" %
                           (config_name, self._GetConfigDesc(config)))
 
@@ -110,18 +125,19 @@ class CudnnRNNBenchmark(tf.test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with tf.Graph().as_default(), tf.device("/gpu:0"):
-        inputs = seq_length * [tf.zeros([batch_size, num_units], tf.float32)]
-        initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
+        inputs = array_ops.zeros([batch_size, seq_length, num_units],
+                                 dtypes.float32)
 
-        cell = tf.nn.rnn_cell.LSTMCell(
-            num_units=num_units, initializer=initializer, state_is_tuple=True)
-        multi_cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers)
-        outputs, final_state = tf.nn.rnn(multi_cell, inputs, dtype=tf.float32)
-        trainable_variables = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES)
-        gradients = tf.gradients([outputs, final_state], trainable_variables)
-        training_op = tf.group(*gradients)
+        multi_cell = contrib_rnn.MultiRNNCell(
+            [contrib_rnn.BasicLSTMCell(num_units) for _ in range(num_layers)])
+        outputs, final_state = rnn.dynamic_rnn(
+            multi_cell, inputs, dtype=dtypes.float32)
+        trainable_variables = ops.get_collection(
+            ops.GraphKeys.TRAINABLE_VARIABLES)
+        gradients = gradients_impl.gradients([outputs, final_state],
+                                             trainable_variables)
+        training_op = control_flow_ops.group(*gradients)
         self._BenchmarkOp(training_op, "tf_rnn_lstm %s %s" %
                           (config_name, self._GetConfigDesc(config)))
 
@@ -133,19 +149,22 @@ class CudnnRNNBenchmark(tf.test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with tf.Graph().as_default(), tf.device("/gpu:0"):
-        inputs = seq_length * [tf.zeros([batch_size, num_units], tf.float32)]
-        cell = tf.contrib.rnn.python.ops.lstm_ops.LSTMBlockCell(
-            num_units=num_units)
-        multi_cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers)
-        outputs, final_state = tf.nn.rnn(multi_cell, inputs, dtype=tf.float32)
-        trainable_variables = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES)
-        gradients = tf.gradients([outputs, final_state], trainable_variables)
-        training_op = tf.group(*gradients)
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
+        inputs = array_ops.zeros([batch_size, seq_length, num_units],
+                                 dtypes.float32)
+
+        multi_cell = contrib_rnn.MultiRNNCell(
+            [lstm_ops.LSTMBlockCell(num_units) for _ in range(num_layers)])
+        outputs, final_state = rnn.dynamic_rnn(
+            multi_cell, inputs, dtype=dtypes.float32)
+        trainable_variables = ops.get_collection(
+            ops.GraphKeys.TRAINABLE_VARIABLES)
+        gradients = gradients_impl.gradients([outputs, final_state],
+                                             trainable_variables)
+        training_op = control_flow_ops.group(*gradients)
         self._BenchmarkOp(training_op, "tf_rnn_lstm_block_cell %s %s" %
                           (config_name, self._GetConfigDesc(config)))
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -22,8 +22,8 @@
 #include <utility>
 #include <vector>
 
-#include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
 #include "tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.h"
+#include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -81,7 +81,7 @@ REGISTER_OP("StochasticHardRoutingGradient")
   tree_biases: `tree_biases[i]` gives the bias of the logistic
    regression model that translates from node features to
    probabilities.
-  path_probility: `path_probability[i]` gives the probability of reaching each
+  path_probability: `path_probability[i]` gives the probability of reaching each
    node in `path[i]`.
   path: `path[i][j]` gives the jth node in the path taken by the ith data
    instance.
@@ -149,14 +149,14 @@ class StochasticHardRoutingGradient : public OpKernel {
     TensorShape output_bias_shape;
     output_bias_shape.AddDim(num_data);
 
-    OP_REQUIRES_OK(context, context->allocate_output(
-        0, output_routing_shape, &output_routing));
-    OP_REQUIRES_OK(context, context->allocate_output(
-        1, output_data_shape, &output_data));
-    OP_REQUIRES_OK(context, context->allocate_output(
-        2, output_parameters_shape, &output_parameters));
-    OP_REQUIRES_OK(context, context->allocate_output(
-        3, output_bias_shape, &output_bias));
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_routing_shape,
+                                                     &output_routing));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(1, output_data_shape, &output_data));
+    OP_REQUIRES_OK(context, context->allocate_output(2, output_parameters_shape,
+                                                     &output_parameters));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(3, output_bias_shape, &output_bias));
 
     tensorforest::Initialize(*output_routing, 0.0);
     tensorforest::Initialize(*output_data, 0.0);
@@ -178,7 +178,7 @@ class StochasticHardRoutingGradient : public OpKernel {
       const Tensor point = input_data.Slice(i, i + 1);
 
       // Traverses the tree from the bottom up.
-      for (int j = tree_depth_-1; j > -1; j--) {
+      for (int j = tree_depth_ - 1; j > -1; j--) {
         int32 node = path(i, j);
 
         CHECK_LT(node, num_nodes);

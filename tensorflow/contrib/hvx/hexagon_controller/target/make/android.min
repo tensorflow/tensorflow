@@ -1,0 +1,70 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+$(info ------------------------------------------)
+$(info --- V = $(V))
+$(info --- GLUE_DIR = $(GLUE_DIR))
+$(info --- HEXAGON_SDK_ROOT = $(HEXAGON_SDK_ROOT))
+$(info ------------------------------------------)
+
+INCDIRS += ../../../libs/common/adspmsgd/ship/android_Release
+
+INCDIRS += src_impl/include
+INCDIRS += src_log/include
+INCDIRS += src_soc_interface/include
+
+LIBDIRS += ../../../libs/common/adspmsgd/ship/android_Release
+
+BUILD_DLLS=libhexagon_controller
+
+hexagon_controller_lib_QAICIDLS += \
+interface/hexagon_nn \
+$(MAKE_D_DSPCV_INCDIR)/dspCV
+
+# hexagon controller library
+hexagon_controller_lib_C_SRCS += \
+src_impl/hexagon_controller \
+src_impl/graph_functions_wrapper \
+src_soc_interface/soc_interface
+
+# dummy data
+hexagon_controller_lib_C_SRCS += \
+src_dummy_data/inception_v1_graph_init \
+src_dummy_data/inception_v3_dummy_float_data \
+src_dummy_data/inception_v3_dummy_int_data \
+src_dummy_data/inception_v3_graph_init
+
+# hexagon interface
+hexagon_controller_lib_C_SRCS += \
+$V/hexagon_nn_stub \
+$V/dspCV_stub
+
+hexagon_controller_lib_DLLS += libadsprpc
+hexagon_controller_lib_LIBS += rpcmem adspmsgd
+hexagon_controller_lib_LD_FLAGS += -llog
+hexagon_controller_lib_DEFINES += VERIFY_PRINT_ERROR
+
+libhexagon_controller_QAICIDLS += $(hexagon_controller_lib_QAICIDLS)
+libhexagon_controller_C_SRCS += $(hexagon_controller_lib_C_SRCS)
+libhexagon_controller_DLLS += $(hexagon_controller_lib_DLLS)
+libhexagon_controller_LIBS += $(hexagon_controller_lib_LIBS)
+libhexagon_controller_LD_FLAGS += $(hexagon_controller_lib_LD_FLAGS)
+libhexagon_controller_DEFINES += $(hexagon_controller_lib_DEFINES)
+
+BUILD_COPIES = \
+   $(DLLS) \
+   $(EXES) \
+   $(LIBS) \
+   $(SHIP_DIR)/ ;

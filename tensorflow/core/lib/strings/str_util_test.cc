@@ -43,6 +43,19 @@ TEST(CUnescape, Basic) {
   EXPECT_EQ("\320hi\200", ExpectCUnescapeSuccess("\\320hi\\200"));
 }
 
+TEST(CUnescape, HandlesCopyOnWriteStrings) {
+  string dest = "hello";
+  string read = dest;
+  // For std::string, read and dest now share the same buffer.
+
+  string error;
+  StringPiece source = "llohe";
+  // CUnescape is going to write "llohe" to dest, so dest's buffer will be
+  // reallocated, and read's buffer remains untouched.
+  EXPECT_TRUE(str_util::CUnescape(source, &dest, &error));
+  EXPECT_EQ("hello", read);
+}
+
 TEST(StripTrailingWhitespace, Basic) {
   string test;
   test = "hello";
@@ -239,6 +252,8 @@ TEST(Split, Basic) {
   EXPECT_EQ(str_util::Join(str_util::Split("a,b,c", ','), "|"), "a|b|c");
   EXPECT_EQ(str_util::Join(str_util::Split("a,,,b,,c,", ','), "|"),
             "a|||b||c|");
+  EXPECT_EQ(str_util::Join(str_util::Split("a!,!b,!c,", ",!"), "|"),
+            "a|||b||c|");
   EXPECT_EQ(str_util::Join(
                 str_util::Split("a,,,b,,c,", ',', str_util::SkipEmpty()), "|"),
             "a|b|c");
@@ -246,9 +261,13 @@ TEST(Split, Basic) {
       str_util::Join(
           str_util::Split("a,  ,b,,c,", ',', str_util::SkipWhitespace()), "|"),
       "a|b|c");
+  EXPECT_EQ(str_util::Join(str_util::Split("a.  !b,;c,", ".,;!",
+                                           str_util::SkipWhitespace()),
+                           "|"),
+            "a|b|c");
 }
 
-TEST(SplitAndParseAsInts, Basic) {
+TEST(SplitAndParseAsInts, Int32) {
   std::vector<int32> nums;
   EXPECT_TRUE(str_util::SplitAndParseAsInts("", ',', &nums));
   EXPECT_EQ(nums.size(), 0);
@@ -271,6 +290,55 @@ TEST(SplitAndParseAsInts, Basic) {
   EXPECT_FALSE(str_util::SplitAndParseAsInts("13,abc,5", ',', &nums));
 }
 
+TEST(SplitAndParseAsInts, Int64) {
+  std::vector<int64> nums;
+  EXPECT_TRUE(str_util::SplitAndParseAsInts("", ',', &nums));
+  EXPECT_EQ(nums.size(), 0);
+
+  EXPECT_TRUE(str_util::SplitAndParseAsInts("134", ',', &nums));
+  EXPECT_EQ(nums.size(), 1);
+  EXPECT_EQ(nums[0], 134);
+
+  EXPECT_TRUE(
+      str_util::SplitAndParseAsInts("134,2,13,-4000000000", ',', &nums));
+  EXPECT_EQ(nums.size(), 4);
+  EXPECT_EQ(nums[0], 134);
+  EXPECT_EQ(nums[1], 2);
+  EXPECT_EQ(nums[2], 13);
+  EXPECT_EQ(nums[3], static_cast<int64>(-4000000000ull));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsInts("abc", ',', &nums));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsInts("-13,abc", ',', &nums));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsInts("13,abc,5", ',', &nums));
+}
+
+TEST(SplitAndParseAsFloats, Float) {
+  std::vector<float> nums;
+  EXPECT_TRUE(str_util::SplitAndParseAsFloats("", ',', &nums));
+  EXPECT_EQ(nums.size(), 0);
+
+  EXPECT_TRUE(str_util::SplitAndParseAsFloats("134.2323", ',', &nums));
+  ASSERT_EQ(nums.size(), 1);
+  EXPECT_NEAR(nums[0], 134.2323f, 1e-5f);
+
+  EXPECT_TRUE(str_util::SplitAndParseAsFloats("134.9,2.123,13.0000,-5.999,1e6",
+                                              ',', &nums));
+  ASSERT_EQ(nums.size(), 5);
+  EXPECT_NEAR(nums[0], 134.9f, 1e-5f);
+  EXPECT_NEAR(nums[1], 2.123f, 1e-5f);
+  EXPECT_NEAR(nums[2], 13.0f, 1e-5f);
+  EXPECT_NEAR(nums[3], -5.999f, 1e-5f);
+  EXPECT_NEAR(nums[4], 1e6f, 1e1f);
+
+  EXPECT_FALSE(str_util::SplitAndParseAsFloats("abc", ',', &nums));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsFloats("-13.0,abc", ',', &nums));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsFloats("13.0,abc,-5.999", ',', &nums));
+}
+
 TEST(Lowercase, Basic) {
   EXPECT_EQ("", str_util::Lowercase(""));
   EXPECT_EQ("hello", str_util::Lowercase("hello"));
@@ -281,6 +349,38 @@ TEST(Uppercase, Basic) {
   EXPECT_EQ("", str_util::Uppercase(""));
   EXPECT_EQ("HELLO", str_util::Uppercase("hello"));
   EXPECT_EQ("HELLO WORLD", str_util::Uppercase("Hello World"));
+}
+
+TEST(SnakeCase, Basic) {
+  EXPECT_EQ("", str_util::ArgDefCase(""));
+  EXPECT_EQ("", str_util::ArgDefCase("!"));
+  EXPECT_EQ("", str_util::ArgDefCase("5"));
+  EXPECT_EQ("", str_util::ArgDefCase("!:"));
+  EXPECT_EQ("", str_util::ArgDefCase("5-5"));
+  EXPECT_EQ("", str_util::ArgDefCase("_!"));
+  EXPECT_EQ("", str_util::ArgDefCase("_5"));
+  EXPECT_EQ("a", str_util::ArgDefCase("_a"));
+  EXPECT_EQ("a", str_util::ArgDefCase("_A"));
+  EXPECT_EQ("i", str_util::ArgDefCase("I"));
+  EXPECT_EQ("i", str_util::ArgDefCase("i"));
+  EXPECT_EQ("i_", str_util::ArgDefCase("I%"));
+  EXPECT_EQ("i_", str_util::ArgDefCase("i%"));
+  EXPECT_EQ("i", str_util::ArgDefCase("%I"));
+  EXPECT_EQ("i", str_util::ArgDefCase("-i"));
+  EXPECT_EQ("i", str_util::ArgDefCase("3i"));
+  EXPECT_EQ("i", str_util::ArgDefCase("32i"));
+  EXPECT_EQ("i3", str_util::ArgDefCase("i3"));
+  EXPECT_EQ("i_a3", str_util::ArgDefCase("i_A3"));
+  EXPECT_EQ("i_i", str_util::ArgDefCase("II"));
+  EXPECT_EQ("i_i", str_util::ArgDefCase("I_I"));
+  EXPECT_EQ("i__i", str_util::ArgDefCase("I__I"));
+  EXPECT_EQ("i_i_32", str_util::ArgDefCase("II-32"));
+  EXPECT_EQ("ii_32", str_util::ArgDefCase("Ii-32"));
+  EXPECT_EQ("hi_there", str_util::ArgDefCase("HiThere"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("Hi!Hi"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("HiHi"));
+  EXPECT_EQ("hihi", str_util::ArgDefCase("Hihi"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("Hi_Hi"));
 }
 
 TEST(TitlecaseString, Basic) {
@@ -295,6 +395,47 @@ TEST(TitlecaseString, Basic) {
   s = "dense";
   str_util::TitlecaseString(&s, " ");
   ASSERT_EQ(s, "Dense");
+}
+
+TEST(StringReplace, Basic) {
+  EXPECT_EQ("XYZ_XYZ_XYZ", str_util::StringReplace("ABC_ABC_ABC", "ABC", "XYZ",
+                                                   /*replace_all=*/true));
+}
+
+TEST(StringReplace, OnlyFirst) {
+  EXPECT_EQ("XYZ_ABC_ABC", str_util::StringReplace("ABC_ABC_ABC", "ABC", "XYZ",
+                                                   /*replace_all=*/false));
+}
+
+TEST(StringReplace, IncreaseLength) {
+  EXPECT_EQ("a b c",
+            str_util::StringReplace("abc", "b", " b ", /*replace_all=*/true));
+}
+
+TEST(StringReplace, IncreaseLengthMultipleMatches) {
+  EXPECT_EQ("a b  b c",
+            str_util::StringReplace("abbc", "b", " b ", /*replace_all=*/true));
+}
+
+TEST(StringReplace, NoChange) {
+  EXPECT_EQ("abc",
+            str_util::StringReplace("abc", "d", "X", /*replace_all=*/true));
+}
+
+TEST(StringReplace, EmptyStringReplaceFirst) {
+  EXPECT_EQ("", str_util::StringReplace("", "a", "X", /*replace_all=*/false));
+}
+
+TEST(StringReplace, EmptyStringReplaceAll) {
+  EXPECT_EQ("", str_util::StringReplace("", "a", "X", /*replace_all=*/true));
+}
+
+TEST(Strnlen, Basic) {
+  EXPECT_EQ(0, str_util::Strnlen("ab", 0));
+  EXPECT_EQ(1, str_util::Strnlen("a", 1));
+  EXPECT_EQ(2, str_util::Strnlen("abcd", 2));
+  EXPECT_EQ(3, str_util::Strnlen("abc", 10));
+  EXPECT_EQ(4, str_util::Strnlen("a \t\n", 10));
 }
 
 }  // namespace tensorflow

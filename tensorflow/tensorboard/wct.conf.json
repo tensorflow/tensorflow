@@ -1,7 +1,0 @@
-{
-  "suites": [
-    "components/tf-*/test",
-    "components/vz-*/test"
-  ],
-  "plugins": ["local"]
-}

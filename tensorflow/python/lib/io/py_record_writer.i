@@ -18,6 +18,11 @@ limitations under the License.
 %include "tensorflow/python/platform/base.i"
 %include "tensorflow/python/lib/core/strings.i"
 
+// Define int8_t explicitly instead of including "stdint.i", since "stdint.h"
+// and "stdint.i" disagree on the definition of int64_t.
+typedef signed char int8;
+%{ typedef signed char int8; %}
+
 %feature("except") tensorflow::io::PyRecordWriter::New {
   // Let other threads run while we write
   Py_BEGIN_ALLOW_THREADS
@@ -26,6 +31,7 @@ limitations under the License.
 }
 
 %newobject tensorflow::io::PyRecordWriter::New;
+%newobject tensorflow::io::RecordWriterOptions::CreateRecordWriterOptions;
 
 %feature("except") tensorflow::io::PyRecordWriter::WriteRecord {
   // Let other threads run while we write
@@ -35,6 +41,8 @@ limitations under the License.
 }
 
 %{
+#include "tensorflow/core/lib/io/record_writer.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/python/lib/io/py_record_writer.h"
 %}
 
@@ -45,9 +53,24 @@ limitations under the License.
 %unignore tensorflow::io::PyRecordWriter;
 %unignore tensorflow::io::PyRecordWriter::~PyRecordWriter;
 %unignore tensorflow::io::PyRecordWriter::WriteRecord;
+%unignore tensorflow::io::PyRecordWriter::Flush;
 %unignore tensorflow::io::PyRecordWriter::Close;
 %unignore tensorflow::io::PyRecordWriter::New;
+%unignore tensorflow::io::ZlibCompressionOptions;
+%unignore tensorflow::io::ZlibCompressionOptions::flush_mode;
+%unignore tensorflow::io::ZlibCompressionOptions::input_buffer_size;
+%unignore tensorflow::io::ZlibCompressionOptions::output_buffer_size;
+%unignore tensorflow::io::ZlibCompressionOptions::window_bits;
+%unignore tensorflow::io::ZlibCompressionOptions::compression_level;
+%unignore tensorflow::io::ZlibCompressionOptions::compression_method;
+%unignore tensorflow::io::ZlibCompressionOptions::mem_level;
+%unignore tensorflow::io::ZlibCompressionOptions::compression_strategy;
+%unignore tensorflow::io::RecordWriterOptions;
+%unignore tensorflow::io::RecordWriterOptions::CreateRecordWriterOptions;
+%unignore tensorflow::io::RecordWriterOptions::zlib_options;
 
+%include "tensorflow/core/lib/io/record_writer.h"
+%include "tensorflow/core/lib/io/zlib_compression_options.h"
 %include "tensorflow/python/lib/io/py_record_writer.h"
 
 %unignoreall

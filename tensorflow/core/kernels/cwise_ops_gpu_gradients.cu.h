@@ -17,8 +17,8 @@ limitations under the License.
 #error This file must only be included when building with Cuda support
 #endif
 
-#ifndef TENSORFLOW_KERNELS_CWISE_OPS_GPU_GRADIENTS_CU_H_
-#define TENSORFLOW_KERNELS_CWISE_OPS_GPU_GRADIENTS_CU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_GRADIENTS_CU_H_
+#define TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_GRADIENTS_CU_H_
 
 #define EIGEN_USE_GPU
 
@@ -50,16 +50,16 @@ struct SimpleBinaryFunctor<GPUDevice, Functor> {
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
 // (T0, T1, etc.) for SimpleBiaryFunctor (e.g., functor::tanh_grad).
-#define DEFINE_SIMPLE_BINARY1(F, T)                  \
+#define DEFINE_SIMPLE_BINARY1(F, T) \
   template struct SimpleBinaryFunctor<GPUDevice, F<T> >
-#define DEFINE_SIMPLE_BINARY2(F, T0, T1)             \
-  DEFINE_SIMPLE_BINARY1(F, T0);                      \
+#define DEFINE_SIMPLE_BINARY2(F, T0, T1) \
+  DEFINE_SIMPLE_BINARY1(F, T0);          \
   DEFINE_SIMPLE_BINARY1(F, T1)
-#define DEFINE_SIMPLE_BINARY3(F, T0, T1, T2)         \
-  DEFINE_SIMPLE_BINARY2(F, T0, T1);                  \
+#define DEFINE_SIMPLE_BINARY3(F, T0, T1, T2) \
+  DEFINE_SIMPLE_BINARY2(F, T0, T1);          \
   DEFINE_SIMPLE_BINARY1(F, T2)
-#define DEFINE_SIMPLE_BINARY4(F, T0, T1, T2, T3)     \
-  DEFINE_SIMPLE_BINARY2(F, T0, T1);                  \
+#define DEFINE_SIMPLE_BINARY4(F, T0, T1, T2, T3) \
+  DEFINE_SIMPLE_BINARY2(F, T0, T1);              \
   DEFINE_SIMPLE_BINARY2(F, T2, T3)
 #define DEFINE_SIMPLE_BINARY5(F, T0, T1, T2, T3, T4) \
   DEFINE_SIMPLE_BINARY2(F, T0, T1);                  \
@@ -68,4 +68,4 @@ struct SimpleBinaryFunctor<GPUDevice, Functor> {
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CWISE_OPS_GPU_GRADIENTS_CU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_GRADIENTS_CU_H_

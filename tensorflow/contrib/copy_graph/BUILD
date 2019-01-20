@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "copy_graph_py",
     srcs = [
@@ -15,6 +17,12 @@ py_library(
         "python/util/copy_elements.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+    ],
 )
 
 py_test(
@@ -23,20 +31,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":copy_graph_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

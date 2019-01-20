@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_WINOGRAD_TRANSFORM_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_WINOGRAD_TRANSFORM_H_
+#ifndef TENSORFLOW_CORE_KERNELS_WINOGRAD_TRANSFORM_H_
+#define TENSORFLOW_CORE_KERNELS_WINOGRAD_TRANSFORM_H_
 
 #include "tensorflow/core/kernels/deep_conv2d.h"
 
@@ -374,4 +374,4 @@ void WinogradTransform<T>::GetOutputTransformMatrix(const int64 rows,
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_WINOGRAD_TRANSFORM_H_
+#endif  // TENSORFLOW_CORE_KERNELS_WINOGRAD_TRANSFORM_H_

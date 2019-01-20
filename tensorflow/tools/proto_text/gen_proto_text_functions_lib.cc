@@ -28,7 +28,6 @@ using ::tensorflow::protobuf::EnumDescriptor;
 using ::tensorflow::protobuf::FieldDescriptor;
 using ::tensorflow::protobuf::FieldOptions;
 using ::tensorflow::protobuf::FileDescriptor;
-using ::tensorflow::protobuf::OneofDescriptor;
 
 namespace tensorflow {
 
@@ -59,7 +58,7 @@ string StrAppend(string* to_append, const Args&... args) {
 // the field names (it's a loop over all names), and tracking of has_seen.
 class Generator {
  public:
-  Generator(const string& tf_header_prefix)
+  explicit Generator(const string& tf_header_prefix)
       : tf_header_prefix_(tf_header_prefix),
         header_(&code_.header),
         header_impl_(&code_.header_impl),
@@ -72,7 +71,7 @@ class Generator {
 
  private:
   struct Section {
-    Section(string* str) : str(str) {}
+    explicit Section(string* str) : str(str) {}
     string* str;
     string indent;
   };
@@ -154,7 +153,7 @@ class Generator {
 string GetPackageReferencePrefix(const FileDescriptor* fd) {
   string result = "::";
   const string& package = fd->package();
-  for (int i = 0; i < package.size(); ++i) {
+  for (size_t i = 0; i < package.size(); ++i) {
     if (package[i] == '.') {
       result += "::";
     } else {
@@ -280,8 +279,13 @@ void Generator::AppendFieldValueAppend(const FieldDescriptor& field,
       if (omit_default) {
         Print("if (", field_expr, " != 0) {").Nest();
       }
-      Print("o->AppendEnumName(\"", field.name(), "\", ",
-            GetQualifiedEnumNameFn(*field.enum_type()), "(", field_expr, "));");
+      Print("const char* enum_name = ",
+            GetQualifiedEnumNameFn(*field.enum_type()), "(", field_expr, ");");
+      Print("if (enum_name[0]) {").Nest();
+      Print("o->AppendEnumName(\"", field.name(), "\", enum_name);");
+      Unnest().Print("} else {").Nest();
+      Print("o->AppendNumeric(\"", field.name(), "\", ", field_expr, ");");
+      Unnest().Print("}");
       if (omit_default) {
         Unnest().Print("}");
       }
@@ -446,6 +450,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   Print("StringPiece identifier;");
   Print("if (!scanner->GetResult(nullptr, &identifier)) return false;");
   Print("bool parsed_colon = false;");
+  Print("(void)parsed_colon;"); // Avoid "set but not used" compiler warning
   Print("ProtoSpaceAndComments(scanner);");
   Print("if (scanner->Peek() == ':') {");
   Nest().Print("parsed_colon = true;");
@@ -540,18 +545,24 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
       for (int enum_i = 0; enum_i < enum_d->value_count(); ++enum_i) {
         const auto* value_d = enum_d->value(enum_i);
         const string& value_name = value_d->name();
-        string condition = StrCat("value == \"", value_name,
-                                  "\" || value == \"", value_d->number(), "\"");
-        if (value_d->number() == 0) {
-          StrAppend(&condition, " || value == \"-0\"");
-        }
+        string condition = StrCat("value == \"", value_name, "\"");
 
         Print(enum_i == 0 ? "" : "} else ", "if (", condition, ") {");
         Nest();
         Print(set_value_prefix, "(", value_prefix, value_name, ");");
         Unnest();
       }
+      Print("} else {");
+      Nest();
+      // Proto3 allows all numeric values.
+      Print("int32 int_value;");
+      Print("if (strings::SafeStringToNumeric(value, &int_value)) {");
+      Nest();
+      Print(set_value_prefix, "(static_cast<", GetQualifiedName(*enum_d),
+            ">(int_value));");
+      Unnest();
       Print("} else {").Nest().Print("return false;").Unnest().Print("}");
+      Unnest().Print("}");
     } else {
       Print(field->cpp_type_name(), " value;");
       switch (field->cpp_type()) {
@@ -634,6 +645,7 @@ void Generator::AppendDebugStringFunctions(const Descriptor& md) {
   Print().Print("namespace internal {").Print();
   Print(sig, " {").Nest();
   std::vector<const FieldDescriptor*> fields;
+  fields.reserve(md.field_count());
   for (int i = 0; i < md.field_count(); ++i) {
     fields.push_back(md.field(i));
   }
@@ -675,7 +687,7 @@ void Generator::AppendMessageFunctions(const Descriptor& md) {
 void Generator::AddNamespaceToCurrentSection(const string& package, bool open) {
   Print();
   std::vector<string> parts = {""};
-  for (int i = 0; i < package.size(); ++i) {
+  for (size_t i = 0; i < package.size(); ++i) {
     if (package[i] == '.') {
       parts.resize(parts.size() + 1);
     } else {
@@ -802,6 +814,9 @@ void Generator::Generate(const FileDescriptor& fd) {
   // Add header to cc file.
   SetOutput(&cc_);
   Print("// GENERATED FILE - DO NOT MODIFY");
+  Print();
+  Print("#include <algorithm>");  // for `std::stable_sort()`
+  Print();
   headers = {GetProtoTextHeaderName(fd, true /* impl */)};
   AddHeadersToCurrentSection(headers);
   Print();

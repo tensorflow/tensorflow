@@ -41,7 +41,7 @@ class RestoreOp : public OpKernel {
   }
   void Compute(OpKernelContext* context) override {
     RestoreTensor(context, &checkpoint::OpenTableTensorSliceReader,
-                  preferred_shard_, false);
+                  preferred_shard_, false, 0);
   }
 
  private:
@@ -67,7 +67,7 @@ class RestoreSliceOp : public OpKernel {
   }
   void Compute(OpKernelContext* context) override {
     RestoreTensor(context, &checkpoint::OpenTableTensorSliceReader,
-                  preferred_shard_, true);
+                  preferred_shard_, true, 0);
   }
 
  private:

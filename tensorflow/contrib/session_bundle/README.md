@@ -1,11 +1,15 @@
 # TensorFlow Inference Model Format
 
+WARNING: SessionBundle has been deprecated and is no longer supported. Switch to
+[SavedModel](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md)
+immediately.
+
 [TOC]
 
 ## Overview
 
-This document describes the data formats and layouts for exporting [TensorFlow]
-(https://www.tensorflow.org/) models for inference.
+This document describes the data formats and layouts for exporting
+[TensorFlow](https://www.tensorflow.org/) models for inference.
 
 These exports have the following properties:
 
@@ -34,12 +38,10 @@ definition that's needed for serving.
 *   `assets` -- Asset file directory
     *   Holds auxiliary files for the graph (e.g., vocabularies)
 *   `export.meta` -- MetaGraph Definition
-    *   Binary [`tensorflow::MetaGraphDef`]
-        (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/protobuf/meta_graph.proto)
+    *   Binary [`tensorflow::MetaGraphDef`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/protobuf/meta_graph.proto)
 *   `export-?????-of-?????`
     *   A checkpoint of the Graph Variables
-    *   Outputs from Python [`Saver`]
-        (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py)
+    *   Outputs from Python [`Saver`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py)
         with `sharded=True`.
 
 ## Exporting (Python code)
@@ -50,8 +52,8 @@ binary.
 
 ### Exporting TF.learn models
 
-TF.learn uses an [Exporter wrapper]
-(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/utils/export.py)
+TF.learn uses an
+[Exporter wrapper](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/utils/export.py)
 that can be used for building signatures. Use the `BaseEstimator.export`
 function to export your Estimator with a signature.
 

@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_PROFILEUTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H__
-#define TENSORFLOW_PLATFORM_PROFILEUTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H__
+#ifndef TENSORFLOW_CORE_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_
+#define TENSORFLOW_CORE_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_
+
+#include <sys/types.h>
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/types.h"
+
+#if defined(__ANDROID__) && (__ANDROID_API__ >= 21) && \
+    (defined(__ARM_ARCH_7A__) || defined(__aarch64__))
 
 struct perf_event_attr;
 
@@ -53,7 +58,10 @@ class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
   TF_DISALLOW_COPY_AND_ASSIGN(AndroidArmV7ACpuUtilsHelper);
 };
 
-}  // profile_utils
-}  // tensorflow
+}  // namespace profile_utils
+}  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_PROFILEUTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H__
+#endif  // defined(__ANDROID__) && (__ANDROID_API__ >= 21) &&
+        // (defined(__ARM_ARCH_7A__) || defined(__aarch64__))
+
+#endif  // TENSORFLOW_CORE_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_

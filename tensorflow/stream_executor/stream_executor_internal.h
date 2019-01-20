@@ -38,37 +38,35 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/stream_executor/module_spec.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/shared_memory_config.h"
 #include "tensorflow/stream_executor/trace_listener.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
-class KernelBase;
 class Stream;
 class Timer;
 
-namespace blas {
-class BlasSupport;
-}  // namespace blas
+// An opaque handle to a loaded module.
+//
+// An instance of this is returned from StreamExecutor::GetModule.
+class ModuleHandle {
+ public:
+  /*implicit*/ ModuleHandle(void *id = nullptr) : id_(id) {}
 
-namespace fft {
-class Support;
-}  // namespace fft
+  // A ModuleHandle with id() == nullptr is an invalid module handle, akin to a
+  // null pointer.
+  void *id() const { return id_; }
 
-namespace rng {
-class RngSupport;
-}  // namespace rng
+  explicit operator bool() const { return id() != nullptr; }
 
-}  // namespace gputools
-}  // namespace perftools
+ private:
+  void *id_;
+};
 
-namespace perftools {
-namespace gputools {
 namespace internal {
 
 // Platform-dependent interface class for the generic Events interface, in
@@ -119,19 +117,20 @@ class StreamInterface {
   // Default destructor for the abstract interface.
   virtual ~StreamInterface() {}
 
-  // Returns the CUDA stream associated with this platform's stream
+  // Returns the GPU stream associated with this platform's stream
   // implementation.
   //
-  // WARNING: checks that the underlying platform is, in fact, CUDA, causing a
-  // fatal error if it is not. This hack is made available solely for use from
-  // distbelief code, which temporarily has strong ties to CUDA as a platform.
-  virtual void *CudaStreamHack() { return nullptr; }
+  // WARNING: checks that the underlying platform is, in fact, CUDA or ROCm,
+  // causing a fatal error if it is not. This hack is made available solely for
+  // use from distbelief code, which temporarily has strong ties to CUDA or
+  // ROCm as a platform.
+  virtual void *GpuStreamHack() { return nullptr; }
 
-  // See the above comment on CudaStreamHack -- this further breaks abstraction
-  // for Eigen within distbelief, which has strong ties to CUDA as a platform,
-  // and a historical attachment to a programming model which takes a
+  // See the above comment on GpuStreamHack -- this further breaks abstraction
+  // for Eigen within distbelief, which has strong ties to CUDA or ROCm as a
+  // platform, and a historical attachment to a programming model which takes a
   // stream-slot rather than a stream-value.
-  virtual void **CudaStreamMemberHack() { return nullptr; }
+  virtual void **GpuStreamMemberHack() { return nullptr; }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
@@ -182,15 +181,31 @@ class StreamExecutorInterface {
                          KernelBase *kernel) {
     return false;
   }
-  virtual bool Launch(Stream *stream, const ThreadDim &thread_dims,
-                      const BlockDim &block_dims, const KernelBase &k,
-                      const std::vector<KernelArg> &args) {
+  virtual bool LoadModule(const MultiModuleLoaderSpec &spec,
+                          ModuleHandle *module_handle) {
     return false;
   }
+  virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
+  virtual bool Launch(Stream *stream, const ThreadDim &thread_dims,
+                      const BlockDim &block_dims, const KernelBase &k,
+                      const KernelArgsArrayBase &args) {
+    return false;
+  }
+  // Releases any state associated with the kernel.
+  virtual void UnloadKernel(const KernelBase *kernel) {}
   virtual void *Allocate(uint64 size) = 0;
   virtual void *AllocateSubBuffer(DeviceMemoryBase *parent, uint64 offset,
                                   uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
+  // Allocates unified memory space of the given size, if supported.
+  // See
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
+  // for more details on unified memory.
+  virtual void *UnifiedMemoryAllocate(uint64 size) { return nullptr; }
+
+  // Deallocates unified memory space previously allocated with
+  // UnifiedMemoryAllocate.
+  virtual void UnifiedMemoryDeallocate(void *mem) {}
   virtual void *HostMemoryAllocate(uint64 size) = 0;
   virtual void HostMemoryDeallocate(void *mem) = 0;
   virtual bool HostMemoryRegister(void *mem, uint64 size) = 0;
@@ -199,18 +214,20 @@ class StreamExecutorInterface {
   virtual bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) = 0;
   virtual bool SynchronousMemSet(DeviceMemoryBase *location, int value,
                                  uint64 size) = 0;
-  virtual bool SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                 const void *host_src, uint64 size) = 0;
-  virtual bool SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &gpu_src,
-                                 uint64 size) = 0;
-  virtual bool SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                               const DeviceMemoryBase &gpu_src,
-                                               uint64 size) = 0;
+  virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                         const void *host_src, uint64 size) = 0;
+  virtual port::Status SynchronousMemcpy(void *host_dst,
+                                         const DeviceMemoryBase &gpu_src,
+                                         uint64 size) = 0;
+  virtual port::Status SynchronousMemcpyDeviceToDevice(
+      DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
+      uint64 size) = 0;
   virtual bool MemZero(Stream *stream, DeviceMemoryBase *location,
                        uint64 size) = 0;
-  virtual bool Memset(Stream *stream, DeviceMemoryBase *location,
-                      uint8 pattern, uint64 size) = 0;
+  virtual bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+                      uint64 size) {
+    return false;
+  }
   virtual bool Memset32(Stream *stream, DeviceMemoryBase *location,
                         uint32 pattern, uint64 size) = 0;
   virtual bool Memcpy(Stream *stream, void *host_dst,
@@ -218,9 +235,11 @@ class StreamExecutorInterface {
   virtual bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
                       const void *host_src, uint64 size) = 0;
   virtual bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
-                                    const DeviceMemoryBase &host_src,
+                                    const DeviceMemoryBase &gpu_src,
                                     uint64 size) = 0;
-  virtual bool HostCallback(Stream *stream, std::function<void()> callback) = 0;
+  virtual bool HostCallback(Stream *stream, std::function<void()> callback);
+  virtual bool HostCallback(Stream *stream,
+                            std::function<port::Status()> callback) = 0;
   virtual port::Status AllocateEvent(Event *event) = 0;
   virtual port::Status DeallocateEvent(Event *event) = 0;
   virtual port::Status RecordEvent(Stream *stream, Event *event) = 0;
@@ -233,13 +252,15 @@ class StreamExecutorInterface {
   virtual void DeallocateTimer(Timer *timer) = 0;
   virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
   virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
-  virtual bool BlockHostUntilDone(Stream *stream) = 0;
+  virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
   virtual int PlatformDeviceCount() = 0;
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual SharedMemoryConfig GetDeviceSharedMemoryConfig() = 0;
   virtual port::Status SetDeviceSharedMemoryConfig(
       SharedMemoryConfig config) = 0;
+
+  virtual int64 GetDeviceLoad() { return -1; }
 
   virtual bool DeviceMemoryUsage(int64 *free, int64 *total) const {
     return false;
@@ -250,16 +271,18 @@ class StreamExecutorInterface {
   // null, however, both of them cannot be null at the same time. To use
   // constant memory in CUDA, GetSymbol has to be used. Returns true if symbol
   // is found.
-  virtual bool GetSymbol(const string& symbol_name, void **mem, size_t *bytes) {
+  //
+  // If ModuleHandle is set then we search for `symbol_name` only within the
+  // module corresponding to `module_handle`.  Otherwise all loaded modules are
+  // searched.
+  virtual bool GetSymbol(const string &symbol_name, ModuleHandle module_handle,
+                         void **mem, size_t *bytes) {
     return false;
   }
 
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
   virtual DeviceDescription *PopulateDeviceDescription() const = 0;
-
-  virtual KernelArg DeviceMemoryToKernelArg(
-      const DeviceMemoryBase &gpu_mem) const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific
   // Executor implementation. When this is called, the PIMPL interface has
@@ -320,7 +343,7 @@ class StreamExecutorInterface {
   // Creates a new DnnSupport object, ownership is transferred to the caller.
   // If SupportsDnn() is false, this will always return null.
   //
-  // If SupportsDnn() is true, this may return null, for example, if the RNG
+  // If SupportsDnn() is true, this may return null, for example, if the DNN
   // initialization fails.
   virtual dnn::DnnSupport *CreateDnn() { return nullptr; }
 
@@ -331,13 +354,14 @@ class StreamExecutorInterface {
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
   virtual std::unique_ptr<TimerInterface> GetTimerImplementation() = 0;
 
-  // Returns the CUDA context associated with this StreamExecutor platform
-  // implementation.
+  // Returns the CUDA or ROCm context associated with this StreamExecutor
+  // platform implementation.
   //
-  // WARNING: checks that the underlying platform is, in fact, CUDA, causing a
-  // fatal error if it is not. This hack is made available solely for use from
-  // distbelief code, which temporarily has strong ties to CUDA as a platform.
-  virtual void *CudaContextHack() { return nullptr; }
+  // WARNING: checks that the underlying platform is, in fact, CUDA or ROCm,
+  // causing a fatal error if it is not. This hack is made available solely for
+  // use from distbelief code, which temporarily has strong ties to CUDA or ROCm
+  // as a platform.
+  virtual void *GpuContextHack() { return nullptr; }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);
@@ -358,7 +382,6 @@ extern StreamExecutorFactory MakeHostExecutorImplementation;
 
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_

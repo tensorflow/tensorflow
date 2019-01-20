@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TensorArrayWriteV2"
+  visibility: SKIP
+  summary: "Deprecated. Use TensorArrayGradV3"
+}

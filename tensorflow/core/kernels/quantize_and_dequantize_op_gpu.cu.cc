@@ -31,12 +31,11 @@ template <typename T>
 struct QuantizeAndDequantizeOneScaleFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::ConstVec input,
                   bool signed_input, int num_bits, bool range_given,
-                  typename TTypes<T>::Scalar input_min,
-                  typename TTypes<T>::Scalar input_max,
-                  typename TTypes<T>::Vec out) {
+                  Tensor* input_min_tensor, Tensor* input_max_tensor,
+                  QuantizerRoundMode round_mode, typename TTypes<T>::Vec out) {
     QuantizeAndDequantizeOneScaleImpl<GPUDevice, T>::Compute(
-        d, input, signed_input, range_given, num_bits, input_min, input_max,
-        out);
+        d, input, signed_input, num_bits, range_given, input_min_tensor,
+        input_max_tensor, round_mode, out);
   }
 };
 }  // end namespace functor

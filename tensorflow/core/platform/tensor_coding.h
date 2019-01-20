@@ -25,6 +25,8 @@ limitations under the License.
 
 #ifdef PLATFORM_GOOGLE
 #include "tensorflow/core/platform/google/cord_coding.h"
+#else
+#include "tensorflow/core/platform/default/string_coding.h"
 #endif
 
 namespace tensorflow {

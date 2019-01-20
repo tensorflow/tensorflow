@@ -44,7 +44,7 @@ class StdThread : public Thread {
   StdThread(const ThreadOptions& thread_options, const string& name,
             std::function<void()> fn)
       : thread_(fn) {}
-  ~StdThread() { thread_.join(); }
+  ~StdThread() override { thread_.join(); }
 
  private:
   std::thread thread_;
@@ -58,12 +58,6 @@ class PosixEnv : public Env {
 
   bool MatchPath(const string& path, const string& pattern) override {
     return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
-  }
-
-  uint64 NowMicros() override {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return static_cast<uint64>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
   void SleepForMicroseconds(int64 micros) override {
@@ -119,6 +113,37 @@ class PosixEnv : public Env {
     return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
                                                       symbol);
   }
+
+  string FormatLibraryFileName(const string& name,
+                               const string& version) override {
+    return tensorflow::internal::FormatLibraryFileName(name, version);
+  }
+
+  string GetRunfilesDir() override {
+    string bin_path = this->GetExecutablePath();
+    string runfiles_suffix = ".runfiles/org_tensorflow";
+    std::size_t pos = bin_path.find(runfiles_suffix);
+
+    // Sometimes (when executing under python) bin_path returns the full path to
+    // the python scripts under runfiles. Get the substring.
+    if (pos != std::string::npos) {
+      return bin_path.substr(0, pos + runfiles_suffix.length());
+    }
+
+    // See if we have the executable path. if executable.runfiles exists, return
+    // that folder.
+    string runfiles_path = bin_path + runfiles_suffix;
+    Status s = this->IsDirectory(runfiles_path);
+    if (s.ok()) {
+      return runfiles_path;
+    }
+
+    // If nothing can be found, return something close.
+    return bin_path.substr(0, bin_path.find_last_of("/\\"));
+  }
+
+ private:
+  void GetLocalTempDirectories(std::vector<string>* list) override;
 };
 
 }  // namespace
@@ -131,5 +156,44 @@ Env* Env::Default() {
   return default_env;
 }
 #endif
+
+void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
+  list->clear();
+  // Directories, in order of preference. If we find a dir that
+  // exists, we stop adding other less-preferred dirs
+  const char* candidates[] = {
+    // Non-null only during unittest/regtest
+    getenv("TEST_TMPDIR"),
+
+    // Explicitly-supplied temp dirs
+    getenv("TMPDIR"),
+    getenv("TMP"),
+
+#if defined(__ANDROID__)
+    "/data/local/tmp",
+#endif
+
+    // If all else fails
+    "/tmp",
+  };
+
+  for (const char* d : candidates) {
+    if (!d || d[0] == '\0') continue;  // Empty env var
+
+    // Make sure we don't surprise anyone who's expecting a '/'
+    string dstr = d;
+    if (dstr[dstr.size() - 1] != '/') {
+      dstr += "/";
+    }
+
+    struct stat statbuf;
+    if (!stat(d, &statbuf) && S_ISDIR(statbuf.st_mode) &&
+        !access(dstr.c_str(), 0)) {
+      // We found a dir that exists and is accessible - we're done.
+      list->push_back(dstr);
+      return;
+    }
+  }
+}
 
 }  // namespace tensorflow

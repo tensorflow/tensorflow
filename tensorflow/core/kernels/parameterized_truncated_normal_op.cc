@@ -44,31 +44,11 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 using random::PhiloxRandom;
-using random::SingleSampleAdapter;
 
-// Sample a truncated normal random variable, with mean, stddev, minval, and
-// maxval parameters for each batch. Uses two rejection sampling algorithms
-// described in http://rd.springer.com/article/10.1007/BF00143942.
-//
-// Either minval may be -infinity, or maxval may be +infinity. If the interval
-// (minval, maxval) is empty, the result is NaN. Large intervals which include
-// both tails may have reduced accuracy.
-template <typename Device, typename T>
-struct TruncatedNormalFunctor {
-  void operator()(OpKernelContext* ctx, const Device& d, int64 num_batches,
-                  int64 samples_per_batch, int64 num_elements,
-                  typename TTypes<T>::ConstFlat means,
-                  typename TTypes<T>::ConstFlat stddevs,
-                  typename TTypes<T>::ConstFlat minvals,
-                  typename TTypes<T>::ConstFlat maxvals,
-                  const random::PhiloxRandom& gen,
-                  typename TTypes<T>::Flat output);
-};
+static constexpr int kMaxIterations = 1000;
 
 template <typename T>
 struct TruncatedNormalFunctor<CPUDevice, T> {
-  static const int kMaxIterations = 100;
-
   void operator()(OpKernelContext* ctx, const CPUDevice& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,
                   typename TTypes<T>::ConstFlat means,
@@ -77,11 +57,20 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat maxvals,
                   const random::PhiloxRandom& gen,
                   typename TTypes<T>::Flat output) {
+    // The randn rejection sampling is used when the mean and at least this many
+    // standard deviations are inside the bounds.
+    // The uniform proposal samplers become less efficient as the bounds are
+    // further from the mean, the reverse is true for the randn sampler.
+    // This number was chosen by empirical benchmarking. If modified, the
+    // benchmarks in parameterized_truncated_normal_op_test should also be
+    // changed.
+    const T kStdDevsInsideBoundsToUseRandnSampler = T(1.3);
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
     auto DoWork = [samples_per_batch, num_elements, &ctx, &means, &stddevs,
-                   &minvals, &maxvals, &gen,
-                   &output](int start_batch, int limit_batch) {
+                   &minvals, &maxvals, &gen, &output,
+                   kStdDevsInsideBoundsToUseRandnSampler](int start_batch,
+                                                          int limit_batch) {
       // Capturing "gen" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
@@ -93,11 +82,13 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                     4);
       typedef random::UniformDistribution<random::PhiloxRandom, T> Uniform;
       Uniform dist;
+      typedef random::NormalDistribution<random::PhiloxRandom, T> Normal;
+      Normal normal_dist;
 
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
-      tensorflow::random::Array<T, 4> z;
-      tensorflow::random::Array<T, 4> g;
+      Eigen::array<T, 4> z;
+      Eigen::array<T, 4> g;
 
       for (int64 b = start_batch; b < limit_batch; ++b) {
         // We are passed a flat array for each of the parameter tensors.
@@ -115,9 +106,10 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
         int64 sample = b * samples_per_batch;
 
         // On GPU, this check will just fill samples with NAN if it fails.
-        OP_REQUIRES(ctx, stddev > T(0) && minval < maxval &&
-                             (Eigen::numext::isfinite(minval) ||
-                              Eigen::numext::isfinite(maxval)),
+        OP_REQUIRES(ctx,
+                    stddev > T(0) && minval < maxval &&
+                        (Eigen::numext::isfinite(minval) ||
+                         Eigen::numext::isfinite(maxval)),
                     errors::InvalidArgument("Invalid parameters"));
 
         int numIterations = 0;
@@ -138,20 +130,61 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
         // Determine the method to use.
         const T sqrtFactor = Eigen::numext::sqrt((normMin * normMin) + T(4));
         const T cutoff =
-            T(2) * Eigen::numext::exp(
-                       T(0.5) + (normMin * (normMin - sqrtFactor)) / T(4)) /
+            T(2) *
+            Eigen::numext::exp(T(0.5) +
+                               (normMin * (normMin - sqrtFactor)) / T(4)) /
             (normMin + sqrtFactor);
         const T diff = normMax - normMin;
-        if (diff < cutoff) {
+
+        if (((normMin < -kStdDevsInsideBoundsToUseRandnSampler) &&
+             (normMax >= T(0.))) ||
+            ((normMax > kStdDevsInsideBoundsToUseRandnSampler) &&
+             (normMin <= T(0.)))) {
+          // If the bounds are a least 3 standard deviations from the mean
+          // on at least one side then we rejection sample by sampling
+          // from the normal distribution and rejecting samples outside
+          // the bounds.
+          // Under this condition the acceptance rate per iteration should
+          // always be ~ 50%. This sampler is more efficient (and more
+          // numerically stable when one or both bounds is far from the mean).
+
+          while (sample < limit_sample) {
+            const auto randn_sample = normal_dist(&gen_copy);
+            const int size = randn_sample.size();
+
+            for (int i = 0; i < size; i++) {
+              if ((randn_sample[i] >= normMin) &&
+                  (randn_sample[i] <= normMax)) {
+                output(sample) = randn_sample[i] * stddev + mean;
+                sample++;
+                if (sample >= limit_sample) {
+                  break;
+                }
+                numIterations = 0;
+              } else {
+                numIterations++;
+                if (numIterations > kMaxIterations) {
+                  // This should never occur because this sampler should
+                  // (by the selection criteria above) be used if at least 3
+                  // standard deviations of one side of the distribution
+                  // is within the limits (so acceptance probability per
+                  // iterations >~ 1/2 per iteration).
+                  LOG(ERROR) << "TruncatedNormal randn rejection sampler "
+                             << "exceeded maximum iterations for "
+                             << "normMin=" << normMin << " normMax=" << normMax
+                             << " kMaxIterations=" << kMaxIterations;
+                  ctx->SetStatus(errors::Internal(
+                      "TruncatedNormal randn rejection sampler failed to accept"
+                      " a sample."));
+                  return;
+                }
+              }
+            }
+          }
+        } else if (diff < cutoff) {
           // Sample from a uniform distribution on [normMin, normMax].
 
-          T plusFactor;
-          if (normMin < T(0)) {
-            // normMax > 0 because it is flipped otherwise.
-            plusFactor = T(0);
-          } else {
-            plusFactor = normMin * normMin;
-          }
+          const T plusFactor = (normMin < T(0)) ? T(0) : normMin * normMin;
 
           while (sample < limit_sample) {
             const auto rand = dist(&gen_copy);
@@ -167,15 +200,24 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
 
             const auto u = dist(&gen_copy);
             for (int i = 0; i < size; i++) {
-              if (u[i] <= Eigen::numext::exp(g[i]) ||
-                  numIterations + 1 >= kMaxIterations) {
+              auto accept = u[i] <= Eigen::numext::exp(g[i]);
+              if (accept || numIterations + 1 >= kMaxIterations) {
                 // Accept the sample z.
                 // If we run out of iterations, just use the current uniform
-                // sample. Emperically, the probability of accepting each sample
-                // is at least 50% for typical inputs, so we will always accept
-                // by 100 iterations.
-                // This introduces a slight inaccuracy when at least one bound
-                // is large, minval is negative and maxval is positive.
+                // sample, but emit a warning.
+                // TODO(jjhunt) For small entropies (relative to the bounds),
+                // this sampler is poor and may take many iterations since
+                // the proposal distribution is the uniform distribution
+                // U(lower_bound, upper_bound).
+                if (!accept) {
+                  LOG(ERROR) << "TruncatedNormal uniform rejection sampler "
+                             << "exceeded max iterations. Sample may contain "
+                             << "outliers.";
+                  ctx->SetStatus(errors::Internal(
+                      "TruncatedNormal uniform rejection sampler failed to "
+                      " accept a sample."));
+                  return;
+                }
                 output(sample) = z[i] * stddev + mean;
                 sample++;
                 if (sample >= limit_sample) {
@@ -205,8 +247,17 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
               const T g = Eigen::numext::exp(-x * x / T(2.0));
               const T u = rand[i];
               i++;
-              if ((u <= g && z < normMax) ||
-                  numIterations + 1 >= kMaxIterations) {
+              auto accept = (u <= g && z < normMax);
+              if (accept || numIterations + 1 >= kMaxIterations) {
+                if (!accept) {
+                  LOG(ERROR) << "TruncatedNormal exponential distribution "
+                             << "rejection sampler exceeds max iterations. "
+                             << "Sample may contain outliers.";
+                  ctx->SetStatus(errors::Internal(
+                      "TruncatedNormal exponential distribution rejection"
+                      " sampler failed to accept a sample."));
+                  return;
+                }
                 output(sample) = z * stddev + mean;
                 sample++;
                 if (sample >= limit_sample) {
@@ -335,30 +386,34 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
     } else {
       // Parameters must be broadcastable to the shape [num_batches].
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(means_tensor.shape()) ||
-                   means_tensor.dim_size(0) == 1 ||
-                   means_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(means_tensor.shape()) ||
+              means_tensor.dim_size(0) == 1 ||
+              means_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input means should have length 1 or shape[0], got shape: ",
               means_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(stddevs_tensor.shape()) ||
-                   stddevs_tensor.dim_size(0) == 1 ||
-                   stddevs_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(stddevs_tensor.shape()) ||
+              stddevs_tensor.dim_size(0) == 1 ||
+              stddevs_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input stddevs should have length 1 or shape[0], got shape: ",
               stddevs_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(minvals_tensor.shape()) ||
-                   minvals_tensor.dim_size(0) == 1 ||
-                   minvals_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(minvals_tensor.shape()) ||
+              minvals_tensor.dim_size(0) == 1 ||
+              minvals_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input minvals should have length 1 or shape[0], got shape: ",
               minvals_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(maxvals_tensor.shape()) ||
-                   maxvals_tensor.dim_size(0) == 1 ||
-                   maxvals_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(maxvals_tensor.shape()) ||
+              maxvals_tensor.dim_size(0) == 1 ||
+              maxvals_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input maxvals should have length 1 or shape[0], got shape: ",
               maxvals_tensor.shape().DebugString()));
@@ -366,9 +421,9 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
 
     auto truncFunctor = functor::TruncatedNormalFunctor<Device, T>();
     // Each worker has the fudge factor for samples_per_batch, so use it here.
-    random::PhiloxRandom rng = generator_.ReserveSamples128(
-        num_batches * 2 * truncFunctor.kMaxIterations *
-        (samples_per_batch + 3) / 4);
+    random::PhiloxRandom rng =
+        generator_.ReserveSamples128(num_batches * 2 * functor::kMaxIterations *
+                                     (samples_per_batch + 3) / 4);
     truncFunctor(ctx, ctx->eigen_device<Device>(), num_batches,
                  samples_per_batch, num_elements, means_tensor.flat<T>(),
                  stddevs_tensor.flat<T>(), minvals_tensor.flat<T>(),
@@ -394,5 +449,22 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 
 #undef REGISTER
+
+#if GOOGLE_CUDA
+
+#define REGISTER(TYPE)                                         \
+  REGISTER_KERNEL_BUILDER(Name("ParameterizedTruncatedNormal") \
+                              .Device(DEVICE_GPU)              \
+                              .HostMemory("shape")             \
+                              .TypeConstraint<TYPE>("dtype"),  \
+                          ParameterizedTruncatedNormalOp<GPUDevice, TYPE>)
+
+TF_CALL_half(REGISTER);
+TF_CALL_float(REGISTER);
+TF_CALL_double(REGISTER);
+
+#undef REGISTER
+
+#endif  // GOOGLE_CUDA
 
 }  // end namespace tensorflow

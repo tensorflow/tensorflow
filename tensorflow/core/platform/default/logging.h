@@ -13,16 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_DEFAULT_LOGGING_H_
-#define TENSORFLOW_PLATFORM_DEFAULT_LOGGING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
+#define TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/logging.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/logging.h
 
-#include <sstream>
 #include <limits>
+#include <sstream>
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+
+// TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
+#undef ERROR
 
 namespace tensorflow {
 const int INFO = 0;            // base_logging::INFO;
@@ -38,6 +41,22 @@ class LogMessage : public std::basic_ostringstream<char> {
   LogMessage(const char* fname, int line, int severity);
   ~LogMessage();
 
+  // Returns the minimum log level for VLOG statements.
+  // E.g., if MinVLogLevel() is 2, then VLOG(2) statements will produce output,
+  // but VLOG(3) will not. Defaults to 0.
+  static int64 MinVLogLevel();
+
+  // Returns whether VLOG level lvl is activated for the file fname.
+  //
+  // E.g. if the environment variable TF_CPP_VMODULE contains foo=3 and fname is
+  // foo.cc and lvl is <= 3, this will return true. It will also return true if
+  // the level is lower or equal to TF_CPP_MIN_VLOG_LEVEL (default zero).
+  //
+  // It is expected that the result of this query will be cached in the VLOG-ing
+  // call site to avoid repeated lookups. This routine performs a hash-map
+  // access against the VLOG-ing specification provided by the env var.
+  static bool VmoduleActivated(const char* fname, int level);
+
  protected:
   void GenerateLogMessage();
 
@@ -45,6 +64,13 @@ class LogMessage : public std::basic_ostringstream<char> {
   const char* fname_;
   int line_;
   int severity_;
+};
+
+// Uses the lower operator & precedence to voidify a LogMessage reference, so
+// that the ternary VLOG() implementation is balanced, type wise.
+struct Voidifier {
+  template <typename T>
+  void operator&(const T&)const {}
 };
 
 // LogMessageFatal ensures the process will exit in failure after
@@ -56,22 +82,43 @@ class LogMessageFatal : public LogMessage {
 };
 
 #define _TF_LOG_INFO \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::INFO)
 #define _TF_LOG_WARNING \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::WARNING)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::WARNING)
 #define _TF_LOG_ERROR \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::ERROR)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::ERROR)
 #define _TF_LOG_FATAL \
   ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__)
 
+#define _TF_LOG_QFATAL _TF_LOG_FATAL
+
 #define LOG(severity) _TF_LOG_##severity
 
-// TODO(jeff): Define a proper implementation of VLOG_IS_ON
+#ifdef IS_MOBILE_PLATFORM
+
+// Turn VLOG off when under mobile devices for considerations of binary size.
 #define VLOG_IS_ON(lvl) ((lvl) <= 0)
 
-#define VLOG(lvl)      \
-  if (VLOG_IS_ON(lvl)) \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
+#else
+
+// Otherwise, set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level
+// of VLOG, or TF_CPP_VMODULE to set the minimum log level for individual
+// translation units.
+#define VLOG_IS_ON(lvl)                                                     \
+  (([](int level, const char* fname) {                                      \
+    static const bool vmodule_activated =                                   \
+        ::tensorflow::internal::LogMessage::VmoduleActivated(fname, level); \
+    return vmodule_activated;                                               \
+  })(lvl, __FILE__))
+
+#endif
+
+#define VLOG(level)                                              \
+  TF_PREDICT_TRUE(!VLOG_IS_ON(level))                            \
+  ? (void)0                                                      \
+  : ::tensorflow::internal::Voidifier() &                        \
+          ::tensorflow::internal::LogMessage(__FILE__, __LINE__, \
+                                             tensorflow::INFO)
 
 // CHECK dies with a fatal error if condition is not true.  It is *not*
 // controlled by NDEBUG, so the check will be executed regardless of
@@ -188,16 +235,17 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
   inline string* name##Impl(int v1, int v2, const char* exprtext) {       \
     return name##Impl<int, int>(v1, v2, exprtext);                        \
   }                                                                       \
-  inline string* name##Impl(const size_t v1, const int v2, const char* exprtext) {       \
+  inline string* name##Impl(const size_t v1, const int v2,                \
+                            const char* exprtext) {                       \
     if (TF_PREDICT_FALSE(v2 < 0)) {                                       \
-       return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);\
+      return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
     }                                                                     \
-    const size_t uval = (size_t)((unsigned)v1);                           \
-    return name##Impl<size_t, size_t>(uval, v2, exprtext);                \
+    return name##Impl<size_t, size_t>(v1, v2, exprtext);                  \
   }                                                                       \
-  inline string* name##Impl(const int v1, const size_t v2, const char* exprtext) {       \
-    if (TF_PREDICT_FALSE(v2 >= std::numeric_limits<int>::max())) {      \
-       return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);\
+  inline string* name##Impl(const int v1, const size_t v2,                \
+                            const char* exprtext) {                       \
+    if (TF_PREDICT_FALSE(v2 >= std::numeric_limits<int>::max())) {        \
+      return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
     }                                                                     \
     const size_t uval = (size_t)((unsigned)v2);                           \
     return name##Impl<size_t, size_t>(v1, uval, exprtext);                \
@@ -208,12 +256,12 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
 // This happens if, for example, those are used as token names in a
 // yacc grammar.
 TF_DEFINE_CHECK_OP_IMPL(Check_EQ,
-                        == )  // Compilation error with CHECK_EQ(NULL, x)?
-TF_DEFINE_CHECK_OP_IMPL(Check_NE, != )  // Use CHECK(x == NULL) instead.
-TF_DEFINE_CHECK_OP_IMPL(Check_LE, <= )
-TF_DEFINE_CHECK_OP_IMPL(Check_LT, < )
-TF_DEFINE_CHECK_OP_IMPL(Check_GE, >= )
-TF_DEFINE_CHECK_OP_IMPL(Check_GT, > )
+                        ==)  // Compilation error with CHECK_EQ(NULL, x)?
+TF_DEFINE_CHECK_OP_IMPL(Check_NE, !=)  // Use CHECK(x == NULL) instead.
+TF_DEFINE_CHECK_OP_IMPL(Check_LE, <=)
+TF_DEFINE_CHECK_OP_IMPL(Check_LT, <)
+TF_DEFINE_CHECK_OP_IMPL(Check_GE, >=)
+TF_DEFINE_CHECK_OP_IMPL(Check_GT, >)
 #undef TF_DEFINE_CHECK_OP_IMPL
 
 // In optimized mode, use CheckOpString to hint to compiler that
@@ -288,7 +336,11 @@ T&& CheckNotNull(const char* file, int line, const char* exprtext, T&& t) {
   return std::forward<T>(t);
 }
 
+int64 MinLogLevelFromEnv();
+
+int64 MinVLogLevelFromEnv();
+
 }  // namespace internal
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_DEFAULT_LOGGING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_

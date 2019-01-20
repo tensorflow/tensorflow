@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_TF_STATUS_HELPER_H
-#define TENSORFLOW_C_TF_STATUS_HELPER_H
+#ifndef TENSORFLOW_C_TF_STATUS_HELPER_H_
+#define TENSORFLOW_C_TF_STATUS_HELPER_H_
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -24,6 +24,9 @@ namespace tensorflow {
 // Set the attribute of "tf_status" from the attributes of "status".
 void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status);
 
+// Returns a "status" from "tf_status".
+Status StatusFromTF_Status(const TF_Status* tf_status);
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_TF_STATUS_HELPER_H
+#endif  // TENSORFLOW_C_TF_STATUS_HELPER_H_

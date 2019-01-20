@@ -1,0 +1,38 @@
+path: "tensorflow.data.Options"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.Options\'>"
+  is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "experimental_autotune"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_deterministic"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_numa_aware"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_optimization"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_stats"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_threading"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge"
+    argspec: "args=[\'self\', \'options\'], varargs=None, keywords=None, defaults=None"
+  }
+}

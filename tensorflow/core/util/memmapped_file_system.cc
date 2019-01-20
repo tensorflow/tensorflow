@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/memmapped_file_system.pb.h"
 
@@ -55,15 +56,21 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
   ~RandomAccessFileFromMemmapped() override = default;
 
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented(
+        "RandomAccessFileFromMemmapped does not support Name()");
+  }
+
   Status Read(uint64 offset, size_t to_read, StringPiece* result,
               char* scratch) const override {
     if (offset >= length_) {
-      result->set(scratch, 0);
+      *result = StringPiece(scratch, 0);
       return Status(error::OUT_OF_RANGE, "Read after file end");
     }
     const uint64 region_left =
         std::min(length_ - offset, static_cast<uint64>(to_read));
-    result->set(reinterpret_cast<const uint8*>(data_) + offset, region_left);
+    *result =
+        StringPiece(reinterpret_cast<const char*>(data_) + offset, region_left);
     return (region_left == to_read)
                ? Status::OK()
                : Status(error::OUT_OF_RANGE, "Read less bytes than requested");
@@ -79,12 +86,15 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 MemmappedFileSystem::MemmappedFileSystem() {}
 
-bool MemmappedFileSystem::FileExists(const string& fname) {
+Status MemmappedFileSystem::FileExists(const string& fname) {
   if (!mapped_memory_) {
-    return false;
+    return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
   const auto dir_element = directory_.find(fname);
-  return dir_element != directory_.end();
+  if (dir_element != directory_.end()) {
+    return Status::OK();
+  }
+  return errors::NotFound(fname, " not found");
 }
 
 Status MemmappedFileSystem::NewRandomAccessFile(
@@ -153,6 +163,12 @@ Status MemmappedFileSystem::GetChildren(const string& filename,
   return errors::Unimplemented("memmapped format doesn't support GetChildren");
 }
 
+Status MemmappedFileSystem::GetMatchingPaths(const string& pattern,
+                                             std::vector<string>* results) {
+  return errors::Unimplemented(
+      "memmapped format doesn't support GetMatchingPaths");
+}
+
 Status MemmappedFileSystem::DeleteFile(const string& filename) {
   return errors::Unimplemented("memmapped format doesn't support DeleteFile");
 }
@@ -174,8 +190,13 @@ const void* MemmappedFileSystem::GetMemoryWithOffset(uint64 offset) const {
   return reinterpret_cast<const uint8*>(mapped_memory_->data()) + offset;
 }
 
+#if defined(_MSC_VER)
+constexpr char* MemmappedFileSystem::kMemmappedPackagePrefix;
+constexpr char* MemmappedFileSystem::kMemmappedPackageDefaultGraphDef;
+#else
 constexpr char MemmappedFileSystem::kMemmappedPackagePrefix[];
 constexpr char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
+#endif
 
 Status MemmappedFileSystem::InitializeFromFile(Env* env,
                                                const string& filename) {
@@ -227,7 +248,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
-  return StringPiece(filename).starts_with(kMemmappedPackagePrefix);
+  return str_util::StartsWith(filename, kMemmappedPackagePrefix);
 }
 
 namespace {

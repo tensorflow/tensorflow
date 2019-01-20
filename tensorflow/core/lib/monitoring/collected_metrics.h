@@ -17,21 +17,19 @@ limitations under the License.
 // These are to be used only by the CollectionRegistry and exporters which
 // collect metrics using the CollectionRegistry.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTED_METRICS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTED_METRICS_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_COLLECTED_METRICS_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_COLLECTED_METRICS_H_
 
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 
 namespace tensorflow {
 namespace monitoring {
-
-// The type of the metric values.
-enum class ValueType : int { kInt64 = 0 };
 
 // A metric is a statistic about a monitorable entity.
 //
@@ -89,6 +87,9 @@ struct Point {
   // The actual metric value, dependent on the value_type enum.
   ValueType value_type;
   int64 int64_value;
+  string string_value;
+  bool bool_value;
+  HistogramProto histogram_value;
 
   // start_timestamp and end_timestamp indicate the time period over which this
   // point's value measurement applies.
@@ -150,4 +151,4 @@ struct CollectedMetrics {
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTED_METRICS_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_COLLECTED_METRICS_H_

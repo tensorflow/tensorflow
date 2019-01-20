@@ -10,36 +10,29 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 py_binary(
-    name = "random_forest_mnist",
-    srcs = [
-        "random_forest_mnist.py",
-    ],
+    name = "iris_custom_decay_dnn",
+    srcs = ["iris_custom_decay_dnn.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/examples/tutorials/mnist:input_data",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
-    name = "wide_n_deep_tutorial",
-    srcs = [
-        "wide_n_deep_tutorial.py",
-    ],
+    name = "iris_custom_model",
+    srcs = ["iris_custom_model.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+sh_test(
+    name = "examples_test",
+    size = "large",
+    srcs = ["examples_test.sh"],
+    data = [
+        ":iris_custom_decay_dnn",
+        ":iris_custom_model",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )

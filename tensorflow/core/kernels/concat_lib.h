@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CONCAT_LIB_H_
-#define TENSORFLOW_KERNELS_CONCAT_LIB_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CONCAT_LIB_H_
+#define TENSORFLOW_CORE_KERNELS_CONCAT_LIB_H_
 
 #include <vector>
 
@@ -23,28 +23,47 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Assumes all inputs are nonempty
-template <typename T>
-void ConcatCPU(DeviceBase* d,
-               const std::vector<
-                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output);
+// Functors to concatenate tensors. These always take a rank-2 tensor (i.e a
+// matrix) and concatenate it along the axis 1 ("putting them next to each
+// other" as opposed to "putting them on top of one another").
+//
+// Any concatenation of n-dimensional tensors across any axis can be reduced to
+// a concatenation of two-dimensional tensors across the axis 1 by first
+// partitioning the axes of the original tensors into those less than the axis
+// to be concatenated across and the rest. Then reshape the tensors into a
+// two-dimensional tensor by collapsing these two sets of axes and concatenate
+// the resulting matrices across the axis 1, finally reshaping the result to
+// have the proper shape.
+//
+// So, for example, when stacking N tensors, reshape each to have shape
+// {1, Numelements} and reshape the result matrix to have shape
+// {1, N * NumElements} before passing it to this functor.
 
 // Assumes all inputs are nonempty
 template <typename T>
-void ConcatGPU32(
-    const Eigen::GpuDevice& d,
+void ConcatCPU(
+    DeviceBase* d,
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs,
     typename TTypes<T, 2>::Matrix* output);
-
+#if GOOGLE_CUDA
 template <typename T>
-void ConcatGPU64(
-    const Eigen::GpuDevice& d,
+void ConcatGPU(
+    OpKernelContext* c,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs_flat,
+    Tensor* output, typename TTypes<T, 2>::Tensor* output_flat);
+
+#endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+void ConcatSYCL(
+    const Eigen::SyclDevice& d,
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs,
     typename TTypes<T, 2>::Matrix* output);
-
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CONCAT_LIB_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CONCAT_LIB_H_

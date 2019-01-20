@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -27,6 +28,15 @@ namespace {
 class HadoopFileSystemTest : public ::testing::Test {
  protected:
   HadoopFileSystemTest() {}
+
+  string TmpDir(const string& path) {
+    char* test_dir = getenv("HADOOP_TEST_TMPDIR");
+    if (test_dir != nullptr) {
+      return io::JoinPath(string(test_dir), path);
+    } else {
+      return "file://" + io::JoinPath(testing::TmpDir(), path);
+    }
+  }
 
   Status WriteString(const string& fname, const string& content) {
     std::unique_ptr<WritableFile> writer;
@@ -58,17 +68,19 @@ class HadoopFileSystemTest : public ::testing::Test {
 };
 
 TEST_F(HadoopFileSystemTest, RandomAccessFile) {
-  const string fname =
-      "file://" + io::JoinPath(testing::TmpDir(), "RandomAccessFile");
+  const string fname = TmpDir("RandomAccessFile");
   const string content = "abcdefghijklmn";
   TF_ASSERT_OK(WriteString(fname, content));
 
   std::unique_ptr<RandomAccessFile> reader;
   TF_EXPECT_OK(hdfs.NewRandomAccessFile(fname, &reader));
 
+  StringPiece result;
+  TF_EXPECT_OK(reader->Name(&result));
+  EXPECT_EQ(result, fname);
+
   string got;
   got.resize(content.size());
-  StringPiece result;
   TF_EXPECT_OK(
       reader->Read(0, content.size(), &result, gtl::string_as_array(&got)));
   EXPECT_EQ(content.size(), result.size());
@@ -83,10 +95,15 @@ TEST_F(HadoopFileSystemTest, RandomAccessFile) {
 
 TEST_F(HadoopFileSystemTest, WritableFile) {
   std::unique_ptr<WritableFile> writer;
-  const string fname =
-      "file://" + io::JoinPath(testing::TmpDir(), "WritableFile");
+  const string fname = TmpDir("WritableFile");
   TF_EXPECT_OK(hdfs.NewWritableFile(fname, &writer));
+  StringPiece result;
+  TF_EXPECT_OK(writer->Name(&result));
+  EXPECT_EQ(result, fname);
   TF_EXPECT_OK(writer->Append("content1,"));
+  int64 pos;
+  TF_EXPECT_OK(writer->Tell(&pos));
+  EXPECT_EQ(pos, 9);
   TF_EXPECT_OK(writer->Append("content2"));
   TF_EXPECT_OK(writer->Flush());
   TF_EXPECT_OK(writer->Sync());
@@ -98,16 +115,14 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
 }
 
 TEST_F(HadoopFileSystemTest, FileExists) {
-  const string fname =
-      "file://" + io::JoinPath(testing::TmpDir(), "FileExists");
-  EXPECT_FALSE(hdfs.FileExists(fname));
+  const string fname = TmpDir("FileExists");
+  EXPECT_EQ(error::Code::NOT_FOUND, hdfs.FileExists(fname).code());
   TF_ASSERT_OK(WriteString(fname, "test"));
-  EXPECT_TRUE(hdfs.FileExists(fname));
+  TF_EXPECT_OK(hdfs.FileExists(fname));
 }
 
 TEST_F(HadoopFileSystemTest, GetChildren) {
-  const string base =
-      "file://" + io::JoinPath(testing::TmpDir(), "GetChildren");
+  const string base = TmpDir("GetChildren");
   TF_EXPECT_OK(hdfs.CreateDir(base));
 
   const string file = io::JoinPath(base, "testfile.csv");
@@ -122,16 +137,14 @@ TEST_F(HadoopFileSystemTest, GetChildren) {
 }
 
 TEST_F(HadoopFileSystemTest, DeleteFile) {
-  const string fname =
-      "file://" + io::JoinPath(testing::TmpDir(), "DeleteFile");
+  const string fname = TmpDir("DeleteFile");
   EXPECT_FALSE(hdfs.DeleteFile(fname).ok());
   TF_ASSERT_OK(WriteString(fname, "test"));
   TF_EXPECT_OK(hdfs.DeleteFile(fname));
 }
 
 TEST_F(HadoopFileSystemTest, GetFileSize) {
-  const string fname =
-      "file://" + io::JoinPath(testing::TmpDir(), "GetFileSize");
+  const string fname = TmpDir("GetFileSize");
   TF_ASSERT_OK(WriteString(fname, "test"));
   uint64 file_size = 0;
   TF_EXPECT_OK(hdfs.GetFileSize(fname, &file_size));
@@ -139,8 +152,7 @@ TEST_F(HadoopFileSystemTest, GetFileSize) {
 }
 
 TEST_F(HadoopFileSystemTest, CreateDirStat) {
-  const string dir =
-      "file://" + io::JoinPath(testing::TmpDir(), "CreateDirStat");
+  const string dir = TmpDir("CreateDirStat");
   TF_EXPECT_OK(hdfs.CreateDir(dir));
   FileStatistics stat;
   TF_EXPECT_OK(hdfs.Stat(dir, &stat));
@@ -148,7 +160,7 @@ TEST_F(HadoopFileSystemTest, CreateDirStat) {
 }
 
 TEST_F(HadoopFileSystemTest, DeleteDir) {
-  const string dir = "file://" + io::JoinPath(testing::TmpDir(), "DeleteDir");
+  const string dir = TmpDir("DeleteDir");
   EXPECT_FALSE(hdfs.DeleteDir(dir).ok());
   TF_EXPECT_OK(hdfs.CreateDir(dir));
   TF_EXPECT_OK(hdfs.DeleteDir(dir));
@@ -157,10 +169,22 @@ TEST_F(HadoopFileSystemTest, DeleteDir) {
 }
 
 TEST_F(HadoopFileSystemTest, RenameFile) {
-  const string fname1 =
-      "file://" + io::JoinPath(testing::TmpDir(), "RenameFile1");
-  const string fname2 =
-      "file://" + io::JoinPath(testing::TmpDir(), "RenameFile2");
+  const string fname1 = TmpDir("RenameFile1");
+  const string fname2 = TmpDir("RenameFile2");
+  TF_ASSERT_OK(WriteString(fname1, "test"));
+  TF_EXPECT_OK(hdfs.RenameFile(fname1, fname2));
+  string content;
+  TF_EXPECT_OK(ReadAll(fname2, &content));
+  EXPECT_EQ("test", content);
+}
+
+TEST_F(HadoopFileSystemTest, RenameFile_Overwrite) {
+  const string fname1 = TmpDir("RenameFile1");
+  const string fname2 = TmpDir("RenameFile2");
+
+  TF_ASSERT_OK(WriteString(fname2, "test"));
+  TF_EXPECT_OK(hdfs.FileExists(fname2));
+
   TF_ASSERT_OK(WriteString(fname1, "test"));
   TF_EXPECT_OK(hdfs.RenameFile(fname1, fname2));
   string content;
@@ -169,12 +193,50 @@ TEST_F(HadoopFileSystemTest, RenameFile) {
 }
 
 TEST_F(HadoopFileSystemTest, StatFile) {
-  const string fname = "file://" + io::JoinPath(testing::TmpDir(), "StatFile");
+  const string fname = TmpDir("StatFile");
   TF_ASSERT_OK(WriteString(fname, "test"));
   FileStatistics stat;
   TF_EXPECT_OK(hdfs.Stat(fname, &stat));
   EXPECT_EQ(4, stat.length);
   EXPECT_FALSE(stat.is_directory);
+}
+
+TEST_F(HadoopFileSystemTest, WriteWhileReading) {
+  std::unique_ptr<WritableFile> writer;
+  const string fname = TmpDir("WriteWhileReading");
+  // Skip the test if we're not testing on HDFS. Hadoop's local filesystem
+  // implementation makes no guarantees that writable files are readable while
+  // being written.
+  if (!str_util::StartsWith(fname, "hdfs://")) {
+    return;
+  }
+
+  TF_EXPECT_OK(hdfs.NewWritableFile(fname, &writer));
+
+  const string content1 = "content1";
+  TF_EXPECT_OK(writer->Append(content1));
+  TF_EXPECT_OK(writer->Flush());
+
+  std::unique_ptr<RandomAccessFile> reader;
+  TF_EXPECT_OK(hdfs.NewRandomAccessFile(fname, &reader));
+
+  string got;
+  got.resize(content1.size());
+  StringPiece result;
+  TF_EXPECT_OK(
+      reader->Read(0, content1.size(), &result, gtl::string_as_array(&got)));
+  EXPECT_EQ(content1, result);
+
+  string content2 = "content2";
+  TF_EXPECT_OK(writer->Append(content2));
+  TF_EXPECT_OK(writer->Flush());
+
+  got.resize(content2.size());
+  TF_EXPECT_OK(reader->Read(content1.size(), content2.size(), &result,
+                            gtl::string_as_array(&got)));
+  EXPECT_EQ(content2, result);
+
+  TF_EXPECT_OK(writer->Close());
 }
 
 // NewAppendableFile() is not testable. Local filesystem maps to

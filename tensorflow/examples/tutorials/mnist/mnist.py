@@ -17,7 +17,7 @@
 
 Implements the inference/loss/training pattern for model building.
 
-1. inference() - Builds the model as far as is required for running the network
+1. inference() - Builds the model as far as required for running the network
 forward to make predictions.
 2. loss() - Adds to the inference model the layers required to generate loss.
 3. training() - Adds to the loss model the Ops required to generate and
@@ -94,10 +94,7 @@ def loss(logits, labels):
     loss: Loss tensor of type float.
   """
   labels = tf.to_int64(labels)
-  cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      logits, labels, name='xentropy')
-  loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
-  return loss
+  return tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
 
 def training(loss, learning_rate):
@@ -118,7 +115,7 @@ def training(loss, learning_rate):
     train_op: The Op for training.
   """
   # Add a scalar summary for the snapshot loss.
-  tf.scalar_summary(loss.op.name, loss)
+  tf.summary.scalar('loss', loss)
   # Create the gradient descent optimizer with the given learning rate.
   optimizer = tf.train.GradientDescentOptimizer(learning_rate)
   # Create a variable to track the global step.

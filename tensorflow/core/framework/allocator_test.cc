@@ -30,9 +30,13 @@ static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
   a->GetStats(&stats);
   LOG(INFO) << "Alloc stats: \n" << stats.DebugString();
 #if defined(PLATFORM_GOOGLE) && defined(NDEBUG)
-  // NOTE: allocator stats expectation depends on the system malloc.
-  EXPECT_EQ(stats.bytes_in_use, bytes_in_use);
-  EXPECT_EQ(stats.max_bytes_in_use, max_bytes_in_use);
+  // NOTE: allocator stats expectation depends on the system malloc,
+  // and can vary as that changes.
+  static const int64 kSlop = 5 * 1024;
+  EXPECT_GT(stats.bytes_in_use, bytes_in_use - kSlop);
+  EXPECT_LT(stats.bytes_in_use, bytes_in_use + kSlop);
+  EXPECT_GT(stats.max_bytes_in_use, max_bytes_in_use - kSlop);
+  EXPECT_LT(stats.max_bytes_in_use, max_bytes_in_use + kSlop);
   EXPECT_EQ(stats.num_allocs, num_allocs);
   EXPECT_EQ(stats.max_alloc_size, max_alloc_size);
 #endif
@@ -42,20 +46,40 @@ TEST(AllocatorAttributesTest, AllCombos) {
   for (bool on_host : {false, true}) {
     for (bool nic_compatible : {false, true}) {
       for (bool gpu_compatible : {false, true}) {
-        for (bool track_sizes : {false, true}) {
-          AllocatorAttributes aa;
-          aa.set_on_host(on_host);
-          aa.set_nic_compatible(nic_compatible);
-          aa.set_gpu_compatible(gpu_compatible);
-          aa.set_track_sizes(track_sizes);
-          EXPECT_EQ(on_host, aa.on_host());
-          EXPECT_EQ(nic_compatible, aa.nic_compatible());
-          EXPECT_EQ(gpu_compatible, aa.gpu_compatible());
-          EXPECT_EQ(track_sizes, aa.track_sizes());
-        }
+        AllocatorAttributes aa;
+        aa.set_on_host(on_host);
+        aa.set_nic_compatible(nic_compatible);
+        aa.set_gpu_compatible(gpu_compatible);
+        EXPECT_EQ(on_host, aa.on_host());
+        EXPECT_EQ(nic_compatible, aa.nic_compatible());
+        EXPECT_EQ(gpu_compatible, aa.gpu_compatible());
       }
     }
   }
+}
+
+TEST(AllocatorAttributesTest, IsEqualOrLessRestrictiveThan) {
+  AllocatorAttributes a, b;
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(b));
+
+  b.set_gpu_compatible(true);
+  // The set of flags in b is not a subset of those in a.
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_FALSE(b.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(b));
+
+  a.set_nic_compatible(true);
+  // Neither a nor b is a subset of the other.
+  EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_FALSE(b.IsEqualOrLessRestrictiveThan(a));
+
+  a.set_gpu_compatible(true);
+  // The set of flags in b is a proper subset of those in a.
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
 }
 
 TEST(CPUAllocatorTest, Simple) {
@@ -67,14 +91,14 @@ TEST(CPUAllocatorTest, Simple) {
     ptrs.push_back(raw);
   }
   std::sort(ptrs.begin(), ptrs.end());
-  CheckStats(a, 1023, 549056, 549056, 1024);
+  CheckStats(a, 1023, 552640, 552640, 1024);
   for (size_t i = 0; i < ptrs.size(); i++) {
     if (i > 0) {
       CHECK_NE(ptrs[i], ptrs[i - 1]);  // No dups
     }
     a->DeallocateRaw(ptrs[i]);
   }
-  CheckStats(a, 1023, 0, 549056, 1024);
+  CheckStats(a, 1023, 0, 552640, 1024);
   float* t1 = a->Allocate<float>(1024);
   double* t2 = a->Allocate<double>(1048576);
   CheckStats(a, 1025, 1048576 * sizeof(double) + 1024 * sizeof(float),
@@ -86,6 +110,8 @@ TEST(CPUAllocatorTest, Simple) {
 
   CheckStats(a, 1025, 0, 1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double));
+  a->ClearStats();
+  CheckStats(a, 0, 0, 0, 0);
   EnableCPUAllocatorStats(false);
 }
 

@@ -20,10 +20,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import registry
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
-class RegistryTest(googletest.TestCase):
+class RegistryTest(test.TestCase):
 
   class Foo(object):
     pass
@@ -45,7 +45,9 @@ class RegistryTest(googletest.TestCase):
   def testDuplicate(self):
     myreg = registry.Registry('testbar')
     myreg.register(bar, 'Bar')
-    with self.assertRaises(KeyError):
+    with self.assertRaisesRegexp(
+        KeyError, r'Registering two testbar with name \'Bar\'! '
+        r'\(Previous registration was in [^ ]+ .*.py:[0-9]+\)'):
       myreg.register(bar, 'Bar')
 
 
@@ -54,4 +56,4 @@ def bar():
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

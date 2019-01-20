@@ -21,13 +21,13 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as train
 
 __all__ = [
@@ -40,7 +40,7 @@ __all__ = [
 def _get_checkpoint_filename(filepattern):
   """Returns checkpoint filename given directory or specific filepattern."""
   if gfile.IsDirectory(filepattern):
-    return saver.latest_checkpoint(filepattern)
+    return checkpoint_management.latest_checkpoint(filepattern)
   return filepattern
 
 
@@ -116,13 +116,8 @@ def _set_checkpoint_initializer(variable, file_pattern, tensor_name, slice_spec,
     name: Name of the operation.
   """
   base_type = variable.dtype.base_dtype
-  restore_op = gen_io_ops._restore_slice(
-      file_pattern,
-      tensor_name,
-      slice_spec,
-      base_type,
-      preferred_shard=-1,
-      name=name)
+  restore_op = io_ops.restore_v2(
+      file_pattern, [tensor_name], [slice_spec], [base_type], name=name)[0]
   variable._initializer_op = state_ops.assign(variable, restore_op)
 
 
@@ -143,30 +138,43 @@ def _set_variable_or_list_initializer(variable_or_list, file_pattern,
     _set_checkpoint_initializer(variable_or_list, file_pattern, tensor_name, "")
 
 
+def _collect_partitioned_variable(name, var_scope):
+  if name + "/part_0" in var_scope._vars:
+    var = []
+    i = 0
+    while name + "/part_%d" % i in var_scope._vars:
+      var.append(var_scope._vars[name + "/part_%d" % i])
+      i += 1
+    return var
+  return None
+
+
 def init_from_checkpoint(checkpoint_dir, assignment_map):
-  """Using assingment map initializes current variables with loaded tensors.
+  """Using assignment map initializes current variables with loaded tensors.
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
 
   Assignment map supports following syntax:
-    `'checkpoint_scope_name/': 'scope_name/'` - will load all variables in
-      current `scope_name` from `checkpoint_scope_name` with matching variable
-      names.
-    `'checkpoint_scope_name/some_other_variable': 'scope_name/variable_name'` -
-      will initalize `scope_name/variable_name` variable
-      from `checkpoint_scope_name/some_other_variable`.
-    `'scope_variable_name': variable` - will initialize given `tf.Variable`
-      object with variable from the checkpoint.
-    `'scope_variable_name': list(variable)` - will initialize list of
-      partitioned variables with variable from the checkpoint.
-    `'scope_name/': '/'` - will load all variables in current `scope_name` from
-      checkpoint's root (e.g. no scope).
+
+  * `'checkpoint_scope_name/': 'scope_name/'` - will load all variables in
+    current `scope_name` from `checkpoint_scope_name` with matching variable
+    names.
+  * `'checkpoint_scope_name/some_other_variable': 'scope_name/variable_name'` -
+    will initialize `scope_name/variable_name` variable
+    from `checkpoint_scope_name/some_other_variable`.
+  * `'scope_variable_name': variable` - will initialize given `tf.Variable`
+    object with variable from the checkpoint.
+  * `'scope_variable_name': list(variable)` - will initialize list of
+    partitioned variables with variable from the checkpoint.
+  * `'/': 'scope_name/'` - will load all variables in current `scope_name` from
+    checkpoint's root (e.g. no scope).
 
   Supports loading into partitioned variables, which are represented as
-  '<variable>/part_<part #>'.
+  `'<variable>/part_<part #>'`.
 
   Example:
+
   ```python
     # Create variables.
     with tf.variable_scope('test'):
@@ -176,7 +184,7 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
     var3 = tf.get_variable(name="my1", shape=[100, 100],
                            partitioner=lambda shape, dtype: [5, 1])
     ...
-    # Specify which variables to intialize from checkpoint.
+    # Specify which variables to initialize from checkpoint.
     init_from_checkpoint(checkpoint_dir, {
       'some_var': 'test/my_var',
       'some_scope/': 'test2/'})
@@ -226,17 +234,12 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
       var = var_scope._vars.get(current_var_or_name, None)
       # Also check if variable is partitioned as list.
       if var is None:
-        if current_var_or_name + "/part_0" in var_scope._vars:
-          var = []
-          i = 0
-          while current_var_or_name + "/part_%d" % i in var_scope._vars:
-            var.append(var_scope._vars[current_var_or_name + "/part_%d" % i])
-            i += 1
+        var = _collect_partitioned_variable(current_var_or_name, var_scope)
     if var is not None:
       # If 1 to 1 mapping was provided, find variable in the checkpoint.
       if tensor_name_in_ckpt not in variable_map:
-        raise ValueError("Tensor %s is not found in %s checkpoint" % (
-            tensor_name_in_ckpt, checkpoint_dir
+        raise ValueError("Tensor %s is not found in %s checkpoint %s" % (
+            tensor_name_in_ckpt, checkpoint_dir, variable_map
         ))
       if is_var(var):
         # Additional at-call-time checks.
@@ -265,24 +268,34 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
             "Assignment map with scope only name {} should map to scope only "
             "{}. Should be 'scope/': 'other_scope/'.".format(
                 scopes, tensor_name_in_ckpt))
-      # If scope to scope mapping was provided, find all variables in the scope.
+      # If scope to scope mapping was provided, find all variables in the scope
+      # and create variable to variable mapping.
+      scope_variables = set()
       for var_name in var_scope._vars:
-        if var_name.startswith(scopes):
-          # Lookup name with specified prefix and suffix from current variable.
-          # If tensor_name given is '/' (root), don't use it for full name.
-          if tensor_name_in_ckpt != "/":
-            full_tensor_name = tensor_name_in_ckpt + var_name[len(scopes) + 1:]
-          else:
-            full_tensor_name = var_name[len(scopes) + 1:]
-          if full_tensor_name not in variable_map:
-            raise ValueError(
-                "Tensor %s (%s in %s) is not found in %s checkpoint" % (
-                    full_tensor_name, var_name[len(scopes) + 1:],
-                    tensor_name_in_ckpt, checkpoint_dir
-                ))
-          var = var_scope._vars[var_name]
-          _set_variable_or_list_initializer(var, filepattern, full_tensor_name)
-          logging.info("Initialize variable %s from checkpoint %s with %s" % (
-              var_name, checkpoint_dir, full_tensor_name
-          ))
+        if not scopes or var_name.startswith(scopes + "/"):
+          # Consume /part_ if partitioned variable.
+          if "/part_" in var_name:
+            var_name = var_name[:var_name.index("/part_")]
+          scope_variables.add(var_name)
+      for var_name in scope_variables:
+        # Lookup name with specified prefix and suffix from current variable.
+        # If tensor_name given is '/' (root), don't use it for full name.
+        full_tensor_name = var_name[len(scopes):]
+        if current_var_or_name != "/":
+          full_tensor_name = full_tensor_name[1:]
+        if tensor_name_in_ckpt != "/":
+          full_tensor_name = tensor_name_in_ckpt + full_tensor_name
+        if full_tensor_name not in variable_map:
+          raise ValueError(
+              "Tensor %s (%s in %s) is not found in %s checkpoint" % (
+                  full_tensor_name, var_name[len(scopes) + 1:],
+                  tensor_name_in_ckpt, checkpoint_dir
+              ))
+        var = var_scope._vars.get(var_name, None)
+        if var is None:
+          var = _collect_partitioned_variable(var_name, var_scope)
+        _set_variable_or_list_initializer(var, filepattern, full_tensor_name)
+        logging.info("Initialize variable %s from checkpoint %s with %s" % (
+            var_name, checkpoint_dir, full_tensor_name
+        ))
 # pylint: enable=protected-access

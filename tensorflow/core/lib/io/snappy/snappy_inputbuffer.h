@@ -58,6 +58,8 @@ class SnappyInputBuffer : public InputStreamInterface {
 
   int64 Tell() const override;
 
+  Status Reset() override;
+
  private:
   // Reads data from `file_` and tries to fill up `input_buffer_` if enough
   // unread data is left in `file_`.

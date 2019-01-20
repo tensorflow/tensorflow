@@ -13,24 +13,34 @@
 # limitations under the License.
 # ==============================================================================
 """End-to-end benchmark for batch normalization."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
 import time
 
-import tensorflow as tf
-
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
-FLAGS = tf.app.flags.FLAGS
-
-tf.app.flags.DEFINE_boolean("use_gpu", True, """Run GPU benchmarks.""")
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
 
 def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
   """Fused kernel for batch normalization."""
   # _batch_norm_with_global_normalization is deprecated in v9
-  tf.get_default_graph().graph_def_versions.producer = 8
+  test_util.set_producer_version(ops.get_default_graph(), 8)
   # pylint: disable=protected-access
   return gen_nn_ops._batch_norm_with_global_normalization(
       tensor, mean, variance, beta, gamma, 0.001, scale)
@@ -44,12 +54,12 @@ def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
 # return batch_norm + beta
 def batch_norm_py(tensor, mean, variance, beta, gamma, scale):
   """Python implementation of batch normalization."""
-  return tf.nn.batch_normalization(
-      tensor, mean, variance, beta, gamma if scale else None, 0.001)
+  return nn_impl.batch_normalization(tensor, mean, variance, beta, gamma if
+                                     scale else None, 0.001)
 
 
 def batch_norm_slow(tensor, mean, variance, beta, gamma, scale):
-  batch_norm = (tensor - mean) * tf.rsqrt(variance + 0.001)
+  batch_norm = (tensor - mean) * math_ops.rsqrt(variance + 0.001)
   if scale:
     batch_norm *= gamma
   return batch_norm + beta
@@ -82,12 +92,16 @@ def build_graph(device, input_shape, axes, num_layers, mode, scale, train):
     for axis in range(len(input_shape)):
       if axis not in axes:
         moment_shape.append(input_shape[axis])
-  with tf.device("/%s:0" % device):
-    tensor = tf.Variable(tf.truncated_normal(input_shape))
+  with ops.device("/%s:0" % device):
+    tensor = variables.Variable(random_ops.truncated_normal(input_shape))
     for _ in range(num_layers):
-      mean, variance = tf.nn.moments(tensor, axes, keep_dims=keep_dims)
-      beta = tf.Variable(tf.zeros(moment_shape))
-      gamma = tf.Variable(tf.constant(1.0, shape=moment_shape))
+      if train:
+        mean, variance = nn_impl.moments(tensor, axes, keep_dims=keep_dims)
+      else:
+        mean = array_ops.zeros(moment_shape)
+        variance = array_ops.ones(moment_shape)
+      beta = variables.Variable(array_ops.zeros(moment_shape))
+      gamma = variables.Variable(constant_op.constant(1.0, shape=moment_shape))
       if mode == "py":
         tensor = batch_norm_py(tensor, mean, variance, beta, gamma, scale)
       elif mode == "op":
@@ -95,7 +109,7 @@ def build_graph(device, input_shape, axes, num_layers, mode, scale, train):
       elif mode == "slow":
         tensor = batch_norm_slow(tensor, mean, variance, beta, gamma, scale)
     if train:
-      return tf.gradients([tensor], tf.trainable_variables())
+      return gradients_impl.gradients([tensor], variables.trainable_variables())
     else:
       return [tensor]
 
@@ -106,12 +120,11 @@ def print_difference(mode, t1, t2):
   print("=== %s: %.1f%% ===" % (mode, difference))
 
 
-class BatchNormBenchmark(tf.test.Benchmark):
+class BatchNormBenchmark(test.Benchmark):
   """Benchmark batch normalization."""
 
-  def _run_graph(
-      self, device, input_shape, axes, num_layers, mode, scale, train,
-      num_iters):
+  def _run_graph(self, device, input_shape, axes, num_layers, mode, scale,
+                 train, num_iters):
     """Run the graph and print its execution time.
 
     Args:
@@ -127,12 +140,12 @@ class BatchNormBenchmark(tf.test.Benchmark):
     Returns:
       The duration of the run in seconds.
     """
-    graph = tf.Graph()
+    graph = ops.Graph()
     with graph.as_default():
       outputs = build_graph(device, input_shape, axes, num_layers, mode, scale,
                             train)
-    with tf.Session(graph=graph) as session:
-      tf.initialize_all_variables().run()
+    with session_lib.Session(graph=graph) as session:
+      variables.global_variables_initializer().run()
       _ = session.run([out.op for out in outputs])  # warm up.
       start_time = time.time()
       for _ in range(num_iters):
@@ -149,11 +162,15 @@ class BatchNormBenchmark(tf.test.Benchmark):
 
     self.report_benchmark(
         name=name_template.format(
-            device=device, mode=mode, num_layers=num_layers, scale=scale,
+            device=device,
+            mode=mode,
+            num_layers=num_layers,
+            scale=scale,
             train=train,
             shape=str(input_shape).replace(" ", ""),
             axes=str(axes)).replace(" ", ""),
-        iters=num_iters, wall_time=duration / num_iters)
+        iters=num_iters,
+        wall_time=duration / num_iters)
 
     return duration
 
@@ -181,7 +198,7 @@ class BatchNormBenchmark(tf.test.Benchmark):
     if FLAGS.use_gpu:
       t1 = self._run_graph("gpu", shape, axes, 10, "op", True, True, 50)
       t2 = self._run_graph("gpu", shape, axes, 10, "py", True, True, 50)
-      t2 = self._run_graph("gpu", shape, axes, 10, "slow", True, True, 50)
+      t3 = self._run_graph("gpu", shape, axes, 10, "slow", True, True, 50)
       print_difference("op vs py", t1, t2)
       print_difference("py vs slow", t2, t3)
     print("Forward convolution (higher layers).")
@@ -231,4 +248,16 @@ class BatchNormBenchmark(tf.test.Benchmark):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--use_gpu",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=True,
+      help="Run GPU benchmarks."
+  )
+  global FLAGS  # pylint:disable=global-at-module-level
+  FLAGS, unparsed = parser.parse_known_args()
+  test.main(argv=[sys.argv[0]] + unparsed)

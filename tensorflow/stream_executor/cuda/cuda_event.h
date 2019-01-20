@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/lib/status.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // CUDAEvent wraps a CUevent in the platform-independent EventInterface
@@ -46,7 +45,7 @@ class CUDAEvent : public internal::EventInterface {
   // Polls the CUDA platform for the event's current status.
   Event::Status PollForStatus();
 
-  // The underyling CUDA event element.
+  // The underlying CUDA event element.
   const CUevent& cuda_event();
 
  private:
@@ -58,7 +57,6 @@ class CUDAEvent : public internal::EventInterface {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_EVENT_H_

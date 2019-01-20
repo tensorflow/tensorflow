@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@ limitations under the License.
 
 // Helpers for working with TensorFlow exports and their signatures.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SIGNATURE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SIGNATURE_H_
+#ifndef TENSORFLOW_CONTRIB_SESSION_BUNDLE_SIGNATURE_H_
+#define TENSORFLOW_CONTRIB_SESSION_BUNDLE_SIGNATURE_H_
 
 #include <string>
 #include <utility>
@@ -121,4 +121,4 @@ Status BindGenericNames(const GenericSignature& signature,
 }  // namespace serving
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SIGNATURE_H_
+#endif  // TENSORFLOW_CONTRIB_SESSION_BUNDLE_SIGNATURE_H_

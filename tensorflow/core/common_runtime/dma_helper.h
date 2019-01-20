@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DMA_HELPER_H_
-#define TENSORFLOW_COMMON_RUNTIME_DMA_HELPER_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DMA_HELPER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DMA_HELPER_H_
 
 #include "tensorflow/core/framework/tensor.h"
 
@@ -28,8 +28,11 @@ class DMAHelper {
   static void* base(Tensor* t) { return t->base<void>(); }
   static TensorBuffer* buffer(Tensor* t) { return t->buf_; }
   static const TensorBuffer* buffer(const Tensor* t) { return t->buf_; }
+  static void UnsafeSetShape(Tensor* t, const TensorShape& s) {
+    t->set_shape(s);
+  }
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DMA_HELPER_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DMA_HELPER_H_

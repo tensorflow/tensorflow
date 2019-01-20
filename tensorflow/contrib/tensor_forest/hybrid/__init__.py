@@ -19,3 +19,4 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.tensor_forest.hybrid.python import *
+# pylint: enable=unused-import,wildcard-import

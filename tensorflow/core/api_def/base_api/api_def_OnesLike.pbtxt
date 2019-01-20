@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "OnesLike"
+  in_arg {
+    name: "x"
+    description: <<END
+a tensor of type T.
+END
+  }
+  out_arg {
+    name: "y"
+    description: <<END
+a tensor of the same shape and type as x but filled with ones.
+END
+  }
+  summary: "Returns a tensor of ones with the same shape and type as x."
+}

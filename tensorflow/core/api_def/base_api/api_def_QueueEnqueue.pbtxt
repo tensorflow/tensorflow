@@ -1,0 +1,32 @@
+op {
+  graph_op_name: "QueueEnqueue"
+  visibility: SKIP
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a queue.
+END
+  }
+  in_arg {
+    name: "components"
+    description: <<END
+One or more tensors from which the enqueued tensors should be taken.
+END
+  }
+  attr {
+    name: "timeout_ms"
+    description: <<END
+If the queue is full, this operation will block for up to
+timeout_ms milliseconds.
+Note: This option is not supported yet.
+END
+  }
+  summary: "Enqueues a tuple of one or more tensors in the given queue."
+  description: <<END
+The components input has k elements, which correspond to the components of
+tuples stored in the given queue.
+
+N.B. If the queue is full, this operation will block until the given
+element has been enqueued (or 'timeout_ms' elapses, if specified).
+END
+}

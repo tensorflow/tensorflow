@@ -23,10 +23,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import traceback
-
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_stack
 
 
 # Registry mechanism below is based on mapreduce.python.mrpython.Register.
@@ -57,15 +56,25 @@ class Registry(object):
     if name in self._registry:
       (filename, line_number, function_name, _) = (
           self._registry[name][_LOCATION_TAG])
-      raise KeyError("Registering two %s with name '%s' !"
+      raise KeyError("Registering two %s with name '%s'! "
                      "(Previous registration was in %s %s:%d)" %
                      (self._name, name, function_name, filename, line_number))
 
     logging.vlog(1, "Registering %s (%s) in %s.", name, candidate, self._name)
     # stack trace is [this_function, Register(), user_function,...]
     # so the user function is #2.
-    stack = traceback.extract_stack()
-    self._registry[name] = {_TYPE_TAG: candidate, _LOCATION_TAG: stack[2]}
+    stack = tf_stack.extract_stack()
+    user_function = stack[2]
+    location_tag = tf_stack.convert_stack([user_function])[0]
+    self._registry[name] = {_TYPE_TAG: candidate, _LOCATION_TAG: location_tag}
+
+  def list(self):
+    """Lists registered items.
+
+    Returns:
+      A list of names of registered objects.
+    """
+    return self._registry.keys()
 
   def lookup(self, name):
     """Looks up "name".

@@ -22,20 +22,20 @@ limitations under the License.
 // Device names
 // * Every Device should have a unique name with the format:
 //     /job:___/replica:___/task:___/(gpu|cpu):___
-//   An example name would be "/job:train/replica:0/task:3/gpu:2".
+//   An example name would be "/job:train/replica:0/task:3/device:GPU:2".
 // * Task numbers are within the specified replica, so there are as
 //   many "task zeros" as replicas.
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_
 
 #include <memory>
 #include <string>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_attributes.pb_text.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -51,17 +52,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+class DeviceMgr;
+
 class Device : public DeviceBase {
  public:
-  Device(Env* env, const DeviceAttributes& device_attributes,
-         Allocator* device_allocator);
+  // Callback type that takes a Status and returns void.
+  typedef std::function<void(const Status&)> DoneCallback;
+
+  Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
   // Full name of this device (see top comment).
-  const string& name() const { return device_attributes_.name(); }
+  const string& name() const override { return device_attributes_.name(); }
 
   // Parsed name of this device
-  const DeviceNameUtils::ParsedName parsed_name() const { return parsed_name_; }
+  const DeviceNameUtils::ParsedName& parsed_name() const {
+    return parsed_name_;
+  }
 
   // Describes what kind of device this is.  This is intended to be
   // human-readable and not computer-parsed, except that two devices
@@ -98,10 +105,39 @@ class Device : public DeviceBase {
     }
   }
 
+  // If true, and tracing is enabled, the `tracing::ScopedAnnotation()` tracing
+  // mechanism will be used instead of `tracing::ScopedActivity()`. Some devices
+  // may override this method to use annotations, which enable child activities
+  // (such as GPU kernel launches) to be related to the OpKernel invocation.
+  virtual bool TraceUsingAnnotations() const { return false; }
+
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.
   virtual Status Sync() = 0;
+
+  // Calls the given callback when all operations queued on the device at the
+  // time of the call have completed. The callback is passed any error pending
+  // on the device at completion.
+  // TODO(b/112409994): Consolidate these two APIs, removing the synchronous
+  // version.
+  virtual void Sync(const DoneCallback& done);
+
+  // On session completion, the executor may call Device::Sync() depending on
+  // flag settings. Override this to return false for devices that don't allow
+  // such calls. Instead, these devices must use other mechanisms (such as
+  // num_deferred_ops) to ensure the device has finished processing necessary
+  // work at session completion.
+  //
+  // Devices that override this function must also implement CurrentStatus.
+  virtual bool AllowsSyncOnCompletion() const { return true; }
+
+  // This is used in conjunction with AllowsSyncOnCompletion to allow the
+  // executor to get execution result status at session completion.
+  virtual Status CurrentStatus() {
+    return errors::Unimplemented(
+        "CurrentStatus is not supported on this device.");
+  }
 
   // Optionally modify the device's GraphDef before execution.
   //
@@ -109,12 +145,9 @@ class Device : public DeviceBase {
   // prototyping of TensorFlow device implementations that need to modify
   // the GraphDef before execution.
   //
-  // 'library' provides access to the function library which is shared
-  // between all device partitions.
-  // 'graphdef' supplies the partition of the graph assigned to this
+  // 'graph' supplies the partition of the graph assigned to this
   // device.
-  virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
-                                   GraphDef* /*graphdef*/) {
+  virtual Status MaybeRewriteGraph(std::unique_ptr<Graph>* /*graph*/) {
     return Status::OK();
   }
 
@@ -133,7 +166,11 @@ class Device : public DeviceBase {
   OpSegment* op_segment() { return &op_seg_; }
 
   // Returns the resource manager associated w/ this device.
-  ResourceMgr* resource_manager() { return rmgr_; }
+  virtual ResourceMgr* resource_manager() { return rmgr_; }
+
+  // Returns the device manager that owns this device, or nullptr if this Device
+  // is not owned by a device manager.
+  DeviceMgr* device_mgr() const { return device_mgr_; }
 
   // Summarizes the status of this Device, for debugging.
   string DebugString() const { return ProtoDebugString(device_attributes_); }
@@ -141,17 +178,30 @@ class Device : public DeviceBase {
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(
       const string& name, DeviceType device, Bytes memory_limit,
-      BusAdjacency bus_adjacency, const string& physical_device_desc);
+      const DeviceLocality& locality, const string& physical_device_desc);
 
-  static DeviceAttributes BuildDeviceAttributes(const string& name,
-                                                DeviceType device,
-                                                Bytes memory_limit,
-                                                BusAdjacency bus_adjacency) {
+  static DeviceAttributes BuildDeviceAttributes(
+      const string& name, DeviceType device, Bytes memory_limit,
+      const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
-    return BuildDeviceAttributes(name, device, memory_limit, bus_adjacency, "");
+    return BuildDeviceAttributes(name, device, memory_limit, locality, "");
+  }
+
+  // Clears the resource manager associated with this device.
+  void ClearResourceMgr() { rmgr_->Clear(); }
+
+ protected:
+  void DeleteResourceMgr() {
+    delete rmgr_;
+    rmgr_ = nullptr;
   }
 
  private:
+  friend class DeviceMgr;
+
+  // Pointer to the device manager that owns this device. Not owned.
+  DeviceMgr* device_mgr_ = nullptr;
+
   const DeviceAttributes device_attributes_;
   DeviceNameUtils::ParsedName parsed_name_;
 
@@ -166,4 +216,4 @@ class Device : public DeviceBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_

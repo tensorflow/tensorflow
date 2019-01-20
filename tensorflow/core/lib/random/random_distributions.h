@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
-#define TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
+#ifndef TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
+#define TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
 #define _USE_MATH_DEFINES
+#include <math.h>
 #include <cmath>
 #undef _USE_MATH_DEFINES
 
-#include <math.h>
 #include <string.h>
 #include <algorithm>
+#include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 
 namespace tensorflow {
@@ -32,10 +34,26 @@ namespace random {
 
 // Helper function to convert a 16-bit integer to a half between [0..1).
 PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x);
+// Helper function to convert a 16-bit integer to a bfloat16 between [0..1).
+PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x);
 // Helper function to convert a 32-bit integer to a float between [0..1).
 PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x);
 // Helper function to convert two 32-bit integers to a double between [0..1).
 PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
+
+// Computes a + b. Requires that the result is representable in the destination
+// type and that b is not maximal (i.e. b + 1 is not 0). Notably, the addend b
+// need *not* be representable in that type. (The condition on b excludes the
+// extremal case INT_MIN + UINT_MAX = INT_MAX, which this function cannot
+// compute.)
+template <typename Int>
+PHILOX_DEVICE_INLINE Int SignedAdd(Int a,
+                                   typename std::make_unsigned<Int>::type b) {
+  // Implementation note: both b_div_2 and b - b_div_2 are positive and
+  // representatble as Int.
+  auto b_div_2 = b >> 1;
+  return a + static_cast<Int>(b_div_2) + static_cast<Int>(b - b_div_2);
+}
 
 // A class that generates uniform distribution random numbers from the
 // underlying random integer generator.
@@ -70,6 +88,30 @@ class UniformDistribution<Generator, Eigen::half> {
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
       result[i] = Uint16ToHalf(sample[i]);  // Truncate the upper 16 bits.
+    }
+    return result;
+  }
+};
+
+template <class Generator>
+class UniformDistribution<Generator, bfloat16> {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = false;
+  typedef Array<bfloat16, kResultElementCount> ResultType;
+  typedef bfloat16 ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(Generator* gen) {
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; ++i) {
+      result[i] = Uint16ToGfloat16(sample[i]);
     }
     return result;
   }
@@ -137,14 +179,15 @@ class UniformDistribution<Generator, int32> {
   typedef int32 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int32 lo, int32 hi) : lo_(lo), range_(hi - lo) {}
+  UniformDistribution(int32 lo, int32 hi)
+      : lo_(lo), range_(static_cast<uint32>(hi) - static_cast<uint32>(lo)) {}
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
     typename Generator::ResultType sample = (*gen)();
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
-      result[i] = lo_ + static_cast<int32>(sample[i] % range_);
+      result[i] = SignedAdd(lo_, sample[i] % range_);
     }
     return result;
   }
@@ -171,7 +214,8 @@ class UniformDistribution<Generator, int64> {
   typedef int64 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int64 lo, int64 hi) : lo_(lo), range_(hi - lo) {}
+  UniformDistribution(int64 lo, int64 hi)
+      : lo_(lo), range_(static_cast<uint64>(hi) - static_cast<uint64>(lo)) {}
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
@@ -179,7 +223,7 @@ class UniformDistribution<Generator, int64> {
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
       auto bits = sample[2 * i] | static_cast<uint64>(sample[2 * i + 1]) << 32;
-      result[i] = lo_ + static_cast<int64>(bits % range_);
+      result[i] = SignedAdd(lo_, bits % range_);
     }
     return result;
   }
@@ -218,7 +262,37 @@ class SingleSampleAdapter {
     return unused_results_[used_result_index_++];
   }
 
+  PHILOX_DEVICE_INLINE
+  void Skip(uint64 num_skips) {
+    if (!num_skips) {
+      return;
+    }
+    int num_unused_results = kNativeElementCount - used_result_index_;
+    if (num_skips <= num_unused_results) {
+      used_result_index_ += num_skips;
+      return;
+    }
+    num_skips -= num_unused_results;
+    used_result_index_ = kNativeElementCount;
+    SkipFromGenerator(num_skips / kNativeElementCount);
+    num_skips = num_skips % kNativeElementCount;
+    if (num_skips) {
+      unused_results_ = (*generator_)();
+      used_result_index_ = num_skips;
+    }
+  }
+
  private:
+  // This implementation iteratively skips over `num_skips` samples
+  // from `generator_`. There is an O(1) implementation for PhiloxRandom
+  // in random_distributions.cc.
+  PHILOX_DEVICE_INLINE
+  void SkipFromGenerator(uint64 num_skips) {
+    while (num_skips--) {
+      (*generator_)();
+    }
+  }
+
   Generator* generator_;
   typename Generator::ResultType unused_results_;
   int used_result_index_;
@@ -270,6 +344,36 @@ class NormalDistribution<Generator, Eigen::half> {
       BoxMullerFloat(sample[i], sample[i + 1], &f[0], &f[1]);
       result[i] = Eigen::half(f[0]);
       result[i + 1] = Eigen::half(f[1]);
+    }
+    return result;
+  }
+};
+
+template <class Generator>
+class NormalDistribution<Generator, bfloat16> {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = false;
+  typedef Array<bfloat16, kResultElementCount> ResultType;
+  typedef bfloat16 ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(Generator* gen) {
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    static_assert(kResultElementCount % 2 == 0,
+                  "kResultElementCount should be an even number");
+    for (int i = 0; i < kResultElementCount; i += 2) {
+      float f[2];
+      // Box-Muller transform requires processing 2 elements at a time.
+      BoxMullerFloat(sample[i], sample[i + 1], &f[0], &f[1]);
+      result[i] = bfloat16(f[0]);
+      result[i + 1] = bfloat16(f[1]);
     }
     return result;
   }
@@ -373,8 +477,50 @@ class TruncatedNormalDistribution<SingleSampleGenerator, Eigen::half> {
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
       for (int i = 0; i < 2; ++i) {
-        if (fabs(f[i]) < kTruncateValue) {
+        if (Eigen::numext::abs(f[i]) < kTruncateValue) {
           results[index++] = Eigen::half(f[i]);
+          if (index >= kResultElementCount) {
+            return results;
+          }
+        }
+      }
+    }
+  }
+};
+
+template <class SingleSampleGenerator>
+class TruncatedNormalDistribution<SingleSampleGenerator, bfloat16> {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount =
+      SingleSampleGenerator::kNativeElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = true;
+  // The threshold where the normal distribution is truncated.
+  const float kTruncateValue = 2.0f;
+
+  typedef Array<bfloat16, kResultElementCount> ResultType;
+  typedef bfloat16 ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(SingleSampleGenerator* gen) {
+    ResultType results;
+    int index = 0;
+    while (true) {
+      // Repeatedly take samples from the normal distribution, until we have
+      // the desired number of elements that fall within the pre-defined cutoff
+      // threshold.
+      const uint32 x0 = (*gen)();
+      const uint32 x1 = (*gen)();
+      float f[2];
+      BoxMullerFloat(x0, x1, &f[0], &f[1]);
+
+      for (int i = 0; i < 2; ++i) {
+        if (Eigen::numext::abs(f[i]) < kTruncateValue) {
+          results[index++] = bfloat16(f[i]);
           if (index >= kResultElementCount) {
             return results;
           }
@@ -416,7 +562,7 @@ class TruncatedNormalDistribution<SingleSampleGenerator, float> {
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
       for (int i = 0; i < 2; ++i) {
-        if (fabs(f[i]) < kTruncateValue) {
+        if (Eigen::numext::abs(f[i]) < kTruncateValue) {
           results[index++] = f[i];
           if (index >= kResultElementCount) {
             return results;
@@ -458,7 +604,7 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
       BoxMullerDouble(x0, x1, x2, x3, &d[0], &d[1]);
 
       for (int i = 0; i < 2; ++i) {
-        if (fabs(d[i]) < kTruncateValue) {
+        if (Eigen::numext::abs(d[i]) < kTruncateValue) {
           results[index++] = d[i];
           if (index >= kResultElementCount) {
             return results;
@@ -483,12 +629,12 @@ void BoxMullerFloat(uint32 x0, uint32 x1, float* f0, float* f1) {
     u1 = epsilon;
   }
   const float v1 = 2.0f * M_PI * Uint32ToFloat(x1);
-  const float u2 = sqrt(-2.0f * log(u1));
-#if defined(__linux__)
-  sincosf(v1, f0, f1);
+  const float u2 = Eigen::numext::sqrt(-2.0f * Eigen::numext::log(u1));
+#if defined(TENSORFLOW_USE_SYCL) || !defined(__linux__)
+  *f0 = Eigen::numext::sin(v1);
+  *f1 = Eigen::numext::cos(v1);
 #else
-  *f0 = sinf(v1);
-  *f1 = cosf(v1);
+  sincosf(v1, f0, f1);
 #endif
   *f0 *= u2;
   *f1 *= u2;
@@ -509,12 +655,12 @@ void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
     u1 = epsilon;
   }
   const double v1 = 2 * M_PI * Uint64ToDouble(x2, x3);
-  const double u2 = sqrt(-2.0 * log(u1));
-#if defined(__linux__)
-  sincos(v1, d0, d1);
+  const double u2 = Eigen::numext::sqrt(-2.0 * Eigen::numext::log(u1));
+#if defined(TENSORFLOW_USE_SYCL) || !defined(__linux__)
+  *d0 = Eigen::numext::sin(v1);
+  *d1 = Eigen::numext::cos(v1);
 #else
-  *d0 = sin(v1);
-  *d1 = cos(v1);
+  sincos(v1, d0, d1);
 #endif
   *d0 *= u2;
   *d1 *= u2;
@@ -535,6 +681,27 @@ PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x) {
   Eigen::half result;
   result.x = val;
   return result - Eigen::half(1.0);
+}
+
+// Helper function to convert an 16-bit integer to a bfloat16 between [0..1).
+// This can create a uniform distribution of values between [0..1).
+PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x) {
+  // bfloat are formatted as follows (MSB first):
+  //    sign(1) exponent(8) mantissa(7)
+  // Conceptually construct the following:
+  //    sign == 0
+  //    exponent == 127  -- an excess 127 representation of a zero exponent
+  //    mantissa == 7 random bits
+  const uint16 man = x & 0x7fu;  // 7 bit mantissa
+  const uint16 exp = static_cast<uint16>(127);
+  const uint16 val = (exp << 7) | man;
+
+  bfloat16 result;
+  memcpy(&result, &val, sizeof(val));
+  // The mantissa has an implicit leading 1, so the above code creates a value
+  // in [1, 2). The minus will not cause a rounding that makes the result 1.
+  // Instead it will just be close to 1.
+  return result - bfloat16(1.0);
 }
 
 // Helper function to convert an 32-bit integer to a float between [0..1).
@@ -577,4 +744,4 @@ PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1) {
 }  // namespace random
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
+#endif  // TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_

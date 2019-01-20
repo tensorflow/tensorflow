@@ -242,7 +242,7 @@ static void BM_RegisterOneByOne(int parts) {
   TensorSliceSet slice_set(shape, DT_INT32);
   for (int i = 0; i < parts; ++i) {
     TensorSlice part({{i, 1}, {0, -1}});
-    slice_set.Register(part, part.DebugString(), nullptr);
+    TF_CHECK_OK(slice_set.Register(part, part.DebugString(), nullptr));
   }
 }
 

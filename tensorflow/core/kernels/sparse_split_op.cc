@@ -30,7 +30,7 @@ class SparseSplitOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const int32 split_dim = context->input(0).scalar<int>()();
+    const int64 split_dim = context->input(0).scalar<int64>()();
     const Tensor& input_indices = context->input(1);
     const Tensor& input_values = context->input(2);
     const Tensor& input_shape = context->input(3);
@@ -48,35 +48,43 @@ class SparseSplitOp : public OpKernel {
                     "Input shape should be a vector but received shape ",
                     input_shape.shape().DebugString()));
 
-    OP_REQUIRES(context, input_shape.dim_size(0) &&
-                             split_dim < input_shape.vec<int64>().size(),
-                errors::InvalidArgument(
-                    "Input split_dim should be between 0 and rank (",
-                    input_shape.vec<int64>().size(), "), got ", split_dim));
+    OP_REQUIRES(
+        context,
+        input_shape.dim_size(0) && split_dim < input_shape.vec<int64>().size(),
+        errors::InvalidArgument(
+            "Input split_dim should be between 0 and rank (",
+            input_shape.vec<int64>().size(), "), got ", split_dim));
 
-    OP_REQUIRES(context, num_split_ >= 1 &&
-                             num_split_ <= input_shape.vec<int64>()(split_dim),
-                errors::InvalidArgument("Input num_split should be between 1 "
-                                        "and the splitting dimension size (",
-                                        input_shape.vec<int64>()(split_dim),
-                                        "), got ", num_split_));
+    OP_REQUIRES(
+        context,
+        num_split_ >= 1 && num_split_ <= input_shape.vec<int64>()(split_dim),
+        errors::InvalidArgument("Input num_split should be between 1 "
+                                "and the splitting dimension size (",
+                                input_shape.vec<int64>()(split_dim), "), got ",
+                                num_split_));
 
-    sparse::SparseTensor sparse_tensor(input_indices, input_values,
-                                       TensorShape(input_shape.vec<int64>()));
-    const std::vector<sparse::SparseTensor> outputs =
-        sparse::SparseTensor::Split<T>(sparse_tensor, split_dim, num_split_);
+    sparse::SparseTensor sparse_tensor;
+    OP_REQUIRES_OK(context,
+                   sparse::SparseTensor::Create(
+                       input_indices, input_values,
+                       TensorShape(input_shape.vec<int64>()), &sparse_tensor));
+
+    std::vector<sparse::SparseTensor> outputs;
+    OP_REQUIRES_OK(context,
+                   sparse::SparseTensor::Split<T>(sparse_tensor, split_dim,
+                                                  num_split_, &outputs));
 
     for (int slice_index = 0; slice_index < num_split_; ++slice_index) {
       context->set_output(slice_index, outputs[slice_index].indices());
       context->set_output(slice_index + num_split_,
                           outputs[slice_index].values());
       Tensor* shape = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(
-                         slice_index + 2 * num_split_,
-                         {outputs[slice_index].shape().dims()}, &shape));
-      for (int dim = 0; dim < outputs[slice_index].shape().dims(); ++dim) {
-        shape->vec<int64>()(dim) = outputs[slice_index].shape().dim_size(dim);
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  slice_index + 2 * num_split_,
+                                  {outputs[slice_index].dims()}, &shape));
+      auto output_shape = outputs[slice_index].shape();
+      for (int dim = 0; dim < outputs[slice_index].dims(); ++dim) {
+        shape->vec<int64>()(dim) = output_shape[dim];
       }
     }
   }

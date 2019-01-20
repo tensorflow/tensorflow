@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_CORE_BITMAP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_CORE_BITMAP_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_BITMAP_H_
+#define TENSORFLOW_CORE_LIB_CORE_BITMAP_H_
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -103,4 +103,4 @@ inline void Bitmap::clear(size_t i) {
 }  // namespace core
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_CORE_BITMAP_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_BITMAP_H_

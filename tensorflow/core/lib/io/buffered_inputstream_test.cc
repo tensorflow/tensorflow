@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace io {
@@ -32,7 +33,7 @@ static std::vector<int> BufferSizes() {
 TEST(BufferedInputStream, ReadLine_Empty) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffered_inputstream_test";
-  WriteStringToFile(env, fname, "");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, ""));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -48,7 +49,8 @@ TEST(BufferedInputStream, ReadLine_Empty) {
 TEST(BufferedInputStream, ReadLine1) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffered_inputstream_test";
-  WriteStringToFile(env, fname, "line one\nline two\nline three\n");
+  TF_ASSERT_OK(
+      WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -72,7 +74,7 @@ TEST(BufferedInputStream, ReadLine1) {
 TEST(BufferedInputStream, ReadLine_NoTrailingNewLine) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffered_inputstream_test";
-  WriteStringToFile(env, fname, "line one\nline two\nline three");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -96,7 +98,8 @@ TEST(BufferedInputStream, ReadLine_NoTrailingNewLine) {
 TEST(BufferedInputStream, ReadLine_EmptyLines) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffered_inputstream_test";
-  WriteStringToFile(env, fname, "line one\n\n\nline two\nline three");
+  TF_ASSERT_OK(
+      WriteStringToFile(env, fname, "line one\n\n\nline two\nline three"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -124,7 +127,8 @@ TEST(BufferedInputStream, ReadLine_EmptyLines) {
 TEST(BufferedInputStream, ReadLine_CRLF) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffered_inputstream_test";
-  WriteStringToFile(env, fname, "line one\r\n\r\n\r\nline two\r\nline three");
+  TF_ASSERT_OK(WriteStringToFile(env, fname,
+                                 "line one\r\n\r\n\r\nline two\r\nline three"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -152,7 +156,7 @@ TEST(BufferedInputStream, ReadLine_CRLF) {
 TEST(BufferedInputStream, ReadNBytes) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffer_test";
-  WriteStringToFile(env, fname, "0123456789");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -189,7 +193,7 @@ TEST(BufferedInputStream, ReadNBytes) {
 TEST(BufferedInputStream, SkipNBytes) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffered_inputstream_test";
-  WriteStringToFile(env, fname, "0123456789");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -226,7 +230,7 @@ TEST(BufferedInputStream, SkipNBytes) {
 TEST(BufferedInputStream, ReadNBytesRandomAccessFile) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffer_test";
-  WriteStringToFile(env, fname, "0123456789");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -261,7 +265,7 @@ TEST(BufferedInputStream, ReadNBytesRandomAccessFile) {
 TEST(BufferedInputStream, SkipNBytesRandomAccessFile) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/buffered_inputstream_test";
-  WriteStringToFile(env, fname, "0123456789");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
@@ -292,6 +296,111 @@ TEST(BufferedInputStream, SkipNBytesRandomAccessFile) {
     EXPECT_EQ(10, in.Tell());
   }
 }
+
+TEST(BufferedInputStream, Seek) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file.get()));
+    string read;
+    BufferedInputStream in(input_stream.get(), buf_size);
+
+    // Seek forward
+    TF_ASSERT_OK(in.Seek(3));
+    EXPECT_EQ(3, in.Tell());
+
+    // Read 4 bytes
+    TF_ASSERT_OK(in.ReadNBytes(4, &read));
+    EXPECT_EQ(read, "3456");
+    EXPECT_EQ(7, in.Tell());
+
+    // Seek backwards
+    TF_ASSERT_OK(in.Seek(1));
+    TF_ASSERT_OK(in.ReadNBytes(4, &read));
+    EXPECT_EQ(read, "1234");
+    EXPECT_EQ(5, in.Tell());
+  }
+}
+
+TEST(BufferedInputStream, ReadAll_Empty) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  const string expected = "";
+  TF_ASSERT_OK(WriteStringToFile(env, fname, expected));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    RandomAccessInputStream input_stream(file.get());
+    string read;
+    BufferedInputStream in(&input_stream, buf_size);
+    string contents;
+    TF_ASSERT_OK(in.ReadAll(&contents));
+    EXPECT_EQ(expected, contents);
+  }
+}
+
+TEST(BufferedInputStream, ReadAll_Text) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  const string expected = "line one\nline two\nline three";
+  TF_ASSERT_OK(WriteStringToFile(env, fname, expected));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    RandomAccessInputStream input_stream(file.get());
+    string read;
+    BufferedInputStream in(&input_stream, buf_size);
+    string contents;
+    TF_ASSERT_OK(in.ReadAll(&contents));
+    EXPECT_EQ(expected, contents);
+  }
+}
+
+void BM_BufferedReaderSmallReads(const int iters, const int buff_size,
+                                 const int file_size) {
+  testing::StopTiming();
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+
+  const string file_elem = "0123456789";
+  std::unique_ptr<WritableFile> write_file;
+  TF_ASSERT_OK(env->NewWritableFile(fname, &write_file));
+  for (int i = 0; i < file_size; ++i) {
+    TF_ASSERT_OK(write_file->Append(file_elem));
+  }
+  TF_ASSERT_OK(write_file->Close());
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  string result;
+  testing::StartTiming();
+
+  for (int itr = 0; itr < iters; ++itr) {
+    BufferedInputStream in(file.get(), buff_size);
+    for (int64 i = 0; i < 10 * file_size; ++i) {
+      TF_ASSERT_OK(in.ReadNBytes(1, &result))
+          << "i: " << i << " itr: " << itr << " buff_size: " << buff_size
+          << " file size: " << file_size;
+    }
+  }
+}
+BENCHMARK(BM_BufferedReaderSmallReads)
+    ->ArgPair(1, 5)
+    ->ArgPair(1, 1024)
+    ->ArgPair(10, 5)
+    ->ArgPair(10, 1024)
+    ->ArgPair(1024, 1024)
+    ->ArgPair(1024 * 1024, 1024)
+    ->ArgPair(1024 * 1024, 1024 * 1024)
+    ->ArgPair(256 * 1024 * 1024, 1024);
 
 }  // anonymous namespace
 }  // namespace io

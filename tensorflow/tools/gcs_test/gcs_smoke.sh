@@ -17,9 +17,10 @@
 # Driver script for TensorFlow-GCS smoke test.
 #
 # Usage:
-#   gcs_smoke.sh <GCLOUD_JSON_KEY_PATH> <GCS_BUCKET_URL>
+#   gcs_smoke.sh <WHL_URL> <GCLOUD_JSON_KEY_PATH> <GCS_BUCKET_URL>
 #
 # Input arguments:
+#   WHL_URL: URL to the TensorFlow wheel file to use in this test.
 #   GCLOUD_KEY_JSON_PATH: Path to the Google Cloud JSON key file.
 #     See https://cloud.google.com/storage/docs/authentication for details.
 #
@@ -34,13 +35,13 @@ print_usage() {
   echo ""
 }
 
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../ci_build/builds/builds_common.sh"
 
 # Check input arguments
-GCLOUD_JSON_KEY_PATH=$1
-GCS_BUCKET_URL=$2
+WHL_URL=$1
+GCLOUD_JSON_KEY_PATH=$2
+GCS_BUCKET_URL=$3
 if [[ -z "${GCLOUD_JSON_KEY_PATH}" ]]; then
   print_usage
   die "ERROR: Command-line argument GCLOUD_JSON_KEY_PATH is not supplied"
@@ -55,15 +56,31 @@ if [[ ! -f "${GCLOUD_JSON_KEY_PATH}" ]]; then
 "${GCLOUD_JSON_KEY_PATH}\""
 fi
 
-DOCKERFILE="${SCRIPT_DIR}/Dockerfile"
+# Create temporary directory for docker build
+BUILD_DIR=$(mktemp -d)
+echo ""
+echo "Using whl file URL: ${WHL_URL}"
+echo "Building in temporary directory: ${BUILD_DIR}"
+
+cp -r ${SCRIPT_DIR}/* "${BUILD_DIR}"/ || \
+    die "Failed to copy files to ${BUILD_DIR}"
+
+DOCKERFILE="${BUILD_DIR}/Dockerfile"
 if [[ ! -f "${DOCKERFILE}" ]]; then
   die "ERROR: Cannot find Dockerfile at expected path ${DOCKERFILE}"
 fi
 
+# Download whl file into the build context directory.
+wget -P "${BUILD_DIR}" ${WHL_URL} || \
+    die "Failed to download tensorflow whl file from URL: ${WHL_URL}"
+
 # Build the docker image for testing
 docker build --no-cache \
-    -f "${DOCKERFILE}" -t "${DOCKER_IMG}" "${SCRIPT_DIR}" || \
+    -f "${DOCKERFILE}" -t "${DOCKER_IMG}" "${BUILD_DIR}" || \
     die "FAIL: Failed to build docker image for testing"
+
+# Clean up docker build context directory.
+rm -rf "${BUILD_DIR}"
 
 # Run the docker image with the GCS key file mapped and the gcloud-required
 # environment variables set.

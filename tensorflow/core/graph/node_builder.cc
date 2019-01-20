@@ -17,26 +17,30 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
-NodeBuilder::NodeOut::NodeOut(Node* n, int i)  // NOLINT(runtime/explicit)
+NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
     : node(n),
       error(false),
       name(node != nullptr ? node->name() : (error = true, "")),
       index(i),
       dt(SafeGetOutput(node, i, &error)) {}
 
-NodeBuilder::NodeOut::NodeOut(StringPiece n, int i, DataType t)
-    : node(nullptr), error(false), name(n.ToString()), index(i), dt(t) {}
+NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
+
+NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
+    : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()
     : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}
 
 NodeBuilder::NodeBuilder(StringPiece name, StringPiece op_name,
-                         const OpRegistryInterface* op_registry)
-    : def_builder_(name, op_name, op_registry) {}
+                         const OpRegistryInterface* op_registry,
+                         const NodeDebugInfo* debug)
+    : def_builder_(name, op_name, op_registry, debug) {}
 
 NodeBuilder::NodeBuilder(StringPiece name, const OpDef* op_def)
     : def_builder_(name, op_def) {}
@@ -87,7 +91,7 @@ NodeBuilder& NodeBuilder::ControlInput(Node* src_node) {
 NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
   control_inputs_.insert(control_inputs_.end(), src_nodes.begin(),
                          src_nodes.end());
-  for (Node* src_node : src_nodes) {
+  for (const Node* src_node : src_nodes) {
     def_builder_.ControlInput(src_node->name());
   }
   return *this;
@@ -95,6 +99,16 @@ NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
 
 NodeBuilder& NodeBuilder::Device(StringPiece device_spec) {
   def_builder_.Device(device_spec);
+  return *this;
+}
+
+NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
+  assigned_device_ = string(device);
+  return *this;
+}
+
+NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
+  def_builder_.Attr("_XlaCluster", xla_cluster);
   return *this;
 }
 
@@ -114,6 +128,8 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   Node* node = graph->AddNode(node_def, &status);
   if (!status.ok()) return status;
 
+  node->set_assigned_device_name(assigned_device_);
+
   for (size_t i = 0; i < inputs_.size(); ++i) {
     if (inputs_[i].node != nullptr) {  // Skip back edges.
       graph->AddEdge(inputs_[i].node, inputs_[i].index, node, i);
@@ -126,20 +142,20 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   return Status::OK();
 }
 
-void NodeBuilder::AddIndexError(Node* node, int i) {
+void NodeBuilder::AddIndexError(const Node* node, int i) {
   if (node == nullptr) {
     errors_.emplace_back(
-        strings::StrCat("Attempt to add nullptr Node to node with type",
+        strings::StrCat("Attempt to add nullptr Node to node with type ",
                         def_builder_.op_def().name()));
   } else {
-    errors_.emplace_back(
-        strings::StrCat("Attempt to add output ", i, " of ", node->name(),
-                        " not in range [0, ", node->num_outputs(),
-                        ") to node with type ", def_builder_.op_def().name()));
+    errors_.emplace_back(strings::StrCat(
+        "Attempt to add output ", i, " of ", node->name(), " not in range [0, ",
+        node->num_outputs(), ") to node with type ",
+        def_builder_.op_def().name(), ". Node: ", FormatNodeForError(*node)));
   }
 }
 
-bool NodeBuilder::GetOutputType(Node* node, int i, DataType* dt) {
+bool NodeBuilder::GetOutputType(const Node* node, int i, DataType* dt) {
   bool error;
   *dt = SafeGetOutput(node, i, &error);
   if (error) AddIndexError(node, i);

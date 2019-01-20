@@ -19,23 +19,36 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace functor {
 
 // Functor used by SpaceToDepthOp to do the computations.
-template <typename Device, typename T>
+// Implements a family of Space to Depth transforms for a 4D 'input' tensor
+// to a 4D 'output' tensor, both tensors use type 'T' and layout 'data_format'.
+// These transforms divide the vertical and horizontal image sizes by
+// 'block_size', and multiply the depth dimension size by
+// (block_size * block_size). The offset within each block_size * block_size
+// patch within the image is combined with the input channel index to form
+// the output channel index, with the Y, X coordinates within each block of
+// the input image used as the high order component of the output channel.
+// e.g. for data_format = NHWC:
+//      Each element in the input tensor can be specified via 6 coordinates,
+//      ordered by decreasing memory layout significance as:
+//      n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates
+//                         within the output image, bX, bY means coordinates
+//                         within the input block, iC means input channels).
+//      The output would be a transpose to the following layout:
+//      n,oY,oX,bY,bX,iC
+template <typename Device, typename T, TensorFormat data_format>
 struct SpaceToDepthOpFunctor {
-  // Implements the space to depth conversion.
-  //
-  // input: 4-D input tensor.
-  // block_size: block size for the conversion.
-  // output: 4-D output tensor.
-  //
-  // The dimensions of the tensors are guaranteed to be right when the
-  // functor is called.
   void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output);
+
+  // This 5-D version is to support NCHW_VECT_C.
+  void operator()(const Device& d, typename TTypes<T, 5>::ConstTensor input,
+                  int block_size, typename TTypes<T, 5>::Tensor output);
 };
 
 }  // namespace functor

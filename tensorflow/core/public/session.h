@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PUBLIC_SESSION_H_
-#define TENSORFLOW_PUBLIC_SESSION_H_
+#ifndef TENSORFLOW_CORE_PUBLIC_SESSION_H_
+#define TENSORFLOW_CORE_PUBLIC_SESSION_H_
 
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+class DeviceMgr;
 
 /// \brief A Session instance lets a caller drive a TensorFlow graph
 /// computation.
@@ -170,12 +172,64 @@ class Session {
                       const std::vector<string>& output_names,
                       std::vector<Tensor>* outputs);
 
+  /// \brief List devices in the session.
+  ///
+  /// Retrieves the list of available devices within the session, and populates
+  /// *response. This API is optional. If it is unimplemented, Status will
+  /// return a corresponding error message, and *response will be unmodified.
+  virtual Status ListDevices(std::vector<DeviceAttributes>* response) = 0;
+
   /// \brief Closes this session.
   ///
   /// Closing a session releases the resources used by this session
   /// on the TensorFlow runtime (specified during session creation by
   /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
+
+  // NOTE(ashankar): As of July 2017, this method was added to facilitate some
+  // experimentation. Reconsider/re-evaluate after September 2017.
+  //
+  // Sets `*output` to the `DeviceMgr` that owns accessible devices in the
+  // address-space of the caller.
+  virtual Status LocalDeviceManager(const DeviceMgr** output) {
+    return errors::Unimplemented(
+        "LocalDeviceManager is not supported for this session.");
+  }
+
+  /// \brief A handle to a subgraph, created with `Session::MakeCallable()`.
+  typedef int64 CallableHandle;
+
+  /// \brief Creates a `handle` for invoking the subgraph defined by
+  /// `callable_options`.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status MakeCallable(const CallableOptions& callable_options,
+                              CallableHandle* out_handle) {
+    return errors::Unimplemented(
+        "MakeCallable is not supported for this session.");
+  }
+
+  /// \brief Invokes the subgraph named by `handle` with the given options and
+  /// input tensors.
+  ///
+  /// The order of tensors in `feed_tensors` must and `fetch_tensors` will
+  /// match the order of names in `CallableOptions::feed()` and
+  /// `CallableOptions::fetch()` when this subgraph was created.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status RunCallable(CallableHandle handle,
+                             const std::vector<Tensor>& feed_tensors,
+                             std::vector<Tensor>* fetch_tensors,
+                             RunMetadata* run_metadata) {
+    return errors::Unimplemented(
+        "RunCallable is not supported for this session.");
+  }
+
+  /// \brief Releases resources associated with the given `handle` in this
+  /// session.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status ReleaseCallable(CallableHandle handle) {
+    return errors::Unimplemented(
+        "ReleaseCallable is not supported for this session.");
+  }
 };
 
 /// \brief Create a new session with the given options.
@@ -183,15 +237,31 @@ class Session {
 /// If session creation succeeds, the new `Session` will be stored in
 /// `*out_session`, the caller will take ownership of the returned
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
-/// function will return an error status.
+/// function will return an error status and set *out_session to nullptr.
 Status NewSession(const SessionOptions& options, Session** out_session);
 
 /// \brief Resets resource containers associated with a target.
 ///
+/// Reset() allows misbehaving or slow sessions to be aborted and closed, and
+/// causes their resources eventually to be released.  Reset() does not wait
+/// for the computations in old sessions to cease; it merely starts the
+/// process of tearing them down.  However, if a new session is started after
+/// a Reset(), the new session is isolated from changes that old sessions
+/// (started prior to the Reset()) may continue to make to resources, provided
+/// all those resources are in containers listed in "containers".
+///
+/// Old sessions may continue to have side-effects on resources not in
+/// containers listed in "containers", and thus may affect future
+/// sessions' results in ways that are hard to predict.  Thus, if well-defined
+/// behavior is desired, it is recommended that all containers be listed in
+/// "containers".
+///
 /// `containers` is a vector of string representation of resource container
 /// names. When a resource container is reset, the resources held by the
 /// container will be released. In particular, all Variables in the container
-/// will become undefined.
+/// will become undefined.  If the "containers" vector is empty, the default
+/// container is assumed.  If the "containers" vector is non-empty, the
+/// default container should be listed explicitly.
 ///
 /// If Reset succeeds, this function will return `OK()`. Otherwise, this
 /// function will return an error status.
@@ -209,4 +279,4 @@ Session* NewSession(const SessionOptions& options);
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_PUBLIC_SESSION_H_
+#endif  // TENSORFLOW_CORE_PUBLIC_SESSION_H_

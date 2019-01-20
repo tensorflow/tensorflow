@@ -5,7 +5,8 @@ option cc_enable_arenas = true;
 option java_outer_classname = "TensorProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+import "tensorflow/core/framework/resource_handle.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
@@ -27,8 +28,11 @@ message TensorProto {
   // to represent a constant Tensor with a single value.
   int32 version_number = 3;
 
-  // Serialized content from Tensor::AsProtoTensorContent(). This representation
-  // can be used for all tensor types.
+  // Serialized raw tensor content from either Tensor::AsProtoTensorContent or
+  // memcpy in tensorflow::grpc::EncodeTensorToByteBuffer. This representation
+  // can be used for all tensor types. The purpose of this representation is to
+  // reduce serialization overhead during RPC call by avoiding serialization of
+  // many repeated small items.
   bytes tensor_content = 4;
 
   // Type specific representations that make it easy to create tensor protos in
@@ -36,8 +40,8 @@ message TensorProto {
   // be set.  The values hold the flattened representation of the tensor in
   // row major order.
 
-  // DT_HALF. Note that since protobuf has no int16 type, we'll have some
-  // pointless zero padding for each value here.
+  // DT_HALF, DT_BFLOAT16. Note that since protobuf has no int16 type, we'll
+  // have some pointless zero padding for each value here.
   repeated int32 half_val = 13 [packed = true];
 
   // DT_FLOAT.
@@ -65,4 +69,26 @@ message TensorProto {
   // DT_COMPLEX128. dcomplex_val(2*i) and dcomplex_val(2*i+1) are real
   // and imaginary parts of i-th double precision complex.
   repeated double dcomplex_val = 12 [packed = true];
+
+  // DT_RESOURCE
+  repeated ResourceHandleProto resource_handle_val = 14;
+
+  // DT_VARIANT
+  repeated VariantTensorDataProto variant_val = 15;
+
+  // DT_UINT32
+  repeated uint32 uint32_val = 16 [packed = true];
+
+  // DT_UINT64
+  repeated uint64 uint64_val = 17 [packed = true];
 };
+
+// Protocol buffer representing the serialization format of DT_VARIANT tensors.
+message VariantTensorDataProto {
+  // Name of the type of objects being serialized.
+  string type_name = 1;
+  // Portions of the object that are not Tensors.
+  bytes metadata = 2;
+  // Tensors contained within objects being serialized.
+  repeated TensorProto tensors = 3;
+}

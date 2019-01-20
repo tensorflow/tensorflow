@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 The Android Open Source Project
+ * Copyright 2016 The TensorFlow Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,9 +38,11 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
+import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.text.TextUtils;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
@@ -49,9 +51,6 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
-
-import org.tensorflow.demo.env.Logger;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -59,6 +58,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import org.tensorflow.demo.env.Logger;
+import org.tensorflow.demo.R; // Explicit import needed for internal Google builds.
 
 public class CameraConnectionFragment extends Fragment {
   private static final Logger LOGGER = new Logger();
@@ -68,8 +69,6 @@ public class CameraConnectionFragment extends Fragment {
    * containing a DESIRED_SIZE x DESIRED_SIZE square.
    */
   private static final int MINIMUM_PREVIEW_SIZE = 320;
-
-  private RecognitionScoreView scoreView;
 
   /**
    * Conversion from screen rotation to JPEG orientation.
@@ -112,6 +111,14 @@ public class CameraConnectionFragment extends Fragment {
       };
 
   /**
+   * Callback for Activities to use to initialize their data once the
+   * selected preview size is known.
+   */
+  public interface ConnectionCallback {
+    void onPreviewSizeChosen(Size size, int cameraRotation);
+  }
+
+  /**
    * ID of the current {@link CameraDevice}.
    */
   private String cameraId;
@@ -132,10 +139,10 @@ public class CameraConnectionFragment extends Fragment {
   private CameraDevice cameraDevice;
 
   /**
-   * The rotation in degrees of the camera sensor from the display. 
+   * The rotation in degrees of the camera sensor from the display.
    */
   private Integer sensorOrientation;
-  
+
   /**
    * The {@link android.util.Size} of camera preview.
    */
@@ -185,16 +192,6 @@ public class CameraConnectionFragment extends Fragment {
   private Handler backgroundHandler;
 
   /**
-   * An additional thread for running inference so as not to block the camera.
-   */
-  private HandlerThread inferenceThread;
-
-  /**
-   * A {@link Handler} for running tasks in the background.
-   */
-  private Handler inferenceHandler;
-
-  /**
    * An {@link ImageReader} that handles preview frame capture.
    */
   private ImageReader previewReader;
@@ -213,6 +210,33 @@ public class CameraConnectionFragment extends Fragment {
    * A {@link Semaphore} to prevent the app from exiting before closing the camera.
    */
   private final Semaphore cameraOpenCloseLock = new Semaphore(1);
+
+  /**
+   * A {@link OnImageAvailableListener} to receive frames as they are available.
+   */
+  private final OnImageAvailableListener imageListener;
+
+  /** The input size in pixels desired by TensorFlow (width and height of a square bitmap). */
+  private final Size inputSize;
+
+  /**
+   * The layout identifier to inflate for this Fragment.
+   */
+  private final int layout;
+
+
+  private final ConnectionCallback cameraConnectionCallback;
+
+  private CameraConnectionFragment(
+      final ConnectionCallback connectionCallback,
+      final OnImageAvailableListener imageListener,
+      final int layout,
+      final Size inputSize) {
+    this.cameraConnectionCallback = connectionCallback;
+    this.imageListener = imageListener;
+    this.layout = layout;
+    this.inputSize = inputSize;
+  }
 
   /**
    * Shows a {@link Toast} on the UI thread.
@@ -234,26 +258,41 @@ public class CameraConnectionFragment extends Fragment {
 
   /**
    * Given {@code choices} of {@code Size}s supported by a camera, chooses the smallest one whose
-   * width and height are at least as large as the respective requested values, and whose aspect
-   * ratio matches with the specified value.
+   * width and height are at least as large as the minimum of both, or an exact match if possible.
    *
-   * @param choices     The list of sizes that the camera supports for the intended output class
-   * @param width       The minimum desired width
-   * @param height      The minimum desired height
-   * @param aspectRatio The aspect ratio
+   * @param choices The list of sizes that the camera supports for the intended output class
+   * @param width The minimum desired width
+   * @param height The minimum desired height
    * @return The optimal {@code Size}, or an arbitrary one if none were big enough
    */
-  private static Size chooseOptimalSize(
-      final Size[] choices, final int width, final int height, final Size aspectRatio) {
+  protected static Size chooseOptimalSize(final Size[] choices, final int width, final int height) {
+    final int minSize = Math.max(Math.min(width, height), MINIMUM_PREVIEW_SIZE);
+    final Size desiredSize = new Size(width, height);
+
     // Collect the supported resolutions that are at least as big as the preview Surface
+    boolean exactSizeFound = false;
     final List<Size> bigEnough = new ArrayList<Size>();
+    final List<Size> tooSmall = new ArrayList<Size>();
     for (final Size option : choices) {
-      if (option.getHeight() >= MINIMUM_PREVIEW_SIZE && option.getWidth() >= MINIMUM_PREVIEW_SIZE) {
-        LOGGER.i("Adding size: " + option.getWidth() + "x" + option.getHeight());
+      if (option.equals(desiredSize)) {
+        // Set the size but don't return yet so that remaining sizes will still be logged.
+        exactSizeFound = true;
+      }
+
+      if (option.getHeight() >= minSize && option.getWidth() >= minSize) {
         bigEnough.add(option);
       } else {
-        LOGGER.i("Not adding size: " + option.getWidth() + "x" + option.getHeight());
+        tooSmall.add(option);
       }
+    }
+
+    LOGGER.i("Desired size: " + desiredSize + ", min size: " + minSize + "x" + minSize);
+    LOGGER.i("Valid preview sizes: [" + TextUtils.join(", ", bigEnough) + "]");
+    LOGGER.i("Rejected preview sizes: [" + TextUtils.join(", ", tooSmall) + "]");
+
+    if (exactSizeFound) {
+      LOGGER.i("Exact size match found.");
+      return desiredSize;
     }
 
     // Pick the smallest of those, assuming we found any
@@ -267,20 +306,23 @@ public class CameraConnectionFragment extends Fragment {
     }
   }
 
-  public static CameraConnectionFragment newInstance() {
-    return new CameraConnectionFragment();
+  public static CameraConnectionFragment newInstance(
+      final ConnectionCallback callback,
+      final OnImageAvailableListener imageListener,
+      final int layout,
+      final Size inputSize) {
+    return new CameraConnectionFragment(callback, imageListener, layout, inputSize);
   }
 
   @Override
   public View onCreateView(
       final LayoutInflater inflater, final ViewGroup container, final Bundle savedInstanceState) {
-    return inflater.inflate(R.layout.camera_connection_fragment, container, false);
+    return inflater.inflate(layout, container, false);
   }
 
   @Override
   public void onViewCreated(final View view, final Bundle savedInstanceState) {
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
-    scoreView = (RecognitionScoreView) view.findViewById(R.id.results);
   }
 
   @Override
@@ -311,72 +353,65 @@ public class CameraConnectionFragment extends Fragment {
     super.onPause();
   }
 
+  public void setCamera(String cameraId) {
+    this.cameraId = cameraId;
+  }
+
   /**
    * Sets up member variables related to camera.
-   *
-   * @param width  The width of available size for camera preview
-   * @param height The height of available size for camera preview
    */
-  private void setUpCameraOutputs(final int width, final int height) {
+  private void setUpCameraOutputs() {
     final Activity activity = getActivity();
     final CameraManager manager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
     try {
-      for (final String cameraId : manager.getCameraIdList()) {
-        final CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+      final CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
 
-        // We don't use a front facing camera in this sample.
-        final Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
-        if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
-          continue;
-        }
+      final StreamConfigurationMap map =
+          characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
 
-        final StreamConfigurationMap map =
-            characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+      // For still image captures, we use the largest available size.
+      final Size largest =
+          Collections.max(
+              Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)),
+              new CompareSizesByArea());
 
-        if (map == null) {
-          continue;
-        }
+      sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
 
-        // For still image captures, we use the largest available size.
-        final Size largest =
-            Collections.max(
-                Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)),
-                new CompareSizesByArea());
+      // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
+      // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
+      // garbage capture data.
+      previewSize =
+          chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
+              inputSize.getWidth(),
+              inputSize.getHeight());
 
-        sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-        
-        // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
-        // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
-        // garbage capture data.
-        previewSize =
-            chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class), width, height, largest);
-
-        // We fit the aspect ratio of TextureView to the size of preview we picked.
-        final int orientation = getResources().getConfiguration().orientation;
-        if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-          textureView.setAspectRatio(previewSize.getWidth(), previewSize.getHeight());
-        } else {
-          textureView.setAspectRatio(previewSize.getHeight(), previewSize.getWidth());
-        }
-
-        CameraConnectionFragment.this.cameraId = cameraId;
-        return;
+      // We fit the aspect ratio of TextureView to the size of preview we picked.
+      final int orientation = getResources().getConfiguration().orientation;
+      if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+        textureView.setAspectRatio(previewSize.getWidth(), previewSize.getHeight());
+      } else {
+        textureView.setAspectRatio(previewSize.getHeight(), previewSize.getWidth());
       }
     } catch (final CameraAccessException e) {
       LOGGER.e(e, "Exception!");
     } catch (final NullPointerException e) {
       // Currently an NPE is thrown when the Camera2API is used but not supported on the
       // device this code runs.
+      // TODO(andrewharp): abstract ErrorDialog/RuntimeException handling out into new method and
+      // reuse throughout app.
       ErrorDialog.newInstance(getString(R.string.camera_error))
           .show(getChildFragmentManager(), FRAGMENT_DIALOG);
+      throw new RuntimeException(getString(R.string.camera_error));
     }
+
+    cameraConnectionCallback.onPreviewSizeChosen(previewSize, sensorOrientation);
   }
 
   /**
    * Opens the camera specified by {@link CameraConnectionFragment#cameraId}.
    */
   private void openCamera(final int width, final int height) {
-    setUpCameraOutputs(width, height);
+    setUpCameraOutputs();
     configureTransform(width, height);
     final Activity activity = getActivity();
     final CameraManager manager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
@@ -424,10 +459,6 @@ public class CameraConnectionFragment extends Fragment {
     backgroundThread = new HandlerThread("ImageListener");
     backgroundThread.start();
     backgroundHandler = new Handler(backgroundThread.getLooper());
-
-    inferenceThread = new HandlerThread("InferenceThread");
-    inferenceThread.start();
-    inferenceHandler = new Handler(inferenceThread.getLooper());
   }
 
   /**
@@ -435,21 +466,14 @@ public class CameraConnectionFragment extends Fragment {
    */
   private void stopBackgroundThread() {
     backgroundThread.quitSafely();
-    inferenceThread.quitSafely();
     try {
       backgroundThread.join();
       backgroundThread = null;
       backgroundHandler = null;
-
-      inferenceThread.join();
-      inferenceThread = null;
-      inferenceThread = null;
     } catch (final InterruptedException e) {
       LOGGER.e(e, "Exception!");
     }
   }
-
-  private final TensorFlowImageListener tfPreviewListener = new TensorFlowImageListener();
 
   private final CameraCaptureSession.CaptureCallback captureCallback =
       new CameraCaptureSession.CaptureCallback() {
@@ -491,7 +515,7 @@ public class CameraConnectionFragment extends Fragment {
           ImageReader.newInstance(
               previewSize.getWidth(), previewSize.getHeight(), ImageFormat.YUV_420_888, 2);
 
-      previewReader.setOnImageAvailableListener(tfPreviewListener, backgroundHandler);
+      previewReader.setOnImageAvailableListener(imageListener, backgroundHandler);
       previewRequestBuilder.addTarget(previewReader.getSurface());
 
       // Here, we create a CameraCaptureSession for camera preview.
@@ -535,11 +559,6 @@ public class CameraConnectionFragment extends Fragment {
     } catch (final CameraAccessException e) {
       LOGGER.e(e, "Exception!");
     }
-
-    LOGGER.i("Getting assets.");
-    tfPreviewListener.initialize(
-        getActivity().getAssets(), scoreView, inferenceHandler, sensorOrientation);
-    LOGGER.i("TensorFlow initialized.");
   }
 
   /**

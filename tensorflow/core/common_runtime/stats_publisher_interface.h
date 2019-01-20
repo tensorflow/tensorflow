@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
 
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
@@ -51,6 +51,14 @@ class StatsPublisherInterface {
   virtual ~StatsPublisherInterface() {}
 };
 
+typedef std::function<std::unique_ptr<StatsPublisherInterface>(
+    const string&, const BuildGraphOptions&, const SessionOptions&)>
+    StatsPublisherFactory;
+
+std::unique_ptr<StatsPublisherInterface> CreateNoOpStatsPublisher(
+    const string& session, const BuildGraphOptions& bopts,
+    const SessionOptions& sopts);
+
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_

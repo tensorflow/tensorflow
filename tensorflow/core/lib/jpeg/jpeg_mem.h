@@ -18,13 +18,14 @@ limitations under the License.
 // (data array and size fields).
 // Direct manipulation of JPEG strings are supplied: Flip, Rotate, Crop..
 
-#ifndef TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
-#define TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
+#ifndef TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
+#define TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
 
 #include <functional>
 #include <string>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -54,6 +55,23 @@ struct UncompressFlags {
   // equal to width*components*sizeof(JSAMPLE).  If 0 is passed, the stride
   // used will be this minimal value.
   int stride = 0;
+
+  // Setting of J_DCT_METHOD enum in jpeglib.h, for choosing which
+  // algorithm to use for DCT/IDCT.
+  //
+  // Setting this has a quality/speed trade-off implication.
+  J_DCT_METHOD dct_method = JDCT_DEFAULT;
+
+  // Settings of crop window before decompression.
+  bool crop = false;
+  // Vertical coordinate of the top-left corner of the result in the input.
+  int crop_x = 0;
+  // Horizontal coordinate of the top-left corner of the result in the input.
+  int crop_y = 0;
+  // Width of the output image.
+  int crop_width = 0;
+  // Height of the output image.
+  int crop_height = 0;
 };
 
 // Uncompress some raw JPEG data given by the pointer srcdata and the length
@@ -141,4 +159,4 @@ bool Compress(const void* srcdata, int width, int height,
 }  // namespace jpeg
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
+#endif  // TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_

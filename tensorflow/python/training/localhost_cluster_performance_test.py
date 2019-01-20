@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests and benchmarks for creating RPC clusters on localhost."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,46 +21,33 @@ from __future__ import print_function
 import time
 
 import numpy as np
-import tensorflow as tf
 
-from tensorflow.python.util import net_lib
-
-
-def create_local_cluster(num_workers, num_ps, protocol="grpc"):
-  """Create local GRPC servers and return their servers."""
-  worker_ports = [net_lib.pick_unused_port_or_die() for _ in range(num_workers)]
-  ps_ports = [net_lib.pick_unused_port_or_die() for _ in range(num_ps)]
-  cluster_dict = {
-      "worker": ["localhost:%s" % port for port in worker_ports],
-      "ps": ["localhost:%s" % port for port in ps_ports]}
-  cs = tf.train.ClusterSpec(cluster_dict)
-
-  workers = [
-      tf.train.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_workers)]
-  ps_servers = [
-      tf.train.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_ps)]
-
-  return workers, ps_servers
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import device_setter
 
 
-class CreateLocalClusterTest(tf.test.TestCase):
+class CreateLocalClusterTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testCreateLocalCluster(self):
-    workers, _ = create_local_cluster(num_workers=2, num_ps=2)
-    worker_sessions = [tf.Session(w.target) for w in workers]
-    with tf.device("/job:ps/task:0"):
-      var0 = tf.Variable(0.0)
-    with tf.device("/job:ps/task:1"):
-      var1 = tf.Variable(1.0)
+    workers, _ = test.create_local_cluster(num_workers=2, num_ps=2)
+    worker_sessions = [session_lib.Session(w.target) for w in workers]
+    with ops.device("/job:ps/task:0"):
+      var0 = variables.Variable(0.0)
+    with ops.device("/job:ps/task:1"):
+      var1 = variables.Variable(1.0)
     worker_sessions[0].run([var0.initializer, var1.initializer])
-    with tf.device("/job:ps/task:0"):
-      var2 = tf.Variable(2.0)
-    with tf.device("/job:ps/task:1"):
-      var3 = tf.Variable(3.0)
+    with ops.device("/job:ps/task:0"):
+      var2 = variables.Variable(2.0)
+    with ops.device("/job:ps/task:1"):
+      var3 = variables.Variable(3.0)
     worker_sessions[1].run([var2.initializer, var3.initializer])
 
     # Read values back in the opposite session
@@ -70,58 +57,57 @@ class CreateLocalClusterTest(tf.test.TestCase):
     self.assertAllEqual(3.0, var3.eval(session=worker_sessions[0]))
 
 
-class CreateLocalClusterBenchmark(tf.test.Benchmark):
+class CreateLocalClusterBenchmark(test.Benchmark):
 
   def benchmarkCreateLocalCluster(self):
     deltas = []
     iters = 5
     for _ in range(iters):
       start_time = time.time()
-      create_local_cluster(num_workers=1, num_ps=10)
+      test.create_local_cluster(num_workers=1, num_ps=10)
       end_time = time.time()
       deltas.append(end_time - start_time)
 
     median_deltas = np.median(deltas)
-    print(
-        "\n\nbenchmark_create_local_cluster_1_worker_10_ps.  "
-        "iterations: %d, median wall time: %g\n\n" % (iters, median_deltas))
+    print("\n\nbenchmark_create_local_cluster_1_worker_10_ps.  "
+          "iterations: %d, median wall time: %g\n\n" % (iters, median_deltas))
     self.report_benchmark(
         iters=iters,
         wall_time=median_deltas,
         name="benchmark_create_local_cluster_1_worker_10_ps")
 
 
-class PartitionedVariablesBenchmark(tf.test.Benchmark):
+class PartitionedVariablesBenchmark(test.Benchmark):
 
   def benchmark_create_1000_partitions_with_100_parameter_servers(self):
-    workers, _ = create_local_cluster(num_workers=1, num_ps=100)
-    worker_sessions = [tf.Session(w.target) for w in workers]
+    workers, _ = test.create_local_cluster(num_workers=1, num_ps=100)
+    worker_sessions = [session_lib.Session(w.target) for w in workers]
     worker = worker_sessions[0]
-    partition_sizes = (1, 512, 1024*32, 1024*128)
+    partition_sizes = (1, 512, 1024 * 32, 1024 * 128)
 
     partitioned = []
 
     for partition_size in partition_sizes:
       # max_shard_bytes is 4, shape is 1000*partition_size float32s which should
       # partition into 1000 shards, each containing partition_size float32s.
-      print("Building partitioned variable with %d floats per partition"
-            % partition_size)
-      with tf.device(tf.train.replica_device_setter(ps_tasks=100)):
-        partitioned_ix = tf.get_variable(
+      print("Building partitioned variable with %d floats per partition" %
+            partition_size)
+      with ops.device(device_setter.replica_device_setter(ps_tasks=100)):
+        partitioned_ix = variable_scope.get_variable(
             "partitioned_%d" % partition_size,
             shape=[1000 * partition_size],
-            dtype=tf.float32,
+            dtype=dtypes.float32,
             # Each partition to have exactly N float32s
-            partitioner=tf.variable_axis_size_partitioner(
+            partitioner=partitioned_variables.variable_axis_size_partitioner(
                 max_shard_bytes=4 * partition_size))
         # Concatenates along axis 0
-        partitioned.append(tf.convert_to_tensor(partitioned_ix))
+        partitioned.append(ops.convert_to_tensor(partitioned_ix))
 
-    tf.initialize_all_variables().run(session=worker)
+    variables.global_variables_initializer().run(session=worker)
 
     for ix, partition_size in enumerate(partition_sizes):
-      print("Running benchmark having partitions with %d floats"
-            % partition_size)
+      print("Running benchmark having partitions with %d floats" %
+            partition_size)
       self.run_op_benchmark(
           worker,
           partitioned[ix],
@@ -130,4 +116,4 @@ class PartitionedVariablesBenchmark(tf.test.Benchmark):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

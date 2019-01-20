@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_GUARDED_PHILOX_RANDOM_H_
-#define TENSORFLOW_KERNELS_GUARDED_PHILOX_RANDOM_H_
+#ifndef TENSORFLOW_CORE_UTIL_GUARDED_PHILOX_RANDOM_H_
+#define TENSORFLOW_CORE_UTIL_GUARDED_PHILOX_RANDOM_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -49,6 +49,8 @@ class GuardedPhiloxRandom {
 
   // Initialize with given seeds.
   void Init(int64 seed, int64 seed2);
+  void Init(random::PhiloxRandom::ResultType counter,
+            random::PhiloxRandom::Key key);
 
   // Reserve a certain number of 128-bit samples.
   // This function is thread safe.  The returned generator is valid for the
@@ -77,4 +79,4 @@ class GuardedPhiloxRandom {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_GUARDED_PHILOX_RANDOM_H_
+#endif  // TENSORFLOW_CORE_UTIL_GUARDED_PHILOX_RANDOM_H_

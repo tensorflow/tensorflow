@@ -17,8 +17,10 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -27,6 +29,7 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   ShapeInferenceTestOp op("AddN");
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "AddN")
                      .Input(src_list)
@@ -61,13 +64,14 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   INFER_OK(op, "[?,2];[1,?]", "[d1_0,d0_1]");
 
   set_n(3);
-  INFER_ERROR(("Dimension 1 in both shapes must be equal, but are 2 and "
-               "4\n\tFrom merging shape 0 with other shapes."),
-              op, "[1,2];?;[1,4]");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 2 and 4", op,
+              "[1,2];?;[1,4]");
+  INFER_ERROR("From merging shape 0 with other shapes.", op, "[1,2];?;[1,4]");
   set_n(4);
-  INFER_ERROR(("Shapes must be equal rank, but are 2 and 3\n\tFrom merging "
-               "shape 1 with other shapes."),
-              op, "?;[1,2];?;[1,2,3]");
+  INFER_ERROR("Shapes must be equal rank, but are 2 and 3", op,
+              "?;[1,2];?;[1,2,3]");
+  INFER_ERROR("From merging shape 1 with other shapes.", op,
+              "?;[1,2];?;[1,2,3]");
 }
 
 TEST(MathOpsTest, UnchangedShape_ShapeFn) {
@@ -75,35 +79,6 @@ TEST(MathOpsTest, UnchangedShape_ShapeFn) {
   INFER_OK(op, "?", "in0");
   INFER_OK(op, "[?]", "in0");
   INFER_OK(op, "[1,?,3,4]", "in0");
-}
-
-TEST(MathOpsTest, FFT_ShapeFn) {
-  for (const auto* op_name : {"FFT", "IFFT"}) {
-    ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
-    INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
-    INFER_OK(op, "[?]", "in0");
-    INFER_OK(op, "[1]", "in0");
-    INFER_OK(op, "[1,2,3,4,5,6,7]", "in0");
-  }
-
-  for (const auto* op_name : {"FFT2D", "IFFT2D"}) {
-    ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
-    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
-    INFER_OK(op, "[?,1]", "in0");
-    INFER_OK(op, "[1,2]", "in0");
-    INFER_OK(op, "[1,2,3,4,5,6,7]", "in0");
-  }
-
-  for (const auto* op_name : {"FFT3D", "IFFT3D"}) {
-    ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
-    INFER_ERROR("Shape must be at least rank 3 but is rank 2", op, "[1,2]");
-    INFER_OK(op, "[?,1,?]", "in0");
-    INFER_OK(op, "[1,2,3]", "in0");
-    INFER_OK(op, "[1,2,3,4,5,6,7]", "in0");
-  }
 }
 
 TEST(MathOpsTest, Segment_ShapeFn) {
@@ -145,7 +120,8 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
                               "Maximum",    "Minimum",
                               "Mod",        "Mul",
                               "NotEqual",   "Pow",
-                              "Sub",        "SquaredDifference"}) {
+                              "Sub",        "SquaredDifference",
+                              "DivNoNan"}) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[1,2];?", "?");
@@ -187,7 +163,10 @@ TEST(MathOpsTest, Select_ShapeFn) {
   ShapeInferenceTestOp op("Select");
   INFER_OK(op, "?;?;?", "in1|in2");
 
+  // scalar case
+  INFER_OK(op, "[];[1];?", "in1");
   INFER_OK(op, "[];?;?", "in1|in2");
+
   INFER_OK(op, "[1];?;?",
            "in1|in2");  // When cond is vector, t/e may not match it.
   INFER_OK(op, "[1,2];?;?", "in1|in2?");
@@ -199,8 +178,8 @@ TEST(MathOpsTest, Select_ShapeFn) {
   INFER_OK(op, "?;[1,2];?", "in1");
   INFER_OK(op, "?;?;[1,2]", "in2");
 
-  INFER_OK(op, "[1];[];?", "in1");
-  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op, "[];[1];?");
+  INFER_ERROR("Shapes must be equal rank, but are 0 and 1", op, "[1];[];?");
+  INFER_ERROR("Shapes must be equal rank, but are 1 and 2", op, "[];[1];[1,2]");
   INFER_ERROR("Shapes must be equal rank, but are 1 and 2", op, "[1,2];[1];?");
   INFER_OK(op, "[2];[?];[?]", "in1|in2");
 
@@ -212,18 +191,94 @@ TEST(MathOpsTest, Select_ShapeFn) {
   INFER_OK(op, "[2,?,?];[?,?,3];[?,2,?]", "[d0_0,d2_1,d1_2]");
   INFER_ERROR("Dimension 2 in both shapes must be equal, but are 3 and 5", op,
               "[2,?,5];[?,?,3];[?,2,?]");
+
+  // Test that handles were merged.
+  //
+  // Tests below will modify handle_data and call run_inference_for_handles to
+  // rerun shape inference, updating the context <c>.
+  const OpRegistrationData* op_reg_data;
+  TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
+  typedef std::vector<std::pair<TensorShapeProto, DataType>> ShapeDtypeV;
+  std::vector<std::unique_ptr<ShapeDtypeV>> handle_data;
+  std::unique_ptr<shape_inference::InferenceContext> c;
+  Status run_status;
+  auto run_inference_for_handles = [&]() -> Status {
+    CHECK(op_reg_data->shape_inference_fn != nullptr);
+    c.reset(new shape_inference::InferenceContext(
+        TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
+        {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
+        handle_data));
+    TF_CHECK_OK(c->construction_status());
+    Status s = c->Run(op_reg_data->shape_inference_fn);
+    LOG(INFO) << "Inference got " << s;
+    return s;
+  };
+  auto shape_proto = [](std::initializer_list<int64> dim_sizes) {
+    TensorShapeProto p;
+    for (auto i : dim_sizes) p.add_dim()->set_size(i);
+    return p;
+  };
+
+  TensorShapeProto i0 = shape_proto({1, -1});
+  TensorShapeProto i1 = shape_proto({-1, 2});
+  TensorShapeProto unknown_shape;
+  unknown_shape.set_unknown_rank(true);
+  TensorShapeProto scalar;
+
+  handle_data.emplace_back(
+      new ShapeDtypeV{{scalar, DT_FLOAT}, {unknown_shape, DT_INT32}});
+  handle_data.emplace_back(new ShapeDtypeV{{i0, DT_FLOAT}, {i1, DT_INT32}});
+  handle_data.emplace_back(
+      new ShapeDtypeV{{i1, DT_FLOAT}, {unknown_shape, DT_INT32}});
+
+  TF_ASSERT_OK(run_inference_for_handles());
+  auto* out = c->output_handle_shapes_and_types(0);
+  ASSERT_EQ(2, out->size());
+  EXPECT_EQ("[1,2]", c->DebugString(out->at(0).shape));
+  EXPECT_EQ(DT_FLOAT, out->at(0).dtype);
+  EXPECT_EQ("[?,2]", c->DebugString(out->at(1).shape));
+  EXPECT_EQ(DT_INT32, out->at(1).dtype);
+
+  // Expect an error when the shapes can't be merged.
+  handle_data[2]->at(0).first = shape_proto({2, 2});
+  EXPECT_TRUE(str_util::StrContains(run_inference_for_handles().error_message(),
+                                    "must be equal, but are 1 and 2"));
+  handle_data[2]->at(0).first = i1;  // restore to valid
+
+  // Expect an error when the types can't be merged.
+  handle_data[2]->at(1).second = DT_INT64;
+  EXPECT_TRUE(str_util::StrContains(run_inference_for_handles().error_message(),
+                                    "pointing to different dtypes"));
+  handle_data[2]->at(1).second = DT_INT32;  // restore to valid
+
+  // Expect an error when different numbers of tensors are merged.
+  handle_data[2]->push_back({i1, DT_FLOAT});
+  EXPECT_TRUE(
+      str_util::StrContains(run_inference_for_handles().error_message(),
+                            "pointing to different numbers of tensors"));
+  handle_data[2]->pop_back();  // restore to valid.
 }
 
 TEST(MathOpsTest, Range_ShapeFn) {
   ShapeInferenceTestOp op("Range");
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "Range")
+                   .Input({"start", {}, DT_INT32})
+                   .Input({"limit", {}, DT_INT32})
+                   .Input({"delta", {}, DT_INT32})
+                   .Attr("Tidx", DT_INT32)
+                   .Finalize(&op.node_def));
+
   op.input_tensors.resize(3);
   INFER_OK(op, "?;?;?", "[?]");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'start'", op,
-              "[1,2];?;?");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'limit'", op,
-              "?;[1,2];?");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'delta'", op,
-              "?;?;[1,2]");
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "[1,2];?;?");
+  INFER_ERROR("for 'start'", op, "[1,2];?;?");
+
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "?;[1,2];?");
+  INFER_ERROR("for 'limit'", op, "?;[1,2];?");
+
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "?;?;[1,2]");
+  INFER_ERROR("for 'delta'", op, "?;?;[1,2]");
 
   Tensor start_t = test::AsScalar(1);
   op.input_tensors[0] = &start_t;
@@ -237,11 +292,17 @@ TEST(MathOpsTest, Range_ShapeFn) {
   INFER_OK(op, "?;?;?", "[0]");
 
   delta_t = test::AsScalar(0);
-  INFER_ERROR("Requires delta > 0: 0", op, "?;?;?");
+  INFER_ERROR("Requires delta != 0", op, "?;?;?");
   delta_t = test::AsScalar(3);
 
   limit_t = test::AsScalar(-1);
-  INFER_ERROR("Requires start <= limit: 1/-1", op, "?;?;?");
+  INFER_ERROR("Requires start <= limit when delta > 0: 1/-1", op, "?;?;?");
+
+  delta_t = test::AsScalar(-1);
+  INFER_OK(op, "?;?;?", "[2]");
+
+  limit_t = test::AsScalar(4);
+  INFER_ERROR("Requires start >= limit when delta < 0: 1/4", op, "?;?;?");
 
   limit_t = test::AsScalar(100);
   start_t = test::AsScalar(2);
@@ -253,12 +314,12 @@ TEST(MathOpsTest, LinSpace_ShapeFn) {
   ShapeInferenceTestOp op("LinSpace");
   op.input_tensors.resize(3);
   INFER_OK(op, "?;?;?", "[?]");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'start'", op,
-              "[1,2];?;?");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'stop'", op,
-              "?;[1,2];?");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'num'", op,
-              "?;?;[1,2]");
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "[1,2];?;?");
+  INFER_ERROR("for 'start'", op, "[1,2];?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "?;[1,2];?");
+  INFER_ERROR("for 'stop'", op, "?;[1,2];?");
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "?;?;[1,2]");
+  INFER_ERROR("for 'num'", op, "?;?;[1,2]");
 
   Tensor num_t = test::AsScalar(1);
   op.input_tensors[2] = &num_t;
@@ -399,11 +460,15 @@ TEST(MathOpsTest, ArgOps_ShapeFn) {
   // Dimension value out of bounds
   dimension = test::AsScalar(10);
   op.input_tensors[1] = &dimension;
-  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+  INFER_ERROR("must be in the range [-3, 3)", op, "[2,3,4];[]");
 
   dimension = test::AsScalar(-10);
   op.input_tensors[1] = &dimension;
-  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+  INFER_ERROR("must be in the range [-3, 3)", op, "[2,3,4];[]");
+
+  dimension = test::AsScalar(-1);
+  op.input_tensors[1] = &dimension;
+  INFER_OK(op, "[2,3,4];[]", "[d0_0,d0_1]");
 }
 
 TEST(MathOpsTest, Betainc_ShapeFn) {
@@ -429,4 +494,81 @@ TEST(MathOpsTest, Betainc_ShapeFn) {
   INFER_ERROR("must be equal", op, "[1,2];[];[1,2,3]");
 }
 
+TEST(MathOpsTest, Requantize_ShapeFn) {
+  ShapeInferenceTestOp op("Requantize");
+
+  INFER_OK(op, "?;?;?;?;?", "in0;[];[]");
+  INFER_OK(op, "?;[];[];[];[]", "in0;[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;[1];?;?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;[2];?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;[3];?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;[4]");
+}
+
+TEST(MathOpstest, RequantizationRange_ShapeFn) {
+  ShapeInferenceTestOp op("RequantizationRange");
+
+  INFER_OK(op, "?;?;?", "[];[]");
+  INFER_OK(op, "?;[];[]", "[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;[1];?");
+  INFER_ERROR("must be rank 0", op, "?;?;[2]");
+}
+
+TEST(MathOpsTest, Cross_ShapeFn) {
+  ShapeInferenceTestOp op("Cross");
+
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but", op, "[3];[5]");
+  INFER_ERROR("Dimension must be 3 but", op, "[3,5];[3,5]");
+
+  INFER_OK(op, "?;?", "in0");
+  INFER_OK(op, "[?];[?]", "in0");
+  INFER_OK(op, "[1,?,3];[?,?,?]", "in0");
+}
+
+TEST(MathOpsTest, HistogramFixedWidth_ShapeFn) {
+  ShapeInferenceTestOp op("HistogramFixedWidth");
+
+  // value_range should be vector.
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[];[];[]");
+  // value_range should have 2 elements.
+  INFER_ERROR("Dimension must be 2 but is 3", op, "[];[3];[]");
+  // nbins should be scalar.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[];[2];[2]");
+
+  INFER_OK(op, "?;?;?", "[?]");
+  INFER_OK(op, "[?];[2];[]", "[?]");
+  INFER_OK(op, "[?];[2];?", "[?]");
+}
+
+TEST(MathOpsTest, QuantizedAdd_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizedAdd");
+
+  INFER_OK(op, "?;?;?;?;?;?", "?;[];[]");
+  INFER_OK(op, "?;?;[];[];[];[]", "?;[];[]");
+  INFER_OK(op, "[1,2];?;[];[];[];[]", "?;[];[]");
+  INFER_OK(op, "[];[2];[];[];[];[]", "[d1_0];[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;?;[1];?;?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;[2];?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;[3];?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;?;[4]");
+}
+
+TEST(MathOpsTest, Bincount_ShapeFn) {
+  ShapeInferenceTestOp op("Bincount");
+
+  // size should be scalar.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[1];?");
+
+  INFER_OK(op, "?;?;?", "[?]");
+  INFER_OK(op, "?;[];?", "[?]");
+  INFER_OK(op, "[?];[];?", "[?]");
+  INFER_OK(op, "[?];[];[?]", "[?]");
+}
 }  // end namespace tensorflow

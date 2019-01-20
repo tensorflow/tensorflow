@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -69,6 +70,53 @@ TEST(TensorShapeTest, RemoveAndAddDim) {
   ASSERT_EQ(3, s.dims());
 }
 
+TEST(TensorShapeTest, RemoveLastDims) {
+  TensorShape s({2, 3, 5, 7});
+  s.RemoveLastDims(1);
+
+  ASSERT_EQ(3, s.dims());
+  EXPECT_EQ(30, s.num_elements());
+
+  s.RemoveLastDims(2);
+  ASSERT_EQ(1, s.dims());
+  EXPECT_EQ(2, s.dim_size(0));
+}
+
+TEST(TensorShapeTest, RemoveDimRange) {
+  TensorShape s0({2, 3, 5, 7});
+  // Empty interval => noop.
+  for (int i = -4; i <= 4; ++i) {
+    s0.RemoveDimRange(i, i);
+    ASSERT_EQ(4, s0.dims());
+    ASSERT_EQ(210, s0.num_elements());
+  }
+
+  // Positive begin and end.
+  s0.RemoveDimRange(3, 1);  // Empty interval.
+  ASSERT_EQ(4, s0.dims());
+  ASSERT_EQ(210, s0.num_elements());
+  s0.RemoveDimRange(0, 3);
+  ASSERT_EQ(1, s0.dims());
+  EXPECT_EQ(7, s0.dim_size(0));
+  TensorShape s1({2, 3, 5, 7});
+  s1.RemoveDimRange(2, 3);
+  ASSERT_EQ(3, s1.dims());
+  ASSERT_EQ(42, s1.num_elements());
+
+  // Negative begin or end.
+  TensorShape s2({2, 3, 5, 7});
+  s2.RemoveDimRange(-2, -3);  // Empty interval.
+  ASSERT_EQ(4, s2.dims());
+  ASSERT_EQ(210, s2.num_elements());
+  s2.RemoveDimRange(0, -2);
+  ASSERT_EQ(1, s2.dims());
+  ASSERT_EQ(7, s2.dim_size(0));
+  TensorShape s3({2, 3, 5, 7});
+  s3.RemoveDimRange(-3, -2);
+  ASSERT_EQ(3, s3.dims());
+  ASSERT_EQ(42, s3.num_elements());
+}
+
 TEST(TensorShapeTest, InvalidShapeProto) {
   TensorShapeProto proto;
   EXPECT_TRUE(TensorShape::IsValid(proto));
@@ -83,8 +131,8 @@ TEST(TensorShapeTest, InvalidShapeProto) {
   EXPECT_FALSE(TensorShape::IsValid(proto));
 
   proto.Clear();
-  proto.add_dim()->set_size(1LL << 20);
-  proto.add_dim()->set_size((1LL << 20) + 1);
+  proto.add_dim()->set_size(1LL << 35);
+  proto.add_dim()->set_size((1LL << 35) + 1);
   EXPECT_FALSE(TensorShape::IsValid(proto));
 }
 
@@ -148,6 +196,13 @@ TEST(TensorShapeTest, DataType) {
   EXPECT_EQ(TensorShapeTestHelper::data_type(&s2), DT_FLOAT);
   s2.Clear();
   EXPECT_EQ(TensorShapeTestHelper::data_type(&s2), DT_INVALID);
+}
+
+TEST(TensorShapeTest, ostream) {
+  TensorShape s({10, 5, 4});
+  std::stringstream ss;
+  ss << s;
+  EXPECT_EQ(ss.str(), "[10,5,4]");
 }
 
 // -----------------------------------------------------------------------
@@ -311,7 +366,8 @@ Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
       return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " has negative dimensions");
+                                     " has negative dimensions; ",
+                                     "perhaps an un-fed placeholder?");
     }
     num_elements *= d.size();
     if (num_elements > kMaxElements) {
@@ -516,6 +572,95 @@ TEST(TensorShapeTest, Randomized) {
   }
 }
 
+TEST(TensorShapeTest, Large) {
+  // We used to cap shapes at 2**40 elements.  Ensure the
+  // bound is now higher.
+  int64 one = 1;
+  int64 max = std::numeric_limits<int64>::max();
+  EXPECT_EQ(TensorShape({max}).num_elements(), max);
+  EXPECT_EQ(TensorShape({1, max}).num_elements(), max);
+  EXPECT_EQ(TensorShape({max, 1}).num_elements(), max);
+  EXPECT_EQ(TensorShape({one << 62}).num_elements(), one << 62);
+  EXPECT_EQ(TensorShape({one << 20, one << 41}).num_elements(), one << 61);
+  EXPECT_EQ(TensorShape({1000, 1000, 1000, 1000, 1000, 1000}).num_elements(),
+            1e18);
+}
+
+TEST(TensorShapeTest, Overflow) {
+  int64 one = 1;
+  std::vector<std::vector<int64>> overflows = {
+      {1 << 30, 1 << 30, 1 << 30},
+      {1 << 5, (one << 60) + 1},
+  };
+  for (const auto& overflow : overflows) {
+    TensorShapeProto proto;
+    for (auto dim : overflow) {
+      proto.add_dim()->set_size(dim);
+    }
+    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
+              TensorShape::IsValidShape(proto).code());
+    TensorShape shape;
+    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
+              TensorShapeUtils::MakeShape(overflow, &shape).code());
+  }
+}
+
+TEST(TensorShapeTest, UnknownRank) {
+  // NOTE(irving): Unfortunately, for historical reasons we have to allow an
+  // TensorShapeProto with unknown_rank() set to be parsed as a TensorShape.
+  // Would be nice to tighten this, but it's tricky given backwards
+  // compatibility requirements.
+  TensorShapeProto proto;
+  proto.set_unknown_rank(true);
+  EXPECT_TRUE(TensorShape::IsValid(proto));
+  TF_EXPECT_OK(TensorShape::IsValidShape(proto));
+  EXPECT_EQ(TensorShape(), TensorShape(proto));
+
+  proto.add_dim()->set_size(7);
+  EXPECT_TRUE(TensorShape::IsValid(proto));
+  TF_EXPECT_OK(TensorShape::IsValidShape(proto));
+  EXPECT_EQ(TensorShape({7}), TensorShape(proto));
+}
+
+TEST(TensorShapeUtilsTest, StartsWith) {
+  EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2, 3})));
+  EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({2, 3, 4}),
+                                           TensorShape({2, 3})));
+  EXPECT_FALSE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({3})));
+  EXPECT_FALSE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2, 4})));
+  EXPECT_FALSE(TensorShapeUtils::StartsWith(TensorShape({2, 3}),
+                                            TensorShape({2, 3, 4})));
+  EXPECT_FALSE(TensorShapeUtils::StartsWith(TensorShape({2, 3, 4}),
+                                            TensorShape({3, 4})));
+}
+
+TEST(TensorShapeUtilsTest, EndsWith) {
+  EXPECT_TRUE(TensorShapeUtils::EndsWith(TensorShape({}), TensorShape({})));
+  EXPECT_TRUE(TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({3})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({3, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({2, 3})));
+}
+
 // A few different test cases for tensor sizes for benchmarks
 static std::vector<int64> MakeSizes(int arg) {
   std::vector<int64> sizes;
@@ -546,14 +691,6 @@ static void BM_TensorShape_Assign(int iters, int arg) {
   }
 }
 BENCHMARK(BM_TensorShape_Assign)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
-
-static void BM_TensorShapeOld_Assign(int iters, int arg) {
-  TensorShapeOld sold(MakeSizes(arg));
-  while (--iters > 0) {
-    TensorShapeOld sold2 = sold;
-  }
-}
-BENCHMARK(BM_TensorShapeOld_Assign)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
 
 }  // namespace
 }  // namespace tensorflow

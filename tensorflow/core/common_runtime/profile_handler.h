@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROFILE_HANDLER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROFILE_HANDLER_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROFILE_HANDLER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PROFILE_HANDLER_H_
 
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/graph/types.h"
@@ -28,22 +28,6 @@ class ProfileHandler {
  public:
   ProfileHandler() {}
   virtual ~ProfileHandler() {}
-
-  // Records that a miscellaneous activity occurred in the current step.
-  //
-  // Implementations of this method must be thread-safe.
-  //
-  // Args:
-  // - device: The device on which the activity occurred.
-  // - start: The time at which the activity started.
-  // - limit: The time at which the activity finished.
-  // - label: A label for the op, which may be used in visualization.
-  // - op_type: A type string for the op, which may be used in visualization.
-  // - details: A details string, which may be used in visualization.
-  // from time "start" to "limit" with "op_type" and "details".
-  virtual void RecordActivity(const string& device, Microseconds start,
-                              Microseconds limit, StringPiece label,
-                              StringPiece op_type, StringPiece details) = 0;
 
   // Records that a single Op was executed in the current step.
   //
@@ -73,8 +57,11 @@ class ProfileHandler {
   virtual void StepDone(Microseconds start_time, Microseconds finish_time,
                         Microseconds cleanup_time, int total_runops,
                         Status final_status) = 0;
+
+  // Returns true if the caller should collect rpc activity.
+  virtual bool should_collect_rpcs() = 0;
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROFILE_HANDLER_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PROFILE_HANDLER_H_

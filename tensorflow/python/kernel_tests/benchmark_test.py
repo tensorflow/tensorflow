@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.python.framework.importer."""
 from __future__ import absolute_import
 from __future__ import division
@@ -22,11 +21,16 @@ import json
 import os
 import random
 
-import tensorflow as tf
+import numpy as np
 
 from tensorflow.core.util import test_log_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import benchmark
-
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import test
 
 # Used by SomeRandomBenchmark class below.
 _ran_somebenchmark_1 = [False]
@@ -34,7 +38,7 @@ _ran_somebenchmark_2 = [False]
 _ran_somebenchmark_but_shouldnt = [False]
 
 
-class SomeRandomBenchmark(tf.test.Benchmark):
+class SomeRandomBenchmark(test.Benchmark):
   """This Benchmark should automatically be registered in the registry."""
 
   def _dontRunThisBenchmark(self):
@@ -50,7 +54,7 @@ class SomeRandomBenchmark(tf.test.Benchmark):
     _ran_somebenchmark_2[0] = True
 
 
-class TestReportingBenchmark(tf.test.Benchmark):
+class TestReportingBenchmark(test.Benchmark):
   """This benchmark (maybe) reports some stuff."""
 
   def benchmarkReport1(self):
@@ -58,19 +62,26 @@ class TestReportingBenchmark(tf.test.Benchmark):
 
   def benchmarkReport2(self):
     self.report_benchmark(
-        iters=2, name="custom_benchmark_name",
-        extras={"number_key": 3, "other_key": "string"})
+        iters=2,
+        name="custom_benchmark_name",
+        extras={"number_key": 3,
+                "other_key": "string"})
 
   def benchmark_times_an_op(self):
-    with tf.Session() as sess:
-      a = tf.constant(0.0)
+    input_size = 5
+    with session.Session(config=benchmark.benchmark_config()) as sess:
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=(input_size))
       a_plus_a = a + a
-      self.run_op_benchmark(
-          sess, a_plus_a, min_iters=1000, store_trace=True,
+      return self.run_op_benchmark(
+          sess,
+          a_plus_a,
+          feed_dict={a: np.arange(input_size)},
+          min_iters=1000,
+          store_trace=True,
           name="op_benchmark")
 
 
-class BenchmarkTest(tf.test.TestCase):
+class BenchmarkTest(test.TestCase):
 
   def testGlobalBenchmarkRegistry(self):
     registry = list(benchmark.GLOBAL_BENCHMARK_REGISTRY)
@@ -115,31 +126,32 @@ class BenchmarkTest(tf.test.TestCase):
     self.assertFalse(_ran_somebenchmark_2[0])
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testReportingBenchmark(self):
-    tempdir = tf.test.get_temp_dir()
+    tempdir = test.get_temp_dir()
     try:
-      tf.gfile.MakeDirs(tempdir)
+      gfile.MakeDirs(tempdir)
     except OSError as e:
       # It's OK if the directory already exists.
       if " exists:" not in str(e):
         raise e
 
-    prefix = os.path.join(
-        tempdir, "reporting_bench_%016x_" % random.getrandbits(64))
-    expected_output_file = "%s%s" % (
-        prefix, "TestReportingBenchmark.benchmarkReport1")
+    prefix = os.path.join(tempdir,
+                          "reporting_bench_%016x_" % random.getrandbits(64))
+    expected_output_file = "%s%s" % (prefix,
+                                     "TestReportingBenchmark.benchmarkReport1")
     expected_output_file_2 = "%s%s" % (
         prefix, "TestReportingBenchmark.custom_benchmark_name")
-    expected_output_file_3 = "%s%s" % (
-        prefix, "TestReportingBenchmark.op_benchmark")
+    expected_output_file_3 = "%s%s" % (prefix,
+                                       "TestReportingBenchmark.op_benchmark")
     try:
-      self.assertFalse(tf.gfile.Exists(expected_output_file))
+      self.assertFalse(gfile.Exists(expected_output_file))
       # Run benchmark but without env, shouldn't write anything
       if benchmark.TEST_REPORTER_TEST_ENV in os.environ:
         del os.environ[benchmark.TEST_REPORTER_TEST_ENV]
       reporting = TestReportingBenchmark()
       reporting.benchmarkReport1()  # This should run without writing anything
-      self.assertFalse(tf.gfile.Exists(expected_output_file))
+      self.assertFalse(gfile.Exists(expected_output_file))
 
       # Runbenchmark with env, should write
       os.environ[benchmark.TEST_REPORTER_TEST_ENV] = prefix
@@ -147,12 +159,12 @@ class BenchmarkTest(tf.test.TestCase):
       reporting = TestReportingBenchmark()
       reporting.benchmarkReport1()  # This should write
       reporting.benchmarkReport2()  # This should write
-      reporting.benchmark_times_an_op()  # This should write
+      benchmark_values3 = reporting.benchmark_times_an_op()  # This should write
 
       # Check the files were written
-      self.assertTrue(tf.gfile.Exists(expected_output_file))
-      self.assertTrue(tf.gfile.Exists(expected_output_file_2))
-      self.assertTrue(tf.gfile.Exists(expected_output_file_3))
+      self.assertTrue(gfile.Exists(expected_output_file))
+      self.assertTrue(gfile.Exists(expected_output_file_2))
+      self.assertTrue(gfile.Exists(expected_output_file_3))
 
       # Check the contents are correct
       expected_1 = test_log_pb2.BenchmarkEntry()
@@ -170,7 +182,7 @@ class BenchmarkTest(tf.test.TestCase):
       expected_3.iters = 1000
 
       def read_benchmark_entry(f):
-        s = tf.gfile.GFile(f, "rb").read()
+        s = gfile.GFile(f, "rb").read()
         entries = test_log_pb2.BenchmarkEntries.FromString(s)
         self.assertEquals(1, len(entries.entry))
         return entries.entry[0]
@@ -185,14 +197,23 @@ class BenchmarkTest(tf.test.TestCase):
       self.assertEquals(expected_3.name, read_benchmark_3.name)
       self.assertEquals(expected_3.iters, read_benchmark_3.iters)
       self.assertGreater(read_benchmark_3.wall_time, 0)
-      full_trace = read_benchmark_3.extras["full_trace_chrome_format"]
-      json_trace = json.loads(full_trace.string_value)
+
+      # Trace is not stored in benchmark entry. Instead we get it from
+      # return value of `run_op_benchmark` call.
+      full_trace = benchmark_values3["extras"]["full_trace_chrome_format"]
+      json_trace = json.loads(full_trace)
+
       self.assertTrue(isinstance(json_trace, dict))
       self.assertTrue("traceEvents" in json_trace.keys())
+      allocator_keys = [k for k in read_benchmark_3.extras.keys()
+                        if k.startswith("allocator_maximum_num_bytes_")]
+      self.assertGreater(len(allocator_keys), 0)
+      for k in allocator_keys:
+        self.assertGreater(read_benchmark_3.extras[k].double_value, 0)
 
     finally:
-      tf.gfile.DeleteRecursively(tempdir)
+      gfile.DeleteRecursively(tempdir)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

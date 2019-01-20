@@ -63,12 +63,54 @@ TEST(StateOpsTest, ScatterUpdate_ShapeFn) {
 TEST(StateOpsTest, TemporaryVariable_ShapeFn) {
   ShapeInferenceTestOp op("TemporaryVariable");
   TensorShape shape({1, 2, 3});
-  TensorShapeProto shape_proto;
-  shape.AsProto(&shape_proto);
   TF_ASSERT_OK(NodeDefBuilder("test", "TemporaryVariable")
-                   .Attr("shape", shape_proto)
+                   .Attr("shape", shape)
                    .Finalize(&op.node_def));
   INFER_OK(op, "", "[1,2,3]");
 }
 
+TEST(StateOpsTest, Variable_ShapeFn) {
+  ShapeInferenceTestOp op("Variable");
+
+  // Unknown rank.
+  TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
+                   .Attr("shape", PartialTensorShape())
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "?");
+
+  // For historical reasons an empty TensorShapeProto can be either an unknown
+  // rank or a scalar, so the shape function conservatively says "unknown"
+  TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
+                   .Attr("shape", TensorShape({}))
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "?");
+
+  // Specified shape.
+  TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
+                   .Attr("shape", TensorShape({1, 2, 3}))
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "[1,2,3]");
+}
+
+TEST(StateOpsTest, VariableV2_ShapeFn) {
+  ShapeInferenceTestOp op("VariableV2");
+
+  // Unknown rank.
+  TF_ASSERT_OK(NodeDefBuilder("test", "VariableV2")
+                   .Attr("shape", PartialTensorShape())
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "?");
+
+  // Scalar shape.
+  TF_ASSERT_OK(NodeDefBuilder("test", "VariableV2")
+                   .Attr("shape", TensorShape({}))
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "[]");
+
+  // Specified shape.
+  TF_ASSERT_OK(NodeDefBuilder("test", "VariableV2")
+                   .Attr("shape", TensorShape({1, 2, 3}))
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "[1,2,3]");
+}
 }  // end namespace tensorflow

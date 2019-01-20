@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Paramterized build and test for TensorFlow Docker images.
+# Parameterized build and test for TensorFlow Docker images.
 #
 # Usage:
 #   parameterized_docker_build.sh
 #
 # The script obeys the following environment variables:
-#   TF_DOCKER_BUILD_TYPE: (CPU | GPU)
-#     CPU or GPU image
+#   TF_DOCKER_BUILD_TYPE: (CPU | GPU | MKL | MKL-HOROVOD)
+#     CPU, GPU, MKL or MKL-HOROVOD image
 #
 #   TF_DOCKER_BUILD_IS_DEVEL: (NO | YES)
 #     Is this developer image
@@ -31,9 +31,13 @@
 #
 #   TF_DOCKER_BUILD_CENTRAL_PIP
 #     (Optional)
-#     If set to any non-0 and non-empty value, will attempt to use the PIP file
-#     located on the central repo, instead of locally built pip files.
-#     This option takes effect only for non-devel builds.
+#     If set to a non-empty string, will use it as the URL from which the
+#     pip wheel file will be downloaded (instead of building the pip locally).
+#
+#   TF_DOCKER_BUILD_CENTRAL_PIP_IS_LOCAL
+#     (Optional)
+#     If set to a non-empty string, we will treat TF_DOCKER_BUILD_CENTRAL_PIP
+#     as a path rather than a url.
 #
 #   TF_DOCKER_BUILD_IMAGE_NAME:
 #     (Optional)
@@ -58,8 +62,40 @@
 #     If set to a valid binary/script path, will call the script with the final
 #     tagged image name with an argument, to push the image to a central repo
 #     such as gcr.io or Docker Hub.
-
-# TODO(cais): Add support for TF_DOCKER_BUILD_PYTHON_VERSION (PYTHON2/PYTHON3)
+#
+#   TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS
+#     (Optional)
+#     Do not set this along with TF_DOCKER_BUILD_PUSH_CMD. We will push with the
+#     direct commands as opposed to a script.
+#
+#   TF_DOCKER_USERNAME
+#     (Optional)
+#     Dockerhub username for pushing a package.
+#
+#   TF_DOCKER_EMAIL
+#     (Optional)
+#     Dockerhub email for pushing a package.
+#
+#   TF_DOCKER_PASSWORD
+#     (Optional)
+#     Dockerhub password for pushing a package.
+#
+#   TF_DOCKER_BUILD_PYTHON_VERSION
+#     (Optional)
+#     Specifies the desired Python version. Defaults to PYTHON2.
+#
+#   TF_DOCKER_BUILD_OPTIONS
+#     (Optional)
+#     Specifies the desired build options. Defaults to OPT.
+#
+#   TF_DOCKER_BUILD_ARGS
+#     (Optional)
+#     A list (array) of docker build args. Will be passed to docker build
+#     command as list of --build-arg parameters.
+#
+#   TF_BAZEL_BUILD_OPTIONS
+#     (Optional)
+#     Bazel compiler flags to be passed to the bazelrc file
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,7 +111,8 @@ mark_check_failed() {
 
 TF_DOCKER_BUILD_TYPE=$(to_lower ${TF_DOCKER_BUILD_TYPE})
 TF_DOCKER_BUILD_IS_DEVEL=$(to_lower ${TF_DOCKER_BUILD_IS_DEVEL})
-TF_DOCKER_BUILD_CENTRAL_PIP=$(to_lower ${TF_DOCKER_BUILD_CENTRAL_PIP})
+TF_DOCKER_BUILD_PYTHON_VERSION=$(to_lower ${TF_DOCKER_BUILD_PYTHON_VERSION:-PYTHON2})
+TF_DOCKER_BUILD_OPTIONS=$(to_lower ${TF_DOCKER_BUILD_OPTIONS:-OPT})
 
 echo "Required build parameters:"
 echo "  TF_DOCKER_BUILD_TYPE=${TF_DOCKER_BUILD_TYPE}"
@@ -88,6 +125,8 @@ echo "  TF_DOCKER_BUILD_IMAGE_NAME=${TF_DOCKER_BUILD_IMAGE_NAME}"
 echo "  TF_DOCKER_BUILD_VERSION=${TF_DOCKER_BUILD_VERSION}"
 echo "  TF_DOCKER_BUILD_PORT=${TF_DOCKER_BUILD_PORT}"
 echo "  TF_DOCKER_BUILD_PUSH_CMD=${TF_DOCKER_BUILD_PUSH_CMD}"
+echo "  TF_DOCKER_BUILD_ARGS=${TF_DOCKER_BUILD_ARGS[@]:-()}"
+echo "  TF_BAZEL_BUILD_OPTIONS=${TF_BAZEL_BUILD_OPTIONS}"
 
 
 CONTAINER_PORT=${TF_DOCKER_BUILD_PORT:-8888}
@@ -120,8 +159,28 @@ else
 fi
 
 if [[ ${TF_DOCKER_BUILD_TYPE} == "cpu" ]]; then
-  :
+  DOCKER_BINARY="docker"
+elif [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]]; then
+  DOCKER_BINARY="docker"
+  FINAL_TAG="${FINAL_TAG}-mkl"
+  if [[ ${ORIG_DOCKERFILE} == *"."* ]]; then
+    # There is already a dot in the tag, use "-"
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}-mkl"
+  else
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}.mkl"
+  fi
+elif [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
+  DOCKER_BINARY="docker"
+  FINAL_TAG="${FINAL_TAG}-mkl-horovod"
+  if [[ ${ORIG_DOCKERFILE} == *"."* ]]; then
+    # There is already a dot in the tag, use "-"
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}-mkl-horovod"
+  else
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}.mkl-horovod"
+  fi
 elif   [[ ${TF_DOCKER_BUILD_TYPE} == "gpu" ]]; then
+  DOCKER_BINARY="nvidia-docker"
+
   FINAL_TAG="${FINAL_TAG}-gpu"
   if [[ ${ORIG_DOCKERFILE} == *"."* ]]; then
     # There is already a dot in the tag, use "-"
@@ -134,10 +193,21 @@ else
 "${TF_DOCKER_BUILD_TYPE}"
 fi
 
+if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python2" ]]; then
+  :
+elif [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
+  FINAL_TAG="${FINAL_TAG}-py3"
+elif [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+  FINAL_TAG="${FINAL_TAG}-py3.6"
+else
+  die "Unrecognized value in TF_DOCKER_BUILD_PYTHON_VERSION: "\
+"${TF_DOCKER_BUILD_PYTHON_VERSION}"
+fi
+
 # Verify that the original Dockerfile exists
 ORIG_DOCKERFILE="${SCRIPT_DIR}/${ORIG_DOCKERFILE}"
 if [[ ! -f "${ORIG_DOCKERFILE}" ]]; then
-  die "ERROR: Cannot find Dockerilfe at: ${ORIG_DOCKERFILE}"
+  die "ERROR: Cannot find Dockerfile at: ${ORIG_DOCKERFILE}"
 fi
 
 echo ""
@@ -145,21 +215,6 @@ echo "FINAL_IMAGE_NAME: ${FINAL_IMAGE_NAME}"
 echo "FINAL_TAG: ${FINAL_TAG}"
 echo "Original Dockerfile: ${ORIG_DOCKERFILE}"
 echo ""
-
-
-DO_PIP_BUILD=0
-if [[ ${TF_DOCKER_BUILD_IS_DEVEL} == "yes" ]]; then
-  # Devel builds has pip build instructions in the Dockerfile
-  :
-else
-  if [[ ! -z ${TF_DOCKER_BUILD_CENTRAL_PIP} ]] &&
-     [[ ${TF_DOCKER_BUILD_CENTRAL_PIP} != "0" ]]; then
-    :
-  else
-    DO_PIP_BUILD=1
-  fi
-fi
-
 
 # Create tmp directory for Docker build
 TMP_DIR=$(mktemp -d)
@@ -169,83 +224,207 @@ echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 # Copy all files to tmp directory for Docker build
 cp -r ${SCRIPT_DIR}/* "${TMP_DIR}/"
 
-
-if [[ "${DO_PIP_BUILD}" == "1" ]]; then
+if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
   DOCKERFILE="${TMP_DIR}/Dockerfile"
 
-  # Perform local build of the required PIP whl file
-  export TF_BUILD_CONTAINER_TYPE=${TF_DOCKER_BUILD_TYPE}
-  export TF_BUILD_PYTHON_VERSION="PYTHON2"
-  export TF_BUILD_IS_OPT="OPT"
-  export TF_BUILD_IS_PIP="PIP"
+  if [[ -z "${TF_DOCKER_BUILD_CENTRAL_PIP}" ]]; then
+    # Perform local build of the required PIP whl file
+    export TF_BUILD_CONTAINER_TYPE=${TF_DOCKER_BUILD_TYPE}
+    export TF_BUILD_PYTHON_VERSION=${TF_DOCKER_BUILD_PYTHON_VERSION}
+    export TF_BUILD_OPTIONS=${TF_DOCKER_BUILD_OPTIONS}
+    export TF_BUILD_IS_PIP="PIP"
 
-  if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
-    export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
-"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
-  fi
+    if [[ "${TF_DOCKER_BUILD_TYPE}" == "mkl" ]]; then
+      die "FAIL: Non-development MKL builds require a pre-built pip whl."
+    fi
 
-  pushd "${SCRIPT_DIR}/../../../"
-  rm -rf pip_test/whl &&
-  tensorflow/tools/ci_build/ci_parameterized_build.sh
-  PIP_BUILD_EXIT_CODE=$?
-  popd
+    if [[ "${TF_DOCKER_BUILD_TYPE}" == "mkl-horovod" ]]; then
+      die "FAIL: Non-development MKL-HOROVOD builds require a pre-built pip whl."
+    fi
 
-  # Was the pip build successful?
-  if [[ ${PIP_BUILD_EXIT_CODE} != "0" ]]; then
-    die "FAIL: Failed to build pip file locally"
-  fi
+    if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
+      export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+  "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2,6.0"
+    fi
 
-  PIP_WHL=$(ls pip_test/whl/*.whl | head -1)
-  if [[ -z "${PIP_WHL}" ]]; then
-    die "ERROR: Cannot locate the locally-built pip whl file"
-  fi
-  echo "Locally-built PIP whl file is at: ${PIP_WHL}"
+    pushd "${SCRIPT_DIR}/../../../"
+    rm -rf pip_test/whl &&
+    tensorflow/tools/ci_build/ci_parameterized_build.sh
+    PIP_BUILD_EXIT_CODE=$?
+    popd
 
-  # Copy the pip file to tmp directory
-  cp "${PIP_WHL}" "${TMP_DIR}/" || \
-      die "ERROR: Failed to copy wheel file: ${PIP_WHL}"
+    # Was the pip build successful?
+    if [[ ${PIP_BUILD_EXIT_CODE} != "0" ]]; then
+      die "FAIL: Failed to build pip file locally"
+    fi
 
-  # Use string replacement to put the correct file name into the Dockerfile
-  PIP_WHL=$(basename "${PIP_WHL}")
+    PIP_WHL=$(ls pip_test/whl/*.whl | head -1)
+    if [[ -z "${PIP_WHL}" ]]; then
+      die "ERROR: Cannot locate the locally-built pip whl file"
+    fi
+    echo "Locally-built PIP whl file is at: ${PIP_WHL}"
 
-  # Modify the non-devel Dockerfile to point to the correct pip whl file
-  # location
-  sed -e "/# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/,"\
+    # Copy the pip file to tmp directory
+    cp "${PIP_WHL}" "${TMP_DIR}/" || \
+        die "ERROR: Failed to copy wheel file: ${PIP_WHL}"
+
+    # Use string replacement to put the correct file name into the Dockerfile
+    PIP_WHL=$(basename "${PIP_WHL}")
+
+    # Modify the non-devel Dockerfile to point to the correct pip whl file
+    # location
+    sed -e "/# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/,"\
 "/# --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/c"\
 "COPY ${PIP_WHL} /\n"\
 "RUN pip --no-cache-dir install /${PIP_WHL}" "${ORIG_DOCKERFILE}" \
     > "${DOCKERFILE}"
 
-  echo "Modified Dockerfile at: ${DOCKERFILE}"
-else
-  if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "yes" ]]; then
-    DOCKERFILE="${TMP_DIR}/Dockerfile"
+  # Build from a local whl file path rather than an URL
+  elif [[ ! -z "${TF_DOCKER_BUILD_CENTRAL_PIP_IS_LOCAL}" ]]; then
+    PIP_WHL="${TF_DOCKER_BUILD_CENTRAL_PIP}"
+    if [[ -z "${PIP_WHL}" ]]; then
+      die "ERROR: Cannot locate the specified pip whl file"
+    fi
+    echo "Specified PIP whl file is at: ${PIP_WHL}"
 
-    # Modify the devel Dockerfile to specify the git branch
-    sed -r "s/([\s]*git checkout )(.*)/\1${TF_DOCKER_BUILD_DEVEL_BRANCH}/g" \
-        "${ORIG_DOCKERFILE}" > "${DOCKERFILE}"
+    # Copy the pip file to tmp directory
+    cp "${PIP_WHL}" "${TMP_DIR}/" || \
+        die "ERROR: Failed to copy wheel file: ${PIP_WHL}"
+
+    # Use string replacement to put the correct file name into the Dockerfile
+    PIP_WHL=$(basename "${PIP_WHL}")
+
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+        [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
+      TF_DOCKER_BUILD_ARGS+=("--build-arg TF_WHL_URL=${PIP_WHL}" )
+      cp "${ORIG_DOCKERFILE}" "${DOCKERFILE}"
+    else
+      # Modify the non-devel Dockerfile to point to the correct pip whl file
+      # location
+      sed -e "/# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/,"\
+"/# --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/c"\
+"COPY ${PIP_WHL} /\n"\
+"RUN pip --no-cache-dir install /${PIP_WHL}" "${ORIG_DOCKERFILE}" \
+      > "${DOCKERFILE}"    
+    fi
+    echo "Using local pip wheel from: ${TF_DOCKER_BUILD_CENTRAL_PIP}"
+    echo
   else
-    DOCKERFILE="${TMP_DIR}/"$(basename "${ORIG_DOCKERFILE}")
+    echo "Downloading pip wheel from: ${TF_DOCKER_BUILD_CENTRAL_PIP}"
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+        [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
+      pushd "${TMP_DIR}/"
+      curl -O ${TF_DOCKER_BUILD_CENTRAL_PIP}
+      popd
+      PIP_WHL_PATH=`find ${TMP_DIR} -name "*.whl"`
+      PIP_WHL=$(basename "${PIP_WHL_PATH}")
+      echo "PIP_WHL= ${PIP_WHL}"    
+      echo
+      TF_DOCKER_BUILD_ARGS+=("--build-arg TF_WHL_URL=${PIP_WHL}")
+      cp "${ORIG_DOCKERFILE}" "${DOCKERFILE}"
+    else
+      # Modify the non-devel Dockerfile to point to the correct pip whl URL.
+      sed -e "/# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/,"\
+"/# --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/c"\
+"RUN pip --no-cache-dir install ${TF_DOCKER_BUILD_CENTRAL_PIP}" "${ORIG_DOCKERFILE}" \
+      > "${DOCKERFILE}"
+    fi
+  fi
+
+  echo "Modified Dockerfile at: ${DOCKERFILE}"
+  echo
+
+  # Modify python/pip version if necessary.
+  if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+          [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
+        TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=${TF_DOCKER_BUILD_PYTHON_VERSION}")
+        TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON_DEV=python3-dev")
+        TF_DOCKER_BUILD_ARGS+=("--build-arg PIP=pip3")
+        cp "${ORIG_DOCKERFILE}" "${DOCKERFILE}"
+    else
+        if sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
+            sed -i -e 's/python-dev/python3-dev/g' "${DOCKERFILE}" && \
+            sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
+            sed -i -e 's^# RUN ln -s -f /usr/bin/python3 /usr/bin/python#^RUN ln -s -f /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
+        then
+          echo "Modified Dockerfile for python version "\
+    "${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}"
+        else
+          die "FAILED to modify ${DOCKERFILE} for python3"
+        fi
+    fi
+  fi
+else # TF_DOCKER_BUILD_IS_DEVEL == 'yes'
+  DOCKERFILE="${TMP_DIR}/Dockerfile"
+
+  # Set up Dockerfile ARGS for mkl and mkl-horovod build
+  if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+      [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
+    if [[ -z "${TF_BAZEL_BUILD_OPTIONS// }" ]]; then
+      TF_BAZEL_BUILD_OPTIONS=("--config=mkl --copt=-mavx --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0")
+    else
+      TF_BAZEL_BUILD_OPTIONS="${TF_BAZEL_BUILD_OPTIONS}"
+    fi   
+    TF_DOCKER_BUILD_ARGS+=("--build-arg TF_BUILD_VERSION=${TF_DOCKER_BUILD_DEVEL_BRANCH}")
+    echo "TF_DOCKER_BUILD_ARGS=${TF_DOCKER_BUILD_ARGS[@]}"
+
+    # Pass the build options to bazel using the user-specific .bazelrc file
+    echo "build ${TF_BAZEL_BUILD_OPTIONS}" >> ${TMP_DIR}/.bazelrc
+    cp "${ORIG_DOCKERFILE}" "${DOCKERFILE}"
+  else
+    # Modify the devel Dockerfile to specify the git branch
+    sed "s/^RUN git clone --branch=.* --depth=1/RUN git clone --branch=${TF_DOCKER_BUILD_DEVEL_BRANCH} --depth=1/" \
+        "${ORIG_DOCKERFILE}" > "${DOCKERFILE}"
+  fi
+
+  # Modify python/pip version if necessary.
+  if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]] || [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
+        TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=${TF_DOCKER_BUILD_PYTHON_VERSION}")
+        TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON3_DEV=python3-dev")
+        TF_DOCKER_BUILD_ARGS+=("--build-arg WHL_DIR=/tmp/pip3")
+        TF_DOCKER_BUILD_ARGS+=("--build-arg PIP=pip3")
+        cp "${ORIG_DOCKERFILE}" "${DOCKERFILE}"
+    else
+      if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3.6" ]] && [[ "${TF_DOCKER_BUILD_TYPE}" != "mkl" ]]; then
+        die "Python 3.6 build only supported for MKL builds."
+      fi
+      if sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \
+         sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
+         sed -i -e 's^/tmp/pip^/tmp/pip3^g' "${DOCKERFILE}" && \
+         sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
+         sed -i -e 's/ENV CI_BUILD_PYTHON python/ENV CI_BUILD_PYTHON python3/g' "${DOCKERFILE}" && \
+         sed -i -e 's^# RUN ln -s -f /usr/bin/python3 /usr/bin/python#^RUN ln -s -f /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
+      then
+        echo "Modified Dockerfile further for python version ${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}"
+      else
+        die "FAILED to modify ${DOCKERFILE} for python3"
+      fi
+    fi
   fi
 fi
-
 
 # Perform docker build
 # Intermediate image name with tag
 IMG="${USER}/tensorflow:${FINAL_TAG}"
 echo "Building docker image with image name and tag: ${IMG}"
+echo "TF_DOCKER_BUILD_ARGS=${TF_DOCKER_BUILD_ARGS[@]}"
+CMD="${DOCKER_BINARY} build ${TF_DOCKER_BUILD_ARGS[@]} --no-cache --pull -t ${IMG} -f ${DOCKERFILE} ${TMP_DIR}"
+echo "CMD=${CMD}"
+${CMD}
 
-docker build --no-cache -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
 if [[ $? == "0" ]]; then
-  echo "docker build of ${IMG} succeeded"
+  echo "${DOCKER_BINARY} build of ${IMG} succeeded"
 else
-  die "FAIL: docker build of ${IMG} with Dockerfile ${DOCKERFILE} failed"
+  die "FAIL: ${DOCKER_BINARY} build of ${IMG} with Dockerfile ${DOCKERFILE} "\
+"failed"
 fi
 
 
 # Make sure that there is no other containers of the same image running
 # TODO(cais): Move to an earlier place.
-if [[ ! -z $(docker ps | grep "${IMG}") ]]; then
+if "${DOCKER_BINARY}" ps | grep -q "${IMG}"; then
   die "ERROR: It appears that there are docker containers of the image "\
 "${IMG} running. Please stop them before proceeding"
 fi
@@ -254,11 +433,11 @@ fi
 DOCKER_RUN_LOG="${TMP_DIR}/docker_run.log"
 echo ""
 echo "Running docker container from image ${IMG}..."
-echo "  (Log file is at: ${DOCKER_RUN_LOG}"
+echo "  Log file is at: ${DOCKER_RUN_LOG}"
 echo ""
 
 if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
-  docker run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
+  "${DOCKER_BINARY}" run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
       -v ${TMP_DIR}/notebooks:/root/notebooks "${IMG}" \
       2>&1 > "${DOCKER_RUN_LOG}" &
 
@@ -267,7 +446,7 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
   while [[ -z ${CONTAINER_ID} ]]; do
     sleep 1
     echo "Polling for container ID..."
-    CONTAINER_ID=$(docker ps | grep "${IMG}" | awk '{print $1}')
+    CONTAINER_ID=$("${DOCKER_BINARY}" ps | grep "${IMG}" | awk '{print $1}')
   done
 
   echo "ID of the running docker container: ${CONTAINER_ID}"
@@ -278,32 +457,28 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
     # on the running docker container
     echo ""
     echo "Performing basic sanity checks on the running container..."
-    wget -qO- "http://127.0.0.1:${CONTAINER_PORT}/tree" &> /dev/null && \
-        echo "  PASS: wget tree" || \
-        mark_check_failed "  FAIL: wget tree"
+    if wget -qO- "http://127.0.0.1:${CONTAINER_PORT}/tree" &> /dev/null
+    then
+      echo "  PASS: wget tree"
+    else
+      mark_check_failed "  FAIL: wget tree"
+    fi
 
     for NB in ${TMP_DIR}/notebooks/*.ipynb; do
       NB_BASENAME=$(basename "${NB}")
       NB_URL="http://127.0.0.1:${CONTAINER_PORT}/notebooks/${NB_BASENAME}"
-      wget -qO- "${NB_URL}" -o "${TMP_DIR}/${NB_BASENAME}" &> /dev/null && \
-          echo "  PASS: wget ${NB_URL}" || \
-          mark_check_failed  "  FAIL: wget ${NB_URL}"
+      if wget -qO- "${NB_URL}" -o "${TMP_DIR}/${NB_BASENAME}" &> /dev/null
+      then
+        echo "  PASS: wget ${NB_URL}"
+      else
+        mark_check_failed  "  FAIL: wget ${NB_URL}"
+      fi
     done
   fi
 
   # Stop the running docker container
   sleep 1
-  docker stop --time=0 ${CONTAINER_ID}
-
-else
-  docker run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
-      -v ${TMP_DIR}/notebooks:/root/notebooks "${IMG}" \
-      bash -c \
-      "cd /tensorflow; tensorflow/tools/ci_build/builds/test_tutorials.sh"
-  if [[ $? != "0" ]]; then
-    CHECK_FAILED=1
-  fi
-
+  "${DOCKER_BINARY}" stop --time=0 ${CONTAINER_ID}
 fi
 
 
@@ -324,9 +499,9 @@ fi
 # Apply the final image name and tag
 FINAL_IMG="${FINAL_IMAGE_NAME}:${FINAL_TAG}"
 
-DOCKER_VER=$(docker version | grep Version | head -1 | awk '{print $NF}')
+DOCKER_VER=$("${DOCKER_BINARY}" version | grep Version | head -1 | awk '{print $NF}')
 if [[ -z "${DOCKER_VER}" ]]; then
-  die "ERROR: Failed to determine docker version"
+  die "ERROR: Failed to determine ${DOCKER_BINARY} version"
 fi
 DOCKER_MAJOR_VER=$(echo "${DOCKER_VER}" | cut -d. -f 1)
 DOCKER_MINOR_VER=$(echo "${DOCKER_VER}" | cut -d. -f 2)
@@ -337,12 +512,11 @@ if [[ "${DOCKER_MAJOR_VER}" -le 1 ]] && \
   FORCE_TAG="--force"
 fi
 
-docker tag ${FORCE_TAG} "${IMG}" "${FINAL_IMG}" || \
+"${DOCKER_BINARY}" tag ${FORCE_TAG} "${IMG}" "${FINAL_IMG}" || \
     die "Failed to tag intermediate docker image ${IMG} as ${FINAL_IMG}"
 
 echo ""
 echo "Successfully tagged docker image: ${FINAL_IMG}"
-
 
 # Optional: call command specified by TF_DOCKER_BUILD_PUSH_CMD to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_CMD}" ]]; then
@@ -350,6 +524,25 @@ if [[ ! -z "${TF_DOCKER_BUILD_PUSH_CMD}" ]]; then
   if [[ $? == "0" ]]; then
     echo "Successfully pushed Docker image ${FINAL_IMG}"
   else
+    die "FAIL: Failed to push Docker image ${FINAL_IMG}"
+  fi
+fi
+
+# Optional: set TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS to push image
+if [[ ! -z "${TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS}" ]]; then
+
+  docker login -u "${TF_DOCKER_USERNAME}" \
+  -p "${TF_DOCKER_PASSWORD}"
+
+  if [[ $? != "0" ]]; then
+    die "FAIL: Unable to login. Invalid credentials."
+  fi
+  docker push "${FINAL_IMG}"
+  if [[ $? == "0" ]]; then
+    docker logout
+    echo "Successfully pushed Docker image ${FINAL_IMG}"
+  else
+    docker logout
     die "FAIL: Failed to push Docker image ${FINAL_IMG}"
   fi
 fi

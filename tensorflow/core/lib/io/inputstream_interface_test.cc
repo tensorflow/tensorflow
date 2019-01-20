@@ -25,7 +25,7 @@ namespace {
 
 class TestStringStream : public InputStreamInterface {
  public:
-  TestStringStream(const string& content) : content_(content) {}
+  explicit TestStringStream(const string& content) : content_(content) {}
 
   Status ReadNBytes(int64 bytes_to_read, string* result) override {
     result->clear();
@@ -38,6 +38,11 @@ class TestStringStream : public InputStreamInterface {
   }
 
   int64 Tell() const override { return pos_; }
+
+  Status Reset() override {
+    pos_ = 0;
+    return Status::OK();
+  }
 
  private:
   string content_;
@@ -54,6 +59,10 @@ TEST(InputStreamInterface, Basic) {
   EXPECT_EQ("test string", res);
   // Skipping past end of the file causes OutOfRange error.
   EXPECT_TRUE(errors::IsOutOfRange(ss.SkipNBytes(1)));
+
+  TF_ASSERT_OK(ss.Reset());
+  TF_ASSERT_OK(ss.ReadNBytes(4, &res));
+  EXPECT_EQ("This", res);
 }
 
 }  // anonymous namespace

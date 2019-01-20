@@ -44,9 +44,17 @@ class BaseCandidateSamplerOp : public OpKernel {
     OP_REQUIRES(context, true_classes.dims() == 2,
                 errors::InvalidArgument("true_classes must be a matrix"));
     const int32 batch_size = true_classes.dim_size(0);
-    OP_REQUIRES(context, true_classes.dim_size(1) == num_true_,
-                errors::InvalidArgument("true_classes must have "
-                                        "num_true columns"));
+    OP_REQUIRES(
+        context, true_classes.dim_size(1) == num_true_,
+        errors::InvalidArgument("true_classes must have "
+                                "num_true columns, expected: ",
+                                true_classes.dim_size(1), " was: ", num_true_));
+    CHECK(sampler_) << "CandidateSamplerOp did not set sampler_";
+
+    if (unique_) {
+      OP_REQUIRES(context, num_sampled_ <= sampler_->range(),
+                  errors::InvalidArgument("Sampler's range is too small."));
+    }
 
     // Output candidates and expected_count.
     Tensor* out_sampled_candidates = nullptr;
@@ -73,8 +81,6 @@ class BaseCandidateSamplerOp : public OpKernel {
     gtl::MutableArraySlice<float> sampled_expected_count(
         out_sampled_expected_count->vec<float>().data(), num_sampled_);
 
-    CHECK(sampler_) << "CandidateSamplerOp did not set sampler_";
-
     // Approximately conservatively estimate the number of samples required.
     // In cases where rejection sampling is used we may occasionally use more
     // samples than expected, which will result in reused random bits.
@@ -83,9 +89,9 @@ class BaseCandidateSamplerOp : public OpKernel {
     // Pick sampled candidates.
     auto local_gen = generator_.ReserveSamples32(samples32);
     random::SimplePhilox random(&local_gen);
-    sampler_->SampleBatchGetExpectedCount(&random, unique_, &sampled_candidate,
-                                          &sampled_expected_count,
-                                          true_candidate, &true_expected_count);
+    sampler_->SampleBatchGetExpectedCount(&random, unique_, sampled_candidate,
+                                          sampled_expected_count,
+                                          true_candidate, true_expected_count);
 
     if (sampler_->NeedsUpdates()) {
       sampler_->Update(true_candidate);
@@ -120,13 +126,13 @@ REGISTER_KERNEL_BUILDER(Name("UniformCandidateSampler").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("LogUniformCandidateSampler").Device(DEVICE_CPU),
                         SimpleCandidateSamplerOp<LogUniformSampler>);
 
-REGISTER_KERNEL_BUILDER(Name("LearnedUnigramCandidateSampler")
-                            .Device(DEVICE_CPU),
-                        SimpleCandidateSamplerOp<UnigramSampler>);
+REGISTER_KERNEL_BUILDER(
+    Name("LearnedUnigramCandidateSampler").Device(DEVICE_CPU),
+    SimpleCandidateSamplerOp<UnigramSampler>);
 
-REGISTER_KERNEL_BUILDER(Name("ThreadUnsafeUnigramCandidateSampler")
-                            .Device(DEVICE_CPU),
-                        SimpleCandidateSamplerOp<ThreadUnsafeUnigramSampler>);
+REGISTER_KERNEL_BUILDER(
+    Name("ThreadUnsafeUnigramCandidateSampler").Device(DEVICE_CPU),
+    SimpleCandidateSamplerOp<ThreadUnsafeUnigramSampler>);
 
 class AllCandidateSamplerOp : public BaseCandidateSamplerOp {
  public:
@@ -191,8 +197,9 @@ class ComputeAccidentalHitsOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& in_true_candidates = context->input(0);
     const TensorShape& in_true_candidates_shape = in_true_candidates.shape();
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(in_true_candidates_shape) &&
-                             in_true_candidates_shape.dim_size(1) == num_true_,
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsMatrix(in_true_candidates_shape) &&
+                    in_true_candidates_shape.dim_size(1) == num_true_,
                 errors::InvalidArgument(
                     "true_candidates must be a batch_size * num_true matrix"));
 

@@ -12,91 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Operations that generate constants.
 
-"""## Constant Value Tensors
-
-TensorFlow provides several operations that you can use to generate constants.
-
-@@zeros
-@@zeros_like
-
-@@ones
-@@ones_like
-
-@@fill
-
-@@constant
-
-## Sequences
-
-@@linspace
-
-@@range
-
-## Random Tensors
-
-TensorFlow has several ops that create random tensors with different
-distributions.  The random ops are stateful, and create new random values each
-time they are evaluated.
-
-The `seed` keyword argument in these functions acts in conjunction with
-the graph-level random seed. Changing either the graph-level seed using
-[`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed) or the
-op-level seed will change the underlying seed of these operations. Setting
-neither graph-level nor op-level seed, results in a random seed for all
-operations.
-See [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
-for details on the interaction between operation-level and graph-level random
-seeds.
-
-### Examples:
-
-```python
-# Create a tensor of shape [2, 3] consisting of random normal values, with mean
-# -1 and standard deviation 4.
-norm = tf.random_normal([2, 3], mean=-1, stddev=4)
-
-# Shuffle the first dimension of a tensor
-c = tf.constant([[1, 2], [3, 4], [5, 6]])
-shuff = tf.random_shuffle(c)
-
-# Each time we run these ops, different results are generated
-sess = tf.Session()
-print(sess.run(norm))
-print(sess.run(norm))
-
-# Set an op-level seed to generate repeatable sequences across sessions.
-norm = tf.random_normal([2, 3], seed=1234)
-sess = tf.Session()
-print(sess.run(norm))
-print(sess.run(norm))
-sess = tf.Session()
-print(sess.run(norm))
-print(sess.run(norm))
-```
-
-Another common use of random values is the initialization of variables. Also see
-the [Variables How To](../../how_tos/variables/index.md).
-
-```python
-# Use random uniform values in [0, 1) as the initializer for a variable of shape
-# [2, 3]. The default type is float32.
-var = tf.Variable(tf.random_uniform([2, 3]), name="var")
-init = tf.initialize_all_variables()
-
-sess = tf.Session()
-sess.run(init)
-print(sess.run(var))
-```
-
-@@random_normal
-@@truncated_normal
-@@random_uniform
-@@random_shuffle
-@@random_crop
-@@multinomial
-@@random_gamma
-@@set_random_seed
+See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 """
 
 # Must be separate from array_ops to avoid a cyclic dependency.
@@ -106,72 +24,278 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import types_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util.tf_export import tf_export
 
 
-def constant(value, dtype=None, shape=None, name="Const"):
-  """Creates a constant tensor.
+def _eager_reshape(tensor, shape, ctx):
+  """Eager-only version of Reshape op; requires tensor is an eager Tensor."""
+  attr_t = tensor._datatype_enum()  # pylint: disable=protected-access
+  attr_tshape, (shape,) = execute.args_to_matching_eager(
+      [shape], ctx, dtypes.int32)
+  inputs_flat = [tensor, shape]
+  attrs = ("T", attr_t, "Tshape", attr_tshape)
+  result, = execute.execute(
+      b"Reshape", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
+  return result
 
-   The resulting tensor is populated with values of type `dtype`, as
-   specified by arguments `value` and (optionally) `shape` (see examples
-   below).
 
-   The argument `value` can be a constant value, or a list of values of type
-   `dtype`. If `value` is a list, then the length of the list must be less
-   than or equal to the number of elements implied by the `shape` argument (if
-   specified). In the case where the list length is less than the number of
-   elements specified by `shape`, the last element in the list will be used
-   to fill the remaining entries.
+def _eager_fill(dims, value, ctx):
+  """Eager-only version of Fill op; requires value is an eager Tensor."""
+  attr_t = value.dtype.as_datatype_enum
+  dims = convert_to_eager_tensor(dims, ctx, dtypes.int32)
+  inputs_flat = [dims, value]
+  attrs = ("T", attr_t, "index_type", types_pb2.DT_INT32)
+  result, = execute.execute(
+      b"Fill", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
+  return result
 
-   The argument `shape` is optional. If present, it specifies the dimensions of
-   the resulting tensor. If not present, the shape of `value` is used.
 
-   If the argument `dtype` is not specified, then the type is inferred from
-   the type of `value`.
+def _eager_identity(tensor, ctx):
+  """Eager-only version of Identity op; requires tensor is an eager Tensor."""
+  attrs = ("T", tensor.dtype.as_datatype_enum)
+  result, = execute.execute(
+      b"Identity", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
+  return result
 
-   For example:
 
-   ```python
-   # Constant 1-D Tensor populated with value list.
-   tensor = tf.constant([1, 2, 3, 4, 5, 6, 7]) => [1 2 3 4 5 6 7]
+def convert_to_eager_tensor(value, ctx, dtype=None):
+  """Converts the given `value` to an `EagerTensor`.
 
-   # Constant 2-D tensor populated with scalar value -1.
-   tensor = tf.constant(-1.0, shape=[2, 3]) => [[-1. -1. -1.]
-                                                [-1. -1. -1.]]
-   ```
+  Note that this function could return cached copies of created constants for
+  performance reasons.
 
   Args:
-    value:     A constant value (or list) of output type `dtype`.
+    value: value to convert to EagerTensor.
+    ctx: value of context.context().
+    dtype: optional desired dtype of the converted EagerTensor.
 
-    dtype:     The type of the elements of the resulting tensor.
+  Returns:
+    EagerTensor created from value.
 
-    shape:     Optional dimensions of resulting tensor.
+  Raises:
+    TypeError: if `dtype` is not compatible with the type of t.
+  """
+  if isinstance(value, ops.EagerTensor):
+    if dtype is not None and value.dtype != dtype:
+      raise TypeError("Expected tensor with type %r not %r" % (
+          dtype, value.dtype))
+    return value
+  if dtype is not None:
+    try:
+      dtype = dtype.as_datatype_enum
+    except AttributeError:
+      dtype = dtypes.as_dtype(dtype).as_datatype_enum
+  device = ctx.device_name
+  handle = ctx._handle  # pylint: disable=protected-access
+  if isinstance(value, (float,) + six.integer_types):
+    # Use a scalar cache. This will put each scalar of each type only once on
+    # each device. Scalars don't use much device memory but copying scalars can
+    # trigger memcpys which are slow.
+    cache_key = device, value, dtype, type(value)
+    scalar_cache = ctx.scalar_cache()
+    tensor = scalar_cache.get(cache_key, None)
+    if tensor is not None:
+      return ops.EagerTensor(
+          value, handle, device, dtype, tensor)
+    t = ops.EagerTensor(value, handle, device, dtype)
+    scalar_cache[cache_key] = t
+    return t
+  else:
+    return ops.EagerTensor(value, handle, device, dtype)
 
-    name:      Optional name for the tensor.
+
+@tf_export(v1=["constant"])
+def constant_v1(
+    value, dtype=None, shape=None, name="Const", verify_shape=False):
+  """Creates a constant tensor.
+
+  The resulting tensor is populated with values of type `dtype`, as
+  specified by arguments `value` and (optionally) `shape` (see examples
+  below).
+
+  The argument `value` can be a constant value, or a list of values of type
+  `dtype`. If `value` is a list, then the length of the list must be less
+  than or equal to the number of elements implied by the `shape` argument (if
+  specified). In the case where the list length is less than the number of
+  elements specified by `shape`, the last element in the list will be used
+  to fill the remaining entries.
+
+  The argument `shape` is optional. If present, it specifies the dimensions of
+  the resulting tensor. If not present, the shape of `value` is used.
+
+  If the argument `dtype` is not specified, then the type is inferred from
+  the type of `value`.
+
+  For example:
+
+  ```python
+  # Constant 1-D Tensor populated with value list.
+  tensor = tf.constant([1, 2, 3, 4, 5, 6, 7]) => [1 2 3 4 5 6 7]
+
+  # Constant 2-D tensor populated with scalar value -1.
+  tensor = tf.constant(-1.0, shape=[2, 3]) => [[-1. -1. -1.]
+                                               [-1. -1. -1.]]
+  ```
+
+  `tf.constant` differs from `tf.fill` in a few ways:
+
+  *   `tf.constant` supports arbitrary constants, not just uniform scalar
+      Tensors like `tf.fill`.
+  *   `tf.constant` creates a `Const` node in the computation graph with the
+      exact value at graph construction time. On the other hand, `tf.fill`
+      creates an Op in the graph that is expanded at runtime.
+  *   Because `tf.constant` only embeds constant values in the graph, it does
+      not support dynamic shapes based on other runtime Tensors, whereas
+      `tf.fill` does.
+
+  Args:
+    value:          A constant value (or list) of output type `dtype`.
+
+    dtype:          The type of the elements of the resulting tensor.
+
+    shape:          Optional dimensions of resulting tensor.
+
+    name:           Optional name for the tensor.
+
+    verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
     A Constant Tensor.
+
+  Raises:
+    TypeError: if shape is incorrectly specified or unsupported.
   """
+  return _constant_impl(value, dtype, shape, name, verify_shape=verify_shape,
+                        allow_broadcast=False)
+
+
+@tf_export("constant", v1=[])
+def constant(value, dtype=None, shape=None, name="Const"):
+  """Creates a constant tensor.
+
+  The resulting tensor is populated with values of type `dtype`, as
+  specified by arguments `value` and (optionally) `shape` (see examples
+  below).
+
+  The argument `value` can be a constant value, or a list of values of type
+  `dtype`. If `value` is a list, then the length of the list must be less
+  than or equal to the number of elements implied by the `shape` argument (if
+  specified). In the case where the list length is less than the number of
+  elements specified by `shape`, the last element in the list will be used
+  to fill the remaining entries.
+
+  The argument `shape` is optional. If present, it specifies the dimensions of
+  the resulting tensor. If not present, the shape of `value` is used.
+
+  If the argument `dtype` is not specified, then the type is inferred from
+  the type of `value`.
+
+  For example:
+
+  ```python
+  # Constant 1-D Tensor populated with value list.
+  tensor = tf.constant([1, 2, 3, 4, 5, 6]) => [1 2 3 4 5 6]
+
+  # Constant 1-D Tensor populated with value list.
+  tensor = tf.constant([1, 2, 3, 4, 5, 6], shape=(2,3))
+       => [[1 2 3], [4 5 6]]
+
+  # Constant 2-D tensor populated with scalar value -1.
+  tensor = tf.constant(-1.0, shape=[2, 3]) => [[-1. -1. -1.]
+                                               [-1. -1. -1.]]
+  ```
+
+  `tf.constant` differs from `tf.fill` in a few ways:
+
+  *   `tf.constant` supports arbitrary constants, not just uniform scalar
+      Tensors like `tf.fill`.
+  *   `tf.constant` creates a `Const` node in the computation graph with the
+      exact value at graph construction time. On the other hand, `tf.fill`
+      creates an Op in the graph that is expanded at runtime.
+  *   Because `tf.constant` only embeds constant values in the graph, it does
+      not support dynamic shapes based on other runtime Tensors, whereas
+      `tf.fill` does.
+
+  Args:
+    value:          A constant value (or list) of output type `dtype`.
+
+    dtype:          The type of the elements of the resulting tensor.
+
+    shape:          Optional dimensions of resulting tensor.
+
+    name:           Optional name for the tensor.
+
+  Returns:
+    A Constant Tensor.
+
+  Raises:
+    TypeError: if shape is incorrectly specified or unsupported.
+  """
+  return _constant_impl(value, dtype, shape, name, verify_shape=False,
+                        allow_broadcast=True)
+
+
+def _constant_impl(
+    value, dtype, shape, name, verify_shape, allow_broadcast):
+  """Implementation of constant."""
+  ctx = context.context()
+  if ctx.executing_eagerly():
+    t = convert_to_eager_tensor(value, ctx, dtype)
+    if shape is None:
+      return t
+    shape = tensor_shape.as_shape(shape)
+    if shape == t.shape:
+      return t
+    if verify_shape:
+      raise TypeError("Expected Tensor's shape: %s, got %s." % (tuple(shape),
+                                                                tuple(t.shape)))
+    num_t = t.shape.num_elements()
+    # TODO(josh11b): Implement shape -> eager tensor conversion.
+    if num_t == shape.num_elements():
+      return _eager_reshape(t, shape.as_list(), ctx)
+    if num_t == 1:
+      if t.dtype == dtypes.bool:
+        # We don't have a Fill kernel for bool dtype on GPU. So we first run
+        # Fill on CPU and then copy to GPU if needed.
+        with ops.device("/device:CPU:0"):
+          x = _eager_fill(shape.as_list(), t.cpu(), ctx)
+        return _eager_identity(x, ctx)
+      else:
+        return _eager_fill(shape.as_list(), t, ctx)
+    raise TypeError("Eager execution of tf.constant with unsupported shape "
+                    "(value has %d elements, shape is %s with %d elements)." %
+                    (num_t, shape, shape.num_elements()))
   g = ops.get_default_graph()
   tensor_value = attr_value_pb2.AttrValue()
   tensor_value.tensor.CopyFrom(
-      tensor_util.make_tensor_proto(value, dtype=dtype, shape=shape))
+      tensor_util.make_tensor_proto(
+          value, dtype=dtype, shape=shape, verify_shape=verify_shape,
+          allow_broadcast=allow_broadcast))
   dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
   const_tensor = g.create_op(
       "Const", [], [dtype_value.type],
-      attrs={"value": tensor_value, "dtype": dtype_value}, name=name).outputs[0]
+      attrs={"value": tensor_value,
+             "dtype": dtype_value},
+      name=name).outputs[0]
   return const_tensor
 
 
-@ops.RegisterShape("Const")
-def _ConstantShape(op):
-  return [tensor_shape.TensorShape(
-      [d.size for d in op.get_attr("value").tensor_shape.dim])]
+def is_constant(tensor_or_op):
+  if isinstance(tensor_or_op, ops.Tensor):
+    op = tensor_or_op.op
+  else:
+    op = tensor_or_op
+  return op.type == "Const"
 
 
 def _constant_tensor_conversion_function(v, dtype=None, name=None,
@@ -190,27 +314,44 @@ ops.register_tensor_conversion_function(
     object, _constant_tensor_conversion_function, 200)
 
 
-def _tensor_shape_tensor_conversion_function(s, dtype=None, name=None,
+def _tensor_shape_tensor_conversion_function(s,
+                                             dtype=None,
+                                             name=None,
                                              as_ref=False):
+  """Function to convert TensorShape to Tensor."""
   _ = as_ref
   if not s.is_fully_defined():
     raise ValueError(
         "Cannot convert a partially known TensorShape to a Tensor: %s" % s)
+  s_list = s.as_list()
+  int64_value = 0
+  for dim in s_list:
+    if dim >= 2**31:
+      int64_value = dim
+      break
+
   if dtype is not None:
     if dtype not in (dtypes.int32, dtypes.int64):
       raise TypeError("Cannot convert a TensorShape to dtype: %s" % dtype)
+    if dtype == dtypes.int32 and int64_value:
+      raise ValueError("Cannot convert a TensorShape to dtype int32; "
+                       "a dimension is too large (%s)" % int64_value)
   else:
-    dtype = dtypes.int32
+    dtype = dtypes.int64 if int64_value else dtypes.int32
   if name is None:
     name = "shape_as_tensor"
-  return constant(s.as_list(), dtype=dtype, name=name)
+  return constant(s_list, dtype=dtype, name=name)
+
 
 ops.register_tensor_conversion_function(
     tensor_shape.TensorShape, _tensor_shape_tensor_conversion_function, 100)
 
 
-def _dimension_tensor_conversion_function(d, dtype=None, name=None,
+def _dimension_tensor_conversion_function(d,
+                                          dtype=None,
+                                          name=None,
                                           as_ref=False):
+  """Function to convert Dimension to Tensor."""
   _ = as_ref
   if d.value is None:
     raise ValueError("Cannot convert an unknown Dimension to a Tensor: %s" % d)
@@ -222,6 +363,7 @@ def _dimension_tensor_conversion_function(d, dtype=None, name=None,
   if name is None:
     name = "shape_as_tensor"
   return constant(d.value, dtype=dtype, name=name)
+
 
 ops.register_tensor_conversion_function(
     tensor_shape.Dimension, _dimension_tensor_conversion_function, 100)

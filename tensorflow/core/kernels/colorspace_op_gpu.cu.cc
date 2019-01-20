@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/colorspace_op.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/colorspace_op.h"
 
 namespace tensorflow {
 
@@ -29,6 +29,6 @@ typedef Eigen::GpuDevice GPUDevice;
   template class functor::HSVToRGB<GPUDevice, T>;
 TF_CALL_float(INSTANTIATE_GPU);
 TF_CALL_double(INSTANTIATE_GPU);
-}
+}  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

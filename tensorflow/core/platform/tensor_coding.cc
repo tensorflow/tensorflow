@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 
 #include <vector>
+
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 

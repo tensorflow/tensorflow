@@ -41,13 +41,24 @@ class GetSessionHandleOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
-    Tensor val = ctx->input(0);
+    const Tensor& val = ctx->input(0);
     int64 id = ctx->session_state()->GetNewId();
-    TensorStore::TensorAndKey tk{val, id, def().device()};
-    OP_REQUIRES_OK(ctx, ctx->tensor_store()->AddTensor(def().name(), tk));
+    TensorStore::TensorAndKey tk{val, id, requested_device()};
+    OP_REQUIRES_OK(ctx, ctx->tensor_store()->AddTensor(name(), tk));
+
     Tensor* handle = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
-    handle->flat<string>().setConstant(tk.GetHandle(def().name()));
+    if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
+      ResourceHandle resource_handle = MakeResourceHandle<Tensor>(
+          ctx, SessionState::kTensorHandleResourceTypeName,
+          tk.GetHandle(name()));
+      resource_handle.set_maybe_type_name(
+          SessionState::kTensorHandleResourceTypeName);
+      handle->scalar<ResourceHandle>()() = resource_handle;
+    } else {
+      // Legacy behavior in V1.
+      handle->flat<string>().setConstant(tk.GetHandle(name()));
+    }
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(GetSessionHandleOp);
@@ -55,9 +66,16 @@ class GetSessionHandleOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("GetSessionHandle").Device(DEVICE_CPU),
                         GetSessionHandleOp);
+REGISTER_KERNEL_BUILDER(Name("GetSessionHandleV2").Device(DEVICE_CPU),
+                        GetSessionHandleOp);
 
 #define REGISTER_GPU_KERNEL(type)                         \
   REGISTER_KERNEL_BUILDER(Name("GetSessionHandle")        \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("handle")       \
+                              .TypeConstraint<type>("T"), \
+                          GetSessionHandleOp)             \
+  REGISTER_KERNEL_BUILDER(Name("GetSessionHandleV2")      \
                               .Device(DEVICE_GPU)         \
                               .HostMemory("handle")       \
                               .TypeConstraint<type>("T"), \
@@ -66,6 +84,24 @@ REGISTER_KERNEL_BUILDER(Name("GetSessionHandle").Device(DEVICE_CPU),
 TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 #undef REGISTER_GPU_KERNEL
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("GetSessionHandle")        \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("handle")       \
+                              .TypeConstraint<type>("T"), \
+                          GetSessionHandleOp)             \
+  REGISTER_KERNEL_BUILDER(Name("GetSessionHandleV2")      \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("handle")       \
+                              .TypeConstraint<type>("T"), \
+                          GetSessionHandleOp)
+
+TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+REGISTER_SYCL_KERNEL(bool);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 class GetSessionTensorOp : public OpKernel {
  public:
@@ -97,6 +133,19 @@ TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 #undef REGISTER_GPU_KERNEL
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("GetSessionTensor")            \
+                              .Device(DEVICE_SYCL)            \
+                              .HostMemory("handle")           \
+                              .TypeConstraint<type>("dtype"), \
+                          GetSessionTensorOp)
+
+TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+REGISTER_SYCL_KERNEL(bool);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
+
 class DeleteSessionTensorOp : public OpKernel {
  public:
   explicit DeleteSessionTensorOp(OpKernelConstruction* context)
@@ -117,4 +166,9 @@ REGISTER_KERNEL_BUILDER(
     Name("DeleteSessionTensor").Device(DEVICE_GPU).HostMemory("handle"),
     DeleteSessionTensorOp);
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("DeleteSessionTensor").Device(DEVICE_SYCL).HostMemory("handle"),
+    DeleteSessionTensorOp);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

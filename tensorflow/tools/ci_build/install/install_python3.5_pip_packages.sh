@@ -18,70 +18,79 @@
 # TODO(cais): Remove this file once we upgrade to ubuntu:16.04 docker images for
 # Python 3.5 builds.
 
-set -e
+# LINT.IfChange
 
 # fkrull/deadsnakes is for Python3.5
 add-apt-repository -y ppa:fkrull/deadsnakes
 apt-get update
 
-# Upgrade swig to 3.0.8
-wget -q http://downloads.sourceforge.net/swig/swig-3.0.8.tar.gz
-tar xzf swig-3.0.8.tar.gz
-
-pushd /swig-3.0.8
-
-apt-get install -y --no-install-recommends libpcre3-dev
-./configure
-make
-make install
-rm -f /usr/bin/swig
-ln -s /usr/local/bin/swig /usr/bin/swig
-
-popd
-
-rm -rf swig-3.0.8
-rm -f swig-3.0.8.tar.gz
-
+set -e
 # Install Python 3.5 and dev library
 apt-get install -y --no-install-recommends python3.5 libpython3.5-dev
 
-# Install pip3.4 and numpy for Python 3.4
-# This strange-looking install step is a stopgap measure to make the genrule
-# contrib/session_bundle/example:half_plus_two pass. The genrule calls Python
-# (via bazel) directly, but calls the wrong version of Python (3.4) because
-# bazel does not support specification of Python minor versions yet. So we
-# install numpy for Python3.4 here so that the genrule will at least not
-# complain about missing numpy. Once we upgrade to 16.04 for Python 3.5 builds,
-# this will no longer be necessary.
-wget -q https://bootstrap.pypa.io/get-pip.py
-python3.4 get-pip.py
-
-pip3 install --upgrade numpy==1.11.0
-
 # Install pip3.5
-wget -q https://bootstrap.pypa.io/get-pip.py
-python3.5 get-pip.py
-rm -f get-pip.py
+set +e
+pip35_version=$(pip3.5 --version | grep "python 3.5")
+if [[ -z $pip35_version ]]; then
+  set -e
+  wget -q https://bootstrap.pypa.io/get-pip.py
+  python3.5 get-pip.py
+  rm -f get-pip.py
+fi
+
+set -e
+pip3.5 install --upgrade pip
+
+# Install last working version of setuptools. This must happen before we install
+# absl-py, which uses install_requires notation introduced in setuptools 20.5.
+pip3.5 install --upgrade setuptools==39.1.0
+
+pip3.5 install --upgrade virtualenv
 
 # Install six.
+pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.5 install --upgrade protobuf==3.0.0
+pip3.5 install --upgrade protobuf==3.6.1
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
 
 # Install numpy, scipy and scikit-learn required by the builds
-pip3.5 install --upgrade numpy==1.11.0
 
-wget -q https://pypi.python.org/packages/91/f3/0052c245d53eb5f0e13b7215811e52af3791a8a7d31771605697c28466a0/scipy-0.17.1-cp35-cp35m-manylinux1_x86_64.whl#md5=8e77756904c81a6f79ed10e3abf0c544
-pip3.5 install --upgrade scipy-0.17.1-cp35-cp35m-manylinux1_x86_64.whl
-rm -f scipy-0.17.1-cp35-cp35m-manylinux1_x86_64.whl
+# numpy needs to be installed from source to fix segfaults. See:
+# https://github.com/tensorflow/tensorflow/issues/6968
+# This workaround isn't needed for Ubuntu 16.04 or later.
+pip3.5 install --no-binary=:all: --upgrade numpy==1.14.5
 
-pip3.5 install --upgrade scikit-learn
+pip3.5 install scipy==0.18.1
+
+pip3.5 install scikit-learn==0.19.1
+
+# pandas required by `inflow`
+pip3 install pandas==0.19.2
 
 # Install recent-enough version of wheel for Python 3.5 wheel builds
 pip3.5 install wheel==0.29.0
 
-pip3.5 install --upgrade pandas==0.18.1
+pip3.5 install portpicker
+
+pip3.5 install werkzeug
+
+pip3.5 install grpcio
+
+# Eager-to-graph execution needs astor, gast and termcolor:
+pip3.5 install --upgrade astor
+pip3.5 install --upgrade gast
+pip3.5 install --upgrade termcolor
+
+# Keras
+pip3.5 install keras_applications==1.0.6
+pip3.5 install keras_preprocessing==1.0.5
+pip3.5 install --upgrade h5py==2.8.0
+
+# Estimator
+pip3.5 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
+
+# LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

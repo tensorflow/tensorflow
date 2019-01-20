@@ -13,73 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
+#define TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/contrib/rnn/kernels/blas_gemm.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace perftools {
-namespace gputools {
-class Stream;
-}  // end namespace gputools
-}  // end namespace perftools
 
 namespace tensorflow {
 
 class OpKernelContext;
 
 namespace functor {
-
-template <typename T>
-struct TensorCuBlasGemm {
-  void operator()(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                  bool transa, bool transb, uint64 m, uint64 n, uint64 k,
-                  T alpha, const T* a, int lda, const T* b, int ldb, T beta,
-                  T* c, int ldc);
-};
-
-template <typename Device, typename T, bool USE_CUBLAS>
-struct TensorBlasGemm;
-
-template <typename Device, typename T>
-struct TensorBlasGemm<Device, T, true /* USE_CUBLAS */> {
-  static void compute(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                      const Device& d, bool transa, bool transb, T alpha,
-                      typename TTypes<T>::ConstMatrix a,
-                      typename TTypes<T>::ConstMatrix b, T beta,
-                      typename TTypes<T>::Matrix c) {
-    int64 m = c.dimensions()[0];
-    int64 n = c.dimensions()[1];
-    int64 k = transa ? a.dimensions()[0] : a.dimensions()[1];
-
-    TensorCuBlasGemm<T>()(ctx, stream, transb, transa, n, m, k, alpha, b.data(),
-                          transb ? k : n, a.data(), transa ? m : k, beta,
-                          c.data(), n);
-  }
-};
-
-template <typename Device, typename T>
-struct TensorBlasGemm<Device, T, false /* USE_CUBLAS */> {
-  static void compute(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                      const Device& d, bool transa, bool transb, T alpha,
-                      typename TTypes<T>::ConstMatrix a,
-                      typename TTypes<T>::ConstMatrix b, T beta,
-                      typename TTypes<T>::Matrix c) {
-    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
-    contract_pairs[0] =
-        Eigen::IndexPair<Eigen::DenseIndex>(transa == false, transb == true);
-    if (alpha == T(1) && beta == T(0)) {
-      c.device(d) = a.contract(b, contract_pairs);
-    } else if (alpha == T(1) && beta == T(1)) {
-      c.device(d) += a.contract(b, contract_pairs);
-    } else {
-      c.device(d) = c.constant(alpha) * a.contract(b, contract_pairs) +
-                    c.constant(beta) * c;
-    }
-  }
-};
 
 struct GRUCell {
   GRUCell(const int batch_size, const int input_size, const int cell_size)
@@ -125,18 +71,15 @@ struct GRUBlockCellFprop : public GRUCell {
                     const int cell_size)
       : GRUCell(batch_size, input_size, cell_size) {}
 
-  void operator()(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                  const Device& d, typename TTypes<T>::ConstMatrix x,
-                  typename TTypes<T>::ConstMatrix h_prev,
-                  typename TTypes<T>::ConstMatrix w_ru,
-                  typename TTypes<T>::ConstMatrix w_c,
-                  typename TTypes<T>::ConstVec b_ru,
-                  typename TTypes<T>::ConstVec b_c,
-                  typename TTypes<T>::Matrix r_u_bar,
-                  typename TTypes<T>::Matrix r, typename TTypes<T>::Matrix u,
-                  typename TTypes<T>::Matrix c, typename TTypes<T>::Matrix h,
-                  typename TTypes<T>::Matrix x_h_prev,
-                  typename TTypes<T>::Matrix x_h_prevr) {
+  void operator()(
+      OpKernelContext* ctx, const Device& d, typename TTypes<T>::ConstMatrix x,
+      typename TTypes<T>::ConstMatrix h_prev,
+      typename TTypes<T>::ConstMatrix w_ru, typename TTypes<T>::ConstMatrix w_c,
+      typename TTypes<T>::ConstVec b_ru, typename TTypes<T>::ConstVec b_c,
+      typename TTypes<T>::Matrix r_u_bar, typename TTypes<T>::Matrix r,
+      typename TTypes<T>::Matrix u, typename TTypes<T>::Matrix c,
+      typename TTypes<T>::Matrix h, typename TTypes<T>::Matrix x_h_prev,
+      typename TTypes<T>::Matrix x_h_prevr) {
     // Concat x_h_prev = [x, h_prev].
     x_h_prev.slice(x_offsets(), x_extends()).device(d) = x;
     x_h_prev.slice(h_offsets(), h_extends()).device(d) = h_prev;
@@ -144,9 +87,10 @@ struct GRUBlockCellFprop : public GRUCell {
     // r_u_bar = x_h_prev * w_ru + b_ru
     typename TTypes<T>::ConstMatrix const_x_h_prev(x_h_prev.data(),
                                                    x_h_prev.dimensions());
-    TensorBlasGemm<Device, T, USE_CUBLAS>::compute(ctx, stream, d, false, false,
-                                                   T(1), const_x_h_prev, w_ru,
-                                                   T(0), r_u_bar);
+    TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
+        ctx, d, false, false, typename gemm_compute_type<T>::type(1.f),
+        const_x_h_prev, w_ru, typename gemm_compute_type<T>::type(0.f),
+        r_u_bar);
 
     // Creating a bias matrix for adding by broadcasting 'b_ru'
     Eigen::array<Eigen::DenseIndex, 2> broadcast_shape({batch_size_, 1});
@@ -165,7 +109,8 @@ struct GRUBlockCellFprop : public GRUCell {
     typename TTypes<T>::ConstMatrix const_x_h_prevr(x_h_prevr.data(),
                                                     x_h_prevr.dimensions());
     TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, stream, d, false, false, T(1), const_x_h_prevr, w_c, T(0), c);
+        ctx, d, false, false, typename gemm_compute_type<T>::type(1.f),
+        const_x_h_prevr, w_c, typename gemm_compute_type<T>::type(0.f), c);
 
     Eigen::array<Eigen::DenseIndex, 2> b_c_shape({1, b_c.dimensions()[0]});
     c.device(d) += (b_c.reshape(b_c_shape).broadcast(broadcast_shape));
@@ -183,8 +128,7 @@ struct GRUBlockCellBprop : public GRUCell {
       : GRUCell(batch_size, input_size, cell_size) {}
 
   void operator()(
-      OpKernelContext* ctx, perftools::gputools::Stream* stream,
-      const Device& d, typename TTypes<T>::ConstMatrix x,
+      OpKernelContext* ctx, const Device& d, typename TTypes<T>::ConstMatrix x,
       typename TTypes<T>::ConstMatrix h_prev,
       typename TTypes<T>::ConstMatrix w_ru, typename TTypes<T>::ConstMatrix w_c,
       typename TTypes<T>::ConstVec b_ru, typename TTypes<T>::ConstVec b_c,
@@ -207,9 +151,10 @@ struct GRUBlockCellBprop : public GRUCell {
     // [2nd_component_of_d_x d_h_prevr] = d_c_bar X w_c^T
     typename TTypes<T>::ConstMatrix const_d_c_bar(d_c_bar.data(),
                                                   d_c_bar.dimensions());
-    TensorBlasGemm<Device, T, USE_CUBLAS>::compute(ctx, stream, d, false, true,
-                                                   T(1), const_d_c_bar, w_c,
-                                                   T(0), d_x_comp2_and_h_prevr);
+    TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
+        ctx, d, false, true, typename gemm_compute_type<T>::type(1.f),
+        const_d_c_bar, w_c, typename gemm_compute_type<T>::type(0.f),
+        d_x_comp2_and_h_prevr);
 
     d_hr.device(d) = d_x_comp2_and_h_prevr.slice(h_offsets(), h_extends());
     d_r_bar.device(d) = (d_hr * h_prev * r) * (r.constant(T(1)) - r);
@@ -223,7 +168,8 @@ struct GRUBlockCellBprop : public GRUCell {
     typename TTypes<T>::ConstMatrix const_d_r_bar_u_bar(
         d_r_bar_u_bar.data(), d_r_bar_u_bar.dimensions());
     TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, stream, d, false, true, T(1), const_d_r_bar_u_bar, w_ru, T(0),
+        ctx, d, false, true, typename gemm_compute_type<T>::type(1.f),
+        const_d_r_bar_u_bar, w_ru, typename gemm_compute_type<T>::type(0.f),
         d_x_comp1_and_h_prev_comp1);
 
     // d_x = d_x_comp1 + d_x_comp2
@@ -240,4 +186,4 @@ struct GRUBlockCellBprop : public GRUCell {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_

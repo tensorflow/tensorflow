@@ -18,130 +18,175 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
+
+__all__ = [
+    "Poisson",
+]
+
+
+_poisson_sample_note = """
+The Poisson distribution is technically only defined for non-negative integer
+values. When `validate_args=False`, non-integral inputs trigger an assertion.
+
+When `validate_args=False` calculations are otherwise unchanged despite
+integral or non-integral inputs.
+
+When `validate_args=False`, evaluating the pmf at non-integral values,
+corresponds to evaluations of an unnormalized distribution, that does not
+correspond to evaluations of the cdf.
+"""
 
 
 class Poisson(distribution.Distribution):
   """Poisson distribution.
 
-  The Poisson distribution is parameterized by `lam`, the rate parameter.
+  The Poisson distribution is parameterized by an event `rate` parameter.
 
-  The pmf of this distribution is:
+  #### Mathematical Details
 
+  The probability mass function (pmf) is,
+
+  ```none
+  pmf(k; lambda, k >= 0) = (lambda^k / k!) / Z
+  Z = exp(lambda).
   ```
 
-  pmf(k) = e^(-lam) * lam^k / k!,  k >= 0
-  ```
+  where `rate = lambda` and `Z` is the normalizing constant.
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
-               lam,
+               rate=None,
+               log_rate=None,
                validate_args=False,
                allow_nan_stats=True,
                name="Poisson"):
-    """Construct Poisson distributions.
+    """Initialize a batch of Poisson distributions.
 
     Args:
-      lam: Floating point tensor, the rate parameter of the
-        distribution(s). `lam` must be positive.
-      validate_args: `Boolean`, default `False`.  Whether to assert that
-        `lam > 0` as well as inputs to pmf computations are non-negative
-        integers. If validate_args is `False`, then `pmf` computations might
-        return `NaN`, but can be evaluated at any real value.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: A name for this distribution.
+      rate: Floating point tensor, the rate parameter. `rate` must be positive.
+        Must specify exactly one of `rate` and `log_rate`.
+      log_rate: Floating point tensor, the log of the rate parameter.
+        Must specify exactly one of `rate` and `log_rate`.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined. When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: Python `str` name prefixed to Ops created by this class.
+
+    Raises:
+      ValueError: if none or both of `rate`, `log_rate` are specified.
+      TypeError: if `rate` is not a float-type.
+      TypeError: if `log_rate` is not a float-type.
     """
-    with ops.name_scope(name, values=[lam]) as ns:
-      with ops.control_dependencies([check_ops.assert_positive(lam)] if
-                                    validate_args else []):
-        self._lam = array_ops.identity(lam, name="lam")
-        super(Poisson, self).__init__(
-            dtype=self._lam.dtype,
-            parameters={"lam": self._lam},
-            is_continuous=False,
-            is_reparameterized=False,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[rate]) as name:
+      if (rate is None) == (log_rate is None):
+        raise ValueError("Must specify exactly one of `rate` and `log_rate`.")
+      elif log_rate is None:
+        rate = ops.convert_to_tensor(rate, name="rate")
+        if not rate.dtype.is_floating:
+          raise TypeError("rate.dtype ({}) is a not a float-type.".format(
+              rate.dtype.name))
+        with ops.control_dependencies([check_ops.assert_positive(rate)] if
+                                      validate_args else []):
+          self._rate = array_ops.identity(rate, name="rate")
+          self._log_rate = math_ops.log(rate, name="log_rate")
+      else:
+        log_rate = ops.convert_to_tensor(log_rate, name="log_rate")
+        if not log_rate.dtype.is_floating:
+          raise TypeError("log_rate.dtype ({}) is a not a float-type.".format(
+              log_rate.dtype.name))
+        self._rate = math_ops.exp(log_rate, name="rate")
+        self._log_rate = ops.convert_to_tensor(log_rate, name="log_rate")
+    super(Poisson, self).__init__(
+        dtype=self._rate.dtype,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._rate],
+        name=name)
 
   @property
-  def lam(self):
+  def rate(self):
     """Rate parameter."""
-    return self._lam
+    return self._rate
+
+  @property
+  def log_rate(self):
+    """Log rate parameter."""
+    return self._log_rate
+
+  def _batch_shape_tensor(self):
+    return array_ops.shape(self.rate)
 
   def _batch_shape(self):
-    return array_ops.shape(self.lam)
+    return self.rate.shape
 
-  def _get_batch_shape(self):
-    return self.lam.get_shape()
-
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
+  @distribution_util.AppendDocstring(_poisson_sample_note)
   def _log_prob(self, x):
-    x = self._assert_valid_sample(x, check_integer=True)
-    return x * math_ops.log(self.lam) - self.lam - math_ops.lgamma(x + 1)
+    return self._log_unnormalized_prob(x) - self._log_normalization()
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
+  @distribution_util.AppendDocstring(_poisson_sample_note)
   def _log_cdf(self, x):
     return math_ops.log(self.cdf(x))
 
+  @distribution_util.AppendDocstring(_poisson_sample_note)
   def _cdf(self, x):
-    x = self._assert_valid_sample(x, check_integer=False)
-    return math_ops.igammac(math_ops.floor(x + 1), self.lam)
+    if self.validate_args:
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    return math_ops.igammac(1. + x, self.rate)
+
+  def _log_normalization(self):
+    return self.rate
+
+  def _log_unnormalized_prob(self, x):
+    if self.validate_args:
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    return x * self.log_rate - math_ops.lgamma(1. + x)
 
   def _mean(self):
-    return array_ops.identity(self.lam)
+    return array_ops.identity(self.rate)
 
   def _variance(self):
-    return array_ops.identity(self.lam)
+    return array_ops.identity(self.rate)
 
-  def _std(self):
-    return math_ops.sqrt(self.variance())
-
+  @distribution_util.AppendDocstring(
+      """Note: when `rate` is an integer, there are actually two modes: `rate`
+      and `rate - 1`. In this case we return the larger, i.e., `rate`.""")
   def _mode(self):
-    return math_ops.floor(self.lam)
+    return math_ops.floor(self.rate)
 
-  def _assert_valid_sample(self, x, check_integer=True):
-    if not self.validate_args: return x
-    with ops.name_scope("check_x", values=[x]):
-      dependencies = [check_ops.assert_non_negative(x)]
-      if check_integer:
-        dependencies += [distribution_util.assert_integer_form(
-            x, message="x has non-integer components.")]
-      return control_flow_ops.with_dependencies(dependencies, x)
-
-
-_prob_note = """
-
-    Note thet the input value must be a non-negative floating point tensor with
-    dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
-    legal if it is non-negative and its components are equal to integer values.
-"""
-distribution_util.append_class_fun_doc(Poisson.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Poisson.prob, doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(Poisson.mode, doc_str="""
-
-    Note that when `lam` is an integer, there are actually two modes.
-    Namely, `lam` and `lam - 1` are both modes. Here we return
-    only the larger of the two modes.
-""")
+  def _sample_n(self, n, seed=None):
+    return random_ops.random_poisson(
+        self.rate, [n], dtype=self.dtype, seed=seed)

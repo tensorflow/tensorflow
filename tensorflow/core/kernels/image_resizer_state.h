@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is a helper struct to package up the input and ouput
+// This is a helper struct to package up the input and output
 // parameters of an image resizer (the height, widths, etc.).  To
 // reduce code duplication and ensure consistency across the different
 // resizers, it performs the input validation.
 
-#ifndef TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
-#define TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_
 
 #define EIGEN_USE_THREADS
 
@@ -90,6 +90,18 @@ struct ImageResizerState {
         errors::InvalidArgument("input image must be of non-zero size"));
     height_scale = CalculateResizeScale(in_height, out_height, align_corners_);
     width_scale = CalculateResizeScale(in_width, out_width, align_corners_);
+
+    // Guard against overflows
+    OP_REQUIRES(context,
+                ceilf((out_height - 1) * height_scale) <=
+                    static_cast<float>(std::numeric_limits<int64>::max()),
+                errors::InvalidArgument(
+                    "input image height scale would cause an overflow"));
+    OP_REQUIRES(
+        context,
+        ceilf((out_width - 1) * width_scale) <= static_cast<float>(INT_MAX),
+        errors::InvalidArgument(
+            "input image width scale would cause an overflow"));
   }
 
   // Calculates all the required variables, and allocates the output.
@@ -97,8 +109,9 @@ struct ImageResizerState {
     ValidateAndCalculateOutputSize(context, input);
     if (!context->status().ok()) return;
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({input.dim_size(0), out_height,
-                                                out_width, input.dim_size(3)}),
+                                0,
+                                TensorShape({input.dim_size(0), out_height,
+                                             out_width, input.dim_size(3)}),
                                 &output));
   }
 
@@ -110,7 +123,7 @@ struct ImageResizerState {
   int64 channels;
   float height_scale;
   float width_scale;
-  Tensor* output;
+  Tensor* output = nullptr;
 
  private:
   bool align_corners_;
@@ -129,7 +142,7 @@ struct ImageResizerGradientState {
     // always be a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
                 errors::InvalidArgument("input_grad must be of type float",
-                                        input.dtype()));
+                                        DataTypeString(input.dtype())));
 
     OP_REQUIRES(context, original_image.dims() == 4,
                 errors::InvalidArgument("original_image must be 4-dimensional",
@@ -156,8 +169,9 @@ struct ImageResizerGradientState {
         CalculateResizeScale(original_width, resized_width, align_corners_);
     output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({batch_size, original_height,
-                                                original_width, channels}),
+                                0,
+                                TensorShape({batch_size, original_height,
+                                             original_width, channels}),
                                 &output));
   }
 
@@ -177,4 +191,4 @@ struct ImageResizerGradientState {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_

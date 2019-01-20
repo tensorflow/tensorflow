@@ -53,9 +53,10 @@ static Graph* BatchMatmul(int b, int m, int k, int n, bool adjoint_a,
 /* Uncomment to enable benchmarks for double & complex types: */
 // BM_BatchMatmulDev(B, M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64,
 // gpu);
-// BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, cpu);                    \
-// BM_BatchMatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, cpu);  \
-// BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, gpu);                    \
+// BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, cpu); \
+// BM_BatchMatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, cpu);
+// \
+// BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, gpu); \
 // BM_BatchMatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, gpu);
 
 // Typical fully connected layers
@@ -107,10 +108,28 @@ BM_BatchMatmul(32, 2048, 2048, 2048, false, false);
 BM_BatchMatmul(1, 10000, 200, 1, false, false);
 BM_BatchMatmul(8, 10000, 200, 1, false, false);
 BM_BatchMatmul(32, 10000, 200, 1, false, false);
+BM_BatchMatmul(1, 10000, 200, 1, true, false);
+BM_BatchMatmul(8, 10000, 200, 1, true, false);
+BM_BatchMatmul(32, 10000, 200, 1, true, false);
+BM_BatchMatmul(1, 10000, 200, 1, false, true);
+BM_BatchMatmul(8, 10000, 200, 1, false, true);
+BM_BatchMatmul(32, 10000, 200, 1, false, true);
+BM_BatchMatmul(1, 10000, 200, 1, true, true);
+BM_BatchMatmul(8, 10000, 200, 1, true, true);
+BM_BatchMatmul(32, 10000, 200, 1, true, true);
 
 // Vector-matrix multiplies.
 BM_BatchMatmul(1, 1, 200, 10000, false, false);
 BM_BatchMatmul(8, 1, 200, 10000, false, false);
 BM_BatchMatmul(32, 1, 200, 10000, false, false);
+BM_BatchMatmul(1, 1, 200, 10000, true, false);
+BM_BatchMatmul(8, 1, 200, 10000, true, false);
+BM_BatchMatmul(32, 1, 200, 10000, true, false);
+BM_BatchMatmul(1, 1, 200, 10000, false, true);
+BM_BatchMatmul(8, 1, 200, 10000, false, true);
+BM_BatchMatmul(32, 1, 200, 10000, false, true);
+BM_BatchMatmul(1, 1, 200, 10000, true, true);
+BM_BatchMatmul(8, 1, 200, 10000, true, true);
+BM_BatchMatmul(32, 1, 200, 10000, true, true);
 
 }  // end namespace tensorflow

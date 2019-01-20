@@ -18,10 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
@@ -40,8 +43,8 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
       Defaults to the value in `server_or_cluster_def`, if specified. Otherwise
       defaults to 0 if the server's job has only one task.
     protocol: (Optional.) Specifies the protocol to be used by the server.
-      Acceptable values include `"grpc"`. Defaults to the value in
-      `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+      Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the value
+      in `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
     config: (Options.) A `tf.ConfigProto` that specifies default configuration
       options for all sessions that run on this server.
 
@@ -91,23 +94,17 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
   return server_def
 
 
+@tf_export("distribute.Server", v1=["distribute.Server", "train.Server"])
+@deprecation.deprecated_endpoints("train.Server")
 class Server(object):
   """An in-process TensorFlow server, for use in distributed training.
 
   A `tf.train.Server` instance encapsulates a set of devices and a
-  [`tf.Session`](../../api_docs/python/client.md#Session) target that
+  `tf.Session` target that
   can participate in distributed training. A server belongs to a
-  cluster (specified by a [`tf.train.ClusterSpec`](#ClusterSpec)), and
+  cluster (specified by a `tf.train.ClusterSpec`), and
   corresponds to a particular task in a named job. The server can
   communicate with any other server in the same cluster.
-
-  @@__init__
-  @@create_local_server
-  @@target
-  @@server_def
-
-  @@start
-  @@join
   """
 
   def __init__(self,
@@ -134,8 +131,9 @@ class Server(object):
         job. Defaults to the value in `server_or_cluster_def`, if specified.
         Otherwise defaults to 0 if the server's job has only one task.
       protocol: (Optional.) Specifies the protocol to be used by the server.
-        Acceptable values include `"grpc"`. Defaults to the value in
-        `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+        Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the
+        value in `server_or_cluster_def`, if specified. Otherwise defaults to
+        `"grpc"`.
       config: (Options.) A `tf.ConfigProto` that specifies default
         configuration options for all sessions that run on this server.
       start: (Optional.) Boolean, indicating whether to start the server
@@ -147,11 +145,23 @@ class Server(object):
     """
     self._server_def = _make_server_def(server_or_cluster_def,
                                         job_name, task_index, protocol, config)
-    with errors.raise_exception_on_not_ok_status() as status:
-      self._server = pywrap_tensorflow.PyServer_New(
-          self._server_def.SerializeToString(), status)
+    self._server = c_api.TF_NewServer(self._server_def.SerializeToString())
     if start:
       self.start()
+
+  def __del__(self):
+    try:
+      c_api.TF_ServerStop(self._server)
+      # Clean shutdown of servers is not yet implemented, so
+      # we leak instead of calling c_api.TF_DeleteServer here.
+      # See:
+      # https://github.com/tensorflow/tensorflow/blob/0495317a6e9dd4cac577b9d5cf9525e62b571018/tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h#L73
+    except errors.UnimplementedError:
+      pass
+    except AttributeError:
+      # At shutdown, `c_api` may have been garbage collected.
+      pass
+    self._server = None
 
   def start(self):
     """Starts this server.
@@ -160,8 +170,7 @@ class Server(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         starting the TensorFlow server.
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.PyServer_Start(self._server, status)
+    c_api.TF_ServerStart(self._server)
 
   def join(self):
     """Blocks until the server has shut down.
@@ -172,8 +181,7 @@ class Server(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         joining the TensorFlow server.
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.PyServer_Join(self._server, status)
+    c_api.TF_ServerJoin(self._server)
 
   @property
   def server_def(self):
@@ -190,7 +198,7 @@ class Server(object):
     """Returns the target for a `tf.Session` to connect to this server.
 
     To create a
-    [`tf.Session`](../../api_docs/python/client.md#Session) that
+    `tf.Session` that
     connects to this server, use the following snippet:
 
     ```python
@@ -202,7 +210,7 @@ class Server(object):
     Returns:
       A string containing a session target for this server.
     """
-    return self._server.target()
+    return c_api.TF_ServerTarget(self._server)
 
   @staticmethod
   def create_local_server(config=None, start=True):
@@ -228,18 +236,19 @@ class Server(object):
                   start=start)
 
 
+@tf_export("train.ClusterSpec")
 class ClusterSpec(object):
   """Represents a cluster as a set of "tasks", organized into "jobs".
 
   A `tf.train.ClusterSpec` represents the set of processes that
   participate in a distributed TensorFlow computation. Every
-  [`tf.train.Server`](#Server) is constructed in a particular cluster.
+  `tf.train.Server` is constructed in a particular cluster.
 
   To create a cluster with two jobs and five tasks, you specify the
   mapping from job names to lists of network addresses (typically
   hostname-port pairs).
 
-  ```
+  ```python
   cluster = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
                                              "worker1.example.com:2222",
                                              "worker2.example.com:2222"],
@@ -252,14 +261,11 @@ class ClusterSpec(object):
   needing to know the identity of (for example) all other worker
   tasks:
 
-  ```
+  ```python
   cluster = tf.train.ClusterSpec({"worker": {1: "worker1.example.com:2222"},
                                   "ps": ["ps0.example.com:2222",
                                          "ps1.example.com:2222"]})
   ```
-
-  @@as_cluster_def
-  @@as_dict
   """
 
   def __init__(self, cluster):
@@ -287,14 +293,14 @@ class ClusterSpec(object):
                           "from integers to strings." % job_name)
         self._cluster_spec[job_name] = job_tasks
       self._make_cluster_def()
-    elif isinstance(cluster, tensorflow_server_pb2.ClusterDef):
+    elif isinstance(cluster, cluster_pb2.ClusterDef):
       self._cluster_def = cluster
       self._cluster_spec = {}
       for job_def in self._cluster_def.job:
         self._cluster_spec[job_def.name] = {
             i: t for i, t in job_def.tasks.items()}
     elif isinstance(cluster, ClusterSpec):
-      self._cluster_def = tensorflow_server_pb2.ClusterDef()
+      self._cluster_def = cluster_pb2.ClusterDef()
       self._cluster_def.MergeFrom(cluster.as_cluster_def())
       self._cluster_spec = {}
       for job_def in self._cluster_def.job:
@@ -317,6 +323,12 @@ class ClusterSpec(object):
   def __ne__(self, other):
     return self._cluster_spec != other
 
+  def __str__(self):
+    key_values = self.as_dict()
+    string_items = [
+        repr(k) + ": " + repr(key_values[k]) for k in sorted(key_values)]
+    return "ClusterSpec({" + ", ".join(string_items) + "})"
+
   def as_dict(self):
     """Returns a dictionary from job names to their tasks.
 
@@ -332,6 +344,9 @@ class ClusterSpec(object):
     ret = {}
     for job in self.jobs:
       task_indices = self.task_indices(job)
+      if len(task_indices) == 0:
+        ret[job] = {}
+        continue
       if max(task_indices) + 1 == len(task_indices):
         # Return a list because the task indices are dense. This
         # matches the behavior of `as_dict()` before support for
@@ -421,7 +436,7 @@ class ClusterSpec(object):
     NOTE: For backwards compatibility, this method returns a list. If
     the given job was defined with a sparse set of task indices, the
     length of this list may not reflect the number of tasks defined in
-    this job. Use the [`num_tasks()`](#ClusterSpec.num_tasks) method
+    this job. Use the `tf.train.ClusterSpec.num_tasks` method
     to find the number of tasks defined in a particular job.
 
     Args:
@@ -451,7 +466,7 @@ class ClusterSpec(object):
       TypeError: If `cluster_spec` is not a dictionary mapping strings to lists
         of strings.
     """
-    self._cluster_def = tensorflow_server_pb2.ClusterDef()
+    self._cluster_def = cluster_pb2.ClusterDef()
 
     # NOTE(mrry): Sort by job_name to produce deterministic protobufs.
     for job_name, tasks in sorted(self._cluster_spec.items()):

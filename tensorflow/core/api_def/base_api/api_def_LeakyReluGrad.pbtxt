@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "LeakyReluGrad"
+  visibility: HIDDEN
+  in_arg {
+    name: "gradients"
+    description: <<END
+The backpropagated gradients to the corresponding LeakyRelu operation.
+END
+  }
+  in_arg {
+    name: "features"
+    description: <<END
+The features passed as input to the corresponding LeakyRelu operation,
+OR the outputs of that operation (both work equivalently).
+END
+  }
+  out_arg {
+    name: "backprops"
+    description: <<END
+`gradients * (features > 0) + alpha * gradients * (featurs <= 0)`.
+END
+  }
+  summary: "Computes rectified linear gradients for a LeakyRelu operation."
+}

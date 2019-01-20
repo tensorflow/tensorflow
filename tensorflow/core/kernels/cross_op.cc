@@ -105,6 +105,7 @@ TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_KERNEL);
   REGISTER_KERNEL_BUILDER(                                        \
       Name("Cross").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       CrossOp<GPUDevice, type>);
+
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif
