@@ -210,9 +210,14 @@ def convert_shapes(input_shape, to_tuples=True):
       return True
     if isinstance(input_shape, tensor_shape.TensorShape):
       return True
-    if (isinstance(input_shape, (tuple, list)) and
-        all(_is_shape_component(ele) for ele in input_shape)):
-      return True
+    if isinstance(input_shape, (tuple, list)):
+      # In case _is_shape_component is not valid, it may also
+      # throw out TypeError so we catch TypeError here.
+      try:
+        if all(_is_shape_component(ele) for ele in input_shape):
+          return True
+      except TypeError:
+        pass
     return False
 
   def _convert_shape(input_shape):
