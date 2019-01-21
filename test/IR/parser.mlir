@@ -36,7 +36,7 @@
 // All maps appear in arbitrary order before all sets, in arbitrary order.
 // CHECK-EMPTY
 
-// CHECK-DAG: #set{{[0-9]+}} = (d0)[s0, s1] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0, d0 * -1 + s1 + 1 >= 0)
+// CHECK-DAG: #set{{[0-9]+}} = (d0)[s0, s1] : (d0 >= 0, -d0 + s0 >= 0, s0 - 5 == 0, -d0 + s1 + 1 >= 0)
 #set0 = (i)[N, M] : (i >= 0, -i + N >= 0, N - 5 == 0, -i + M + 1 >= 0)
 
 // CHECK-DAG: #set{{[0-9]+}} = (d0, d1)[s0] : (d0 >= 0, d1 >= 0)
@@ -45,7 +45,7 @@
 // CHECK-DAG: #set{{[0-9]+}} = (d0) : (d0 - 1 == 0)
 #set2 = (d0) : (d0 - 1 == 0)
 
-// CHECK-DAG: #set{{[0-9]+}} = (d0)[s0] : (d0 - 2 >= 0, d0 * -1 + 4 >= 0)
+// CHECK-DAG: #set{{[0-9]+}} = (d0)[s0] : (d0 - 2 >= 0, -d0 + 4 >= 0)
 
 // CHECK: func @foo(i32, i64) -> f32
 func @foo(i32, i64) -> f32

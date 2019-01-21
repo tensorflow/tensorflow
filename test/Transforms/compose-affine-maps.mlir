@@ -25,7 +25,7 @@
 // CHECK: [[MAP13:#map[0-9]+]] = (d0) -> ((d0 + 6) ceildiv 8, (d0 * 4 - 4) floordiv 3)
 
 // Affine maps for test case: arg_used_as_dim_and_symbol
-// CHECK: [[MAP14:#map[0-9]+]] = (d0, d1, d2, d3)[s0, s1] -> (d2, d0 * -1 - d1 + d3 + s0 + s1)
+// CHECK: [[MAP14:#map[0-9]+]] = (d0, d1, d2, d3)[s0, s1] -> (d2, -d0 - d1 + d3 + s0 + s1)
 
 // Affine maps for test case: zero_map
 // CHECK: [[MAP15:#map[0-9]+]] = ()[s0] -> (s0)

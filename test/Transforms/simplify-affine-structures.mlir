@@ -24,7 +24,7 @@
 #map8 = (d0, d1) -> (d0 - (32 * (d0 floordiv 32)), d0 - (4 * (d0 floordiv 8)), (d1 - (16 * (d1 floordiv 16))) floordiv 256, d0 - 7 * (d0 floordiv 7))
 
 // CHECK-DAG: [[SET_EMPTY_2D:#set[0-9]+]] = (d0, d1) : (1 == 0)
-// CHECK-DAG: #set1 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
+// CHECK-DAG: #set1 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, -d0 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
 // CHECK-DAG: #set2 = (d0, d1)[s0, s1] : (1 == 0)
 // CHECK-DAG: #set3 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0, d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0, d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0, d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
 // CHECK-DAG: [[SET_EMPTY_1D:#set[0-9]+]] = (d0) : (1 == 0)
@@ -32,7 +32,7 @@
 // CHECK-DAG: [[SET_EMPTY_3D:#set[0-9]+]] = (d0, d1, d2) : (1 == 0)
 
 // Set for test case: test_gaussian_elimination_non_empty_set2
-// #set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
+// #set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, -d0 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
 #set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, -d0 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
 
 // Set for test case: test_gaussian_elimination_empty_set3

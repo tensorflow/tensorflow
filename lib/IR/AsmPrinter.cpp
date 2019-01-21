@@ -764,15 +764,25 @@ void ModulePrinter::printAffineExprInternal(
   }
 
   auto binOp = expr.cast<AffineBinaryOpExpr>();
+  AffineExpr lhsExpr = binOp.getLHS();
+  AffineExpr rhsExpr = binOp.getRHS();
 
   // Handle tightly binding binary operators.
   if (binOp.getKind() != AffineExprKind::Add) {
     if (enclosingTightness == BindingStrength::Strong)
       os << '(';
 
-    printAffineExprInternal(binOp.getLHS(), BindingStrength::Strong);
+    // Pretty print multiplication with -1.
+    auto rhsConst = rhsExpr.dyn_cast<AffineConstantExpr>();
+    if (rhsConst && rhsConst.getValue() == -1) {
+      os << "-";
+      printAffineExprInternal(lhsExpr, BindingStrength::Strong);
+      return;
+    }
+
+    printAffineExprInternal(lhsExpr, BindingStrength::Strong);
     os << binopSpelling;
-    printAffineExprInternal(binOp.getRHS(), BindingStrength::Strong);
+    printAffineExprInternal(rhsExpr, BindingStrength::Strong);
 
     if (enclosingTightness == BindingStrength::Strong)
       os << ')';
@@ -785,13 +795,12 @@ void ModulePrinter::printAffineExprInternal(
 
   // Pretty print addition to a product that has a negative operand as a
   // subtraction.
-  AffineExpr rhsExpr = binOp.getRHS();
   if (auto rhs = rhsExpr.dyn_cast<AffineBinaryOpExpr>()) {
     if (rhs.getKind() == AffineExprKind::Mul) {
       AffineExpr rrhsExpr = rhs.getRHS();
       if (auto rrhs = rrhsExpr.dyn_cast<AffineConstantExpr>()) {
         if (rrhs.getValue() == -1) {
-          printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
+          printAffineExprInternal(lhsExpr, BindingStrength::Weak);
           os << " - ";
           if (rhs.getLHS().getKind() == AffineExprKind::Add) {
             printAffineExprInternal(rhs.getLHS(), BindingStrength::Strong);
@@ -805,7 +814,7 @@ void ModulePrinter::printAffineExprInternal(
         }
 
         if (rrhs.getValue() < -1) {
-          printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
+          printAffineExprInternal(lhsExpr, BindingStrength::Weak);
           os << " - ";
           printAffineExprInternal(rhs.getLHS(), BindingStrength::Strong);
           os << " * " << -rrhs.getValue();
@@ -818,19 +827,19 @@ void ModulePrinter::printAffineExprInternal(
   }
 
   // Pretty print addition to a negative number as a subtraction.
-  if (auto rhs = rhsExpr.dyn_cast<AffineConstantExpr>()) {
-    if (rhs.getValue() < 0) {
-      printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
-      os << " - " << -rhs.getValue();
+  if (auto rhsConst = rhsExpr.dyn_cast<AffineConstantExpr>()) {
+    if (rhsConst.getValue() < 0) {
+      printAffineExprInternal(lhsExpr, BindingStrength::Weak);
+      os << " - " << -rhsConst.getValue();
       if (enclosingTightness == BindingStrength::Strong)
         os << ')';
       return;
     }
   }
 
-  printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
+  printAffineExprInternal(lhsExpr, BindingStrength::Weak);
   os << " + ";
-  printAffineExprInternal(binOp.getRHS(), BindingStrength::Weak);
+  printAffineExprInternal(rhsExpr, BindingStrength::Weak);
 
   if (enclosingTightness == BindingStrength::Strong)
     os << ')';

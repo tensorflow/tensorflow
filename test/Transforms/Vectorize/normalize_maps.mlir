@@ -4,7 +4,7 @@
 // CHECK-DAG: #[[ID1:[a-zA-Z0-9]+]] = (d0) -> (d0)
 // CHECK-DAG: #[[D0TIMES2:[a-zA-Z0-9]+]] = (d0) -> (d0 * 2)
 // CHECK-DAG: #[[D0PLUSD1:[a-zA-Z0-9]+]] = (d0, d1) -> (d0 + d1)
-// CHECK-DAG: #[[MINSD0PLUSD1:[a-zA-Z0-9]+]] = (d0, d1) -> (d0 * -1 + d1)
+// CHECK-DAG: #[[MINSD0PLUSD1:[a-zA-Z0-9]+]] = (d0, d1) -> (-d0 + d1)
 // CHECK-DAG: #[[D0MINUSD1:[a-zA-Z0-9]+]] = (d0, d1) -> (d0 - d1)
 
 // CHECK-LABEL: func @simple()
