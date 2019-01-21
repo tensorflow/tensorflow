@@ -307,6 +307,20 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertTrue(model.built)
     self.assertEqual(len(model.weights), 8)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_sequential_deferred_manual_build(self):
+    model = testing_utils.get_small_sequential_mlp(4, 5)
+    self.assertFalse(model.built)
+    model(array_ops.zeros([1, 2]))
+    self.assertTrue(model.built)
+    self.assertEqual(len(model.outputs), 0)
+    model.compile('rmsprop',
+                  loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    self.assertEqual(len(model.outputs), 0)
+    model.train_on_batch(np.zeros((1, 2)), np.zeros((1, 5)))
+    self.assertEqual(len(model.outputs), 1)
+
   @keras_parameterized.run_all_keras_modes
   def test_sequential_nesting(self):
     model = testing_utils.get_small_sequential_mlp(4, 3)

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -37,8 +38,8 @@ constexpr int kError = -2;
 
 // [a-zA-Z0-9_.-]
 bool IsIdentifierChar(char c) {
-  return isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '.' ||
-         c == '_';
+  return absl::ascii_isalnum(static_cast<unsigned char>(c)) || c == '-' ||
+         c == '.' || c == '_';
 }
 
 }  // namespace
@@ -105,7 +106,7 @@ TokKind HloLexer::LexToken() {
     switch (current_char) {
       default:
         // [a-zA-Z_]
-        if (isalpha(static_cast<unsigned char>(current_char)) ||
+        if (absl::ascii_isalpha(static_cast<unsigned char>(current_char)) ||
             current_char == '_') {
           return LexIdentifier();
         }
@@ -300,7 +301,7 @@ TokKind HloLexer::LexIdentifier() {
 // name ::= [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexPercent() {
   const char* name_start = current_ptr_;
-  if (isalpha(static_cast<unsigned char>(PeekCurrentChar())) ||
+  if (absl::ascii_isalpha(static_cast<unsigned char>(PeekCurrentChar())) ||
       PeekCurrentChar() == '_') {
     current_ptr_++;
     while (IsIdentifierChar(PeekCurrentChar())) {

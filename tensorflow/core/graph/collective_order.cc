@@ -92,8 +92,8 @@ Status CreateControlDependencies(
       const auto& deps_j = (*data_dependencies)[collective_nodes[j]];
       if (deps_i.find(instance_keys[j]) == deps_i.end() &&
           deps_j.find(instance_keys[i]) == deps_j.end()) {
-        int src_idx = instance_keys[i] < instance_keys[j] ? i : j;
-        int dst_idx = instance_keys[i] < instance_keys[j] ? j : i;
+        int src_idx = instance_keys[i] > instance_keys[j] ? i : j;
+        int dst_idx = instance_keys[i] > instance_keys[j] ? j : i;
         Node* src_node = collective_nodes[src_idx];
         Node* dst_node = collective_nodes[dst_idx];
         VLOG(1) << "Adding control dependency from node " << src_node->name()

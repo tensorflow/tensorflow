@@ -255,3 +255,9 @@ tf_cc_binary(
         "@com_google_absl//absl/strings",
     ],
 )
+
+sh_test(
+    name = "interactive_graphviz_build_only_test",
+    srcs = ["interactive_graphviz_test.sh"],
+    data = [":interactive_graphviz"],
+)

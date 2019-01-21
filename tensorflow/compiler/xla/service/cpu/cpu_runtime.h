@@ -64,18 +64,7 @@ extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName;
 extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
-extern const char* const kKeyValueSortPREDSymbolName;
-extern const char* const kKeyValueSortS8SymbolName;
-extern const char* const kKeyValueSortU8SymbolName;
-extern const char* const kKeyValueSortS16SymbolName;
-extern const char* const kKeyValueSortU16SymbolName;
-extern const char* const kKeyValueSortF16SymbolName;
-extern const char* const kKeyValueSortS32SymbolName;
-extern const char* const kKeyValueSortU32SymbolName;
-extern const char* const kKeyValueSortF32SymbolName;
-extern const char* const kKeyValueSortS64SymbolName;
-extern const char* const kKeyValueSortU64SymbolName;
-extern const char* const kKeyValueSortF64SymbolName;
+extern const char* const kKeyValueSortSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.

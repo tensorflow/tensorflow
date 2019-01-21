@@ -194,6 +194,86 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAdditionBfloat16) {
                   m::Broadcast(m::ConstantScalar(0.125)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, UnsignedDivideByPowerOf2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = u32[4] parameter(0)
+      c = u32[] constant(8)
+      b = u32[4] broadcast(c), dimensions={}
+      ROOT d = u32[4] divide(p, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::ShiftRightLogical(
+                  m::Parameter(0), m::Broadcast(m::ConstantScalar(3)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SignedDivideByPowerOf2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = s32[4] parameter(0)
+      c = s32[] constant(8)
+      b = s32[4] broadcast(c), dimensions={}
+      ROOT d = s32[4] divide(p, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto match_dividend_is_negative =
+      m::Lt(m::Parameter(0), m::Broadcast(m::ConstantScalar(0)));
+  auto match_abs = m::Select(match_dividend_is_negative,
+                             m::Negate(m::Parameter(0)), m::Parameter(0));
+  auto match_shift =
+      m::ShiftRightLogical(match_abs, m::Broadcast(m::ConstantScalar(3)));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Select(match_dividend_is_negative,
+                                   m::Negate(match_shift), match_shift)));
+}
+
+TEST_F(AlgebraicSimplifierTest, UnsignedRemainderByPowerOf2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = u32[4] parameter(0)
+      c = u32[] constant(8)
+      b = u32[4] broadcast(c), dimensions={}
+      ROOT r = u32[4] remainder(p, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::AndAnyOrder(m::Parameter(0),
+                                        m::Broadcast(m::ConstantScalar(7)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SignedRemainderByPowerOf2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = s32[4] parameter(0)
+      c = s32[] constant(8)
+      b = s32[4] broadcast(c), dimensions={}
+      ROOT r = s32[4] remainder(p, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto match_dividend_is_negative =
+      m::Lt(m::Parameter(0), m::Broadcast(m::ConstantScalar(0)));
+  auto match_abs = m::Select(match_dividend_is_negative,
+                             m::Negate(m::Parameter(0)), m::Parameter(0));
+  auto match_and =
+      m::AndAnyOrder(match_abs, m::Broadcast(m::ConstantScalar(7)));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Select(match_dividend_is_negative,
+                                   m::Negate(match_and), match_and)));
+}
+
 // Test that A * 0 is simplified to 0
 TEST_F(AlgebraicSimplifierTest, MulZero) {
   auto m = CreateNewVerifiedModule();

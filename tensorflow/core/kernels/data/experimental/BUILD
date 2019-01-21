@@ -119,12 +119,14 @@ tf_kernel_library(
     name = "map_and_batch_dataset_op",
     srcs = ["map_and_batch_dataset_op.cc"],
     deps = [
+        "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:metrics",
+        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:inplace_ops",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
@@ -169,11 +171,13 @@ tf_kernel_library(
     name = "numa_map_and_batch_dataset_op",
     srcs = ["numa_map_and_batch_dataset_op.cc"],
     deps = [
+        "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:inplace_ops",
         "//tensorflow/core/kernels/data:captured_function",
         "@com_google_absl//absl/memory",
@@ -200,6 +204,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core/kernels/data:parallel_map_iterator",
     ],
 )

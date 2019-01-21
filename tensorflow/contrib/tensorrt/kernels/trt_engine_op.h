@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_lru_cache.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -38,7 +39,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 struct TRTInt8Calibrator;
-class TRTCalibrationResource;
 class AsyncHelper;
 //  TODO(Sami): Remove this file?
 
@@ -69,7 +69,7 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
-                                      TRTCalibrationResource** cr);
+                                      SerializableResourceBase** cr);
 
   // Get engine for the input shape
   EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,

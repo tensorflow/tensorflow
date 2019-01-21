@@ -207,8 +207,8 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
   return training_inputs, eval_inputs, predict_inputs
 
 
-def fit_eval_and_predict(
-    initial_weights, input_fn, model_fn, distribution=None):
+def fit_eval_and_predict(initial_weights, input_fn, model_fn,
+                         distribution=None, is_stateful_model=False):
   """Generates results for fit/predict/evaluate for given model."""
   model = model_fn(initial_weights=initial_weights, distribution=distribution)
   training_inputs, eval_inputs, predict_inputs = input_fn(distribution)
@@ -222,7 +222,15 @@ def fit_eval_and_predict(
   result['weights_1'] = model.get_weights()
 
   if predict_inputs is not None:
-    result['predict_result_1'] = model.predict(**predict_inputs)
+    # Check correctness of the result of predict() invoked
+    # multiple times -- as for stateful models, result of
+    # predict may differ for each batch.
+    predict_length = 1
+    if is_stateful_model:
+      predict_length = 3
+    for i in range(predict_length):
+      result_key = 'predict_result_{}'.format(i)
+      result[result_key] = model.predict(**predict_inputs)
 
   # Train and eval again to mimic user's flow.
 
@@ -334,7 +342,8 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            distribution,
                            use_numpy,
                            use_validation_data,
-                           with_batch_norm=False):
+                           with_batch_norm=False,
+                           is_stateful_model=False):
     with self.cached_session():
       self.set_up_test_config(use_numpy, use_validation_data, with_batch_norm)
       self.skip_unsupported_test_configuration(distribution)
@@ -355,10 +364,10 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
 
       results_with_ds = fit_eval_and_predict(
           initial_weights, input_fn=input_fn, model_fn=self.get_model,
-          distribution=distribution)
+          distribution=distribution, is_stateful_model=is_stateful_model)
       results_without_ds = fit_eval_and_predict(
           initial_weights, input_fn=input_fn, model_fn=self.get_model,
-          distribution=None)
+          distribution=None, is_stateful_model=is_stateful_model)
 
       # First, special case, for multi-replica distributed training, batch norm
       # is not aggregated globally. So it is expected to have different weights.
@@ -448,7 +457,7 @@ class TestDistributionStrategyEmbeddingModelCorrectnessBase(
         features, maxlen=max_words)
     x_train = np.asarray(features, dtype=np.float32)
     y_train = np.asarray(labels, dtype=np.int32).reshape((count, 1))
-    x_predict = x_train
+    x_predict = x_train[:_GLOBAL_BATCH_SIZE]
     return x_train, y_train, x_predict
 
 

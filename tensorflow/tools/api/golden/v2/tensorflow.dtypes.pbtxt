@@ -113,10 +113,6 @@ tf_module {
     argspec: "args=[\'type_value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "as_string"
-    argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'False\', \'False\', \'-1\', \'\', \'None\'], "
-  }
-  member_method {
     name: "cast"
     argspec: "args=[\'x\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

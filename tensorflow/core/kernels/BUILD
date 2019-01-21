@@ -60,6 +60,7 @@ load(
     "mkl_deps",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -180,12 +181,36 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "collective_ops",
+    srcs = if_nccl([
+        "collective_nccl_reducer.h",
+        "collective_nccl_reducer.cc",
+    ]),
     prefix = "collective_ops",
     deps = [
         "//tensorflow/core:collective_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ] + if_nccl([
+        "@local_config_nccl//:nccl",
+        "//tensorflow/core/nccl:nccl_lib",
+    ]),
+)
+
+tf_cuda_cc_test(
+    name = "collective_nccl_reducer_test",
+    size = "small",
+    srcs = ["collective_nccl_reducer_test.cc"],
+    tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -340,6 +365,59 @@ tf_kernel_library(
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:nccl_ops_op_lib",
     ]),
+)
+
+cc_library(
+    name = "sparse_utils",
+    srcs = [
+        "sparse_utils.cc",
+    ],
+    hdrs = ["sparse_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_utils_test",
+    srcs = ["sparse_utils_test.cc"],
+    deps = [
+        ":sparse_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "tensor_flag_utils",
+    srcs = [
+        "tensor_flag_utils.cc",
+    ],
+    hdrs = ["tensor_flag_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tensor_flag_utils_test",
+    srcs = ["tensor_flag_utils_test.cc"],
+    deps = [
+        ":tensor_flag_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/base:core_headers",
+    ],
 )
 
 tf_cuda_library(

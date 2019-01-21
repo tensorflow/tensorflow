@@ -279,7 +279,7 @@ class Model(Network):
     self._distributed_model = None
     # Initialize model metric attributes.
     self._init_metric_attributes()
-    if not self.built:
+    if not self.built or not self.inputs or not self.outputs:
       # Model is not compilable because it does not know its number of inputs
       # and outputs, nor their shapes and names. We will compile after the first
       # time the model gets called on training data.
@@ -2213,6 +2213,20 @@ class Model(Network):
             self._distribution_strategy)):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
+
+    if (self.stateful and distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy) and self._distribution_strategy.
+        num_replicas_in_sync != 1):
+      raise ValueError('Single core must be used for computation on '
+                       'stateful models. Consider adding `device_assignment` '
+                       'parameter to TPUStrategy using\n'
+                       'topology = tf.contrib.distribute.'
+                       'initialize_tpu_system()\n'
+                       'device_assignment = tf.contrib.tpu.DeviceAssignment('
+                       'topology, core_assignment=tf.contrib.tpu.'
+                       'SINGLE_CORE_ASSIGNMENT)\n'
+                       'tpu_strategy = tf.contrib.distribute.TPUStrategy('
+                       'device_assignment=device_assignment)')
 
     # Validates `steps` and `shuffle` arguments right at the beginning
     # since we use it to construct the dataset object.

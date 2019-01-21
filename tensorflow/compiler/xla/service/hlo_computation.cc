@@ -695,21 +695,34 @@ bool HloComputation::operator==(const HloComputation& other) const {
   }
   absl::flat_hash_set<std::pair<const HloInstruction*, const HloInstruction*>>
       visited;
-  std::function<bool(const HloInstruction*, const HloInstruction*)> eq =
-      [&visited, &eq](const HloInstruction* a, const HloInstruction* b) {
-        // If <a,b> are visited but not identical, the recursion should have
-        // been aborted. So, if <a,b> are visited at this point, they must be
-        // identical.
-        if (visited.contains(std::make_pair(a, b))) {
-          return true;
-        }
-        visited.emplace(a, b);
-        return a->Identical(
-            *b, eq, [](const HloComputation* a, const HloComputation* b) {
-              return *a == *b;
-            });
-      };
-  return eq(root_instruction(), other.root_instruction());
+  std::vector<std::pair<const HloInstruction*, const HloInstruction*>> worklist;
+
+  worklist.push_back({root_instruction(), other.root_instruction()});
+
+  while (!worklist.empty()) {
+    auto pair = worklist.back();
+    worklist.pop_back();
+
+    if (visited.contains(pair)) {
+      continue;
+    }
+    visited.emplace(pair);
+    // TODO(b/123082518): Avoid recursively invoking == becasue it may
+    // cause a stack overflow with deeply nested subcomputations.
+    bool identical_ignoring_operands = pair.first->Identical(
+        *pair.second,
+        [](const HloInstruction*, const HloInstruction*) { return true; },
+        [](const HloComputation* a, const HloComputation* b) {
+          return *a == *b;
+        });
+    if (!identical_ignoring_operands) {
+      return false;
+    }
+    for (size_t i = 0; i < pair.first->operands().size(); ++i) {
+      worklist.push_back({pair.first->operand(i), pair.second->operand(i)});
+    }
+  }
+  return true;
 }
 
 Status HloComputation::ReplaceWithNewInstruction(

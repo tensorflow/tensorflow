@@ -118,6 +118,7 @@ py_library(
         ":check_ops",
         ":client",
         ":client_testlib",
+        ":clustering_ops",
         ":collective_ops",
         ":cond_v2",
         ":confusion_matrix",
@@ -2107,6 +2108,30 @@ tf_py_test(
     additional_deps = [
         ":client_testlib",
         ":clip_ops",
+        ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "clustering_ops",
+    srcs = ["ops/clustering_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":clustering_ops_gen",
+        ":framework",
+        ":ops",
+        ":training",
+    ],
+)
+
+tf_py_test(
+    name = "clustering_ops_test",
+    size = "medium",
+    srcs = ["ops/clustering_ops_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":clustering_ops",
         ":framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],

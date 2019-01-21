@@ -237,7 +237,7 @@ tf_cc_binary(
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",
-        "//tensorflow/lite/nnapi:nnapi_lib",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
     ],
 )
 

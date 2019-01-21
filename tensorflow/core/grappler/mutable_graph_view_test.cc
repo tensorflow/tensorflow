@@ -141,6 +141,58 @@ void CheckGraph(const MutableGraphView& mutable_graph) {
   }
 }
 
+TEST(MutableGraphViewTest, AddSubgraph) {
+  GraphDef graph_def = test::function::GDef(
+      {
+          NDef("foo", "NotImportant", {}, {}),
+          NDef("bar", "NotImportant", {}, {}),
+          NDef("baz", "NotImportant", {"foo", "bar"}),
+      },
+      /*funcs=*/{});
+  MutableGraphView graph(&graph_def);
+
+  // `s/bar` node has inputs that are valid only if we add subgraph into the
+  // original graph.
+  GraphDef subgraph = test::function::GDef(
+      {
+          NDef("s/n0", "NotImportant", {}, {}),
+          NDef("s/n1", "NotImportant", {"bar", "s/n0"}, {}),
+      },
+      /*funcs=*/{});
+
+  TF_EXPECT_OK(graph.AddSubgraph(std::move(subgraph)));
+
+  // Fanins and fanouts must be updated for the nodes of the original graph, and
+  // added subgraph.
+  CheckNode(graph, "bar", "NotImportant", "", {}, {}, {"baz:1", "s/n1"});
+  CheckNode(graph, "s/n1", "NotImportant", "", {}, {"bar", "s/n0"}, {});
+  CheckGraph(graph);
+}
+
+// TODO(ezhulenev): Add support for adding a subgraph and merging function
+// libraries.
+TEST(MutableGraphViewTest, AddSubgraphWithFunctionLibrary) {
+  GraphDef graph_def = test::function::GDef(
+      {
+          NDef("foo", "NotImportant", {}, {}),
+          NDef("bar", "NotImportant", {}, {}),
+          NDef("baz", "NotImportant", {"foo", "bar"}),
+      },
+      /*funcs=*/{});
+  MutableGraphView graph(&graph_def);
+
+  FunctionDef x_times_two = test::function::XTimesTwo();
+  GraphDef subgraph = test::function::GDef(
+      {
+          NDef("s/n0", "NotImportant", {}, {}),
+          NDef("s/n1", "NotImportant", {"bar", "s/n0"}, {}),
+      },
+      /*funcs=*/{x_times_two});
+
+  Status status = graph.AddSubgraph(std::move(subgraph));
+  EXPECT_FALSE(status.ok());
+}
+
 TEST(MutableGraphViewTest, AddAndUpdateFanouts) {
   // Actual node.op() is not important in this test.
   GraphDef graph_def = test::function::GDef(

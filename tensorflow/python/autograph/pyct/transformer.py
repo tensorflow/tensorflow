@@ -35,15 +35,17 @@ class AutoGraphParseError(SyntaxError):
 
 # TODO(mdan): Use namedtuple.
 class EntityInfo(object):
-  """Contains information about a Python entity. Immutable.
+  """Contains information about a Python entity.
+
+  Immutable.
 
   Examples of entities include functions and classes.
 
   Attributes:
     source_code: The entity's source code.
     source_file: The entity's source file.
-    namespace: Dict[str, ], containing symbols visible to the entity
-        (excluding parameters).
+    namespace: Dict[str, ], containing symbols visible to the entity (excluding
+      parameters).
     arg_values: dict[str->*], containing parameter values, if known.
     arg_types: dict[str->*], containing parameter types, if known.
     owner_type: The surrounding class type of the function, if present.
@@ -199,7 +201,9 @@ class Base(gast.NodeTransformer):
   # TODO(mdan): Document all extra features.
 
   def __init__(self, entity_info):
-    """Initialize the transformer. Subclasses should call this.
+    """Initialize the transformer.
+
+    Subclasses should call this.
 
     Args:
       entity_info: An EntityInfo object.
@@ -232,13 +236,15 @@ class Base(gast.NodeTransformer):
     return len(self._local_scope_state)
 
   def enter_local_scope(self, inherit=None):
-    """Deprecated. Use self.state instead.
+    """Deprecated.
+
+    Use self.state instead.
 
     Marks entry into a new local scope.
 
     Args:
-      inherit: Optional enumerable of variable names to copy from the
-          parent scope.
+      inherit: Optional enumerable of variable names to copy from the parent
+        scope.
     """
     scope_entered = {}
     if inherit:
@@ -249,13 +255,15 @@ class Base(gast.NodeTransformer):
     self._local_scope_state.append(scope_entered)
 
   def exit_local_scope(self, keep=None):
-    """Deprecated. Use self.state instead.
+    """Deprecated.
+
+    Use self.state instead.
 
     Marks exit from the current local scope.
 
     Args:
-      keep: Optional enumerable of variable names to copy into the
-          parent scope.
+      keep: Optional enumerable of variable names to copy into the parent scope.
+
     Returns:
       A dict containing the scope that has just been exited.
     """
@@ -390,11 +398,11 @@ class Base(gast.NodeTransformer):
 
     Args:
       targets: list, tuple of or individual AST node. Should be used with the
-          targets field of an ast.Assign node.
+        targets field of an ast.Assign node.
       values: an AST node.
       apply_fn: a function of a single argument, which will be called with the
-          respective nodes of each single assignment. The signature is
-          apply_fn(target, value), no return value.
+        respective nodes of each single assignment. The signature is
+        apply_fn(target, value), no return value.
     """
     if not isinstance(targets, (list, tuple)):
       targets = (targets,)
@@ -429,9 +437,9 @@ class Base(gast.NodeTransformer):
       # call `visit`.  The error needs to be raised before the exception handler
       # below is installed, because said handler will mess up if `node` is not,
       # in fact, a node.
-      msg = (
-          'invalid value for "node": expected "ast.AST", got "{}"; to'
-          ' visit lists of nodes, use "visit_block" instead').format(type(node))
+      msg = ('invalid value for "node": expected "ast.AST", got "{}"; to'
+             ' visit lists of nodes, use "visit_block" instead').format(
+                 type(node))
       raise ValueError(msg)
 
     did_enter_function = False

@@ -542,7 +542,7 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
       break;
     }
     case C128: {
-      auto result_or = ElementWiseUnaryOpImpl<float, complex128>(
+      auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
           real, [](complex128 elem_operand) { return std::real(elem_operand); },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));

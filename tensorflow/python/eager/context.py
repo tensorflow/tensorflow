@@ -643,6 +643,10 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
 
+  def has_function(self, name):
+    """Check if a function `name` is registered."""
+    return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
+
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
 

@@ -25,6 +25,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
@@ -56,6 +57,9 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                dtype=None,
                constraint=None,
                add_initializers_to=None,
+               lifted_initializer_graph=None,
+               lifted_all_initializers=None,
+               lifted_placeholders=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -89,6 +93,11 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       add_initializers_to: if not None and not in legacy graph mode, the
         initializer tensor will be added to this map instead of adding the
         assignment to the function.
+      lifted_initializer_graph: FuncGraph to try to lift initializers to.
+      lifted_all_initializers: list with one boolean element, which will be
+        set to False if we cannot lift this initializer to the above graph.
+      lifted_placeholders: placeholders for resource handles lifted out of
+        this graph.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -167,6 +176,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
               self._initializer_op = resource_variable_ops.assign_variable_op(
                   self._handle, lifted_initializer, name=n)
+              assign = self._initializer_op
           with ops.name_scope("Read"), ops.colocate_with(self._handle):
             # Manually assign reads to the handle's device to avoid log
             # messages.
@@ -177,6 +187,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       else:
         if add_initializers_to is not None:
           add_initializers_to[self] = initial_value
+          assign = None
         else:
           def assign_fn():
             with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
@@ -190,9 +201,18 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             return ops.convert_to_tensor(0)
           # Note: this cond is always guaranteed to run because we're inside a
           # defun which will insert automatic control dependencies.
-          control_flow_ops.cond(
+          assign = control_flow_ops.cond(
               resource_variable_ops.var_is_initialized_op(self._handle),
               not_assign_fn, assign_fn)
+      if lifted_initializer_graph is not None and assign is not None:
+        try:
+          handle_placeholder = ops.convert_to_tensor(self._handle)
+          op_map = lift_to_graph.lift_to_graph(
+              assign, lifted_initializer_graph,
+              sources=[handle_placeholder])
+          lifted_placeholders.append((self._handle, op_map[handle_placeholder]))
+        except ValueError:
+          lifted_all_initializers[0] = False
 
     # After the handle has been created, set up a way to clean it up when
     # executing eagerly. We'll hold the only reference to the deleter, so that
@@ -203,6 +223,19 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       self._handle_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._handle, handle_device=self._handle.device)
     self._cached_shape_as_list = None
+
+
+class FunctionDeleter(object):
+
+  def __init__(self, func_graph):
+    self.func_graph = func_graph
+
+  def __del__(self):
+    try:
+      func_graph_module.dismantle_func_graph(self.func_graph)
+    except:  # pylint: disable=bare-except
+      # Note: bare except here because this can be noisy at shutdown time.
+      pass
 
 
 class Function(object):
@@ -296,11 +329,17 @@ class Function(object):
     """
 
     created_variables = []
+    lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
+    lifted_all_initializers = [True]
+    lifted_placeholders = []
 
     def variable_capturing_scope(unused_next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
       v = UnliftedInitializerVariable(
-          add_initializers_to=add_initializers_to, **kwds)
+          add_initializers_to=add_initializers_to,
+          lifted_initializer_graph=lifted_initializer_graph,
+          lifted_all_initializers=lifted_all_initializers,
+          lifted_placeholders=lifted_placeholders, **kwds)
       created_variables.append(weakref.ref(v))
       return v
 
@@ -308,9 +347,13 @@ class Function(object):
     self._stateful_fn = self._defun_with_scope(variable_capturing_scope)
     self._stateful_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
+    self._lifted_initializer_graph = lifted_initializer_graph
+    self._graph_deleter = FunctionDeleter(self._lifted_initializer_graph)
+    self._lifted_placeholders = lifted_placeholders
     self._concrete_stateful_fn = (
         self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
             *args, **kwds))
+    self._lifted_all_initializers = lifted_all_initializers[0]
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
@@ -338,6 +381,17 @@ class Function(object):
 
     # This is the first call of __call__, so we have to initialize.
     self._initialize(args, kwds)
+    if self._lifted_all_initializers and self._lifted_placeholders:
+      with ops.init_scope():
+        handles, placeholders = zip(*self._lifted_placeholders)
+        if context.executing_eagerly():
+          lifted_fn = function_lib._EagerDefinedFunction(  # pylint: disable=protected-access
+              "initializer" + str(ops.uid()),
+              self._lifted_initializer_graph,
+              placeholders, [], {})
+          with tape.stop_recording():
+            lifted_fn.call(context.context(), list(handles))
+      return self._stateless_fn(*args, **kwds)
     canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
 
     if not self._created_variables:

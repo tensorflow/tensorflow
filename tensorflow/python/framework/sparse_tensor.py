@@ -249,7 +249,8 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
   def _shape_invariant_to_components(self, shape=None):
     if shape is None:
       shape = self.dense_shape.shape
-      # TODO(edloper): What if shape.dense_shape.shape.ndims is None?
+    if shape.ndims is None:
+      shape = tensor_shape.TensorShape([None])
     if shape.ndims != 1:
       raise ValueError("Shape invariant for SparseTensor must have the form "
                        "TensorShape([r]), got %r" % shape)
