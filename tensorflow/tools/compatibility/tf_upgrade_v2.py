@@ -896,13 +896,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             make_initializable_iterator_deprecation,
         "*.make_one_shot_iterator":
             make_one_shot_iterator_deprecation,
-        "tf.assert_greater":
-            assert_return_type_comment,
         "tf.assert_equal":
             assert_return_type_comment,
         "tf.assert_none_equal":
-            assert_return_type_comment,
-        "tf.assert_less":
             assert_return_type_comment,
         "tf.assert_negative":
             assert_return_type_comment,
