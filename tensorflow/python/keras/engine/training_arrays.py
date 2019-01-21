@@ -60,6 +60,7 @@ def model_iteration(model,
                     validation_freq=1,
                     mode=ModeKeys.TRAIN,
                     validation_in_fit=False,
+                    prepared_feed_values_from_dataset=False,
                     steps_name='steps',
                     **kwargs):
   """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
@@ -94,11 +95,14 @@ def model_iteration(model,
         which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
         validation at the end of the 1st, 2nd, and 10th epochs.
       mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
-      validation_in_fit: DEPRECATED: if true, then this method is invoked from
-        within training iteration (for validation). In this case, do not copy
-        weights when using a tf.distribute.Strategy. The input is deprecated as
-        it is not required if the user creates a distributed model under the
-        distribution strategy scope rather than passing it to compile.
+      validation_in_fit: if true, then this method is invoked from within
+        training iteration (for validation). In the case where `val_inputs` is a
+        dataset, this flag indicates that its iterator and feed values are
+        already created so should properly reuse resources.
+      prepared_feed_values_from_dataset: if True, `inputs` is a list of feed
+        tensors returned from `_prepare_feed_values` call on the validation
+        dataset, so do not call it again on `inputs`. Should only be used for
+        inline validation (i.e., only if `validation_in_fit` is also True).
       steps_name: The string name of the steps argument, either `steps`,
         `validation_steps`, or `steps_per_epoch`. Only used for error message
         formatting.
@@ -133,10 +137,6 @@ def model_iteration(model,
           inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
     input_iterator = _get_iterator(inputs, model._distribution_strategy)
 
-  val_iterator = None
-  if isinstance(val_inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
-    val_iterator = _get_iterator(val_inputs, model._distribution_strategy)
-
   if mode == ModeKeys.TRAIN:
     _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
 
@@ -156,12 +156,27 @@ def model_iteration(model,
 
   # Prepare input data.
   inputs = input_iterator or inputs
-  ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)
+  if validation_in_fit and prepared_feed_values_from_dataset:
+    # When invoking validation in training loop, avoid creating iterator and
+    # list of feed values for the same validation dataset multiple times (which
+    # essentially would call `iterator.get_next()` that slows down execution and
+    # leads to OOM errors eventually.
+    ins = inputs
+  else:
+    ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)
   if not is_dataset:
     num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
                                                      steps_per_epoch)
   else:
     num_samples_or_steps = steps_per_epoch
+
+  # Prepare validation data. Hold references to the iterator and the input list
+  # to properly reinitialize and reuse in multiple validation passes.
+  val_iterator = None
+  if isinstance(val_inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    val_iterator = _get_iterator(val_inputs, model._distribution_strategy)
+    val_inputs = _prepare_feed_values(
+        model, val_iterator, val_targets, val_sample_weights, ModeKeys.TEST)
 
   # Configure callbacks.
   count_mode = 'steps' if use_steps else 'samples'
@@ -338,7 +353,6 @@ def model_iteration(model,
     if (do_validation and
         training_utils.should_run_validation(validation_freq, epoch) and
         not callbacks.model.stop_training):
-      val_inputs = val_iterator or val_inputs
       val_results = model_iteration(
           model,
           val_inputs,
@@ -350,6 +364,7 @@ def model_iteration(model,
           verbose=0,
           mode=ModeKeys.TEST,
           validation_in_fit=True,
+          prepared_feed_values_from_dataset=(val_iterator is not None),
           steps_name='validation_steps')
       if not isinstance(val_results, list):
         val_results = [val_results]
@@ -366,7 +381,6 @@ def model_iteration(model,
     # Reinitialize dataset iterator for the next epoch.
     if reset_dataset_after_each_epoch and epoch < epochs - 1:
       _reinitialize_iterator(input_iterator, model._distribution_strategy)
-      ins = _prepare_feed_values(model, input_iterator, None, None, mode)
 
   callbacks._call_end_hook(mode)
 
