@@ -1235,17 +1235,18 @@ def _use_cuda_clang(repository_ctx):
   return _flag_enabled(repository_ctx, "TF_CUDA_CLANG")
 
 
-def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
+def _compute_cuda_extra_copts(repository_ctx, compute_capabilities, cuda_toolkit_path):
   if _use_cuda_clang(repository_ctx):
-    capability_flags = [
+    flags = [
         "--cuda-gpu-arch=sm_" + cap.replace(".", "")
         for cap in compute_capabilities
     ]
+    flags.append("--cuda-path=%s" % cuda_toolkit_path)
   else:
     # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
     # TODO(csigg): Make this consistent with cuda clang and pass to crosstool.
-    capability_flags = []
-  return str(capability_flags)
+    flags = []
+  return str(flags)
 
 
 def _create_local_cuda_repository(repository_ctx):
@@ -1325,6 +1326,7 @@ def _create_local_cuda_repository(repository_ctx):
               _compute_cuda_extra_copts(
                   repository_ctx,
                   cuda_config.compute_capabilities,
+                  cuda_config.cuda_toolkit_path,
               ),
       },
   )
@@ -1505,6 +1507,7 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
               _compute_cuda_extra_copts(
                   repository_ctx,
                   compute_capabilities(repository_ctx),
+                  cuda_toolkit_path(repository_ctx),
               ),
       },
   )
