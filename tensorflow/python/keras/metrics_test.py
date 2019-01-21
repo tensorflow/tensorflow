@@ -23,6 +23,7 @@ import os
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +31,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
+from tensorflow.python.keras import Model
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
@@ -967,6 +969,357 @@ class MeanRelativeErrorTest(test.TestCase):
     self.assertEqual(self.evaluate(result), 0)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class MeanIoUTest(test.TestCase):
+
+  def test_config(self):
+    m_obj = metrics.MeanIoU(num_classes=2, name='mean_iou')
+    self.assertEqual(m_obj.name, 'mean_iou')
+    self.assertEqual(m_obj.num_classes, 2)
+
+    m_obj2 = metrics.MeanIoU.from_config(m_obj.get_config())
+    self.assertEqual(m_obj2.name, 'mean_iou')
+    self.assertEqual(m_obj2.num_classes, 2)
+
+  def test_unweighted(self):
+    y_pred = constant_op.constant([0, 1, 0, 1], dtype=dtypes.float32)
+    y_true = constant_op.constant([0, 0, 1, 1])
+
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred)
+
+    # cm = [[1, 1],
+    #       [1, 1]]
+    # sum_row = [2, 2], sum_col = [2, 2], true_positives = [1, 1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (1 / (2 + 2 - 1) + 1 / (2 + 2 - 1)) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+  def test_weighted(self):
+    y_pred = constant_op.constant([0, 1, 0, 1], dtype=dtypes.float32)
+    y_true = constant_op.constant([0, 0, 1, 1])
+    sample_weight = constant_op.constant([0.2, 0.3, 0.4, 0.1])
+
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # cm = [[0.2, 0.3],
+    #       [0.4, 0.1]]
+    # sum_row = [0.6, 0.4], sum_col = [0.5, 0.5], true_positives = [0.2, 0.1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (0.2 / (0.6 + 0.5 - 0.2) + 0.1 / (0.4 + 0.5 - 0.1)) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+  def test_multi_dim_input(self):
+    y_pred = constant_op.constant([[0, 1], [0, 1]], dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 0], [1, 1]])
+    sample_weight = constant_op.constant([[0.2, 0.3], [0.4, 0.1]])
+
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # cm = [[0.2, 0.3],
+    #       [0.4, 0.1]]
+    # sum_row = [0.6, 0.4], sum_col = [0.5, 0.5], true_positives = [0.2, 0.1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (0.2 / (0.6 + 0.5 - 0.2) + 0.1 / (0.4 + 0.5 - 0.1)) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+  def test_zero_valid_entries(self):
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+    self.assertAllClose(self.evaluate(m_obj.result()), 0, atol=1e-3)
+
+  def test_zero_and_non_zero_entries(self):
+    y_pred = constant_op.constant([1], dtype=dtypes.float32)
+    y_true = constant_op.constant([1])
+
+    m_obj = metrics.MeanIoU(num_classes=2)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+    result = m_obj(y_true, y_pred)
+
+    # cm = [[0, 0],
+    #       [0, 1]]
+    # sum_row = [0, 1], sum_col = [0, 1], true_positives = [0, 1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (0 + 1 / (1 + 1 - 1)) / 1
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+
+class MeanTensorTest(keras_parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_config(self):
+    m = metrics.MeanTensor(name='mean_by_element')
+
+    # check config
+    self.assertEqual(m.name, 'mean_by_element')
+    self.assertTrue(m.stateful)
+    self.assertEqual(m.dtype, dtypes.float32)
+    self.assertEqual(len(m.variables), 0)
+
+    with self.assertRaisesRegexp(ValueError, 'does not have any result yet'):
+      m.result()
+
+    self.evaluate(m([[3], [5], [3]]))
+    self.assertAllEqual(m._shape, [3, 1])
+
+    m2 = metrics.MeanTensor.from_config(m.get_config())
+    self.assertEqual(m2.name, 'mean_by_element')
+    self.assertTrue(m2.stateful)
+    self.assertEqual(m2.dtype, dtypes.float32)
+    self.assertEqual(len(m2.variables), 0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_unweighted(self):
+    m = metrics.MeanTensor(dtype=dtypes.float64)
+
+    # check __call__()
+    self.assertAllClose(self.evaluate(m([100, 40])), [100, 40])
+    self.assertAllClose(self.evaluate(m.total), [100, 40])
+    self.assertAllClose(self.evaluate(m.count), [1, 1])
+
+    # check update_state() and result() + state accumulation + tensor input
+    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+    self.evaluate(update_op)
+    self.assertAllClose(self.evaluate(m.result()), [50.5, 22.5])
+    self.assertAllClose(self.evaluate(m.total), [101, 45])
+    self.assertAllClose(self.evaluate(m.count), [2, 2])
+
+    # check reset_states()
+    m.reset_states()
+    self.assertAllClose(self.evaluate(m.total), [0, 0])
+    self.assertAllClose(self.evaluate(m.count), [0, 0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_weighted(self):
+    m = metrics.MeanTensor(dtype=dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float64)
+
+    # check scalar weight
+    result_t = m([100, 30], sample_weight=0.5)
+    self.assertAllClose(self.evaluate(result_t), [100, 30])
+    self.assertAllClose(self.evaluate(m.total), [50, 15])
+    self.assertAllClose(self.evaluate(m.count), [0.5, 0.5])
+
+    # check weights not scalar and weights rank matches values rank
+    result_t = m([1, 5], sample_weight=[1, 0.2])
+    result = self.evaluate(result_t)
+    self.assertAllClose(result, [51 / 1.5, 16 / 0.7], 2)
+    self.assertAllClose(self.evaluate(m.total), [51, 16])
+    self.assertAllClose(self.evaluate(m.count), [1.5, 0.7])
+
+    # check weights broadcast
+    result_t = m([1, 2], sample_weight=0.5)
+    self.assertAllClose(self.evaluate(result_t), [51.5 / 2, 17 / 1.2])
+    self.assertAllClose(self.evaluate(m.total), [51.5, 17])
+    self.assertAllClose(self.evaluate(m.count), [2, 1.2])
+
+    # check weights squeeze
+    result_t = m([1, 5], sample_weight=[[1], [0.2]])
+    self.assertAllClose(self.evaluate(result_t), [52.5 / 3, 18 / 1.4])
+    self.assertAllClose(self.evaluate(m.total), [52.5, 18])
+    self.assertAllClose(self.evaluate(m.count), [3, 1.4])
+
+    # check weights expand
+    m = metrics.MeanTensor((2, 1), dtype=dtypes.float64)
+    self.evaluate(variables.variables_initializer(m.variables))
+    result_t = m([[1], [5]], sample_weight=[1, 0.2])
+    self.assertAllClose(self.evaluate(result_t), [[1], [5]])
+    self.assertAllClose(self.evaluate(m.total), [[1], [1]])
+    self.assertAllClose(self.evaluate(m.count), [[1], [0.2]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_value_shape(self):
+    m = metrics.MeanTensor(dtype=dtypes.float64)
+    m([1])
+    with self.assertRaisesRegexp(
+        ValueError, 'MeanTensor input values must always have the same shape'):
+      m([1, 5])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_build_in_tf_function(self):
+    """Ensure that variables are created correctly in a tf function."""
+    m = metrics.MeanTensor(dtype=dtypes.float64)
+
+    @eager_function.defun
+    def call_metric(x):
+      return m(x)
+
+    self.assertAllClose(self.evaluate(call_metric([100, 40])), [100, 40])
+    self.assertAllClose(self.evaluate(m.total), [100, 40])
+    self.assertAllClose(self.evaluate(m.count), [1, 1])
+    self.assertAllClose(self.evaluate(call_metric([20, 2])), [60, 21])
+
+  def test_in_keras_model(self):
+    with context.eager_mode():
+      class ModelWithMetric(Model):
+
+        def __init__(self):
+          super(ModelWithMetric, self).__init__()
+          self.dense1 = layers.Dense(
+              3, activation='relu', kernel_initializer='ones')
+          self.dense2 = layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones')
+          self.mean_tensor = metrics.MeanTensor()
+
+        def call(self, x):
+          x = self.dense1(x)
+          x = self.dense2(x)
+          self.mean_tensor(self.dense1.kernel)
+          return x
+
+      model = ModelWithMetric()
+      model.compile(
+          loss='mae',
+          optimizer='rmsprop',
+          run_eagerly=True)
+
+      x = np.ones((100, 4))
+      y = np.zeros((100, 1))
+      model.evaluate(x, y, batch_size=50)
+      self.assertAllClose(self.evaluate(model.mean_tensor.result()),
+                          np.ones((4, 3)))
+      self.assertAllClose(self.evaluate(model.mean_tensor.total),
+                          np.full((4, 3), 2))
+      self.assertAllClose(self.evaluate(model.mean_tensor.count),
+                          np.full((4, 3), 2))
+
+      model.evaluate(x, y, batch_size=25)
+      self.assertAllClose(self.evaluate(model.mean_tensor.result()),
+                          np.ones((4, 3)))
+      self.assertAllClose(self.evaluate(model.mean_tensor.total),
+                          np.full((4, 3), 4))
+      self.assertAllClose(self.evaluate(model.mean_tensor.count),
+                          np.full((4, 3), 4))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class BinaryCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    bce_obj = metrics.BinaryCrossentropy(
+        name='bce', dtype=dtypes.int32, label_smoothing=0.2)
+    self.assertEqual(bce_obj.name, 'bce')
+    self.assertEqual(bce_obj._dtype, dtypes.int32)
+
+    old_config = bce_obj.get_config()
+    self.assertAllClose(self.evaluate(old_config['label_smoothing']), 0.2, 1e-3)
+
+    # Check save and restore config
+    bce_obj2 = metrics.BinaryCrossentropy.from_config(old_config)
+    self.assertEqual(bce_obj2.name, 'bce')
+    self.assertEqual(bce_obj2._dtype, dtypes.int32)
+    new_config = bce_obj2.get_config()
+    self.assertAllClose(self.evaluate(new_config['label_smoothing']), 0.2, 1e-3)
+
+  def test_unweighted(self):
+    bce_obj = metrics.BinaryCrossentropy()
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
+    result = bce_obj(y_true, y_pred)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Metric = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #        = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #           -log(Y_MAX + EPSILON), -log(1)]
+    #        = [(0 + 15.33) / 2, (0 + 0) / 2]
+    # Reduced metric = 7.665 / 2
+
+    self.assertAllClose(self.evaluate(result), 3.833, atol=1e-3)
+
+  def test_unweighted_with_logits(self):
+    bce_obj = metrics.BinaryCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    y_pred = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
+    result = bce_obj(y_true, y_pred)
+
+    # Metric = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #              (where x = logits and z = y_true)
+    #        = [((100 - 100 * 1 + log(1 + exp(-100))) +
+    #            (0 + 100 * 0 + log(1 + exp(-100))) +
+    #            (100 - 100 * 1 + log(1 + exp(-100))),
+    #           ((100 - 100 * 0 + log(1 + exp(-100))) +
+    #            (100 - 100 * 1 + log(1 + exp(-100))) +
+    #            (0 + 100 * 1 + log(1 + exp(-100))))]
+    #        = [(0 + 0 + 0) / 3, 200 / 3]
+    # Reduced metric = (0 + 66.666) / 2
+
+    self.assertAllClose(self.evaluate(result), 33.333, atol=1e-3)
+
+  def test_weighted(self):
+    bce_obj = metrics.BinaryCrossentropy()
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = bce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Metric = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #        = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #           -log(Y_MAX + EPSILON), -log(1)]
+    #        = [(0 + 15.33) / 2, (0 + 0) / 2]
+    # Weighted metric = [7.665 * 1.5, 0]
+    # Reduced metric = 7.665 * 1.5 / (1.5 + 2)
+
+    self.assertAllClose(self.evaluate(result), 3.285, atol=1e-3)
+
+  def test_weighted_from_logits(self):
+    bce_obj = metrics.BinaryCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    y_pred = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
+    sample_weight = constant_op.constant([2., 2.5])
+    result = bce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # Metric = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #              (where x = logits and z = y_true)
+    #        = [(0 + 0 + 0) / 3, 200 / 3]
+    # Weighted metric = [0, 66.666 * 2.5]
+    # Reduced metric = 66.666 * 2.5 / (2 + 2.5)
+
+    self.assertAllClose(self.evaluate(result), 37.037, atol=1e-3)
+
+  def test_label_smoothing(self):
+    logits = constant_op.constant(((100., -100., -100.)))
+    y_true = constant_op.constant(((1, 0, 1)))
+    label_smoothing = 0.1
+    # Metric: max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #             (where x = logits and z = y_true)
+    # Label smoothing: z' = z * (1 - L) + 0.5L
+    # After label smoothing, label 1 becomes 1 - 0.5L
+    #                        label 0 becomes 0.5L
+    # Applying the above two fns to the given input:
+    # (100 - 100 * (1 - 0.5 L)  + 0 +
+    #  0   + 100 * (0.5 L)      + 0 +
+    #  0   + 100 * (1 - 0.5 L)  + 0) * (1/3)
+    #  = (100 + 50L) * 1/3
+    bce_obj = metrics.BinaryCrossentropy(
+        from_logits=True, label_smoothing=label_smoothing)
+    self.evaluate(variables.variables_initializer(bce_obj.variables))
+    result = bce_obj(y_true, logits)
+    expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
+    self.assertAllClose(expected_value, self.evaluate(result), atol=1e-3)
+
+
 def _get_model(compile_metrics):
   model_layers = [
       layers.Dense(3, activation='relu', kernel_initializer='ones'),
@@ -1093,6 +1446,19 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(auc_obj.false_positives[1]), 25.)
       self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
       self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
+
+  def test_reset_states_mean_iou(self):
+    m_obj = metrics.MeanIoU(num_classes=2)
+    model = _get_model([m_obj])
+    x = np.asarray([[0, 0, 0, 0], [1, 1, 1, 1], [1, 0, 1, 0], [0, 1, 0, 1]],
+                   dtype=np.float32)
+    y = np.asarray([[0], [1], [1], [1]], dtype=np.float32)
+    model.evaluate(x, y)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
+    model.evaluate(x, y)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
 
 
 if __name__ == '__main__':

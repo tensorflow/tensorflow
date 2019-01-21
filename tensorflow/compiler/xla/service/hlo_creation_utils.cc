@@ -156,9 +156,9 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
       dynamic_update_slice_shape, operand, update, scalar_start_indices));
 }
 
-StatusOr<HloInstruction*> MakeBroadcastHlo(
-    HloInstruction* operand, absl::Span<const int64> broadcast_dimensions,
-    absl::Span<const int64> result_shape_bounds) {
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64> broadcast_dimensions,
+                                 absl::Span<const int64> result_shape_bounds) {
   HloComputation* computation = operand->parent();
   Shape broadcast_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
                                                result_shape_bounds);
@@ -394,9 +394,9 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
   return MakePadHlo(operand, zero, padding_config);
 }
 
-StatusOr<HloInstruction*> BroadcastZeros(
-    HloComputation* computation, PrimitiveType element_type,
-    absl::Span<const int64> broadcast_dimensions) {
+HloInstruction* BroadcastZeros(HloComputation* computation,
+                               PrimitiveType element_type,
+                               absl::Span<const int64> broadcast_dimensions) {
   HloInstruction* zero = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
   return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{},

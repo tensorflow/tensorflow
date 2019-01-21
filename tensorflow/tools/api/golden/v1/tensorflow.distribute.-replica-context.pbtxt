@@ -7,10 +7,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "distribution_strategy"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "num_replicas_in_sync"
     mtype: "<type \'property\'>"
   }

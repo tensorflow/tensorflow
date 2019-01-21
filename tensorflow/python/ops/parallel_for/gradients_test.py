@@ -70,9 +70,10 @@ def fully_connected_model_fn(batch_size, activation_size, num_layers):
   return inp, model(inp)
 
 
-def lstm_model_fn(batch_size, state_size, steps):
+def lstm_model_fn(batch_size, state_size, steps, inputs_size=None):
+  inputs_size = inputs_size or state_size
   inputs = [
-      random_ops.random_normal([batch_size, state_size]) for _ in range(steps)
+      random_ops.random_normal([batch_size, inputs_size]) for _ in range(steps)
   ]
   cell = rnn_cell.BasicLSTMCell(state_size)
   init_state = cell.zero_state(batch_size, dtypes.float32)
@@ -108,8 +109,9 @@ def create_fc_batch_jacobian(batch_size, activation_size, num_layers):
   return pfor_jacobian, while_jacobian
 
 
-def create_lstm_batch_jacobian(batch_size, state_size, steps):
-  inp, output = lstm_model_fn(batch_size, state_size, steps)
+def create_lstm_batch_jacobian(batch_size, state_size, steps, inputs_size=None):
+  inp, output = lstm_model_fn(batch_size, state_size, steps,
+                              inputs_size=inputs_size)
   pfor_jacobian = gradients.batch_jacobian(output, inp, use_pfor=True)
   while_jacobian = gradients.batch_jacobian(output, inp, use_pfor=False)
   return pfor_jacobian, while_jacobian
@@ -181,9 +183,10 @@ def create_fc_per_eg_grad(batch_size, activation_size, num_layers):
   return pfor_outputs, while_outputs
 
 
-def create_lstm_per_eg_grad(batch_size, state_size, steps):
+def create_lstm_per_eg_grad(batch_size, state_size, steps, inputs_size=None):
+  inputs_size = inputs_size or state_size
   inputs = [
-      random_ops.random_normal([batch_size, state_size]) for _ in range(steps)
+      random_ops.random_normal([batch_size, inputs_size]) for _ in range(steps)
   ]
   cell = rnn_cell.BasicLSTMCell(state_size)
   init_state = cell.zero_state(batch_size, dtypes.float32)
@@ -296,6 +299,16 @@ def create_mnist_per_eg_grad(batch_size, data_format, training):
       loop_fn, [dtypes.float32] * len(variables.trainable_variables()),
       batch_size)
   return pfor_outputs, while_outputs
+
+
+def create_mnist_batch_jacobian(batch_size, data_format, training):
+  images = random_ops.random_uniform([batch_size, 28, 28])
+  model = Mnist(data_format)
+  logits = model(images, training=training)
+
+  pfor_jacobian = gradients.batch_jacobian(logits, images, use_pfor=True)
+  while_jacobian = gradients.batch_jacobian(logits, images, use_pfor=False)
+  return pfor_jacobian, while_jacobian
 
 
 def create_mnist_per_eg_jacobian(batch_size, data_format, training):
@@ -479,7 +492,8 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(pfor_jacobian, while_jacobian)
 
   def test_lstm_batch_jacobian(self):
-    pfor_jacobian, while_jacobian = create_lstm_batch_jacobian(8, 4, 2)
+    pfor_jacobian, while_jacobian = create_lstm_batch_jacobian(8, 4, 2,
+                                                               inputs_size=128)
     self.run_and_assert_equal(pfor_jacobian, while_jacobian)
 
   @test_util.disable_xla("This test never passed for XLA")
@@ -569,7 +583,7 @@ class GradientsBenchmarks(test.Benchmark):
       for _ in range(iters):
         self.evaluate(targets)
       end = time.time()
-    avg_time_ms = 1000 * (end - begin) / iters
+    avg_time_ms = (1000 * (end - begin)) / iters
     self.report_benchmark(iters=iters, wall_time=avg_time_ms, name=name)
     return avg_time_ms
 
@@ -581,7 +595,8 @@ class GradientsBenchmarks(test.Benchmark):
 
   def benchmark_lstm_batch_jacobian(self):
     with ops.Graph().as_default():
-      pfor_jacobian, while_jacobian = create_lstm_batch_jacobian(100, 32, 8)
+      pfor_jacobian, while_jacobian = create_lstm_batch_jacobian(
+          100, 32, 8, inputs_size=128)
       self._run(pfor_jacobian, 100, name="lstm_batch_jacobian_pfor")
       self._run(while_jacobian, 20, name="lstm_batch_jacobian_while")
 
@@ -630,12 +645,25 @@ class GradientsBenchmarks(test.Benchmark):
 
   def benchmark_mnist_per_eg_jacobian(self):
     with ops.Graph().as_default():
-      data_format = ("channels_first"
-                     if test.is_gpu_available() else "channels_last")
+      if test.is_gpu_available():
+        data_format = "channels_first"
+      else:
+        data_format = "channels_last"
       pfor_outputs, while_outputs = create_mnist_per_eg_jacobian(
           16, data_format, training=True)
       self._run(pfor_outputs, 20, name="mnist_per_eg_jacobian_pfor")
       self._run(while_outputs, 20, name="mnist_per_eg_jacobian_while")
+
+  def benchmark_mnist_batch_jacobian(self):
+    with ops.Graph().as_default():
+      if test.is_gpu_available():
+        data_format = "channels_first"
+      else:
+        data_format = "channels_last"
+      pfor_outputs, while_outputs = create_mnist_batch_jacobian(
+          128, data_format, training=True)
+      self._run(pfor_outputs, 20, name="mnist_batch_jacobian_pfor")
+      self._run(while_outputs, 20, name="mnist_batch_jacobian_while")
 
   def benchmark_fc_per_eg_jacobian(self):
     with ops.Graph().as_default():

@@ -322,6 +322,25 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
     return AppendStatus(first_error_, backtrace);
   }
 
+  // TODO(b/121223198): XLA backend cannot handle dynamic dimensions yet, remove
+  // all dynamic dimensions before building xla program until we have support in
+  // the backend.
+  std::function<void(ShapeProto*)> remove_dynamic_dimension =
+      [&](ShapeProto* shape) {
+        if (shape->tuple_shapes_size() != 0) {
+          for (int64 i = 0; i < shape->tuple_shapes_size(); ++i) {
+            remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
+          }
+        }
+        for (int64 i = 0; i < shape->dimensions_size(); ++i) {
+          shape->set_is_dynamic_dimension(i, false);
+        }
+      };
+
+  for (auto& instruction : instructions_) {
+    remove_dynamic_dimension(instruction.mutable_shape());
+  }
+
   HloComputationProto entry;
   SetProtoIdAndName(&entry, name_, kNameSeparator, GetNextId());
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, GetProgramShape(root_id));
@@ -2575,8 +2594,10 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
       *const_instr.mutable_shape() = literal.shape().ToProto();
       *const_instr.mutable_literal() = literal.ToProto();
       *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
-      *const_instr.mutable_name() = HloOpcodeString(HloOpcode::kConstant);
+
       const_instr.set_id(handle);
+      *const_instr.mutable_name() =
+          GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
       *entry.add_instructions() =
           const_instr;  // Add to the result constant graph.
     } else {

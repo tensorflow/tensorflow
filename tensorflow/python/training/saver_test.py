@@ -2775,7 +2775,7 @@ class ScopedGraphTest(test.TestCase):
       self.assertEqual(2.0, self.evaluate(var_dict2["variable2:0"]))
 
 
-class _OwnsAVariableSimple(checkpointable_base.CheckpointableBase):
+class _OwnsAVariableSimple(checkpointable_base.Checkpointable):
   """A Checkpointable object which can be saved using a tf.train.Saver."""
 
   def __init__(self):
@@ -2808,7 +2808,7 @@ class _MirroringSaveable(
         self._mirrored_variable.assign(tensor))
 
 
-class _OwnsMirroredVariables(checkpointable_base.CheckpointableBase):
+class _OwnsMirroredVariables(checkpointable_base.Checkpointable):
   """A Checkpointable object which returns a more complex SaveableObject."""
 
   def __init__(self):
@@ -2831,7 +2831,7 @@ class _OwnsMirroredVariables(checkpointable_base.CheckpointableBase):
     return self.non_dep_variable.name
 
 
-class NonLayerCheckpointable(checkpointable_tracking.Checkpointable):
+class NonLayerCheckpointable(checkpointable_tracking.AutoCheckpointable):
 
   def __init__(self):
     super(NonLayerCheckpointable, self).__init__()

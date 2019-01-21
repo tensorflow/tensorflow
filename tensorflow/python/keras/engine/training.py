@@ -24,6 +24,9 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import distribute_coordinator as dc
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -46,7 +49,6 @@ from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.mode_keys import ModeKeys
@@ -128,6 +130,7 @@ class Model(Network):
     # passing distribution strategy to compile rather than creating the model
     # under distribution strategy scope.
     self._compile_distribution = False
+    self._distributed_session_is_configured = False
 
     self.run_eagerly = None
 
@@ -216,6 +219,7 @@ class Model(Network):
                       'create the model under the distribution strategy scope.')
       self._distribution_strategy = distribute
       self._compile_distribution = True
+      self._distributed_session_is_configured = False
     else:
       if distribution_strategy_context.has_strategy():
         # When the user builds the model in the DS scope and cross replica
@@ -257,7 +261,7 @@ class Model(Network):
     self.optimizer = optimizer
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's checkpointable.
-    if isinstance(self.optimizer, checkpointable.CheckpointableBase):
+    if isinstance(self.optimizer, checkpointable.Checkpointable):
       self._track_checkpointable(
           self.optimizer, name='optimizer', overwrite=True)
     self.loss = loss
@@ -273,12 +277,9 @@ class Model(Network):
 
     # Set DistributionStrategy specific parameters.
     self._distributed_model = None
-    if self._distribution_strategy is not None:
-      distributed_training_utils.configure_and_create_session(
-          self._distribution_strategy)
     # Initialize model metric attributes.
     self._init_metric_attributes()
-    if not self.built:
+    if not self.built or not self.inputs or not self.outputs:
       # Model is not compilable because it does not know its number of inputs
       # and outputs, nor their shapes and names. We will compile after the first
       # time the model gets called on training data.
@@ -546,7 +547,8 @@ class Model(Network):
       # Validate all variables were correctly created in distribution scope.
       if self._distribution_strategy and not self._compile_distribution:
         for v in self.variables:
-          if v.distribute_strategy is not self._distribution_strategy:
+          strategy = self._distribution_strategy
+          if not strategy.extended.variable_created_in_scope(v):
             raise ValueError(
                 'Variable (%s) was not created in the distribution strategy '
                 'scope of (%s). It is most likely due to not all layers or '
@@ -555,7 +557,7 @@ class Model(Network):
                 'to the following.\n'
                 'with strategy.scope():\n'
                 '  model=_create_model()\n'
-                '  model.compile(...)'% (v, self._distribution_strategy))
+                '  model.compile(...)'% (v, strategy))
 
   @property
   def metrics(self):
@@ -634,6 +636,7 @@ class Model(Network):
           initial_epoch=0,
           steps_per_epoch=None,
           validation_steps=None,
+          validation_freq=1,
           max_queue_size=10,
           workers=1,
           use_multiprocessing=False,
@@ -738,6 +741,13 @@ class Model(Network):
             is a dataset or dataset iterator. Total number of steps (batches of
             samples) to draw before stopping when performing validation
             at the end of every epoch.
+        validation_freq: Only relevant if validation data is provided. Integer
+            or `collections.Container` instance (e.g. list, tuple, etc.). If an
+            integer, specifies how many training epochs to run before a new
+            validation run is performed, e.g. `validation_freq=2` runs
+            validation every 2 epochs. If a Container, specifies the epochs on
+            which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+            validation at the end of the 1st, 2nd, and 10th epochs.
         max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
             input only. Maximum size for the generator queue.
             If unspecified, `max_queue_size` will default to 10.
@@ -781,22 +791,52 @@ class Model(Network):
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      return training_distributed.fit_distributed(
-          self,
-          x=x,
-          y=y,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_split=validation_split,
-          validation_data=validation_data,
-          shuffle=shuffle,
-          class_weight=class_weight,
-          sample_weight=sample_weight,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps)
+      if training_utils.should_run_multi_worker():
+        # Multi-Worker mode runs the Keras training loop on multiple
+        # servers via the Distribute Coordinator.
+        def _worker_fn(_):
+          """Run training inside the distributed coordinator."""
+          self._configure_distributed_session()
+          return training_distributed.fit_distributed(
+              self,
+              x=x,
+              y=y,
+              batch_size=batch_size,
+              epochs=epochs,
+              verbose=verbose,
+              callbacks=callbacks,
+              validation_split=validation_split,
+              validation_data=validation_data,
+              shuffle=shuffle,
+              class_weight=class_weight,
+              sample_weight=sample_weight,
+              initial_epoch=initial_epoch,
+              steps_per_epoch=steps_per_epoch,
+              validation_steps=validation_steps)
+
+        # Independent worker only for now.
+        return dc.run_distribute_coordinator(
+            _worker_fn,
+            self._distribution_strategy,
+            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+      else:
+        self._configure_distributed_session()
+        return training_distributed.fit_distributed(
+            self,
+            x=x,
+            y=y,
+            batch_size=batch_size,
+            epochs=epochs,
+            verbose=verbose,
+            callbacks=callbacks,
+            validation_split=validation_split,
+            validation_data=validation_data,
+            shuffle=shuffle,
+            class_weight=class_weight,
+            sample_weight=sample_weight,
+            initial_epoch=initial_epoch,
+            steps_per_epoch=steps_per_epoch,
+            validation_steps=validation_steps)
 
     batch_size = self._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
@@ -814,6 +854,7 @@ class Model(Network):
           callbacks=callbacks,
           validation_data=validation_data,
           validation_steps=validation_steps,
+          validation_freq=validation_freq,
           class_weight=class_weight,
           max_queue_size=max_queue_size,
           workers=workers,
@@ -836,6 +877,7 @@ class Model(Network):
           callbacks=callbacks,
           validation_data=validation_data,
           validation_steps=validation_steps,
+          validation_freq=validation_freq,
           class_weight=class_weight,
           workers=0,
           shuffle=shuffle,
@@ -898,6 +940,7 @@ class Model(Network):
           callbacks=callbacks,
           validation_data=validation_data,
           validation_steps=validation_steps,
+          validation_freq=validation_freq,
           workers=0,
           shuffle=shuffle,
           initial_epoch=initial_epoch,
@@ -919,6 +962,7 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps,
+          validation_freq=validation_freq,
           steps_name='steps_per_epoch')
 
   def evaluate(self,
@@ -1007,6 +1051,7 @@ class Model(Network):
     """
     # Case 1: distribution strategy.
     if self._distribution_strategy:
+      self._configure_distributed_session()
       return training_distributed.evaluate_distributed(
           self,
           x=x,
@@ -1023,11 +1068,11 @@ class Model(Network):
     # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(x):
       training_utils.check_generator_arguments(y, sample_weight)
-      # TODO(fchollet): why aren't callbacks supported here?
       return self.evaluate_generator(
           x,
           steps=steps,
           verbose=verbose,
+          callbacks=callbacks,
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing)
@@ -1134,6 +1179,7 @@ class Model(Network):
     """
     # Case 1: distribution strategy.
     if self._distribution_strategy:
+      self._configure_distributed_session()
       return training_distributed.predict_distributed(self,
                                                       x=x,
                                                       batch_size=batch_size,
@@ -1146,11 +1192,11 @@ class Model(Network):
     # Case 2: generator-like. Input is Python generator, or Sequence object,
     # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(x):
-      # TODO(fchollet): why aren't callbacks supported here?
       return self.predict_generator(
           x,
           steps=steps,
           verbose=verbose,
+          callbacks=callbacks,
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing)
@@ -1392,6 +1438,7 @@ class Model(Network):
                     callbacks=None,
                     validation_data=None,
                     validation_steps=None,
+                    validation_freq=1,
                     class_weight=None,
                     max_queue_size=10,
                     workers=1,
@@ -1446,6 +1493,13 @@ class Model(Network):
             to yield from `generator` before stopping.
             Optional for `Sequence`: if unspecified, will use
             the `len(validation_data)` as a number of steps.
+        validation_freq: Only relevant if validation data is provided. Integer
+            or `collections.Container` instance (e.g. list, tuple, etc.). If an
+            integer, specifies how many training epochs to run before a new
+            validation run is performed, e.g. `validation_freq=2` runs
+            validation every 2 epochs. If a Container, specifies the epochs on
+            which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+            validation at the end of the 1st, 2nd, and 10th epochs.
         class_weight: Dictionary mapping class indices to a weight
             for the class.
         max_queue_size: Integer. Maximum size for the generator queue.
@@ -1501,6 +1555,7 @@ class Model(Network):
         callbacks=callbacks,
         validation_data=validation_data,
         validation_steps=validation_steps,
+        validation_freq=validation_freq,
         class_weight=class_weight,
         max_queue_size=max_queue_size,
         workers=workers,
@@ -2159,6 +2214,20 @@ class Model(Network):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
+    if (self.stateful and distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy) and self._distribution_strategy.
+        num_replicas_in_sync != 1):
+      raise ValueError('Single core must be used for computation on '
+                       'stateful models. Consider adding `device_assignment` '
+                       'parameter to TPUStrategy using\n'
+                       'topology = tf.contrib.distribute.'
+                       'initialize_tpu_system()\n'
+                       'device_assignment = tf.contrib.tpu.DeviceAssignment('
+                       'topology, core_assignment=tf.contrib.tpu.'
+                       'SINGLE_CORE_ASSIGNMENT)\n'
+                       'tpu_strategy = tf.contrib.distribute.TPUStrategy('
+                       'device_assignment=device_assignment)')
+
     # Validates `steps` and `shuffle` arguments right at the beginning
     # since we use it to construct the dataset object.
     # TODO(anjalisridhar): Remove this check once we refactor the
@@ -2643,6 +2712,26 @@ class Model(Network):
     self.outputs = outputs
     self.output_names = training_utils.generic_output_names(outputs)
     self.built = True
+
+  def _configure_distributed_session(self):
+    """Configure a Session for use with Distribution Strategies.
+
+    Raises:
+      ValueError: If a non-distributed Session has already been created.
+    """
+    if not self._distributed_session_is_configured:
+      if (dc_context.get_current_worker_context() is not None and
+          getattr(K._SESSION, 'session', None) is not None):  # pylint: disable=protected-access
+        raise ValueError('Session was created before `fit`, `evaluate`, '
+                         'or `predict` was called. With Multi-Worker '
+                         'mode, this is not allowed. Please avoid '
+                         'creating a Session outside of these methods. '
+                         'The Session may have been created by a call '
+                         'to `keras.backend.get_session()` or '
+                         'functions that use Sessions, like `load_weights`.')
+      distributed_training_utils.configure_and_create_session(
+          self._distribution_strategy)
+      self._distributed_session_is_configured = True
 
 
 class DistributedCallbackModel(Model):

@@ -108,8 +108,8 @@ cuda_py_test(
     additional_deps = [
         ":profiler",
         ":test",
-        "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:constant_op",
+        "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
     ],
 )
 

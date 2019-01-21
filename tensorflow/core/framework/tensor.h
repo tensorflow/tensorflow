@@ -526,7 +526,16 @@ class Tensor {
   string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
 
   /// A human-readable summary of the tensor suitable for debugging.
-  string DebugString() const;
+  // `num_values` is the number of actual data values in the tensor
+  // included in the message. If the tensor might be resident in
+  // GPU/TPU memory use DeviceSafeDebugString instead.
+  string DebugString(int num_values) const;
+  string DebugString() const { return DebugString(3); }
+
+  // Variant of DebugString() that should be used for possibly non-CPU tensors.
+  // If the tensor is not resident on CPU, we can't read its values as
+  // DebugString() does.
+  string DeviceSafeDebugString() const;
 
   /// Fill in the `TensorDescription` proto with metadata about the
   /// tensor that is useful for monitoring and debugging.
@@ -594,7 +603,7 @@ class Tensor {
       OpKernelContext* ctx, Var* var);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
-      int64 index);                // For access to RefCountIsOne().
+      int64 index);  // For access to RefCountIsOne().
   friend Status batch_util::MaybeMoveSliceToElement(
       Tensor* parent, Tensor* element,
       int64 index);  // For access to RefCountIsOne().

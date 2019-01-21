@@ -25,6 +25,7 @@ cuda_py_test(
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow:tensorflow_py",
     ],
+    tags = ["no_oss"],  # b/123045964
 )
 
 cuda_py_test(
@@ -34,5 +35,8 @@ cuda_py_test(
         ":rnn_ptb",
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
+    ],
+    tags = [
+        "oss_serial",
     ],
 )

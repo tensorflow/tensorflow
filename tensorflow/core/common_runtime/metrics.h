@@ -19,9 +19,27 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+namespace metrics {
+
+// Records that a tf.data dataset op executed by the program used autotuning.
+//
+// The `name` argument identifies the dataset (e.g. "ParallelMap").
+void RecordTFDataAutotune(const string& name);
+
+// Records the number of elements produced by a tf.data dataset.
+//
+// The `name` argument identifies the dataset (e.g. "Batch" or "Map").
+void RecordTFDataElements(const string& name, int64 num_elements);
+
+// Records the number of independent graph changes resulting from the applicaton
+// of a tf.data optimization.
+//
+// The `name` argument identifies the optimization (e.g. "noop_eliminiation").
+void RecordTFDataOptimization(const string& name, int64 num_changes);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
 
+}  // namespace metrics
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_

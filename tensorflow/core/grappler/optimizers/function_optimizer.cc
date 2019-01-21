@@ -39,11 +39,13 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
@@ -256,7 +258,7 @@ class FunctionOptimizerContext {
       : grappler_item_id_(item.id),
         graph_version_(item.graph.versions().producer()),
         opt_level_(opt_level),
-        allowed_optimizations_(item.allowed_optimizations()),
+        optimization_options_(item.optimization_options()),
         function_library_(OpRegistry::Global(), item.graph.library()),
         available_device_names_(item.devices().begin(), item.devices().end()),
         graph_view_(&item.graph) {
@@ -264,10 +266,12 @@ class FunctionOptimizerContext {
     InitializeFetchNodes(item);
   }
 
+  int graph_version() const { return graph_version_; }
+
   const RewriterConfig::Toggle opt_level() const { return opt_level_; }
 
-  const GrapplerItem::AllowedOptimizations& allowed_optimizations() const {
-    return allowed_optimizations_;
+  const GrapplerItem::OptimizationOptions& optimization_options() const {
+    return optimization_options_;
   }
 
   const FunctionLibraryDefinition& function_library() const {
@@ -403,7 +407,7 @@ class FunctionOptimizerContext {
   const string grappler_item_id_;
   const int graph_version_;
   const RewriterConfig::Toggle opt_level_;
-  const GrapplerItem::AllowedOptimizations allowed_optimizations_;
+  const GrapplerItem::OptimizationOptions optimization_options_;
   FunctionLibraryDefinition function_library_;
 
   // These fields initialized lazily only if needed.
@@ -1259,6 +1263,74 @@ Status InlineSymbolicGradient(const NodeDef& node,
 // because they are pure functions of input tensors, and can be freely
 // reordered.
 
+struct MaybeDeadOutput {
+  const NodeDef* dead_tensor_src;
+  const NodeDef* output_node_dst;
+};
+
+// Finds all function outputs that might return a dead tensor. This can happen
+// if there is no `Merge` node on the path from the `Switch` node, to the
+// function output.
+Status MaybeDeadOutputs(const FunctionOptimizerContext& ctx,
+                        const GrapplerFunctionItem& item,
+                        std::vector<MaybeDeadOutput>* maybe_dead) {
+  DCHECK(maybe_dead->empty()) << "Input argument must be an empty vector";
+
+  std::vector<const NodeDef*> dead_tensor_srcs;
+  for (const NodeDef& node : item.graph.node()) {
+    if (IsSwitch(node)) {
+      dead_tensor_srcs.push_back(&node);
+      continue;
+    }
+
+    // Regular (aka 'direct') function call can also produce dead tensors if
+    // the function body has mergeless switches.
+    const FunctionDef* func = ctx.function_library().Find(node.op());
+    if (func != nullptr) {
+      GrapplerFunctionItem func_item;
+      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
+          *func, FunctionInstantiationAttributes(*func, node),
+          ctx.function_library(), ctx.graph_version(), &func_item));
+
+      std::vector<MaybeDeadOutput> func_dead_outputs;
+      TF_RETURN_IF_ERROR(MaybeDeadOutputs(ctx, func_item, &func_dead_outputs));
+
+      if (!func_dead_outputs.empty()) dead_tensor_srcs.push_back(&node);
+    }
+  }
+
+  // If we do not have dead tensor sources in the function body, it's
+  // guaranteed that all output tensors can't become dead.
+  if (dead_tensor_srcs.empty()) return Status::OK();
+
+  // Names of the function body nodes that return function output values.
+  absl::flat_hash_set<absl::string_view> output_nodes;
+  for (const auto& output_expansion : item.outputs()) {
+    for (const auto& output_node : output_expansion.output_nodes) {
+      output_nodes.insert(output_node);
+    }
+  }
+
+  GraphTopologyView topology_view;
+  TF_RETURN_IF_ERROR(topology_view.InitializeFromGraph(item.graph));
+
+  for (const NodeDef* dead_tensor_src : dead_tensor_srcs) {
+    DfsTraversal(topology_view, {dead_tensor_src},
+                 TraversalDirection::kFollowOutputs,
+                 // Stop traversal when reached first `Merge` node.
+                 DfsPredicates::Advance(
+                     [](const NodeDef* node) { return !IsMerge(*node); }),
+                 // If we reached output node, add MaybeDeadOutput edge.
+                 DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                   if (output_nodes.find(node->name()) != output_nodes.end()) {
+                     maybe_dead->push_back({dead_tensor_src, node});
+                   }
+                 }));
+  }
+
+  return Status::OK();
+}
+
 // Returns `Status::OK()` iff `node` is an indirect function call of `func`, and
 // we know how to inline it into the main graph, otherwise returns and error
 // indicating why the function call is not inlinable.
@@ -1290,20 +1362,6 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
   if (ctx.IsFetchNode(func_node.name())) {
     return errors::FailedPrecondition(
         "Can't inline function in a Grappler item fetch set: ",
-        SummarizeNodeDef(func_node));
-  }
-
-  // We can't inline functions with `Switch` nodes in the function body, because
-  // they might have dead tensors as a function output argument (we need all
-  // intermediate tensors to compute the function gradient). `PartitionedCallOp`
-  // invokes functions with `allow_dead_tensors = true` to reset dead flag,
-  // and return default initialized tensors instead of a dead tensors.
-  // TODO(ezhulenev): Do the liveness analysis and add
-  // `IdentitytWithResurrection` nodes after all potentially dead output
-  // tensors?
-  if (absl::c_any_of(func.node_def(), IsSwitch)) {
-    return errors::FailedPrecondition(
-        "Can't inline function with `Switch` nodes in the function body: ",
         SummarizeNodeDef(func_node));
   }
 
@@ -1344,6 +1402,26 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
                                    " instantiated by ", func_node.name(),
                                    ". Error: ", item_status.error_message());
+  }
+
+  // `PartitionedCallOp` invokes functions with `allow_dead_tensors = true` to
+  // reset dead flag, and return default initialized tensors instead of a dead
+  // tensors. There is no way to express this in a regular Tensorflow graph, so
+  // we choose not to inline if a function can have dead tensors as an output
+  // position. In practice `mergeless switches` should not exists in a function
+  // body, because tf-eager will only use v2 control flow ops.
+  std::vector<MaybeDeadOutput> maybe_dead_outputs;
+  TF_RETURN_IF_ERROR(MaybeDeadOutputs(*ctx, item, &maybe_dead_outputs));
+  if (!maybe_dead_outputs.empty()) {
+    struct MaybeDeadOutputFormatter {
+      void operator()(string* out, const MaybeDeadOutput& md) const {
+        absl::StrAppend(out, SummarizeNodeDef(*md.dead_tensor_src));
+      }
+    };
+    return errors::FailedPrecondition(
+        "Can't inline function with dead outputs. Dead tensor sources (size = ",
+        maybe_dead_outputs.size(), "): ",
+        absl::StrJoin(maybe_dead_outputs, "\n", MaybeDeadOutputFormatter()));
   }
 
   GraphView::InputPort control_input_port =
@@ -1536,21 +1614,25 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   // edges from inlined side-effectful ops.
   std::vector<string> side_effectful_nodes;
 
-  // We have to make sure that all side-effectful nodes inside a function body
-  // will be executed after function inlining.
+  // We have to make sure that all side-effectful and dataset-output nodes
+  // inside a function body will be executed after function inlining.
   for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
-    if (!IsFreeOfSideEffect(func_body_node, &ctx->function_library())) {
+    const bool node_must_execute =
+        !IsFreeOfSideEffect(func_body_node, &ctx->function_library()) ||
+        IsDataset(func_body_node);
+
+    if (node_must_execute) {
       int num_fanouts = placed_graph_view.NumFanouts(
           func_body_node, /*include_controlled_nodes=*/true);
 
       // If the node doesn't have any outgoing edges and we do not have any
       // nodes in the `happens_after` set, we can't inline a function and
-      // guarantee that side-effects will be executed. The only exception if we
-      // do function library optimization, and the GrapplerItem was constructed
-      // for the function body, because functions have strict semantics.
+      // guarantee that it will be executed. The only exception if we do
+      // function library optimization, and the GrapplerItem was instantiated
+      // for the function body, because functions do not prune these ops.
 
       if (num_fanouts == 0 && happens_after.empty() &&
-          ctx->allowed_optimizations().prune_ops_with_side_effects) {
+          !ctx->optimization_options().is_function_instantiation) {
         return errors::Internal(
             "Can't inline a function with a side-effectful op with empty "
             "fanouts and empty output control edge set. Function body node: ",

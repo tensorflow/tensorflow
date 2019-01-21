@@ -3262,7 +3262,7 @@ class DenseFeaturesTest(test.TestCase):
       fc.DenseFeatures(feature_columns=[])(features={})
 
   def test_should_be_dense_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a DenseColumn'):
+    with self.assertRaisesRegexp(ValueError, 'must be a .*DenseColumn'):
       fc.DenseFeatures(feature_columns=[
           fc.categorical_column_with_hash_bucket('wire_cast', 4)
       ])(
@@ -3423,7 +3423,7 @@ class DenseFeaturesTest(test.TestCase):
               sparse_tensor.SparseTensor(
                   indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
       }
-      with self.assertRaisesRegexp(Exception, 'must be a DenseColumn'):
+      with self.assertRaisesRegexp(Exception, 'must be a .*DenseColumn'):
         fc.DenseFeatures([animal])(features)
 
   def test_static_batch_size_mismatch(self):

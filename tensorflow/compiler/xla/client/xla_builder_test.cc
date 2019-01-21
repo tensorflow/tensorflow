@@ -463,7 +463,9 @@ TEST_F(XlaBuilderTest, DynamicParameter) {
                                  ->parameter_instruction(0)
                                  ->shape()
                                  .tuple_shapes(1);
-  EXPECT_TRUE(param_shape.is_dynamic_dimension(0));
+  // TODO(b/121223198): The dynamic dimension should be set once we enable
+  // dynamic dimensions in xla builder.
+  EXPECT_FALSE(param_shape.is_dynamic_dimension(0));
 }
 
 TEST_F(XlaBuilderTest, AfterAllWithNonTokenOperands) {

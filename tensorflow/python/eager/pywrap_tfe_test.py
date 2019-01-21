@@ -22,6 +22,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -258,6 +259,16 @@ class Tests(test.TestCase):
         Exception,
         "Value for attr 'num_split' of 0 must be at least minimum 1"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=0)
+
+  def testIsFunction(self):
+    ctx = context.context()
+    self.assertFalse(ctx.has_function("not_a_function"))
+
+    @def_function.function
+    def f():
+      return 1.
+
+    self.assertTrue(ctx.has_function(f.get_concrete_function().name))
 
 
 if __name__ == "__main__":

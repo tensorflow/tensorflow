@@ -64,7 +64,7 @@ class InfOrNanError(Exception):
     """Constructor of InfOrNanError.
 
     Args:
-      op_type: Type name of the op that generated the tensor that generated the
+      op_type: Type name of the op that generated the tensor with
         `inf`(s) or `nan`(s) (e.g., `Div`).
       op_name: Name of the op that generated the tensor with `inf`(s) or
         `nan`(s). This name is set by client and can be `None` if it is unset.

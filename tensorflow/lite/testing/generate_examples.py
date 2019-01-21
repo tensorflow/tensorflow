@@ -1424,6 +1424,36 @@ def make_conv_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+# Note: This is a regression test for a bug (b/122651451) that Toco incorrectly
+# erases the reduction indices array while it's shared with other ops.
+def make_l2norm_shared_epsilon_tests(zip_path):
+  """Regression test for a bug (b/122651451)."""
+
+  # Chose a set of parameters
+  test_parameters = [{
+      "input_shape": [[5, 7]],
+      "dim": [1],
+      "epsilon": [1e-8],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    epsilon = tf.constant(parameters["epsilon"])
+    out1 = tf.nn.l2_normalize(input_tensor, parameters["dim"], epsilon=epsilon)
+    out2 = tf.nn.l2_normalize(input_tensor, parameters["dim"], epsilon=epsilon)
+    out = out1 + out2
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-4, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 # Note: This is a regression test for a bug (b/112436267) that Toco incorrectly
 # fuses weights when multiple Conv2D/FULLY_CONNECTED ops share the same constant
 # weight tensor.
@@ -3010,6 +3040,31 @@ def make_floor_tests(zip_path):
         name="input1",
         shape=parameters["input_shape"])
     out = tf.floor(input_value)
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(outputs, feed_dict={inputs[0]: input_value})
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_ceil_tests(zip_path):
+  """Make a set of tests to do ceil."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the ceil op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape"])
+    out = tf.ceil(input_value)
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

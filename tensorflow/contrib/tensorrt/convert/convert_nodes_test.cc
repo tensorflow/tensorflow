@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
@@ -364,9 +365,6 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
       EXPECT_EQ(false, ptr->is_tensor());
       EXPECT_EQ(true, ptr->is_weights());
       EXPECT_TRUE(TrtShapedWeightsEquals(weights, ptr->weights()));
-
-      nvinfer1::Dims dims;
-      dims.nbDims = 0;
       ExpectTrtDimsEqualsArray({}, ptr->GetTrtDims());
     }
   }
@@ -915,6 +913,20 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
                  "(tensor #dims 4 vs broadcast #dims 5)");
 }
 
+TEST_F(ConverterTest, CreateConstantLayer) {
+  for (auto dtype : {DT_FLOAT, DT_INT32}) {
+    TRT_ShapedWeights weights =
+        weight_store_->GetTempWeights(dtype, GetTestDims({2, 3, 5}));
+    nvinfer1::ITensor* tensor =
+        converter_->CreateConstantLayer(weights, GetTestDims({3, 10}));
+    ASSERT_NE(nullptr, tensor);
+    EXPECT_EQ(TfDataTypeToTrt(dtype), tensor->getType())
+        << "Expected " << DebugString(TfDataTypeToTrt(dtype)) << " vs. actual "
+        << DebugString(tensor->getType());
+    ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
+  }
+}
+
 // Class to test various op converters, using both a TrtNodeValidator and
 // Converter.
 class OpConverterTest : public ::testing::Test {
@@ -1111,6 +1123,30 @@ class OpConverterTest : public ::testing::Test {
   std::unordered_map<string, NodeDef> validator_inputs_;
 };
 
+template <typename T>
+void CopyTensorElements(const Tensor& tensor, protobuf::RepeatedField<T>* out) {
+  out->Clear();
+  if (tensor.NumElements() == 0) return;
+
+  // TensorProto does not need to have all the elements present and can truncate
+  // trailing elements with the same value for compressed representation. Such
+  // elements are derived based on the tensor shape.
+  const auto flat = tensor.flat<T>();
+  int64 last_index = 0;
+  for (int64 i = 0; i < tensor.NumElements(); ++i) {
+    if (flat(i) != flat(last_index)) {
+      last_index = i;
+    }
+  }
+
+  int num_out_elements = last_index + 1;
+  out->Reserve(num_out_elements);
+  out->AddNAlreadyReserved(num_out_elements);
+  const T* src = flat.data();
+  T* dst = out->mutable_data();
+  std::copy(src, src + num_out_elements, dst);
+}
+
 template <DataType dtype, typename InputCType, typename OutputCType>
 void TestConvertConst(OpConverterTest* test) {
   NodeDef node_def;
@@ -1123,11 +1159,23 @@ void TestConvertConst(OpConverterTest* test) {
                             const std::vector<OutputCType>& expected_value) {
     test->Reset();
 
-    auto& attr = *node_def.mutable_attr();
+    TensorProto* tensor_attr =
+        (*node_def.mutable_attr())["value"].mutable_tensor();
+    tensor_attr->Clear();
+
     if (as_tensor_content) {
-      tensor.AsProtoTensorContent(attr["value"].mutable_tensor());
+      tensor.AsProtoTensorContent(tensor_attr);
     } else {
-      tensor.AsProtoField(attr["value"].mutable_tensor());
+      tensor.shape().AsProto(tensor_attr->mutable_tensor_shape());
+      tensor_attr->set_dtype(tensor.dtype());
+
+      if (tensor.dtype() == DT_FLOAT) {
+        CopyTensorElements<float>(tensor, tensor_attr->mutable_float_val());
+      } else if (tensor.dtype() == DT_INT32) {
+        CopyTensorElements<int32>(tensor, tensor_attr->mutable_int_val());
+      } else {
+        tensor.AsProtoField(tensor_attr);
+      }
     }
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
@@ -1140,8 +1188,7 @@ void TestConvertConst(OpConverterTest* test) {
   {
     // By default empty tensor will pick DT_FLOAT as data type and we fix it
     // here.
-    attr["value"].mutable_tensor()->set_dtype(dtype);
-    Tensor t;  // Empty tensor.
+    Tensor t(dtype);  // Empty tensor.
     reset_and_test(t, false, {}, {});
   }
   {
@@ -1159,6 +1206,22 @@ void TestConvertConst(OpConverterTest* test) {
                                                         TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 2, 3, 4, 5, 6});
     reset_and_test(t, true, {2, 3}, {1, 2, 3, 4, 5, 6});
+  }
+  {
+    // Set all tensor elements to the same value. Such tensors are encoded
+    // using a single element list in tensor proto.
+    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1},
+                                                        TensorShape({2, 3}));
+    reset_and_test(t, false, {2, 3}, {1, 1, 1, 1, 1, 1});
+    reset_and_test(t, true, {2, 3}, {1, 1, 1, 1, 1, 1});
+  }
+  {
+    // Set trailing tensor elements to the same value. Such tensors are
+    // encoded by truncating all equal elements except the first one.
+    Tensor t = ::tensorflow::test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1},
+                                                        TensorShape({2, 3}));
+    reset_and_test(t, false, {2, 3}, {2, 2, 1, 1, 1, 1});
+    reset_and_test(t, true, {2, 3}, {2, 2, 1, 1, 1, 1});
   }
 }
 

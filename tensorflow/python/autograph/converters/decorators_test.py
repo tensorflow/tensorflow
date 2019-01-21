@@ -121,7 +121,7 @@ class DecoratorsTest(converter_testing.TestCase):
       return inner_fn(a)
 
     # Expected to fail because simple_decorator could not be imported.
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(transformer.AutoGraphParseError):
       test_fn(1)
 
   def test_nested_decorators_imported(self):

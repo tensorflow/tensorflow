@@ -3292,15 +3292,19 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):  # pylint: disa
         return x
 
     noise_shape = _get_noise_shape(x, noise_shape)
-
-    keep_prob = 1 - rate
-    # uniform [keep_prob, 1.0 + keep_prob)
-    random_tensor = keep_prob
-    random_tensor += random_ops.random_uniform(
+    # Sample a uniform distribution on [0.0, 1.0) and select values larger than
+    # rate.
+    #
+    # NOTE: Random uniform actually can only generate 2^23 floats on [1.0, 2.0)
+    # and subtract 1.0.
+    random_tensor = random_ops.random_uniform(
         noise_shape, seed=seed, dtype=x.dtype)
-    # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
-    binary_tensor = math_ops.floor(random_tensor)
-    ret = math_ops.divide(x, keep_prob) * binary_tensor
+    keep_prob = 1 - rate
+    scale = 1 / keep_prob
+    # NOTE: if (1.0 + rate) - 1 is equal to rate, then we want to consider that
+    # float to be selected, hence we use a >= comparison.
+    keep_mask = random_tensor >= rate
+    ret = x * scale * math_ops.cast(keep_mask, x.dtype)
     if not context.executing_eagerly():
       ret.set_shape(x.get_shape())
     return ret

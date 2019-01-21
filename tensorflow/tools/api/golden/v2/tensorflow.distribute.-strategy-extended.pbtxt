@@ -82,4 +82,8 @@ tf_class {
     name: "value_container"
     argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "variable_created_in_scope"
+    argspec: "args=[\'self\', \'v\'], varargs=None, keywords=None, defaults=None"
+  }
 }

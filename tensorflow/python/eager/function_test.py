@@ -968,8 +968,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([[3.0]], self.evaluate(y))
 
     # Break the reference cycle between the MiniModel and the defun:
-    # MiniModel --(through its `call` method)--> PolymorphicFunction
-    # PolymorphicFunction --(instancemethod on MiniModel)--> MiniModel
+    # `MiniModel` --(through its `call` method)--> `Function`
+    # `Function` --(instancemethod on `MiniModel`)--> `MiniModel`
     del model.call
 
   # Note: The ConfigProto below unfortunately only configures graph
@@ -1537,7 +1537,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           add(t, t)
 
-  def testRegisterPolymorphicFunction(self):
+  def testRegisterFunction(self):
+
     @function.defun
     def add(x, y):
       return math_ops.add(x, y)
@@ -1731,8 +1732,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     graph_function = foo.get_concrete_function(constant_op.constant(1.0))
-    with self.assertRaisesRegexp(ValueError, 'All inputs to `Function`s must '
-                                 'be Tensors;.*'):
+    with self.assertRaisesRegexp(
+        ValueError, 'All inputs to `ConcreteFunction`s must be Tensors;.*'):
       graph_function('Not a Tensor.')
 
   def testSwapImplementationWithGrapplerPlugin(self):
@@ -1820,7 +1821,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(instance_call_one, instance_call_two)
     self.assertAllEqual(instance_call_one, class_call)
 
-  def testDecoratedMethodUniquePolymorphicFuncPerInstance(self):
+  def testDecoratedMethodUniqueFunctionPerInstance(self):
     m = DefunnedMiniModel()
     n = DefunnedMiniModel()
 

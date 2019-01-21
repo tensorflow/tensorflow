@@ -38,6 +38,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -263,20 +264,9 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   assert not _is_in_xla_context() or maximum_iterations is not None
   maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
 
-  # Set the incoming gradient of non-trainable inputs to None. It is possible
-  # that we receive non-None gradients for non-trainable types in nested while
-  # loops because we accumulate outputs of the inner while as variant tensors
-  # which are trainable and hence receive zeros_like tensors in the gradient
-  # pass. The non-trainable tensors then receive the popped zeros tensor from
-  # this zeros variant. The gradient for the loop vars corresponding to these
-  # tensors is None or zeros (this happens only if the loop var is accumulated
-  # as well) in _grad_fn so we reset these.
-  # TODO(b/118712257): Remove the IsTrainable filter once we can handle None
-  # output grads in _grad_fn.
-  grads = [
-      None if not _is_trainable(output) else grad
-      for grad, output in zip(grads, body_graph.outputs)
-  ]
+  grads = [_preprocess_grad(grad, body_out, while_out)
+           for grad, body_out, while_out
+           in zip(grads, body_graph.outputs, while_op.outputs)]
 
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
@@ -350,6 +340,47 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       none_padded_outputs.append(outputs[index])
       index += 1
   return none_padded_outputs
+
+
+def _preprocess_grad(grad, body_graph_output, while_op_output):
+  """Returns the initial gradient to be used for a given output tensor.
+
+  Args:
+    grad: the original gradient Tensor passed to the gradient function.
+    body_graph_output: the corresponding Tensor in the body graph.
+    while_op_output: the corresponding Tensor output of the While op.
+
+  Returns:
+    A Tensor or None.
+  """
+  # Set the incoming gradient of non-trainable inputs to None. It is possible
+  # that we receive non-None gradients for non-trainable types in nested while
+  # loops because we accumulate outputs of the inner while as variant tensors
+  # which are trainable and hence receive zeros_like tensors in the gradient
+  # pass. The non-trainable tensors then receive the popped zeros tensor from
+  # this zeros variant. The gradient for the loop vars corresponding to these
+  # tensors is None or zeros (this happens only if the loop var is accumulated
+  # as well) in _grad_fn so we reset these.
+  # TODO(b/118712257): Remove once we can handle None output grads in _grad_fn.
+  if not _is_trainable(body_graph_output):
+    return None
+
+  # GradientTape initializes resource and variant grads as None instead of
+  # zeros. Set to zeros so _GradientsHelper computes the gradients instead of
+  # returning None.
+  if (while_op_output.dtype in (dtypes.resource, dtypes.variant)
+      and grad is None):
+    return _zeros_like(while_op_output)
+
+  return grad
+
+
+def _zeros_like(op_output):
+  """Like array_ops.zeros_like() but also accepts resource var handles."""
+  if op_output.dtype == dtypes.resource:
+    return array_ops.zeros(
+        gen_resource_variable_ops.variable_shape(op_output))
+  return array_ops.zeros_like(op_output)
 
 
 def _is_trainable(tensor):

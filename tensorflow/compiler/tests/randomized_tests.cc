@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -80,6 +81,7 @@ int64 tf_xla_random_seed = 0;
 int32 tf_xla_test_repetitions = 20;
 int64 tf_xla_max_tensor_size = 10000LL;
 string* tf_xla_test_device_ptr;  // initial value set in main()
+string* tf_xla_reference_device_ptr;  // initial value set in main()
 bool tf_xla_test_use_jit = true;
 
 string LocalDeviceToFullDeviceName(const string& device) {
@@ -321,6 +323,9 @@ class OpTest : public ::testing::Test {
   // for use as reduction indices.
   Tensor RandomReductionIndices(int rank);
 
+  // Returns a random bit.
+  bool RandomBool();
+
   struct WindowedSpatialDims {
     Padding padding;
     std::vector<int64> kernel_dims;
@@ -451,6 +456,11 @@ std::vector<int64> OpTest::RandomDims(int min_rank, int max_rank,
     });
   } while (!TensorSizeIsOk(dims));
   return dims;
+}
+
+bool OpTest::RandomBool() {
+  std::bernoulli_distribution d(0.5);
+  return d(generator());
 }
 
 Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
@@ -760,8 +770,22 @@ Status TensorsAreEqualImpl(const Tensor& x, const Tensor& y) {
   for (int i = 0; i < Tx.size(); ++i) {
     if (Tx(i) != Ty(i)) {
       return errors::InvalidArgument(absl::StrCat(
-          i, "-th tensor element isn't equal: ", Tx(i), " vs. ", Ty(i),
-          ". x = ", x.DebugString(), "y = ", y.DebugString()));
+          i, "-th tensor element isn't equal: ", Str(Tx(i)), " vs. ",
+          Str(Ty(i)), ". x = ", x.DebugString(), "y = ", y.DebugString()));
+    }
+  }
+  return Status::OK();
+}
+
+Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
+  auto Tx = x.flat<bfloat16>();
+  auto Ty = y.flat<bfloat16>();
+  for (int i = 0; i < Tx.size(); ++i) {
+    if (Tx(i) != Ty(i)) {
+      return errors::InvalidArgument(absl::StrCat(
+          i, "-th tensor element isn't equal: ", static_cast<float>(Tx(i)),
+          " vs. ", static_cast<float>(Ty(i)), ". x = ", x.DebugString(),
+          "y = ", y.DebugString()));
     }
   }
   return Status::OK();
@@ -797,6 +821,8 @@ Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
       return TensorsAreEqualImpl<int64>(a, b);
     case DT_BOOL:
       return TensorsAreEqualImpl<bool>(a, b);
+    case DT_BFLOAT16:
+      return TensorsAreEqualImplBfloat16(a, b);
     default:
       LOG(FATAL) << "Unexpected type : " << DataTypeString(a.dtype());
   }
@@ -829,8 +855,8 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
     VLOG(1) << "Input: " << input_tensors.back().DebugString();
   }
 
-  string cpu_device =
-      LocalDeviceToFullDeviceName(absl::StrCat(DEVICE_CPU, ":0"));
+  string reference_device =
+      LocalDeviceToFullDeviceName(*tf_xla_reference_device_ptr);
   string test_device = LocalDeviceToFullDeviceName(*tf_xla_test_device_ptr);
 
   DeviceNameUtils::ParsedName parsed_name;
@@ -845,9 +871,9 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
   std::vector<string> expected_inputs, test_inputs;
   std::vector<string> expected_fetches, test_fetches;
   Status status = builder.BuildGraph(
-      absl::StrCat("test", num_tests_, "_expected"), cpu_device,
-      /* use_jit= */ false, &graph, /* test_node_def= */ nullptr,
-      &expected_inputs, &expected_fetches);
+      absl::StrCat("test", num_tests_, "_expected"), reference_device,
+      /*use_jit=*/false, &graph, /*test_node_def=*/nullptr, &expected_inputs,
+      &expected_fetches);
   if (!status.ok()) {
     LOG(ERROR) << "Expected graph construction failed: " << status;
     return kFatalError;
@@ -1368,6 +1394,19 @@ TEST_F(OpTest, Cast) {
                                              .RandomInput(src_type)
                                              .Attr("SrcT", src_type)
                                              .Attr("DstT", dst_type));
+  });
+}
+
+TEST_F(OpTest, CastBF16) {
+  Repeatedly([this]() {
+    DataType src_type, dst_type;
+    src_type = Choose<DataType>({DT_FLOAT});
+    dst_type = Choose<DataType>({DT_BFLOAT16});
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Cast")
+                                             .RandomInput(src_type)
+                                             .Attr("SrcT", src_type)
+                                             .Attr("DstT", dst_type)
+                                             .Attr("Truncate", true));
   });
 }
 
@@ -3346,11 +3385,41 @@ TEST_F(OpTest, ZerosLike) {
   });
 }
 
+// Example failing run:
+//   --tf_xla_reference_device=GPU:0
+//   --tf_xla_test_use_jit=true --tf_xla_test_device=GPU:0
+//   --tf_xla_test_repetitions=2
+//   --gunit_filter='OpTest.FusedBatchNormTraining'
+//   --tf_xla_random_seed=2838146746
+TEST_F(OpTest, FusedBatchNormTraining) {
+  bool is_nhwc = RandomBool();
+  std::vector<int64> x_dims = RandomDims(/*min_rank=*/4, /*max_rank=*/4,
+                                         /*min_size=*/5, /*max_size=*/20);
+  std::vector<int64> scale_dims = {x_dims[is_nhwc ? 3 : 1]};
+  std::vector<int64> offset_dims = {x_dims[is_nhwc ? 3 : 1]};
+  std::vector<int64> mean_dims = {0};
+  std::vector<int64> variance_dims = {0};
+  DataType type = DT_FLOAT;
+  Repeatedly([&] {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("FusedBatchNorm")
+            .RandomInput(type, x_dims)
+            .RandomInput(type, scale_dims)
+            .RandomInput(type, offset_dims)
+            .RandomInput(type, mean_dims)
+            .RandomInput(type, variance_dims)
+            .Attr("T", type)
+            .Attr("data_format", is_nhwc ? "NHWC" : "NCHW")
+            .Attr("epsilon", static_cast<float>(1.001e-05))
+            .Attr("is_training", true));
+  });
+}
 }  // anonymous namespace
 }  // namespace tensorflow
 
 int main(int argc, char** argv) {
   tensorflow::tf_xla_test_device_ptr = new tensorflow::string("GPU:0");
+  tensorflow::tf_xla_reference_device_ptr = new tensorflow::string("CPU:0");
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag(
           "tf_xla_random_seed", &tensorflow::tf_xla_random_seed,
@@ -3366,6 +3435,9 @@ int main(int argc, char** argv) {
                        "Maximum number of elements for random input tensors."),
       tensorflow::Flag("tf_xla_test_device", tensorflow::tf_xla_test_device_ptr,
                        "Tensorflow device type to use for test"),
+      tensorflow::Flag("tf_xla_reference_device",
+                       tensorflow::tf_xla_reference_device_ptr,
+                       "Tensorflow device type to use for reference"),
       tensorflow::Flag("tf_xla_test_use_jit", &tensorflow::tf_xla_test_use_jit,
                        "Use JIT compilation for the operator under test"),
   };

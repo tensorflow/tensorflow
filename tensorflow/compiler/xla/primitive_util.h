@@ -29,6 +29,10 @@ limitations under the License.
 namespace xla {
 namespace primitive_util {
 
+// Returns the count of significand (mantissa) bits for float datatypes.
+// For non-float datatypes, results in a LOG(FATAL).
+int SignificandWidth(PrimitiveType type);
+
 // The number of exponent bits in a BF16 value.
 const int kBFloat16ExponentBits = 8;
 

@@ -499,5 +499,41 @@ TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
               HasSubstr("Bitcast can not change the element type"));
 }
 
+TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY SelectMixedPrecisionNotAllowed {
+   p0 = pred[] parameter(0)
+   p1 = f32[32] parameter(1)
+   p2 = bf16[32] parameter(2)
+   ROOT select = f32[32] select(p0, p1, p2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Seen floating point types of different precisions"));
+}
+
+TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY SelectMixedPrecisionAllowed {
+   p0 = pred[] parameter(0)
+   p1 = f32[32] parameter(1)
+   p2 = bf16[32] parameter(2)
+   ROOT select = f32[32] select(p0, p1, p2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 }  // namespace
 }  // namespace xla

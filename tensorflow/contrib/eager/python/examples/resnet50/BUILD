@@ -40,6 +40,7 @@ cuda_py_test(
         "nomsan",  # Fix b/118130911
         "notsan",  # Fix b/118130911
         "optonly",
+        "oss_serial",
     ],
 )
 
@@ -58,5 +59,6 @@ cuda_py_test(
         "nomsan",
         "notsan",
         "optonly",
+        "oss_serial",
     ],
 )

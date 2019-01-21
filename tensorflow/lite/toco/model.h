@@ -42,6 +42,7 @@ enum class OperatorType : uint8 {
   kAveragePool,
   kBatchMatMul,
   kBatchNormalization,
+  kCeil,
   kConv,
   kConcatenation,
   kDepthwiseConv,
@@ -158,7 +159,9 @@ enum class OperatorType : uint8 {
   kLeakyRelu,
   kAbs,
   kMirrorPad,
-  kUnique
+  kUnique,
+  kUnidirectionalSequenceRnn,
+  kBidirectionalSequenceLstm
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -646,6 +649,12 @@ struct LstmCellOperator : Operator {
 struct UnidirectionalSequenceLstmOperator : Operator {
   UnidirectionalSequenceLstmOperator()
       : Operator(OperatorType::kUnidirectionalSequenceLstm) {}
+};
+
+struct BidirectionalSequenceLstmOperator : Operator {
+  BidirectionalSequenceLstmOperator()
+      : Operator(OperatorType::kBidirectionalSequenceLstm) {}
+  bool merge_outputs;
 };
 
 // Element-wise multiplication operator.
@@ -1659,6 +1668,16 @@ struct FloorOperator : Operator {
   FloorOperator() : Operator(OperatorType::kFloor) {}
 };
 
+// Ceil operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Ceil
+struct CeilOperator : Operator {
+  CeilOperator() : Operator(OperatorType::kCeil) {}
+};
+
 // Gather operator. It gathers slices from params according to indices.
 // Only 1-D indices are supported at the moment.
 //
@@ -1963,6 +1982,13 @@ struct MirrorPadOperator : Operator {
 struct UniqueOperator : Operator {
   UniqueOperator() : Operator(OperatorType::kUnique) {}
   ArrayDataType idx_out_type = ArrayDataType::kInt32;
+};
+
+struct UnidirectionalSequenceRnnOperator : Operator {
+  UnidirectionalSequenceRnnOperator()
+      : Operator(OperatorType::kUnidirectionalSequenceRnn) {}
+  bool time_major;
+  FusedActivationFunctionType fused_activation_function;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

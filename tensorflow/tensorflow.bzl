@@ -1753,7 +1753,9 @@ def tf_py_wrap_cc(
         swig_includes = [],
         deps = [],
         copts = [],
+        version_script = None,
         **kwargs):
+    """Builds a Python extension module."""
     module_name = name.split("/")[-1]
 
     # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
@@ -1772,6 +1774,11 @@ def tf_py_wrap_cc(
         toolchain_deps = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
         deps = deps + extra_deps,
     )
+    if not version_script:
+        version_script = select({
+            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
+            "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
+        })
     vscriptname = name + "_versionscript"
     _append_init_to_versionscript(
         name = vscriptname,
@@ -1780,10 +1787,7 @@ def tf_py_wrap_cc(
             "//conditions:default": True,
         }),
         module_name = module_name,
-        template_file = select({
-            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
-            "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
-        }),
+        template_file = version_script,
     )
     extra_linkopts = select({
         "@local_config_cuda//cuda:darwin": [

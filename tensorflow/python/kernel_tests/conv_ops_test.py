@@ -256,7 +256,7 @@ class Conv2DTest(test.TestCase):
       tensors.append(_SetupVal(data_format, use_gpu))
     values = self.evaluate(tensors)
     for i in range(1, len(values)):
-      self.assertAllClose(values[0], values[i], rtol=1e-5, atol=1e-5)
+      self.assertAllClose(values[0], values[i], rtol=1e-3, atol=1e-3)
 
   def _ComputeReferenceDilatedConv(self, tensor_in_sizes, filter_in_sizes,
                                    stride, dilation, padding, data_format,
@@ -297,7 +297,7 @@ class Conv2DTest(test.TestCase):
     return expected, computed
 
   def _VerifyDilatedConvValues(self, tensor_in_sizes, filter_in_sizes, strides,
-                               padding, dilations):
+                               padding, dilations, rtol=1e-4):
     expected_results = []
     computed_results = []
     for data_format, use_gpu in GetTestConfigs():
@@ -313,7 +313,7 @@ class Conv2DTest(test.TestCase):
         tf_logging.debug("expected = %s", e_value)
         tf_logging.debug("actual = %s", c_value)
         self.assertAllClose(
-            e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-4)
+            e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=rtol)
 
   def _VerifyValues(self,
                     tensor_in_sizes,
@@ -2891,7 +2891,8 @@ def GetInceptionFwdDilatedConvTest(input_size, filter_size, stride, padding):
           filter_in_sizes=filter_size,
           strides=[stride, stride],
           dilations=[2, 2],
-          padding=padding)
+          padding=padding,
+          rtol=5e-4)
 
   return Test
 

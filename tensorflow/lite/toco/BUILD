@@ -192,6 +192,7 @@ cc_library(
         "graph_transformations/fuse_binary_into_preceding_affine.cc",
         "graph_transformations/fuse_broadcast_into_following_binary.cc",
         "graph_transformations/graph_transformations.cc",
+        "graph_transformations/group_bidirectional_sequence_lstm.cc",
         "graph_transformations/hardcode_min_max.cc",
         "graph_transformations/identify_dilated_conv.cc",
         "graph_transformations/identify_l2_normalization.cc",

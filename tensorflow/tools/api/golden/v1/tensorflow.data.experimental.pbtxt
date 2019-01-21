@@ -181,6 +181,10 @@ tf_module {
     argspec: "args=[\'buffer_size\', \'count\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "take_while"
+    argspec: "args=[\'predicate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "unbatch"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }

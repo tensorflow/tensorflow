@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import threading
 
 from tensorflow.python import pywrap_tensorflow
@@ -25,8 +26,11 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.platform import gfile
 
+LOGDIR_PLUGIN = 'plugins/profile'
+
 _profiler = None
 _profiler_lock = threading.Lock()
+_run_num = 0
 
 
 def start():
@@ -48,14 +52,14 @@ def stop():
   """Stop current profiling session and return its result.
 
   Returns:
-    A binary string of tensorflow.tfprof.ProfileProto. User can write the string
-    to file for offline analysis by tfprof command-line tools or graphical user
-    interface.
+    A binary string of tensorflow.tpu.Trace. User can write the string
+    to file for offline analysis by tensorboard.
 
   Raises:
     AssertionError: If there is no active profiling session.
   """
   global _profiler
+  global _run_num
   if _profiler is None:
     raise AssertionError('Cannot stop profiling. No profiler is running.')
   with c_api_util.tf_buffer() as buffer_:
@@ -67,6 +71,7 @@ def stop():
   with _profiler_lock:
     pywrap_tensorflow.TFE_DeleteProfiler(_profiler)
     _profiler = None
+    _run_num += 1
   return result
 
 
@@ -75,19 +80,21 @@ class Profiler(object):
 
   Example usage:
   ```python
-  with Profiler("/path/to/save/result"):
+  with Profiler("/path/to/logdir"):
     # do some work
   ```
   """
 
-  def __init__(self, filename):
-    self._filename = filename
+  def __init__(self, logdir):
+    self._logdir = logdir
 
   def __enter__(self):
     start()
 
   def __exit__(self, typ, value, tb):
     result = stop()
-    with gfile.Open(self._filename, 'wb') as f:
+    plugin_dir = os.path.join(self._logdir, LOGDIR_PLUGIN,
+                              'run{}'.format(_run_num))
+    gfile.MakeDirs(plugin_dir)
+    with gfile.Open(os.path.join(plugin_dir, 'local.trace'), 'wb') as f:
       f.write(result)
-

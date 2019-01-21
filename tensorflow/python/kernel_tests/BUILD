@@ -2755,8 +2755,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
-        # TODO(b/118887316): Re-enable this test in Kokoro.
-        "no_oss",
         "optonly",  # times out
     ],
     xla_enable_strict_auto_jit = True,
@@ -3539,6 +3537,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",

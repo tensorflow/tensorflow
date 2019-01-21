@@ -57,6 +57,47 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
+// Helper class for reading data from a VariantTensorData object.
+class VariantTensorDataReader : public IteratorStateReader {
+ public:
+  explicit VariantTensorDataReader(const VariantTensorData* data);
+
+  // Returns OK iff the initialization was successful.
+  Status ReadScalar(StringPiece key, int64* val) override;
+  Status ReadScalar(StringPiece key, string* val) override;
+  Status ReadTensor(StringPiece key, Tensor* val) override;
+  bool Contains(StringPiece key) override;
+
+ private:
+  template <typename T>
+  Status ReadScalarInternal(StringPiece key, T* val);
+  Status ReadTensorInternal(StringPiece key, Tensor* val);
+
+  std::map<string, size_t> map_;
+  const VariantTensorData* data_;  // Not owned.
+};
+
+// Helper class for writing data to a VariantTensorData object.
+class VariantTensorDataWriter : public IteratorStateWriter {
+ public:
+  // Does not take ownership of data.
+  explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
+  Status WriteScalar(StringPiece key, const int64 val) override;
+  Status WriteScalar(StringPiece key, const string& val) override;
+  Status WriteTensor(StringPiece key, const Tensor& val) override;
+
+  // Writes the metadata to `data_`.
+  Status Flush();
+
+ private:
+  template <typename T>
+  Status WriteScalarInternal(StringPiece key, const T& val);
+  Status WriteTensorInternal(StringPiece key, const Tensor& val);
+
+  VariantTensorData* data_;
+  std::vector<string> keys_;
+};
+
 }  // namespace data
 }  // namespace tensorflow
 

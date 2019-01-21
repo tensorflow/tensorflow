@@ -63,7 +63,7 @@ class UniqueNameTracker(data_structures.CheckpointableDataStructure):
       ValueError: If `checkpointable` is not a checkpointable object.
     """
 
-    if not isinstance(checkpointable, checkpointable_lib.CheckpointableBase):
+    if not isinstance(checkpointable, checkpointable_lib.Checkpointable):
       raise ValueError(
           ("Expected a checkpointable value, got %s which does not inherit "
            "from CheckpointableBase.") % (checkpointable,))

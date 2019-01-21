@@ -20,7 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -627,6 +629,26 @@ class CondV2Test(test.TestCase):
         false_val = sess.run(cond_grad_grad, {pred: False})
         # d2[x]/dx2 = 0
         self.assertEqual(false_val, [0.0])
+
+  def testGradientTapeOfCondWithResourceVariableInFunction(self):
+    with context.eager_mode():
+      v = variables.Variable(2.)
+
+      @def_function.function
+      def fnWithCond():  # pylint: disable=invalid-name
+        with backprop.GradientTape() as tape:
+          pred = constant_op.constant(True, dtype=dtypes.bool)
+
+          def true_fn():
+            return math_ops.pow(v, 3)
+
+          def false_fn():
+            return v
+
+          cond = cond_v2.cond_v2(pred, true_fn, false_fn, name="cond")
+        return tape.gradient(cond, v)
+
+      self.assertAllEqual(fnWithCond(), 12.0)
 
   def testLowering(self):
     with ops.Graph().as_default() as g:

@@ -46,6 +46,7 @@ def model_iteration(model,
                     callbacks=None,
                     validation_data=None,
                     validation_steps=None,
+                    validation_freq=1,
                     class_weight=None,
                     max_queue_size=10,
                     workers=1,
@@ -74,6 +75,13 @@ def model_iteration(model,
         `keras.utils.data_utils.Sequence` object or Eager Iterator or Dataset.
       validation_steps: Total number of steps (batches of samples) before
         declaring validation finished.
+      validation_freq: Only relevant if validation data is provided. Integer or
+        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        integer, specifies how many training epochs to run before a new
+        validation run is performed, e.g. `validation_freq=2` runs
+        validation every 2 epochs. If a Container, specifies the epochs on
+        which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+        validation at the end of the 1st, 2nd, and 10th epochs.
       class_weight: Dictionary mapping class indices to a weight for the class.
       max_queue_size: Integer. Maximum size for the generator queue. If
         unspecified, `max_queue_size` will default to 10.
@@ -257,7 +265,9 @@ def model_iteration(model,
       results = results[0]
 
     # Run the test loop every epoch during training.
-    if do_validation and not callbacks.model.stop_training:
+    if (do_validation and
+        training_utils.should_run_validation(validation_freq, epoch) and
+        not callbacks.model.stop_training):
       val_results = model_iteration(
           model,
           validation_data,
@@ -400,7 +410,9 @@ def convert_to_generator_like(data,
       and may be `None` or `[None]`.
     batch_size: Used when creating a generator out of tuples of NumPy arrays or
       EagerTensors.
-    steps_per_epoch: Steps of the generator to run each epoch.
+    steps_per_epoch: Steps of the generator to run each epoch. If `None` the
+      number of steps will be read from the data (for
+      `keras.utils.data_utils.Sequence` types).
     epochs: Total number of epochs to run.
     shuffle: Whether the data should be shuffled.
 
@@ -421,7 +433,8 @@ def convert_to_generator_like(data,
   if data_utils.is_generator_or_sequence(data) or isinstance(
       data, iterator_ops.EagerIterator):
     if isinstance(data, data_utils.Sequence):
-      steps_per_epoch = len(data)
+      if steps_per_epoch is None:
+        steps_per_epoch = len(data)
     return data, steps_per_epoch
   if isinstance(data, dataset_ops.DatasetV2):
     return dataset_ops.make_one_shot_iterator(data), steps_per_epoch

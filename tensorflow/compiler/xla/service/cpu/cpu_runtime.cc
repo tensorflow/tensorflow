@@ -84,31 +84,8 @@ extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
     "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
 extern const char* const kParallelForkJoinSymbolName =
     "__xla_cpu_runtime_ParallelForkJoin";
-extern const char* const kKeyValueSortPREDSymbolName =
-    "__xla_cpu_runtime_KeyValueSortPRED";
-extern const char* const kKeyValueSortS8SymbolName =
-    "__xla_cpu_runtime_KeyValueSortS8";
-extern const char* const kKeyValueSortU8SymbolName =
-    "__xla_cpu_runtime_KeyValueSortU8";
-extern const char* const kKeyValueSortS16SymbolName =
-    "__xla_cpu_runtime_KeyValueSortS16";
-extern const char* const kKeyValueSortU16SymbolName =
-    "__xla_cpu_runtime_KeyValueSortU16";
-extern const char* const kKeyValueSortF16SymbolName =
-    "__xla_cpu_runtime_KeyValueSortF16";
-extern const char* const kKeyValueSortS32SymbolName =
-    "__xla_cpu_runtime_KeyValueSortS32";
-extern const char* const kKeyValueSortU32SymbolName =
-    "__xla_cpu_runtime_KeyValueSortU32";
-extern const char* const kKeyValueSortF32SymbolName =
-    "__xla_cpu_runtime_KeyValueSortF32";
-extern const char* const kKeyValueSortS64SymbolName =
-    "__xla_cpu_runtime_KeyValueSortS64";
-extern const char* const kKeyValueSortU64SymbolName =
-    "__xla_cpu_runtime_KeyValueSortU64";
-extern const char* const kKeyValueSortF64SymbolName =
-    "__xla_cpu_runtime_KeyValueSortF64";
-
+extern const char* const kKeyValueSortSymbolName =
+    "__xla_cpu_runtime_KeyValueSort";
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 }  // namespace runtime
 }  // namespace cpu
