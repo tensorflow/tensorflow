@@ -217,13 +217,11 @@ def einsum(equation, *inputs, **kwargs):
 
     inputs = list(inputs)
     input_axis_labels = match.group(1).split(',')
-    print('inputs: ',inputs,input_axis_labels,match)
     if len(inputs) != len(input_axis_labels):
       raise ValueError('Got %d arguments for equation "%s", expecting %d' %
                        (len(inputs), equation, len(input_axis_labels)))
 
     axis_labels = set(''.join(input_axis_labels))
-    print('axis_labels: ',axis_labels)
     if match.group(2):
       output_axis_labels = match.group(2)[2:]
     else:
@@ -236,11 +234,10 @@ def einsum(equation, *inputs, **kwargs):
 
       output_axis_labels = ''.join(
           sorted(ax for ax in indices if counts[ax] == 1))
-    print('output: ',output_axis_labels)
     for a in axis_labels:
       for input_labels in input_axis_labels:
         print('input lables loop: ',input_labels, input_axis_labels,input_labels.count(a),len(input_axis_labels))
-        if len(input_axis_labels) == 1 and input_labels.count(a) == 2:
+        if len(input_axis_labels) == 1 and input_labels.count(a) == 2 and input_labels==input_labels[::-1]:
             return math_ops.trace(inputs[0])
         if input_labels.count(a) > 1:
           raise ValueError(
@@ -256,37 +253,28 @@ def einsum(equation, *inputs, **kwargs):
 
     temp = inputs[0]
     temp_axis_labels = input_axis_labels[0]
-    print('temp: ',temp,temp_axis_labels)
     for i in xrange(len(inputs) - 1):
       axes_to_sum = (
           set(temp_axis_labels) &
           set(input_axis_labels[i + 1]) - set(output_axis_labels))
-      print('axes to sum',axes_to_sum)
       temp, temp_axis_labels = _einsum_reduction(
           temp, temp_axis_labels, inputs[i + 1], input_axis_labels[i + 1],
           axes_to_sum)
-      print('temp and temp_axis_labels to sum',temp,temp_axis_labels)
 
 
     missing_indices = set(temp_axis_labels) - set(output_axis_labels)
-    print('missing_indices',missing_indices)
     if missing_indices:
       axis = [
           i for i, a in enumerate(temp_axis_labels)
           if a not in output_axis_labels
       ]
-      print('axis',axis)
       temp = math_ops.reduce_sum(temp, axis=axis)
-      print('math_ops.reduce_sum:',axis,':',temp)
       temp_axis_labels = ''.join(
           a for a in temp_axis_labels if a in output_axis_labels)
-      print('math_ops.reduce_sum temp_axis_labels',temp_axis_labels)
-
     if sorted(temp_axis_labels) != sorted(output_axis_labels):
       raise ValueError('Invalid equation: %s' % equation)
 
     perm = [temp_axis_labels.index(a) for a in output_axis_labels]
-    print('perm: ',perm,temp)
     return _transpose_if_necessary(temp, perm)
 
 
