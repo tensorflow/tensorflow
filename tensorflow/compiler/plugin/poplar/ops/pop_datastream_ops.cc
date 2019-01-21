@@ -40,7 +40,7 @@ REGISTER_OP("PopDatastreamInfeedEnqueue")
     .Input("input: dtype")
     .Attr("dtype: type")
     .Attr("shape: shape = {}")
-    .Attr("device_ordinal: int = -1")
+    .Attr("device_ordinal: int = 0")
     .SetShapeFn(shape_inference::NoOutputs)
     .SetIsStateful()
     .Doc(R"doc(

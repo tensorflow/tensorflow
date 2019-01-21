@@ -321,6 +321,70 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'sub/fusion/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
+  def testScaledAddToVariable(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float16, [3])
+      pb = array_ops.placeholder(np.float16, [3])
+      pc = array_ops.placeholder(np.float16, [1])
+      c = pa + pb * pc
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        pa: [2.0, 0.5, 1.0],
+        pb: [1.0, 2.0, 3.0],
+        pc: [2.0]
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, [4.0, 4.5, 7.0])
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
+            'add/fusion/AddTo']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
+  def testScaledSubtractFromVariable(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float16, [3])
+      pb = array_ops.placeholder(np.float16, [3])
+      pc = array_ops.placeholder(np.float16, [1])
+      c = pa - pc * pb
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        pa: [2.0, 0.5, 1.0],
+        pb: [1.0, 2.0, 3.0],
+        pc: [2.0]
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, [0.0, -3.5, -5.0])
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
+            'sub/fusion/AddTo']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
   def testConvolutionBiasApply(self):
     with ops.device("/device:IPU:0"):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])

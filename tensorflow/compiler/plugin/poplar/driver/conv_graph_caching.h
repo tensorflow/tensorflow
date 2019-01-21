@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/graph_caching_util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 
 #include <poplar/Tensor.hpp>
 #include <poplin/ConvUtil.hpp>
@@ -66,20 +67,22 @@ poplar::Tensor DoCachedConvolution(
 // * ConvolutionDimensionNumbers for the given convolution
 // * poplin ConvParams for the given convolution
 // * Enum for the type of convolution
-// * Learning rate constant
+// * Whether the learning rate is a constant
+// * Learning rate constant (0 if using a tensor for the learning rate)
+// * The HloOpcode opcode for the scaled inplace application
 // * sharding device ID
 using WeightUpdateConvolutionCacheKey =
     std::tuple<PoplarTensorSignature, PoplarTensorSignature, poplin::ConvParams,
-               ConvClassificationType, double, uint64>;
+               ConvClassificationType, bool, double, HloOpcode, uint64>;
 using WeightUpdateConvolutionGraphCache =
     std::map<WeightUpdateConvolutionCacheKey, poputil::graphfn::VoidFunction>;
 
-Status DoCachedConvolutionWithScaledAdd(
+Status DoCachedWeightUpdateConvolution(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& weights,
     const poplar::Tensor& in, const poplar::Tensor& deltas,
     const poplin::ConvParams& params, const uint64 device_id,
-    poplar::program::Sequence& prog, const HloInstruction* root,
-    const HloInstruction* conv);
+    poplar::program::Sequence& prog, const HloInstruction* inst,
+    TensorMap& tensor_map);
 }  // namespace conv_graph_caching
 
 }  // namespace poplarplugin

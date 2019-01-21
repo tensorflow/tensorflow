@@ -303,7 +303,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/WeightTranspose',
             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4/Convolve',
             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/DeltasPartialTranspose',
-            'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo'
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo',
             ]
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -367,11 +367,11 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/WeightTranspose',
             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4',
             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/DeltasPartialTranspose',
-            'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropInput/fusion*/WeightTranspose',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion*/DeltasPartialTranspose',
-            'GradientDescent/update_vs/conv2/kernel/ResourceApplyGradientDescent/subtract.93.clone/AddTo']
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -602,7 +602,6 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
              'gradients/vs/PopnnGroupNormTraining_2_grad/PopnnGroupNormGrad/custom-call.39/',
              'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*',
              'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/',
-             'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/',
             ]
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
