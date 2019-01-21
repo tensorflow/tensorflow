@@ -1082,12 +1082,12 @@ class Function(object):
 
   @property
   def _input_signature(self):
-    """Returns the wrapped Python function."""
+    """Returns the input signature."""
     return self._function_spec.input_signature  # pylint: disable=protected-access
 
   @property
   def _flat_input_signature(self):
-    """Returns the wrapped Python function."""
+    """Returns the flattened input signature."""
     return self._function_spec.flat_input_signature  # pylint: disable=protected-access
 
   def _get_concrete_function_internal_garbage_collected(self, *args, **kwargs):
