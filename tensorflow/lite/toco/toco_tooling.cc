@@ -323,6 +323,13 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
                             });
   }
 
+  // Try to merge bidirectional sequence lstm if present.
+  GraphTransformationsSet bidirectional_transformations;
+  bidirectional_transformations.Add(new RemoveUnusedOp);
+  bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceLstm);
+  RunGraphTransformations(model, "Group bidirectional sequence lstm",
+                          bidirectional_transformations);
+
   // Fix any issues with IO edges. This must happen after any transform that
   // may modify the structure of the edges.
   FixEdgeArrays(model);
