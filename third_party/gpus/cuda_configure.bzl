@@ -1193,7 +1193,7 @@ def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
     outs = [
 %s
     ],
-    cmd = \"""cp -rf "%s/." "%s/" \""",
+    cmd = \"""cp -rLf "%s/." "%s/" \""",
 )""" % (name, "\n".join(outs), src_dir, out_dir)
 
 def _read_dir(repository_ctx, src_dir):
