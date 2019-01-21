@@ -160,7 +160,8 @@ enum class OperatorType : uint8 {
   kAbs,
   kMirrorPad,
   kUnique,
-  kUnidirectionalSequenceRnn
+  kUnidirectionalSequenceRnn,
+  kBidirectionalSequenceLstm
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -648,6 +649,12 @@ struct LstmCellOperator : Operator {
 struct UnidirectionalSequenceLstmOperator : Operator {
   UnidirectionalSequenceLstmOperator()
       : Operator(OperatorType::kUnidirectionalSequenceLstm) {}
+};
+
+struct BidirectionalSequenceLstmOperator : Operator {
+  BidirectionalSequenceLstmOperator()
+      : Operator(OperatorType::kBidirectionalSequenceLstm) {}
+  bool merge_outputs;
 };
 
 // Element-wise multiplication operator.
