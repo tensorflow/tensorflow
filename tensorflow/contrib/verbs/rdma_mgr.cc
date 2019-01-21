@@ -264,7 +264,7 @@ void RdmaMgr::InitAllocators() {
       flag, [this]() { RdmaMemoryMgr::Singleton().pd_ = rdma_adapter_->pd_; });
 }
 
-void RdmaMgr::RegMemVisitors() {
+/*static*/ void RdmaMgr::RegMemVisitors() {
   SubAllocator::Visitor alloc_visitor = [](void* ptr, int numa_node,
                                            size_t num_bytes) {
     RdmaMemoryMgr::Singleton().InsertMemoryRegion(
