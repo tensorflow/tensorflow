@@ -1003,10 +1003,25 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
   return *existing.first = result;
 }
 
+// Returns false if the given `attr` is not of the given `type`.
+// Note: This function is only intended to be used for assertion. So it's
+// possibly allowing invalid cases that are unimplemented.
+static bool attrIsOfType(Attribute attr, Type type) {
+  if (auto floatAttr = attr.dyn_cast<FloatAttr>())
+    return floatAttr.getType() == type;
+  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
+    return intAttr.getType() == type;
+  if (auto elementsAttr = attr.dyn_cast<ElementsAttr>())
+    return elementsAttr.getType() == type;
+  // TODO: check the other cases
+  return true;
+}
+
 SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
                                          Attribute elt) {
-  // TODO(fengliuai): Add verification that the Attribute matches the element
-  // type.
+  assert(attrIsOfType(elt, type.getElementType()) &&
+         "attribute's type should be the given type's element type");
+
   auto &impl = type.getContext()->getImpl();
 
   // Look to see if we already have this.

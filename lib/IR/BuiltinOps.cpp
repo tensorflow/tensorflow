@@ -445,9 +445,24 @@ void CondBranchOp::eraseFalseOperand(unsigned index) {
 // Constant*Op
 //===----------------------------------------------------------------------===//
 
+// Returns false if the given `attr` is not of the given `type`.
+// Note: This function is only intended to be used for assertion. So it's
+// possibly allowing invalid cases that are unimplemented.
+static bool attrIsOfType(Attribute attr, Type type) {
+  if (auto floatAttr = attr.dyn_cast<FloatAttr>())
+    return floatAttr.getType() == type;
+  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
+    return intAttr.getType() == type;
+  if (auto elementsAttr = attr.dyn_cast<ElementsAttr>())
+    return elementsAttr.getType() == type;
+  // TODO: check the other cases
+  return true;
+}
+
 /// Builds a constant op with the specified attribute value and result type.
 void ConstantOp::build(Builder *builder, OperationState *result, Type type,
                        Attribute value) {
+  assert(attrIsOfType(value, type) && "value should be of the given type");
   result->addAttribute("value", value);
   result->types.push_back(type);
 }
