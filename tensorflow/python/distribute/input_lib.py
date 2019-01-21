@@ -574,19 +574,12 @@ def _split_dataset_batch(dataset, split_batch_by):
         "The batch operations can be followed by a prefetch.")
 
   batched_dataset = _get_batch_dataset(dataset)
-  prev_dataset = batched_dataset._input_dataset
-
-  num_parallel_calls = None
-  map_func = None
-
   if isinstance(batched_dataset, dataset_ops.BatchDataset):
     batch_size = batched_dataset._batch_size
     drop_remainder = batched_dataset._drop_remainder
   elif isinstance(batched_dataset, batching._MapAndBatchDataset):
     batch_size = batched_dataset._batch_size_t
     drop_remainder = batched_dataset._drop_remainder_t
-    num_parallel_calls = batched_dataset._num_parallel_calls_t
-    map_func = batched_dataset._map_func
 
   prefetch_buffer = None
   if isinstance(dataset, dataset_ops.PrefetchDataset):
@@ -594,6 +587,7 @@ def _split_dataset_batch(dataset, split_batch_by):
   elif (isinstance(dataset, dataset_ops.DatasetV1Adapter)
         and isinstance(dataset._dataset, dataset_ops.PrefetchDataset)):
     prefetch_buffer = dataset._dataset._buffer_size
+  # pylint: enable=protected-access
 
   if tensor_util.is_tensor(batch_size):
     batch_size = tensor_util.constant_value(batch_size)
@@ -601,22 +595,14 @@ def _split_dataset_batch(dataset, split_batch_by):
   if tensor_util.is_tensor(drop_remainder):
     drop_remainder = tensor_util.constant_value(drop_remainder)
 
-  if num_parallel_calls is not None and tensor_util.is_tensor(drop_remainder):
-    num_parallel_calls = tensor_util.constant_value(num_parallel_calls)
-
   if batch_size % split_batch_by:
     raise ValueError(
         "Batch size %s cannot be sharded evenly across replicas %s" % (
             batch_size, split_batch_by))
   new_batch_size = batch_size // split_batch_by
 
-  if isinstance(batched_dataset, dataset_ops.BatchDataset):
-    dataset = prev_dataset.batch(new_batch_size, drop_remainder=drop_remainder)
-  elif isinstance(batched_dataset, batching._MapAndBatchDataset):
-    dataset = prev_dataset.apply(batching.map_and_batch(
-        map_func, new_batch_size, num_parallel_calls, drop_remainder))
-  # pylint: enable=protected-access
-
+  dataset = dataset.apply(batching.unbatch())
+  dataset = dataset.batch(new_batch_size, drop_remainder=drop_remainder)
   if prefetch_buffer is not None:
     dataset = dataset.prefetch(prefetch_buffer)
   return dataset
@@ -689,7 +675,7 @@ class MultiStepContext(object):
       if reduce_op is None:
         self._last_step_outputs[name] = output
       else:
-        distribution = distribution_strategy_context.get_distribution_strategy()
+        distribution = distribution_strategy_context.get_strategy()
         self._last_step_outputs[name] = distribution.reduce(reduce_op, output)
     else:
       assert reduce_op is not None

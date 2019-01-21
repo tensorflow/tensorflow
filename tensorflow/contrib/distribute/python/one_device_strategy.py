@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -50,8 +51,8 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     super(OneDeviceExtended, self).__init__(container_strategy)
     self._device = device
     self._default_device = device
-    worker = device_util.canonicalize("/device:CPU:0")
-    worker_device_pairs = [(worker, [self._device])]
+    self._input_device = device_util.canonicalize("/device:CPU:0")
+    worker_device_pairs = [(self._input_device, [self._device])]
     device_map = values.SingleDeviceMap(device)
     self._input_workers = input_lib.InputWorkers(
         device_map, worker_device_pairs)
@@ -81,6 +82,10 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
     return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, [distribute_lib.InputContext()])
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    return numpy_dataset.one_host_numpy_dataset(
+        numpy_input, self._input_device, session)
 
   def _broadcast_to(self, tensor, destinations):
     del destinations
@@ -194,6 +199,7 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """Global and per-replica batching are equivalent for OneDeviceStrategy."""
     return True
 
 

@@ -109,7 +109,7 @@ TEST(GraphUtilsTest, ContainsGraphNodeWithName) {
   AddNode("A", "OpA", {}, {}, &graph);
   EXPECT_TRUE(ContainsGraphNodeWithName("A", *graph.graph()));
 
-  graph.DeleteNodes({"A"});
+  EXPECT_TRUE(graph.DeleteNodes({"A"}).ok());
   EXPECT_TRUE(!ContainsGraphNodeWithName("A", *graph.graph()));
 }
 
@@ -131,7 +131,7 @@ TEST(GraphUtilsTest, ContainsNodeWithOp) {
   AddNode("A", "OpA", {}, {}, &graph);
   EXPECT_TRUE(ContainsNodeWithOp("OpA", *graph.graph()));
 
-  graph.DeleteNodes({"A"});
+  EXPECT_TRUE(graph.DeleteNodes({"A"}).ok());
   EXPECT_TRUE(!ContainsNodeWithOp("OpA", *graph.graph()));
 }
 
@@ -143,7 +143,7 @@ TEST(GraphUtilsTest, FindGraphNodeWithName) {
   AddNode("A", "OpA", {}, {}, &graph);
   EXPECT_NE(FindGraphNodeWithName("A", *graph.graph()), -1);
 
-  graph.DeleteNodes({"A"});
+  EXPECT_TRUE(graph.DeleteNodes({"A"}).ok());
   EXPECT_EQ(FindGraphNodeWithName("A", *graph.graph()), -1);
 }
 
@@ -164,10 +164,10 @@ TEST(GraphUtilsTest, FindGraphNodeWithOp) {
 
   AddNode("A", "OpA", {}, {}, &graph);
   AddNode("B", "OpB", {"A"}, {}, &graph);
-  AddNode("A2", "OpA", {"B"}, {}, &graph);
+  AddNode("A2", "OpA", {"A"}, {}, &graph);
   EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.graph()), 0);
 
-  graph.DeleteNodes({"B"});
+  EXPECT_TRUE(graph.DeleteNodes({"B"}).ok());
   EXPECT_EQ(FindGraphNodeWithOp("OpB", *graph.graph()), -1);
   EXPECT_EQ(FindGraphNodeWithName("A2", *graph.graph()), 1);
 }
@@ -186,7 +186,7 @@ TEST(GraphUtilsTest, FindAllGraphNodesWithOp) {
   EXPECT_EQ(result_indices.at(0), 0);
   EXPECT_EQ(result_indices.at(1), 2);
 
-  graph.DeleteNodes({"A2"});
+  EXPECT_TRUE(graph.DeleteNodes({"A2"}).ok());
   std::vector<int> result_indices_new =
       FindAllGraphNodesWithOp("OpA", *graph.graph());
   EXPECT_EQ(result_indices_new.size(), 1);
@@ -201,7 +201,7 @@ TEST(GraphUtilsTest, SetUniqueGraphNodeName) {
   NodeDef* node2 = AddNode("", "A", {}, {}, &graph);
   EXPECT_NE(node1->name(), node2->name());
 
-  graph.DeleteNodes({node1->name()});
+  EXPECT_TRUE(graph.DeleteNodes({node1->name()}).ok());
   NodeDef* node3 = AddNode("", "A", {}, {}, &graph);
   EXPECT_NE(node2->name(), node3->name());
 }

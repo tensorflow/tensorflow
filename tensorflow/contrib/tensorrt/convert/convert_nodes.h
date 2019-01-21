@@ -128,8 +128,7 @@ struct EngineInfo {
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
-    const std::set<string>& subgraph_node_names,
-    const std::vector<int>& subgraph_node_ids,
+    const std::vector<const Node*>& subgraph_nodes,
     std::vector<EngineConnection>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope);
 
@@ -159,7 +158,10 @@ class OutputEdgeValidator {
   bool operator()(const tensorflow::Edge* out_edge) const;
 };
 
+string DebugString(const nvinfer1::DimensionType type);
+string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Dims& dims);
+string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
 int64_t TrtDimsNumElements(const nvinfer1::Dims& dims);
 
@@ -195,6 +197,10 @@ class TRT_ShapedWeights {
   // underlying buffer.
   TRT_ShapedWeights(DataType type, nvinfer1::Dims dims, Tensor tensor);
 
+  // All weights should be stored inside TrtWeightStore to make sure lifetime of
+  // all the underlying tensors are available until the engine is built. For
+  // this reason, tensor_ should never be reassigned to a different value that
+  // is not already present in the TrtWeightStore.
   Tensor tensor_;
 
   friend class TrtWeightStore;
@@ -468,6 +474,11 @@ class Converter {
                               const TRT_TensorOrWeights& operand_r,
                               nvinfer1::Dims* operand_l_new_dims,
                               nvinfer1::Dims* operand_r_new_dims) const;
+
+  // Creates an IConstantLayer using 'weights' whose dimensions are specified by
+  // 'dims', and returns the output ITensor.
+  nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
+                                         const nvinfer1::Dims& dims);
 
  private:
   // Verify the provided batch_size is consistent with batch_size_ and update it

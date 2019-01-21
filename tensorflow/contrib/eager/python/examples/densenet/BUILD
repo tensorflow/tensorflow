@@ -27,6 +27,7 @@ cuda_py_test(
     tags = [
         "no_pip",
         "optonly",
+        "oss_serial",
     ],
 )
 
@@ -45,5 +46,6 @@ cuda_py_test(
         "nomsan",
         "notsan",
         "optonly",
+        "oss_serial",
     ],
 )

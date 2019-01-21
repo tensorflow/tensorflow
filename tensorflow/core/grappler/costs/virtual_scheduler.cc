@@ -310,29 +310,15 @@ ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
   LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
 }
 
-VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
-                                   const bool use_static_shapes,
-                                   Cluster* cluster,
-                                   ReadyNodeManager* ready_nodes)
-    : ready_nodes_(ready_nodes),
-      graph_costs_(Costs::ZeroCosts()),
-      graph_properties_(new GraphProperties(*grappler_item)),
-      cluster_(cluster),
-      grappler_item_(grappler_item),
-      use_static_shapes_(use_static_shapes),
-      placer_(cluster) {
-  graph_costs_.num_ops_total = 0;
-  initialized_ = false;
-  track_mem_usage_snapshot_ = VLOG_IS_ON(1);
-}
-
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
+                                   const bool use_aggressive_shape_inference,
                                    Cluster* cluster,
                                    ReadyNodeManager* ready_nodes)
     : ready_nodes_(ready_nodes),
       graph_costs_(Costs::ZeroCosts()),
       cluster_(cluster),
       use_static_shapes_(use_static_shapes),
+      use_aggressive_shape_inference_(use_aggressive_shape_inference),
       placer_(cluster) {
   graph_costs_.num_ops_total = 0;
   initialized_ = false;
@@ -343,12 +329,6 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   grappler_item_ = item;
   graph_properties_ = absl::make_unique<GraphProperties>(*item);
 
-  return Init();
-}
-
-// TODO(pcma): Merge with Init(const GrapplerItem* item) when this
-// deprecated API is deleted
-Status VirtualScheduler::Init() {
   initialized_ = false;
 
   // Clear all internal states so that the VirtualScheduler is reusable for
@@ -372,7 +352,8 @@ Status VirtualScheduler::Init() {
 
   // Construct graph properties.
   if (use_static_shapes_) {
-    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(true));
+    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(
+        true, use_aggressive_shape_inference_));
   } else {
     TF_RETURN_IF_ERROR(graph_properties_->InferDynamically(cluster_));
   }

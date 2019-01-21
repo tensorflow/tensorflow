@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/map_vectorization.h"
 #include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -120,6 +121,7 @@ bool IsOutputShapesFullyDefined(const NodeDef& node) {
   const auto& shapes = shapes_attr->list().shape();
 
   for (const TensorShapeProto& shape : shapes) {
+    if (shape.unknown_rank()) return false;
     for (const auto& dim : shape.dim()) {
       if (dim.size() == -1) {
         return false;
@@ -212,11 +214,13 @@ NodeDef MakeNewMapNode(const NodeDef& old_map_node,
 
 }  // namespace
 
-Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                  GraphDef* output) {
+Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
+                                                 const GrapplerItem& item,
+                                                 GraphDef* output,
+                                                 OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
 
   for (const NodeDef& node : item.graph.node()) {
     // Find Map->Batch nodes.
@@ -264,13 +268,15 @@ Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* new_map_node = graph.AddNode(MakeNewMapNode(
         *map_node, batch_node, *new_batch_node, *vectorized_func, &graph));
-    graph.UpdateFanouts(batch_node.name(), new_map_node->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(batch_node.name(), new_map_node->name()));
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());
     nodes_to_delete.insert(batch_node.name());
+    stats->num_changes++;
   }
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -282,5 +288,5 @@ void MapVectorization::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapVectorization, "map_vectorization");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

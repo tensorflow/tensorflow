@@ -210,6 +210,35 @@ class RNNCellTest(test.TestCase):
         # Smoke test
         self.assertAllClose(res[0], [[0.509682, 0.509682]])
 
+  def testSRUCellKerasRNN(self):
+    """Tests that SRUCell works with keras RNN layer."""
+    cell = contrib_rnn_cell.SRUCell(10)
+    seq_input = ops.convert_to_tensor(
+        np.random.rand(2, 3, 5), name="seq_input", dtype=dtypes.float32)
+    rnn_layer = keras_layers.RNN(cell=cell)
+    rnn_outputs_keras = rnn_layer(seq_input)
+    with self.cached_session() as sess:
+      sess.run([variables_lib.global_variables_initializer()])
+      self.assertEqual(sess.run(rnn_outputs_keras).shape, (2, 10))
+
+  def testSRUCellBiasType(self):
+    """Tests that the bias' dtype is properly set."""
+    cell = contrib_rnn_cell.SRUCell(10)
+    cell.build((2, 3, 5))
+    self.assertEqual(cell._bias.dtype, dtypes.float32_ref)
+
+    cell = contrib_rnn_cell.SRUCell(10, dtype=dtypes.int32)
+    cell.build((2, 3, 5))
+    self.assertEqual(cell._bias.dtype, dtypes.int32_ref)
+
+    cell_input = ops.convert_to_tensor(
+        np.random.rand(2, 5), name="cell_input", dtype=dtypes.float16)
+    cell_state = ops.convert_to_tensor(
+        np.random.rand(2, 10), name="cell_state", dtype=dtypes.float16)
+    cell = contrib_rnn_cell.SRUCell(10)
+    cell(cell_input, [cell_state])
+    self.assertEqual(cell._bias.dtype, dtypes.float16_ref)
+
   def testSRUCellWithDiffSize(self):
     with self.cached_session() as sess:
       with variable_scope.variable_scope(

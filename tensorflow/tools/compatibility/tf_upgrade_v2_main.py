@@ -98,15 +98,33 @@ Simple usage:
   else:
     parser.print_help()
   if report_text:
-    open(report_filename, "w").write(report_text)
-    print("TensorFlow 2.0 Upgrade Script")
-    print("-----------------------------")
-    print("Converted %d files\n" % files_processed)
-    print("Detected %d errors that require attention" % len(errors))
-    print("-" * 80)
-    print("\n".join(errors))
-    print("\nMake sure to read the detailed log %r\n" % report_filename)
+    num_errors = 0
+    report = ""
+    for f in errors:
+      if errors[f]:
+        num_errors += len(errors[f])
+        report += "-" * 80 + "\n"
+        report += "File: %s\n" % f
+        report += "-" * 80 + "\n"
+        report += "\n".join(errors[f]) + "\n"
 
+    report = (
+        "TensorFlow 2.0 Upgrade Script\n"
+        "-----------------------------\n"
+        "Converted %d files\n" % files_processed +
+        "Detected %d errors that require attention" % num_errors + "\n" +
+        "-" * 80 + "\n"
+    ) + report
+
+    with open(report_filename, "w") as report_file:
+      report_file.write(report)
+      report_file.write("=" * 80 + "\n")
+      report_file.write("Detailed log follows:\n\n")
+      report_file.write("=" * 80 + "\n")
+      report_file.write(report_text)
+
+    print(report)
+    print("\nMake sure to read the detailed log %r\n" % report_filename)
 
 if __name__ == "__main__":
   main()

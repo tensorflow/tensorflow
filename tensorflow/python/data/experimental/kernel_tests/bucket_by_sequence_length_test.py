@@ -77,12 +77,11 @@ def _get_record_shape(sparse):
 class BucketBySequenceLengthTest(test_base.DatasetTestBase,
                                  parameterized.TestCase):
 
-  # TODO(b/117581999): add eager coverage.
   @parameterized.named_parameters(
       ("WithoutPadding", True),
       ("WithPadding", False),
   )
-  def testSkipEagerBucketDropReminder(self, param_no_padding):
+  def testBucketDropReminder(self, param_no_padding):
 
     boundaries = [10, 20, 30]
     batch_sizes = [10, 8, 4, 2]
@@ -202,12 +201,11 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     _test_bucket_by_padding(param_no_padding)
 
-  # TODO(b/117581999): add eager coverage.
   @parameterized.named_parameters(
       ("WithoutPadding", True),
       ("WithPadding", False),
   )
-  def testSkipEagerBucket(self, param_no_padding):
+  def testBucket(self, param_no_padding):
 
     boundaries = [10, 20, 30]
     batch_sizes = [10, 8, 4, 2]
@@ -383,12 +381,11 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     _test_tuple_elements_by_padding(param_no_padding)
 
-  # TODO(b/117581999): add eager coverage
   @parameterized.named_parameters(
       ("DoDropRemainder", True),
       ("DoNotDropRemainder", False),
   )
-  def testSkipEagerBucketSparse(self, param_drop_remainder):
+  def testBucketSparse(self, param_drop_remainder):  # pylint: disable=g-doc-args
     """Tests bucketing of sparse tensors (case where `no_padding` == True).
 
     Test runs on following dataset:

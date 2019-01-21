@@ -22,9 +22,7 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column as sfc_old
 from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column_v2 as sfc
-from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.feature_column.feature_column_v2_test import _TestStateManager
 from tensorflow.python.framework import dtypes
@@ -32,13 +30,15 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import monitored_session
 
 
-class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
+class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -111,29 +111,27 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc_old._embedding_column(
+    embedding_column_a = fc.embedding_column(
         categorical_column_a,
         dimension=embedding_dimension_a,
         initializer=_get_initializer(embedding_dimension_a, embedding_values_a))
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    embedding_column_b = fc_old._embedding_column(
+    embedding_column_b = fc.embedding_column(
         categorical_column_b,
         dimension=embedding_dimension_b,
         initializer=_get_initializer(embedding_dimension_b, embedding_values_b))
 
-    input_layer, sequence_length = sfc.sequence_input_layer(
-        features={
-            'aaa': sparse_input_a,
-            'bbb': sparse_input_b,
-        },
-        # Test that columns are reordered alphabetically.
-        feature_columns=[embedding_column_b, embedding_column_a])
+    # Test that columns are reordered alphabetically.
+    sequence_input_layer = sfc.SequenceFeatures(
+        [embedding_column_b, embedding_column_a])
+    input_layer, sequence_length = sequence_input_layer({
+        'aaa': sparse_input_a, 'bbb': sparse_input_b,})
 
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertCountEqual(
-        ('sequence_input_layer/aaa_embedding/embedding_weights:0',
-         'sequence_input_layer/bbb_embedding/embedding_weights:0'),
+        ('sequence_features/aaa_embedding/embedding_weights:0',
+         'sequence_features/bbb_embedding/embedding_weights:0'),
         tuple([v.name for v in global_vars]))
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(embedding_values_a, global_vars[0].eval(session=sess))
@@ -152,18 +150,17 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc_old._categorical_column_with_identity(
+    categorical_column_a = fc.categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc_old._embedding_column(
+    embedding_column_a = fc.embedding_column(
         categorical_column_a, dimension=2)
 
     with self.assertRaisesRegexp(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must be of '
-        r'type _SequenceCategoricalColumn to use sequence_input_layer\.'):
-      _, _ = sfc.sequence_input_layer(
-          features={'aaa': sparse_input},
-          feature_columns=[embedding_column_a])
+        r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
+      sequence_input_layer = sfc.SequenceFeatures([embedding_column_a])
+      _, _ = sequence_input_layer({'aaa': sparse_input})
 
   def test_shared_embedding_column(self):
     vocabulary_size = 3
@@ -210,21 +207,18 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
     # Test that columns are reordered alphabetically.
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc.shared_embedding_columns_v2(
         [categorical_column_b, categorical_column_a],
         dimension=embedding_dimension,
         initializer=_get_initializer(embedding_dimension, embedding_values))
 
-    input_layer, sequence_length = sfc.sequence_input_layer(
-        features={
-            'aaa': sparse_input_a,
-            'bbb': sparse_input_b,
-        },
-        feature_columns=shared_embedding_columns)
+    sequence_input_layer = sfc.SequenceFeatures(shared_embedding_columns)
+    input_layer, sequence_length = sequence_input_layer({
+        'aaa': sparse_input_a, 'bbb': sparse_input_b})
 
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertCountEqual(
-        ('sequence_input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
+        ('aaa_bbb_shared_embedding:0',),
         tuple([v.name for v in global_vars]))
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(embedding_values, global_vars[0].eval(session=sess))
@@ -248,23 +242,20 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc_old._categorical_column_with_identity(
+    categorical_column_a = fc.categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc_old._categorical_column_with_identity(
+    categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc.shared_embedding_columns_v2(
         [categorical_column_a, categorical_column_b], dimension=2)
 
     with self.assertRaisesRegexp(
         ValueError,
         r'In embedding_column: aaa_shared_embedding\. categorical_column must '
-        r'be of type _SequenceCategoricalColumn to use sequence_input_layer\.'):
-      _, _ = sfc.sequence_input_layer(
-          features={
-              'aaa': sparse_input_a,
-              'bbb': sparse_input_b
-          },
-          feature_columns=shared_embedding_columns)
+        r'be of type SequenceCategoricalColumn to use SequenceFeatures\.'):
+      sequence_input_layer = sfc.SequenceFeatures(shared_embedding_columns)
+      _, _ = sequence_input_layer({'aaa': sparse_input_a,
+                                   'bbb': sparse_input_b})
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -319,17 +310,15 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size_a)
-    indicator_column_a = fc_old._indicator_column(categorical_column_a)
+    indicator_column_a = fc.indicator_column(categorical_column_a)
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size_b)
-    indicator_column_b = fc_old._indicator_column(categorical_column_b)
-    input_layer, sequence_length = sfc.sequence_input_layer(
-        features={
-            'aaa': sparse_input_a,
-            'bbb': sparse_input_b,
-        },
-        # Test that columns are reordered alphabetically.
-        feature_columns=[indicator_column_b, indicator_column_a])
+    indicator_column_b = fc.indicator_column(categorical_column_b)
+    # Test that columns are reordered alphabetically.
+    sequence_input_layer = sfc.SequenceFeatures(
+        [indicator_column_b, indicator_column_a])
+    input_layer, sequence_length = sequence_input_layer({
+        'aaa': sparse_input_a, 'bbb': sparse_input_b})
 
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
@@ -346,17 +335,16 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc_old._categorical_column_with_identity(
+    categorical_column_a = fc.categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column_a = fc_old._indicator_column(categorical_column_a)
+    indicator_column_a = fc.indicator_column(categorical_column_a)
 
     with self.assertRaisesRegexp(
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must be of '
-        r'type _SequenceCategoricalColumn to use sequence_input_layer\.'):
-      _, _ = sfc.sequence_input_layer(
-          features={'aaa': sparse_input},
-          feature_columns=[indicator_column_a])
+        r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
+      sequence_input_layer = sfc.SequenceFeatures([indicator_column_a])
+      _, _ = sequence_input_layer({'aaa': sparse_input})
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -386,11 +374,10 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
       self, sparse_input_args, expected_input_layer, expected_sequence_length):
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
 
-    numeric_column = sfc_old.sequence_numeric_column('aaa')
+    numeric_column = sfc.sequence_numeric_column('aaa')
 
-    input_layer, sequence_length = sfc.sequence_input_layer(
-        features={'aaa': sparse_input},
-        feature_columns=[numeric_column])
+    sequence_input_layer = sfc.SequenceFeatures([numeric_column])
+    input_layer, sequence_length = sequence_input_layer({'aaa': sparse_input})
 
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
@@ -428,14 +415,13 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
       )
   def test_numeric_column_multi_dim(
       self, sparse_input_args, expected_input_layer, expected_sequence_length):
-    """Tests sequence_input_layer for multi-dimensional numeric_column."""
+    """Tests SequenceFeatures for multi-dimensional numeric_column."""
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
 
-    numeric_column = sfc_old.sequence_numeric_column('aaa', shape=(2, 2))
+    numeric_column = sfc.sequence_numeric_column('aaa', shape=(2, 2))
 
-    input_layer, sequence_length = sfc.sequence_input_layer(
-        features={'aaa': sparse_input},
-        feature_columns=[numeric_column])
+    sequence_input_layer = sfc.SequenceFeatures([numeric_column])
+    input_layer, sequence_length = sequence_input_layer({'aaa': sparse_input})
 
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
@@ -454,22 +440,20 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         indices=((0, 0), (1, 0)),
         values=(1., 10.),
         dense_shape=(2, 2))
-    numeric_column_a = sfc_old.sequence_numeric_column('aaa')
-    numeric_column_b = sfc_old.sequence_numeric_column('bbb')
+    numeric_column_a = sfc.sequence_numeric_column('aaa')
+    numeric_column_b = sfc.sequence_numeric_column('bbb')
 
-    _, sequence_length = sfc.sequence_input_layer(
-        features={
-            'aaa': sparse_input_a,
-            'bbb': sparse_input_b,
-        },
-        feature_columns=[numeric_column_a, numeric_column_b])
+    sequence_input_layer = sfc.SequenceFeatures(
+        [numeric_column_a, numeric_column_b])
+    _, sequence_length = sequence_input_layer({
+        'aaa': sparse_input_a, 'bbb': sparse_input_b})
 
     with monitored_session.MonitoredSession() as sess:
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           r'\[Condition x == y did not hold element-wise:\] '
-          r'\[x \(sequence_input_layer/aaa/sequence_length:0\) = \] \[2 1\] '
-          r'\[y \(sequence_input_layer/bbb/sequence_length:0\) = \] \[1 1\]'):
+          r'\[x \(sequence_features/aaa/sequence_length:0\) = \] \[2 1\] '
+          r'\[y \(sequence_features/bbb/sequence_length:0\) = \] \[1 1\]'):
         sess.run(sequence_length)
 
   @parameterized.named_parameters(
@@ -497,11 +481,10 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
       self, sparse_input_args, expected_shape):
     """Tests that we return a known static shape when we have one."""
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
-    numeric_column = sfc_old.sequence_numeric_column('aaa', shape=(2, 2))
+    numeric_column = sfc.sequence_numeric_column('aaa', shape=(2, 2))
 
-    input_layer, _ = sfc.sequence_input_layer(
-        features={'aaa': sparse_input},
-        feature_columns=[numeric_column])
+    sequence_input_layer = sfc.SequenceFeatures([numeric_column])
+    input_layer, _ = sequence_input_layer({'aaa': sparse_input})
     shape = input_layer.get_shape()
     self.assertEqual(shape, expected_shape)
 
@@ -534,12 +517,48 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=3)
-    indicator_column = fc_old._indicator_column(categorical_column)
+    indicator_column = fc.indicator_column(categorical_column)
 
-    input_layer, _ = sfc.sequence_input_layer(
-        features={'aaa': sparse_input}, feature_columns=[indicator_column])
+    sequence_input_layer = sfc.SequenceFeatures([indicator_column])
+    input_layer, _ = sequence_input_layer({'aaa': sparse_input})
     shape = input_layer.get_shape()
     self.assertEqual(shape, expected_shape)
+
+  def test_compute_output_shape(self):
+    price1 = sfc.sequence_numeric_column('price1', shape=2)
+    price2 = sfc.sequence_numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': sparse_tensor.SparseTensor(
+              indices=[[0, 0, 0], [0, 0, 1],
+                       [0, 1, 0], [0, 1, 1],
+                       [1, 0, 0], [1, 0, 1],
+                       [2, 0, 0], [2, 0, 1],
+                       [3, 0, 0], [3, 0, 1]],
+              values=[0., 1., 10., 11., 100., 101., 200., 201., 300., 301.],
+              dense_shape=(4, 3, 2)),
+          'price2': sparse_tensor.SparseTensor(
+              indices=[[0, 0],
+                       [0, 1],
+                       [1, 0],
+                       [2, 0],
+                       [3, 0]],
+              values=[10., 11., 20., 30., 40.],
+              dense_shape=(4, 3))}
+      sequence_features = sfc.SequenceFeatures([price1, price2])
+      seq_input, seq_len = sequence_features(features)
+      self.assertEqual(
+          sequence_features.compute_output_shape((None, None)),
+          (None, None, 3))
+      self.evaluate(variables_lib.global_variables_initializer())
+      self.evaluate(lookup_ops.tables_initializer())
+
+      self.assertAllClose([[[0., 1., 10.], [10., 11., 11.], [0., 0., 0.]],
+                           [[100., 101., 20.], [0., 0., 0.], [0., 0., 0.]],
+                           [[200., 201., 30.], [0., 0., 0.], [0., 0., 0.]],
+                           [[300., 301., 40.], [0., 0., 0.], [0., 0., 0.]]],
+                          self.evaluate(seq_input))
+      self.assertAllClose([2, 1, 1, 1], self.evaluate(seq_len))
 
 
 class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
@@ -605,8 +624,8 @@ class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
       sfc.concatenate_context_input(context_input, seq_input)
 
 
-class InputLayerTest(test.TestCase):
-  """Tests input_layer with sequence feature columns."""
+class DenseFeaturesTest(test.TestCase):
+  """Tests DenseFeatures with sequence feature columns."""
 
   def test_embedding_column(self):
     """Tests that error is raised for sequence embedding column."""
@@ -620,16 +639,15 @@ class InputLayerTest(test.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc_old._embedding_column(
+    embedding_column_a = fc.embedding_column(
         categorical_column_a, dimension=2)
 
     with self.assertRaisesRegexp(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must not be '
-        r'of type _SequenceCategoricalColumn\.'):
-      _ = fc_old.input_layer(
-          features={'aaa': sparse_input},
-          feature_columns=[embedding_column_a])
+        r'of type SequenceCategoricalColumn\.'):
+      input_layer = fc.DenseFeatures([embedding_column_a])
+      _ = input_layer({'aaa': sparse_input})
 
   def test_indicator_column(self):
     """Tests that error is raised for sequence indicator column."""
@@ -643,15 +661,14 @@ class InputLayerTest(test.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column_a = fc_old._indicator_column(categorical_column_a)
+    indicator_column_a = fc.indicator_column(categorical_column_a)
 
     with self.assertRaisesRegexp(
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must not be '
-        r'of type _SequenceCategoricalColumn\.'):
-      _ = fc_old.input_layer(
-          features={'aaa': sparse_input},
-          feature_columns=[indicator_column_a])
+        r'of type SequenceCategoricalColumn\.'):
+      input_layer = fc.DenseFeatures([indicator_column_a])
+      _ = input_layer({'aaa': sparse_input})
 
 
 def _assert_sparse_tensor_value(test_case, expected, actual):
@@ -946,7 +963,7 @@ class SequenceEmbeddingColumnTest(
         embedding_column, {'aaa': inputs})
 
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
+    self.assertCountEqual(
         ('embedding_weights:0',), tuple([v.name for v in global_vars]))
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(embedding_values, global_vars[0].eval(session=sess))

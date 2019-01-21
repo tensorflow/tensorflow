@@ -400,11 +400,29 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testConstructAdagradWithLR(self):
     opt = adagrad.Adagrad(lr=1.0)
-    self.assertEqual(opt.lr, 1.0)
     opt_2 = adagrad.Adagrad(learning_rate=0.1, lr=1.0)
-    self.assertEqual(opt_2.lr, 1.0)
     opt_3 = adagrad.Adagrad(learning_rate=0.1)
-    self.assertEqual(opt_3.lr, 0.1)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
+
+  def testConstructAdagradWithEpsilonValues(self):
+    opt = adagrad.Adagrad(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = adagrad.Adagrad(epsilon=1e-6)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-6)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "epsilon must be larger than 1e-7"):
+      opt = adagrad.Adagrad(epsilon=1e-8)
 
 
 if __name__ == "__main__":

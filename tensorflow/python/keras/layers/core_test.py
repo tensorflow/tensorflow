@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import math_ops
@@ -282,6 +283,13 @@ class CoreLayersTest(keras_parameterized.TestCase):
 
     testing_utils.layer_test(
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 5, 2))
+
+  def test_dense_dtype(self):
+    inputs = ops.convert_to_tensor(
+        np.random.randint(low=0, high=7, size=(2, 2)))
+    layer = keras.layers.Dense(5, dtype='float32')
+    outputs = layer(inputs)
+    self.assertEqual(outputs.dtype, 'float32')
 
   def test_dense_regularization(self):
     layer = keras.layers.Dense(

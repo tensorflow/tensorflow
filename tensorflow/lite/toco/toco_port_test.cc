@@ -61,5 +61,6 @@ TEST(TocoPortTest, JoinPath) {
 int main(int argc, char** argv) {
   ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
+  ::toco::port::InitGoogleWasDoneElsewhere();
   return RUN_ALL_TESTS();
 }

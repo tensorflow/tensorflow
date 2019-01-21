@@ -334,6 +334,21 @@ Status Converter::GetTrtBroadcastShape(
   return Status::OK();
 }
 
+nvinfer1::ITensor* Converter::CreateConstantLayer(
+    const TRT_ShapedWeights& weights, const nvinfer1::Dims& dims) {
+  nvinfer1::Weights trt_weights = weights.GetTrtWeights();
+  nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
+  if (!layer) return nullptr;
+  const nvinfer1::DataType trt_dtype = trt_weights.type;
+  nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
+  // TODO(laigd): there is a bug in TensorRT 5.0 library that, if we don't set
+  // the data type below, it will always be kFLOAT regardless what the data type
+  // of the weights is. Once NVIDIA fixes this bug, we should remove the data
+  // type setting logic below and test should still pass.
+  trt_tensor->setType(trt_dtype);
+  return trt_tensor;
+}
+
 inline bool DimsEqual(const nvinfer1::Dims& dim_l,
                       const nvinfer1::Dims& dim_r) {
   if (dim_l.nbDims != dim_r.nbDims) {
@@ -1104,10 +1119,8 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
       *tensor = layer->getOutput(0);
     }
   } else {
-    nvinfer1::IConstantLayer* layer =
-        this->network()->addConstant(dims, input.weights().GetTrtWeights());
-    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
-    *tensor = layer->getOutput(0);
+    *tensor = CreateConstantLayer(input.weights(), dims);
+    TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, "TF-TRT Internal Reshape");
     if (precision_mode() == INT8MODE && !use_calibration()) {
       // If we are in int8 mode and not calibrating, we need to explicitly set a
       // quantization range for the output tensor of the IConstantLayer. Here we
@@ -1725,6 +1738,13 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
         "Unsupported binary op broadcast scheme for op ", node_def.name(), ": ",
         status.error_message());
   }
+  TFAttrs attrs(node_def);
+  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
+  if (dtype == nvinfer1::DataType::kINT32) {
+    return errors::Unimplemented("Binary op ", node_def.op(),
+                                 " does not support INT32, at ",
+                                 node_def.name());
+  }
   if (params->validation_only) return Status::OK();
 
   const nvinfer1::ITensor* tensor_l = nullptr;
@@ -1741,8 +1761,6 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
   }
 
   // Check type consistency.
-  TFAttrs attrs(node_def);
-  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
   TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
       << DebugString(tensor_l->getType()) << " vs " << DebugString(dtype);
   TFTRT_CHECK_EQ_TYPE(tensor_r->getType(), dtype)
@@ -2565,22 +2583,18 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   auto weights_ptr =
       static_cast<float*>(const_cast<void*>(weights.GetValues()));
   weights_ptr[0] = 6.0f;
-  nvinfer1::IConstantLayer* const6_layer =
-      params->converter->network()->addConstant(dims, weights.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_layer, node_def.name());
-  params->converter->ProvideQuantizationRange(const6_layer->getOutput(0), 0.0f,
-                                              6.0f);
+  nvinfer1::ITensor* const6_tensor =
+      params->converter->CreateConstantLayer(weights, dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_tensor, node_def.name());
+  params->converter->ProvideQuantizationRange(const6_tensor, 0.0f, 6.0f);
 
   // ElementWise Min Operation
   // Min op is a nop for INT8 execution path, as the input tensor
   // to this layer will only have values in range [0.f, 6.0f].
-  const nvinfer1::ITensor* tensor_l = relu_layer->getOutput(0);
-  const nvinfer1::ITensor* tensor_r = const6_layer->getOutput(0);
   nvinfer1::IElementWiseLayer* relu6_layer =
       params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r),
-          nvinfer1::ElementWiseOperation::kMIN);
+          *const_cast<nvinfer1::ITensor*>(relu_layer->getOutput(0)),
+          *const6_tensor, nvinfer1::ElementWiseOperation::kMIN);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu6_layer, node_def.name());
   nvinfer1::ITensor* output_tensor = relu6_layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
@@ -2597,12 +2611,18 @@ tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
     return errors::InvalidArgument("Input expects tensor and weights, at ",
                                    node_def.name());
   }
+  TFAttrs attrs(node_def);
+  tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
+  if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
+    return errors::Unimplemented("Data type is not supported, for node ",
+                                 node_def.name(), " got ",
+                                 DataTypeString(tf_dtype));
+  }
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ITensor* tensor =
       const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
   const nvinfer1::Dims original_dims = tensor->getDimensions();
-  TFAttrs attrs(node_def);
   const string data_format = attrs.get<string>("data_format");
   const int channel_index =
       (data_format == "NHWC" ? original_dims.nbDims - 1 : 0);
@@ -2692,43 +2712,69 @@ tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
   return Status::OK();
 }
 
-Status GetTensorDimsWithProtoShape(const Tensor& tensor,
-                                   int tensor_proto_array_len,
-                                   nvinfer1::Dims* dims) {
+void GetTensorDimsWithProtoShape(const Tensor& tensor, nvinfer1::Dims* dims) {
   if (tensor.dims() > 0) {
     *dims = GetTrtDimsForTensor(tensor);
-    if (TrtDimsNumElements(*dims) != tensor_proto_array_len &&
-        tensor_proto_array_len != 1) {
-      return errors::InvalidArgument(
-          "Broadcast on weights only supports kCHANNEL and kUNIFORM");
-    }
   } else {
     dims->nbDims = 1;
     // No dimension provided. Flatten it.
-    dims->d[0] = tensor_proto_array_len;
+    dims->d[0] = tensor.NumElements();
     dims->type[0] = nvinfer1::DimensionType::kSPATIAL;
     for (int i = 1; i < nvinfer1::Dims::MAX_DIMS; ++i) {
       dims->d[i] = 0;
     }
   }
-  return Status::OK();
 }
 
-template <typename CType>
-Status TfTensorToTrtWeights(const DataType dtype, const Tensor& tensor,
-                            const CType* tensor_proto_array,
-                            int tensor_proto_array_len, TrtWeightStore* store,
+Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
                             TRT_ShapedWeights* weights) {
+  const DataType dtype = tensor.dtype();
+
+  // We always convert the integer constants to INT32, since TRT INT8 is for
+  // quantized inference.
+  //
+  // TODO(aaroey): FP16 will remain in half format and is not converted to
+  // FP32, but the converter currently uses all float weights as FP32. Fix
+  // this.
+  const DataType converted_dtype =
+      (dtype == DT_INT16 || dtype == DT_INT8 || dtype == DT_UINT8 ? DT_INT32
+                                                                  : dtype);
+
+  // Verify that the dtype is supported by TensorRT. Otherwise, return an error.
+  nvinfer1::DataType trt_dtype;
+  TF_RETURN_IF_ERROR(ConvertDType(converted_dtype, &trt_dtype));
+
+  if (tensor.NumElements() == 0) {
+    // Return empty weights having converted dtype.
+    *weights = TRT_ShapedWeights(converted_dtype);
+    return Status::OK();
+  }
+
   nvinfer1::Dims weight_dims;
-  TF_RETURN_IF_ERROR(GetTensorDimsWithProtoShape(tensor, tensor_proto_array_len,
-                                                 &weight_dims));
-  *weights = store->GetTempWeights(dtype, weight_dims);
-  void* dst = const_cast<void*>(weights->GetValues());
-  if (tensor_proto_array_len == 1) {
-    std::fill_n((CType*)dst, TrtDimsNumElements(weight_dims),
-                *tensor_proto_array);
+  GetTensorDimsWithProtoShape(tensor, &weight_dims);
+  *weights = weight_store->GetTempWeights(converted_dtype, weight_dims);
+
+  // Copy the tensor directly if the tensor does not require cast to the
+  // supported type.
+  if (converted_dtype == dtype) {
+    char* dst = static_cast<char*>(const_cast<void*>(weights->GetValues()));
+    memcpy(dst, tensor.tensor_data().data(), tensor.TotalBytes());
+    return Status::OK();
+  }
+
+  // Copy tensor elements after casting them to the converted DataType.
+  int32* dst = static_cast<int32*>(const_cast<void*>(weights->GetValues()));
+  if (dtype == DT_INT16) {
+    const int16* src = tensor.flat<int16>().data();
+    std::copy(src, src + tensor.NumElements(), dst);
+  } else if (dtype == DT_INT8) {
+    const int8* src = tensor.flat<int8>().data();
+    std::copy(src, src + tensor.NumElements(), dst);
   } else {
-    memcpy(dst, tensor_proto_array, weights->size_bytes());
+    // dtype can only be DT_UINT8 at this point.
+    TFTRT_CHECK_EQ_TYPE(dtype, DT_UINT8);
+    const uint8* src = tensor.flat<uint8>().data();
+    std::copy(src, src + tensor.NumElements(), dst);
   }
   return Status::OK();
 }
@@ -2746,15 +2792,6 @@ tensorflow::Status ConvertConst(OpConverterParams* params) {
         "Constant node is expected to have empty input list: ",
         node_def.name());
   }
-  TFAttrs attrs(node_def);
-  const DataType dtype = attrs.get<tensorflow::DataType>("dtype");
-  // We always convert the integer constants to kINT32, since TRT kINT8 is for
-  // quantized inference.
-  const DataType converted_dtype =
-      (dtype == DT_INT16 || dtype == DT_INT8 || dtype == DT_UINT8 ? DT_INT32
-                                                                  : dtype);
-  nvinfer1::DataType trt_dtype;
-  TF_RETURN_IF_ERROR(ConvertDType(converted_dtype, &trt_dtype));
 
   // Create shaped weights as output
   const auto& tensor_proto = node_def.attr().at("value").tensor();
@@ -2764,78 +2801,18 @@ tensorflow::Status ConvertConst(OpConverterParams* params) {
                                         node_def.name());
   }
 
-  TRT_ShapedWeights weights(converted_dtype);
-  if (tensor.NumElements() == 0) {
-    // Do nothing.
-  } else if (!tensor_proto.float_val().empty()) {
-    TF_RETURN_IF_ERROR(TfTensorToTrtWeights(
-        converted_dtype, tensor, tensor_proto.float_val().begin(),
-        tensor_proto.float_val_size(), params->weight_store, &weights));
-  } else if (!tensor_proto.int_val().empty()) {
-    TF_RETURN_IF_ERROR(TfTensorToTrtWeights(
-        converted_dtype, tensor, tensor_proto.int_val().begin(),
-        tensor_proto.int_val_size(), params->weight_store, &weights));
-  } else if (!tensor_proto.half_val().empty()) {
-    // TODO(aaroey): implement fp16 conversion.
-    return errors::Unimplemented("fp16 constant is not supported yet.");
-  } else if (!tensor_proto.tensor_content().empty()) {
-    // TODO(aaroey): fp16 will remain in half format and is not converted to
-    // fp32, but the converter currently uses all float weights as fp32. Fix
-    // this.
-    const auto& content = tensor_proto.tensor_content();
-    if (content.size() > 0) {
-      const int dtype_size = tensorflow::DataTypeSize(dtype);
-      if (content.size() % dtype_size != 0) {
-        return errors::FailedPrecondition("Tensor content size ",
-                                          content.size(),
-                                          " is not a multiple of ", dtype_size);
-      }
-      nvinfer1::Dims weights_dim;
-      TF_RETURN_IF_ERROR(GetTensorDimsWithProtoShape(
-          tensor, content.size() / dtype_size, &weights_dim));
-      const int64_t size_bytes = TrtDimsNumElements(weights_dim) * dtype_size;
-      if (content.size() != size_bytes) {
-        return errors::FailedPrecondition(
-            "Tensor size and TensorProto content size mismatch: ", size_bytes,
-            " vs ", content.size());
-      } else if (tensor.NumElements() != content.size() / dtype_size) {
-        return errors::FailedPrecondition(
-            "Tensor elements count and TensorProto content size mismatch: ",
-            tensor.NumElements(), " vs ", content.size() / dtype_size);
-      }
-      weights =
-          params->weight_store->GetTempWeights(converted_dtype, weights_dim);
-      if (dtype_size == tensorflow::DataTypeSize(converted_dtype)) {
-        port::CopyToArray(content, static_cast<char*>(
-                                       const_cast<void*>(weights.GetValues())));
-      } else {
-        // Copy out the weights as original data type.
-        std::vector<uint8_t> temp_weights(content.size());
-        port::CopyToArray(content,
-                          reinterpret_cast<char*>(temp_weights.data()));
-        int32* dst =
-            static_cast<int32*>(const_cast<void*>(weights.GetValues()));
-        // Copy to the weight store as converted data type.
-        if (dtype == DT_INT16) {
-          int16* data = reinterpret_cast<int16*>(temp_weights.data());
-          std::copy(data, data + tensor.NumElements(), dst);
-        } else if (dtype == DT_INT8) {
-          int8* data = reinterpret_cast<int8*>(temp_weights.data());
-          std::copy(data, data + tensor.NumElements(), dst);
-        } else if (dtype == DT_UINT8) {
-          uint8* data = reinterpret_cast<uint8*>(temp_weights.data());
-          std::copy(data, data + tensor.NumElements(), dst);
-        } else {
-          return errors::FailedPrecondition(
-              "Unexpected data type: ", DataTypeString(dtype),
-              " at: ", node_def.name());
-        }
-      }
-    }
-  } else {
-    return errors::Unimplemented("Not supported constant type, at ",
-                                 node_def.name());
+  TFAttrs attrs(node_def);
+  const DataType dtype = attrs.get<tensorflow::DataType>("dtype");
+  if (dtype != tensor.dtype()) {
+    return errors::InvalidArgument("DataType mismatch between attr (",
+                                   DataTypeString(dtype), ") and tensor (",
+                                   DataTypeString(tensor.dtype()), ")");
   }
+
+  TRT_ShapedWeights weights;
+  TF_RETURN_IF_ERROR(
+      TfTensorToTrtWeights(tensor, params->weight_store, &weights));
+
   if (params->outputs != nullptr) {
     params->outputs->push_back(TRT_TensorOrWeights(weights));
   }
@@ -2978,18 +2955,15 @@ tensorflow::Status ConvertSquare(OpConverterParams* params) {
   auto weights_ptr =
       static_cast<float*>(const_cast<void*>(weights.GetValues()));
   weights_ptr[0] = 2.f;
-  nvinfer1::IConstantLayer* const2_layer =
-      params->converter->network()->addConstant(dims, weights.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const2_layer, node_def.name());
+  nvinfer1::ITensor* const2_tensor =
+      params->converter->CreateConstantLayer(weights, dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const2_tensor, node_def.name());
 
   // ElementWise Pow Operation
-  const nvinfer1::ITensor* tensor_l = inputs.at(0).tensor();
-  const nvinfer1::ITensor* tensor_r = const2_layer->getOutput(0);
   nvinfer1::IElementWiseLayer* layer =
       params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r),
-          nvinfer1::ElementWiseOperation::kPOW);
+          *const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor()),
+          *const2_tensor, nvinfer1::ElementWiseOperation::kPOW);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
@@ -3449,7 +3423,6 @@ tensorflow::Status ConvertMatMul(OpConverterParams* params) {
   }
 
   TFAttrs attrs(node_def);
-  // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
     return errors::Unimplemented("Data type is not supported, for node ",
@@ -3475,7 +3448,6 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TFAttrs attrs(node_def);
 
-  // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != tensorflow::DataType::DT_FLOAT &&
       tf_dtype != tensorflow::DataType::DT_HALF) {
@@ -3597,6 +3569,9 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
 
   nvinfer1::ITensor* output_value_tensor = layer->getOutput(0);
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
+  // Tensor type for network output is not inferred. Indices should be INT32
+  // (default is float).
+  output_indices_tensor->setType(nvinfer1::DataType::kINT32);
   params->outputs->push_back(TRT_TensorOrWeights(output_value_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_indices_tensor));
   return tensorflow::Status::OK();
@@ -3780,8 +3755,7 @@ tensorflow::Status ConvertGraphDefToEngine(
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
-    const std::set<string>& subgraph_node_names,
-    const std::vector<int>& subgraph_node_ids,  // In topological order
+    const std::vector<const Node*>& subgraph_nodes,  // In topological order
     std::vector<EngineConnection>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope) {
   std::set<string> marker_nodes;
@@ -3844,8 +3818,10 @@ tensorflow::Status ConvertSegmentToGraphDef(
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
       tensorflow::NodeDefBuilder builder(node_name, "Identity");
-      auto status = builder.Input(connection.inside_node_name, 0, dtype)
-                        .Finalize(seg_node);
+      auto status =
+          builder
+              .Input(connection.inside_node_name, connection.inside_port, dtype)
+              .Finalize(seg_node);
       VLOG(1) << "Constructing output " << node_name << " for the edge "
               << connection.inside_node_name << ":" << connection.inside_port
               << " -> " << connection.outside_node_name << ":"
@@ -3855,11 +3831,10 @@ tensorflow::Status ConvertSegmentToGraphDef(
 
   std::unordered_map<int, int> old_to_new_id_map;
   // Copy internal nodes to new graphdef
-  string local_scope = graph->FindNodeId(*subgraph_node_ids.begin())->name();
-  for (const auto node_id : subgraph_node_ids) {
-    const auto node = graph->FindNodeId(node_id);
+  string local_scope = subgraph_nodes.front()->name();
+  for (const Node* node : subgraph_nodes) {
     local_scope = GetCommonNameScope(local_scope, node->name());
-    old_to_new_id_map[node_id] = segment_def->node_size();
+    old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
     snode->CopyFrom(node->def());
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
@@ -3877,6 +3852,11 @@ tensorflow::Status ConvertSegmentToGraphDef(
             << placeholder_name;
     snode->set_input(connection.inside_port, placeholder_name);
   }
+  std::set<string> subgraph_node_names;
+  for (const Node* node : subgraph_nodes) {
+    subgraph_node_names.insert(node->name());
+  }
+
   // Remove control inputs that are not inside the segment.
   for (int i = 0; i < segment_def->node_size(); ++i) {
     auto snode = segment_def->mutable_node(i);

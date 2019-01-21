@@ -37,7 +37,7 @@ from tensorflow.python.training.checkpointable import base as checkpointable
 _to_replace = re.compile("[^A-Za-z0-9.]")
 
 
-class Metric(checkpointable.CheckpointableBase):
+class Metric(checkpointable.Checkpointable):
   """A metric holds state for aggregating statistics over an evaluation run.
 
   Example use with eager execution:

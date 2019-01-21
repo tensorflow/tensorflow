@@ -96,7 +96,6 @@ tf_py_test(
     name = "sequence_feature_column_v2_test",
     srcs = ["python/feature_column/sequence_feature_column_v2_test.py"],
     additional_deps = [
-        ":sequence_feature_column",
         ":sequence_feature_column_v2",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
@@ -112,4 +111,21 @@ tf_py_test(
         "//tensorflow/python/feature_column:feature_column_v2_test",
     ],
     tags = ["no_pip"],
+)
+
+py_test(
+    name = "sequence_feature_column_v2_integration_test",
+    srcs = ["python/feature_column/sequence_feature_column_v2_integration_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":sequence_feature_column_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python/feature_column:feature_column_py",
+        "//tensorflow/python/keras:layers",
+    ],
 )

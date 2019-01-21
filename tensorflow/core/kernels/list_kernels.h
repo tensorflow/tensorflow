@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -65,6 +66,15 @@ struct TensorList {
 
 Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out);
 
+// Allocates a Tensor of requested shape and dtype and fills it with zeros.
+template <typename Device, typename T>
+void BuildZerosTensor(OpKernelContext* c, DataType dtype,
+                      const TensorShape& shape, Tensor* zeros) {
+  OP_REQUIRES_OK(c, c->allocate_temp(dtype, shape, zeros));
+  functor::SetZeroFunctor<Device, T> f;
+  f(c->eigen_device<Device>(), zeros->flat<T>());
+}
+
 template <typename Device, typename T>
 class TensorListStack : public OpKernel {
  public:
@@ -94,7 +104,7 @@ class TensorListStack : public OpKernel {
         !tensor_list->tensors.empty() ||
             tensor_list->element_shape.IsFullyDefined(),
         errors::InvalidArgument("Tried to stack elements of a empty ",
-                                "list with non-fully-defined shape: ",
+                                "list with non-fully-defined element_shape: ",
                                 tensor_list->element_shape.DebugString()));
     if (num_elements_ != -1) {
       OP_REQUIRES(c, tensor_list->tensors.size() == num_elements_,
@@ -106,34 +116,59 @@ class TensorListStack : public OpKernel {
     // Compute the shape of the output tensor.
     // If `element_shape` is fully-defined it gets used. It is assumed that all
     // element tensors have the same shape.
-    // If `element_shape` is not fully-defined the shape of the first element
-    // tensor is used and it is checked that all other tensors have the same
-    // shape.
-    TensorShape resulting_shape;
-    if (!tensor_list->element_shape.AsTensorShape(&resulting_shape)) {
-      const Tensor& t = tensor_list->tensors[0];
-      resulting_shape = t.shape();
-      for (int i = 1; i < tensor_list->tensors.size(); ++i) {
+    // If `element_shape` is not fully-defined the shape of the first
+    // initialized element tensor is used and it is checked that all other
+    // initialized tensors have the same shape. An error is thrown if the list
+    // only contains DT_INVALID type tensors.
+    TensorShape resulting_element_shape;
+    if (!tensor_list->element_shape.AsTensorShape(&resulting_element_shape)) {
+      bool resulting_element_shape_initialized = false;
+      for (int i = 0; i < tensor_list->tensors.size(); ++i) {
         const Tensor& t = tensor_list->tensors[i];
-        OP_REQUIRES(c, t.shape() == resulting_shape,
-                    errors::InvalidArgument(
-                        "Tried to stack tensors with unequal shapes: ",
-                        resulting_shape.DebugString(), " vs ",
-                        t.shape().DebugString()));
+        if (!resulting_element_shape_initialized) {
+          if (t.dtype() == DT_INVALID) {
+            continue;
+          }
+          resulting_element_shape = t.shape();
+          resulting_element_shape_initialized = true;
+          continue;
+        }
+        OP_REQUIRES(
+            c, t.dtype() == DT_INVALID || t.shape() == resulting_element_shape,
+            errors::InvalidArgument(
+                "Tried to stack tensors with unequal shapes: ",
+                resulting_element_shape.DebugString(), " vs ",
+                t.shape().DebugString()));
       }
+      OP_REQUIRES(
+          c, resulting_element_shape_initialized,
+          errors::InvalidArgument("Tried to stack list which only contains ",
+                                  "uninitialized tensors and has a ",
+                                  "non-fully-defined element_shape: ",
+                                  tensor_list->element_shape.DebugString()));
     }
-    resulting_shape.InsertDim(0, tensor_list->tensors.size());
+    TensorShape output_tensor_shape = resulting_element_shape;
+    output_tensor_shape.InsertDim(0, tensor_list->tensors.size());
     Tensor* output;
-    OP_REQUIRES_OK(c, c->allocate_output(0, resulting_shape, &output));
+    OP_REQUIRES_OK(c, c->allocate_output(0, output_tensor_shape, &output));
     if (output->NumElements() == 0) {
       return;
     }
 
     ConstMatrixVector inputs_flat;
     inputs_flat.reserve(tensor_list->tensors.size());
+    Tensor zeros;
+    BuildZerosTensor<Device, T>(c, element_dtype_, resulting_element_shape,
+                                &zeros);
     for (const auto& t : tensor_list->tensors) {
-      inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
-          t.shaped<T, 2>({1, t.NumElements()})));
+      if (t.dtype() != DT_INVALID) {
+        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+            t.shaped<T, 2>({1, t.NumElements()})));
+      } else {
+        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+            const_cast<const Tensor&>(zeros).shaped<T, 2>(
+                {1, zeros.NumElements()})));
+      }
     }
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 

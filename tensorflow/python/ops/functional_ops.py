@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -40,6 +39,7 @@ from tensorflow.python.ops.gen_functional_ops import remote_call
 from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1024,17 +1024,6 @@ def For(start,
   return ret
 # pylint: enable=invalid-name,protected-access
 
-_rewriter_config_optimizer_disabled = None
-
-def _get_disabled_rewriter_config():
-  global _rewriter_config_optimizer_disabled
-  if _rewriter_config_optimizer_disabled is None:
-    config = config_pb2.ConfigProto()
-    rewriter_config = config.graph_options.rewrite_options
-    rewriter_config.disable_meta_optimizer = True
-    _rewriter_config_optimizer_disabled = config.SerializeToString()
-  return _rewriter_config_optimizer_disabled
-
 
 def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
                      executor_type=None):
@@ -1071,7 +1060,7 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
     executing_eagerly = context.executing_eagerly()
 
   if config is None:
-    config = _get_disabled_rewriter_config()
+    config = function_utils.get_disabled_rewriter_config()
 
   if executor_type is None:
     executor_type = ""
@@ -1103,7 +1092,8 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
   # When running in graph mode, the graph and function graphs are optimized
   # (i.e. run through grappler) per the session options, so we can disable any
   # eager-specific rewriting.
-  config_proto = attr_value_pb2.AttrValue(s=_get_disabled_rewriter_config())
+  config_proto = attr_value_pb2.AttrValue(
+      s=function_utils.get_disabled_rewriter_config())
 
   graph = ops.get_default_graph()
   f.add_to_graph(graph)

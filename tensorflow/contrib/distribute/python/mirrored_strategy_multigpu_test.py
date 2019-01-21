@@ -116,6 +116,9 @@ class MirroredTwoDeviceDistributionTest(
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values)
 
+  def testNumpyIterator(self, distribution):
+    self._test_numpy_iterator(distribution)
+
   def testGlobalStepUpdate(self, distribution):
     self._test_global_step_update(distribution)
 
@@ -264,7 +267,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     self.assertIs(strategy, var.distribute_strategy)
     for d in var.devices:
       self.assertEqual(d, var.get(d).device)
-      self.assertIs(strategy, var.get(d).distribute_strategy)
+      self.assertIs(strategy, var.get(d)._distribute_strategy)  # pylint: disable=protected-access
 
   def testVariableInFuncGraph(self, distribution):
     def model_fn():
@@ -363,14 +366,9 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
                 (layer2.kernel, layer2.bias),
                 (layer3.kernel, layer3.bias)]
 
-    ds = distribution.distribute_dataset(
-        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
-    if context.executing_eagerly():
-      iterator = ds.make_one_shot_iterator()
-    else:
-      iterator = ds.make_initializable_iterator()
-      self.evaluate([iterator.initializer])
-
+    iterator = distribution.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
+    self.evaluate(iterator.initialize())
     features = iterator.get_next()
 
     with distribution.scope():
@@ -1263,7 +1261,7 @@ class MirroredStrategyDefunTest(test.TestCase):
                             self.evaluate(device_result))
 
       for defun in defuns:
-        # PolymorphicFunctions are specialized to the current device stack, so
+        # `Function`s are specialized to the current device stack, so
         # call_for_each has one trace per device. To check that the expected set
         # of variables was accessed on each trace, we first retrieve each
         # device-specific graph function.

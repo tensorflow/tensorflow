@@ -50,6 +50,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "*.compute_gradients": {
             "colocate_gradients_with_ops": None,
         },
+        "tf.cond": {
+            "strict": None,
+            "fn1": "true_fn",
+            "fn2": "false_fn"
+        },
         "tf.argmin": {
             "dimension": "axis",
         },
@@ -113,6 +118,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.load_file_system_library": {
             "library_filename": "library_location",
+        },
+        "tf.count_nonzero": {
+            "input_tensor": "input",
+            "keep_dims": "keepdims",
+            "reduction_indices": "axis",
         },
         "tf.math.count_nonzero": {
             "input_tensor": "input",
@@ -506,6 +516,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sort",
         "tf.contrib.framework.argsort":
             "tf.argsort",
+        "tf.count_nonzero":
+            "tf.math.count_nonzero",
         "tf.manip.batch_to_space_nd":
             "tf.batch_to_space",
         "tf.quantize_v2":
@@ -594,6 +606,52 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.initializers.random_normal",
         "tf.truncated_normal_initializer":
             "tf.compat.v1.initializers.truncated_normal",
+        "tf.image.resize_images":
+            "tf.image.resize",
+        "tf.random_poisson":
+            "tf.random.poisson",
+        "tf.debugging.assert_greater":
+            "tf.compat.v1.debugging.assert_greater",
+        "tf.debugging.assert_greater_equal":
+            "tf.compat.v1.debugging.assert_greater_equal",
+        "tf.debugging.assert_integer":
+            "tf.compat.v1.debugging.assert_integer",
+        "tf.debugging.assert_less":
+            "tf.compat.v1.debugging.assert_less",
+        "tf.debugging.assert_less_equal":
+            "tf.compat.v1.debugging.assert_less_equal",
+        "tf.debugging.assert_near":
+            "tf.compat.v1.debugging.assert_near",
+        "tf.debugging.assert_negative":
+            "tf.compat.v1.debugging.assert_negative",
+        "tf.debugging.assert_non_negative":
+            "tf.compat.v1.debugging.assert_non_negative",
+        "tf.debugging.assert_non_positive":
+            "tf.compat.v1.debugging.assert_non_positive",
+        "tf.debugging.assert_none_equal":
+            "tf.compat.v1.debugging.assert_none_equal",
+        "tf.debugging.assert_type":
+            "tf.compat.v1.debugging.assert_type",
+        "tf.debugging.assert_positive":
+            "tf.compat.v1.debugging.assert_positive",
+        "tf.debugging.assert_equal":
+            "tf.compat.v1.debugging.assert_equal",
+        "tf.debugging.assert_scalar":
+            "tf.compat.v1.debugging.assert_scalar",
+        "tf.assert_equal":
+            "tf.compat.v1.assert_equal",
+        "tf.assert_less":
+            "tf.compat.v1.assert_less",
+        "tf.assert_greater":
+            "tf.compat.v1.assert_greater",
+        "tf.debugging.assert_rank":
+            "tf.compat.v1.debugging.assert_rank",
+        "tf.debugging.assert_rank_at_least":
+            "tf.compat.v1.debugging.assert_rank_at_least",
+        "tf.debugging.assert_rank_in":
+            "tf.compat.v1.debugging.assert_rank_in",
+        "tf.assert_rank":
+            "tf.compat.v1.assert_rank",
     }
     # pylint: enable=line-too-long
 
@@ -618,6 +676,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.argmin",
         "tf.batch_gather",
         "tf.batch_to_space",
+        "tf.cond",
         "tf.nn.space_to_batch",
         "tf.boolean_mask",
         "tf.convert_to_tensor",
@@ -725,6 +784,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.to_int64": self._cast_transformer,
         "tf.nn.softmax_cross_entropy_with_logits":
             self._softmax_cross_entropy_with_logits_transformer,
+        "tf.image.resize_area": self._image_resize_transformer,
+        "tf.image.resize_bicubic": self._image_resize_transformer,
+        "tf.image.resize_bilinear": self._image_resize_transformer,
+        "tf.image.resize_nearest_neighbor": self._image_resize_transformer,
+
     }
 
     decay_function_comment = (
@@ -832,18 +896,40 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             make_initializable_iterator_deprecation,
         "*.make_one_shot_iterator":
             make_one_shot_iterator_deprecation,
-        "tf.assert_greater":
-            assert_return_type_comment,
         "tf.assert_equal":
+            assert_return_type_comment,
+        "tf.assert_none_equal":
+            assert_return_type_comment,
+        "tf.assert_negative":
+            assert_return_type_comment,
+        "tf.assert_positive":
+            assert_return_type_comment,
+        "tf.assert_non_negative":
+            assert_return_type_comment,
+        "tf.assert_non_positive":
+            assert_return_type_comment,
+        "tf.assert_near":
             assert_return_type_comment,
         "tf.assert_less":
             assert_return_type_comment,
+        "tf.assert_less_equal":
+            assert_return_type_comment,
+        "tf.assert_greater":
+            assert_return_type_comment,
+        "tf.assert_greater_equal":
+            assert_return_type_comment,
+        "tf.assert_integer":
+            assert_return_type_comment,
+        "tf.assert_type":
+            assert_return_type_comment,
+        "tf.assert_scalar":
+            assert_return_type_comment,
         "tf.assert_rank":
             assert_rank_comment,
-        "tf.cond":
-            "tf.cond no longer takes 'strict'. "
-            "Now 'strict' defaults to True."
-            "fn1/fn2 arguments are replaced by true_fn/false_fn.",
+        "tf.assert_rank_at_least":
+            assert_rank_comment,
+        "tf.assert_rank_in":
+            assert_rank_comment,
         "tf.debugging.assert_equal":
             assert_return_type_comment,
         "tf.debugging.assert_greater":
@@ -867,6 +953,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.debugging.assert_none_equal":
             assert_return_type_comment,
         "tf.debugging.assert_positive":
+            assert_return_type_comment,
+        "tf.debugging.assert_type":
+            assert_return_type_comment,
+        "tf.debugging.assert_scalar":
             assert_return_type_comment,
         "tf.debugging.assert_rank":
             assert_rank_comment,
@@ -1139,22 +1229,27 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Warnings that are emitted only if a specific arg is found.
     self.function_arg_warnings = {
         "tf.gradients": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 4):
                 "tf.gradients no longer takes "
                 "'colocate_gradients_with_ops' argument, it behaves as if it "
                 "was set to True.",
         },
         "*.minimize": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 5):
                 "Optimizer.minimize no longer takes "
                 "'colocate_gradients_with_ops' argument, it behaves as if it "
                 "was set to True.",
         },
         "*.compute_gradients": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 4):
                 "Optimizer.compute_gradients no "
                 "longer takes 'colocate_gradients_with_ops' argument, it "
                 "behaves as if it was set to True.",
+        },
+        "tf.cond": {
+            ("strict", 3):
+                "tf.cond no longer takes 'strict' argument, it behaves as "
+                "if was set to True."
         },
     }
 
@@ -1213,10 +1308,21 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Find out the dtype to cast to from the function name
     dtype_str = name[3:]
+    # Special cases where the full dtype is not given
+    if dtype_str == "float":
+      dtype_str = "float32"
+    elif dtype_str == "double":
+      dtype_str = "float64"
     new_arg = ast.keyword(arg="dtype",
                           value=ast.Attribute(value=ast.Name(id="tf",
                                                              ctx=ast.Load()),
                                               attr=dtype_str, ctx=ast.Load()))
+    # Ensures a valid transformation when a positional name arg is given
+    if len(node.args) == 2:
+      name_arg = ast.keyword(arg="name",
+                             value=node.args[-1])
+      node.args = node.args[:-1]
+      node.keywords.append(name_arg)
 
     # Python3 ast requires the args for the Attribute, but codegen will mess up
     # the arg order if we just set them to 0.
@@ -1280,4 +1386,48 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     node.keywords.append(new_arg)
     logs.append((node.lineno, node.col_offset,
                  "Added keyword argument batch_dims=-1 to tf.batch_gather."))
+    return node
+
+  @staticmethod
+  def _image_resize_transformer(parent, node, full_name, name, logs, errors):
+    """Transforms image.resize_* to image.resize(..., method=*, ...)."""
+
+    resize_method = name[7:].upper()
+    new_arg = ast.keyword(arg="method",
+                          value=ast.Attribute(
+                              value=ast.Attribute(
+                                  value=ast.Attribute(
+                                      value=ast.Name(id="tf", ctx=ast.Load()),
+                                      attr="image", ctx=ast.Load()),
+                                  attr="ResizeMethod", ctx=ast.Load()),
+                              attr=resize_method, ctx=ast.Load()))
+
+    # Ensures a valid transformation when a positional name arg is given
+    if len(node.args) == 4:
+      pos_arg = ast.keyword(arg="preserve_aspect_ratio",
+                            value=node.args[-1])
+      node.args = node.args[:-1]
+      node.keywords.append(pos_arg)
+    if len(node.args) == 3:
+      pos_arg = ast.keyword(arg="align_corners",
+                            value=node.args[-1])
+      node.args = node.args[:-1]
+      node.keywords.append(pos_arg)
+
+    # Python3 ast requires the args for the Attribute, but codegen will mess up
+    # the arg order if we just set them to 0.
+    new_arg.value.lineno = node.lineno
+    new_arg.value.col_offset = node.col_offset+100
+
+    node.keywords.append(new_arg)
+    if isinstance(node.func, ast.Attribute):
+      node.func.attr = "resize"
+    else:
+      assert isinstance(node.func, ast.Name)
+      node.func.id = "resize"
+
+    logs.append((node.lineno, node.col_offset,
+                 "Changed %s call to tf.image.resize(..., "
+                 "method=tf.image.ResizeMethod.%s)." % (full_name,
+                                                        resize_method)))
     return node

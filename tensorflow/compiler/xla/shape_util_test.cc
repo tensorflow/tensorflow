@@ -538,10 +538,6 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2)));
 }
 
-TEST(ShapeUtilTest, ShapeIs) {
-  EXPECT_FALSE(ShapeUtil::ShapeIs(ShapeUtil::MakeShape(PRED, {2}), PRED, {}));
-}
-
 TEST(ShapeUtilTest, ForEachIndex) {
   struct ShapeDimensionAndNumberInvocations {
     std::vector<int64> dimensions;

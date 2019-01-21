@@ -22,11 +22,14 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_lru_cache.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -36,7 +39,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 struct TRTInt8Calibrator;
-class TRTCalibrationResource;
 class AsyncHelper;
 //  TODO(Sami): Remove this file?
 
@@ -48,9 +50,10 @@ class TRTEngineOp : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
-  ~TRTEngineOp();
 
  private:
+  // TODO(samikama): context should go to a resource manager!
+
   // Execute calibration
   void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
 
@@ -62,32 +65,24 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Execute the tensorrt engine. Returns whether we need to retry by running
   // the native segment.
-  bool ExecuteTrtEngine(OpKernelContext* ctx, const int num_batch,
-                        nvinfer1::ICudaEngine* trt_engine_ptr,
-                        nvinfer1::IExecutionContext* trt_execution_context_ptr);
+  bool ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context);
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
-                                      TRTCalibrationResource** cr);
+                                      SerializableResourceBase** cr);
 
-  // TODO(samikama): context should go to a resource manager!
-  typedef std::pair<TrtUniquePtrType<nvinfer1::ICudaEngine>,
-                    TrtUniquePtrType<nvinfer1::IExecutionContext>>
-      EngineCtxPair;
-  EngineCtxPair& GetEngine(int batch_size, OpKernelContext* ctx);
+  // Get engine for the input shape
+  EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,
+                           OpKernelContext* ctx);
 
-  // Return engine batch closest to input batch.
-  int GetEngineBatch(OpKernelContext* ctx);
+  // Return engine batch in cached_engne_batch_sizes_ which is closest to input
+  // batch.
+  bool GetCompatibleCachedEngine(
+      const std::vector<TensorShape>& actual_input_shapes,
+      std::vector<TensorShape>* engine_input_shapes);
 
-  nvinfer1::IGpuAllocator* GetAllocator(OpKernelContext* ctx);
-
-  // map to keep engines and their execution context for given batch size.
-  std::unordered_map<int, EngineCtxPair> engine_map_;
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
-
-  // keep device allocator for TRT.
-  std::unique_ptr<TRTBaseAllocator> allocator_;
 
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;
@@ -98,12 +93,6 @@ class TRTEngineOp : public AsyncOpKernel {
   // GraphDef representation of the segment.
   GraphDef segment_graph_;
 
-  // Lookup table for temporary staging areas of input tensors for calibration.
-  std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
-
-  // Temporary staging areas for calibration inputs.
-  std::vector<PersistentTensor> dev_tensors_;
-
   // Engine Precision mode.
   int precision_mode_;
 
@@ -113,10 +102,6 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
-
-  // Whether non-batch ranks of the inputs are assumed to be fixed or not for
-  // engine construction.
-  bool fixed_input_size_;
 
   // Batches of the cached engines
   std::vector<int> cached_engine_batches_;

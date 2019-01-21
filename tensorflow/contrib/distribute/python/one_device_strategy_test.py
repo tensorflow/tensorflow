@@ -59,6 +59,10 @@ class OneDeviceStrategyTest(
     self._test_input_fn_iterator(
         iterator, d.extended.worker_devices, expected_values)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNumpyIterator(self):
+    self._test_numpy_iterator(self._get_distribution_strategy())
+
   def testAllReduceSum(self):
     self._test_all_reduce_sum(self._get_distribution_strategy())
 

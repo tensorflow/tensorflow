@@ -36,9 +36,7 @@ Example:
   session = tf.Session()
 
   graphdef_to_convert = tf.lite.convert_op_hints_to_stubs(session)
-  tflite_graph = tf.lite.toco_convert(graphdef_to_convert,
-                                              [image], [output])
-                                              [image], [output])
+  tflite_graph = tf.lite.toco_convert(graphdef_to_convert, [image], [output])
   with open("/tmp/graph.fb", "wb") as fp:
     fp.write(tflite_graph)
 

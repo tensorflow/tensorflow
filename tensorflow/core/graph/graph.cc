@@ -85,6 +85,10 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
         {"FakeParam", NC_FAKE_PARAM},
+        {"IteratorGetNext", NC_DATASET},
+        {"IteratorGetNextSync", NC_DATASET},
+        {"DatasetToSingleElement", NC_DATASET},
+        {"ReduceDataset", NC_DATASET},
     });
 
 #undef REF_CLASS

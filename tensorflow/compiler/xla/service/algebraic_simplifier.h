@@ -25,21 +25,25 @@ namespace xla {
 
 class AlgebraicSimplifierOptions {
  public:
-  // Given shapes 'from_shape' and 'to_shape', determines if it is valid to
-  // bitcast from 'from_shape' to 'to_shape' after considering platform
-  // dependent effects on layout like alignment restrictions. Precondition: the
-  // two shapes have layouts, the same number of elements and
-  // ShapeUtil::ReshapeIsBitcast returns true.
-  using ValidBitcastCallback =
+  AlgebraicSimplifierOptions() {}
+  // Platform dependent callback to determine if a reshape `from_shape` to
+  // `to_shape` is a bitcast.
+  using ReshapeIsBitcastCallback =
       std::function<bool(const Shape& from_shape, const Shape& to_shape)>;
-
   explicit AlgebraicSimplifierOptions(
-      ValidBitcastCallback valid_bitcast_callback)
-      : valid_bitcast_callback_(std::move(valid_bitcast_callback)) {}
-  // If valid_bitcast_callback returns true, then the pass will replace reshapes
-  // and transposes with bitcasts.
-  const ValidBitcastCallback& valid_bitcast_callback() const {
-    return valid_bitcast_callback_;
+      ReshapeIsBitcastCallback reshape_is_bitcast_callback)
+      : reshape_is_bitcast_callback_(std::move(reshape_is_bitcast_callback)) {}
+
+  // Use the platform specific callback if set. It is not sensible to return
+  // true here if the options are not layout sensitive.
+  bool ReshapeIsBitcast(const Shape& from_shape, const Shape& to_shape) const {
+    if (!is_layout_sensitive_) {
+      return false;
+    }
+    if (!reshape_is_bitcast_callback_) {
+      return ShapeUtil::ReshapeIsBitcast(from_shape, to_shape);
+    }
+    return reshape_is_bitcast_callback_(from_shape, to_shape);
   }
 
   // If is_layout_sensitive is true, then the simplifier preserves layout during
@@ -47,12 +51,14 @@ class AlgebraicSimplifierOptions {
   void set_is_layout_sensitive(bool is_layout_sensitive) {
     is_layout_sensitive_ = is_layout_sensitive;
   }
+
   bool is_layout_sensitive() const { return is_layout_sensitive_; }
 
   // Enable dot simplification on platforms where it is profitable.
   void set_enable_dot_strength_reduction(bool enable_dot_strength_reduction) {
     enable_dot_strength_reduction_ = enable_dot_strength_reduction;
   }
+
   bool enable_dot_strength_reduction() const {
     return enable_dot_strength_reduction_;
   }
@@ -71,6 +77,7 @@ class AlgebraicSimplifierOptions {
       bool enable_permutation_sort_replacement) {
     enable_permutation_sort_replacement_ = enable_permutation_sort_replacement;
   }
+
   bool enable_permutation_sort_replacement() const {
     return enable_permutation_sort_replacement_;
   }
@@ -82,12 +89,13 @@ class AlgebraicSimplifierOptions {
     enable_window_reduce_to_reduce_replacement_ =
         enable_window_reduce_to_reduce_replacement;
   }
+
   bool enable_window_reduce_to_reduce_replacement() const {
     return enable_window_reduce_to_reduce_replacement_;
   }
 
  private:
-  ValidBitcastCallback valid_bitcast_callback_;
+  ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
   bool enable_conv_simplification_{true};

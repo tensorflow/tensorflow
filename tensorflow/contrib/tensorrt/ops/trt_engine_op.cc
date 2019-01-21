@@ -28,16 +28,22 @@ namespace shape_inference {
 extern Status TRTEngineOpShapeInference(InferenceContext* c);
 }
 
+// NOTE: please try NOT to add/modify/remove attributes or inputs/outputs to the
+// list below, this will break backward compatibility!
+//
+// TODO(laigd): consider making this op stateful. The only problem is it uses TF
+// function which has to be stateless, but we can use function library as the
+// key to cache the instantiated functions for different executor subgraphs.
 REGISTER_OP("TRTEngineOp")
     .Attr("serialized_segment: string")
     .Attr("input_shapes: list(shape)")
     .Attr("output_shapes: list(shape)")
     .Attr("segment_funcdef_name: string")
-    .Attr("InT: list({int8,float16,float32})")
-    .Attr("OutT: list({int8,float16,float32})")
+    .Attr("InT: list({int8,float16,float32,int32})")
+    .Attr("OutT: list({int8,float16,float32,int32})")
     .Attr("static_engine: bool = true")
     .Attr("fixed_input_size: bool = true")
-    .Attr("cached_engine_batches: list(int) = []")
+    .Attr("cached_engine_batches: list(int) >= 0 = []")
     .Attr("max_cached_engines_count: int = 1")
     .Attr("workspace_size_bytes: int")
     .Attr("precision_mode: {'FP32', 'FP16', 'INT8'}")

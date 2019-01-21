@@ -20,47 +20,41 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-class TRTCalibrationResource : public tensorflow::ResourceBase {
+class SerializableResourceBase : public tensorflow::ResourceBase {
  public:
-  ~TRTCalibrationResource() {
-    LOG(INFO) << "Destroying Calibration Resource " << std::endl
-              << DebugString();
-    builder_.reset();
-    engine_.reset();
-    // We need to manually destroy the builder and engine before the allocator
-    // is destroyed.
-    allocator_.reset();
-  }
+  virtual Status SerializeToString(string* serialized) = 0;
+};
 
-  string DebugString() const override {
-    std::stringstream oss;
-    using std::dec;
-    using std::endl;
-    using std::hex;
-    oss << " Calibrator = " << hex << calibrator_.get() << dec << endl
-        << " Builder    = " << hex << builder_.get() << dec << endl
-        << " Engine     = " << hex << engine_.get() << dec << endl
-        << " Logger     = " << hex << &logger_ << dec << endl
-        << " Allocator  = " << hex << allocator_.get() << dec << endl
-        << " Thread     = " << hex << thr_.get() << dec << endl;
-    return oss.str();
-  }
+class TRTCalibrationResource : public SerializableResourceBase {
+ public:
+  ~TRTCalibrationResource() override;
+
+  string DebugString() const override;
+
+  Status SerializeToString(string* serialized) override;
+
+  // Lookup table for temporary staging areas of input tensors for calibration.
+  std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
+
+  // Temporary staging areas for calibration inputs.
+  std::vector<PersistentTensor> device_tensors_;
 
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
@@ -74,6 +68,6 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif
-#endif
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_RESOURCES_H_

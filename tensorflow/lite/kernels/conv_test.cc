@@ -1069,7 +1069,7 @@ TEST_P(ConvolutionOpTest, DISABLED_PointwiseMultifilterHybrid) {
                   0.0474)));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ConvolutionOpTest, ConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 

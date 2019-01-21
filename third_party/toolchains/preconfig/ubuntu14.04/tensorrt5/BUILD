@@ -17,7 +17,7 @@ cc_library(
 )
 
 cc_library(
-    name = "nv_infer",
+    name = "tensorrt",
     srcs = ["tensorrt/lib/libnvinfer.so.5"],
     copts = cuda_default_copts(),
     data = ["tensorrt/lib/libnvinfer.so.5"],
@@ -35,9 +35,7 @@ genrule(
     outs = [
         "tensorrt/lib/libnvinfer.so.5",
     ],
-    cmd = """
-if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi && if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi && if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi && cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer.so.5.0.2" "$(@D)/libnvinfer.so.5"
-   """,
+    cmd = """cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer.so.5" $(location tensorrt/lib/libnvinfer.so.5) """,
 )
 
 genrule(
@@ -46,7 +44,5 @@ genrule(
         "tensorrt/include/NvInfer.h",
         "tensorrt/include/NvUtils.h",
     ],
-    cmd = """
-if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi && if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi && if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi && cp -f "/usr/include/x86_64-linux-gnu/NvInfer.h" "$(@D)/tensorrt/include/NvInfer.h" && cp -f "/usr/include/x86_64-linux-gnu/NvUtils.h" "$(@D)/tensorrt/include/NvUtils.h"
-   """,
+    cmd = """cp -f "/usr/include/x86_64-linux-gnu/NvInfer.h" $(location tensorrt/include/NvInfer.h) && cp -f "/usr/include/x86_64-linux-gnu/NvUtils.h" $(location tensorrt/include/NvUtils.h) """,
 )

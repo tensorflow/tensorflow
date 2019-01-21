@@ -66,7 +66,8 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kPack || type == OperatorType::kTopK_V2 ||
          type == OperatorType::kRandomUniform ||
          type == OperatorType::kResizeNearestNeighbor ||
-         type == OperatorType::kPRelu;
+         type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
+         type == OperatorType::kReduceMin;
 }
 
 // The quantized op allows output arrays of type float using

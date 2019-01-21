@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/hoist_random_uniform.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -220,12 +221,14 @@ int NumberOfPlaceholders(const NodeDef& map_node) {
 
 }  // namespace
 
-Status HoistRandomUniform::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                    GraphDef* output) {
+Status HoistRandomUniform::OptimizeAndCollectStats(Cluster* cluster,
+                                                   const GrapplerItem& item,
+                                                   GraphDef* output,
+                                                   OptimizationStats* stats) {
   *output = item.graph;
 
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
 
@@ -266,14 +269,16 @@ Status HoistRandomUniform::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* stateless_map = graph.AddNode(
         MakeStatelessMap(*map_node, *zip_node, *stateless_func, &graph));
 
-    graph.UpdateFanouts(map_node->name(), stateless_map->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(map_node->name(), stateless_map->name()));
 
     // TODO(b/116285210): we could also remove map functions from library if
     // they are not used anymore.
     nodes_to_delete.insert(map_node->name());
+    stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -285,5 +290,5 @@ void HoistRandomUniform::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(HoistRandomUniform, "hoist_random_uniform");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

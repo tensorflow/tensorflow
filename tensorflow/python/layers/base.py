@@ -554,7 +554,7 @@ class Layer(base_layer.Layer):
 
   def __setattr__(self, value, name):
     # By-pass the automatic dependency tracking performed by the parent Layer.
-    super(checkpointable.CheckpointableBase, self).__setattr__(value, name)
+    super(checkpointable.Checkpointable, self).__setattr__(value, name)
 
 
 def _add_elements_to_collection(elements, collection_list):

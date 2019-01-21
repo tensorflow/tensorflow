@@ -213,7 +213,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
       return False
 
   def _maybe_add_call_warning(self, node, full_name, name):
-    """Print a warning when specific functions are called.
+    """Print a warning when specific functions are called with selected args.
 
     The function _print_warning_for_function matches the full name of the called
     function, e.g., tf.foo.bar(). This function matches the function name that
@@ -241,13 +241,13 @@ class _PastaEditVisitor(ast.NodeVisitor):
                                              full_name, name)
 
     used_args = [kw.arg for kw in node.keywords]
-    for arg, warning in arg_warnings.items():
-      if arg in used_args:
+    for (kwarg, arg), warning in arg_warnings.items():
+      if kwarg in used_args or len(node.args) > arg:
         warned = True
         warning_message = warning.replace("<function name>", full_name or name)
         self.add_error(node.lineno, node.col_offset,
                        "%s called with %s argument requires manual check: %s." %
-                       (full_name or name, arg, warning_message))
+                       (full_name or name, kwarg, warning_message))
 
     return warned
 
@@ -289,8 +289,11 @@ class _PastaEditVisitor(ast.NodeVisitor):
       reordered = function_reorders[full_name]
       new_keywords = []
       for idx, arg in enumerate(node.args):
+        if sys.version_info[:2] >= (3, 5) and isinstance(arg, ast.Starred):
+          continue  # Can't move Starred to keywords
         keyword_arg = reordered[idx]
-        new_keywords.append(ast.keyword(arg=keyword_arg, value=arg))
+        keyword = ast.keyword(arg=keyword_arg, value=arg)
+        new_keywords.append(keyword)
 
       if new_keywords:
         self.add_log(node.lineno, node.col_offset,
@@ -506,7 +509,8 @@ class ASTCodeUpgrader(object):
       in_place: Allow the conversion of an entire directory in place.
 
     Returns:
-      A tuple of files processed, the report string ofr all files, and errors
+      A tuple of files processed, the report string ofr all files, and a dict
+        mapping filenames to errors encountered in that file.
     """
 
     if output_root_directory == root_directory:
@@ -553,7 +557,7 @@ class ASTCodeUpgrader(object):
           files_to_copy.append((fullpath, fullpath_output))
 
     file_count = 0
-    tree_errors = []
+    tree_errors = {}
     report = ""
     report += ("=" * 80) + "\n"
     report += "Input tree: %r\n" % root_directory
@@ -565,7 +569,7 @@ class ASTCodeUpgrader(object):
         os.makedirs(output_directory)
       file_count += 1
       _, l_report, l_errors = self.process_file(input_path, output_path)
-      tree_errors += l_errors
+      tree_errors[input_path] = l_errors
       report += l_report
     for input_path, output_path in files_to_copy:
       output_directory = os.path.dirname(output_path)
@@ -583,7 +587,7 @@ class ASTCodeUpgrader(object):
       files_to_process += py_files
 
     file_count = 0
-    tree_errors = []
+    tree_errors = {}
     report = ""
     report += ("=" * 80) + "\n"
     report += "Input tree: %r\n" % root_directory
@@ -592,7 +596,7 @@ class ASTCodeUpgrader(object):
     for path in files_to_process:
       file_count += 1
       _, l_report, l_errors = self.process_file(path, path)
-      tree_errors += l_errors
+      tree_errors[path] = l_errors
       report += l_report
 
     return file_count, report, tree_errors

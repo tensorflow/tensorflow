@@ -213,3 +213,18 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
 )
+
+cuda_py_test(
+    name = "attention_wrapper_v2_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/attention_wrapper_v2_test.py"],
+    additional_deps = [
+        ":seq2seq_py",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+)

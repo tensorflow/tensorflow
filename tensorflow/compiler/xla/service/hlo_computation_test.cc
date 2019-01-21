@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 
+#include <memory>
 #include <set>
+#include <unordered_map>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -492,6 +495,41 @@ TEST_F(HloComputationTest, CloneWithControlDependency) {
   EXPECT_THAT(successors, ::testing::ElementsAre(cloned_add));
 }
 
+TEST_F(HloComputationTest, CloneWithReplacements) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape r0s64 = ShapeUtil::MakeShape(S64, {});
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  Shape r0u32 = ShapeUtil::MakeShape(U32, {});
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "p.0.lhs"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
+  auto param2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
+  auto lt = builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param0, param1));
+  auto module = CreateNewVerifiedModule();
+  auto computation =
+      module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
+  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  replacements.emplace(param2,
+                       HloInstruction::CreateParameter(2, r0s32, "p.1"));
+  auto param3 = HloInstruction::CreateParameter(3, r0u32, "p.2");
+  std::vector<const HloInstruction*> extra_parameters{param3.get()};
+  auto clone = computation->CloneWithReplacements(std::move(replacements),
+                                                  extra_parameters);
+  ASSERT_EQ(clone->num_parameters(), 4);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(1)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(2)->shape(), r0s32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(3)->shape(), r0u32));
+}
+
 TEST_F(HloComputationTest, Stringification) {
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
@@ -605,6 +643,29 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
   EXPECT_EQ(computation->ToString(options), expected_computation2);
+}
+
+std::unique_ptr<HloComputation> MakeAddNComputation(int n) {
+  auto builder = HloComputation::Builder("add_n");
+  auto result = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "x_value"));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  for (int i = 0; i < n; ++i) {
+    result = builder.AddInstruction(HloInstruction::CreateBinary(
+        one->shape(), HloOpcode::kAdd, result, one));
+  }
+  return builder.Build();
+}
+
+TEST_F(HloComputationTest, DeepEquality) {
+  auto computation_a = MakeAddNComputation(200000);
+  auto computation_b = MakeAddNComputation(200000);
+  EXPECT_TRUE(*computation_a == *computation_b);
+
+  auto computation_c = MakeAddNComputation(199999);
+  EXPECT_FALSE(*computation_a == *computation_c);
+  EXPECT_FALSE(*computation_c == *computation_b);
 }
 
 }  // namespace

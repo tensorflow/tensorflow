@@ -61,10 +61,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "ProximalGradientDescentOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SequenceExample"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -139,9 +135,5 @@ tf_module {
   member_method {
     name: "sdca_shrink_l1"
     argspec: "args=[\'weights\', \'l1\', \'l2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "summary_iterator"
-    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
   }
 }

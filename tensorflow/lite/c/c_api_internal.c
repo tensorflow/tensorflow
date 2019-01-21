@@ -70,6 +70,20 @@ TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
 
 void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
 
+int TfLiteFloatArrayGetSizeInBytes(int size) {
+  static TfLiteFloatArray dummy;
+  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+}
+
+TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
+  TfLiteFloatArray* ret =
+      (TfLiteFloatArray*)malloc(TfLiteFloatArrayGetSizeInBytes(size));
+  ret->size = size;
+  return ret;
+}
+
+void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
+
 void TfLiteTensorDataFree(TfLiteTensor* t) {
   if (t->allocation_type == kTfLiteDynamic && t->data.raw) {
     free(t->data.raw);
@@ -77,10 +91,30 @@ void TfLiteTensorDataFree(TfLiteTensor* t) {
   t->data.raw = NULL;
 }
 
+void TfLiteQuantizationFree(TfLiteTensor* t) {
+  if (t->quantization.type == kTfLiteAffineQuantization) {
+    TfLiteAffineQuantization* q_params =
+        (TfLiteAffineQuantization*)(t->quantization.params);
+    if (q_params->scale) {
+      TfLiteFloatArrayFree(q_params->scale);
+      q_params->scale = NULL;
+    }
+    if (q_params->zero_point) {
+      TfLiteIntArrayFree(q_params->zero_point);
+      q_params->zero_point = NULL;
+    }
+    free(q_params);
+  }
+  t->quantization.params = NULL;
+  t->quantization.type = kTfLiteNoQuantization;
+}
+
 void TfLiteTensorFree(TfLiteTensor* t) {
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = NULL;
+
+  TfLiteQuantizationFree(t);
 }
 
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
@@ -98,6 +132,9 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
   tensor->allocation_type = allocation_type;
   tensor->allocation = allocation;
   tensor->is_variable = is_variable;
+
+  tensor->quantization.type = kTfLiteNoQuantization;
+  tensor->quantization.params = NULL;
 }
 
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {

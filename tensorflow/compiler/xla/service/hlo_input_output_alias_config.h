@@ -32,6 +32,28 @@ class HloModule;
 // parameter index in the entry computation.
 class HloInputOutputAliasConfig {
  public:
+  // The kind of aliases which can be set. A kUserAlias is one setup at
+  // compilation time by the user, and has to be respected. A kSystemAlias one
+  // might be setup by the compiler, if it decides it is convenient to do so.
+  enum AliasKind {
+    kNoAlias,
+    kUserAlias,
+    kSystemAlias,
+  };
+
+  // Defines the alias information for a given output buffer. A given output
+  // buffer shape index can refer only to one parameter+index.
+  struct Alias {
+    Alias(AliasKind kind, int64 parameter_number, ShapeIndex parameter_index)
+        : kind(kind),
+          parameter_number(parameter_number),
+          parameter_index(std::move(parameter_index)) {}
+
+    AliasKind kind;
+    int64 parameter_number;
+    ShapeIndex parameter_index;
+  };
+
   HloInputOutputAliasConfig() = default;
 
   explicit HloInputOutputAliasConfig(Shape shape) : alias_(shape) {}
@@ -41,12 +63,19 @@ class HloInputOutputAliasConfig {
   // Sets up alias config from `output_index` to `param_index` at
   // `param_number`.
   Status SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                    const ShapeIndex& param_index);
+                    const ShapeIndex& param_index, AliasKind kind);
+
+  // Returns the kind of alias for the given parameter number and parameter
+  // index. If no alias exists, AliasKind::kNoAlias is returned.
+  AliasKind ParameterAliasKind(int64 param_number,
+                               const ShapeIndex& param_index) const;
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
   bool ParameterHasAlias(int64 param_number,
-                         const ShapeIndex& param_index) const;
+                         const ShapeIndex& param_index) const {
+    return ParameterAliasKind(param_number, param_index) != AliasKind::kNoAlias;
+  }
 
   // Checks whether the provided output index has already been aliased.
   bool OutputHasAlias(const ShapeIndex& output_index) const;
@@ -67,19 +96,17 @@ class HloInputOutputAliasConfig {
   // Returns the number of parameter and index of the parameter buffer that the
   // given output buffer index is aliased with. A nullopt is returned if there
   // is no parameter is aliased with the specific output.
-  absl::optional<std::pair<int64, ShapeIndex>> GetAliasedParameter(
+  absl::optional<Alias> GetAliasedParameter(
       const ShapeIndex& output_index) const;
 
   using AliasFn =
-      std::function<void(const ShapeIndex& output_index, int64 param_number,
-                         const ShapeIndex& param_index)>;
+      std::function<void(const ShapeIndex& output_index, const Alias&)>;
 
   // Iterates through each aliased output and input.
   void ForEachAlias(AliasFn fn) const;
 
   using AliasFnWithStatus =
-      std::function<Status(const ShapeIndex& output_index, int64 param_number,
-                           const ShapeIndex& param_index)>;
+      std::function<Status(const ShapeIndex& output_index, const Alias&)>;
 
   // Verifies that the given config is valid for the given module.
   // Specifically, the config's input and output should be in-bound and size of
@@ -94,12 +121,10 @@ class HloInputOutputAliasConfig {
  private:
   // A ShapeTree which indicates the list of buffers that's expected to be
   // aliased. The key on this shape tree represents the output index. The value
-  // is a pair of parameter number and index into the buffer. If the value is
-  // nullopt, it means there is no parameter aliasing for this output.
-  ShapeTree<absl::optional<std::pair<int64, ShapeIndex>>> alias_;
-
-  // The indices of the output which have been aliased.
-  absl::flat_hash_set<ShapeIndex> aliased_output_indices_;
+  // is an Alias data structure which defines the input parameter coordinates.
+  // If the value is nullopt, it means there is no parameter aliasing for this
+  // output.
+  ShapeTree<absl::optional<Alias>> alias_;
 };
 
 std::ostream& operator<<(std::ostream& out,

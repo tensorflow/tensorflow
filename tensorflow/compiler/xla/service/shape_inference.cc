@@ -906,6 +906,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                                                         broadcast_dimensions));
       if (lhs.element_type() == F32 && rhs.element_type() == F32) {
         return ShapeUtil::ChangeElementType(shape, C64);
+      } else if (lhs.element_type() == F64 && rhs.element_type() == F64) {
+        return ShapeUtil::ChangeElementType(shape, C128);
       } else {
         return Unimplemented("Complex component type is not implemented.");
       }
@@ -1537,6 +1539,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         batch_group_count);
   }
 
+  if (batch_group_count > 1 && feature_group_count > 1) {
+    return InvalidArgument(
+        "both batch_group_count %d and feature_group_count %d cannot be "
+        "greater than 1",
+        batch_group_count, feature_group_count);
+  }
+
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
         "Convolution with different element types: %s and %s.",
@@ -1650,6 +1659,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
+  if (batch_group_count > 1 && input_batch % kernel_output_features != 0) {
+    return InvalidArgument(
+        "Expected output feature dimension (value %d) to be divisible by "
+        "input_batch (value %d) for batch group count %d; "
+        "got <conv>(%s, %s)\n"
+        "Dimension numbers: {%s}.",
+        kernel_output_features, input_batch, batch_group_count,
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
+        dnums.DebugString());
+  }
+
   if (input_features % feature_group_count != 0 ||
       input_features / feature_group_count != kernel_input_features) {
     return InvalidArgument(
@@ -1733,7 +1753,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     case FFT:
     case IFFT:
       if (in.element_type() != C64) {
-        return InvalidArgument("%s requires C64 input type, found %s.",
+        return InvalidArgument("%s requires complex input type, found %s.",
                                FftType_Name(fft_type),
                                PrimitiveType_Name(in.element_type()));
       }
@@ -2358,7 +2378,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   };
 
   // Check the shapes of computation parameters and return types.
-  if (!ShapeUtil::ShapeIs(condition.result(), PRED, {})) {
+  if (!ShapeUtil::Equal(condition.result(), ShapeUtil::MakeShape(PRED, {}))) {
     return InvalidArgument("Condition must return a boolean; got %s.",
                            shape_string());
   }
@@ -2378,7 +2398,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& predicate, const Shape& true_operand,
     const Shape& false_operand, const ProgramShape& true_computation,
     const ProgramShape& false_computation) {
-  if (!ShapeUtil::ShapeIs(predicate, PRED, {})) {
+  if (!ShapeUtil::Equal(predicate, ShapeUtil::MakeShape(PRED, {}))) {
     return InvalidArgument("Predicate must be a boolean; got %s.",
                            ShapeUtil::HumanString(predicate));
   }
