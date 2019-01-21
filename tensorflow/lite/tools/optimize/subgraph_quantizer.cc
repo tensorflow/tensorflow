@@ -33,9 +33,6 @@ namespace optimize {
 namespace internal {
 
 namespace {
-const int8_t kMinQuantizedValue = -127;
-const int8_t kMaxQuantizedValue = 127;
-
 TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
                                    const std::vector<int64_t>& zero_point,
                                    int quantized_dimension,
@@ -91,88 +88,34 @@ const OpWithBiasTensors* GetInfoForOpWithBiasTensor(BuiltinOperator op_code) {
 TfLiteStatus SymmetricPerChannelQuantizeTensor(ModelT* model, TensorT* tensor,
                                                int32_t channel_dim_index,
                                                ErrorReporter* error_reporter) {
-  int32_t channel_dim_size = tensor->shape[channel_dim_index];
   if (tensor->shape.size() != 4) {
     error_reporter->Report("Only dims=4 is supported, tensor dims: %d",
                            tensor->shape.size());
     return kTfLiteError;
   }
 
+  // Get dimensions.
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
-  const uint64_t num_elements_per_channel = num_elements / channel_dim_size;
+  const int32_t channel_dim_size = tensor->shape[channel_dim_index];
 
-  std::vector<float> min_vals(channel_dim_size);
-  std::vector<float> max_vals(channel_dim_size);
-  std::vector<bool> has_min_max_value(channel_dim_size, false);
-  int indices[4];
-  RuntimeShape tensor_dims{tensor->shape[0], tensor->shape[1], tensor->shape[2],
-                           tensor->shape[3]};
+  // Get input float data.
   BufferT* buffer = model->buffers[tensor->buffer].get();
-  float* float_data = reinterpret_cast<float*>(buffer->data.data());
+  float* float_input_data = reinterpret_cast<float*>(buffer->data.data());
 
-  // Compute min max ranges per channel
-  for (indices[0] = 0; indices[0] < tensor->shape[0]; indices[0]++) {
-    for (indices[1] = 0; indices[1] < tensor->shape[1]; indices[1]++) {
-      for (indices[2] = 0; indices[2] < tensor->shape[2]; indices[2]++) {
-        for (indices[3] = 0; indices[3] < tensor->shape[3]; indices[3]++) {
-          int channel_idx = indices[channel_dim_index];
-          const float val = float_data[Offset(tensor_dims, indices)];
-          if (has_min_max_value[channel_idx]) {
-            if (min_vals[channel_idx] > val) {
-              min_vals[channel_idx] = val;
-            } else if (max_vals[channel_idx] < val) {
-              max_vals[channel_idx] = val;
-            }
-          } else {
-            min_vals[channel_idx] = val;
-            max_vals[channel_idx] = val;
-            has_min_max_value[channel_idx] = true;
-          }
-        }
-      }
-    }
-  }
-
-  // Calculate scales per channel
+  // Create container for output scale and output data.
   std::vector<float> scales(channel_dim_size);
-  std::vector<float> scale_invs(channel_dim_size);
-  const float half_scale = kMaxQuantizedValue;
-  for (size_t channel_idx = 0; channel_idx < channel_dim_size; channel_idx++) {
-    const float half_range = std::max(std::abs(min_vals[channel_idx]),
-                                      std::abs(max_vals[channel_idx]));
-    scales[channel_idx] = half_range / half_scale;
-    if (half_range == 0) {
-      scale_invs[channel_idx] = 0;
-    } else {
-      scale_invs[channel_idx] = half_scale / half_range;
-    }
-  }
-
-  // Quantize the values.
-  std::vector<int8_t> quantized_buffer(num_elements_per_channel);
   std::vector<int8_t> final_buffer(num_elements);
-  memset(indices, 0, 4 * sizeof(int));
-  for (indices[0] = 0; indices[0] < tensor->shape[0]; indices[0]++) {
-    for (indices[1] = 0; indices[1] < tensor->shape[1]; indices[1]++) {
-      for (indices[2] = 0; indices[2] < tensor->shape[2]; indices[2]++) {
-        for (indices[3] = 0; indices[3] < tensor->shape[3]; indices[3]++) {
-          int channel_idx = indices[channel_dim_index];
-          int index = Offset(tensor_dims, indices);
-          const float val = float_data[index];
-          const int32_t quantized_value =
-              static_cast<int32_t>(TfLiteRound(val * scale_invs[channel_idx]));
-          final_buffer[index] = std::min<int8_t>(
-              kMaxQuantizedValue,
-              std::max<int8_t>(kMinQuantizedValue, quantized_value));
-        }
-      }
-    }
-  }
+
+  // Quantize the input data with respect to channel_dim_index.
+  const std::vector<int> tensor_dims = {tensor->shape[0], tensor->shape[1],
+                                        tensor->shape[2], tensor->shape[3]};
+  utils::SymmetricPerChannelQuantization(
+      float_input_data, tensor_dims, channel_dim_index, &scales, &final_buffer);
 
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
-  size_t buffer_size = num_elements * sizeof(int8_t);
+  const size_t buffer_size = num_elements * sizeof(int8_t);
   std::vector<int64_t> zero_point(scales.size(), 0);
   return AddQuantizationParams(scales, zero_point, channel_dim_index,
                                uint8_buffer, buffer_size, TensorType_INT8,

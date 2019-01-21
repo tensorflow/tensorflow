@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/round.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 #include <cmath>
 #include <cstdint>
@@ -20,6 +23,11 @@ limitations under the License.
 namespace tflite {
 namespace optimize {
 namespace utils {
+
+namespace {
+const int8_t kMinQuantizedValue = -127;
+const int8_t kMaxQuantizedValue = 127;
+}  // namespace
 
 TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
   if (tensor.shape.empty()) {
@@ -60,6 +68,81 @@ void GetAsymmetricQuantizationParams(
   quantization_params->max = std::vector<float>(1, max);
   quantization_params->scale = std::vector<float>(1, scale);
   quantization_params->zero_point = std::vector<int64_t>(1, zero_point);
+}
+
+// Per-channel quantize a tensor at the given index and returns both scales and
+// quantized values.
+void SymmetricPerChannelQuantization(const float* const input,
+                                     const std::vector<int>& dimension,
+                                     int32_t channel_dim_index,
+                                     std::vector<float>* output_scales,
+                                     std::vector<int8_t>* output_value) {
+  const int32_t channel_dim_size = dimension[channel_dim_index];
+  std::vector<float> min_vals(channel_dim_size);
+  std::vector<float> max_vals(channel_dim_size);
+  std::vector<bool> has_min_max_value(channel_dim_size, false);
+  int indices[4];
+  RuntimeShape tensor_dims{dimension[0], dimension[1], dimension[2],
+                           dimension[3]};
+
+  // Compute min max ranges per channel
+  for (indices[0] = 0; indices[0] < dimension[0]; indices[0]++) {
+    for (indices[1] = 0; indices[1] < dimension[1]; indices[1]++) {
+      for (indices[2] = 0; indices[2] < dimension[2]; indices[2]++) {
+        for (indices[3] = 0; indices[3] < dimension[3]; indices[3]++) {
+          int channel_idx = indices[channel_dim_index];
+          const float val = input[Offset(tensor_dims, indices)];
+          if (has_min_max_value[channel_idx]) {
+            if (min_vals[channel_idx] > val) {
+              min_vals[channel_idx] = val;
+            } else if (max_vals[channel_idx] < val) {
+              max_vals[channel_idx] = val;
+            }
+          } else {
+            min_vals[channel_idx] = val;
+            max_vals[channel_idx] = val;
+            has_min_max_value[channel_idx] = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Calculate scales per channel
+  std::vector<float> scale_invs(channel_dim_size);
+  const float half_scale = kMaxQuantizedValue;
+  for (size_t channel_idx = 0; channel_idx < channel_dim_size; channel_idx++) {
+    const float half_range = std::max(std::abs(min_vals[channel_idx]),
+                                      std::abs(max_vals[channel_idx]));
+    output_scales->at(channel_idx) = half_range / half_scale;
+    if (half_range == 0) {
+      scale_invs[channel_idx] = 0;
+    } else {
+      scale_invs[channel_idx] = half_scale / half_range;
+    }
+  }
+
+  // Quantize the values.
+  const uint64_t num_elements_per_channel =
+      output_scales->size() / channel_dim_size;
+  std::vector<int8_t> quantized_buffer(num_elements_per_channel);
+  memset(indices, 0, 4 * sizeof(int));
+  for (indices[0] = 0; indices[0] < dimension[0]; indices[0]++) {
+    for (indices[1] = 0; indices[1] < dimension[1]; indices[1]++) {
+      for (indices[2] = 0; indices[2] < dimension[2]; indices[2]++) {
+        for (indices[3] = 0; indices[3] < dimension[3]; indices[3]++) {
+          int channel_idx = indices[channel_dim_index];
+          int index = Offset(tensor_dims, indices);
+          const float val = input[index];
+          const int32_t quantized_value =
+              static_cast<int32_t>(TfLiteRound(val * scale_invs[channel_idx]));
+          output_value->at(index) = std::min<int8_t>(
+              kMaxQuantizedValue,
+              std::max<int8_t>(kMinQuantizedValue, quantized_value));
+        }
+      }
+    }
+  }
 }
 
 }  // namespace utils
