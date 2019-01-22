@@ -639,23 +639,41 @@ static void shiftColumnsToLeft(FlatAffineConstraints *constraints,
 // Removes identifiers in column range [idStart, idLimit), and copies any
 // remaining valid data into place, and updates member variables.
 void FlatAffineConstraints::removeIdRange(unsigned idStart, unsigned idLimit) {
-  assert(idLimit < getNumCols());
+  assert(idLimit < getNumCols() && "invalid id limit");
+
+  if (idStart >= idLimit)
+    return;
+
+  // We are going to be removing one or more identifiers from the range.
+  assert(idStart < numIds && "invalid idStart position");
+
   // TODO(andydavis) Make 'removeIdRange' a lambda called from here.
   // Remove eliminated identifiers from equalities.
   shiftColumnsToLeft(this, idStart, idLimit, /*isEq=*/true);
+
   // Remove eliminated identifiers from inequalities.
   shiftColumnsToLeft(this, idStart, idLimit, /*isEq=*/false);
+
   // Update members numDims, numSymbols and numIds.
   unsigned numDimsEliminated = 0;
+  unsigned numLocalsEliminated = 0;
+  unsigned numColsEliminated = idLimit - idStart;
   if (idStart < numDims) {
     numDimsEliminated = std::min(numDims, idLimit) - idStart;
   }
-  unsigned numColsEliminated = idLimit - idStart;
+  // Check how many local id's were removed. Note that our identifier order is
+  // [dims, symbols, locals]. Local id start at position numDims + numSymbols.
+  if (idLimit > numDims + numSymbols) {
+    numLocalsEliminated = std::min(
+        idLimit - std::max(idStart, numDims + numSymbols), getNumLocalIds());
+  }
   unsigned numSymbolsEliminated =
-      std::min(numSymbols, numColsEliminated - numDimsEliminated);
+      numColsEliminated - numDimsEliminated - numLocalsEliminated;
+
   numDims -= numDimsEliminated;
   numSymbols -= numSymbolsEliminated;
   numIds = numIds - numColsEliminated;
+
   ids.erase(ids.begin() + idStart, ids.begin() + idLimit);
 
   // No resize necessary. numReservedCols remains the same.
