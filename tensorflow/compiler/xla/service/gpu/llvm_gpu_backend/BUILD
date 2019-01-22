@@ -18,6 +18,20 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 cc_library(
+    name = "target_machine_features",
+    srcs = [
+        "target_machine_features.cc",
+    ],
+    hdrs = ["target_machine_features.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:support",
+        "@llvm//:core",
+    ],
+)
+
+
+cc_library(
     name = "llvm_gpu_backend",
     srcs = [
         "dump_ir_pass.cc",
@@ -30,12 +44,14 @@ cc_library(
     hdrs = [
         "dump_ir_pass.h",
         "utils.h",
+        "target_machine_features.h",
     ] + if_cuda_is_configured(if_cuda([
         "nvptx_backend_lib.h",
     ])) + if_rocm_is_configured(if_rocm([
         "amdgpu_backend_lib.h",
     ])),
     deps = [
+        ":target_machine_features",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

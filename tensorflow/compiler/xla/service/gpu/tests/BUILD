@@ -35,17 +35,28 @@ cc_library(
     testonly = True,
     srcs = ["gpu_codegen_test.cc"],
     hdrs = ["gpu_codegen_test.h"],
+    deps = [
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+    ],
+)
+
+cc_library(
+    name = "ptx_codegen_test",
+    testonly = True,
+    srcs = ["ptx_codegen_test.cc"],
+    hdrs = ["ptx_codegen_test.h"],
     tags = tf_cuda_tests_tags(),
     deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
+        ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/tests:filecheck",
-        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
     ],
 )
+
 
 tf_cc_test(
     name = "gpu_copy_test",

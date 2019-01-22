@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -147,10 +148,14 @@ Status EmitTiledCompareLoop(
     const std::vector<IrArray>& params,
     const std::vector<llvm::Value*>& param_shmem_buffers, int64 tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilder<>* b) {
+    llvm::IRBuilder<>* b,
+    TargetMachineFeatures& target_machine_features) {
   KernelSupportLibrary ksl(b);
-  llvm::Value* thread_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b);
+
+  llvm::Intrinsic::ID tid_intrinsic =
+      target_machine_features.simt_intrinsic("__thread_id_x");
+  llvm::Value* thread_id =
+      llvm_ir::EmitCallToIntrinsic(tid_intrinsic, {}, {}, b);
   llvm_ir::AddRangeMetadata(0, tile_size / 2,
                             llvm::cast<llvm::Instruction>(thread_id));
   thread_id = b->CreateIntCast(thread_id, tiled_keys_index.GetType(),
@@ -199,7 +204,9 @@ Status EmitTiledCompareLoop(
     });
   }
   // Wait until all reads have happened.
-  llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, b);
+  llvm::Intrinsic::ID barrier_intrinsic_id =
+      target_machine_features.simt_intrinsic("barrier");
+  llvm_ir::EmitCallToIntrinsic(barrier_intrinsic_id, {}, {}, b);
 
   // Now emit the bodies of the comparison loops.
   auto element_address = [&](int64 operand, llvm::Value* index) {
@@ -260,7 +267,9 @@ Status EmitTiledCompareLoop(
           /*needs_bounds_checks=*/false));
     }
     // Wait until all comparisons have happened.
-    llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, b);
+    llvm::Intrinsic::ID barrier_intrinsici_id =
+        target_machine_features.simt_intrinsic("barrier");
+    llvm_ir::EmitCallToIntrinsic(barrier_intrinsic_id, {}, {}, b);
   }
 
   // Copy the operand tiles back from shared memory to the operand buffers.
@@ -290,7 +299,8 @@ Status EmitSortInPlace(
     absl::string_view name, absl::Span<const int64> xor_masks,
     llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
     int64 num_iterations_in_sort_dim, const int64 tile_size,
-    const EmitCallToNestedComputationCallback& emit_compare_callback) {
+    const EmitCallToNestedComputationCallback& emit_compare_callback,
+    TargetMachineFeatures& target_machine_features) {
   // Iterate through the keys shape in physical order, but skip the dimension to
   // sort and make it the innermost loop which is the loop where the comparisons
   // happen. In the dimension to sort, if we use tiling, we iterate through it
@@ -356,7 +366,7 @@ Status EmitSortInPlace(
       TF_RETURN_IF_ERROR(EmitTiledCompareLoop(
           keys_index, dimension_to_sort, dimension_to_sort_bound, xor_masks,
           values_arrays, param_shmem_buffers, tile_size, emit_compare_callback,
-          b));
+          b, targetmachinefeatures));
     } else {
       auto element_address = [&](int64 operand, llvm::Value* index) {
         keys_index[dimension_to_sort] = index;

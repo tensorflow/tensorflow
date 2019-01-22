@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -106,12 +107,16 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   llvm::IRBuilder<>* builder() { return &b_; }
 
+  TargetMachineFeatures& GetTargetMachineFeatures() { return target_machine_features_; };
+
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.
   // ir_emitter_context is owned by the caller and should outlive the IrEmitter
   // object.
   explicit IrEmitter(const HloModuleConfig& hlo_module_config,
-                     IrEmitterContext* ir_emitter_context, bool is_nested);
+                     IrEmitterContext* ir_emitter_context,
+                     bool is_nested,
+                     TargetMachineFeatures* target_machine);
 
   // Helper for calling HloToIrBindings::GetIrArray.
   //
@@ -182,6 +187,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Hlo configuration data used during code generation.
   const HloModuleConfig& hlo_module_config_;
+ 
+  // GPU Target machine features for code generation
+  TargetMachineFeatures& target_machine_features_;
 
  protected:
   GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(

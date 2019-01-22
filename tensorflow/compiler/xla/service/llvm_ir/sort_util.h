@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -39,7 +40,8 @@ Status EmitSortInPlace(
     absl::string_view name, absl::Span<const int64> xor_masks,
     llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
     int64 num_iterations_in_sort_dim, int64 tile_size,
-    const EmitCallToNestedComputationCallback& emit_compare_callback);
+    const EmitCallToNestedComputationCallback& emit_compare_callback,
+                       TargetMachineFeatures& target_machine_features);
 }  // namespace llvm_ir
 }  // namespace xla
 

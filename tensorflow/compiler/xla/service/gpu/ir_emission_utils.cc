@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -291,16 +292,20 @@ string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b, TargetMachineFeatures& target_machine_features) {
+  llvm::Intrinsic::ID tid_intrinsic =
+      target_machine_features.simt_intrinsic("__thread_id_x");
+  llvm::Intrinsic::ID group_id_intrinsic =
+      target_machine_features.simt_intrinsic("__block_id_x");
   return b->CreateAnd(
       b->CreateICmpEQ(
           b->getInt32(0),
           llvm_ir::EmitCallToIntrinsic(
-              llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b)),
+              tid_intrinsic, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
           llvm_ir::EmitCallToIntrinsic(
-              llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b)));
+              group_id_intrinsic, {}, {}, b)));
 }
 
 }  // namespace gpu
