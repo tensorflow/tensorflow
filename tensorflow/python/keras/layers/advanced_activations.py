@@ -27,6 +27,7 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.ops import array_ops
 
 
 @keras_export('keras.layers.LeakyReLU')
@@ -328,6 +329,50 @@ class ReLU(Layer):
         'threshold': self.threshold
     }
     base_config = super(ReLU, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @tf_utils.shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+@keras_export('keras.layers.HardShrink')
+class HardShrink(Layer):
+  """Transfer functions are normally used to introduce a non-linearity
+  after a parameterized layer like Linear and SpatialConvolution.
+
+  Applies the hard shrinkage function element-wise to the input
+
+  HardShrinkage operator is defined as:
+
+  'f(x) = x for x > lamda
+  'f(x) = x for x< lamda
+  'f(x) = 0 otherwise
+
+  Input shape:
+      Arbitrary. Use the keyword argument `input_shape`
+      (tuple of integers, does not include the samples axis)
+      when using this layer as the first layer in a model.
+
+  Output shape:
+      Same shape as the input.
+
+  Arguments:
+      lamda: The value of the HardShrink formulation.
+  """
+
+  def __init__(self, lambd=0.5, **kwargs):
+    super(HardShrink, self).__init__(**kwargs)
+    self.lambd = K.cast_to_floatx(lambd)
+
+  def call(self, inputs):
+    return array_ops.where(math_ops.logical_or(inputs > self.lambd , inputs < -self.lambd),
+                           inputs, 0 * inputs)
+
+  def get_config(self):
+    config = {
+        'lambd': self.lambd,
+    }
+    base_config = super(HardShrink, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   @tf_utils.shape_type_conversion

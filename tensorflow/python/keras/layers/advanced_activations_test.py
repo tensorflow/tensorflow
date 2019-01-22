@@ -49,6 +49,12 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
                                kwargs={'alpha': alpha},
                                input_shape=(2, 3, 4))
 
+  def test_hardshrink(self):
+    for lambd in [6., .5, -1.]:
+      testing_utils.layer_test(keras.layers.HardShrink,
+                               kwargs={'lambd': lambd},
+                               input_shape=(2, 3, 4))
+
   def test_thresholded_relu(self):
     testing_utils.layer_test(keras.layers.ThresholdedReLU,
                              kwargs={'theta': 0.5},
