@@ -29,7 +29,6 @@ cuda_py_tests(
         "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -46,7 +45,6 @@ cuda_py_tests(
     ],
     shard_count = 4,
     tags = ["optonly"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(

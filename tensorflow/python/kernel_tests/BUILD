@@ -1435,7 +1435,6 @@ cuda_py_test(
         "noasan",  # times out
         "optonly",  # times out
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1525,7 +1524,6 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -2756,7 +2754,6 @@ cuda_py_test(
     tags = [
         "optonly",  # times out
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -2774,7 +2771,6 @@ cuda_py_test(
     ],
     # TODO(b/118842098): Re-enable this test in Kokoro.
     tags = ["no_oss"],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
