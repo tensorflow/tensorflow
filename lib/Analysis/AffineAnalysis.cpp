@@ -1531,6 +1531,7 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
 
   affineMap = simplifyAffineMap(map.compose(exprsMap));
   LLVM_DEBUG(affineMap.print(dbgs() << "\nSimplified result: "));
+  LLVM_DEBUG(dbgs() << "\n");
 }
 
 /// Implements `map` and `operands` composition and simplification to support

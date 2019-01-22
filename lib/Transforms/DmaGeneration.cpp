@@ -204,9 +204,10 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
 
   // Compute the extents of the buffer.
   std::vector<SmallVector<int64_t, 4>> lbs;
+  SmallVector<int64_t, 8> lbDivisors;
   lbs.reserve(rank);
-  Optional<int64_t> numElements =
-      region.getBoundingConstantSizeAndShape(&fastBufferShape, &lbs);
+  Optional<int64_t> numElements = region.getConstantBoundingSizeAndShape(
+      &fastBufferShape, &lbs, &lbDivisors);
   if (!numElements.hasValue()) {
     LLVM_DEBUG(llvm::dbgs() << "Non-constant region size not supported\n");
     *sizeInBytes = 0;
@@ -219,10 +220,11 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
     return false;
   }
 
+  const FlatAffineConstraints *cst = region.getConstraints();
+
   // 'outerIVs' holds the values that this memory region is symbolic/paramteric
   // on; this would correspond to loop IVs surrounding the level at which the
   // DMA generation is being done.
-  const FlatAffineConstraints *cst = region.getConstraints();
   SmallVector<Value *, 8> outerIVs;
   cst->getIdValues(rank, cst->getNumIds(), &outerIVs);
 
@@ -241,7 +243,9 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
     for (unsigned j = 0, e = cst->getNumCols() - rank - 1; j < e; j++) {
       offset = offset + lbs[d][j] * top.getAffineDimExpr(j);
     }
-    offset = offset + lbs[d][cst->getNumCols() - 1 - rank];
+    assert(lbDivisors[d] > 0);
+    offset =
+        (offset + lbs[d][cst->getNumCols() - 1 - rank]).floorDiv(lbDivisors[d]);
 
     // Set DMA start location for this dimension in the lower memory space
     // memref.

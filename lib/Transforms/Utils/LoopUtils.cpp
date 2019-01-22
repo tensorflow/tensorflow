@@ -109,9 +109,14 @@ bool mlir::promoteIfSingleIteration(ForInst *forInst) {
       const AffineBound lb = forInst->getLowerBound();
       SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
       FuncBuilder builder(forInst->getBlock(), Block::iterator(forInst));
-      auto affineApplyOp = builder.create<AffineApplyOp>(
-          forInst->getLoc(), lb.getMap(), lbOperands);
-      forInst->replaceAllUsesWith(affineApplyOp->getResult(0));
+      if (lb.getMap() == builder.getDimIdentityMap()) {
+        // No need of generating an affine_apply.
+        forInst->replaceAllUsesWith(lbOperands[0]);
+      } else {
+        auto affineApplyOp = builder.create<AffineApplyOp>(
+            forInst->getLoc(), lb.getMap(), lbOperands);
+        forInst->replaceAllUsesWith(affineApplyOp->getResult(0));
+      }
     }
   }
   // Move the loop body instructions to the loop's containing block.

@@ -55,9 +55,9 @@ unsigned MemRefRegion::getRank() const {
   return memref->getType().cast<MemRefType>().getRank();
 }
 
-Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
-    SmallVectorImpl<int> *shape,
-    std::vector<SmallVector<int64_t, 4>> *lbs) const {
+Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
+    SmallVectorImpl<int> *shape, std::vector<SmallVector<int64_t, 4>> *lbs,
+    SmallVectorImpl<int64_t> *lbDivisors) const {
   auto memRefType = memref->getType().cast<MemRefType>();
   unsigned rank = memRefType.getRank();
   shape->reserve(rank);
@@ -66,11 +66,13 @@ Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
   // dimension.
   int64_t numElements = 1;
   int64_t diffConstant;
+  int64_t lbDivisor;
   for (unsigned d = 0; d < rank; d++) {
     SmallVector<int64_t, 4> lb;
-    Optional<int64_t> diff = cst.getConstantBoundOnDimSize(d, &lb);
+    Optional<int64_t> diff = cst.getConstantBoundOnDimSize(d, &lb, &lbDivisor);
     if (diff.hasValue()) {
       diffConstant = diff.getValue();
+      assert(lbDivisor > 0);
     } else {
       // If no constant bound is found, then it can always be bound by the
       // memref's dim size if the latter has a constant size along this dim.
@@ -80,10 +82,13 @@ Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
       diffConstant = dimSize;
       // Lower bound becomes 0.
       lb.resize(cst.getNumSymbolIds() + 1, 0);
+      lbDivisor = 1;
     }
     numElements *= diffConstant;
     if (lbs) {
       lbs->push_back(lb);
+      assert(lbDivisors && "both lbs and lbDivisor or none");
+      lbDivisors->push_back(lbDivisor);
     }
     if (shape) {
       shape->push_back(diffConstant);

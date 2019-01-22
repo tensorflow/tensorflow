@@ -681,9 +681,12 @@ static bool getSliceUnion(const ComputationSliceState &sliceStateA,
 
 // Creates and returns a private (single-user) memref for fused loop rooted
 // at 'forInst', with (potentially reduced) memref size based on the
-// MemRefRegion written to by 'srcStoreOpInst'.
+// MemRefRegion written to by 'srcStoreOpInst' at depth 'dstLoopDepth'.
+// TODO(bondhugula): consider refactoring the common code from generateDma and
+// this one.
 static Value *createPrivateMemRef(ForInst *forInst,
-                                  OperationInst *srcStoreOpInst) {
+                                  OperationInst *srcStoreOpInst,
+                                  unsigned dstLoopDepth) {
   // Create builder to insert alloc op just before 'forInst'.
   FuncBuilder b(forInst);
   // Builder to create constants at the top level.
@@ -693,28 +696,39 @@ static Value *createPrivateMemRef(ForInst *forInst,
   auto oldMemRefType = oldMemRef->getType().cast<MemRefType>();
   unsigned rank = oldMemRefType.getRank();
 
-  // Compute MemRefRegion for 'srcStoreOpInst'.
+  // Compute MemRefRegion for 'srcStoreOpInst' at depth 'dstLoopDepth'.
   MemRefRegion region;
-  getMemRefRegion(srcStoreOpInst, 0, &region);
+  getMemRefRegion(srcStoreOpInst, dstLoopDepth, &region);
   SmallVector<int, 4> newShape;
   std::vector<SmallVector<int64_t, 4>> lbs;
+  SmallVector<int64_t, 8> lbDivisors;
   lbs.reserve(rank);
   // Query 'region' for 'newShape' and lower bounds of MemRefRegion accessed
-  // by 'srcStoreOpInst'.
+  // by 'srcStoreOpInst' at depth 'dstLoopDepth'.
   Optional<int64_t> numElements =
-      region.getBoundingConstantSizeAndShape(&newShape, &lbs);
+      region.getConstantBoundingSizeAndShape(&newShape, &lbs, &lbDivisors);
   assert(numElements.hasValue());
 
-  // Build 'rank' AffineExprs from MemRefRegion 'lbs'
   const FlatAffineConstraints *cst = region.getConstraints();
+  // 'outerIVs' holds the values that this memory region is symbolic/paramteric
+  // on; this would correspond to loop IVs surrounding the level at which the
+  // slice is being materialized.
+  SmallVector<Value *, 8> outerIVs;
+  cst->getIdValues(rank, cst->getNumIds(), &outerIVs);
+
+  // Build 'rank' AffineExprs from MemRefRegion 'lbs'
   SmallVector<AffineExpr, 4> offsets;
   offsets.reserve(rank);
   for (unsigned d = 0; d < rank; ++d) {
+    assert(lbs[d].size() == cst->getNumCols() - rank && "incorrect bound size");
+
     AffineExpr offset = top.getAffineConstantExpr(0);
     for (unsigned j = 0, e = cst->getNumCols() - rank - 1; j < e; j++) {
       offset = offset + lbs[d][j] * top.getAffineDimExpr(j);
     }
-    offset = offset + lbs[d][cst->getNumCols() - 1 - rank];
+    assert(lbDivisors[d] > 0);
+    offset =
+        (offset + lbs[d][cst->getNumCols() - 1 - rank]).floorDiv(lbDivisors[d]);
     offsets.push_back(offset);
   }
 
@@ -743,18 +757,23 @@ static Value *createPrivateMemRef(ForInst *forInst,
     if (auto constExpr = offsets[i].dyn_cast<AffineConstantExpr>())
       if (constExpr.getValue() == 0)
         ++zeroOffsetCount;
-    auto dimExpr = b.getAffineDimExpr(i);
-    remapExprs.push_back(dimExpr - offsets[i]);
+    auto dimExpr = b.getAffineDimExpr(outerIVs.size() + i);
+
+    auto remapExpr =
+        simplifyAffineExpr(dimExpr - offsets[i], outerIVs.size() + rank, 0);
+    remapExprs.push_back(remapExpr);
   }
-  auto indexRemap = zeroOffsetCount == rank
-                        ? AffineMap::Null()
-                        : b.getAffineMap(rank, 0, remapExprs, {});
+  auto indexRemap =
+      zeroOffsetCount == rank
+          ? AffineMap::Null()
+          : b.getAffineMap(outerIVs.size() + rank, 0, remapExprs, {});
   // Replace all users of 'oldMemRef' with 'newMemRef'.
-  bool ret = replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap, {},
-                                      &*forInst->getBody()->begin());
-  assert(ret);
+  bool ret =
+      replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap,
+                               /*extraOperands=*/outerIVs,
+                               /*domInstFilter=*/&*forInst->getBody()->begin());
+  assert(ret && "replaceAllMemrefUsesWith should always succeed here");
   (void)ret;
-  (void)indexRemap;
   return newMemRef;
 }
 
@@ -1044,8 +1063,8 @@ public:
                 storesForMemref.push_back(storeOpInst);
             }
             assert(storesForMemref.size() == 1);
-            auto *newMemRef =
-                createPrivateMemRef(dstForInst, storesForMemref[0]);
+            auto *newMemRef = createPrivateMemRef(
+                dstForInst, storesForMemref[0], dstLoopDepth);
             visitedMemrefs.insert(newMemRef);
 
             // Collect dst loop stats after memref privatizaton transformation.

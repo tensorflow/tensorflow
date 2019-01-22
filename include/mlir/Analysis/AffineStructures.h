@@ -547,18 +547,22 @@ public:
   /// Clears this list of constraints and copies other into it.
   void clearAndCopyFrom(const FlatAffineConstraints &other);
 
-  /// Returns the smallest known constant bound for the extent of the
-  /// specified identifier (pos^th), i.e., the smallest known constant that is
-  /// greater than or equal to 'exclusive upper bound' - 'lower bound' of the
-  /// identifier; returns None if it's not a constant. This method employs
+  /// Returns the smallest known constant bound for the extent of the specified
+  /// identifier (pos^th), i.e., the smallest known constant that is greater
+  /// than or equal to 'exclusive upper bound' - 'lower bound' of the
+  /// identifier. Returns None if it's not a constant. This method employs
   /// trivial (low complexity / cost) checks and detection. Symbolic identifiers
   /// are treated specially, i.e., it looks for constant differences between
   /// affine expressions involving only the symbolic identifiers. See comments
-  /// at function definition for examples. 'lb', if provided, is set to the
-  /// lower bound associated with the constant difference.
+  /// at function definition for examples. 'lb' and 'lbDivisor', if provided,
+  /// are used to express the lower bound associated with the constant
+  /// difference: 'lb' has the coefficients and lbDivisor, the divisor. For eg.,
+  /// if the lower bound is [(s0 + s2 - 1) floordiv 32] for a system with three
+  /// symbolic identifiers, *lb = [1, 0, 1], lbDivisor = 32.
   Optional<int64_t>
   getConstantBoundOnDimSize(unsigned pos,
-                            SmallVectorImpl<int64_t> *lb = nullptr) const;
+                            SmallVectorImpl<int64_t> *lb = nullptr,
+                            int64_t *lbDivisor = nullptr) const;
 
   /// Returns the constant lower bound for the pos^th identifier if there is
   /// one; None otherwise.

@@ -79,9 +79,10 @@ struct MemRefRegion {
   /// bounded by a known constant, None otherwise. The 'shape' vector is set to
   /// the corresponding dimension-wise bounds major to minor. We use int64_t
   /// instead of uint64_t since index types can be at most int64_t.
-  Optional<int64_t> getBoundingConstantSizeAndShape(
+  Optional<int64_t> getConstantBoundingSizeAndShape(
       SmallVectorImpl<int> *shape = nullptr,
-      std::vector<SmallVector<int64_t, 4>> *lbs = nullptr) const;
+      std::vector<SmallVector<int64_t, 4>> *lbs = nullptr,
+      SmallVectorImpl<int64_t> *lbDivisors = nullptr) const;
 
   /// A wrapper around FlatAffineConstraints::getConstantBoundOnDimSize(). 'pos'
   /// corresponds to the position of the memref shape's dimension (major to
@@ -89,7 +90,8 @@ struct MemRefRegion {
   //'cst'.
   Optional<int64_t>
   getConstantBoundOnDimSize(unsigned pos,
-                            SmallVectorImpl<int64_t> *lb = nullptr) const {
+                            SmallVectorImpl<int64_t> *lb = nullptr,
+                            int64_t *lbDivisor = nullptr) const {
     assert(pos < getRank() && "invalid position");
     return cst.getConstantBoundOnDimSize(pos, lb);
   }

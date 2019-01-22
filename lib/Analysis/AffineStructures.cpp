@@ -1438,9 +1438,11 @@ void FlatAffineConstraints::constantFoldIdRange(unsigned pos, unsigned num) {
 /// the coefficients of the symbolic identifiers and the constant coefficient.
 //  Egs: 0 <= i <= 15, return 16.
 //       s0 + 2 <= i <= s0 + 17, returns 16. (s0 has to be a symbol)
-//       i + s0 + 16 <= d0 <= i + s0  + 31, returns 16.
+//       s0 + s1 + 16 <= d0 <= s0 + s1 + 31, returns 16.
+//       s0 - 7 <= 8*j <= s0 returns 1 with lb = s0, lbDivisor = 8 (since lb =
+//       ceil(s0 - 7 / 8) = floor(s0 / 8)).
 Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
-    unsigned pos, SmallVectorImpl<int64_t> *lb) const {
+    unsigned pos, SmallVectorImpl<int64_t> *lb, int64_t *lbFloorDivisor) const {
   assert(pos < getNumDimIds() && "Invalid identifier position");
   assert(getNumLocalIds() == 0);
 
@@ -1463,6 +1465,9 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
         (*lb)[c] = v < 0 ? atEq(eqRow, getNumDimIds() + c) / -v
                          : -atEq(eqRow, getNumDimIds() + c) / v;
       }
+      assert(lbFloorDivisor &&
+             "both lb and divisor or none should be provided");
+      *lbFloorDivisor = 1;
     }
     return 1;
   }
@@ -1519,8 +1524,9 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
         }
       if (j < getNumCols() - 1)
         continue;
-      int64_t diff =
-          atIneq(ubPos, getNumCols() - 1) + atIneq(lbPos, getNumCols() - 1) + 1;
+      int64_t diff = floorDiv(atIneq(ubPos, getNumCols() - 1) +
+                                  atIneq(lbPos, getNumCols() - 1) + 1,
+                              atIneq(lbPos, pos));
       if (minDiff == None || diff < minDiff) {
         minDiff = diff;
         minLbPosition = lbPos;
@@ -1530,8 +1536,16 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
   if (lb && minDiff.hasValue()) {
     // Set lb to the symbolic lower bound.
     lb->resize(getNumSymbolIds() + 1);
+    // The lower bound is the ceildiv of the lb constraint over the coefficient
+    // of the variable at 'pos'. We express the ceildiv equivalently as a floor
+    // for uniformity. For eg., if the lower bound constraint was: 32*d0 - N +
+    // 31 >= 0, the lower bound for d0 is ceil(N - 31, 32), i.e., floor(N, 32).
+    *lbFloorDivisor = atIneq(minLbPosition, pos);
     for (unsigned c = 0, e = getNumSymbolIds() + 1; c < e; c++) {
-      (*lb)[c] = -atIneq(minLbPosition, getNumDimIds() + c);
+      // ceildiv (val / d) = floordiv (val + d - 1 / d); hence, the addition of
+      // 'atIneq(minLbPosition, pos) - 1'.
+      (*lb)[c] = -atIneq(minLbPosition, getNumDimIds() + c) +
+                 atIneq(minLbPosition, pos) - 1;
     }
   }
   return minDiff;

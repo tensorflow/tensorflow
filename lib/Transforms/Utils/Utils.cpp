@@ -43,23 +43,6 @@ static bool isMemRefDereferencingOp(const OperationInst &op) {
   return false;
 }
 
-/// Replaces all uses of oldMemRef with newMemRef while optionally remapping
-/// old memref's indices to the new memref using the supplied affine map
-/// and adding any additional indices. The new memref could be of a different
-/// shape or rank, but of the same elemental type. Additional indices are added
-/// at the start. 'extraOperands' is another optional argument that corresponds
-/// to additional operands (inputs) for indexRemap at the beginning of its input
-/// list. An optional argument 'domOpFilter' restricts the replacement to only
-/// those operations that are dominated by the former. The replacement succeeds
-/// and returns true if all uses of the memref in the region where the
-/// replacement is asked for are "dereferencing" memref uses.
-//  Ex: to replace load %A[%i, %j] with load %Abuf[%t mod 2, %ii - %i, %j]:
-//  The SSA value corresponding to '%t mod 2' should be in 'extraIndices', and
-//  index remap will (%i, %j) -> (%ii - %i, %j), i.e., (d0, d1, d2) -> (d0 - d1,
-//  d2) will be the 'indexRemap', and %ii is the extra operand. Without any
-//  extra operands, note that 'indexRemap' would just be applied to the existing
-//  indices (%i, %j).
-//
 bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                                     ArrayRef<Value *> extraIndices,
                                     AffineMap indexRemap,
@@ -83,6 +66,9 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
   std::unique_ptr<DominanceInfo> domInfo;
   if (domInstFilter)
     domInfo = std::make_unique<DominanceInfo>(domInstFilter->getFunction());
+
+  // The ops where memref replacement succeeds are replaced with new ones.
+  SmallVector<OperationInst *, 8> opsToErase;
 
   // Walk all uses of old memref. Operation using the memref gets replaced.
   for (auto it = oldMemRef->use_begin(); it != oldMemRef->use_end();) {
@@ -171,8 +157,14 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
     for (auto *res : opInst->getResults()) {
       res->replaceAllUsesWith(repOp->getResult(r++));
     }
-    opInst->erase();
+    // Collect and erase at the end since one of these op's could be
+    // domInstFilter!
+    opsToErase.push_back(opInst);
   }
+
+  for (auto *opInst : opsToErase)
+    opInst->erase();
+
   return true;
 }
 
