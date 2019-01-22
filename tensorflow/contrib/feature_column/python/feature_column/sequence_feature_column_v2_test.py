@@ -370,7 +370,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[3.], [0.], [8.], [0.]]],
        'expected_sequence_length': [2, 2]},
       )
-  def test_numeric_column(
+  def DISABLED_test_numeric_column(  # See b/123240957
       self, sparse_input_args, expected_input_layer, expected_sequence_length):
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
 
