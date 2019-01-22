@@ -812,7 +812,8 @@ class Model(Network):
               sample_weight=sample_weight,
               initial_epoch=initial_epoch,
               steps_per_epoch=steps_per_epoch,
-              validation_steps=validation_steps)
+              validation_steps=validation_steps,
+              validation_freq=validation_freq)
 
         # Independent worker only for now.
         return dc.run_distribute_coordinator(
@@ -836,7 +837,8 @@ class Model(Network):
             sample_weight=sample_weight,
             initial_epoch=initial_epoch,
             steps_per_epoch=steps_per_epoch,
-            validation_steps=validation_steps)
+            validation_steps=validation_steps,
+            validation_freq=validation_freq)
 
     batch_size = self._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
