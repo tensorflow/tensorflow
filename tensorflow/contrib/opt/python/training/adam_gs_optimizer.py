@@ -112,8 +112,6 @@ class AdamGSOptimizer(optimizer.Optimizer):
     self._beta2_t = None
     self._epsilon_t = None
 
-    # Created in SparseApply if needed.
-    self._updated_lr = None
 
   def _get_beta_accumulators(self):
     return (math_ops.pow(self._beta1_t, self._global_step_on_worker),
