@@ -43,7 +43,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kReduceWindow, NodeOperands({2, 1}), Is2DMaxPool},
       {HloOpcode::kConstant, NodeOperands({}), IsScalarConstantNegativeInfinity},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
     })
   ),
 
@@ -56,8 +56,8 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kSelectAndScatter, NodeOperands({2, 3, 1}), Is2DMaxPoolGrad},
       {HloOpcode::kConstant, NodeOperands({}), IsScalarConstantOne},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
      })
   ),
 };

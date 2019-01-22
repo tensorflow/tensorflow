@@ -41,10 +41,10 @@ namespace {
 
 absl::optional<int64> GetOperandIndexForNodeId(
     const HloMatcherNode& pattern_node, const NodeId& operand_id) {
-  auto it = absl::c_find(pattern_node.operands, operand_id);
-  return it != pattern_node.operands.end()
+  auto it = absl::c_find(pattern_node.GetOperands(), operand_id);
+  return it != pattern_node.GetOperands().end()
              ? absl::optional<int64>(
-                   std::distance(pattern_node.operands.begin(), it))
+                   std::distance(pattern_node.GetOperands().begin(), it))
              : absl::nullopt;
 }
 
@@ -76,16 +76,8 @@ bool IsValidCandidate(
 
   HloMatcherNode matched_node = pattern.GetPatternNodes()[candidate_node_id];
 
-  // Check the opcode - note that a parameter opcode means ANY instruction.
-  if (matched_node.opcode != HloOpcode::kParameter) {
-    if (matched_node.opcode != candidate_inst->opcode()) {
-      return false;
-    }
-  }
-
-  // Check the node condition.
-  if (matched_node.node_condition &&
-      !(*matched_node.node_condition)(candidate_inst)) {
+  // Check the node matches.
+  if (!matched_node.Matches(candidate_inst)) {
     return false;
   }
 
@@ -186,10 +178,11 @@ bool MatchDAGIsomorphism(
       HloMatcherNode matched_node = pattern.GetPatternNodes()[node_id];
 
       for (unsigned operand_idx = 0;
-           operand_idx < pattern.GetPatternNodes()[node_id].operands.size();
+           operand_idx <
+           pattern.GetPatternNodes()[node_id].GetOperands().size();
            operand_idx++) {
         NodeId operand_id =
-            pattern.GetPatternNodes()[node_id].operands[operand_idx];
+            pattern.GetPatternNodes()[node_id].GetOperands()[operand_idx];
         HloInstruction* operand_inst = parital_matching[operand_id];
         if (inst->mutable_operand(operand_idx) != operand_inst) {
           return false;
@@ -240,6 +233,76 @@ bool MatchDAGIsomorphism(
 }
 
 }  // namespace
+
+// HloMatcherOpcodeTarget
+HloMatcherOpcodeTarget::HloMatcherOpcodeTarget(const HloOpcode& opcode)
+    : opcode_(opcode){};
+HloMatcherOpcodeTarget::HloMatcherOpcodeTarget(const HloMatcherOpcode& opcode)
+    : opcode_(opcode){};
+
+const bool HloMatcherOpcodeTarget::IsHloOpcode() const {
+  return opcode_.index() == 0;
+}
+
+const HloOpcode HloMatcherOpcodeTarget::GetHloOpcode() const {
+  return absl::get<HloOpcode>(opcode_);
+}
+
+const bool HloMatcherOpcodeTarget::IsHloMatcherOpcode() const {
+  return !IsHloOpcode();
+}
+
+const HloMatcherOpcode HloMatcherOpcodeTarget::GetHloMatcherOpcode() const {
+  return absl::get<HloMatcherOpcode>(opcode_);
+}
+
+// HloMatcherNode
+HloMatcherNode::HloMatcherNode(HloMatcherOpcodeTarget opcode_target,
+                               NodeOperands operands)
+    : opcode_target_(opcode_target),
+      operands_(operands),
+      node_condition_(absl::nullopt){};
+
+HloMatcherNode::HloMatcherNode(HloMatcherOpcodeTarget opcode_target,
+                               NodeOperands operands,
+                               NodeCondition node_condition)
+    : opcode_target_(opcode_target),
+      operands_(operands),
+      node_condition_(node_condition){};
+
+const HloMatcherOpcodeTarget& HloMatcherNode::GetOpcodeTarget() const {
+  return opcode_target_;
+}
+
+const NodeOperands& HloMatcherNode::GetOperands() const { return operands_; }
+
+const absl::optional<NodeCondition>& HloMatcherNode::GetNodeCondition() const {
+  return node_condition_;
+}
+
+const bool HloMatcherNode::Matches(const HloInstruction* inst) const {
+  bool opcode_match = false;
+  // If the target is an opcode, then it must match
+  if (GetOpcodeTarget().IsHloOpcode()) {
+    opcode_match = GetOpcodeTarget().GetHloOpcode() == inst->opcode();
+  } else {
+    switch (GetOpcodeTarget().GetHloMatcherOpcode()) {
+      case HloMatcherOpcode::kAnyOpcode: {
+        opcode_match = true;
+        break;
+      }
+      default: {
+        opcode_match = false;
+        break;
+      }
+    }
+  }
+  if (opcode_match) {
+    return GetNodeCondition() ? (*GetNodeCondition())(inst) : true;
+  } else {
+    return false;
+  }
+}
 
 HloMatcherPattern::HloMatcherPattern(PatternType type,
                                      PatternMetaTarget meta_target,
@@ -338,7 +401,7 @@ HloMatcherPattern::VerifyAndGetGraphs() {
                                   std::to_string(label) +
                                   " which was not defined in the pattern.");
     }
-    return pattern_nodes[label].operands;
+    return pattern_nodes[label].GetOperands();
   };
 
   // Create a graph.
@@ -490,10 +553,10 @@ bool HloMatcher::MatchPatternSingleOutput(HloInstruction* root,
   for (unsigned int node_num = 0; node_num < pattern.GetPatternNodes().size();
        node_num++) {
     for (unsigned int op_idx = 0;
-         op_idx < pattern.GetPatternNodes()[node_num].operands.size();
+         op_idx < pattern.GetPatternNodes()[node_num].GetOperands().size();
          op_idx++) {
-      node_mapping[pattern.GetPatternNodes()[node_num].operands[op_idx]].insert(
-          {node_num, op_idx});
+      node_mapping[pattern.GetPatternNodes()[node_num].GetOperands()[op_idx]]
+          .insert({node_num, op_idx});
     }
 
     if (node_num) {
@@ -509,42 +572,45 @@ bool HloMatcher::MatchPatternSingleOutput(HloInstruction* root,
     }
 
     const HloMatcherNode& node(pattern.GetPatternNodes()[node_num]);
-
-    if (node.opcode != HloOpcode::kParameter) {
-      if (node.opcode != inst->opcode()) {
-        // Try to find an op using associativity, unless this is the first node
-        // or search depth is 0 or this inst is used more than once
-        if (node_num == 0 || look_through_max_depth_ == 0 ||
-            inst->user_count() != 1) {
-          return false;
+    if (node.GetOpcodeTarget().IsHloOpcode()) {
+      HloOpcode target_opcode = node.GetOpcodeTarget().GetHloOpcode();
+      if (target_opcode != HloOpcode::kParameter) {
+        if (target_opcode != inst->opcode()) {
+          // Try to find an op using associativity, unless this is the first
+          // node
+          // or search depth is 0 or this inst is used more than once
+          if (node_num == 0 || look_through_max_depth_ == 0 ||
+              inst->user_count() != 1) {
+            return false;
+          }
+          unsigned int user_node_num = node_mapping[node_num].begin()->first;
+          auto* user = match.instruction_mapping[user_node_num];
+          auto optional_trace = FindNextMatchingOp(user, inst, target_opcode);
+          // Check whether we managed to find a match
+          if (!optional_trace) {
+            return false;
+          }
+          Trace found = *optional_trace;
+          match.instruction_mapping[node_num] = found.back().inst;
+          inst = found.back().inst;
+          match.replacement_traces.push_back(found);
         }
-        unsigned int user_node_num = node_mapping[node_num].begin()->first;
-        auto* user = match.instruction_mapping[user_node_num];
-        auto optional_trace = FindNextMatchingOp(user, inst, node.opcode);
-        // Check whether we managed to find a match
-        if (!optional_trace) {
-          return false;
-        }
-        Trace found = *optional_trace;
-        match.instruction_mapping[node_num] = found.back().inst;
-        inst = found.back().inst;
-        match.replacement_traces.push_back(found);
       }
     }
-
-    if (node.node_condition && !(*node.node_condition)(inst)) {
+    // Check the match.
+    if (!node.Matches(inst)) {
       return false;
     }
 
     if (!is_input(node_num)) {
-      if ((node.operands.size() > 0) &&
-          (inst->operand_count() != node.operands.size())) {
+      if ((node.GetOperands().size() > 0) &&
+          (inst->operand_count() != node.GetOperands().size())) {
         return false;
       }
 
-      for (unsigned int i = 0; i < node.operands.size(); i++) {
+      for (unsigned int i = 0; i < node.GetOperands().size(); i++) {
         HloInstruction* operand = inst->mutable_operand(i);
-        int n = node.operands[i];
+        int n = node.GetOperands()[i];
 
         if (n >= match.instruction_mapping.size()) {
           LOG(FATAL) << "Invalid matcher reference " << n;
@@ -611,16 +677,15 @@ bool HloMatcher::MatchPatternStart(HloComputation* computation) {
       // Traverse from root
       to_visit.push(computation->root_instruction());
       while (!to_visit.empty()) {
-        HloInstruction* instruction = to_visit.top();
+        HloInstruction* inst = to_visit.top();
         to_visit.pop();
-        visited.insert(instruction);
+        visited.insert(inst);
         // A pattern can have multiple outputs. We start the pattern match when
         // we find an instruction which matches the first output of the pattern.
-        auto first_output = pattern.GetOutputs()[0];
-        if (instruction->opcode() ==
-            pattern.GetPatternNodes()[first_output].opcode) {
+        auto output_0_node = pattern.GetPatternNodes()[pattern.GetOutputs()[0]];
+        if (output_0_node.Matches(inst)) {
           // Try matching the whole pattern
-          if (MatchPattern(instruction, i)) {
+          if (MatchPattern(inst, i)) {
             VLOG(1) << "Matched pattern type " << pattern.GetType() << ".";
             matched = true;
             // Restart the matcher
@@ -628,7 +693,7 @@ bool HloMatcher::MatchPatternStart(HloComputation* computation) {
             break;
           }
         }
-        for (HloInstruction* operand : instruction->operands()) {
+        for (HloInstruction* operand : inst->operands()) {
           if (visited.count(operand) == 0) {
             to_visit.push(operand);
           }
@@ -752,7 +817,8 @@ HloInstruction* HloMatcher::OutlineExpressionFromComputation(
     outlined_node_ids.insert(node_id);
     // Replace all the operands
     for (int64 operand = 0; operand < new_inst->operand_count(); ++operand) {
-      NodeId operand_id = pattern.GetPatternNodes()[node_id].operands[operand];
+      NodeId operand_id =
+          pattern.GetPatternNodes()[node_id].GetOperands()[operand];
       TF_CHECK_OK(new_inst->ReplaceOperandWith(operand, outlined[operand_id]));
     }
     // Check if we can outline more instructions.

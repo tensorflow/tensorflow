@@ -54,8 +54,8 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kConstant, NodeOperands({})},
       {HloOpcode::kIota, NodeOperands({})},
       {HloOpcode::kConvolution, NodeOperands({13, 14}), IsOpWithWindowNoBaseDilation},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
     })
   ),
 
@@ -82,8 +82,8 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kBroadcast, NodeOperands({14})},
       {HloOpcode::kConstant, NodeOperands({})},
       {HloOpcode::kConstant, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
     })
   ),
 
@@ -96,8 +96,8 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kConvolution, NodeOperands({2, 1}), IsOpWithWindowNoStride},
       {HloOpcode::kReverse, NodeOperands({3}), IsConvFilterTranspose},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
     })
   ),
 
@@ -123,8 +123,8 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kBroadcast, NodeOperands({13})},
       {HloOpcode::kConstant, NodeOperands({})},
       {HloOpcode::kConstant, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
     })
   ),
 
@@ -352,7 +352,7 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
       {HloOpcode::kBroadcast, NodeOperands({4})},
       {HloOpcode::kConstant, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
     })
   ),
 };

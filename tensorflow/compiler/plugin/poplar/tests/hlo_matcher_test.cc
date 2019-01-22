@@ -80,8 +80,8 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
       PatternOutputs({0}),
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -124,8 +124,8 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
       PatternOutputs({0}),
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -184,8 +184,8 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({3, 1})},
         {HloOpcode::kBroadcast, NodeOperands({2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     ),
     HloMatcherPattern(
@@ -195,8 +195,8 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
       PatternOutputs({0}),
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -262,8 +262,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({3, 1})},
         {HloOpcode::kBroadcast, NodeOperands({2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -323,8 +323,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({3, 1})},
         {HloOpcode::kBroadcast, NodeOperands({2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -377,8 +377,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
         {HloOpcode::kSubtract, NodeOperands({1, 3})},
         {HloOpcode::kAdd, NodeOperands({4, 2})},
         {HloOpcode::kBroadcast, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -428,7 +428,7 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
         {HloOpcode::kSubtract, NodeOperands({3, 1})},
         {HloOpcode::kBroadcast, NodeOperands({2})},
         {HloOpcode::kConstant, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -479,8 +479,8 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOps) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({3, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -553,7 +553,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsParameter) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -632,8 +632,8 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsLongerChain) {
       Pattern({
         {HloOpcode::kMultiply, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({3, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -716,7 +716,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsChainTooLong) {
       Pattern({
         {HloOpcode::kMultiply, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -772,7 +772,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsPartialInChainUsed) {
       Pattern({
         {HloOpcode::kMultiply, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -819,7 +819,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsDifferentAssociativitySets) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -864,7 +864,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsRootNonAssociative) {
       Pattern({
         {HloOpcode::kBroadcast, NodeOperands({1})},
         {HloOpcode::kAdd, NodeOperands({2, 3})},
-        {HloOpcode::kParameter, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
         {HloOpcode::kConstant, NodeOperands({})}
       })
     )
@@ -889,7 +889,7 @@ TEST_F(HloMatcherTest, PatternNoOutputs) {
         Pattern({
           {HloOpcode::kBroadcast, NodeOperands({1})},
           {HloOpcode::kAdd, NodeOperands({2, 3})},
-          {HloOpcode::kParameter, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
           {HloOpcode::kConstant, NodeOperands({})}
         })
       )
@@ -915,8 +915,8 @@ TEST_F(HloMatcherTest, PatternDuplicateParams) {
         PatternOutputs({0}),
         Pattern({
           {HloOpcode::kAdd, NodeOperands({1, 2})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
         })
       )
     };
@@ -943,8 +943,8 @@ TEST_F(HloMatcherTest, PatternDuplicateOutput) {
         Pattern({
           {HloOpcode::kAdd, NodeOperands({2, 1})},
           {HloOpcode::kAdd, NodeOperands({3, 3})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
         })
       )
     };
@@ -971,8 +971,8 @@ TEST_F(HloMatcherTest, PatternDisconnected) {
         Pattern({
           {HloOpcode::kAdd, NodeOperands({2, 1})},
           {HloOpcode::kAdd, NodeOperands({2, 2})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
         })
       )
     };
@@ -999,8 +999,8 @@ TEST_F(HloMatcherTest, PatternInvalidParamLabel) {
         Pattern({
           {HloOpcode::kAdd, NodeOperands({2, 1})},
           {HloOpcode::kAdd, NodeOperands({3, 3})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
         })
       )
     };
@@ -1027,8 +1027,8 @@ TEST_F(HloMatcherTest, PatternInvalidOutputLabel) {
         Pattern({
           {HloOpcode::kAdd, NodeOperands({2, 1})},
           {HloOpcode::kAdd, NodeOperands({3, 3})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
         })
       )
     };
@@ -1055,8 +1055,8 @@ TEST_F(HloMatcherTest, PatternInvalidPatternLabel) {
         Pattern({
           {HloOpcode::kAdd, NodeOperands({2, 1})},
           {HloOpcode::kAdd, NodeOperands({3, 4})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
         })
       )
     };
@@ -1083,10 +1083,10 @@ TEST_F(HloMatcherTest, TwoDisconnectedGraphs) {
         Pattern({
           {HloOpcode::kAdd, NodeOperands({2, 3})},
           {HloOpcode::kAdd, NodeOperands({4, 5})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
         })
       )
     };
@@ -1111,8 +1111,8 @@ TEST_F(HloMatcherTest, InputWithInputs) {
         Pattern({
           {HloOpcode::kAdd, NodeOperands({1, 2})},
           {HloOpcode::kAdd, NodeOperands({2, 3})},
-          {HloOpcode::kParameter, NodeOperands({})},
-          {HloOpcode::kParameter, NodeOperands({})}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
         })
       )
     };
@@ -1159,9 +1159,9 @@ TEST_F(HloMatcherTest, MatchTestMultipleOutputs) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({2, 3})},
         {HloOpcode::kAdd, NodeOperands({4, 3})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -1221,9 +1221,9 @@ TEST_F(HloMatcherTest, MatchTestMultipleOutputsMultipleMatches) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({2, 3})},
         {HloOpcode::kAdd, NodeOperands({4, 3})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };

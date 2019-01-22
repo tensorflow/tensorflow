@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
+#include "absl/types/variant.h"
 
 namespace xla {
 
@@ -31,11 +32,46 @@ namespace poplarplugin {
 
 using NodeId = int64;
 using NodeOperands = std::vector<NodeId>;
-using NodeCondition = std::function<bool(HloInstruction*)>;
+using NodeCondition = std::function<bool(const HloInstruction*)>;
 
-struct HloMatcherNode {
-  // The opcode of the instruction to match
-  HloOpcode opcode;
+enum class HloMatcherOpcode {
+  kAnyOpcode,
+};
+
+// A class which allows us to extend the HloOpcode enum for special cases for
+// the HloMatcher.
+class HloMatcherOpcodeTarget {
+ public:
+  HloMatcherOpcodeTarget(const HloOpcode& opcode);
+  HloMatcherOpcodeTarget(const HloMatcherOpcode& opcode);
+
+  const bool IsHloOpcode() const;
+  const HloOpcode GetHloOpcode() const;
+
+  const bool IsHloMatcherOpcode() const;
+  const HloMatcherOpcode GetHloMatcherOpcode() const;
+
+ private:
+  absl::variant<HloOpcode, HloMatcherOpcode> opcode_;
+};
+
+class HloMatcherNode {
+ public:
+  HloMatcherNode(HloMatcherOpcodeTarget opcode_target, NodeOperands operands);
+
+  HloMatcherNode(HloMatcherOpcodeTarget opcode_target, NodeOperands operands,
+                 NodeCondition node_condition);
+
+  const HloMatcherOpcodeTarget& GetOpcodeTarget() const;
+  const NodeOperands& GetOperands() const;
+  const absl::optional<NodeCondition>& GetNodeCondition() const;
+
+  // Checks whether the instruction matches this node.
+  const bool Matches(const HloInstruction* inst) const;
+
+ private:
+  // The opcode target of the instruction to match
+  HloMatcherOpcodeTarget opcode_target_;
 
   // A list of operands of this instruction. A positive number refers to one of
   // the other entries in the match pattern. A negative number indicates that
@@ -43,18 +79,11 @@ struct HloMatcherNode {
   // nodes have the same negative number, then the same instruction must be
   // the operand to each match node. The parameter number is given by the value
   // in the matching position in the parameter_indices list.
-  NodeOperands operands;
+  NodeOperands operands_;
 
   // If provided, this function will be called with the instruction. Only if
   // it returns true does the matching proceed.
-  absl::optional<NodeCondition> node_condition;
-
-  HloMatcherNode(HloOpcode opcode, NodeOperands operands)
-      : opcode(opcode), operands(operands), node_condition(absl::nullopt){};
-
-  HloMatcherNode(HloOpcode opcode, NodeOperands operands,
-                 NodeCondition node_condition)
-      : opcode(opcode), operands(operands), node_condition(node_condition){};
+  absl::optional<NodeCondition> node_condition_;
 };
 
 using PatternType = std::string;
@@ -167,15 +196,8 @@ class HloMatcher : public HloModulePass {
   // outlined computation.
   HloInstruction* OutlineExpressionFromComputation(
       const HloMatcherMatched& matched,
-      const std::string& outlined_computation_name) {
-    return OutlineExpressionFromComputation(matched, outlined_computation_name,
-                                            {});
-  }
-
-  HloInstruction* OutlineExpressionFromComputation(
-      const HloMatcherMatched& matched,
       const std::string& outlined_computation_name,
-      std::vector<HloInstruction*> forced_parameters);
+      std::vector<HloInstruction*> forced_parameters = {});
 
   // The list of patterns to try to find in the computations
   std::vector<HloMatcherPattern> patterns_;

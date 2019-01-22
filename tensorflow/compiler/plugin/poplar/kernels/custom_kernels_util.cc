@@ -127,17 +127,30 @@ const bool IsPoplibsCustomOp(const HloInstruction* inst) {
   return GetPoplibsCustomOp(inst) != absl::nullopt;
 }
 
+const bool IsPoplibsCustomOp(const HloInstruction* inst,
+                             const PoplibsLib& target_poplibs_lib,
+                             const PoplibsOp& target_poplibs_op) {
+  auto ret = GetPoplibsCustomOp(inst);
+  if (!ret) {
+    return false;
+  }
+  PoplibsLib poplibs_lib;
+  PoplibsOp poplibs_op;
+  std::tie(poplibs_lib, poplibs_op) = *ret;
+  return target_poplibs_lib == poplibs_lib && target_poplibs_op == poplibs_op;
+}
+
 const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst) {
   if (!IsPoplibsCustomOp(inst)) {
     return false;
   }
   auto ret = GetPoplibsCustomOp(inst);
-  if (ret == absl::nullopt) {
+  if (!ret) {
     return false;
   }
   PoplibsLib poplibs_lib;
   PoplibsOp poplibs_op;
-  std::tie(poplibs_lib, poplibs_op) = ret.value();
+  std::tie(poplibs_lib, poplibs_op) = *ret;
   switch (poplibs_lib) {
     case PoplibsLib::Popops: {
       switch (poplibs_op) {

@@ -50,7 +50,7 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kReduce, NodeOperands({2, 3}), IsF32},
       {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
       {HloOpcode::kConstant, NodeOperands({}), IsF32},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
     })
   ),
 
@@ -66,8 +66,8 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kReduce, NodeOperands({2, 3}), IsF32},
       {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
       {HloOpcode::kConvert, NodeOperands({5}), IsF16ToF32Convert},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
     })
   ),
 
@@ -85,7 +85,7 @@ static const std::vector<HloMatcherPattern> patterns = {
           {HloOpcode::kReduce, NodeOperands({5, 6}), IsF32},
           {HloOpcode::kConvert, NodeOperands({7}), IsF16ToF32Convert},
           {HloOpcode::kConstant, NodeOperands({}), IsF32},
-          {HloOpcode::kParameter, NodeOperands({}), IsF16}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
       })
   ),
 
@@ -101,7 +101,7 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kReduceWindow, NodeOperands({2, 3}), IsF32},
       {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
       {HloOpcode::kConstant, NodeOperands({}), IsF32},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
     })
   ),
 
@@ -114,7 +114,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kConvert, NodeOperands({1}), IsF32ToF16Convert},
       {HloOpcode::kConvert, NodeOperands({2}), IsF16ToF32Convert},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
     })
   ),
 
@@ -127,7 +127,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kConvert, NodeOperands({1}), IsF16ToF32Convert},
       {HloOpcode::kConvert, NodeOperands({2}), IsF32ToF16Convert},
-      {HloOpcode::kParameter, NodeOperands({}), IsF32}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF32}
     })
   ),
 };
@@ -224,7 +224,8 @@ bool CastsElimination::HandleMatch(HloMatcherMatched& match) {
     outlined_node_ids.insert(node_id);
     // Replace all the operands.
     for (int64 operand = 0; operand < new_inst->operand_count(); ++operand) {
-      NodeId operand_id = pattern.GetPatternNodes()[node_id].operands[operand];
+      NodeId operand_id =
+          pattern.GetPatternNodes()[node_id].GetOperands()[operand];
       TF_CHECK_OK(new_inst->ReplaceOperandWith(operand, outlined[operand_id]));
     }
     // Check if we can outline more instructions.
