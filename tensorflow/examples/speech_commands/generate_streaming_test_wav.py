@@ -157,10 +157,7 @@ def main(_):
     mix_in_audio_sample(output_audio, output_offset, found_sample_data, 0,
                         clip_duration_samples, 1.0, 500, 500)
     output_labels.append({'label': wanted_label, 'time': output_offset_ms})
-
-  input_data.save_wav_file(FLAGS.output_audio_file, output_audio,
-                           FLAGS.sample_rate)
-  tf.logging.info('Saved streaming test wav to %s', FLAGS.output_audio_file)
+  tf.logging.info('not Saved streaming test wav to %s', FLAGS.output_audio_file)
 
   with open(FLAGS.output_labels_file, 'w') as f:
     for output_label in output_labels:
