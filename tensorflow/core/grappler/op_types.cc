@@ -568,6 +568,22 @@ bool IsDataset(const NodeDef& node) {
          op == "DatasetToSingleElement" || op == "ReduceDataset";
 }
 
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
+  const OpDef* op_def = nullptr;
+  const string& op_name = node.op();
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to lookup OpDef for " << op_name
+                 << ". Error: " << status.error_message();
+    return false;
+  }
+  return op_def->is_stateful();
+}
+
+bool IsStateful(const NodeDef node) {
+  return IsStateful(node, OpRegistry::Global());
+}
+
 bool IsFreeOfSideEffect(const NodeDef& node,
                         const OpRegistryInterface* op_registry) {
   // Placeholders must be preserved to keep the graph feedable.
