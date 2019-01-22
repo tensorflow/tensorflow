@@ -509,7 +509,8 @@ class ASTCodeUpgrader(object):
       in_place: Allow the conversion of an entire directory in place.
 
     Returns:
-      A tuple of files processed, the report string ofr all files, and errors
+      A tuple of files processed, the report string ofr all files, and a dict
+        mapping filenames to errors encountered in that file.
     """
 
     if output_root_directory == root_directory:
@@ -556,7 +557,7 @@ class ASTCodeUpgrader(object):
           files_to_copy.append((fullpath, fullpath_output))
 
     file_count = 0
-    tree_errors = []
+    tree_errors = {}
     report = ""
     report += ("=" * 80) + "\n"
     report += "Input tree: %r\n" % root_directory
@@ -568,7 +569,7 @@ class ASTCodeUpgrader(object):
         os.makedirs(output_directory)
       file_count += 1
       _, l_report, l_errors = self.process_file(input_path, output_path)
-      tree_errors += l_errors
+      tree_errors[input_path] = l_errors
       report += l_report
     for input_path, output_path in files_to_copy:
       output_directory = os.path.dirname(output_path)
@@ -586,7 +587,7 @@ class ASTCodeUpgrader(object):
       files_to_process += py_files
 
     file_count = 0
-    tree_errors = []
+    tree_errors = {}
     report = ""
     report += ("=" * 80) + "\n"
     report += "Input tree: %r\n" % root_directory
@@ -595,7 +596,7 @@ class ASTCodeUpgrader(object):
     for path in files_to_process:
       file_count += 1
       _, l_report, l_errors = self.process_file(path, path)
-      tree_errors += l_errors
+      tree_errors[path] = l_errors
       report += l_report
 
     return file_count, report, tree_errors

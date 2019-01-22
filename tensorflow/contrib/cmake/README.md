@@ -147,7 +147,7 @@ suitable interface for project configuration and dependency setting.
     *   Go (required if you need ssl support, optional)
     *   NASM/YASM (required by grpc for ssl support, optional)
 2.  Start CMake GUI
-3.  Click on `Browse Source` and direct to the the folder
+3.  Click on `Browse Source` and direct to the folder
     `<tensorflow-source>/tensorflow/contrib/cmake`
 4.  Click on `Browse Build` and spectify a location that you want tensorflow to
     be build

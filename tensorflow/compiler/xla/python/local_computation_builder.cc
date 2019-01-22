@@ -102,7 +102,7 @@ int GetReplicaCount() {
   return g_replica_count;
 }
 
-LocalClient* GetOrCreateLocalClient() {
+StatusOr<LocalClient*> GetOrCreateLocalClient() {
   string* platform_name = GetPlatformNameString();
   tensorflow::mutex_lock lock(g_local_client_mutex);
   if (g_local_client != nullptr) {
@@ -111,7 +111,8 @@ LocalClient* GetOrCreateLocalClient() {
   LocalClientOptions options;
   options.set_platform(PlatformUtil::GetPlatform(*platform_name).ValueOrDie());
   options.set_number_of_replicas(g_replica_count);
-  g_local_client = ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  TF_ASSIGN_OR_RETURN(g_local_client,
+                      ClientLibrary::GetOrCreateLocalClient(options));
   CHECK(g_local_client != nullptr);
   return g_local_client;
 }
@@ -133,7 +134,7 @@ Status RegisterCpuCustomCallTarget(const string& fn_name, PyObject* capsule) {
 Status TransferToInfeedLocal(const Literal& literal) {
   VLOG(1) << "Infeeding literal without replica number; shape: "
           << literal.shape();
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   return client->TransferToInfeedLocal(literal, /*device_ordinal=*/0);
 }
 
@@ -141,7 +142,7 @@ Status TransferToInfeedLocalReplica(const Literal& literal,
                                     int replica_number) {
   VLOG(1) << "Infeeding shape " << literal.shape()
           << " to replica number: " << replica_number;
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   TF_ASSIGN_OR_RETURN(int device_ordinal,
                       client->ReplicaNumberToDeviceOrdinal(replica_number));
   return client->TransferToInfeedLocal(literal, device_ordinal);
@@ -151,7 +152,7 @@ StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
                                                   int replica_number) {
   VLOG(1) << "Outfeeding literal from replica number: " << replica_number
           << " shape: " << shape;
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   TF_ASSIGN_OR_RETURN(int device_ordinal,
                       client->ReplicaNumberToDeviceOrdinal(replica_number));
   return client->TransferFromOutfeedLocal(shape, device_ordinal);
@@ -168,7 +169,7 @@ static StatusOr<ScopedShapedBuffer> ToBuffer(LocalClient* client,
 StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
     const Literal& argument, const absl::optional<Shape>& shape_with_layout,
     int replica_number) {
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   TF_ASSIGN_OR_RETURN(int device_ordinal,
                       client->ReplicaNumberToDeviceOrdinal(replica_number));
   VLOG(1) << "Creating shaped buffer from literal on replica/ordinal: "
@@ -198,7 +199,7 @@ const Shape& LocalShapedBuffer::shape() const {
 }
 
 StatusOr<Literal> LocalShapedBuffer::ToLiteral() const {
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   return client->ShapedBufferToLiteral(*shaped_buffer());
 }
 
@@ -333,7 +334,7 @@ CompiledLocalComputation::CompiledLocalComputation(
 
 StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
     absl::Span<LocalShapedBuffer* const> argument_handles) {
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   StatusOr<int> device_ordinal_status = client->ReplicaNumberToDeviceOrdinal(0);
   StatusOr<ScopedShapedBuffer> result_buffer_status;
   if (!device_ordinal_status.ok()) {
@@ -376,7 +377,7 @@ StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
 
 StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
     absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles) {
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   const int num_replicas = GetReplicaCount();
 
   if (argument_handles.size() != num_replicas) {
@@ -549,7 +550,7 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
     argument_shape_pointers.push_back(&argument_shape);
   }
 
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   ExecutableBuildOptions options;
   if (build_options != nullptr) {
     options = *build_options;

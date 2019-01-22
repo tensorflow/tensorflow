@@ -952,8 +952,8 @@ class FusedConv2DWithBiasOpTest : public FusedConv2DOpTest<T> {};
 template <typename T>
 class FusedConv2DWithBatchNormOpTest : public FusedConv2DOpTest<T> {};
 
-TYPED_TEST_CASE_P(FusedConv2DWithBiasOpTest);
-TYPED_TEST_CASE_P(FusedConv2DWithBatchNormOpTest);
+TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest);
+TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest);
 
 // -------------------------------------------------------------------------- //
 // Conv2D + BiasAdd + {Relu}                                                  //
@@ -1035,29 +1035,29 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndRelu) {
   this->VerifyConv2DWithBatchNormAndRelu(filter_size, filter_count);
 }
 
-REGISTER_TYPED_TEST_CASE_P(FusedConv2DWithBiasOpTest,    //
-                           OneByOneConvolution,          //
-                           ImageSizeConvolution,         //
-                           SpatialConvolution,           //
-                           OneByOneConvolutionAndRelu,   //
-                           ImageSizeConvolutionAndRelu,  //
-                           SpatialConvolutionAndRelu);
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,    //
+                            OneByOneConvolution,          //
+                            ImageSizeConvolution,         //
+                            SpatialConvolution,           //
+                            OneByOneConvolutionAndRelu,   //
+                            ImageSizeConvolutionAndRelu,  //
+                            SpatialConvolutionAndRelu);
 
-REGISTER_TYPED_TEST_CASE_P(FusedConv2DWithBatchNormOpTest,  //
-                           OneByOneConvolution,             //
-                           ImageSizeConvolution,            //
-                           SpatialConvolution,              //
-                           OneByOneConvolutionAndRelu,      //
-                           ImageSizeConvolutionAndRelu,     //
-                           SpatialConvolutionAndRelu);
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,  //
+                            OneByOneConvolution,             //
+                            ImageSizeConvolution,            //
+                            SpatialConvolution,              //
+                            OneByOneConvolutionAndRelu,      //
+                            ImageSizeConvolutionAndRelu,     //
+                            SpatialConvolutionAndRelu);
 
 using FusedBiasAddDataTypes = ::testing::Types<float, double>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, FusedConv2DWithBiasOpTest,
-                              FusedBiasAddDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
+                               FusedBiasAddDataTypes);
 
 using FusedBatchNormDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, FusedConv2DWithBatchNormOpTest,
-                              FusedBatchNormDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBatchNormOpTest,
+                               FusedBatchNormDataTypes);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Performance benchmarks for the FusedConv2DWithBiasOp.                      //

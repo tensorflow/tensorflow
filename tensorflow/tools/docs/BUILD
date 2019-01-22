@@ -163,7 +163,10 @@ py_binary(
     name = "generate2",
     srcs = ["generate2.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_library(

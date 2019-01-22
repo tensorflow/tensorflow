@@ -1462,7 +1462,7 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
     return new_h, new_state
 
 
-class NASCell(rnn_cell_impl.RNNCell):
+class NASCell(rnn_cell_impl.LayerRNNCell):
   """Neural Architecture Search (NAS) recurrent network cell.
 
   This implements the recurrent cell from the paper:
@@ -1475,23 +1475,28 @@ class NASCell(rnn_cell_impl.RNNCell):
   The class uses an optional projection layer.
   """
 
-  def __init__(self, num_units, num_proj=None, use_biases=False, reuse=None):
+  # NAS cell's architecture base.
+  _NAS_BASE = 8
+
+  def __init__(self, num_units, num_proj=None, use_bias=False, reuse=None,
+               **kwargs):
     """Initialize the parameters for a NAS cell.
 
     Args:
-      num_units: int, The number of units in the NAS cell
+      num_units: int, The number of units in the NAS cell.
       num_proj: (optional) int, The output dimensionality for the projection
         matrices.  If None, no projection is performed.
-      use_biases: (optional) bool, If True then use biases within the cell. This
+      use_bias: (optional) bool, If True then use biases within the cell. This
         is False by default.
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+      **kwargs: Additional keyword arguments.
     """
-    super(NASCell, self).__init__(_reuse=reuse)
+    super(NASCell, self).__init__(_reuse=reuse, **kwargs)
     self._num_units = num_units
     self._num_proj = num_proj
-    self._use_biases = use_biases
+    self._use_bias = use_bias
     self._reuse = reuse
 
     if num_proj is not None:
@@ -1508,6 +1513,33 @@ class NASCell(rnn_cell_impl.RNNCell):
   @property
   def output_size(self):
     return self._output_size
+
+  def build(self, inputs_shape):
+    input_size = tensor_shape.dimension_value(
+        tensor_shape.TensorShape(inputs_shape).with_rank(2)[1])
+    if input_size is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+
+    num_proj = self._num_units if self._num_proj is None else self._num_proj
+
+    # Variables for the NAS cell. `recurrent_kernel` is all matrices multiplying
+    # the hiddenstate and `kernel` is all matrices multiplying the inputs.
+    self.recurrent_kernel = self.add_variable(
+        "recurrent_kernel", [num_proj, self._NAS_BASE * self._num_units])
+    self.kernel = self.add_variable(
+        "kernel", [input_size, self._NAS_BASE * self._num_units])
+
+    if self._use_bias:
+      self.bias = self.add_variable("bias",
+                                    shape=[self._NAS_BASE * self._num_units],
+                                    initializer=init_ops.zeros_initializer)
+
+    # Projection layer if specified
+    if self._num_proj is not None:
+      self.projection_weights = self.add_variable(
+          "projection_weights", [self._num_units, self._num_proj])
+
+    self.built = True
 
   def call(self, inputs, state):
     """Run one step of NAS Cell.
@@ -1535,38 +1567,20 @@ class NASCell(rnn_cell_impl.RNNCell):
     tanh = math_ops.tanh
     relu = nn_ops.relu
 
-    num_proj = self._num_units if self._num_proj is None else self._num_proj
-
     (c_prev, m_prev) = state
 
-    dtype = inputs.dtype
-    input_size = inputs.get_shape().with_rank(2).dims[1]
-    if input_size.value is None:
-      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
-    # Variables for the NAS cell. W_m is all matrices multiplying the
-    # hiddenstate and W_inputs is all matrices multiplying the inputs.
-    concat_w_m = vs.get_variable("recurrent_kernel",
-                                 [num_proj, 8 * self._num_units], dtype)
-    concat_w_inputs = vs.get_variable(
-        "kernel", [input_size.value, 8 * self._num_units], dtype)
+    m_matrix = math_ops.matmul(m_prev, self.recurrent_kernel)
+    inputs_matrix = math_ops.matmul(inputs, self.kernel)
 
-    m_matrix = math_ops.matmul(m_prev, concat_w_m)
-    inputs_matrix = math_ops.matmul(inputs, concat_w_inputs)
-
-    if self._use_biases:
-      b = vs.get_variable(
-          "bias",
-          shape=[8 * self._num_units],
-          initializer=init_ops.zeros_initializer(),
-          dtype=dtype)
-      m_matrix = nn_ops.bias_add(m_matrix, b)
+    if self._use_bias:
+      m_matrix = nn_ops.bias_add(m_matrix, self.bias)
 
     # The NAS cell branches into 8 different splits for both the hiddenstate
     # and the input
     m_matrix_splits = array_ops.split(
-        axis=1, num_or_size_splits=8, value=m_matrix)
+        axis=1, num_or_size_splits=self._NAS_BASE, value=m_matrix)
     inputs_matrix_splits = array_ops.split(
-        axis=1, num_or_size_splits=8, value=inputs_matrix)
+        axis=1, num_or_size_splits=self._NAS_BASE, value=inputs_matrix)
 
     # First layer
     layer1_0 = sigmoid(inputs_matrix_splits[0] + m_matrix_splits[0])
@@ -1598,9 +1612,7 @@ class NASCell(rnn_cell_impl.RNNCell):
 
     # Projection layer if specified
     if self._num_proj is not None:
-      concat_w_proj = vs.get_variable("projection_weights",
-                                      [self._num_units, self._num_proj], dtype)
-      new_m = math_ops.matmul(new_m, concat_w_proj)
+      new_m = math_ops.matmul(new_m, self.projection_weights)
 
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_m)
     return new_m, new_state

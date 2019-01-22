@@ -201,6 +201,11 @@ def has_strategy():
   return get_strategy() is not _get_default_strategy()
 
 
+def get_strategy_and_replica_context():
+  per_thread_mode = _get_per_thread_mode()
+  return (per_thread_mode.strategy, per_thread_mode.replica_context)
+
+
 # ------------------------------------------------------------------------------
 # Defaults that are used when no tf.distribute.Strategy is explicitly created.
 # We create them lazily in a function so that we can workaround the circular

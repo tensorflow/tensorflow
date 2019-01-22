@@ -378,7 +378,8 @@ class TPUClusterResolver(ClusterResolver):
     return self.master()
 
   def get_job_name(self):
-    if self._shouldResolve():
+    if (self._shouldResolve() or
+        self._tpu.startswith(compat.as_bytes('grpc://'))):
       return self.task_type
 
   def cluster_spec(self):

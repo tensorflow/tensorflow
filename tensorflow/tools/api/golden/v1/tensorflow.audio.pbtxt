@@ -1,0 +1,7 @@
+path: "tensorflow.audio"
+tf_module {
+  member_method {
+    name: "encode_wav"
+    argspec: "args=[\'audio\', \'sample_rate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

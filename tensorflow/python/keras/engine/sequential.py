@@ -87,8 +87,8 @@ class Sequential(Model):
   model.add(Dense(32))
   model.weights  # returns list of length 4
 
-  When using the delayed-build pattern (no input shape specified), you can
-  choose to manually build your model by calling `build(batch_input_shape)`:
+  # When using the delayed-build pattern (no input shape specified), you can
+  # choose to manually build your model by calling `build(batch_input_shape)`:
   model = Sequential()
   model.add(Dense(32))
   model.add(Dense(32))
@@ -245,8 +245,11 @@ class Sequential(Model):
     if not self.built and self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
 
-    x = inputs
+    outputs = inputs  # handle the corner case where self.layers is empty
     for layer in self.layers:
+      # During each iteration, `inputs` are the inputs to `layer`, and `outputs`
+      # are the outputs of `layer` applied to `inputs`. At the end of each
+      # iteration `inputs` is set to `outputs` to prepare for the next layer.
       kwargs = {}
       argspec = self._layer_call_argspecs[layer].args
       if 'mask' in argspec:
@@ -255,27 +258,34 @@ class Sequential(Model):
         kwargs['training'] = training
 
       if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
-        x, mask = layer._call_and_compute_mask(x, **kwargs)
+        outputs, mask = layer._call_and_compute_mask(inputs, **kwargs)
       else:
         if not layer.built:
           # Build layer if applicable.
           with ops.name_scope(layer._name_scope()):
-            layer._maybe_build(x)
+            layer._maybe_build(inputs)
           layer.built = True
         if layer.supports_masking:
-          mask = layer.compute_mask(x, mask)
+          mask = layer.compute_mask(inputs, mask)
         else:
           mask = None
 
         if context.executing_eagerly():
-          x = layer(x, **kwargs)
+          # __call__ handles activity regularization.
+          outputs = layer(inputs, **kwargs)
         elif layer.dynamic:
-          x = layer._symbolic_call(x)
+          outputs = layer._symbolic_call(inputs)
+          layer._handle_activity_regularization(inputs, outputs)
         else:
-          x = layer.call(x, **kwargs)
+          outputs = layer.call(inputs, **kwargs)
+          layer._handle_activity_regularization(inputs, outputs)
+
       if not context.executing_eagerly():
-        x._keras_mask = mask
-    return x, mask
+        outputs._keras_mask = mask
+
+      # `outputs` will be the inputs to the next layer.
+      inputs = outputs
+    return outputs, mask
 
   def compute_output_shape(self, input_shape):
     shape = input_shape

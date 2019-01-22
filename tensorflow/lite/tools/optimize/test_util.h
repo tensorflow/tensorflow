@@ -26,13 +26,21 @@ namespace internal {
 // channel has at least one weight as -127 and one weight as 127.
 // The activations are all in range: [-128, 127]
 // This means all bias computations should result in 1.0 scale.
-extern const char* kModelWithMinus128Plus127Weights;
+extern const char* kConvModelWithMinus128Plus127Weights;
 
 // Test model with single convolution where all weights are integers between
 // [0, 10] weights are randomly distributed. It is not guaranteed that min max
 // for weights are going to appear in each channel.
 // Activations have min = 0, max = 10.
-extern const char* kModelWith0Plus10Weights;
+extern const char* kConvModelWith0Plus10Weights;
+
+// A floating point model with a single softmax. The input tensor has min
+// and max in range [-5, 5], not necessarily -5 or +5.
+extern const char* kSingleSoftmaxModelMinMinus5MaxPlus5;
+
+// A floating point model with a single average pool. The input tensor has min
+// and max in range [-5, 5], not necessarily -5 or +5.
+extern const char* kSingleAvgPoolModelMinMinus5MaxPlus5;
 
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {

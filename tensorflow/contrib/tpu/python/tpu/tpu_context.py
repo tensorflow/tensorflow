@@ -208,7 +208,7 @@ class _InternalTPUContext(object):
         use_tpu and config.tpu_config.num_cores_per_replica)
     self._mode = None
     num_cores_per_replica = config.tpu_config.num_cores_per_replica
-    if num_cores_per_replica:
+    if self._model_parallelism_enabled:
       self._computation_shape = _NUM_CORES_TO_COMPUTATION_SHAPE[
           num_cores_per_replica]
     else:

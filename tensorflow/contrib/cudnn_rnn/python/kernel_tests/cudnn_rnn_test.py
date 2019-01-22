@@ -1023,7 +1023,7 @@ class CudnnRNNTestCompatibleRNNCells(test_util.TensorFlowTestCase):
           outputs_v, output_state_v = sess.run(
               [outputs, output_state],
               feed_dict={cell_inputs: inference_input})
-          self.assertAllClose(cudnn_outputs_v, outputs_v, atol=2e-5, rtol=2e-5)
+          self.assertAllClose(cudnn_outputs_v, outputs_v, atol=1e-4, rtol=2e-4)
           (cudnn_output_h_v,) = cudnn_output_states_v
           self.assertAllClose(cudnn_output_h_v, output_state_v, atol=2e-5,
                               rtol=2e-5)

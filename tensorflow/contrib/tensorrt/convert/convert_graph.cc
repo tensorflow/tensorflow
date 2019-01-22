@@ -355,9 +355,22 @@ tensorflow::Status GetEngineInfo(
     if (segment_nodes.count(node) == 0) continue;
     auto node_device = node->requested_device();
     if (!node_device.empty()) {
-      segment_devices.insert(node_device);
+      // If device is CPU, treat as if no device was assigned. Don't add CPU to
+      // segment_device because that would cause a segfault in
+      // GetDeviceAndAllocator. This is because GetDeviceAndAllocator assumes
+      // any already set device is a GPU.
+      DeviceNameUtils::ParsedName parsed_name;
+      DeviceNameUtils::ParseFullName(node_device, &parsed_name);
+      if (parsed_name.type == "CPU") {
+        VLOG(1) << "Node " << node->name() << " was assigned to the CPU. "
+                << "Attempting to place on GPU.";
+      } else {
+        segment_devices.insert(node_device);
+      }
     } else {
       if (node->has_assigned_device_name()) {
+        // It appears that nodes will not have assigned devices at this point in
+        // execution.
         segment_devices.insert(node->assigned_device_name());
       } else {
         VLOG(2) << "Node " << node->name()
@@ -653,14 +666,8 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     segment_string = info.segment_graph_def.SerializeAsString();
   }
 
-  // TODO(aaroey): use enum instead, and add a helper method to do the
-  // conversion.
   string prec_string;
   TF_RETURN_IF_ERROR(GetPrecisionModeName(info.precision_mode, &prec_string));
-  if (info.precision_mode == INT8MODE && calibrate_int8 &&
-      !TRTResourceManager::instance()->getManager("TRTCalibration")) {
-    LOG(ERROR) << "Failed to construct calibration storage";
-  }
   tensorflow::NodeDefBuilder node_builder(info.engine_name, "TRTEngineOp");
   if (!info.device.empty()) node_builder.Device(info.device);
   if (VLOG_IS_ON(1)) {
@@ -676,7 +683,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
   }
 
   if (info.engine_type == EngineInfo::EngineType::TRTStatic &&
-      info.cached_engine_batches.size()) {
+      !info.cached_engine_batches.empty()) {
     LOG(WARNING) << "Cached engine batches are ignored for static engines";
   }
   tensorflow::NodeDef trt_node;
@@ -690,7 +697,6 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
           .Attr("serialized_segment", segment_string)
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
-          .Attr("cached_engine_batches", {max_batch_size})
           .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
           .Attr("precision_mode", prec_string)
           .Attr("use_calibration", info.use_calibration)

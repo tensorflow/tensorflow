@@ -645,5 +645,28 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 
+std::unique_ptr<HloComputation> MakeAddNComputation(int n) {
+  auto builder = HloComputation::Builder("add_n");
+  auto result = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "x_value"));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  for (int i = 0; i < n; ++i) {
+    result = builder.AddInstruction(HloInstruction::CreateBinary(
+        one->shape(), HloOpcode::kAdd, result, one));
+  }
+  return builder.Build();
+}
+
+TEST_F(HloComputationTest, DeepEquality) {
+  auto computation_a = MakeAddNComputation(200000);
+  auto computation_b = MakeAddNComputation(200000);
+  EXPECT_TRUE(*computation_a == *computation_b);
+
+  auto computation_c = MakeAddNComputation(199999);
+  EXPECT_FALSE(*computation_a == *computation_c);
+  EXPECT_FALSE(*computation_c == *computation_b);
+}
+
 }  // namespace
 }  // namespace xla

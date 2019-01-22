@@ -43,7 +43,7 @@ GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
   item.save_restore_loc_tensor = save_restore_loc_tensor;
   item.queue_runners = queue_runners;
   item.devices_ = devices_;
-  item.allowed_optimizations_ = allowed_optimizations_;
+  item.optimization_options_ = optimization_options_;
   item.graph.Swap(&graph_def);
   return item;
 }
@@ -115,9 +115,11 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     }
   }
 
-  if (!allowed_optimizations_.prune_ops_with_side_effects) {
+  // Tensorflow functions do not prune side effects, or dataset-output ops from
+  // the function body (see PruneFunctionBody in common_runtime/function.cc).
+  if (optimization_options_.is_function_instantiation) {
     for (const NodeDef& node : graph.node()) {
-      if (!IsFreeOfSideEffect(node)) {
+      if (!IsFreeOfSideEffect(node) || IsDataset(node)) {
         result.insert(node.name());
       }
     }
@@ -175,13 +177,13 @@ Status GrapplerItem::InferDevicesFromGraph() {
 
 void GrapplerItem::ClearDevices() { devices_.clear(); }
 
-const GrapplerItem::AllowedOptimizations& GrapplerItem::allowed_optimizations()
+const GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options()
     const {
-  return allowed_optimizations_;
+  return optimization_options_;
 }
 
-GrapplerItem::AllowedOptimizations& GrapplerItem::allowed_optimizations() {
-  return allowed_optimizations_;
+GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options() {
+  return optimization_options_;
 }
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(

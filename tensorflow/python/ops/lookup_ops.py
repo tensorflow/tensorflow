@@ -64,6 +64,9 @@ def initialize_all_tables(name="init_all_tables"):
 @tf_export(v1=["initializers.tables_initializer", "tables_initializer"])
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
+  
+  See the [Low Level Intro](https://www.tensorflow.org/guide/low_level_intro#feature_columns)
+  guide, for an example of usage.
 
   Args:
     name: Optional name for the initialization op.
@@ -161,7 +164,7 @@ class InitializableLookupTableBase(LookupInterface):
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
     self._default_value.get_shape().merge_with(tensor_shape.scalar())
-    if isinstance(initializer, checkpointable_base.CheckpointableBase):
+    if isinstance(initializer, checkpointable_base.Checkpointable):
       self._initializer = self._track_checkpointable(
           initializer, "_initializer")
     self._resource_handle = self.create_resource()
@@ -312,7 +315,7 @@ class HashTable(InitializableLookupTableBase):
     return exported_keys, exported_values
 
 
-class TableInitializerBase(checkpointable_base.CheckpointableBase):
+class TableInitializerBase(checkpointable_base.Checkpointable):
   """Base class for lookup table initializers."""
 
   def __init__(self, key_dtype, value_dtype):

@@ -495,6 +495,26 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   const HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
   Shape keys_shape = sort->keys()->shape();
+  PrimitiveType keys_type = keys_shape.element_type();
+  switch (keys_type) {
+    case PRED:
+    case S8:
+    case U8:
+    case S16:
+    case U16:
+    case F16:
+    case S32:
+    case U32:
+    case F32:
+    case S64:
+    case U64:
+    case F64:
+      break;
+    default:
+      return Unimplemented(
+          "Element type %s not supported in the Sort op on CPU.",
+          PrimitiveType_Name(keys_type));
+  }
   std::vector<llvm::Value*> destination_addresses(sort->operand_count());
   for (int64 i = 0; i < sort->operand_count(); ++i) {
     ShapeIndex shape_index =
@@ -542,105 +562,101 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     lower_dimensions *= normalized_keys_shape.dimensions(i);
   }
 
-  PrimitiveType keys_type = keys_shape.element_type();
-  const char* fn_name = nullptr;
-  llvm::Type* keys_native_type = nullptr;
-  switch (keys_type) {
-    case PRED:
-      fn_name = runtime::kKeyValueSortPREDSymbolName;
-      keys_native_type = b_.getInt8PtrTy();
-      break;
-    case S8:
-      fn_name = runtime::kKeyValueSortS8SymbolName;
-      keys_native_type = b_.getInt8PtrTy();
-      break;
-    case U8:
-      fn_name = runtime::kKeyValueSortU8SymbolName;
-      keys_native_type = b_.getInt8PtrTy();
-      break;
-    case S16:
-      fn_name = runtime::kKeyValueSortS16SymbolName;
-      keys_native_type = b_.getInt16Ty()->getPointerTo();
-      break;
-    case U16:
-      fn_name = runtime::kKeyValueSortU16SymbolName;
-      keys_native_type = b_.getInt16Ty()->getPointerTo();
-      break;
-    case F16:
-      fn_name = runtime::kKeyValueSortF16SymbolName;
-      keys_native_type = b_.getHalfTy()->getPointerTo();
-      break;
-    case S32:
-      fn_name = runtime::kKeyValueSortS32SymbolName;
-      keys_native_type = b_.getInt32Ty()->getPointerTo();
-      break;
-    case U32:
-      fn_name = runtime::kKeyValueSortU32SymbolName;
-      keys_native_type = b_.getInt32Ty()->getPointerTo();
-      break;
-    case F32:
-      fn_name = runtime::kKeyValueSortF32SymbolName;
-      keys_native_type = b_.getFloatTy()->getPointerTo();
-      break;
-    case S64:
-      fn_name = runtime::kKeyValueSortS64SymbolName;
-      keys_native_type = b_.getInt64Ty()->getPointerTo();
-      break;
-    case U64:
-      fn_name = runtime::kKeyValueSortU64SymbolName;
-      keys_native_type = b_.getInt64Ty()->getPointerTo();
-      break;
-    case F64:
-      fn_name = runtime::kKeyValueSortF64SymbolName;
-      keys_native_type = b_.getDoubleTy()->getPointerTo();
-      break;
-    default:
-      return Unimplemented(
-          "Element type %s not supported in the Sort op on CPU.",
-          PrimitiveType_Name(keys_type));
+  llvm::FunctionType* less_than_type = llvm::FunctionType::get(
+      b_.getInt1Ty(), {b_.getInt8PtrTy(), b_.getInt8PtrTy()},
+      /*isVarArg=*/false);
+  auto less_than_function = llvm_ir::CreateFunction(
+      less_than_type, llvm::GlobalValue::InternalLinkage,
+      /*enable_fast_math=*/false,
+      /*optimize_for_size=*/true, absl::StrCat(IrName(sort), "_comparator"),
+      module_);
+  // Emit the code for the less_than function.
+  {
+    llvm::IRBuilder<>::InsertPointGuard guard(b_);
+
+    auto* entry_bb =
+        llvm::BasicBlock::Create(b_.getContext(), "entry", less_than_function);
+
+    b_.SetInsertPoint(entry_bb);
+    auto keys_ir_type = llvm_ir::PrimitiveTypeToIrType(keys_type, module_);
+    CHECK_EQ(less_than_function->arg_size(), 2);
+    llvm::Value* keys_lhs_ptr = less_than_function->arg_begin();
+    keys_lhs_ptr = PointerCast(keys_lhs_ptr, keys_ir_type->getPointerTo());
+    llvm::Value* keys_rhs_ptr = less_than_function->arg_begin() + 1;
+    keys_rhs_ptr = PointerCast(keys_rhs_ptr, keys_ir_type->getPointerTo());
+
+    // TODO(b/122298745): Replace the custom compare logic with a call to the
+    // computation specified for the Sort op.
+    llvm::Value* keys_lhs = Load(keys_ir_type, keys_lhs_ptr);
+    llvm::Value* keys_rhs = Load(keys_ir_type, keys_rhs_ptr);
+    bool is_signed_comparison = true;
+    if (primitive_util::IsFloatingPointType(keys_type)) {
+      // We would like a total order of floating point numbers so that the
+      // sort has a predictable behavior in the presence of NaNs. Rather
+      // than using floating point comparison, we use the following trick:
+      // If f is a float, and
+      // x = bit_cast<int32>(f);
+      // y = x < 0 ? 0x7FFFFFFF - x : x;
+      // then y is ordered as an int32 such that finite values have the
+      // obvious order, -0 is ordered before 0, and -NaN and NaN appear at
+      // the beginning and end of the ordering.
+      auto k = b_.getInt(llvm::APInt::getSignedMaxValue(
+          keys_lhs->getType()->getPrimitiveSizeInBits()));
+      auto comparison_type = k->getType();
+      auto zero = llvm::ConstantInt::get(comparison_type, 0);
+      auto maybe_flip = [&](llvm::Value* v) {
+        return b_.CreateSelect(b_.CreateICmp(llvm::ICmpInst::ICMP_SLT, v, zero),
+                               b_.CreateSub(k, v), v);
+      };
+      keys_lhs = b_.CreateBitCast(keys_lhs, comparison_type);
+      keys_rhs = b_.CreateBitCast(keys_rhs, comparison_type);
+      keys_lhs = maybe_flip(keys_lhs);
+      keys_rhs = maybe_flip(keys_rhs);
+    } else if (!primitive_util::IsSignedIntegralType(keys_type)) {
+      is_signed_comparison = false;
+    }
+    llvm::Value* result =
+        b_.CreateICmp(is_signed_comparison ? llvm::ICmpInst::ICMP_SLT
+                                           : llvm::ICmpInst::ICMP_ULT,
+                      keys_lhs, keys_rhs);
+    llvm::ReturnInst::Create(b_.getContext(),
+                             /*retVal=*/result, entry_bb);
   }
 
   llvm::FunctionType* key_value_sort_type = llvm::FunctionType::get(
       b_.getVoidTy(),
-      {keys_native_type, b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
+      {b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
        b_.getInt8PtrTy()->getPointerTo(), b_.getInt32Ty(),
-       b_.getInt32Ty()->getPointerTo()},
+       b_.getInt32Ty()->getPointerTo(), less_than_function->getType()},
       /*isVarArg=*/false);
-  auto* key_value_sort_func = llvm::cast<llvm::Function>(
-      module_->getOrInsertFunction(fn_name, key_value_sort_type));
+  auto* key_value_sort_func =
+      llvm::cast<llvm::Function>(module_->getOrInsertFunction(
+          runtime::kKeyValueSortSymbolName, key_value_sort_type));
   key_value_sort_func->setCallingConv(llvm::CallingConv::C);
   key_value_sort_func->setDoesNotThrow();
-  llvm::Value* values;
-  llvm::Value* sizes;
-  if (sort->values_count() == 0) {
-    values = llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo());
-    sizes = llvm::Constant::getNullValue(b_.getInt32Ty()->getPointerTo());
-  } else {
-    values = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-        b_.getInt8PtrTy(), b_.getInt32(sort->values_count()),
-        "cc_values_alloca", &b_);
-    sizes = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-        b_.getInt32Ty(), b_.getInt32(sort->values_count()), "cc_sizes_alloca",
-        &b_);
-    for (int64 i = 0; i < sort->values_count(); ++i) {
-      llvm::Value* value_as_i8ptr =
-          PointerCast(destination_addresses[i + 1], b_.getInt8PtrTy());
-      llvm::Value* slot_in_values_alloca =
-          ConstInBoundsGEP1_32(b_.getInt8PtrTy(), values, i);
-      Store(value_as_i8ptr, slot_in_values_alloca);
-      llvm::Value* slot_in_sizes_alloca =
-          ConstInBoundsGEP1_32(b_.getInt32Ty(), sizes, i);
-      llvm::Value* size = b_.getInt32(ShapeUtil::ByteSizeOfPrimitiveType(
-          sort->operand(i + 1)->shape().element_type()));
-      Store(size, slot_in_sizes_alloca);
-    }
+  llvm::Value* values = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      b_.getInt8PtrTy(), b_.getInt32(sort->operand_count()), "cc_values_alloca",
+      &b_);
+  llvm::Value* sizes = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      b_.getInt32Ty(), b_.getInt32(sort->operand_count()), "cc_sizes_alloca",
+      &b_);
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    llvm::Value* value_as_i8ptr =
+        PointerCast(destination_addresses[i], b_.getInt8PtrTy());
+    llvm::Value* slot_in_values_alloca =
+        ConstInBoundsGEP1_32(b_.getInt8PtrTy(), values, i);
+    Store(value_as_i8ptr, slot_in_values_alloca);
+    llvm::Value* slot_in_sizes_alloca =
+        ConstInBoundsGEP1_32(b_.getInt32Ty(), sizes, i);
+    llvm::Value* size = b_.getInt32(ShapeUtil::ByteSizeOfPrimitiveType(
+        sort->operand(i)->shape().element_type()));
+    Store(size, slot_in_sizes_alloca);
   }
 
   Call(key_value_sort_func,
-       {PointerCast(destination_addresses[0], keys_native_type),
-        b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
+       {b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
         b_.getInt64(lower_dimensions), values,
-        b_.getInt32(sort->values_count()), sizes});
+        b_.getInt32(sort->operand_count()), sizes, less_than_function});
 
   if (sort->values_count() > 0) {
     llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_,

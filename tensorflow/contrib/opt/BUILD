@@ -319,6 +319,9 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "oss_serial",
+    ],
 )
 
 tf_py_test(

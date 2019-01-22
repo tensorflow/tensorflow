@@ -24,21 +24,26 @@ namespace tensorflow {
 
 namespace functor {
 
-void AdjustSaturationGPU::operator()(GPUDevice* device,
-                                     const int64 number_of_elements,
-                                     const float* const input,
-                                     const float* const scale,
-                                     float* const output) {
+template <typename T>
+void AdjustSaturationGPU<T>::operator()(GPUDevice* device,
+                                        const int64 number_of_elements,
+                                        const T* const input,
+                                        const float* const scale,
+                                        T* const output) {
   const auto stream = device->stream();
   const GpuLaunchConfig config =
       GetGpuLaunchConfig(number_of_elements, *device);
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;
-  GPU_LAUNCH_KERNEL((internal::adjust_hsv_nhwc<false, true, false>),
+  GPU_LAUNCH_KERNEL((internal::adjust_hsv_nhwc<false, true, false, T>),
       dim3(block_count), dim3(threads_per_block), 0, stream,
           number_of_elements, input, output, nullptr, scale, nullptr);
 }
+
+template struct AdjustSaturationGPU<float>;
+template struct AdjustSaturationGPU<Eigen::half>;
+
 }  // namespace functor
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

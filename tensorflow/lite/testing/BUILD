@@ -12,6 +12,7 @@ load(
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
     "tf_cc_test",
     "py_test",
 )
@@ -230,13 +231,13 @@ cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "nnapi_example",
     srcs = ["nnapi_example.cc"],
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",
-        "//tensorflow/lite/nnapi:nnapi_lib",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
     ],
 )
 
@@ -380,7 +381,7 @@ tf_cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "tflite_diff",
     srcs = ["tflite_diff_example_test.cc"],
     deps = [

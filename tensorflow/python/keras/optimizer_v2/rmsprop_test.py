@@ -434,11 +434,16 @@ class RMSpropOptimizerTest(test.TestCase):
 
   def testConstructRMSpropWithLR(self):
     opt = rmsprop.RMSprop(lr=1.0)
-    self.assertEqual(opt.lr, 1.0)
     opt_2 = rmsprop.RMSprop(learning_rate=0.1, lr=1.0)
-    self.assertEqual(opt_2.lr, 1.0)
     opt_3 = rmsprop.RMSprop(learning_rate=0.1)
-    self.assertEqual(opt_3.lr, 0.1)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
   def testSlotsUniqueEager(self):
     with context.eager_mode():
@@ -465,6 +470,15 @@ class RMSpropOptimizerTest(test.TestCase):
       self.assertEqual(7, len(set(opt.variables())))
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
+
+  def testConstructRMSpropWithEpsilonValues(self):
+    opt = rmsprop.RMSprop(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = rmsprop.RMSprop(epsilon=1e-8)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-8)
 
 
 if __name__ == "__main__":

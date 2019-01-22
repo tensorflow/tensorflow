@@ -60,7 +60,7 @@ class VariableHolder(object):
 
 
 # TODO(allenl): make this checkpointable
-class WrappedFunction(function.Function):
+class WrappedFunction(function.ConcreteFunction):
   """Wraps a tf V1 piece of code in a function."""
 
   def __init__(self, fn_graph, variable_holder, attrs=None, signature=None):

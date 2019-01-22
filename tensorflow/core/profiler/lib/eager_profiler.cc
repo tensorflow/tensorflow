@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/profiler/lib/eager_profiler.h"
-#include "tensorflow/cc/profiler/profiler.h"
+#include <string>
+#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -24,6 +25,47 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+
+namespace {
+
+void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
+                                    tpu::Trace* trace) {
+  auto trace_devices = trace->mutable_devices();
+  // TODO(fishx): use a lighter representation instead of GraphDef to insert
+  // python information into trace event.
+
+  for (size_t device_id = 0;
+       device_id < run_metadata->step_stats().dev_stats_size(); ++device_id) {
+    // Create device
+    auto* device_stats =
+        run_metadata->mutable_step_stats()->mutable_dev_stats(device_id);
+    tensorflow::tpu::Device device;
+    device.set_name(device_stats->device());
+    device.set_device_id(device_id);
+    tensorflow::tpu::Resource resource;
+    resource.set_name("0");
+    resource.set_resource_id(0);
+    (*device.mutable_resources())[0] = resource;
+    (*trace_devices)[device_id] = device;
+
+    // Emit events.
+    for (auto node :
+         run_metadata->step_stats().dev_stats(device_id).node_stats()) {
+      auto* event = trace->add_trace_events();
+      auto* args = event->mutable_args();
+      event->set_device_id(device_id);
+      event->set_resource_id(0);
+      event->set_name(node.node_name());
+      event->set_timestamp_ps(node.all_start_micros() * 1000000000);
+      event->set_duration_ps(node.all_end_rel_micros() * 1000000000);
+      (*args)["label"] = node.timeline_label();
+    }
+  }
+
+  // TODO(fishx): Convert allocation data as well.
+}
+
+}  // namespace
 
 /*static*/ std::unique_ptr<EagerProfiler> EagerProfiler::Create(
     EagerContext* const context) {
@@ -58,12 +100,12 @@ Status EagerProfiler::SerializeToString(string* content) {
     step_stats_collector->Finalize();
   }
 
-  // TODO(fishx): update tfprof to use a lighter representation instead of
-  // GraphDef.
-  GraphDef graph;
-  std::unique_ptr<tfprof::Profiler> tfprof(new tfprof::Profiler(graph));
-  tfprof->AddStep(0, run_metadata_);
-  return tfprof->SerializeToString(content);
+  tpu::Trace trace;
+
+  ConvertRunMetadataToTraceEvent(&run_metadata_, &trace);
+
+  trace.SerializeToString(content);
+  return Status::OK();
 }
 
 EagerProfiler::EagerProfiler(EagerContext* const context) : context_(context) {

@@ -46,7 +46,7 @@ class VariablesTestCase(test.TestCase):
   @test_util.run_deprecated_v1
   def testDistributeStrategy(self):
     v = variables.VariableV1(0.0)
-    self.assertIsNone(v.distribute_strategy)
+    self.assertIsNone(v._distribute_strategy)
 
   @test_util.run_v1_only("b/120545219")
   def testInitialization(self):

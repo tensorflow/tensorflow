@@ -465,14 +465,16 @@ def val_and_grad_function(f, params=None):
 
 
 def make_vjp(f, params=None, persistent=True):
-  """Returns a function that computes f and is vjp w.r.t. params.
+  """Returns a function that computes f and its vjp w.r.t.
+
+  params.
 
   The term "vjp" here is an abbreviation for vector-jacobian product.
 
   Args:
     f: the function to be differentiated.
     params: the parameters (numbers or names) to differentiate with respect to.
-       A value of None will differentiate with respect to all parameters.
+      A value of None will differentiate with respect to all parameters.
     persistent: Boolean controlling whether the VJP function can be re-used.
       Must be True or False.
 

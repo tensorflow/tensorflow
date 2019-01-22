@@ -22,6 +22,7 @@ limitations under the License.
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
+%rename("%s") TFE_ContextHasFunction;
 %rename("%s") TFE_ContextEnableRunMetadata;
 %rename("%s") TFE_ContextDisableRunMetadata;
 %rename("%s") TFE_ContextExportRunMetadata;
@@ -137,6 +138,13 @@ limitations under the License.
 // See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
 // Hence the 'const_cast'.
 %typemap(in) const char* op_name {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* name {
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 

@@ -675,11 +675,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandlePower(HloInstruction* power) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[power],
-                        ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
-                                                      ElementwiseT rhs_el) {
-                          return std::pow(lhs_el, rhs_el);
-                        }));
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[power],
+        ElementWiseBinaryOp(
+            power, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
+              return lhs_el == ElementwiseT(0) && rhs_el == ElementwiseT(0)
+                         ? static_cast<ElementwiseT>(1)
+                         : std::pow(lhs_el, rhs_el);
+            }));
     return Status::OK();
   }
 
@@ -1184,7 +1187,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleDot(HloInstruction* dot) override {
-    if (parent_->use_fast_path_) {
+    if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
+        parent_->use_fast_path_) {
       return HandleDot<ReturnT>(dot);
     }
     return HandleDotSlowPath(dot);
@@ -1346,12 +1350,17 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index)) *
                 static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
 
-            for (int64 i = accumulate_index_sizes.size() - 1; i >= 0; --i) {
-              int64 value = ++accumulate_index[i];
-              if (value != accumulate_index_sizes[i]) {
-                break;
+            // If there are no contracting dimension accumulate_index_sizes is
+            // empty, do not try to count down from -1 to 0 since it is and
+            // infinite loop.
+            if (!accumulate_index_sizes.empty()) {
+              for (int64 i = accumulate_index_sizes.size() - 1; i >= 0; --i) {
+                int64 value = ++accumulate_index[i];
+                if (value != accumulate_index_sizes[i]) {
+                  break;
+                }
+                accumulate_index[i] = 0;
               }
-              accumulate_index[i] = 0;
             }
           }
 

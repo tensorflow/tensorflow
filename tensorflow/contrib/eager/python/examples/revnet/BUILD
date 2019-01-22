@@ -73,6 +73,9 @@ cuda_py_test(
         ":ops",
         "//tensorflow:tensorflow_py",
     ],
+    tags = [
+        "oss_serial",
+    ],
 )
 
 cuda_py_test(
@@ -84,6 +87,7 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     tags = [
+        "no_oss",  # b/123045964
         "optonly",
     ],
 )
@@ -101,6 +105,7 @@ cuda_py_test(
     tags = [
         "no_pip",  # depends on blocks_test, which is not available in pip package
         "optonly",
+        "oss_serial",
     ],
 )
 

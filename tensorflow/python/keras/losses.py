@@ -24,6 +24,7 @@ import abc
 import six
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
@@ -291,7 +292,7 @@ class BinaryCrossentropy(Loss):
   Args:
     from_logits: Whether `output` is expected to be a logits tensor. By default,
       we consider that `output` encodes a probability distribution.
-    label_smoothing: If greater than `0` then smooth the labels.
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels.
     reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
       `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
@@ -304,7 +305,8 @@ class BinaryCrossentropy(Loss):
                name=None):
     super(BinaryCrossentropy, self).__init__(reduction=reduction, name=name)
     self.from_logits = from_logits
-    self.label_smoothing = label_smoothing
+    self.label_smoothing = ops.convert_to_tensor(
+        label_smoothing, dtype=K.floatx())
 
   def call(self, y_true, y_pred):
     """Invokes the `BinaryCrossentropy` instance.
@@ -318,11 +320,11 @@ class BinaryCrossentropy(Loss):
     """
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
-
-    if self.label_smoothing > 0:
-      y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
-
-    return binary_crossentropy(y_true, y_pred, from_logits=self.from_logits)
+    return binary_crossentropy(
+        y_true,
+        y_pred,
+        from_logits=self.from_logits,
+        label_smoothing=self.label_smoothing)
 
 
 @keras_export('keras.losses.CategoricalCrossentropy')
@@ -349,8 +351,9 @@ class CategoricalCrossentropy(Loss):
   Args:
     from_logits: Whether `output` is expected to be a logits tensor. By default,
       we consider that `output` encodes a probability distribution.
-    label_smoothing: If greater than `0` then smooth the labels. This option is
-      currently not supported when `y_pred` is a sparse input (not one-hot).
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels. This
+      option is currently not supported when `y_pred` is a sparse input
+      (not one-hot).
     reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
       `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
@@ -364,7 +367,8 @@ class CategoricalCrossentropy(Loss):
     super(CategoricalCrossentropy, self).__init__(
         reduction=reduction, name=name)
     self.from_logits = from_logits
-    self.label_smoothing = label_smoothing
+    self.label_smoothing = ops.convert_to_tensor(
+        label_smoothing, dtype=K.floatx())
 
   def call(self, y_true, y_pred):
     """Invokes the `CategoricalCrossentropy` instance.
@@ -385,14 +389,11 @@ class CategoricalCrossentropy(Loss):
           y_true, y_pred, from_logits=self.from_logits)
     else:
       y_true = math_ops.cast(y_true, y_pred.dtype)
-      if self.label_smoothing > 0:
-        num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
-        smooth_positives = 1.0 - self.label_smoothing
-        smooth_negatives = self.label_smoothing / num_classes
-        y_true = y_true * smooth_positives + smooth_negatives
-
       return categorical_crossentropy(
-          y_true, y_pred, from_logits=self.from_logits)
+          y_true,
+          y_pred,
+          from_logits=self.from_logits,
+          label_smoothing=self.label_smoothing)
 
 
 @keras_export('keras.losses.Hinge')
@@ -782,7 +783,29 @@ def logcosh(y_true, y_pred):
 
 @keras_export('keras.metrics.categorical_crossentropy',
               'keras.losses.categorical_crossentropy')
-def categorical_crossentropy(y_true, y_pred, from_logits=False):
+def categorical_crossentropy(y_true,
+                             y_pred,
+                             from_logits=False,
+                             label_smoothing=0):
+  """Computes the categorical crossentropy loss.
+
+  Args:
+    y_true: tensor of true targets.
+    y_pred: tensor of predicted targets.
+    from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
+      we consider that `y_pred` encodes a probability distribution.
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels.
+
+  Returns:
+    Categorical crossentropy loss value.
+  """
+
+  def _smooth_labels():
+    num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
+    return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
+
+  y_true = smart_cond.smart_cond(label_smoothing,
+                                 _smooth_labels, lambda: y_true)
   return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
 
@@ -795,7 +818,13 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False):
 
 @keras_export('keras.metrics.binary_crossentropy',
               'keras.losses.binary_crossentropy')
-def binary_crossentropy(y_true, y_pred, from_logits=False):
+def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
+
+  def _smooth_labels():
+    return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
+
+  y_true = smart_cond.smart_cond(label_smoothing,
+                                 _smooth_labels, lambda: y_true)
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
 
