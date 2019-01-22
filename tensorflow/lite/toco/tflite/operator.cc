@@ -915,6 +915,53 @@ class UnidirectionalSequenceLstm
   }
 };
 
+class BidirectionalSequenceLstm
+    : public BuiltinOperator<
+          BidirectionalSequenceLstmOperator,
+          ::tflite::BidirectionalSequenceLSTMOptions,
+          ::tflite::BuiltinOptions_BidirectionalSequenceLSTMOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    // Current toco converter only supports tanh, no clip.
+    return ::tflite::CreateBidirectionalSequenceLSTMOptions(
+        *builder, /*fused_activation_function=*/
+        ::tflite::ActivationFunctionType_TANH,
+        /*cell_clip=*/0.0,
+        /*proj_clip=*/0.0,
+        /*merge_outputs=*/op.merge_outputs,
+        /*time_major=*/true);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    // Only support tanh activation, so check that tflite type is tanh.
+    DCHECK(options.fused_activation_function() ==
+           ::tflite::ActivationFunctionType_TANH);
+    op->merge_outputs = options.merge_outputs();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+
+  std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const override {
+    std::vector<bool> mutating_input_variables(op.inputs.size(), false);
+    // Forward input activation state.
+    mutating_input_variables[35] = true;
+    // Forward input cell state.
+    mutating_input_variables[36] = true;
+    // Backward input activation state.
+    mutating_input_variables[37] = true;
+    // Backward input cell state.
+    mutating_input_variables[38] = true;
+    return mutating_input_variables;
+  }
+};
+
 class Mean : public BuiltinOperator<MeanOperator, ::tflite::ReducerOptions,
                                     ::tflite::BuiltinOptions_ReducerOptions> {
  public:
@@ -1882,6 +1929,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.emplace_back(MakeUnique<UnidirectionalSequenceLstm>(
       ::tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
       OperatorType::kUnidirectionalSequenceLstm));
+  ops.emplace_back(MakeUnique<BidirectionalSequenceLstm>(
+      ::tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
+      OperatorType::kBidirectionalSequenceLstm));
   ops.push_back(MakeUnique<OneHot>(::tflite::BuiltinOperator_ONE_HOT,
                                    OperatorType::kOneHot));
   ops.push_back(MakeUnique<Unpack>(::tflite::BuiltinOperator_UNPACK,

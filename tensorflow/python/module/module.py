@@ -201,6 +201,10 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
   def variables(self):
     """Collection of variables owned by this module and it's submodules.
 
+    Note: this method uses reflection to find variables on the current instance
+    and submodules. For performance reasons you may wish to cache the result
+    of calling this method if you don't expect the return value to change.
+
     Returns:
       A collection of variables for the current module (sorted by attribute
       name) followed by variables from all submodules recursively (depth first).
@@ -224,6 +228,10 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
   @property
   def trainable_variables(self):
     """Collection of variables owned by this module and it's submodules.
+
+    Note: this method uses reflection to find variables on the current instance
+    and submodules. For performance reasons you may wish to cache the result
+    of calling this method if you don't expect the return value to change.
 
     Returns:
       A collection of variables for the current module (sorted by attribute

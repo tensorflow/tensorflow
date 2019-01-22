@@ -131,17 +131,6 @@ bool IsOutputShapesFullyDefined(const NodeDef& node) {
   return true;
 }
 
-bool IsStatefulFn(const FunctionLibraryDefinition& library,
-                  const FunctionDef& function_def) {
-  for (const NodeDef& node_def : function_def.node_def()) {
-    const OpDef* op_def;
-    Status s = library.LookUpOpDef(node_def.op(), &op_def);
-    if (!s.ok() || op_def->is_stateful()) {
-      return true;
-    }
-  }
-  return false;
-}
 
 NodeDef MakeNewBatchNode(const NodeDef& old_batch_node,
                          const NodeDef& input_node,
@@ -250,7 +239,7 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
     // Check that this is a valid optimization.
     if (!IsOutputShapesFullyDefined(*input_node) ||
         !IsOutputShapesFullyDefined(*map_node) ||
-        IsStatefulFn(function_library, *orig_func)) {
+        function_utils::IsFunctionStateful(function_library, *orig_func)) {
       // 1. If any of the inputs have an unknown shape, don't optimize, since
       // inputs might not be batchable.
       // 2. If any of the map func outputs have an unknown shape, don't
