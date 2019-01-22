@@ -469,7 +469,7 @@ class LoadTest(test.TestCase):
 
     imported = self.cycle(root)
 
-    with self.assertRaises(AssertionError):
+    with self.assertRaisesRegexp(ValueError, "Cannot canonicalize"):
       # We cannot call the function with a constant of shape ().
       self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
 

@@ -122,16 +122,20 @@ def recreate_function(saved_function, concrete_functions):
     """Calls a restored function."""
     # TODO(allenl): Functions saved with input_signatures should revive with
     # input_signatures.
+    try:
+      canonicalized_inputs = function_spec.canonicalize_function_inputs(
+          *args, **kwargs)
+    except ValueError as e:
+      raise ValueError(
+          "Cannot canonicalize input args %r and kwargs %r. Error: %r." %
+          (args, kwargs, e))
+
+    debug_considered_signatures = []
     for concrete_function in saved_function.concrete_function:
       function_obj = concrete_functions[concrete_function.name]
       canonicalized_original_inputs = coder.decode_proto(
           concrete_function.canonicalized_input_signature)
-
-      try:
-        canonicalized_inputs = function_spec.canonicalize_function_inputs(
-            *args, **kwargs)
-      except ValueError:
-        continue
+      debug_considered_signatures.append(canonicalized_original_inputs)
 
       if _inputs_compatible(canonicalized_inputs,
                             canonicalized_original_inputs):
@@ -140,8 +144,9 @@ def recreate_function(saved_function, concrete_functions):
         return function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
 
     raise AssertionError(
-        "Could not find matching function to call for args %r and kwargs %r" %
-        (args, kwargs))
+        "Could not find matching function to call for canonicalized inputs %r. "
+        "Only existing signatures are %r."
+        % (canonicalized_inputs, debug_considered_signatures))
 
   return restored_function
 
