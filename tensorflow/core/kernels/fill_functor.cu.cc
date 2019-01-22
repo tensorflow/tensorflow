@@ -88,6 +88,12 @@ struct SetZeroFunctor<GPUDevice, T> {
   }
 };
 
+template <>
+void SetZeroFunctor<GPUDevice, Variant>::operator()(
+    const GPUDevice& d, typename TTypes<Variant>::Flat out) {
+  // TODO(b/123028789): Implement this.
+}
+
 #define DEFINE_SETZERO_GPU(T) template struct SetZeroFunctor<GPUDevice, T>;
 TF_CALL_NUMBER_TYPES(DEFINE_SETZERO_GPU);
 TF_CALL_bool(DEFINE_SETZERO_GPU);

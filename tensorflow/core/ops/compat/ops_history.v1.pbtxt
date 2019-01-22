@@ -77304,6 +77304,10 @@ op {
     name: "indices"
     type: DT_INT32
   }
+  input_arg {
+    name: "element_shape"
+    type: DT_INT32
+  }
   output_arg {
     name: "values"
     type_attr: "element_dtype"
@@ -77321,6 +77325,10 @@ op {
   }
   input_arg {
     name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "element_shape"
     type: DT_INT32
   }
   output_arg {
@@ -77348,6 +77356,10 @@ op {
   input_arg {
     name: "input_handle"
     type: DT_VARIANT
+  }
+  input_arg {
+    name: "element_shape"
+    type: DT_INT32
   }
   output_arg {
     name: "output_handle"
@@ -77539,6 +77551,10 @@ op {
   input_arg {
     name: "input_handle"
     type: DT_VARIANT
+  }
+  input_arg {
+    name: "element_shape"
+    type: DT_INT32
   }
   output_arg {
     name: "tensor"
