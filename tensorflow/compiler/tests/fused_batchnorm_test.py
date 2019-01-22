@@ -40,13 +40,14 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
   def _reference_training(self, x, scale, offset, epsilon, data_format):
     if data_format != "NHWC":
       raise ValueError("data_format must be NHWC, got %s." % data_format)
-    x_square = x * x
-    x_square_sum = np.sum(x_square, (0, 1, 2))
     x_sum = np.sum(x, axis=(0, 1, 2))
     element_count = np.size(x) / int(np.shape(x)[-1])
     mean = x_sum / element_count
-    var = x_square_sum / element_count - mean * mean
-    normalized = (x - mean) / np.sqrt(var + epsilon)
+    # Note that subtracting the mean first ensures that the variance calculation
+    # is numerically stable in the presence of large mean:variance ratios.
+    x_minus_mean = x - mean
+    var = np.sum(x_minus_mean * x_minus_mean, axis=(0, 1, 2)) / element_count
+    normalized = x_minus_mean / np.sqrt(var + epsilon)
     return (normalized * scale + offset), mean, var
 
   def _reference_grad(self, x, grad_y, scale, mean, var, epsilon, data_format):
@@ -116,11 +117,11 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     channel = 3
     x_shape = [2, 2, 6, channel]
     scale_shape = [channel]
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
+    # A large mean:variance ratio is used to test the numerical stability of
+    # the variance calculation.
+    x_val = np.random.normal(1e4, 1.0, x_shape).astype(np.float32)
     scale_val = np.random.random_sample(scale_shape).astype(np.float32)
     offset_val = np.random.random_sample(scale_shape).astype(np.float32)
-    mean_val = np.random.random_sample(scale_shape).astype(np.float32)
-    var_val = np.random.random_sample(scale_shape).astype(np.float32)
     epsilon = 0.001
     data_format_src = "NHWC"
     y_ref, mean_ref, var_ref = self._reference_training(
@@ -167,8 +168,8 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
           offset: offset_val
       })
       self.assertAllClose(mean_val, mean_ref, atol=1e-3)
-      self.assertAllClose(y_val, y_ref_converted, atol=1e-3)
       self.assertAllClose(var_val, var_ref, atol=1e-3)
+      self.assertAllClose(y_val, y_ref_converted, atol=1e-3)
 
   @parameterized.named_parameters(*DATA_FORMATS)
   def testLearning(self, data_format):
