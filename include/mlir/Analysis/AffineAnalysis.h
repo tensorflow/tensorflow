@@ -52,33 +52,30 @@ class Value;
 AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
                               unsigned numSymbols);
 
-/// Simplify an affine map through simplifying its underlying AffineExpr results
-/// and sizes.
+/// Simplify an affine map by simplifying its underlying AffineExpr results and
+/// sizes.
 AffineMap simplifyAffineMap(AffineMap map);
 
-/// Returns a composed AffineApplyOp.
-///
-/// The operands of such a resulting AffineApplyOp do not increase the length of
-/// the AffineApplyOp chains. This is achieved by performing a composition of
-/// `map` and `operands` with the immediately preceding AffineApplyOps.
+/// Returns a composed AffineApplyOp by composing `map` and `operands` with
+/// other AffineApplyOps supplying those operands. The operands of the resulting
+/// AffineApplyOp do not change the length of  AffineApplyOp chains.
 OpPointer<AffineApplyOp>
 makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
                         llvm::ArrayRef<Value *> operands);
 
-/// Iteratively calls composes `map` and `operands`, eliminating one level of
-/// AffineApplyOp composition until no more operands are defined by an
-/// AffineApplyOp.
+/// Given an affine map `map` and its input `operands`, this method composes
+/// into `map`, maps of AffineApplyOps whose results are the values in
+/// `operands`, iteratively until no more of `operands` are the result of an
+/// AffineApplyOp. When this function returns, `map` becomes the composed affine
+/// map, and each Value in `operands` is guaranteed to be either a loop IV or a
+/// terminal symbol, i.e., a symbol defined at the top level or a block/function
+/// argument.
 void fullyComposeAffineMapAndOperands(AffineMap *map,
                                       llvm::SmallVectorImpl<Value *> *operands);
 
-/// Calls `makeComposedAffineApply`, and returns the first resulting value.
-Value *makeSingleValueFromComposedAffineApply(FuncBuilder *b, Location loc,
-                                              AffineMap map,
-                                              llvm::ArrayRef<Value *> operands);
-
-/// Returns the sequence of AffineApplyOp OperationInsts operations in
-/// 'affineApplyOps', which are reachable via a search starting from 'operands',
-/// and ending at operands which are not defined by AffineApplyOps.
+/// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
+/// OperationInsts that are reachable via a search starting from `operands` and
+/// ending at those operands that are not the result of an AffineApplyOp.
 void getReachableAffineApplyOps(
     llvm::ArrayRef<Value *> operands,
     llvm::SmallVectorImpl<OperationInst *> &affineApplyOps);

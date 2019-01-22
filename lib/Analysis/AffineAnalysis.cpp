@@ -1567,11 +1567,3 @@ mlir::makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
   assert(normalizedMap);
   return b->create<AffineApplyOp>(loc, normalizedMap, normalizedOperands);
 }
-
-Value *
-mlir::makeSingleValueFromComposedAffineApply(FuncBuilder *b, Location loc,
-                                             AffineMap map,
-                                             llvm::ArrayRef<Value *> operands) {
-  auto app = mlir::makeComposedAffineApply(b, loc, map, operands);
-  return app->getResult(0);
-}

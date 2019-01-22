@@ -95,8 +95,8 @@ Value *add(FuncBuilder *builder, Location location, Value *a, Value *b) {
     auto d0 = getAffineDimExpr(0, context);
     auto d1 = getAffineDimExpr(1, context);
     auto map = AffineMap::get(2, 0, {d0 + d1}, {});
-    return makeSingleValueFromComposedAffineApply(builder, location, map,
-                                                  {a, b});
+    return makeComposedAffineApply(builder, location, map, {a, b})
+        ->getResult(0);
   } else if (isIntElement(*a)) {
     return builder->create<AddIOp>(location, a, b)->getResult();
   }
@@ -110,8 +110,8 @@ Value *sub(FuncBuilder *builder, Location location, Value *a, Value *b) {
     auto d0 = getAffineDimExpr(0, context);
     auto d1 = getAffineDimExpr(1, context);
     auto map = AffineMap::get(2, 0, {d0 - d1}, {});
-    return makeSingleValueFromComposedAffineApply(builder, location, map,
-                                                  {a, b});
+    return makeComposedAffineApply(builder, location, map, {a, b})
+        ->getResult(0);
   } else if (isIntElement(*a)) {
     return builder->create<SubIOp>(location, a, b)->getResult();
   }
