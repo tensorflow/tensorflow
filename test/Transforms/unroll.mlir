@@ -1,6 +1,7 @@
 // RUN: mlir-opt %s -loop-unroll -unroll-full | FileCheck %s
 // RUN: mlir-opt %s -loop-unroll -unroll-full -unroll-full-threshold=2 | FileCheck %s --check-prefix SHORT
 // RUN: mlir-opt %s -loop-unroll -unroll-factor=4 | FileCheck %s --check-prefix UNROLL-BY-4
+// RUN: mlir-opt %s -loop-unroll -unroll-factor=1 | FileCheck %s --check-prefix UNROLL-BY-1
 
 // CHECK: #map0 = (d0) -> (d0 + 1)
 // CHECK: #map1 = (d0) -> (d0 + 2)
@@ -522,3 +523,14 @@ func @loop_nest_unroll_full() {
   }
   return
 } // CHECK }
+
+// UNROLL-BY-1-LABEL: func @unroll_by_one_should_promote_single_iteration_loop()
+func @unroll_by_one_should_promote_single_iteration_loop() {
+  for %i = 0 to 1 {
+    %x = "foo"(%i) : (index) -> i32
+  }
+  return
+// UNROLL-BY-1-NEXT: %c0 = constant 0 : index
+// UNROLL-BY-1-NEXT: %0 = "foo"(%c0) : (index) -> i32
+// UNROLL-BY-1-NEXT: return
+}

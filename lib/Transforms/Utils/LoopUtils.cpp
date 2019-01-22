@@ -355,7 +355,10 @@ bool mlir::loopUnrollUpToFactor(ForInst *forInst, uint64_t unrollFactor) {
 bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
   assert(unrollFactor >= 1 && "unroll factor should be >= 1");
 
-  if (unrollFactor == 1 || forInst->getBody()->empty())
+  if (unrollFactor == 1)
+    return promoteIfSingleIteration(forInst);
+
+  if (forInst->getBody()->empty())
     return false;
 
   auto lbMap = forInst->getLowerBoundMap();
