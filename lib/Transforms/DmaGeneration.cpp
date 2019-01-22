@@ -25,7 +25,6 @@
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/Passes.h"
@@ -49,7 +48,7 @@ namespace {
 /// buffers in 'fastMemorySpace', and replaces memory operations to the former
 /// by the latter. Only load op's handled for now.
 /// TODO(bondhugula): extend this to store op's.
-struct DmaGeneration : public FunctionPass, InstWalker<DmaGeneration> {
+struct DmaGeneration : public FunctionPass {
   explicit DmaGeneration(unsigned slowMemorySpace = 0,
                          unsigned fastMemorySpaceArg = 1,
                          int minDmaTransferSize = 1024)
@@ -65,7 +64,6 @@ struct DmaGeneration : public FunctionPass, InstWalker<DmaGeneration> {
   PassResult runOnFunction(Function *f) override;
   void runOnForInst(ForInst *forInst);
 
-  void visitOperationInst(OperationInst *opInst);
   bool generateDma(const MemRefRegion &region, ForInst *forInst,
                    uint64_t *sizeInBytes);
 
@@ -102,35 +100,6 @@ FunctionPass *mlir::createDmaGenerationPass(unsigned slowMemorySpace,
                                             int minDmaTransferSize) {
   return new DmaGeneration(slowMemorySpace, fastMemorySpace,
                            minDmaTransferSize);
-}
-
-// Gather regions to promote to buffers in faster memory space.
-// TODO(bondhugula): handle store op's; only load's handled for now.
-void DmaGeneration::visitOperationInst(OperationInst *opInst) {
-  if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
-    if (loadOp->getMemRefType().getMemorySpace() != slowMemorySpace)
-      return;
-  } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
-    if (storeOp->getMemRefType().getMemorySpace() != slowMemorySpace)
-      return;
-  } else {
-    // Neither load nor a store op.
-    return;
-  }
-
-  // TODO(bondhugula): eventually, we need to be performing a union across all
-  // regions for a given memref instead of creating one region per memory op.
-  // This way we would be allocating O(num of memref's) sets instead of
-  // O(num of load/store op's).
-  auto region = std::make_unique<MemRefRegion>();
-  if (!getMemRefRegion(opInst, dmaDepth, region.get())) {
-    LLVM_DEBUG(llvm::dbgs() << "Error obtaining memory region\n");
-    return;
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Memory region:\n");
-  LLVM_DEBUG(region->getConstraints()->dump());
-
-  regions.push_back(std::move(region));
 }
 
 // Info comprising stride and number of elements transferred every stride.
@@ -389,7 +358,32 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
   fastBufferMap.clear();
 
   // Walk this 'for' instruction to gather all memory regions.
-  walk(forInst);
+  forInst->walkOps([&](OperationInst *opInst) {
+    // Gather regions to promote to buffers in faster memory space.
+    // TODO(bondhugula): handle store op's; only load's handled for now.
+    if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
+      if (loadOp->getMemRefType().getMemorySpace() != slowMemorySpace)
+        return;
+    } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
+      if (storeOp->getMemRefType().getMemorySpace() != slowMemorySpace)
+        return;
+    } else {
+      // Neither load nor a store op.
+      return;
+    }
+
+    // TODO(bondhugula): eventually, we need to be performing a union across
+    // all regions for a given memref instead of creating one region per
+    // memory op. This way we would be allocating O(num of memref's) sets
+    // instead of O(num of load/store op's).
+    auto region = std::make_unique<MemRefRegion>();
+    if (!getMemRefRegion(opInst, dmaDepth, region.get())) {
+      LLVM_DEBUG(llvm::dbgs() << "Error obtaining memory region\n");
+      return;
+    }
+
+    regions.push_back(std::move(region));
+  });
 
   uint64_t totalSizeInBytes = 0;
 

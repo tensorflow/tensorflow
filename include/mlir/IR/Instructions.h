@@ -610,6 +610,14 @@ public:
   /// (same operands in the same order).
   bool matchingBoundOperandList() const;
 
+  /// Walk the operation instructions in the 'for' instruction in preorder,
+  /// calling the callback for each operation.
+  void walkOps(std::function<void(OperationInst *)> callback);
+
+  /// Walk the operation instructions in the 'for' instruction in postorder,
+  /// calling the callback for each operation.
+  void walkOpsPostOrder(std::function<void(OperationInst *)> callback);
+
   //===--------------------------------------------------------------------===//
   // Operands
   //===--------------------------------------------------------------------===//

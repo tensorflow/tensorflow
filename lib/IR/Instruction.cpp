@@ -703,6 +703,32 @@ bool ForInst::matchingBoundOperandList() const {
   return true;
 }
 
+void ForInst::walkOps(std::function<void(OperationInst *)> callback) {
+  struct Walker : public InstWalker<Walker> {
+    std::function<void(OperationInst *)> const &callback;
+    Walker(std::function<void(OperationInst *)> const &callback)
+        : callback(callback) {}
+
+    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+  };
+
+  Walker w(callback);
+  w.walk(this);
+}
+
+void ForInst::walkOpsPostOrder(std::function<void(OperationInst *)> callback) {
+  struct Walker : public InstWalker<Walker> {
+    std::function<void(OperationInst *)> const &callback;
+    Walker(std::function<void(OperationInst *)> const &callback)
+        : callback(callback) {}
+
+    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+  };
+
+  Walker v(callback);
+  v.walkPostOrder(this);
+}
+
 //===----------------------------------------------------------------------===//
 // IfInst
 //===----------------------------------------------------------------------===//
