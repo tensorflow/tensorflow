@@ -20,20 +20,11 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-unsigned SingleHloMatcher::ReplaceNodes() {
-  unsigned int replacement_count = 0;
-  for (int pattern_idx = 0; pattern_idx < matches_.size(); pattern_idx++) {
-    const auto& pattern = patterns_[pattern_idx];
-    for (HloMatcherMatched& match : matches_[pattern_idx]) {
-      if (match.ok) {
-        std::string name = op_prefix_ + pattern.type;
-        const OutlinedInfo outlined_info =
-            OutlineExpressionFromComputation(match, name, pattern.meta_target);
-        replacement_count += MarkReplacedInstructions(outlined_info);
-      }
-    }
-  }
-  return replacement_count;
+bool SingleHloMatcher::HandleMatch(HloMatcherMatched& match) {
+  auto& pattern = patterns_[match.pattern_idx];
+  std::string name = op_prefix_ + pattern.GetType();
+  OutlineExpressionFromComputation(match, name);
+  return true;
 }
 
 }  // namespace poplarplugin
