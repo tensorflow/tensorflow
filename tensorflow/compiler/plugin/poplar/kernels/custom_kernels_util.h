@@ -71,6 +71,10 @@ absl::optional<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
 
 // Returns true if inst is a call to a custom op for Poplibs
 const bool IsPoplibsCustomOp(const HloInstruction* inst);
+// Returns true if inst is a call to a custom op for Poplibs of a certain type.
+const bool IsPoplibsCustomOp(const HloInstruction* inst,
+                             const PoplibsLib& poplibs_lib,
+                             const PoplibsOp& poplibs_op);
 // Returns true if inst is a call to a custom op for Poplibs which is
 // elementwise.
 const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst);

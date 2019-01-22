@@ -43,7 +43,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kReduceWindow, NodeOperands({2, 1}), Is2DMaxPool},
       {HloOpcode::kConstant, NodeOperands({}), IsScalarConstantNegativeInfinity},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
     })
   ),
 
@@ -56,8 +56,8 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kSelectAndScatter, NodeOperands({2, 3, 1}), Is2DMaxPoolGrad},
       {HloOpcode::kConstant, NodeOperands({}), IsScalarConstantOne},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kParameter, NodeOperands({})}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
      })
   ),
 };
@@ -66,44 +66,34 @@ static const std::vector<HloMatcherPattern> patterns = {
 FuseMaxPool::FuseMaxPool(struct CompilerAnnotations& annotations)
     : HloMatcher(patterns, annotations, false) {}
 
-unsigned FuseMaxPool::ReplaceNodes() {
+bool FuseMaxPool::HandleMatch(HloMatcherMatched& match) {
   const unsigned max_pool_fwd_pattern_index = 0;
   const unsigned max_pool_bwd_pattern_index = 1;
-  unsigned int replacement_count = 0;
+  auto& pattern = patterns_[match.pattern_idx];
 
-  std::map<const HloInstruction*, HloInstruction*> input_to_fwd_max_pool_map;
-  // First handle all the fwd Max Pools
-  for (HloMatcherMatched& match : matches_[max_pool_fwd_pattern_index]) {
-    if (match.ok) {
-      const auto& pattern = patterns[max_pool_fwd_pattern_index];
-      std::string name = op_prefix_ + pattern.type;
-      const HloInstruction* input = match.instructions[0]->operand(0);
-      const OutlinedInfo outlined_info =
-          OutlineExpressionFromComputation(match, name, pattern.meta_target);
-      input_to_fwd_max_pool_map[input] =
-          outlined_info.call_to_outlined_computation;
-      replacement_count += MarkReplacedInstructions(outlined_info);
+  if (match.pattern_idx == max_pool_fwd_pattern_index) {
+    std::string name = op_prefix_ + pattern.GetType();
+    const HloInstruction* input =
+        match.instruction_mapping[pattern.GetOutputs()[0]]->operand(0);
+    HloInstruction* call_to_outlined_computation =
+        OutlineExpressionFromComputation(match, name);
+    input_to_fwd_max_pool_map_[input] = call_to_outlined_computation;
+  } else {
+    CHECK_EQ(match.pattern_idx, max_pool_bwd_pattern_index);
+    const HloInstruction* input =
+        match.instruction_mapping[pattern.GetOutputs()[0]]->operand(0);
+
+    // Find a matching fwd max pool.
+    auto it = input_to_fwd_max_pool_map_.find(input);
+    if (it == input_to_fwd_max_pool_map_.end()) {
+      return false;
     }
+    // Found a match, we can outline now, but do need to add the output
+    // tensor as a parameter
+    std::string name = op_prefix_ + pattern.GetType();
+    OutlineExpressionFromComputation(match, name, {it->second});
   }
-
-  // For each bwd Max Pool, try and find the fwd Max Pool (same input)
-  for (HloMatcherMatched& match : matches_[max_pool_bwd_pattern_index]) {
-    if (match.ok) {
-      const HloInstruction* input = match.instructions[0]->operand(0);
-      auto it = input_to_fwd_max_pool_map.find(input);
-      if (it != input_to_fwd_max_pool_map.end()) {
-        // Found a match, we can outline now, but do need to add the output
-        // tensor as a parameter
-        const auto& pattern = patterns[max_pool_bwd_pattern_index];
-        std::string name = op_prefix_ + pattern.type;
-        const OutlinedInfo outlined_info = OutlineExpressionFromComputation(
-            match, name, pattern.meta_target, {it->second});
-        replacement_count += MarkReplacedInstructions(outlined_info);
-      }
-    }
-  }
-
-  return replacement_count;
+  return true;
 }
 
 }  // namespace poplarplugin

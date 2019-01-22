@@ -24,11 +24,13 @@ bool IsTruncatedNormal(const HloInstruction* inst) {
 }
 
 bool IsRandomNormal(const HloInstruction* inst) {
-  return inst->random_distribution() == RandomDistribution::RNG_NORMAL;
+  return inst->opcode() == HloOpcode::kRng &&
+         inst->random_distribution() == RandomDistribution::RNG_NORMAL;
 }
 
 bool IsRandomUniform(const HloInstruction* inst) {
-  return inst->random_distribution() == RandomDistribution::RNG_UNIFORM;
+  return inst->opcode() == HloOpcode::kRng &&
+         inst->random_distribution() == RandomDistribution::RNG_UNIFORM;
 }
 
 bool IsConstantZero(const HloInstruction* inst) {
@@ -45,6 +47,10 @@ bool IsConstantOne(const HloInstruction* inst) {
 }
 
 bool IsExternalPadding(const HloInstruction* inst) {
+  if (inst->opcode() != HloOpcode::kPad) {
+    return false;
+  }
+
   const PaddingConfig& cfg(inst->padding_config());
   for (auto& d : cfg.dimensions()) {
     if (d.interior_padding() > 0) return false;
@@ -57,6 +63,10 @@ bool IsAveragePool(const HloInstruction* inst) {
 }
 
 bool Is2DMaxPool(const HloInstruction* inst) {
+  if (inst->opcode() != HloOpcode::kReduceWindow) {
+    return false;
+  }
+
   if (inst->metadata().op_type() == "MaxPool") {
     const Window& window(inst->window());
     unsigned reduction_dims = 0;
@@ -73,6 +83,10 @@ bool Is2DMaxPool(const HloInstruction* inst) {
 }
 
 bool Is2DMaxPoolGrad(const HloInstruction* inst) {
+  if (inst->opcode() != HloOpcode::kSelectAndScatter) {
+    return false;
+  }
+
   if (inst->metadata().op_type() == "MaxPoolGrad") {
     const Window& window(inst->window());
     unsigned reduction_dims = 0;
@@ -83,12 +97,17 @@ bool Is2DMaxPoolGrad(const HloInstruction* inst) {
         reduction_dims++;
       }
     }
+    VLOG(0) << "reduction_dims " << reduction_dims;
     return inst->window().dimensions_size() == 4 && reduction_dims == 2;
   }
   return false;
 }
 
 bool Is2DReductionWindow(const HloInstruction* inst) {
+  if (inst->opcode() != HloOpcode::kReduceWindow) {
+    return false;
+  }
+
   const Window& window(inst->window());
   int reduction_count = 0;
   for (int64 i = 0; i < window.dimensions_size(); i++) {
@@ -123,6 +142,9 @@ bool IsConvFilterTranspose(const HloInstruction* inst) {
   const std::vector<int64>& rev(inst->dimensions());
 
   HloInstruction* conv = inst->users()[0];
+  if (conv->opcode() != HloOpcode::kConvolution) {
+    return false;
+  }
   const ConvolutionDimensionNumbers& d(conv->convolution_dimension_numbers());
 
   if (rev.size() != d.kernel_spatial_dimensions_size()) return false;
@@ -271,6 +293,11 @@ bool IsBiasAdd(const HloInstruction* inst) {
   return true;
 }
 
+bool IsAddOrSubtract(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kAdd ||
+         inst->opcode() == HloOpcode::kSubtract;
+}
+
 bool IsPopOpsBiasAdd(const HloInstruction* inst) {
   return IsPopOpsFusion(inst, "matmul_biasadd") ||
          IsPopOpsFusion(inst, "conv_biasadd");
@@ -290,7 +317,11 @@ bool IsPopOpsElementwiseBinary(const HloInstruction* inst) {
 
 bool IsNormInferenceOrTraining(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kBatchNormInference ||
-         inst->opcode() == HloOpcode::kBatchNormTraining;
+         inst->opcode() == HloOpcode::kBatchNormTraining ||
+         IsPoplibsCustomOp(inst, PoplibsLib::Popnn,
+                           PoplibsOp::GroupNormInference) ||
+         IsPoplibsCustomOp(inst, PoplibsLib::Popnn,
+                           PoplibsOp::GroupNormTraining);
 }
 
 }  // namespace poplarplugin

@@ -58,26 +58,34 @@ class MetaGraph {
 
  public:
   template <typename NodeIt>
-  MetaGraph(T root_node, NodeIt node_iterator_getter) {
-    // DF traversal to create the intial graph.
+  MetaGraph(std::vector<T> root_nodes, NodeIt node_iterator_getter) {
+    // DF traversal to create the initial graph.
     std::stack<T> to_visit;
-    to_visit.push(root_node);
-
     absl::flat_hash_set<T> visited;
+    for (T root_node : root_nodes) {
+      to_visit.push(root_node);
+    }
+
     while (!to_visit.empty()) {
       // Get the current node
       T current = to_visit.top();
       to_visit.pop();
+
+      if (visited.count(current) != 0) {
+        continue;
+      }
       visited.insert(current);
 
-      for (const T& operand : node_iterator_getter(current)) {
+      for (T operand : node_iterator_getter(current)) {
         graph_[operand].insert(current);
-        if (!visited.count(operand)) {
-          to_visit.push(operand);
-        }
+        to_visit.push(operand);
       }
     }
   };
+
+  template <typename NodeIt>
+  MetaGraph(T root_node, NodeIt node_iterator_getter)
+      : MetaGraph(std::vector<T>({root_node}), node_iterator_getter) {}
 
   template <typename InputIt, typename NodeValueGetter>
   MetaGraph(InputIt input_it, NodeValueGetter node_value_getter) {
@@ -90,7 +98,7 @@ class MetaGraph {
     MetaGraph<T> result;
 
     for (auto& edge : graph_) {
-      for (auto* v2 : edge.second) {
+      for (auto v2 : edge.second) {
         result[v2].insert(edge.first);
       }
     }

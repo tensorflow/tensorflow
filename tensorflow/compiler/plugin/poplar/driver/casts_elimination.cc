@@ -50,7 +50,7 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kReduce, NodeOperands({2, 3}), IsF32},
       {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
       {HloOpcode::kConstant, NodeOperands({}), IsF32},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
     })
   ),
 
@@ -66,8 +66,8 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kReduce, NodeOperands({2, 3}), IsF32},
       {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
       {HloOpcode::kConvert, NodeOperands({5}), IsF16ToF32Convert},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
     })
   ),
 
@@ -85,7 +85,7 @@ static const std::vector<HloMatcherPattern> patterns = {
           {HloOpcode::kReduce, NodeOperands({5, 6}), IsF32},
           {HloOpcode::kConvert, NodeOperands({7}), IsF16ToF32Convert},
           {HloOpcode::kConstant, NodeOperands({}), IsF32},
-          {HloOpcode::kParameter, NodeOperands({}), IsF16}
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
       })
   ),
 
@@ -101,7 +101,7 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kReduceWindow, NodeOperands({2, 3}), IsF32},
       {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
       {HloOpcode::kConstant, NodeOperands({}), IsF32},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
     })
   ),
 
@@ -114,7 +114,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kConvert, NodeOperands({1}), IsF32ToF16Convert},
       {HloOpcode::kConvert, NodeOperands({2}), IsF16ToF32Convert},
-      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
     })
   ),
 
@@ -127,7 +127,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     Pattern({
       {HloOpcode::kConvert, NodeOperands({1}), IsF16ToF32Convert},
       {HloOpcode::kConvert, NodeOperands({2}), IsF32ToF16Convert},
-      {HloOpcode::kParameter, NodeOperands({}), IsF32}
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF32}
     })
   ),
 };
@@ -138,79 +138,115 @@ CastsElimination::CastsElimination(struct CompilerAnnotations& annotations)
 
 namespace {
 
-HloInstruction* ConvertConstant(HloInstruction* constant,
-                                const PrimitiveType& new_type) {
-  const auto shape = ShapeUtil::ChangeElementType(constant->shape(), new_type);
-  auto literal_new_type = constant->literal().ConvertToShape(shape);
+HloInstruction* ConvertInstruction(HloInstruction* inst,
+                                   const PrimitiveType& new_type) {
+  HloInstruction* new_inst;
+  HloComputation* computation = inst->parent();
+  if (inst->opcode() == HloOpcode::kConstant) {
+    // For constants - replace it with the new constant.
+    const auto shape = ShapeUtil::ChangeElementType(inst->shape(), new_type);
+    auto literal_new_type = inst->literal().ConvertToShape(shape);
+    new_inst = computation->AddInstruction(HloInstruction::CreateConstant(
+        std::move(literal_new_type.ValueOrDie())));
+  } else {
+    // Otherwise clone and change the desired shape.
+    new_inst = computation->AddInstruction(inst->Clone());
+    new_inst->mutable_shape()->set_element_type(new_type);
+  }
 
-  auto* new_inst = constant->parent()->AddInstruction(
-      HloInstruction::CreateConstant(std::move(literal_new_type.ValueOrDie())));
+  new_inst->set_raw_backend_config_string(inst->raw_backend_config_string());
 
-  new_inst->set_raw_backend_config_string(
-      constant->raw_backend_config_string());
-
-  new_inst->set_metadata(constant->metadata());
-  if (constant->has_sharding()) {
-    new_inst->set_sharding(constant->sharding());
+  new_inst->set_metadata(inst->metadata());
+  if (inst->has_sharding()) {
+    new_inst->set_sharding(inst->sharding());
   }
   return new_inst;
 }
 
 }  // namespace
 
-unsigned CastsElimination::ReplaceNodes() {
-  unsigned int replacement_count = 0;
-  for (int pattern_idx = 0; pattern_idx < matches_.size(); pattern_idx++) {
-    for (HloMatcherMatched& match : matches_[pattern_idx]) {
-      if (match.ok) {
-        HloInstruction* pattern_root = match.instructions[0];
-        HloComputation* computation = pattern_root->parent();
-        auto type = pattern_root->shape().element_type();
-        OutlinedInfo outlined_info = {pattern_root, {}};
-        absl::flat_hash_set<HloInstruction*> matched_instructions(
-            match.instructions.begin(), match.instructions.end());
+bool CastsElimination::HandleMatch(HloMatcherMatched& match) {
+  // A map from original instructions to their new counterparts
+  absl::flat_hash_map<NodeId, HloInstruction*> outlined;
+  // A set of nodes which we have already outlined.
+  absl::flat_hash_set<NodeId> outlined_node_ids;
+  // A set of nodes which we can outline because all the operands have been
+  // outlined.
+  absl::flat_hash_set<NodeId> to_outline;
 
-        std::vector<HloInstruction*> new_instructions;
+  auto pattern = patterns_[match.pattern_idx];
+  HloComputation* computation = match.computation;
+  HloInstruction* old_pattern_root =
+      match.instruction_mapping[pattern.GetOutputs()[0]];
+  auto new_type = old_pattern_root->shape().element_type();
 
-        for (HloInstruction* inst : match.instructions) {
-          outlined_info.removed_or_modified_instructions.push_back(inst);
-
-          HloInstruction* new_inst;
-          if (inst->opcode() == HloOpcode::kConstant) {
-            // For constants - replace it with the new constant.
-            new_inst = ConvertConstant(inst, type);
-          } else {
-            // Otherwise clone and change the desired shape.
-            new_inst = computation->AddInstruction(inst->Clone());
-            new_inst->mutable_shape()->set_element_type(type);
-          }
-          // Replace all all the users of inst with new_inst in this pattern.
-          for (auto user : inst->users()) {
-            // Skip the user if it's not in the pattern.
-            if (matched_instructions.count(user) == 0) {
-              continue;
-            }
-            // Replace all the operands where the instruction is used with the
-            // new instruction.
-            for (int64 operand_num : user->OperandIndices(inst)) {
-              TF_CHECK_OK(user->ReplaceOperandWith(operand_num, new_inst));
-            }
-          }
-          // Update the set
-          matched_instructions.erase(inst);
-          matched_instructions.insert(new_inst);
-          // Keep track of new instructions.
-          new_instructions.push_back(new_inst);
-        }
-        TF_CHECK_OK(pattern_root->ReplaceAllUsesWith(new_instructions[0]));
-        TF_CHECK_OK(
-            computation->RemoveInstructionAndUnusedOperands(pattern_root));
-        replacement_count += MarkReplacedInstructions(outlined_info);
+  // A node can be outlined if all the operands have been outlined and it has
+  // not been outlined yet.
+  const auto can_outline = [&](NodeId node_id) {
+    for (auto operand_id : pattern.GetNodesToOperandsMetaGraph()[node_id]) {
+      if (outlined_node_ids.count(operand_id) == 0) {
+        return false;
       }
+    }
+    return outlined_node_ids.count(node_id) == 0;
+  };
+
+  // First mark all the parameter inputs as outlined - these are never modified.
+  for (auto node_id : pattern.GetInputs()) {
+    HloInstruction* old_pattern_input = match.instruction_mapping.at(node_id);
+    HloInstruction* new_pattern_input = old_pattern_input;
+    outlined[node_id] = new_pattern_input;
+    outlined_node_ids.insert(node_id);
+    // Check what we can outline.
+    absl::c_copy_if(pattern.GetOperandsToNodesMetaGraph()[node_id],
+                    std::inserter(to_outline, std::begin(to_outline)),
+                    can_outline);
+  }
+  // Add all the nodes in the pattern which have no dependencies as well.
+  for (auto pair : pattern.GetNodesToOperandsMetaGraph()) {
+    NodeId node_id = pair.first;
+    auto edges = pair.second;
+    if (edges.empty() && !outlined_node_ids.contains(node_id)) {
+      to_outline.insert(node_id);
     }
   }
 
-  return replacement_count;
+  // Now outline all the remaining nodes
+  while (!to_outline.empty()) {
+    // Get an instruction which is ready to be outlined.
+    NodeId node_id = *to_outline.begin();
+    to_outline.erase(node_id);
+
+    HloInstruction* old_inst = match.instruction_mapping.at(node_id);
+    // Convert it.
+    HloInstruction* new_inst = ConvertInstruction(old_inst, new_type);
+    outlined[node_id] = new_inst;
+    outlined_node_ids.insert(node_id);
+    // Replace all the operands.
+    for (int64 operand = 0; operand < new_inst->operand_count(); ++operand) {
+      NodeId operand_id =
+          pattern.GetPatternNodes()[node_id].GetOperands()[operand];
+      TF_CHECK_OK(new_inst->ReplaceOperandWith(operand, outlined[operand_id]));
+    }
+    // Check if we can outline more instructions.
+    absl::c_copy_if(pattern.GetOperandsToNodesMetaGraph()[node_id],
+                    std::inserter(to_outline, std::begin(to_outline)),
+                    can_outline);
+  }
+
+  // Sanity check - make sure we have outlined everything.
+  if (outlined.size() != pattern.GetPatternNodes().size()) {
+    LOG(FATAL) << "Failed to outline a pattern correctly - not all "
+                  "instructions have been outlined. "
+               << outlined.size() << " " << pattern.GetPatternNodes().size();
+  }
+
+  HloInstruction* new_pattern_root = outlined[pattern.GetOutputs()[0]];
+  TF_CHECK_OK(old_pattern_root->ReplaceAllUsesWith(new_pattern_root));
+  TF_CHECK_OK(
+      computation->RemoveInstructionAndUnusedOperands(old_pattern_root));
+
+  return true;
 }
 
 }  // namespace poplarplugin

@@ -33,22 +33,14 @@ class TestMatcher : public HloMatcher {
       : HloMatcher(patterns, annotations, root_only, look_through_depth) {}
 
  private:
-  unsigned ReplaceNodes() override {
-    unsigned int replacement_count = 0;
-    for (int pattern_idx = 0; pattern_idx < matches_.size(); pattern_idx++) {
-      for (HloMatcherMatched& match : matches_[pattern_idx]) {
-        if (match.ok) {
-          replace_count++;
-          match_pattern.push_back(pattern_idx);
-          auto pattern = patterns_[pattern_idx];
-          match_count.push_back(match.instructions.size());
-          const OutlinedInfo outlined_info = OutlineExpressionFromComputation(
-              match, pattern.type, pattern.meta_target);
-          replacement_count += MarkReplacedInstructions(outlined_info);
-        }
-      }
-    }
-    return replacement_count;
+  bool HandleMatch(HloMatcherMatched& match) override {
+    auto pattern = patterns_[match.pattern_idx];
+    OutlineExpressionFromComputation(match, pattern.GetType());
+    replace_count++;
+    const int replaced_instructions =
+        match.instruction_mapping.size() - pattern.GetInputs().size();
+    match_count.push_back(replaced_instructions);
+    return true;
   }
 
  public:
@@ -88,8 +80,8 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
       PatternOutputs({0}),
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -132,8 +124,8 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
       PatternOutputs({0}),
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -192,8 +184,8 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({3, 1})},
         {HloOpcode::kBroadcast, NodeOperands({2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     ),
     HloMatcherPattern(
@@ -203,8 +195,8 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
       PatternOutputs({0}),
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -270,8 +262,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({3, 1})},
         {HloOpcode::kBroadcast, NodeOperands({2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -331,8 +323,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({3, 1})},
         {HloOpcode::kBroadcast, NodeOperands({2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -385,8 +377,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
         {HloOpcode::kSubtract, NodeOperands({1, 3})},
         {HloOpcode::kAdd, NodeOperands({4, 2})},
         {HloOpcode::kBroadcast, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -436,7 +428,7 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
         {HloOpcode::kSubtract, NodeOperands({3, 1})},
         {HloOpcode::kBroadcast, NodeOperands({2})},
         {HloOpcode::kConstant, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -487,8 +479,8 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOps) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({3, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -561,7 +553,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsParameter) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -640,8 +632,8 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsLongerChain) {
       Pattern({
         {HloOpcode::kMultiply, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({3, 2})},
-        {HloOpcode::kParameter, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -724,7 +716,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsChainTooLong) {
       Pattern({
         {HloOpcode::kMultiply, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -780,7 +772,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsPartialInChainUsed) {
       Pattern({
         {HloOpcode::kMultiply, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -827,7 +819,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsDifferentAssociativitySets) {
       Pattern({
         {HloOpcode::kAdd, NodeOperands({1, 2})},
         {HloOpcode::kSubtract, NodeOperands({})},
-        {HloOpcode::kParameter, NodeOperands({})}
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
       })
     )
   };
@@ -872,7 +864,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsRootNonAssociative) {
       Pattern({
         {HloOpcode::kBroadcast, NodeOperands({1})},
         {HloOpcode::kAdd, NodeOperands({2, 3})},
-        {HloOpcode::kParameter, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
         {HloOpcode::kConstant, NodeOperands({})}
       })
     )
@@ -883,6 +875,372 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsRootNonAssociative) {
   TestMatcher matcher(patterns, annotations, false, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
+}
+
+TEST_F(HloMatcherTest, PatternNoOutputs) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("abc"),
+        PatternMetaTarget(0),
+        PatternInputs({2}),
+        PatternOutputs({}),
+        Pattern({
+          {HloOpcode::kBroadcast, NodeOperands({1})},
+          {HloOpcode::kAdd, NodeOperands({2, 3})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloOpcode::kConstant, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_EQ(std::string(ia.what()),
+              "[Pattern abc] Pattern has no outputs, at least one required.");
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, PatternDuplicateParams) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("abc"),
+        PatternMetaTarget(0),
+        PatternInputs({1, 1}),
+        PatternOutputs({0}),
+        Pattern({
+          {HloOpcode::kAdd, NodeOperands({1, 2})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_EQ(std::string(ia.what()),
+              "[Pattern abc] Input with label 1 already defined. Pattern "
+              "inputs need to be unique.");
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, PatternDuplicateOutput) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("abc"),
+        PatternMetaTarget(0),
+        PatternInputs({2, 3}),
+        PatternOutputs({0, 0}),
+        Pattern({
+          {HloOpcode::kAdd, NodeOperands({2, 1})},
+          {HloOpcode::kAdd, NodeOperands({3, 3})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_EQ(std::string(ia.what()),
+              "[Pattern abc] Output with label 0 already defined. Pattern "
+              "outputs need to be unique.");
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, PatternDisconnected) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("abc"),
+        PatternMetaTarget(0),
+        PatternInputs({2, 3}),
+        PatternOutputs({0}),
+        Pattern({
+          {HloOpcode::kAdd, NodeOperands({2, 1})},
+          {HloOpcode::kAdd, NodeOperands({2, 2})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_EQ(std::string(ia.what()),
+              "[Pattern abc] Node with label 3 is disconnected from the graph. "
+              "The graph needs to be connected.");
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, PatternInvalidParamLabel) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("abc"),
+        PatternMetaTarget(0),
+        PatternInputs({2, 4}),
+        PatternOutputs({0}),
+        Pattern({
+          {HloOpcode::kAdd, NodeOperands({2, 1})},
+          {HloOpcode::kAdd, NodeOperands({3, 3})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_EQ(
+        std::string(ia.what()),
+        "[Pattern abc] Input with label 4 does not exist in the pattern.");
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, PatternInvalidOutputLabel) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("abc"),
+        PatternMetaTarget(0),
+        PatternInputs({2, 3}),
+        PatternOutputs({4}),
+        Pattern({
+          {HloOpcode::kAdd, NodeOperands({2, 1})},
+          {HloOpcode::kAdd, NodeOperands({3, 3})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_EQ(
+        std::string(ia.what()),
+        "[Pattern abc] Output with label 4 does not exist in the pattern.");
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, PatternInvalidPatternLabel) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("abc"),
+        PatternMetaTarget(0),
+        PatternInputs({2, 3}),
+        PatternOutputs({0}),
+        Pattern({
+          {HloOpcode::kAdd, NodeOperands({2, 1})},
+          {HloOpcode::kAdd, NodeOperands({3, 4})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_EQ(
+        std::string(ia.what()),
+        "[Pattern abc] Unknown node 4 which was not defined in the pattern.");
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, TwoDisconnectedGraphs) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("abc"),
+        PatternMetaTarget(0),
+        PatternInputs({2, 3, 4, 5}),
+        PatternOutputs({0, 1}),
+        Pattern({
+          {HloOpcode::kAdd, NodeOperands({2, 3})},
+          {HloOpcode::kAdd, NodeOperands({4, 5})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_TRUE(std::string(ia.what()).find("Node with label"));
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, InputWithInputs) {
+  try {
+    // clang-format off
+    std::vector<HloMatcherPattern> patterns = {
+      HloMatcherPattern(
+        PatternType("test"),
+        PatternMetaTarget(0),
+        PatternInputs({1, 2, 3}),
+        PatternOutputs({0}),
+        Pattern({
+          {HloOpcode::kAdd, NodeOperands({1, 2})},
+          {HloOpcode::kAdd, NodeOperands({2, 3})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+          {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+        })
+      )
+    };
+    // clang-format on
+    FAIL() << "Expected invalid_argument throw.";
+  } catch (const std::invalid_argument& ia) {
+    EXPECT_EQ(std::string(ia.what()),
+              "[Pattern test] Input with label 1 has an input - this is "
+              "currently not supported.");
+  } catch (...) {
+    FAIL() << "Expected invalid_argument throw.";
+  }
+}
+
+TEST_F(HloMatcherTest, MatchTestMultipleOutputs) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i3, i2));
+
+  builder.AddInstruction(HloInstruction::CreateTuple({add2, add1}));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 3, 4}),
+      PatternOutputs({0, 1}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({2, 3})},
+        {HloOpcode::kAdd, NodeOperands({4, 3})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_EQ(1, matcher.replace_count);
+  auto entry_computation = hlo_module->entry_computation();
+  EXPECT_EQ(7, entry_computation->instruction_count());
+  auto root = entry_computation->root_instruction();
+  CHECK_EQ(root->operand(0)->opcode(), HloOpcode::kGetTupleElement);
+  CHECK_EQ(root->operand(0)->tuple_index(), 1);
+  CHECK_EQ(root->operand(1)->opcode(), HloOpcode::kGetTupleElement);
+  CHECK_EQ(root->operand(1)->tuple_index(), 0);
+}
+
+TEST_F(HloMatcherTest, MatchTestMultipleOutputsMultipleMatches) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
+  auto i4 =
+      builder.AddInstruction(HloInstruction::CreateParameter(3, shape, "in4"));
+  auto i5 =
+      builder.AddInstruction(HloInstruction::CreateParameter(4, shape, "in5"));
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i3, i2));
+  auto add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i4, i2));
+  auto add4 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i5, i2));
+
+  builder.AddInstruction(HloInstruction::CreateTuple({add3, add2, add1, add4}));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 3, 4}),
+      PatternOutputs({0, 1}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({2, 3})},
+        {HloOpcode::kAdd, NodeOperands({4, 3})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_EQ(2, matcher.replace_count);
+  auto entry_computation = hlo_module->entry_computation();
+  EXPECT_EQ(12, entry_computation->instruction_count());
+  auto root = entry_computation->root_instruction();
+  CHECK_EQ(root->operand(0)->opcode(), HloOpcode::kGetTupleElement);
+  CHECK_EQ(root->operand(1)->opcode(), HloOpcode::kGetTupleElement);
+  CHECK_EQ(root->operand(2)->opcode(), HloOpcode::kGetTupleElement);
+  CHECK_EQ(root->operand(3)->opcode(), HloOpcode::kGetTupleElement);
 }
 
 }  // namespace

@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_HLO_MATCHER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_HLO_MATCHER_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/meta_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
+#include "absl/types/variant.h"
 
 namespace xla {
 
@@ -29,11 +32,46 @@ namespace poplarplugin {
 
 using NodeId = int64;
 using NodeOperands = std::vector<NodeId>;
-using NodeCondition = std::function<bool(HloInstruction*)>;
+using NodeCondition = std::function<bool(const HloInstruction*)>;
 
-struct HloMatcherNode {
-  // The opcode of the instruction to match
-  HloOpcode opcode;
+enum class HloMatcherOpcode {
+  kAnyOpcode,
+};
+
+// A class which allows us to extend the HloOpcode enum for special cases for
+// the HloMatcher.
+class HloMatcherOpcodeTarget {
+ public:
+  HloMatcherOpcodeTarget(const HloOpcode& opcode);
+  HloMatcherOpcodeTarget(const HloMatcherOpcode& opcode);
+
+  const bool IsHloOpcode() const;
+  const HloOpcode GetHloOpcode() const;
+
+  const bool IsHloMatcherOpcode() const;
+  const HloMatcherOpcode GetHloMatcherOpcode() const;
+
+ private:
+  absl::variant<HloOpcode, HloMatcherOpcode> opcode_;
+};
+
+class HloMatcherNode {
+ public:
+  HloMatcherNode(HloMatcherOpcodeTarget opcode_target, NodeOperands operands);
+
+  HloMatcherNode(HloMatcherOpcodeTarget opcode_target, NodeOperands operands,
+                 NodeCondition node_condition);
+
+  const HloMatcherOpcodeTarget& GetOpcodeTarget() const;
+  const NodeOperands& GetOperands() const;
+  const absl::optional<NodeCondition>& GetNodeCondition() const;
+
+  // Checks whether the instruction matches this node.
+  const bool Matches(const HloInstruction* inst) const;
+
+ private:
+  // The opcode target of the instruction to match
+  HloMatcherOpcodeTarget opcode_target_;
 
   // A list of operands of this instruction. A positive number refers to one of
   // the other entries in the match pattern. A negative number indicates that
@@ -41,33 +79,11 @@ struct HloMatcherNode {
   // nodes have the same negative number, then the same instruction must be
   // the operand to each match node. The parameter number is given by the value
   // in the matching position in the parameter_indices list.
-  NodeOperands operands;
+  NodeOperands operands_;
 
   // If provided, this function will be called with the instruction. Only if
   // it returns true does the matching proceed.
-  absl::optional<NodeCondition> node_condition;
-
-  HloMatcherNode(HloOpcode opcode, NodeOperands operands)
-      : opcode(opcode), operands(operands), node_condition(absl::nullopt){};
-
-  HloMatcherNode(HloOpcode opcode, NodeOperands operands,
-                 NodeCondition node_condition)
-      : opcode(opcode), operands(operands), node_condition(node_condition){};
-};
-
-struct InstructionIndex {
-  HloInstruction* inst;
-  int64 op_idx;
-};
-
-using Trace = std::vector<InstructionIndex>;
-
-struct HloMatcherMatched {
-  HloComputation* computation;
-  bool ok;
-  std::vector<HloInstruction*> instructions;
-  std::map<const HloInstruction*, std::vector<int64>> inst_parameters;
-  std::vector<Trace> replacement_traces;
+  absl::optional<NodeCondition> node_condition_;
 };
 
 using PatternType = std::string;
@@ -76,7 +92,29 @@ using PatternInputs = std::vector<NodeId>;
 using PatternOutputs = std::vector<NodeId>;
 using Pattern = std::vector<HloMatcherNode>;
 
-struct HloMatcherPattern {
+class HloMatcherPattern {
+ public:
+  HloMatcherPattern() = delete;
+
+  HloMatcherPattern(PatternType type, PatternMetaTarget meta_target,
+                    PatternInputs inputs, PatternOutputs outputs,
+                    Pattern pattern);
+
+  const PatternType& GetType() const;
+
+  const PatternMetaTarget& GetMetaTarget() const;
+
+  const PatternInputs& GetInputs() const;
+
+  const PatternOutputs& GetOutputs() const;
+
+  const Pattern& GetPatternNodes() const;
+
+  const MetaGraph<NodeId>& GetNodesToOperandsMetaGraph() const;
+
+  const MetaGraph<NodeId>& GetOperandsToNodesMetaGraph() const;
+
+ private:
   // The name to give the extracted fused graph.
   PatternType type;
 
@@ -107,36 +145,38 @@ struct HloMatcherPattern {
   PatternOutputs outputs;
 
   // A vector of HloMatcherNode, describing the pattern to match.
-  Pattern pattern;
+  Pattern pattern_nodes;
 
-  HloMatcherPattern(PatternType type, PatternMetaTarget meta_target,
-                    PatternInputs inputs, PatternOutputs outputs,
-                    Pattern pattern)
-      : type(type),
-        meta_target(meta_target),
-        inputs(inputs),
-        outputs(outputs),
-        pattern(pattern) {
-    Verify();
-  }
+  // Structures used to represent this pattern - the first graph represents the
+  // connections between nodes and their operands, the second graph represents
+  // the connections between operands and their usage nodes.
+  std::pair<MetaGraph<NodeId>, MetaGraph<NodeId>> pattern_graphs;
 
   // This function verifies that the pattern is correct. We define a pattern
   // correct if the following conditions are all met:
-  // * It has at least one output
-  // * If we perform traversal from any output node, we can reach any input
-  //   node.
-  // * If we perform traversals from all the output nodes and combine the
-  //   visited nodes, then every node in the pattern has to be visited at least
-  //   once.
-  void Verify();
+  // * It has at least one output.
+  // * The graph is connected.
+  std::pair<MetaGraph<NodeId>, MetaGraph<NodeId>> VerifyAndGetGraphs();
+};
+
+struct InstructionIndex {
+  HloInstruction* inst;
+  int64 op_idx;
+};
+
+using Trace = std::vector<InstructionIndex>;
+
+struct HloMatcherMatched {
+  HloComputation* computation;
+  unsigned pattern_idx;
+  absl::flat_hash_map<NodeId, HloInstruction*> instruction_mapping;
+  std::vector<Trace> replacement_traces;
+
+  HloMatcherMatched(HloComputation* computation, const unsigned pattern_idx)
+      : computation(computation), pattern_idx(pattern_idx) {}
 };
 
 using ReplacedInstructions = std::vector<HloInstruction*>;
-
-struct OutlinedInfo {
-  HloInstruction* call_to_outlined_computation;
-  ReplacedInstructions removed_or_modified_instructions;
-};
 
 class HloMatcher : public HloModulePass {
  public:
@@ -152,23 +192,12 @@ class HloMatcher : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  protected:
-  OutlinedInfo OutlineExpressionFromComputation(
+  // Outlines the given match and return the instruction which calls the
+  // outlined computation.
+  HloInstruction* OutlineExpressionFromComputation(
       const HloMatcherMatched& matched,
-      const std::string& outlined_computation_name, const char metadata_index) {
-    return OutlineExpressionFromComputation(matched, outlined_computation_name,
-                                            metadata_index, {});
-  }
-
-  OutlinedInfo OutlineExpressionFromComputation(
-      const HloMatcherMatched& matched,
-      const std::string& outlined_computation_name, const char metadata_index,
-      std::vector<HloInstruction*> forced_parameters);
-
-  unsigned MarkReplacedInstructions(const OutlinedInfo& outlined_info);
-
-  // A vector of lists of matches found. One vector entry per pattern, one list
-  // entry per match in the computation
-  std::vector<std::list<HloMatcherMatched>> matches_;
+      const std::string& outlined_computation_name,
+      std::vector<HloInstruction*> forced_parameters = {});
 
   // The list of patterns to try to find in the computations
   std::vector<HloMatcherPattern> patterns_;
@@ -177,23 +206,22 @@ class HloMatcher : public HloModulePass {
   struct CompilerAnnotations& annotations_;
 
  private:
-  virtual unsigned ReplaceNodes() = 0;
+  virtual bool HandleMatch(HloMatcherMatched& match) = 0;
 
-  void MatchPatternStart(HloComputation*, HloInstruction* inst);
-  bool MatchPattern(HloInstruction* inst, const HloMatcherPattern& pattern,
-                    HloMatcherMatched& match);
-  void AddMatch(unsigned pattern, const HloMatcherMatched& match);
-  StatusOr<Trace> FindNextMatchingOp(HloInstruction* user, HloInstruction* inst,
-                                     const HloOpcode desiredOpcode);
+  bool MatchPatternStart(HloComputation*);
+  bool MatchPattern(HloInstruction* inst, const unsigned pattern_idx);
+
+  absl::optional<Trace> FindNextMatchingOp(HloInstruction* user,
+                                           HloInstruction* inst,
+                                           const HloOpcode desiredOpcode);
+  bool MatchPatternSingleOutput(HloInstruction* root,
+                                const HloMatcherPattern& pattern,
+                                HloMatcherMatched& match);
+
   std::set<HloInstruction*> ReorderGraph(const HloMatcherMatched& matched);
 
   bool root_computation_only_;
   unsigned look_through_max_depth_;
-
-  // A map of instructions in the computation to matches. When replacing
-  // instructions due to one match, other matches which contain the instruction
-  // cannot also be applied
-  std::multimap<const HloInstruction*, HloMatcherMatched*> match_map_;
 };
 
 }  // namespace poplarplugin

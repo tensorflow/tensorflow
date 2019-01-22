@@ -34,7 +34,7 @@ class SingleHloMatcher : public HloMatcher {
   ~SingleHloMatcher() override = default;
 
  private:
-  unsigned ReplaceNodes() override;
+  bool HandleMatch(HloMatcherMatched& match) override;
 
   std::string op_prefix_;
 };

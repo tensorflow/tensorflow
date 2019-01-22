@@ -30,14 +30,14 @@ class FuseMaxPool : public HloMatcher {
 
   ~FuseMaxPool() override = default;
 
-  absl::string_view name() const override {
-    return "poplar-fuse-max-pool";
-  }
+  absl::string_view name() const override { return "poplar-fuse-max-pool"; }
 
  private:
-  unsigned ReplaceNodes() override;
+  bool HandleMatch(HloMatcherMatched& match) override;
 
   std::string op_prefix_ = "_pop_op_";
+
+  std::map<const HloInstruction*, HloInstruction*> input_to_fwd_max_pool_map_;
 };
 
 }  // namespace poplarplugin

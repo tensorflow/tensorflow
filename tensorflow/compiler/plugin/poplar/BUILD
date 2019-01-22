@@ -489,6 +489,9 @@ tf_cc_test(
 tf_cc_test(
     name = "hlo_matcher_test",
     srcs = ["tests/hlo_matcher_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",

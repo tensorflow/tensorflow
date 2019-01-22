@@ -30,14 +30,10 @@ class CastsElimination : public HloMatcher {
 
   ~CastsElimination() override = default;
 
-  absl::string_view name() const override {
-    return "poplar-casts-elimination";
-  }
+  absl::string_view name() const override { return "poplar-casts-elimination"; }
 
  private:
-  unsigned ReplaceNodes() override;
-  unsigned ReplaceReduction(const HloMatcherMatched& match,
-                            const HloOpcode reduction_type);
+  bool HandleMatch(HloMatcherMatched& match) override;
 };
 
 }  // namespace poplarplugin
