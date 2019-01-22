@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import contextlib
 import copy
-import functools
 import threading
 
 from tensorflow.python import pywrap_tensorflow
@@ -548,17 +547,6 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_distributed_variable(colocate_with_variable, self)
 
-  def _distribute_dataset(self, dataset_fn):
-    if self._local_mode:
-      worker_index = 0
-      return input_lib.PerReplicaDataset(
-          self._call_dataset_fn(dataset_fn), self._input_workers, worker_index)
-    else:
-      return input_lib.MultiWorkerDataset(
-          functools.partial(self._call_dataset_fn, dataset_fn),
-          self._input_workers,
-          auto_shard=False)
-
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
         dataset, self._input_workers, self._num_replicas_in_sync)
@@ -784,8 +772,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   def _global_batch_size(self):
     """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
 
-    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
-    batching.
+    `make_input_fn_iterator` assumes per-replica batching.
 
     Returns:
       Boolean.

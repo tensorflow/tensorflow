@@ -233,14 +233,6 @@ class ParameterServerStrategyExtended(
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
 
-  def _distribute_dataset(self, dataset_fn):
-    """Distributes the dataset to each local GPU."""
-    return input_lib.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn),
-        self._input_workers,
-        0,
-        prefetch_on_device=True)
-
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(dataset, self._input_workers,
                                      self._num_replicas_in_sync)
@@ -538,8 +530,7 @@ class ParameterServerStrategyExtended(
   def _global_batch_size(self):
     """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
 
-    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
-    batching.
+    `make_input_fn_iterator` assumes per-replica batching.
 
     Returns:
       Boolean.
