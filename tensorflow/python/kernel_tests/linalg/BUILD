@@ -150,7 +150,6 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
