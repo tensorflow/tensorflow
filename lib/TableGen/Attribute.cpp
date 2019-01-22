@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/TableGen/Operator.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Record.h"
 
 using namespace mlir;
@@ -80,6 +81,18 @@ bool tblgen::Attribute::isConstBuildable() const {
 StringRef tblgen::Attribute::getConstBuilderTemplate() const {
   const auto *init = def->getValueInit("constBuilderCall");
   return getValueAsString(init);
+}
+
+bool tblgen::Attribute::hasDefaultValue() const {
+  const auto *init = def->getValueInit("defaultValue");
+  return !getValueAsString(init).empty();
+}
+
+std::string tblgen::Attribute::getDefaultValueTemplate() const {
+  assert(isConstBuildable() && "requiers constBuilderCall");
+  const auto *init = def->getValueInit("defaultValue");
+  return llvm::formatv(getConstBuilderTemplate().str().c_str(), "{0}",
+                       getValueAsString(init));
 }
 
 StringRef tblgen::Attribute::getTableGenDefName() const {

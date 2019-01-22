@@ -179,20 +179,41 @@ void OpEmitter::emitAttrGetters() {
     auto name = namedAttr.getName();
     const auto &attr = namedAttr.attr;
 
+    // Determine the name of the attribute getter. The name matches the
+    // attribute name excluding dialect prefix.
+    StringRef getter = name;
+    auto it = getter.rfind('$');
+    if (it != StringRef::npos)
+      getter = getter.substr(it + 1);
+
     // Emit the derived attribute body.
     if (attr.isDerivedAttr()) {
-      OUT(2) << attr.getReturnType() << ' ' << name << "() const {"
+      OUT(2) << attr.getReturnType() << ' ' << getter << "() const {"
              << attr.getDerivedCodeBody() << " }\n";
       continue;
     }
 
     // Emit normal emitter.
-    OUT(2) << attr.getReturnType() << ' ' << name << "() const {\n";
+    OUT(2) << attr.getReturnType() << ' ' << getter << "() const {\n";
 
     // Return the queried attribute with the correct return type.
     std::string attrVal = formatv("this->getAttr(\"{1}\").dyn_cast<{0}>()",
                                   attr.getStorageType(), name);
-    OUT(4) << "return " << formatv(attr.getConvertFromStorageCall(), attrVal)
+    OUT(4) << "auto attr = " << attrVal << ";\n";
+    if (attr.hasDefaultValue()) {
+      // Returns the default value if not set.
+      // TODO: this is inefficient, we are recreating the attribute for every
+      // call. This should be set instead.
+      OUT(4) << "if (!attr)\n";
+      OUT(6) << "return "
+             << formatv(
+                    attr.getConvertFromStorageCall(),
+                    formatv(
+                        attr.getDefaultValueTemplate(),
+                        "mlir::Builder(this->getInstruction()->getContext())"))
+             << ";\n";
+    }
+    OUT(4) << "return " << formatv(attr.getConvertFromStorageCall(), "attr")
            << ";\n  }\n";
   }
 }
@@ -359,25 +380,36 @@ void OpEmitter::emitVerifier() {
       continue;
 
     auto name = namedAttr.getName();
-    if (!attr.hasStorageType()) {
+    if (!attr.hasStorageType() && !attr.hasDefaultValue()) {
+      // TODO: Some verification can be done even without storage type.
       OUT(4) << "if (!this->getAttr(\"" << name
              << "\")) return emitOpError(\"requires attribute '" << name
              << "'\");\n";
       continue;
     }
 
-    OUT(4) << "if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
+    if (attr.hasDefaultValue()) {
+      // If the attribute has a default value, then only verify the predicate if
+      // set. This does effectively assume that the default value is valid.
+      // TODO: verify the debug value is valid (perhaps in debug mode only).
+      OUT(4) << "if (this->getAttr(\"" << name << "\")) {\n";
+    }
+
+    OUT(6) << "if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
            << attr.getStorageType() << ">()) return emitOpError(\"requires "
            << attr.getReturnType() << " attribute '" << name << "'\");\n";
 
     auto attrPred = attr.getPredicate();
     if (!attrPred.isNull()) {
-      OUT(4) << formatv("if (!({0})) return emitOpError(\"attribute '{1}' "
+      OUT(6) << formatv("if (!({0})) return emitOpError(\"attribute '{1}' "
                         "failed to satisfy constraint of {2}\");\n",
                         formatv(attrPred.getCondition(),
                                 formatv("this->getAttr(\"{0}\")", name)),
                         name, attr.getTableGenDefName());
     }
+
+    if (attr.hasDefaultValue())
+      OUT(4) << "}\n";
   }
 
   // TODO: Handle variadic.

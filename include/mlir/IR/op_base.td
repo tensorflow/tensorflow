@@ -248,8 +248,9 @@ class Attr<Pred condition = CPred<"true">> : AttrConstraint<condition> {
   // 'builder.getStringAttr("foo")'.
   code constBuilderCall = ?;
 
-  // TODO(jpienaar): Add predicate to verify the validity of Attr so
-  // that verification can be generated.
+  // Default value for attribute.
+  // Requires a constBuilderCall defined.
+  string defaultValue = ?;
 }
 
 // A generic attribute that must be constructed around a specific type.
