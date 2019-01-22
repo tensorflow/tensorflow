@@ -141,10 +141,11 @@ class TypeInfoResolver(transformer.Base):
     arg_name = str(qn)
     self.scope.setval(qn, arg_node)
     if (len(self.enclosing_entities) == 1 and
-        arg_name in self.entity_info.arg_types):
+        arg_name in self.transformer_ctx.entity_info.arg_types):
       # Forge a node to hold the type information, so that method calls on
       # it can resolve the type.
-      type_string, type_obj = self.entity_info.arg_types[arg_name]
+      type_string, type_obj = self.transformer_ctx.entity_info.arg_types[
+          arg_name]
       anno.setanno(arg_node, 'type', type_obj)
       anno.setanno(arg_node, 'type_fqn', tuple(type_string.split('.')))
 
