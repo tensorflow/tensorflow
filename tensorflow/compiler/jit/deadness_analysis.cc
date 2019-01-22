@@ -333,16 +333,19 @@ class PredicateFactory {
   }
 
   Predicate* MakeNotPredicate(Predicate* pred) {
-    SignatureForNot signature = pred;
-    auto it = interned_not_instances_.find(signature);
-    if (it == interned_not_instances_.end()) {
-      std::unique_ptr<Predicate> new_pred = Make<NotPredicate>(pred);
-      Predicate* new_pred_ptr = new_pred.get();
-      interned_not_instances_.emplace(signature, std::move(new_pred));
-      return new_pred_ptr;
-    } else {
-      return it->second.get();
+    auto it = make_not_predicate_cache_.find(pred);
+    if (it != make_not_predicate_cache_.end()) {
+      return it->second;
     }
+
+    Predicate* result = MakeNotPredicateImpl(pred);
+
+    bool insert_successful =
+        make_not_predicate_cache_.insert({pred, result}).second;
+    (void)insert_successful;
+    DCHECK(insert_successful);
+
+    return result;
   }
 
   Predicate* MakeAndRecurrencePredicate(Predicate* start, Predicate* step) {
@@ -378,7 +381,52 @@ class PredicateFactory {
   Predicate* MakeTrue() { return MakeAndPredicate({}); }
   Predicate* MakeFalse() { return MakeOrPredicate({}); }
 
+  ~PredicateFactory() {
+    DCHECK_EQ(stack_depth_, 0) << "Unnested IncrementStackDepth?";
+  }
+
  private:
+  Predicate* MakeNotPredicateImpl(Predicate* pred) {
+    IncrementStackDepth stack_frame(this);
+    if (!stack_frame.HasOverflowed()) {
+      if (Predicate* simplified = SimplifyUsingDeMorgan(pred)) {
+        return simplified;
+      }
+
+      // ~~A => A
+      if (auto* not_pred = dynamic_cast<NotPredicate*>(pred)) {
+        return not_pred->operand();
+      }
+    }
+
+    SignatureForNot signature = pred;
+    auto it = interned_not_instances_.find(signature);
+    if (it == interned_not_instances_.end()) {
+      std::unique_ptr<Predicate> new_pred = Make<NotPredicate>(pred);
+      Predicate* new_pred_ptr = new_pred.get();
+      interned_not_instances_.emplace(signature, std::move(new_pred));
+      return new_pred_ptr;
+    } else {
+      return it->second.get();
+    }
+  }
+
+  Predicate* SimplifyUsingDeMorgan(Predicate* pred) {
+    // ~(A & B & C & ...) => ~A | ~B | ~C | ~...
+    // ~(A | B | C | ...) -> ~A & ~B & ~C & ~...
+    Predicate::Kind kind = pred->kind();
+
+    if (kind == Predicate::Kind::kAnd || kind == Predicate::Kind::kOr) {
+      std::vector<Predicate*> new_operands;
+      absl::c_transform(pred->GetOperands(), std::back_inserter(new_operands),
+                        [&](Predicate* p) { return MakeNotPredicate(p); });
+      return kind == Predicate::Kind::kOr ? MakeAndPredicate(new_operands)
+                                          : MakeOrPredicate(new_operands);
+    }
+
+    return nullptr;
+  }
+
   template <typename PredicateT, typename... Args>
   std::unique_ptr<Predicate> Make(Args&&... args) {
     return std::unique_ptr<PredicateT>(
@@ -422,6 +470,36 @@ class PredicateFactory {
     }
   };
 
+  // Used to limit recursion to avoid blowing up the stack and cap compile time.
+  class IncrementStackDepth {
+   public:
+    explicit IncrementStackDepth(PredicateFactory* parent) : parent_(parent) {
+      parent_->stack_depth_++;
+    }
+
+    bool HasOverflowed() const {
+      const int kMaxStackDepth = 8;
+      return parent_->stack_depth_ >= kMaxStackDepth;
+    }
+
+    ~IncrementStackDepth() { parent_->stack_depth_--; }
+
+   private:
+    PredicateFactory* parent_;
+  };
+
+  // A cache for the MakeNotPredicate function.
+  //
+  // NB! This is *not* the same as `interned_not_instances_`.
+  // `interned_not_instances_` maps ensures pointer identity for `NotPredicate`
+  // instances, i.e., it ensures there at most one instance of Not(predicate)
+  // for any given predicate whereas `make_not_predicate_cache_` simply caches
+  // the result of the `MakeNotPredicate` function.  The values in
+  // `interned_not_instances_` are always instance of `NotPredicate` whereas the
+  // values in `make_not_predicate_cache_` may not be (for instance it will map
+  // Not(Not(A)) to A).
+  absl::flat_hash_map<Predicate*, Predicate*> make_not_predicate_cache_;
+
   absl::flat_hash_map<SignatureForAndOr, std::unique_ptr<Predicate>,
                       HashSignatureForAndOr>
       interned_and_or_instances_;
@@ -432,6 +510,7 @@ class PredicateFactory {
   absl::flat_hash_map<SignatureForSymbol, std::unique_ptr<Predicate>,
                       HashSignatureForSymbol>
       interned_symbol_instances_;
+  int stack_depth_ = 0;
 };
 
 Predicate* PredicateFactory::MakeInternedAndOr(
@@ -466,6 +545,13 @@ Predicate* PredicateFactory::MakeAndOrImpl(
     absl::Span<Predicate* const> operands, bool is_and) {
   Predicate::Kind pred_kind =
       is_and ? Predicate::Kind::kAnd : Predicate::Kind::kOr;
+
+  IncrementStackDepth stack_frame(this);
+  if (stack_frame.HasOverflowed()) {
+    return MakeInternedAndOr(
+        std::vector<Predicate*>(operands.begin(), operands.end()), pred_kind);
+  }
+
   Predicate::Kind other_pred_kind =
       is_and ? Predicate::Kind::kOr : Predicate::Kind::kAnd;
   absl::flat_hash_set<Predicate*> simplified_ops_set;
@@ -495,15 +581,30 @@ Predicate* PredicateFactory::MakeAndOrImpl(
   // Simplify "A&~A=>False" and "A|~A=>True".
   absl::flat_hash_set<Predicate*> negated_ops;
   for (Predicate* op : simplified_ops) {
-    if (op->kind() == Predicate::Kind::kNot) {
-      negated_ops.insert(dynamic_cast<NotPredicate&>(*op).operand());
-    }
-  }
-
-  for (Predicate* op : simplified_ops) {
     if (negated_ops.count(op)) {
+      // Simple case:
+      //
+      //   A & ~A & ... == False
+      //   A | ~A | ... == True
       return is_and ? MakeFalse() : MakeTrue();
     }
+
+    Predicate* negated_op = MakeNotPredicate(op);
+    if (negated_op->kind() == pred_kind) {
+      // Slightly more complicated case:
+      //
+      //   (~A | ~B | ~C) & A & B & C & ... ==
+      //   ~(A & B & C) & (A & B & C) & ... == False
+      //
+      //   (~A & ~B & ~C) | A | B | C | ... ==
+      //   ~(A | B | C) | (A | B | C) | ... == True
+      if (absl::c_all_of(negated_op->GetOperands(), [&](Predicate* p) {
+            return simplified_ops_set.contains(p);
+          })) {
+        return is_and ? MakeFalse() : MakeTrue();
+      }
+    }
+    negated_ops.insert(negated_op);
   }
 
   // If all ops contain the same subop, then factor it out thanks to the
