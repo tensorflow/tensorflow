@@ -73,8 +73,8 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // library into the underlying graph.
   Status AddSubgraph(GraphDef&& subgraph);
 
-  // Updates all fanouts (input ports fetching output tensors) from `from_node`
-  // to the `to_node`, including control dependencies.
+  // Updates all fanouts (input ports fetching output tensors) from
+  // `from_node_name` to the `to_node_name`, including control dependencies.
   //
   // Example: We have 3 nodes that use `bar` node output tensors as inputs:
   //   1. foo1(bar:0, bar:1, other:0)
@@ -85,7 +85,8 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   //   1. foo1(new_bar:0, new_bar:1, other:0)
   //   2. foo2(new_bar:1, other:1)
   //   3. foo3(other:2, ^new_bar)
-  Status UpdateFanouts(absl::string_view from_node, absl::string_view to_node);
+  Status UpdateFanouts(absl::string_view from_node_name,
+                       absl::string_view to_node_name);
 
   // Adds regular fanin `fanin` to node `node_name`. If the node or fanin do not
   // exist in the graph, nothing will be modified in the graph. Otherwise fanin
