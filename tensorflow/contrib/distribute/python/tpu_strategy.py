@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import functools
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assignment_lib
@@ -322,11 +321,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     """Make iterators for each of the TPU hosts."""
     return input_lib.DatasetIterator(dataset, self._input_workers,
                                      self._num_replicas_in_sync)
-
-  def _distribute_dataset(self, dataset_fn):
-    return input_lib.MultiWorkerDataset(
-        functools.partial(self._call_dataset_fn, dataset_fn),
-        self._input_workers)
 
   def _make_input_fn_iterator(
       self,
@@ -726,8 +720,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   def _global_batch_size(self):
     """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
 
-    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
-    batching.
+    `make_input_fn_iterator` assumes per-replica batching.
 
     Returns:
       Boolean.
