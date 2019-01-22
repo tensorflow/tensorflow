@@ -929,6 +929,10 @@ Status ForEachMutableSubshapeHelper(
   for (auto dim : Permute(permutation, shape.dimensions())) {
     new_shape.add_dimensions(dim);
   }
+  for (int64 i = 0; i < shape.rank(); i++) {
+    new_shape.set_dynamic_dimension(permutation[i],
+                                    shape.is_dynamic_dimension(i));
+  }
 
   // If `shape` has a layout, by contract we choose a new layout such that the
   // transpose defined by this permutation is a bitcast.
