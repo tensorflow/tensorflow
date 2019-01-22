@@ -67,12 +67,13 @@ py_library(
 # Tests
 cuda_py_test(
     name = "ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["ops_test.py"],
     additional_deps = [
         ":ops",
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 4,
     tags = [
         "oss_serial",
     ],
@@ -80,12 +81,13 @@ cuda_py_test(
 
 cuda_py_test(
     name = "blocks_test",
-    size = "large",
+    size = "medium",
     srcs = ["blocks_test.py"],
     additional_deps = [
         ":blocks",
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 4,
     tags = [
         "no_oss",  # b/123045964
         "optonly",
@@ -94,7 +96,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "revnet_test",
-    size = "large",
+    size = "medium",
     srcs = ["revnet_test.py"],
     additional_deps = [
         ":blocks_test",
@@ -102,6 +104,7 @@ cuda_py_test(
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 4,
     tags = [
         "no_pip",  # depends on blocks_test, which is not available in pip package
         "optonly",

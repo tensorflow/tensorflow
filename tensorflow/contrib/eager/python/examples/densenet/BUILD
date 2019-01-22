@@ -17,13 +17,14 @@ py_binary(
 
 cuda_py_test(
     name = "densenet_test",
-    size = "large",
+    size = "medium",
     srcs = ["densenet_test.py"],
     additional_deps = [
         ":densenet",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 4,
     tags = [
         "no_pip",
         "optonly",
@@ -33,13 +34,14 @@ cuda_py_test(
 
 cuda_py_test(
     name = "densenet_graph_test",
-    size = "large",
+    size = "medium",
     srcs = ["densenet_graph_test.py"],
     additional_deps = [
         ":densenet",
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 4,
     tags = [
         "no_pip",
         "noasan",
