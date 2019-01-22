@@ -67,9 +67,9 @@ struct MLIREmitter {
   /// registered, makes sure the Value is of the proper type.
   MLIREmitter &bind(Bindable e, Value *v);
   /// Constant values can be created on the spot and bound.
-  template <typename SSAConstantType, typename T>
-  MLIREmitter &bindConstant(Bindable e, T value) {
-    return bind(e, builder->create<SSAConstantType>(location, value));
+  template <typename SSAConstantType, typename... Args>
+  MLIREmitter &bindConstant(Bindable e, Args... args) {
+    return bind(e, builder->create<SSAConstantType>(location, args...));
   }
 
   /// Registers new bindings and type-checks. If a certain Expr type is
