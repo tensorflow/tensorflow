@@ -514,7 +514,7 @@ static void emitOpDefFile(const RecordKeeper &recordKeeper, raw_ostream &os) {
   os << "#undef ALL_OPS";
 }
 
-mlir::GenRegistration
+static mlir::GenRegistration
     genOpDefinitions("gen-op-definitions", "Generate op definitions",
                      [](const RecordKeeper &records, raw_ostream &os) {
                        emitOpDefinitions(records, os);

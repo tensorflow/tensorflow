@@ -165,3 +165,19 @@ bool tblgen::Operator::Operand::hasMatcher() const {
 tblgen::TypeConstraint tblgen::Operator::Operand::getTypeConstraint() const {
   return tblgen::TypeConstraint(*defInit);
 }
+
+bool tblgen::Operator::hasDescription() const {
+  return def.getValue("description") != nullptr;
+}
+
+StringRef tblgen::Operator::getDescription() const {
+  return def.getValueAsString("description");
+}
+
+bool tblgen::Operator::hasSummary() const {
+  return def.getValue("summary") != nullptr;
+}
+
+StringRef tblgen::Operator::getSummary() const {
+  return def.getValueAsString("summary");
+}

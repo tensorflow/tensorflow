@@ -105,6 +105,12 @@ public:
   StringRef getArgName(int index) const;
   int getNumArgs() const { return operands.size() + attributes.size(); }
 
+  // Query functions for the documentation of the operator.
+  bool hasDescription() const;
+  StringRef getDescription() const;
+  bool hasSummary() const;
+  StringRef getSummary() const;
+
 private:
   // Populates the operands and attributes.
   void populateOperandsAndAttributes();

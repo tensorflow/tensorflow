@@ -91,10 +91,10 @@ static void emitReferenceImplementations(const RecordKeeper &recordKeeper,
      << "}\n";
 }
 
-mlir::GenRegistration genRegister("gen-reference-implementations",
-                                  "Generate reference implemenations",
-                                  [](const RecordKeeper &records,
-                                     raw_ostream &os) {
-                                    emitReferenceImplementations(records, os);
-                                    return false;
-                                  });
+static mlir::GenRegistration
+    genRegister("gen-reference-implementations",
+                "Generate reference implemenations",
+                [](const RecordKeeper &records, raw_ostream &os) {
+                  emitReferenceImplementations(records, os);
+                  return false;
+                });
