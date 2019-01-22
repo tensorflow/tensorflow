@@ -441,12 +441,6 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   std::vector<int64> window_strides(attrs.num_spatial_dims);
   std::vector<int64> ones(attrs.num_spatial_dims, 1);
 
-  // The activations (inputs) form the LHS of the convolution.
-  // Activations have shape: [batch, in_rows, in_cols, ..., in_depth]
-  // For the gradient computation, we flip the roles of the batch and
-  // feature dimensions.
-  // Each spatial entry has size in_depth * batch
-
   // Swap n_dim and c_dim in the activations.
   dnums.set_input_batch_dimension(c_dim);
   dnums.set_input_feature_dimension(n_dim);
@@ -480,7 +474,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     // convolution, we get the right size for the filter.
     // The padded_in_rows should be such that when we convolve this with the
     // expanded_out_rows as a filter, we should get filter_rows back.
-    //
+
     const int64 padded_in_size =
         dims.spatial_dims[i].expanded_output_size +
         (dims.spatial_dims[i].filter_size - 1) * attrs.dilations[dim];
