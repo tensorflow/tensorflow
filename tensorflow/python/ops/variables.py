@@ -304,7 +304,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
   tf.cond(v, lambda: v.assign(False), my_false_fn)  # Note: this is broken.
   ```
 
-  Here replacing adding `use_resource=True` when constructing the variable will
+  Here, adding `use_resource=True` when constructing the variable will
   fix any nondeterminism issues:
 
   ```
@@ -1239,7 +1239,7 @@ class VariableV1(Variable):
   tf.cond(v, lambda: v.assign(False), my_false_fn)  # Note: this is broken.
   ```
 
-  Here replacing adding `use_resource=True` when constructing the variable will
+  Here, adding `use_resource=True` when constructing the variable will
   fix any nondeterminism issues:
   ```
   v = tf.Variable(True, use_resource=True)
