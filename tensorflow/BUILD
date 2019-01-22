@@ -385,6 +385,7 @@ package_group(
         "-//third_party/tensorflow/python/estimator",
         "//learning/deepmind/...",
         "//learning/meta_rank/...",
+        "//platforms/performance/autograppler/...",
         "//tensorflow/...",
         "//tensorflow_estimator/contrib/...",
         "//tensorflow_fold/llgtm/...",
