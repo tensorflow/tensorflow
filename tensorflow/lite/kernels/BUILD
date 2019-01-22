@@ -111,7 +111,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:round",
-        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
@@ -286,7 +285,6 @@ cc_library(
     srcs = ["register_ref.cc"],
     hdrs = ["register_ref.h"],
     deps = [
-        ":builtin_op_kernels",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",

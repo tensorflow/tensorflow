@@ -46,7 +46,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/kernels:op_macros",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -60,7 +59,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/kernels:op_macros",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -546,7 +544,6 @@ cc_library(
     }),
     deps = [
         ":types",
-        "//tensorflow/lite:string",
     ],
 )
 
