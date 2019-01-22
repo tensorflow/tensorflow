@@ -818,5 +818,44 @@ TEST(DeadnessAnalysisTest, RecvVsSwitchText) {
   EXPECT_EQ(predicate_map[logical_and_output_0], "(recv:0 & *recv:0)");
 }
 
+TEST(DeadnessAnalysisTest, DeMorgan) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output cond_0 = ops::Placeholder(root.WithOpName("cond_0"), DT_BOOL);
+  Output cond_1 = ops::Placeholder(root.WithOpName("cond_1"), DT_BOOL);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+
+  ops::Switch sw_0(root.WithOpName("switch_0"), value, cond_0);
+  ops::Switch sw_1(root.WithOpName("switch_1"), value, cond_1);
+
+  Output and_0_1 =
+      ops::Add(root.WithOpName("and_0_1"), sw_0.output_true, sw_1.output_true);
+
+  Output or_not0_not1 = ops::Merge(root.WithOpName("or_not0_not1"),
+                                   {sw_0.output_false, sw_1.output_false})
+                            .output;
+
+  // Predicate(should_always_be_dead) =
+  // (A & B) & (~A | ~B) = (A & B) & ~(A & B) = False
+  Output should_always_be_dead =
+      ops::Add(root.WithOpName("should_always_be_dead"), and_0_1, or_not0_not1);
+
+  // Predicate(should_always_be_dead) =
+  // (A & B) | (~A | ~B) = (A & B) | ~(A & B) = True
+  Output should_always_be_alive =
+      ops::Merge(root.WithOpName("should_always_be_alive"),
+                 {and_0_1, or_not0_not1})
+          .output;
+
+  std::unique_ptr<DeadnessAnalysis> result;
+  TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(should_always_be_dead)], "#false");
+  EXPECT_EQ(predicate_map[ControlOutputFor(should_always_be_alive)], "#true");
+}
+
 }  // namespace
 }  // namespace tensorflow
