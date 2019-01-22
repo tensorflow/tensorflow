@@ -29,7 +29,6 @@ cc_library(
         "simple_tensor_allocator.h",
     ],
     deps = [
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
