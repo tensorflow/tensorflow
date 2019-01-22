@@ -197,11 +197,19 @@ class XlaBuilder {
   // status. Note that all ops that have been enqueued will be moved to the
   // computation being returned. The root of the computation will be the last
   // added operation.
-  StatusOr<XlaComputation> Build();
+  //
+  // `remove_dynamic_dimensions` tells the builder whether to remove the
+  // dyanmic dimensions information in all ops.
+  //
+  // TODO(b/121223198): Delete `remove_dynamic_dimensions` and keeps the
+  // dynamic dimensions information when XLA backend can handle dynamic
+  // dimensions.
+  StatusOr<XlaComputation> Build(bool remove_dynamic_dimensions = true);
 
   // Overload of Build which specifies a particular root instruction for the
   // computation.
-  StatusOr<XlaComputation> Build(XlaOp root);
+  StatusOr<XlaComputation> Build(XlaOp root,
+                                 bool remove_dynamic_dimensions = true);
 
   // Builds the computation with the requested operations, or notes an error in
   // the parent XlaBuilder and returns an empty computation if building failed.
@@ -293,7 +301,7 @@ class XlaBuilder {
   };
 
   // Build helper which takes the id of the root operation..
-  StatusOr<XlaComputation> Build(int64 root_id);
+  StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
 
   // Description for the methods below can be found in the corresponding public
   // functions section in this file.
