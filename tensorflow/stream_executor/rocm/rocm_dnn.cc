@@ -156,6 +156,7 @@ static port::ThreadPool* GetROCmThreadpool() {
   __macro(miopenConvolutionBackwardBias)                   \
   __macro(miopenConvolutionForwardGetWorkSpaceSize)        \
   __macro(miopenInitConvolutionDescriptor)                 \
+  __macro(miopenSetConvolutionGroupCount)                  \
   __macro(miopenSet4dTensorDescriptor)                     \
   __macro(miopenGetTensorDescriptor)                       \
   __macro(miopenSetTensorDescriptor)                       \
@@ -610,13 +611,21 @@ class ScopedConvolutionDescriptor {
     status = wrap::miopenInitConvolutionDescriptor(
         parent_, handle_, miopenConvolution, padding[0], padding[1],
         strides[0], strides[1], upscale[0], upscale[1]);
-
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "could not set miopen convolution descriptor: "
                  << ToString(status);
     }
-  }
 
+    VLOG(kVlogLevel) << "Requesting grouped convolution: "
+                     << convolution_descriptor.group_count();
+    status = wrap::miopenSetConvolutionGroupCount(
+        parent_, handle_, convolution_descriptor.group_count());
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "could not set miopen convolution group count: "
+                 << ToString(status);
+    }
+
+  }
   ~ScopedConvolutionDescriptor() {
     miopenStatus_t status =
         wrap::miopenDestroyConvolutionDescriptor(parent_, handle_);
