@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
@@ -222,29 +223,40 @@ class NotPredicate : public Predicate {
   std::array<Predicate*, 1> operands_;
 };
 
-// Represents an infinite list of predicates.
+// Represents the liveness of an induction variable.  For users inside the loop
+// this represents the "current" liveness of the induction variable.  For users
+// outside the loop it represents the "last" liveness of the induction variable.
 //
-// An AndRecurrence with start = S and step = X is printed as {S,&,X} and stands
-// for the list of predicates:
+// More concretely, an and recurrence {S,&,X}<loop> represents the liveness of V
+// in the following graph:
 //
-//   S, S & GenSym(X,1), S & GenSym(X,1) & GenSym(X,2), ...
+//   V = Merge(S', V_NextIt)
+//   V = Op(V, X')
+//   V_NextIt = NextIteration(V)
 //
-// where GenSym(<expression>, <id>) renames every SymbolPredicate in
-// <expression> by appending <id> to it, in effect creating a "fresh" symbol.
-// This means {P,&,Q} is not equal to "P on the first iteration; P&Q on
-// subsequent iterations".
+// where Predicate(S') = S and Predicate(X') = X.
+//
+// `X` may contain symbolic predicates and the operations corresponding to these
+// symbolic predicates are either in frame `loop` or outside it.  The symbols
+// that are inside frame `loop` are loop variant (i.e. can have different
+// liveness in each loop iteration) and the symbols that are outside frame
+// `loop` are loop invariant (i.e. have the same liveness across all
+// iterations).
 class AndRecurrencePredicate : public Predicate {
  public:
-  explicit AndRecurrencePredicate(Predicate* start, Predicate* step)
-      : Predicate(HashPredicateSequence(Kind::kAndRecurrence, {start, step})),
-        operands_({start, step}) {}
+  explicit AndRecurrencePredicate(Predicate* start, Predicate* step,
+                                  string frame)
+      : Predicate(Hash(start, step, frame)),
+        operands_({start, step}),
+        frame_(std::move(frame)) {}
 
   Predicate* start() const { return operands_[0]; }
   Predicate* step() const { return operands_[1]; }
+  absl::string_view frame() const { return frame_; }
 
   string ToString() const override {
     return absl::StrCat("{", start()->ToString(), ",&,", step()->ToString(),
-                        "}");
+                        "}<", frame(), ">");
   }
 
   Kind kind() const override { return Kind::kAndRecurrence; }
@@ -255,6 +267,13 @@ class AndRecurrencePredicate : public Predicate {
 
  private:
   std::array<Predicate*, 2> operands_;
+  string frame_;
+
+  static int64 Hash(Predicate* start, Predicate* step, const string& frame) {
+    return Hash64Combine(
+        HashPredicateSequence(Kind::kAndRecurrence, {start, step}),
+        Hash64(frame));
+  }
 };
 
 // Represents an uninterpreted symbol in a logical predicate.
@@ -348,18 +367,22 @@ class PredicateFactory {
     return result;
   }
 
-  Predicate* MakeAndRecurrencePredicate(Predicate* start, Predicate* step) {
-    auto it = interned_and_rec_instances_.find({start, step});
+  Predicate* MakeAndRecurrencePredicate(Predicate* start, Predicate* step,
+                                        string frame) {
+    SignatureForAndRec signature(start, step, std::move(frame));
+    auto it = interned_and_rec_instances_.find(signature);
     if (it != interned_and_rec_instances_.end()) {
       return it->second.get();
     }
 
-    std::unique_ptr<Predicate> new_pred =
-        Make<AndRecurrencePredicate>(start, step);
+    std::unique_ptr<Predicate> new_pred = Make<AndRecurrencePredicate>(
+        std::get<0>(signature), std::get<1>(signature), std::get<2>(signature));
     Predicate* new_pred_ptr = new_pred.get();
-    CHECK(interned_and_rec_instances_
-              .emplace(SignatureForAndRec(start, step), std::move(new_pred))
-              .second);
+    bool inserted =
+        interned_and_rec_instances_.emplace(signature, std::move(new_pred))
+            .second;
+    (void)inserted;
+    DCHECK(inserted);
     return new_pred_ptr;
   }
 
@@ -450,7 +473,7 @@ class PredicateFactory {
   using SignatureForAndOr =
       std::pair<Predicate::Kind, absl::Span<Predicate* const>>;
   using SignatureForNot = Predicate*;
-  using SignatureForAndRec = std::pair<Predicate*, Predicate*>;
+  using SignatureForAndRec = std::tuple<Predicate*, Predicate*, string>;
   using SignatureForSymbol = std::pair<SafeTensorId, bool>;
 
   struct HashSignatureForAndOr {
@@ -720,6 +743,7 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   const Graph& graph_;
   absl::flat_hash_map<TensorId, Predicate*, TensorId::Hasher> predicate_map_;
   PredicateFactory predicate_factory_;
+  std::vector<ControlFlowInfo> control_flow_info_;
   bool vlog_;
 };
 
@@ -862,6 +886,28 @@ Predicate* DeduceStepPredicate(PredicateFactory* predicate_factory,
 
   return found_sym ? predicate_factory->MakeAndPredicate(and_ops) : nullptr;
 }
+
+Status GetFullFrameName(const Node* n,
+                        absl::Span<const ControlFlowInfo> cfi_infos,
+                        string* full_frame_name) {
+  int depth = 0;
+  for (const ControlFlowInfo* cfi_iter = &cfi_infos[n->id()]; !n->IsSource();
+       n = cfi_iter->parent_frame, cfi_iter = &cfi_infos[n->id()]) {
+    if (depth > 0) {
+      absl::StrAppend(full_frame_name, ";");
+    }
+
+    absl::StrAppend(full_frame_name, cfi_iter->frame_name);
+
+    if (depth++ > 5000) {
+      return errors::Internal(
+          "Frame of depth > 5000:  Probably malformed graph or a bug in "
+          "BuildControlFlowInfo");
+    }
+  }
+
+  return Status::OK();
+}
 }  // namespace
 
 Status DeadnessAnalysisImpl::HandleMerge(Node* n,
@@ -926,8 +972,11 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
 
         Predicate* start =
             predicate_factory_.MakeOrPredicate(non_recurrent_inputs);
-        Predicate* and_rec =
-            predicate_factory_.MakeAndRecurrencePredicate(start, step);
+        string frame_name;
+        TF_RETURN_IF_ERROR(
+            GetFullFrameName(n, control_flow_info_, &frame_name));
+        Predicate* and_rec = predicate_factory_.MakeAndRecurrencePredicate(
+            start, step, std::move(frame_name));
         SetPredicate(n, {0, 1, Graph::kControlSlot}, and_rec, should_revisit);
         return Status::OK();
       }
@@ -993,6 +1042,25 @@ Status DeadnessAnalysisImpl::Populate() {
 
 Status DeadnessAnalysisImpl::PopulateWithReversePostOrder(
     absl::Span<Node* const> rpo) {
+  std::vector<string> unreachable_nodes;
+  // Compute the loop structure of the graph.
+  std::vector<ControlFlowInfo> control_flow_info;
+  TF_RETURN_IF_ERROR(
+      BuildControlFlowInfo(&graph_, &control_flow_info_, &unreachable_nodes));
+
+  // Do some opportunistic error checking:
+  if (!unreachable_nodes.empty()) {
+    if (unreachable_nodes.size() > 5) {
+      unreachable_nodes.erase(unreachable_nodes.begin() + 5,
+                              unreachable_nodes.end());
+    }
+
+    return errors::InvalidArgument(
+        "Found unreachable nodes, most likely source and sink nodes not "
+        "connected: ",
+        absl::StrJoin(unreachable_nodes, ", "));
+  }
+
   // This an abstract interpretation over the deadness propagation semantics of
   // the graph executor.
   //
