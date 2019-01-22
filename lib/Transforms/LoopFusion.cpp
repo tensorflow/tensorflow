@@ -97,6 +97,13 @@ public:
   }
 };
 
+// TODO(b/117228571) Replace when this is modeled through side-effects/op traits
+static bool isMemRefDereferencingOp(const OperationInst &op) {
+  if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
+      op.isa<DmaWaitOp>())
+    return true;
+  return false;
+}
 // MemRefDependenceGraph is a graph data structure where graph nodes are
 // top-level instructions in a Function which contain load/store ops, and edges
 // are memref dependences between the nodes.
@@ -194,6 +201,27 @@ public:
 
   bool hasOutEdges(unsigned id) {
     return outEdges.count(id) > 0 && !outEdges[id].empty();
+  }
+
+  // Returns true if node 'id' writes to any memref which escapes (or is an
+  // argument to) the function/block. Returns false otherwise.
+  bool writesToLiveInOrEscapingMemrefs(unsigned id) {
+    Node *node = getNode(id);
+    for (auto *storeOpInst : node->stores) {
+      auto *memref = storeOpInst->cast<StoreOp>()->getMemRef();
+      auto *inst = memref->getDefiningInst();
+      auto *opInst = dyn_cast_or_null<OperationInst>(inst);
+      // Return false if 'memref' is a function argument.
+      if (opInst == nullptr)
+        return true;
+      // Return false if any use of 'memref' escapes the function.
+      for (auto &use : memref->getUses()) {
+        auto *user = dyn_cast<OperationInst>(use.getOwner());
+        if (!user || !isMemRefDereferencingOp(*user))
+          return true;
+      }
+    }
+    return false;
   }
 
   // Returns true iff there is an edge from node 'srcId' to node 'dstId' for
@@ -722,8 +750,10 @@ static Value *createPrivateMemRef(ForInst *forInst,
                         ? AffineMap::Null()
                         : b.getAffineMap(rank, 0, remapExprs, {});
   // Replace all users of 'oldMemRef' with 'newMemRef'.
-  assert(replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap, {},
-                                  &*forInst->getBody()->begin()));
+  bool ret = replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap, {},
+                                      &*forInst->getBody()->begin());
+  assert(ret);
+  (void)ret;
   (void)indexRemap;
   return newMemRef;
 }
@@ -1034,8 +1064,11 @@ public:
             mdg->clearNodeLoadAndStores(dstNode->id);
             mdg->addToNode(dstId, dstLoopCollector.loadOpInsts,
                            dstLoopCollector.storeOpInsts);
-            // Remove old src loop nest if it no longer has users.
-            if (!mdg->hasOutEdges(srcNode->id)) {
+            // Remove old src loop nest if it no longer has outgoing dependence
+            // edges, and it does not write to a memref which escapes the
+            // function.
+            if (!mdg->hasOutEdges(srcNode->id) &&
+                !mdg->writesToLiveInOrEscapingMemrefs(srcNode->id)) {
               mdg->removeNode(srcNode->id);
               cast<ForInst>(srcNode->inst)->erase();
             }
@@ -1048,8 +1081,10 @@ public:
       if (pair.second > 0)
         continue;
       auto *memref = pair.first;
+      // Skip if there exist other uses (return instruction or function calls).
+      if (!memref->use_empty())
+        continue;
       // Use list expected to match the dep graph info.
-      assert(memref->use_empty());
       auto *inst = memref->getDefiningInst();
       auto *opInst = dyn_cast_or_null<OperationInst>(inst);
       if (opInst && opInst->isa<AllocOp>())

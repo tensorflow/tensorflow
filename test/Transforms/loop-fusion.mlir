@@ -1153,3 +1153,61 @@ func @should_fuse_with_private_memrefs_with_diff_shapes() {
   // CHECK-NEXT: return
   return
 }
+
+// -----
+
+// CHECK: #map0 = (d0) -> (d0)
+
+// CHECK-LABEL: func @fusion_should_not_remove_memref_arg(%arg0: memref<10xf32>) {
+func @fusion_should_not_remove_memref_arg(%arg0: memref<10xf32>) {
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %arg0[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %arg0[%i1] : memref<10xf32>
+  }
+  // This tests that the loop nest '%i0' should not be removed after fusion
+  // because it writes to memref argument '%arg0'.
+  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK-NEXT:    store %cst, %arg0[%i0] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:    %1 = affine_apply #map0(%i1)
+  // CHECK-NEXT:    store %cst, %0[%1] : memref<10xf32>
+  // CHECK-NEXT:    %2 = load %0[%i1] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
+  return
+}
+
+// -----
+
+// CHECK: #map0 = (d0) -> (d0)
+
+// CHECK-LABEL: func @fusion_should_not_remove_escaping_memref()
+func @fusion_should_not_remove_escaping_memref() -> memref<10xf32> {
+  %cf7 = constant 7.0 : f32
+  %m = alloc() : memref<10xf32>
+  for %i0 = 0 to 10 {
+    store %cf7, %m[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %m[%i1] : memref<10xf32>
+  }
+  // This tests that the loop nest '%i0' should not be removed after fusion
+  // because it writes to memref '%m' which is returned by the function. 
+  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  %1 = alloc() : memref<10xf32>
+  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:    %2 = affine_apply #map0(%i1)
+  // CHECK-NEXT:    store %cst, %1[%2] : memref<10xf32>
+  // CHECK-NEXT:    %3 = load %1[%i1] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return %0 : memref<10xf32>
+  return %m : memref<10xf32>
+}
