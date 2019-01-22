@@ -33,6 +33,23 @@ class AutoGraphParseError(SyntaxError):
   pass
 
 
+# TODO(znado): Use namedtuple.
+class Context(object):
+  """Contains information about a source code transformation.
+
+  This object is mutable, and is updated during conversion. Not thread safe.
+
+  Attributes:
+    entity_info: EntityInfo, immutable.
+    current_origin: origin_info.OriginInfo, holds the OriginInfo of the last
+      AST node to be processed successfully. Useful for error handling.
+  """
+
+  def __init__(self, entity_info):
+    self.entity_info = entity_info
+    self.current_origin = None
+
+
 # TODO(mdan): Use namedtuple.
 class EntityInfo(object):
   """Contains information about a Python entity.
@@ -208,11 +225,11 @@ class Base(gast.NodeTransformer):
     Args:
       entity_info: An EntityInfo object.
     """
-    self._current_origin = None
     self._lineno = 0
     self._col_offset = 0
-    # TODO(znado): remove this from the constructor of all Transformers.
-    self.entity_info = entity_info
+    # TODO(znado): make the constructor take a Context instead of an EntityInfo.
+    # TODO(mdan): Rename to self.ctx.
+    self.transformer_ctx = Context(entity_info)
     self._enclosing_entities = []
 
     # A stack that allows keeping mutable, scope-local state where scopes may be
@@ -446,8 +463,8 @@ class Base(gast.NodeTransformer):
     local_scope_size_at_entry = len(self._local_scope_state)
     processing_expr_node = False
 
+    parent_origin = self.transformer_ctx.current_origin
     try:
-      parent_origin = self._current_origin
       if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
         did_enter_function = True
       elif isinstance(node, gast.Expr):
@@ -457,14 +474,15 @@ class Base(gast.NodeTransformer):
         self._enclosing_entities.append(node)
 
       if anno.hasanno(node, anno.Basic.ORIGIN):
-        self._current_origin = anno.getanno(node, anno.Basic.ORIGIN)
+        self.transformer_ctx.current_origin = anno.getanno(node,
+                                                           anno.Basic.ORIGIN)
 
       if processing_expr_node:
         entry_expr_value = node.value
 
       if not anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
         result = super(Base, self).visit(node)
-      self._current_origin = parent_origin
+      self.transformer_ctx.current_origin = parent_origin
 
       # Adjust for consistency: replacing the value of an Expr with
       # an Assign node removes the need for the Expr node.
@@ -491,12 +509,13 @@ class Base(gast.NodeTransformer):
       return result
 
     except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-      if not self._current_origin:
+      if not self.transformer_ctx.current_origin:
         raise e
-      original_file_path = self._current_origin.loc.filename
-      original_line_number = self._current_origin.loc.lineno
-      original_col_offset = self._current_origin.loc.col_offset
-      original_source_line = self._current_origin.source_code_line
+      original_file_path = self.transformer_ctx.current_origin.loc.filename
+      original_line_number = self.transformer_ctx.current_origin.loc.lineno
+      original_col_offset = self.transformer_ctx.current_origin.loc.col_offset
+      original_source_line = (
+          self.transformer_ctx.current_origin.source_code_line)
       msg = '%s: %s.' % (e.__class__.__name__, str(e))
 
       # TODO(mdan): Avoid the printing of the original exception.
@@ -507,5 +526,3 @@ class Base(gast.NodeTransformer):
           AutoGraphParseError(msg, (original_file_path, original_line_number,
                                     original_col_offset, original_source_line)),
           sys.exc_info()[2])
-    finally:
-      self._current_origin = parent_origin
