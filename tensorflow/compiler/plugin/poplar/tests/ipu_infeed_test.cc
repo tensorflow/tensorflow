@@ -142,6 +142,16 @@ TEST_F(InfeedTest, SingleInfeedInWhile) {
   LiteralTestUtil::ExpectR0Near<float>(45.0f, result_literal, ErrorSpec{1e-7});
 }
 
+TEST_F(InfeedTest, SingleInfeedTuple) {
+  TestInfeedRoundTrip(LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f}),
+       LiteralUtil::CreateR1<float>({4.0f, 5.0f, 6.0f})}));
+}
+
+TEST_F(InfeedTest, SingleInfeedEmptyTuple) {
+  TestInfeedRoundTrip(LiteralUtil::MakeTuple({}));
+}
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla

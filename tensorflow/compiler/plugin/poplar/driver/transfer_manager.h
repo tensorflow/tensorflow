@@ -32,8 +32,12 @@ class PoplarTransferManager : public GenericTransferManager {
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
 
+ private:
   Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
                                 const void* source);
+
+  StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
+      se::StreamExecutor* executor, int64 size, const void* source);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarTransferManager);

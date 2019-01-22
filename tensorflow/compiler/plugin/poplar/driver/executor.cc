@@ -117,6 +117,11 @@ std::string GetOutputCopyHandle(int64 output_index, int64 flat_tensor_index) {
                                      flat_tensor_index);
 }
 
+std::string GetInfeedCopyHandle(const std::string& name, int64 shape_index) {
+  return tensorflow::strings::Printf("infeed_%s.%lld", name.c_str(),
+                                     shape_index);
+}
+
 se::host::HostStream* AsPoplarStream(se::Stream* stream) {
   DCHECK(stream != nullptr);
   return dynamic_cast<se::host::HostStream*>(stream->implementation());
@@ -187,22 +192,26 @@ void PoplarExecutor::Deallocate(se::DeviceMemoryBase* mem) {
 }
 
 void PoplarExecutor::ConnectInfeedToStreamCallback(
-    const std::vector<const HloInstruction*>& infeed_instructions) {
+    const InfeedMap& infeed_map) {
   // Buffer is already placed into xfeed manager by client->TransferToInfeed
-  for (int i = 0; i < infeed_instructions.size(); ++i) {
-    const auto& instr = infeed_instructions[i];
-    current_engine_->connectStreamToCallback(
-        infeed_instructions[i]->name(), [&](void* dest) {
-          auto* xfeed_manager = GetXfeedManager(ordinal_);
-          auto* xfeed_buffer = xfeed_manager->infeed()->BlockingDequeueBuffer();
+  for (const auto& infeed : infeed_map) {
+    const auto& instr = infeed.first;
+    const auto& shapes = infeed.second;
+    for (int j = 0; j < shapes.size(); ++j) {
+      current_engine_->connectStreamToCallback(
+          GetInfeedCopyHandle(instr->name(), j), [&](void* dest) {
+            auto* xfeed_manager = GetXfeedManager(ordinal_);
+            auto* xfeed_buffer =
+                xfeed_manager->infeed()->BlockingDequeueBuffer();
 
-          const void* src = xfeed_buffer->data();
-          auto N = xfeed_buffer->length();
-          std::memcpy(dest, src, N);
+            const void* src = xfeed_buffer->data();
+            auto N = xfeed_buffer->length();
+            std::memcpy(dest, src, N);
 
-          xfeed_manager->infeed()->ReleaseCurrentBuffer(
-              xfeed_buffer->length(), xfeed_buffer->data(), Shape{});
-        });
+            xfeed_manager->infeed()->ReleaseCurrentBuffer(
+                xfeed_buffer->length(), xfeed_buffer->data(), Shape{});
+          });
+    }
   }
 }
 

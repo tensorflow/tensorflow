@@ -175,6 +175,21 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "infeed_outfeed_test",
+    size = "medium",
+    srcs = ["python/tests/infeed_outfeed_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
 
 test_suite(
     name = "all_tests",
@@ -186,7 +201,7 @@ test_suite(
         "while_loop_test",
         "sort_op_test",
         "multi_ipu_test",
-
+        "infeed_outfeed_test",
     ],
 )
 

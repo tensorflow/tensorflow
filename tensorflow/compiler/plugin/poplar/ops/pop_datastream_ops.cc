@@ -54,47 +54,47 @@ is running on a IPU device, and >= 0 when the Op is running on the CPU
 device.
 )doc");
 
-// REGISTER_OP("PopDatastreamInfeedEnqueueTuple")
-//     .Input("inputs: dtypes")
-//     .Attr("dtypes: list(type)")
-//     .Attr("shapes: list(shape)")
-//     .Attr("device_ordinal: int = -1")
-//     .SetShapeFn(shape_inference::NoOutputs)
-//     .SetIsStateful()
-//     .Doc(R"doc(
-// An op which feeds multiple Tensor values into the computation as an XLA
-// tuple.
+REGISTER_OP("PopDatastreamInfeedEnqueueTuple")
+    .Input("inputs: dtypes")
+    .Attr("dtypes: list(type)")
+    .Attr("shapes: list(shape)")
+    .Attr("device_ordinal: int = 0")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+An op which feeds multiple Tensor values into the computation as an XLA
+tuple.
 
-// inputs: A list of tensors that will be provided using the infeed mechanism.
-// dtypes: The element types of each element in `inputs`.
-// shapes: The shapes of each tensor in `inputs`.
-// device_ordinal: The IPU device to use. This should be -1 when the Op
-// is running on a IPU device, and >= 0 when the Op is running on the CPU
-// device.
-// )doc");
+inputs: A list of tensors that will be provided using the infeed mechanism.
+dtypes: The element types of each element in `inputs`.
+shapes: The shapes of each tensor in `inputs`.
+device_ordinal: The IPU device to use. This should be -1 when the Op
+is running on a IPU device, and >= 0 when the Op is running on the CPU
+device.
+)doc");
 
-// REGISTER_OP("PopDatastreamInfeedDequeueTuple")
-//     .Output("outputs: dtypes")
-//     .Attr("dtypes: list(type)")
-//     .Attr("shapes: list(shape)")
-//     .SetIsStateful()
-//     .SetShapeFn([](InferenceContext* c) {
-//       std::vector<PartialTensorShape> shapes;
-//       TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
-//       for (int i = 0; i < shapes.size(); ++i) {
-//         ShapeHandle out;
-//         TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i],
-//         &out)); c->set_output(i, out);
-//       }
-//       return Status::OK();
-//     })
-//     .Doc(R"doc(
-// A placeholder op for multiple values that will be fed into the computation
-// simultaneously as an XLA tuple.
+REGISTER_OP("PopDatastreamInfeedDequeueTuple")
+    .Output("outputs: dtypes")
+    .Attr("dtypes: list(type)")
+    .Attr("shapes: list(shape)")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      std::vector<PartialTensorShape> shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+      for (int i = 0; i < shapes.size(); ++i) {
+        ShapeHandle out;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i], &out));
+        c->set_output(i, out);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+A placeholder op for multiple values that will be fed into the computation
+simultaneously as an XLA tuple.
 
-// outputs: A list of tensors that will be provided using the infeed mechanism.
-// dtypes: The element types of each element in `outputs`.
-// shapes: The shapes of each tensor in `outputs`.
-// )doc");
+outputs: A list of tensors that will be provided using the infeed mechanism.
+dtypes: The element types of each element in `outputs`.
+shapes: The shapes of each tensor in `outputs`.
+)doc");
 
 }  // namespace tensorflow
