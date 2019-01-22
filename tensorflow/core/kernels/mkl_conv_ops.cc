@@ -21,13 +21,13 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/mkl_conv_ops.h"
 #include "tensorflow/core/kernels/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"

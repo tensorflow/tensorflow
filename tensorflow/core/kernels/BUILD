@@ -649,13 +649,10 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "bounds_check",
-    hdrs = ["bounds_check.h"],
+    actual = "//tensorflow/core:framework_bounds_check",
     visibility = [":friends"],
-    deps = [
-        "//tensorflow/core:framework_bounds_check",
-    ],
 )
 
 # Private support libraries ---------------------------------------------------
@@ -5439,7 +5436,6 @@ filegroup(
     srcs = [
         "avgpooling_op.h",
         "batch_util.h",
-        "bounds_check.h",
         "cwise_ops.h",
         "cwise_ops_common.h",
         "cwise_ops_gradients.h",
@@ -5480,7 +5476,6 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
-        "bounds_check.h",
         "cast_op.cc",
         "cast_op.h",
         "cast_op_impl.h",
