@@ -6,94 +6,86 @@
 * TensorFlow GPU binaries are now built against CUDA 10.
 * Moved NCCL to core.
 
-## Breaking changes
+## Behavioral changes
 
-* BREAKING: Make the `gain` argument of convolutional orthogonal initializers (`convolutional_delta_orthogonal`, `convolutional_orthogonal_1D`, `convolutional_orthogonal_2D`, `convolutional_orthogonal_3D`) have a consistent behavior with the `tf.initializers.orthogonal` initializer, i.e. scale the output l2-norm by `gain` and NOT by `sqrt(gain)`.
-* Change the default recurrent activation function for LSTM from 'hard_sigmoid' to 'sigmoid' in 2.0. Historically recurrent activation is 'hard_sigmoid' since it is fast than 'sigmoid'. With new unified backend between CPU and GPU mode, since the CuDNN kernel is using sigmoid, we change the default for CPU mode to sigmoid as well. With that, the default LSTM will be compatible with both CPU and GPU kernel. This will enable user with GPU to use CuDNN kernel by default and get a 10x performance boost in training. Note that this is checkpoint breaking change. If user want to use their 1.x pre-trained checkpoint, please construct the layer with LSTM(recurrent_activation='hard_sigmoid') to fallback to 1.x behavior.
 * Disallow conversion of python floating types to uint32/64 (matching behavior of other integer types) in `tf.constant`.
-
+* Make the `gain` argument of convolutional orthogonal initializers (`convolutional_delta_orthogonal`, `convolutional_orthogonal_1D`, `convolutional_orthogonal_2D`, `convolutional_orthogonal_3D`) have consistent behavior with the `tf.initializers.orthogonal` initializer, i.e. scale the output l2-norm by `gain` and NOT by `sqrt(gain)`. (Note that these functions are currently in `tf.contrib` which is not guaranteed backward compatible).
 
 ## Bug Fixes and Other Changes
 
-* Toolchains
-  * Upgraded CUDA dependency to 10.0
-  * To build with Android NDK r14b, add "#include <linux/compiler.h>" to android-ndk-r14b/platforms/android-14/arch-*/usr/include/linux/futex.h
-  * Removed :android_tensorflow_lib_selective_registration* targets, use :android_tensorflow_lib_lite* targets instead.
-* Python API
-  * `LinearOperator.matmul` now returns a new `LinearOperator`.
-* TF 2.0 Development
-  * Add a command line tool to convert to TF2.0, tf_upgrade_v2
-  * Merge tf.spectral into tf.signal for TensorFlow 2.0.
-* Keras
-  * Add to keras functionality analogous to tf.register_tensor_conversion_function.
-  * Subclassed Keras models can now be saved through tf.contrib.saved_model.save_keras_model.
-* New ops and improved op functionality
-  * Added a Nearest Neighbor Resize op.
-  * tf.linalg.matvec added as convenience function.
-  * SpaceToDepth supports uint8 data type.
-  * tf.einsum() raises ValueError for unsupported equations like "ii->"
-  * Added op for LU decomposition.
-  * Added DCT-I and IDCT-I in tf.signal.dct and tf.signal.idct.
-  * Adds unicode_encode, unicode_decode, unicode_decode_with_offsets, unicode_split, unicode_split_with_offset, and unicode_transcode ops. Amongst other things, this Op adds the ability to encode, decode, and transcode a variety of input text encoding formats into the main Unicode encodings (UTF-8, UTF-16-BE, UTF-32-BE)
-  * Support multi-label quantile regression in estimator.
-  * Adding quantile loss to gradient boosted trees in estimator.
-  * Broadcasting support for Ragged Tensors.
-  * We now use "div" as the default partition_strategy in tf.nn.safe_embedding_lookup_sparse, tf.nn.sampled_softmax and tf.nn.nce_loss.
-  * Add "unit" attribute to the substr op, which allows obtaining the substring of a string containing unicode characters.
-  * Add an `ignore_unknown` argument to `parse_values` which suppresses ValueError for unknown hyperparameter types. Such hyperparameter are ignored.
-* XLA
-  * Move RoundToEven function to xla/client/lib/math.h.
-  * A new environment variable TF_XLA_DEBUG_OPTIONS_PASSTHROUGH set to "1" or "true" allows the debug options passed within an XRTCompile op to be passed directly to the XLA compilation backend. If such variable is not set (service side), only a restricted set will be passed through.
-  * XLA HLO graphs can now be rendered as SVG/HTML.
-
-* TensorFlow Lite
-  * Add experimental Java API for injecting TFLite delegates
-  * Adds support for strings in TFLite Java API
-* tf.data:
-  * NUMA-aware MapAndBatch dataset.
-  * Parallel map and filter fusion.
-  * Deprecated `tf.data.Dataset.make_one_shot_iterator()` in V1, removed it from V2, and added `tf.compat.v1.data.make_one_shot_iterator()`.
-  * Deprecated `tf.data.Dataset.make_initializable_iterator()` in V1, removed it from V2, and added `tf.compat.v1.data.make_initializable_iterator()`.
-  * Enable nested dataset support in core `tf.data` transformations.
-  * Adds `tf.data.experimental.StatsOptions()`, to configure options to collect statistics from `tf.data.Dataset` pipeline using `StatsAggregator`. Adds option "experimental_stats" to `tf.data.Options` which takes `tf.data.experimental.StatsOptions` object. Deprecates `tf.data.experimental.set_stats_agregator`.
-  * For `tf.data.Dataset` implementers: Added `tf.data.Dataset._element_structure` property to replace `Dataset.output_{types,shapes,classes}`.
+* Documentation
+  * Update the doc with the details about the rounding mode used in quantize_and_dequantize_v2.
+  * Clarify that tensorflow::port::InitMain() _should_ be called before using the TensorFlow library.  Programs failing to do this are not portable to all platforms.
 * Deprecations and Symbol renames.
    * Removing deprecations for the following endpoints: `tf.acos`, `tf.acosh`, `tf.add`, `tf.as_string`, `tf.asin`, `tf.asinh`, `tf.atan, `tf.atan2`, `tf.atanh`, `tf.cos`, `tf.cosh`, `tf.equal`, `tf.exp`, `tf.floor`, `tf.greater`, `tf.greater_equal`, `tf.less`, `tf.less_equal`, `tf.log`, `tf.logp1`, `tf.logical_and`, `tf.logical_not`, `tf.logical_or`, `tf.maximum`, `tf.minimum`, `tf.not_equal`, `tf.sin`, `tf.sinh`, `tf.tan`
   * Deprecate `tf.data.Dataset.shard`.
-  * Deprecating `saved_model.loader.load` which is replaced by `saved_model.load` and `saved_model.main_op`, which will be replaced by `saved_model.main_op` in V2.
-  * Deprecating tf.QUANTIZED_DTYPES. The official new symbol is tf.dtypes.QUANTIZED_DTYPES.
+  * Deprecate `saved_model.loader.load` which is replaced by `saved_model.load` and `saved_model.main_op`, which will be replaced by `saved_model.main_op` in V2.
+  * Deprecate tf.QUANTIZED_DTYPES. The official new symbol is tf.dtypes.QUANTIZED_DTYPES.
   * Update sklearn imports for deprecated packages.
-  * Deprecated `Variable.count_up_to` and `tf.count_up_to` in favor of `Dataset.range`.
+  * Deprecate `Variable.count_up_to` and `tf.count_up_to` in favor of `Dataset.range`.
   * Export `confusion_matrix` op as `tf.math.confusion_matrix` instead of `tf.train.confusion_matrix`.
-  * Adding `tf.dtypes.` endpoint for every constant in dtypes.py; moving endpoints in versions.py to corresponding endpoints in `tf.sysconfig.` and `tf.version.`; moving all constants under `tf.saved_model` submodules to `tf.saved_model` module. New endpoints are added in V1 and V2 but existing endpoint removals are only applied in V2.
-  * Deprecates behavior where device assignment overrides colocation constraints inside a colocation context manager.
+  * Add `tf.dtypes.` endpoint for every constant in dtypes.py; moving endpoints in versions.py to corresponding endpoints in `tf.sysconfig.` and `tf.version.`; moving all constants under `tf.saved_model` submodules to `tf.saved_model` module. New endpoints are added in V1 and V2 but existing endpoint removals are only applied in V2.
+  * Deprecates behavior where device assignment overrides collocation constraints inside a collocation context manager.
+* Keras & Python API
+  * Add to Keras functionality analogous to `tf.register_tensor_conversion_function`.
+  * Subclassed Keras models can now be saved through `tf.contrib.saved_model.save_keras_model`.
+  * `LinearOperator.matmul` now returns a new `LinearOperator`.
+* New ops and improved op functionality
+  * Add a Nearest Neighbor Resize op.
+  * Add an `ignore_unknown` argument to `parse_values` which suppresses ValueError for unknown hyperparameter types. Such * Add `tf.linalg.matvec` convenience function.
+  * `tf.einsum()`raises `ValueError` for unsupported equations like `"ii->"`.
+  * Add DCT-I and IDCT-I in `tf.signal.dct` and `tf.signal.idct`.
+  * Add LU decomposition op.
+  * Add quantile loss to gradient boosted trees in estimator.
+  * Add `round_mode` to `QuantizeAndDequantizeV2` op to select rounding algorithm.
+  * Add `unicode_encode`, `unicode_decode`, `unicode_decode_with_offsets`, `unicode_split`, `unicode_split_with_offset`, and `unicode_transcode` ops. Amongst other things, this Op adds the ability to encode, decode, and transcode a variety of input text encoding formats into the main Unicode encodings (UTF-8, UTF-16-BE, UTF-32-BE)
+  * Add "unit" attribute to the substr op, which allows obtaining the substring of a string containing unicode characters.
+  * Broadcasting support for Ragged Tensors.
+  * `SpaceToDepth` supports uint8 data type.
+  * Support multi-label quantile regression in estimator.
+  * We now use "div" as the default partition_strategy in `tf.nn.safe_embedding_lookup_sparse`, `tf.nn.sampled_softmax` and `tf.nn.nce_loss`.
+  hyperparameter are ignored.
 * Performance
   * Improve performance of GPU cumsum/cumprod by up to 300x.
   * Added support for weight decay in most TPU embedding optimizers, including AdamW and MomentumW.
+* TensorFlow 2.0 Development
+  * Add a command line tool to convert to TF2.0, tf_upgrade_v2
+  * Merge `tf.spectral` into `tf.signal` for TensorFlow 2.0.
+  * Change the default recurrent activation function for LSTM from 'hard_sigmoid' to 'sigmoid' in 2.0. Historically recurrent activation is 'hard_sigmoid' since it is fast than 'sigmoid'. With new unified backend between CPU and GPU mode, since the CuDNN kernel is using sigmoid, we change the default for CPU mode to sigmoid as well. With that, the default LSTM will be compatible with both CPU and GPU kernel. This will enable user with GPU to use CuDNN kernel by default and get a 10x performance boost in training. Note that this is checkpoint breaking change. If user want to use their 1.x pre-trained checkpoint, please construct the layer with LSTM(recurrent_activation='hard_sigmoid') to fallback to 1.x behavior.
+* TensorFlow Lite
+  * Move from `tensorflow/contrib/lite` to `tensorflow/lite`.
+  * Add experimental Java API for injecting TensorFlow Lite delegates
+  * Add support for strings in TensorFlow Lite Java API.
 * `tf.contrib`:
+  * Dropout now takes `rate` argument, `keep_prob` is deprecated.
   * Estimator occurrences references `tf.contrib.estimator` were changed to `tf.estimator`:
     * `tf.contrib.estimator.BaselineEstimator` with `tf.estimator.BaselineEstimator`
     * `tf.contrib.estimator.DNNLinearCombinedEstimator` with `tf.estimator.DNNLinearCombinedEstimator`
     * `tf.contrib.estimator.DNNEstimator` with `tf.estimator.DNNEstimator`
     * `tf.contrib.estimator.LinearEstimator` with `tf.estimator.LinearEstimator`
     * `tf.contrib.estimator.InMemoryEvaluatorHook` and tf.estimator.experimental.InMemoryEvaluatorHook`.
-    * `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with ` and `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`.
+    * `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`.
+  * Expose `tf.distribute.Strategy as the new name for tf.contrib.distribute.DistributionStrategy.
   * Migrate linear optimizer from contrib to core.
-  * Moved `tf.contrib.signal` to `tf.signal` (preserving aliases in tf.contrib.signal).
-  * Exposed `tf.distribute.Strategy as the new name for tf.contrib.distribute.DistributionStrategy.
-  * Users of tf.contrib.estimator.export_all_saved_models and related should switch to tf.estimator.Estimator.experimental_export_all_saved_models.
-  * Dropout now takes `rate` argument, keep_prob is deprecated.
-
-* Documentation
-  * Update the doc with the details about the rounding mode used in quantize_and_dequantize_v2.
-  * Clarify that tensorflow::port::InitMain() _should_ be called before using the TensorFlow library.  Programs failing to do this are not portable to all platforms.
-* Other:
-
-  * This API breaks the XRTCompile op compatibility.
-  * This API breaks the XRTCompile op compatibility.
-  * This API breaks the XRTCompile op compatibility.
-
-  * Adds round_mode to QuantizeAndDequantizeV2 op to select rounding algorithm.
+  * Move `tf.contrib.signal` to `tf.signal` (preserving aliases in tf.contrib.signal).
+  * Users of `tf.contrib.estimator.export_all_saved_models` and related should switch to `tf.estimator.Estimator.experimental_export_all_saved_models`.
+* tf.data:
+  * Add `tf.data.experimental.StatsOptions()`, to configure options to collect statistics from `tf.data.Dataset` pipeline using dStatsAggregatord. Adds option "experimental_stats" to `tf.data.Options` which takes `tf.data.experimental.StatsOptions` object. Deprecates `tf.data.experimental.set_stats_agregator`.
+  * NUMA-aware MapAndBatch dataset.
+  * Parallel map and filter fusion.
+  * Deprecate `tf.data.Dataset.make_one_shot_iterator()` in V1, removed it from V2, and added tf.compat.v1.data.make_one_shot_iterator()`.
+  * Deprecate `tf.data.Dataset.make_initializable_iterator()` in V1, removed it from V2, and added `tf.compat.v1.data.make_initializable_iterator()`.
+  * Enable nested dataset support in core `tf.data` transformations.
+  * For `tf.data.Dataset` implementers: Added `tf.data.Dataset._element_structured property` to replace `Dataset.output_{types,shapes,classes}`.
+* Toolchains
+  * Upgraded CUDA dependency to 10.0
+  * To build with Android NDK r14b, add "#include <linux/compiler.h>" to android-ndk-r14b/platforms/android-14/arch-*/usr/include/linux/futex.h
+  * Removed `:android_tensorflow_lib_selective_registration*` targets, use `:android_tensorflow_lib_lite*` targets instead.
+* XLA
+  * Move `RoundToEven` function to xla/client/lib/math.h.
+  * A new environment variable `TF_XLA_DEBUG_OPTIONS_PASSTHROUGH` set to "1" or "true" allows the debug options passed within an XRTCompile op to be passed directly to the XLA compilation backend. If such variable is not set (service side), only a restricted set will be passed through.
+  * Allow the XRTCompile op to return the ProgramShape resulted form the XLA compilation as a second return argument.
+  * XLA HLO graphs can now be rendered as SVG/HTML.
 
 
 ## Thanks to our Contributors
