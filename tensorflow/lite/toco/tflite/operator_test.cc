@@ -151,6 +151,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);
   CheckSimpleOperator<RangeOperator>("RANGE", OperatorType::kRange);
   CheckSimpleOperator<FillOperator>("FILL", OperatorType::kFill);
+  CheckSimpleOperator<ReverseV2Operator>("REVERSE_V2",
+                                         OperatorType::kReverseV2);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

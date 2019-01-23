@@ -161,7 +161,8 @@ enum class OperatorType : uint8 {
   kMirrorPad,
   kUnique,
   kUnidirectionalSequenceRnn,
-  kBidirectionalSequenceLstm
+  kBidirectionalSequenceLstm,
+  kReverseV2
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1956,6 +1957,16 @@ struct UnpackOperator : Operator {
 // TensorFlow equivalent: tf.zeros_like
 struct TensorFlowZerosLikeOperator : Operator {
   TensorFlowZerosLikeOperator() : Operator(OperatorType::kZerosLike) {}
+};
+
+// ReverseV2 operator:
+//
+// Inputs:
+// Inputs[0]: required: the input array.
+//
+// TensorFlow equivalent: ReverseV2.
+struct ReverseV2Operator : Operator {
+  ReverseV2Operator() : Operator(OperatorType::kReverseV2) {}
 };
 
 enum class MirrorPadMode { kNone, kSymmetric, kReflect };
