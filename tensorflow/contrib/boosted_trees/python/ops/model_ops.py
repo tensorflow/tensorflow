@@ -62,8 +62,8 @@ class TreeEnsembleVariableSavable(saver.BaseSaverBuilder.SaveableObject):
         saver.BaseSaverBuilder.SaveSpec(ensemble_config, slice_spec,
                                         name + "_config"),
     ]
-    super(TreeEnsembleVariableSavable,
-          self).__init__(tree_ensemble_handle, specs, name)
+    super(TreeEnsembleVariableSavable, self).__init__(tree_ensemble_handle,
+                                                      specs, name)
     self._tree_ensemble_handle = tree_ensemble_handle
     self._create_op = create_op
 
@@ -115,7 +115,7 @@ class TreeEnsembleVariable(tracking.TrackableResource):
 
   def _gather_saveables_for_checkpoint(self):
     return {
-        "tree_ensemble_variable":
+        self.resource_handle.op.name + "/tree_ensemble_variable":
             functools.partial(
                 TreeEnsembleVariableSavable,
                 tree_ensemble_handle=self.resource_handle,
@@ -131,8 +131,8 @@ def tree_ensemble_variable(stamp_token,
 
   Args:
     stamp_token: The initial stamp token value for the ensemble resource.
-    tree_ensemble_config: A `Tensor` of type `string`.
-      Serialized proto of the tree ensemble.
+    tree_ensemble_config: A `Tensor` of type `string`. Serialized proto of the
+      tree ensemble.
     name: A name for the ensemble variable.
     container: An optional `string`. Defaults to `""`.
 

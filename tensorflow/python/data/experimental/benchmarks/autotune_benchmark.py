@@ -60,9 +60,6 @@ class AutotuneBenchmark(test.Benchmark):
         end = time.time()
         deltas.append(end - start)
 
-    print("%f (median), %f (mean), %f (stddev), %f (min), %f (max)\n" %
-          (np.median(deltas), np.mean(deltas), np.std(deltas), np.min(deltas),
-           np.max(deltas)))
     self.report_benchmark(
         iters=10000,
         wall_time=np.median(deltas),
@@ -87,6 +84,7 @@ class AutotuneBenchmark(test.Benchmark):
             batch_size=batch_size))
     options = dataset_ops.Options()
     options.experimental_autotune = autotune
+    options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
@@ -100,10 +98,6 @@ class AutotuneBenchmark(test.Benchmark):
         sess.run(get_next.op)
         end = time.time()
         deltas.append(end - start)
-
-    print("%f (median), %f (mean), %f (stddev), %f (min), %f (max)\n" %
-          (np.median(deltas), np.mean(deltas), np.std(deltas), np.min(deltas),
-           np.max(deltas)))
 
     self.report_benchmark(
         iters=1000,
@@ -128,6 +122,7 @@ class AutotuneBenchmark(test.Benchmark):
         num_parallel_calls=optimization.AUTOTUNE)
     options = dataset_ops.Options()
     options.experimental_autotune = autotune
+    options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
@@ -142,9 +137,6 @@ class AutotuneBenchmark(test.Benchmark):
         end = time.time()
         deltas.append(end - start)
 
-    print("%f (median), %f (mean), %f (stddev), %f (min), %f (max)\n" %
-          (np.median(deltas), np.mean(deltas), np.std(deltas), np.min(deltas),
-           np.max(deltas)))
     self.report_benchmark(
         iters=10000,
         wall_time=np.median(deltas),
@@ -190,6 +182,7 @@ class AutotuneBenchmark(test.Benchmark):
     dataset = dataset.map(f2, num_parallel_calls=optimization.AUTOTUNE)
     options = dataset_ops.Options()
     options.experimental_autotune = autotune
+    options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
@@ -204,9 +197,6 @@ class AutotuneBenchmark(test.Benchmark):
         end = time.time()
         deltas.append(end - start)
 
-    print("%f (median), %f (mean), %f (stddev), %f (min), %f (max)\n" %
-          (np.median(deltas), np.mean(deltas), np.std(deltas), np.min(deltas),
-           np.max(deltas)))
     self.report_benchmark(
         iters=1000,
         wall_time=np.median(deltas),

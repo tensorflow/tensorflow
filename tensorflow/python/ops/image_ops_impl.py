@@ -1250,14 +1250,14 @@ def random_brightness(image, max_delta, seed=None):
   interval `[-max_delta, max_delta)`.
 
   Args:
-    image: An image.
+    image: An image or images to adjust.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
       `tf.set_random_seed`
       for behavior.
 
   Returns:
-    The brightness-adjusted image.
+    The brightness-adjusted image(s).
 
   Raises:
     ValueError: if `max_delta` is negative.
@@ -1271,7 +1271,7 @@ def random_brightness(image, max_delta, seed=None):
 
 @tf_export('image.random_contrast')
 def random_contrast(image, lower, upper, seed=None):
-  """Adjust the contrast of an image by a random factor.
+  """Adjust the contrast of an image or images by a random factor.
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.
@@ -1281,11 +1281,10 @@ def random_contrast(image, lower, upper, seed=None):
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
-    The contrast-adjusted tensor.
+    The contrast-adjusted image(s).
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
@@ -1305,19 +1304,19 @@ def random_contrast(image, lower, upper, seed=None):
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, adjusts its brightness, and then converts it back to the
-  original data type. If several adjustments are chained it is advisable to
+  This is a convenience method that converts RGB images to float
+  representation, adjusts their brightness, and then converts them back to the
+  original data type. If several adjustments are chained, it is advisable to
   minimize the number of redundant conversions.
 
-  The value `delta` is added to all components of the tensor `image`. Both
-  `image` and `delta` are converted to `float` before adding (and `image` is
-  scaled appropriately if it is in fixed-point representation). For regular
+  The value `delta` is added to all components of the tensor `image`. `image` is
+  converted to `float` and scaled appropriately if it is in fixed-point
+  representation, and `delta` is converted to the same data type. For regular
   images, `delta` should be in the range `[0,1)`, as it is added to the image in
   floating point representation, where pixel values are in the `[0,1)` range.
 
   Args:
-    image: A tensor.
+    image: RGB image or images to adjust.
     delta: A scalar. Amount to add to the pixel values.
 
   Returns:
@@ -1327,10 +1326,14 @@ def adjust_brightness(image, delta):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+
+    if orig_dtype in [dtypes.float16, dtypes.float32]:
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     adjusted = math_ops.add(
-        flt_image, math_ops.cast(delta, dtypes.float32), name=name)
+        flt_image, math_ops.cast(delta, flt_image.dtype), name=name)
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
@@ -1339,9 +1342,9 @@ def adjust_brightness(image, delta):
 def adjust_contrast(images, contrast_factor):
   """Adjust contrast of RGB or grayscale images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, adjusts its contrast, and then converts it back to the
-  original data type. If several adjustments are chained it is advisable to
+  This is a convenience method that converts RGB images to float
+  representation, adjusts their contrast, and then converts them back to the
+  original data type. If several adjustments are chained, it is advisable to
   minimize the number of redundant conversions.
 
   `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
@@ -1366,7 +1369,11 @@ def adjust_contrast(images, contrast_factor):
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
-    flt_images = convert_image_dtype(images, dtypes.float32)
+
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_images = images
+    else:
+      flt_images = convert_image_dtype(images, dtypes.float32)
 
     adjusted = gen_image_ops.adjust_contrastv2(
         flt_images, contrast_factor=contrast_factor, name=name)
@@ -1560,7 +1567,7 @@ def grayscale_to_rgb(images, name=None):
 # pylint: disable=invalid-name
 @tf_export('image.random_hue')
 def random_hue(image, max_delta, seed=None):
-  """Adjust the hue of an RGB image by a random factor.
+  """Adjust the hue of RGB images by a random factor.
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
   picked in the interval `[-max_delta, max_delta]`.
@@ -1570,10 +1577,10 @@ def random_hue(image, max_delta, seed=None):
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
     max_delta: float.  Maximum value for the random delta.
-    seed: An operation-specific seed. It will be used in conjunction
-      with the graph-level seed to determine the real seeds that will be
-      used in this operation. Please see the documentation of
-      set_random_seed for its interaction with the graph-level random seed.
+    seed: An operation-specific seed. It will be used in conjunction with the
+      graph-level seed to determine the real seeds that will be used in this
+      operation. Please see the documentation of set_random_seed for its
+      interaction with the graph-level random seed.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -1593,7 +1600,7 @@ def random_hue(image, max_delta, seed=None):
 
 @tf_export('image.adjust_hue')
 def adjust_hue(image, delta, name=None):
-  """Adjust hue of an RGB image.
+  """Adjust hue of RGB images.
 
   This is a convenience method that converts an RGB image to float
   representation, converts it to HSV, add an offset to the hue channel, converts
@@ -1601,7 +1608,7 @@ def adjust_hue(image, delta, name=None):
   are chained it is advisable to minimize the number of redundant conversions.
 
   `image` is an RGB image.  The image hue is adjusted by converting the
-  image to HSV and rotating the hue channel (H) by
+  image(s) to HSV and rotating the hue channel (H) by
   `delta`.  The image is then converted back to RGB.
 
   `delta` must be in the interval `[-1, 1]`.
@@ -1618,7 +1625,10 @@ def adjust_hue(image, delta, name=None):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
@@ -1696,7 +1706,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
 @tf_export('image.random_saturation')
 def random_saturation(image, lower, upper, seed=None):
-  """Adjust the saturation of an RGB image by a random factor.
+  """Adjust the saturation of RGB images by a random factor.
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
   picked in the interval `[lower, upper]`.
@@ -1705,10 +1715,10 @@ def random_saturation(image, lower, upper, seed=None):
     image: RGB image or images. Size of the last dimension must be 3.
     lower: float.  Lower bound for the random saturation factor.
     upper: float.  Upper bound for the random saturation factor.
-    seed: An operation-specific seed. It will be used in conjunction
-      with the graph-level seed to determine the real seeds that will be
-      used in this operation. Please see the documentation of
-      set_random_seed for its interaction with the graph-level random seed.
+    seed: An operation-specific seed. It will be used in conjunction with the
+      graph-level seed to determine the real seeds that will be used in this
+      operation. Please see the documentation of set_random_seed for its
+      interaction with the graph-level random seed.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -1729,17 +1739,17 @@ def random_saturation(image, lower, upper, seed=None):
 
 @tf_export('image.adjust_saturation')
 def adjust_saturation(image, saturation_factor, name=None):
-  """Adjust saturation of an RGB image.
+  """Adjust saturation of RGB images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, converts it to HSV, add an offset to the saturation channel,
+  This is a convenience method that converts RGB images to float
+  representation, converts them to HSV, add an offset to the saturation channel,
   converts back to RGB and then back to the original data type. If several
   adjustments are chained it is advisable to minimize the number of redundant
   conversions.
 
-  `image` is an RGB image.  The image saturation is adjusted by converting the
-  image to HSV and multiplying the saturation (S) channel by
-  `saturation_factor` and clipping. The image is then converted back to RGB.
+  `image` is an RGB image or images.  The image saturation is adjusted by
+  converting the images to HSV and multiplying the saturation (S) channel by
+  `saturation_factor` and clipping. The images are then converted back to RGB.
 
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
@@ -1753,11 +1763,14 @@ def adjust_saturation(image, saturation_factor, name=None):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
-    return convert_image_dtype(
-        gen_image_ops.adjust_saturation(flt_image, saturation_factor),
-        orig_dtype)
+    adjusted = gen_image_ops.adjust_saturation(flt_image, saturation_factor)
+
+    return convert_image_dtype(adjusted, orig_dtype)
 
 
 @tf_export('io.is_jpeg', 'image.is_jpeg', v1=['io.is_jpeg', 'image.is_jpeg'])

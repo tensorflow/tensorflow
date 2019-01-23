@@ -853,6 +853,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     CHECK_NOTNULL(m);
     Node* n = nullptr;
 
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
+
+    // Don't try to merge if datatype is not DT_FLOAT
+    if (T_m != DT_FLOAT) return n;
+
     if (m->type_string() == csinfo_.bias_add) {
       // If a is BiasAdd, then Conv2D is 0th input of BiasAdd.
       TF_CHECK_OK(m->input_node(0, &n));
@@ -886,6 +892,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static Node* GetPadOrConv2D(const Node* m) {
     DCHECK(m);
     Node* n = nullptr;
+
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
+
+    // Don't try to merge if datatype is not DT_FLOAT
+    if (T_m != DT_FLOAT) return n;
 
     const Node* conv_node;
     if (m->type_string() == csinfo_.pad) {
@@ -997,6 +1009,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static Node* GetConv2DBackpropFilterOrBiasAddGrad(const Node* m) {
     CHECK_NOTNULL(m);
     Node* n = nullptr;
+
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
+
+    // Don't try to merge if datatype is not DT_FLOAT
+    if (T_m != DT_FLOAT) return n;
 
     if (m->type_string() == csinfo_.bias_add_grad) {
       // Get 1st input 'g' of BiasAddGrad.

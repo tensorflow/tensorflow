@@ -34,6 +34,8 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/keras:backend_config",
     ],
 )
 
@@ -212,4 +214,5 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 2,
 )

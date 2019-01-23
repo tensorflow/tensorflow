@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tools for deserializing PolymorphicFunctions."""
+"""Tools for deserializing `Function`s."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,7 +28,9 @@ from tensorflow.python.framework import function_def_to_graph as function_def_li
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
 
@@ -38,42 +40,81 @@ def _is_tensor(t):
 
 def _inputs_compatible(args, stored_inputs):
   """Checks whether function arguments are compatible with parameters."""
-  # TODO(vbardiovsky): The compatibility check should be about the signature,
-  # not the flattened version of it.
   if len(args) != len(stored_inputs):
     return False
-  for a, b in zip(args, stored_inputs):
-    if _is_tensor(a):
-      if not isinstance(b, tensor_spec.TensorSpec):
-        return False
-      if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
-        return False
-    else:
-      if a != b:
-        return False
+
+  for arg, stored_input in zip(args, stored_inputs):
+    if not function_lib.is_same_structure(arg, stored_input):
+      return False
+
+    flattened_arg = nest.flatten(arg)
+    flattened_stored_input = nest.flatten(stored_input)
+
+    for a, b in zip(flattened_arg, flattened_stored_input):
+      if _is_tensor(a):
+        if not isinstance(b, tensor_spec.TensorSpec):
+          return False
+        if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
+          return False
+      else:
+        if a != b:
+          return False
   return True
 
 
-def recreate_polymorphic_function(
-    saved_polymorphic_function, functions):
-  """Creates a PolymorphicFunction from a SavedPolymorphicFunction.
+def _deserialize_function_spec(function_spec_proto, coder):
+  """Deserialize a FunctionSpec object from its proto representation."""
+  fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  is_method = function_spec_proto.is_method
+  args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
+  kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
+  input_signature = coder.decode_proto(function_spec_proto.input_signature)
+  return function_lib.FunctionSpec(fullargspec, is_method, args_to_prepend,
+                                   kwargs_to_include, input_signature)
+
+
+def recreate_concrete_function(saved_concrete_function, concrete_functions):
+  """Recreates a user-facing concrete function."""
+  coder = nested_structure_coder.StructureCoder()
+
+  concrete_function = concrete_functions[saved_concrete_function.name]
+  input_signature = coder.decode_proto(
+      saved_concrete_function.canonicalized_input_signature)
+  input_signature_args, input_signature_kwargs = input_signature
+  if input_signature_kwargs:
+    raise ValueError("Restoring concrete function with non-empty kwargs (%s)." %
+                     input_signature_kwargs)
+
+  # pylint: disable=protected-access
+  # Set metadata required for the concrete function to accept keyword and
+  # positional arguments in __call__. Normally this is set in
+  # get_concrete_function.
+  concrete_function._arg_keywords = [spec.name for spec in input_signature_args]
+  # TODO(allenl): Should we preserve the number of allowed positional arguments?
+  concrete_function._num_positional_args = len(input_signature_args)
+  # pylint: enable=protected-access
+  concrete_function.add_to_graph()
+  return concrete_function
+
+
+def recreate_function(saved_function, concrete_functions):
+  """Creates a `Function` from a `SavedFunction`.
 
   Args:
-    saved_polymorphic_function: SavedPolymorphicFunction proto.
-    functions: map from function name to Function.
+    saved_function: `SavedFunction` proto.
+    concrete_functions: map from function name to `ConcreteFunction`.
 
   Returns:
-    A PolymorphicFunction.
+    A `Function`.
   """
-  # TODO(andresp): Construct a PolymorphicFunction with the cache populated
-  # instead of creating a new PolymorphicFunction backed by a Python layer to
+  # TODO(andresp): Construct a `Function` with the cache populated
+  # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
 
   coder = nested_structure_coder.StructureCoder()
-  function_spec_tuple = coder.decode_proto(
-      saved_polymorphic_function.function_spec_tuple)
-  function_spec = function_lib.FunctionSpec.from_tuple(function_spec_tuple)
+  function_spec = _deserialize_function_spec(saved_function.function_spec,
+                                             coder)
 
   # TODO(mdan): We may enable autograph once exceptions are supported.
   @def_function.function(autograph=False)
@@ -81,35 +122,32 @@ def recreate_polymorphic_function(
     """Calls a restored function."""
     # TODO(allenl): Functions saved with input_signatures should revive with
     # input_signatures.
-    for monomorphic_function in saved_polymorphic_function.monomorphic_function:
-      function_obj = functions[monomorphic_function.concrete_function]
+    try:
+      canonicalized_inputs = function_spec.canonicalize_function_inputs(
+          *args, **kwargs)
+    except ValueError as e:
+      raise ValueError(
+          "Cannot canonicalize input args %r and kwargs %r. Error: %r." %
+          (args, kwargs, e))
+
+    debug_considered_signatures = []
+    for concrete_function in saved_function.concrete_function:
+      function_obj = concrete_functions[concrete_function.name]
       canonicalized_original_inputs = coder.decode_proto(
-          monomorphic_function.canonicalized_input)
-
-      try:
-        can_args, can_kwargs = function_spec.canonicalize_function_inputs(
-            *args, **kwargs)
-        if can_kwargs:
-          # TODO(vbardiovsky): Enable this along with the structured input and
-          # structured output.
-          raise ValueError(
-              "Received keywords arguments that could not be bound: %s" %
-              kwargs)
-      except ValueError:
-        continue
-
-      canonicalized_inputs = nest.flatten(can_args)
+          concrete_function.canonicalized_input_signature)
+      debug_considered_signatures.append(canonicalized_original_inputs)
 
       if _inputs_compatible(canonicalized_inputs,
                             canonicalized_original_inputs):
-        filtered_inputs = [t for t in canonicalized_inputs if _is_tensor(t)]
-        flattened_outputs = function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
-        # TODO(vbardiovsky): Rebuild output structure.
-        single_output, = flattened_outputs
-        return single_output
+        flattened_inputs = nest.flatten(canonicalized_inputs)
+        filtered_inputs = [t for t in flattened_inputs if _is_tensor(t)]
+        return function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
 
     raise AssertionError(
-        "Could not find matching function to call for arguments: %s" % (args,))
+        "Could not find matching function to call for canonicalized inputs %r. "
+        "Only existing signatures are %r."
+        % (canonicalized_inputs, debug_considered_signatures))
+
   return restored_function
 
 
@@ -123,30 +161,27 @@ def load_function_def_library(library):
     library: FunctionDefLibrary proto message.
 
   Returns:
-    Map of original function names in the library to instances of `Function`
-    without captured inputs.
+    Map of original function names in the library to instances of
+    `ConcreteFunction` without captured inputs.
 
   Raises:
     ValueError: if functions dependencies have a cycle.
   """
-  # TODO(andresp): Look into restoring gradient function information.
   functions = {}
-  name_mapping = {}
-  # Note: Use a new graph to allow function_def_to_graph to help validating
-  # that the functions are loaded correctly. This is not possible to do
-  # just in eager mode as there is no python API to find if a function has
-  # been registered in eager. Note also that despite this the created
-  # func_graphs can still be used in eager or in other graphs.
-  with ops.Graph().as_default() as import_graph:
-    for fdef in _sort_function_defs(library):
-      copy = _fix_fdef(fdef, name_mapping)
 
-      func_graph = function_def_lib.function_def_to_graph(copy)
-      func = function_lib.Function(func_graph)
-      func.add_to_graph(import_graph)
+  for fdef in _sort_function_defs(library):
+    copy = _fix_fdef(fdef, functions)
 
-      name_mapping[fdef.signature.name] = func.name
-      functions[fdef.signature.name] = func
+    func_graph = function_def_lib.function_def_to_graph(copy)
+    func = function_lib.ConcreteFunction(func_graph)
+    func.add_to_graph()
+
+    functions[fdef.signature.name] = func
+
+    # Also register the gradients in the current root context.
+    with ops.init_scope():
+      func._register_gradient()  # pylint: disable=protected-access
+
   return functions
 
 
@@ -184,14 +219,39 @@ def _sort_function_defs(library):
   return [reverse[x] for x in output]
 
 
-def _fix_fdef(orig_fdef, name_map):
+def _fix_fdef(orig_fdef, functions):
+  """Fixes a FunctionDef proto to be loaded in current context.
+
+  In particular, when loading a function library into an eager context, one
+  must rename the functions to avoid conflicts with existent functions.
+
+  Args:
+    orig_fdef: FunctionDef proto to fix. It is not modified.
+    functions: map from function name to a ConcreteFunction instance.
+
+  Returns:
+    A fixed copy of the original FunctionDef.
+  """
   fdef = function_pb2.FunctionDef()
   fdef.CopyFrom(orig_fdef)
-  fdef.signature.name = _clean_function_name(fdef.signature.name)
   for node_def in fdef.node_def:
+    if "_gradient_op_type" in node_def.attr:
+      if node_def.op in ["StatefulPartitionedCall", "PartitionedCall"]:
+        # TODO(andresp): This code assumes that the gradient registered for this
+        # function call is the default gradient for the function and not a
+        # custom one.
+        fname = node_def.attr["f"].func.name
+        node_def.attr["_gradient_op_type"].s = compat.as_bytes(
+            functions[fname]._gradient_name)  # pylint: disable=protected-access
+      else:
+        logging.warning("Importing a function (%s) with ops with custom "
+                        "gradients. Will likely fail if a gradient is "
+                        "requested.", fdef.signature.name)
     for _, attr_value in node_def.attr.items():
       if attr_value.func.name:
-        attr_value.func.name = name_map[attr_value.func.name]
+        attr_value.func.name = functions[attr_value.func.name].name
+
+  fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef
 
 
@@ -209,8 +269,8 @@ def _list_function_deps(fdef):
 
 def _clean_function_name(name):
   """Vanity function to keep the function names comprehensible."""
-  # Note: each time a function is wrapped into `function_lib.Function` its
-  # name becomes "__inference_<orig>_xyz".
+  # Note: each time a function is wrapped into `function_lib.ConcreteFunction`
+  # its name becomes "__inference_<orig>_xyz".
   match = re.search(r"^__inference_(.*)_\d+$", name)
   if match:
     return match.group(1)

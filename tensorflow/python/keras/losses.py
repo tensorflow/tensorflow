@@ -24,6 +24,7 @@ import abc
 import six
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
@@ -291,7 +292,7 @@ class BinaryCrossentropy(Loss):
   Args:
     from_logits: Whether `output` is expected to be a logits tensor. By default,
       we consider that `output` encodes a probability distribution.
-    label_smoothing: If greater than `0` then smooth the labels.
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels.
     reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
       `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
@@ -304,7 +305,8 @@ class BinaryCrossentropy(Loss):
                name=None):
     super(BinaryCrossentropy, self).__init__(reduction=reduction, name=name)
     self.from_logits = from_logits
-    self.label_smoothing = label_smoothing
+    self.label_smoothing = ops.convert_to_tensor(
+        label_smoothing, dtype=K.floatx())
 
   def call(self, y_true, y_pred):
     """Invokes the `BinaryCrossentropy` instance.
@@ -318,11 +320,11 @@ class BinaryCrossentropy(Loss):
     """
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
-
-    if self.label_smoothing > 0:
-      y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
-
-    return binary_crossentropy(y_true, y_pred, from_logits=self.from_logits)
+    return binary_crossentropy(
+        y_true,
+        y_pred,
+        from_logits=self.from_logits,
+        label_smoothing=self.label_smoothing)
 
 
 @keras_export('keras.losses.CategoricalCrossentropy')
@@ -349,8 +351,9 @@ class CategoricalCrossentropy(Loss):
   Args:
     from_logits: Whether `output` is expected to be a logits tensor. By default,
       we consider that `output` encodes a probability distribution.
-    label_smoothing: If greater than `0` then smooth the labels. This option is
-      currently not supported when `y_pred` is a sparse input (not one-hot).
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels. This
+      option is currently not supported when `y_pred` is a sparse input
+      (not one-hot).
     reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
       `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
@@ -364,7 +367,8 @@ class CategoricalCrossentropy(Loss):
     super(CategoricalCrossentropy, self).__init__(
         reduction=reduction, name=name)
     self.from_logits = from_logits
-    self.label_smoothing = label_smoothing
+    self.label_smoothing = ops.convert_to_tensor(
+        label_smoothing, dtype=K.floatx())
 
   def call(self, y_true, y_pred):
     """Invokes the `CategoricalCrossentropy` instance.
@@ -385,14 +389,11 @@ class CategoricalCrossentropy(Loss):
           y_true, y_pred, from_logits=self.from_logits)
     else:
       y_true = math_ops.cast(y_true, y_pred.dtype)
-      if self.label_smoothing > 0:
-        num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
-        smooth_positives = 1.0 - self.label_smoothing
-        smooth_negatives = self.label_smoothing / num_classes
-        y_true = y_true * smooth_positives + smooth_negatives
-
       return categorical_crossentropy(
-          y_true, y_pred, from_logits=self.from_logits)
+          y_true,
+          y_pred,
+          from_logits=self.from_logits,
+          label_smoothing=self.label_smoothing)
 
 
 @keras_export('keras.losses.Hinge')
@@ -500,6 +501,161 @@ class CategoricalHinge(Loss):
     return categorical_hinge(y_true, y_pred)
 
 
+class LogLoss(Loss):
+  """Computes the log loss between `y_true` and `y_pred`.
+
+  logloss = - y_true * log(y_pred) - (1 - y_true) * log(1 - y_pred)
+
+  Usage:
+
+  ```python
+  l = tf.losses.LogLoss()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 10.745
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.LogLoss())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return logloss(y_true, y_pred)
+
+
+class Poisson(Loss):
+  """Computes the poisson loss between `y_true` and `y_pred`.
+
+  loss = y_pred - y_true * log(y_pred)
+
+  Usage:
+
+  ```python
+  p = tf.losses.Poisson()
+  loss = p([1, 9, 2], [4, 8, 12])
+  print('Loss: ', loss.numpy())  # Loss: -4.63
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.Poisson())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return poisson(y_true, y_pred)
+
+
+class Logcosh(Loss):
+  """Computes the logarithm of the hyperbolic cosine of the prediction error.
+
+  logcosh = log((exp(x) + exp(-x))/2) where x is the error `y_pred` - `y_true`.
+
+  Usage:
+
+  ```python
+  l = tf.losses.Logcosh()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.289
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.Logcosh())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return logcosh(y_true, y_pred)
+
+
+class KullbackLeiblerDivergence(Loss):
+  """Computes kullback leibler divergence loss between `y_true` and `y_pred`.
+
+  loss = y_true * log(y_true / y_pred)
+
+  Usage:
+
+  ```python
+  k = tf.losses.KullbackLeiblerDivergence()
+  loss = k([.4, .9, .2], [.5, .8, .12])
+  print('Loss: ', loss.numpy())  # Loss: -0.043
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.KullbackLeiblerDivergence())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return kullback_leibler_divergence(y_true, y_pred)
+
+
+class HuberLoss(Loss):
+  """Computes the huber loss between `y_true` and `y_pred`.
+
+  For each value x in `error=y_true-y_pred`, the following is calculated:
+
+    ```
+    0.5 * x^2                  if |x| <= d
+    0.5 * d^2 + d * (|x| - d)  if |x| > d
+    ```
+  where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
+
+  Usage:
+
+  ```python
+  l = tf.losses.HuberLoss()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.333
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.HuberLoss())
+  ```
+
+  Args:
+    delta: A float, the point where the huber loss function changes from a
+      quadratic to linear.
+    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
+      `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
+  """
+
+  def __init__(self,
+               delta=1.0,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    super(HuberLoss, self).__init__(reduction=reduction, name=name)
+    self.delta = delta
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return huber_loss(y_true, y_pred, delta=self.delta)
+
+
 @keras_export('keras.metrics.mean_squared_error',
               'keras.metrics.mse',
               'keras.metrics.MSE',
@@ -562,6 +718,46 @@ def categorical_hinge(y_true, y_pred):
   return math_ops.maximum(0., neg - pos + 1.)
 
 
+def logloss(y_true, y_pred):
+  losses = math_ops.multiply(y_true, math_ops.log(y_pred + K.epsilon()))
+  losses += math_ops.multiply((1 - y_true),
+                              math_ops.log(1 - y_pred + K.epsilon()))
+  return K.mean(-losses, axis=-1)
+
+
+def huber_loss(y_true, y_pred, delta=1.0):
+  """Computes huber loss value.
+
+  For each value x in `error=y_true-y_pred`, the following is calculated:
+
+    ```
+    0.5 * x^2                  if |x| <= d
+    0.5 * d^2 + d * (|x| - d)  if |x| > d
+    ```
+  where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
+
+  Args:
+    y_true: tensor of true targets.
+    y_pred: tensor of predicted targets.
+    delta: A float, the point where the huber loss function changes from a
+      quadratic to linear.
+
+  Returns:
+    Tensor with one scalar loss entry per sample.
+  """
+  y_pred = math_ops.cast(y_pred, dtype=K.floatx())
+  y_true = math_ops.cast(y_true, dtype=K.floatx())
+  error = math_ops.subtract(y_pred, y_true)
+  abs_error = math_ops.abs(error)
+  quadratic = math_ops.minimum(abs_error, delta)
+  linear = math_ops.subtract(abs_error, quadratic)
+  return math_ops.add(
+      math_ops.multiply(
+          ops.convert_to_tensor(0.5, dtype=quadratic.dtype),
+          math_ops.multiply(quadratic, quadratic)),
+      math_ops.multiply(delta, linear))
+
+
 @keras_export('keras.losses.logcosh')
 def logcosh(y_true, y_pred):
   """Logarithm of the hyperbolic cosine of the prediction error.
@@ -587,7 +783,29 @@ def logcosh(y_true, y_pred):
 
 @keras_export('keras.metrics.categorical_crossentropy',
               'keras.losses.categorical_crossentropy')
-def categorical_crossentropy(y_true, y_pred, from_logits=False):
+def categorical_crossentropy(y_true,
+                             y_pred,
+                             from_logits=False,
+                             label_smoothing=0):
+  """Computes the categorical crossentropy loss.
+
+  Args:
+    y_true: tensor of true targets.
+    y_pred: tensor of predicted targets.
+    from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
+      we consider that `y_pred` encodes a probability distribution.
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels.
+
+  Returns:
+    Categorical crossentropy loss value.
+  """
+
+  def _smooth_labels():
+    num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
+    return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
+
+  y_true = smart_cond.smart_cond(label_smoothing,
+                                 _smooth_labels, lambda: y_true)
   return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
 
@@ -600,7 +818,13 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False):
 
 @keras_export('keras.metrics.binary_crossentropy',
               'keras.losses.binary_crossentropy')
-def binary_crossentropy(y_true, y_pred, from_logits=False):
+def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
+
+  def _smooth_labels():
+    return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
+
+  y_true = smart_cond.smart_cond(label_smoothing,
+                                 _smooth_labels, lambda: y_true)
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
 
@@ -626,15 +850,15 @@ def poisson(y_true, y_pred):
               'keras.metrics.cosine',
               'keras.losses.cosine_proximity',
               'keras.losses.cosine')
-def cosine_proximity(y_true, y_pred):
-  y_true = nn.l2_normalize(y_true, axis=-1)
-  y_pred = nn.l2_normalize(y_pred, axis=-1)
-  return -math_ops.reduce_sum(y_true * y_pred, axis=-1)
+def cosine_proximity(y_true, y_pred, axis=-1):
+  y_true = nn.l2_normalize(y_true, axis=axis)
+  y_pred = nn.l2_normalize(y_pred, axis=axis)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
 
 
 @keras_export('keras.losses.CosineProximity')
 class CosineProximity(Loss):
-  """Computes the cosine distance between `y_true` and `y_pred`.
+  """Computes the cosine proximity between `y_true` and `y_pred`.
 
   Usage:
 
@@ -650,7 +874,21 @@ class CosineProximity(Loss):
   model = keras.models.Model(inputs, outputs)
   model.compile('sgd', loss=tf.losses.CosineProximity())
   ```
+
+  Args:
+    axis: (Optional) Defaults to -1. The dimension along which the cosine
+      proximity is computed.
+    reduction: (Optional) Type of `tf.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
   """
+
+  def __init__(self,
+               axis=-1,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    super(CosineProximity, self).__init__(reduction=reduction, name=name)
+    self.axis = axis
 
   def call(self, y_true, y_pred):
     """Calculates the cosine proximity loss.
@@ -664,7 +902,7 @@ class CosineProximity(Loss):
     """
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
-    return cosine_proximity(y_true, y_pred)
+    return cosine_proximity(y_true, y_pred, axis=self.axis)
 
 
 # Aliases.

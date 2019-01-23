@@ -16,7 +16,7 @@ include (ExternalProject)
 
 set(nsync_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/nsync/public)
 set(nsync_URL https://github.com/google/nsync)
-set(nsync_TAG 1.20.1)
+set(nsync_TAG 1.20.2)
 set(nsync_BUILD ${CMAKE_CURRENT_BINARY_DIR}/nsync/src/nsync)
 set(nsync_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/nsync/install)
 

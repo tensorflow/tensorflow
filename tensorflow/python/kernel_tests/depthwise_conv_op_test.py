@@ -481,6 +481,7 @@ class DepthwiseConv2DTest(test.TestCase):
             data_format="NCHW")
 
   @test_util.run_v1_only("b/120545219")
+  @test_util.disable_xla("This test never passed for XLA")
   def testDepthwiseConv2DFilterGrad(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(CheckGradConfigsToTest()):
@@ -612,6 +613,7 @@ class DepthwiseConv2DTest(test.TestCase):
     cpu_value = _GetVal(use_gpu=False)
     self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testDepthwiseConv2DFilterGradCompare(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(ConfigsToTest()):

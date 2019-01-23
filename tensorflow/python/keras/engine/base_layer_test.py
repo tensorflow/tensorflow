@@ -26,6 +26,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
@@ -71,7 +73,7 @@ class InvalidLayer(base_layer.Layer):
     raise ValueError('You did something wrong!')
 
 
-class BaseLayerTest(test.TestCase, parameterized.TestCase):
+class BaseLayerTest(keras_parameterized.TestCase):
 
   @parameterized.parameters(DynamicLayer1, DynamicLayer2)
   def test_dynamic_layer_in_functional_model_in_graph_mode(self, layer_class):
@@ -209,6 +211,17 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
     inputs = keras.Input((3,))
     with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
       _ = InvalidLayer()(inputs)
+
+  @keras_parameterized.run_with_all_model_types
+  @test_util.run_in_graph_and_eager_modes
+  def test_build_with_numpy_data(self):
+    model_layers = [
+        keras.layers.Dense(3, activation='relu', kernel_initializer='ones'),
+        keras.layers.Dense(1, activation='sigmoid', kernel_initializer='ones')
+    ]
+    model = testing_utils.get_model_from_layers(model_layers, input_shape=(4,))
+    model(np.zeros((2, 4), dtype='float32'))
+    self.assertTrue(model.built)
 
   def test_using_symbolic_tensors_with_tf_ops(self):
     # Single-input.

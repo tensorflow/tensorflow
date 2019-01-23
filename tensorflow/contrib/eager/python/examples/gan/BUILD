@@ -9,6 +9,13 @@ py_binary(
     name = "mnist",
     srcs = ["mnist.py"],
     srcs_version = "PY2AND3",
+    deps = [":mnist_lib"],
+)
+
+py_library(
+    name = "mnist_lib",
+    srcs = ["mnist.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/eager/python:tfe",

@@ -717,3 +717,4 @@ def as_dtype(type_value):
             type_value, e))
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." % type_value)
+

@@ -76,7 +76,6 @@ class IrEmitterUnnested : public IrEmitter {
     void SetLaneId(llvm::Value* v) { lane_id_ = v; }
     void SetIndexType(llvm::Type* t) { index_ty_ = t; }
     void SetTiledParamInfo(llvm_ir::TiledParameterInfo* tiled_param_info) {
-      CHECK_EQ(tiled_param_info_, nullptr);
       tiled_param_info_ = tiled_param_info;
     }
 
@@ -89,7 +88,7 @@ class IrEmitterUnnested : public IrEmitter {
     }
     llvm::Type* GetIndexType() const { return index_ty_; }
 
-   private:
+   protected:
     llvm_ir::KernelMappingScheme* mapping_scheme_;
     llvm_ir::TiledParameterInfo* tiled_param_info_;
     llvm::Value* lane_id_;
@@ -109,10 +108,12 @@ class IrEmitterUnnested : public IrEmitter {
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
   // kernel_info: Other information to support the kernel code generation.
+  // x_iter_num: When a thread process N elements in the X dimension, x_iter_num
+  //             has a value of 0..N-1 to identify the element being process.
   using TileElementGenerator = std::function<void(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
-      llvm::Value* x_loc)>;
+      llvm::Value* x_loc, int64 x_iter_num)>;
 
   // KernelCodeGenerator records the code generator objects that generate code
   // for tile elements or tile block prologue/epilogue.
@@ -216,9 +217,13 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitReductionToVector(HloInstruction* unnested_hlo);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
-  // the reduction is a row reduction.
+  // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
+  // and first_reduce are the same instruction. For a kInput fusion,
+  // unnested_hlo is the fusion instruction while first_reduce is the first
+  // reduce op.
   std::tuple<llvm_ir::KernelMappingScheme, bool>
-  ComputeMappingSchemeAndReductionKind(const HloInstruction* first_reduce);
+  ComputeMappingSchemeAndReductionKind(const HloInstruction* unnested_hlo,
+                                       const HloInstruction* first_reduce);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from
@@ -243,26 +248,29 @@ class IrEmitterUnnested : public IrEmitter {
                               const KernelCodeGenerator& kernel_generator,
                               KernelCodegenInfo* kernel_info);
   void EmitBlock(const TileGenerator& emit_one_tile,
-                 const KernelCodegenInfo* kernel_info,
-                 KernelSupportLibrary& ksl, llvm::Type* index_ty);
+                 KernelCodegenInfo* kernel_info, KernelSupportLibrary* ksl,
+                 llvm::Type* index_ty);
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
   void EmitTileElementForCopy(HloInstruction* hlo,
                               const llvm_ir::IrArray::Index& index,
                               const KernelCodegenInfo* kernel_info,
-                              llvm::Value* y_loc, llvm::Value* x_loc);
+                              llvm::Value* y_loc, llvm::Value* x_loc,
+                              int64 x_iter_num);
   // Emits code to process a tensor element in a tile for the given kLoop fusion
   // HLO containing parameters that are 0-2-1 transpose of its outputs.
   void EmitTileElementForFusion(HloInstruction* hlo,
                                 const llvm_ir::IrArray::Index& index,
                                 const KernelCodegenInfo* kernel_info,
-                                llvm::Value* y_loc, llvm::Value* x_loc);
+                                llvm::Value* y_loc, llvm::Value* x_loc,
+                                int64 x_iter_num);
   // Emits code to process a tensor element in a tile for the given input hlo
   // that is either a unnested kReduce or a kInput fusion.
   void EmitTileElementForReduction(HloInstruction* unnested_hlo,
                                    const llvm_ir::IrArray::Index& index,
                                    const KernelCodegenInfo* kernel_info,
-                                   llvm::Value* y_loc, llvm::Value* x_loc);
+                                   llvm::Value* y_loc, llvm::Value* x_loc,
+                                   int64 x_iter_num);
   // Prepares for the code generation for a tile block of a reduction kernel.
   void EmitPrologueForReduction(HloInstruction* unnested_hlo,
                                 KernelCodegenInfo* kernel_info);

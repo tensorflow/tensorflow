@@ -29,21 +29,40 @@ from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
 
 
-class AutographParseError(SyntaxError):
+class AutoGraphParseError(SyntaxError):
   pass
+
+
+# TODO(znado): Use namedtuple.
+class Context(object):
+  """Contains information about a source code transformation.
+
+  This object is mutable, and is updated during conversion. Not thread safe.
+
+  Attributes:
+    entity_info: EntityInfo, immutable.
+    current_origin: origin_info.OriginInfo, holds the OriginInfo of the last
+      AST node to be processed successfully. Useful for error handling.
+  """
+
+  def __init__(self, entity_info):
+    self.entity_info = entity_info
+    self.current_origin = None
 
 
 # TODO(mdan): Use namedtuple.
 class EntityInfo(object):
-  """Contains information about a Python entity. Immutable.
+  """Contains information about a Python entity.
+
+  Immutable.
 
   Examples of entities include functions and classes.
 
   Attributes:
     source_code: The entity's source code.
     source_file: The entity's source file.
-    namespace: Dict[str, ], containing symbols visible to the entity
-        (excluding parameters).
+    namespace: Dict[str, ], containing symbols visible to the entity (excluding
+      parameters).
     arg_values: dict[str->*], containing parameter values, if known.
     arg_types: dict[str->*], containing parameter types, if known.
     owner_type: The surrounding class type of the function, if present.
@@ -199,16 +218,18 @@ class Base(gast.NodeTransformer):
   # TODO(mdan): Document all extra features.
 
   def __init__(self, entity_info):
-    """Initialize the transformer. Subclasses should call this.
+    """Initialize the transformer.
+
+    Subclasses should call this.
 
     Args:
       entity_info: An EntityInfo object.
     """
-    self._current_origin = None
     self._lineno = 0
     self._col_offset = 0
-    # TODO(znado): remove this from the constructor of all Transformers.
-    self.entity_info = entity_info
+    # TODO(znado): make the constructor take a Context instead of an EntityInfo.
+    # TODO(mdan): Rename to self.ctx.
+    self.transformer_ctx = Context(entity_info)
     self._enclosing_entities = []
 
     # A stack that allows keeping mutable, scope-local state where scopes may be
@@ -232,13 +253,15 @@ class Base(gast.NodeTransformer):
     return len(self._local_scope_state)
 
   def enter_local_scope(self, inherit=None):
-    """Deprecated. Use self.state instead.
+    """Deprecated.
+
+    Use self.state instead.
 
     Marks entry into a new local scope.
 
     Args:
-      inherit: Optional enumerable of variable names to copy from the
-          parent scope.
+      inherit: Optional enumerable of variable names to copy from the parent
+        scope.
     """
     scope_entered = {}
     if inherit:
@@ -249,13 +272,15 @@ class Base(gast.NodeTransformer):
     self._local_scope_state.append(scope_entered)
 
   def exit_local_scope(self, keep=None):
-    """Deprecated. Use self.state instead.
+    """Deprecated.
+
+    Use self.state instead.
 
     Marks exit from the current local scope.
 
     Args:
-      keep: Optional enumerable of variable names to copy into the
-          parent scope.
+      keep: Optional enumerable of variable names to copy into the parent scope.
+
     Returns:
       A dict containing the scope that has just been exited.
     """
@@ -390,11 +415,11 @@ class Base(gast.NodeTransformer):
 
     Args:
       targets: list, tuple of or individual AST node. Should be used with the
-          targets field of an ast.Assign node.
+        targets field of an ast.Assign node.
       values: an AST node.
       apply_fn: a function of a single argument, which will be called with the
-          respective nodes of each single assignment. The signature is
-          apply_fn(target, value), no return value.
+        respective nodes of each single assignment. The signature is
+        apply_fn(target, value), no return value.
     """
     if not isinstance(targets, (list, tuple)):
       targets = (targets,)
@@ -429,17 +454,17 @@ class Base(gast.NodeTransformer):
       # call `visit`.  The error needs to be raised before the exception handler
       # below is installed, because said handler will mess up if `node` is not,
       # in fact, a node.
-      msg = (
-          'invalid value for "node": expected "ast.AST", got "{}"; to'
-          ' visit lists of nodes, use "visit_block" instead').format(type(node))
+      msg = ('invalid value for "node": expected "ast.AST", got "{}"; to'
+             ' visit lists of nodes, use "visit_block" instead').format(
+                 type(node))
       raise ValueError(msg)
 
     did_enter_function = False
     local_scope_size_at_entry = len(self._local_scope_state)
     processing_expr_node = False
 
+    parent_origin = self.transformer_ctx.current_origin
     try:
-      parent_origin = self._current_origin
       if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
         did_enter_function = True
       elif isinstance(node, gast.Expr):
@@ -449,14 +474,15 @@ class Base(gast.NodeTransformer):
         self._enclosing_entities.append(node)
 
       if anno.hasanno(node, anno.Basic.ORIGIN):
-        self._current_origin = anno.getanno(node, anno.Basic.ORIGIN)
+        self.transformer_ctx.current_origin = anno.getanno(node,
+                                                           anno.Basic.ORIGIN)
 
       if processing_expr_node:
         entry_expr_value = node.value
 
       if not anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
         result = super(Base, self).visit(node)
-      self._current_origin = parent_origin
+      self.transformer_ctx.current_origin = parent_origin
 
       # Adjust for consistency: replacing the value of an Expr with
       # an Assign node removes the need for the Expr node.
@@ -483,21 +509,20 @@ class Base(gast.NodeTransformer):
       return result
 
     except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-      if not self._current_origin:
+      if not self.transformer_ctx.current_origin:
         raise e
-      original_file_path = self._current_origin.loc.filename
-      original_line_number = self._current_origin.loc.lineno
-      original_col_offset = self._current_origin.loc.col_offset
-      original_source_line = self._current_origin.source_code_line
+      original_file_path = self.transformer_ctx.current_origin.loc.filename
+      original_line_number = self.transformer_ctx.current_origin.loc.lineno
+      original_col_offset = self.transformer_ctx.current_origin.loc.col_offset
+      original_source_line = (
+          self.transformer_ctx.current_origin.source_code_line)
       msg = '%s: %s.' % (e.__class__.__name__, str(e))
 
       # TODO(mdan): Avoid the printing of the original exception.
       # In other words, we need to find how to suppress the "During handling
       # of the above exception, another exception occurred" message.
       six.reraise(
-          AutographParseError,
-          AutographParseError(msg, (original_file_path, original_line_number,
+          AutoGraphParseError,
+          AutoGraphParseError(msg, (original_file_path, original_line_number,
                                     original_col_offset, original_source_line)),
           sys.exc_info()[2])
-    finally:
-      self._current_origin = parent_origin

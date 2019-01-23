@@ -1205,6 +1205,16 @@ void ConvertFloorOperator(const Model& model, const FloorOperator& src_op,
   (*floor_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertCeilOperator(const Model& model, const CeilOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* ceil_op = tensorflow_graph->add_node();
+  ceil_op->set_op("Ceil");
+  ceil_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *ceil_op->add_input() = src_op.inputs[0];
+  (*ceil_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
 void ConvertGatherOperator(const Model& model, const GatherOperator& src_op,
                            GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* gather_op = tensorflow_graph->add_node();
@@ -2169,6 +2179,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kFloor) {
     ConvertFloorOperator(model, static_cast<const FloorOperator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kCeil) {
+    ConvertCeilOperator(model, static_cast<const CeilOperator&>(src_op),
+                        tensorflow_graph);
   } else if (src_op.type == OperatorType::kGather) {
     ConvertGatherOperator(model, static_cast<const GatherOperator&>(src_op),
                           tensorflow_graph);

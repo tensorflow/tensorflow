@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_plugin.h"
 
+#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT

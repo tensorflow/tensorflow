@@ -738,6 +738,7 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
+  AlgorithmDesc() : AlgorithmDesc(0, false) {}
   AlgorithmDesc(Index a, bool use_tensor_ops) {
     proto_.set_algo_id(a);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
@@ -941,11 +942,7 @@ class VersionInfo {
 //   burden.
 // * Poor error handling: the API should return Status objects.
 //
-// Things worth trying:
-// * Move functions that are not actually common back to the backends. Then,
-//   callers may use dynamic_cast to access specific backends. This may not be
-//   that hard, as many of the callers are Stream::ThenXxx functions.
-// * Change all the returned bools to Status.
+// PrepareForConvolution is an example for how new APIs should be written.
 class DnnSupport {
  public:
   DnnSupport() {}
@@ -1186,6 +1183,26 @@ class DnnSupport {
     return false;
   }
 
+  template <typename ElementType>
+  port::Status PrepareForConvolution(
+      ConvolutionKind kind, Stream* stream,
+      const BatchDescriptor& batch_descriptor,
+      DeviceMemory<ElementType> input_data,
+      const FilterDescriptor& filter_descriptor,
+      DeviceMemory<ElementType> filter_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<ElementType> output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const AlgorithmConfig& algorithm_config,
+      ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory) {
+    return DoPrepareForConvolution(
+        kind, ToDataType<ElementType>::value, stream, batch_descriptor,
+        input_data, filter_descriptor, filter_data, output_descriptor,
+        output_data, convolution_descriptor, algorithm_config,
+        scratch_allocator, algorithm_desc, scratch_memory);
+  }
+
   // Enqueues a single-precision convolution operation onto the stream.
   //
   // Arguments (all borrowed):
@@ -1199,10 +1216,10 @@ class DnnSupport {
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
-  //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
-  //    space in order to speed up the convolution operation.
-  //  algorithm_config: specifies which algorithm should be used for the
+  //  algorithm_desc: specifies which algorithm should be used for the
   //    operation.
+  //  scratch: un-owned device memory for scratch space in order to speed up
+  //    the convolution operation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
   //
@@ -1227,8 +1244,9 @@ class DnnSupport {
       const DeviceMemory<float>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      DeviceMemory<float>* output_data,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a double-precision convolution operation onto the stream.
@@ -1240,8 +1258,9 @@ class DnnSupport {
       const DeviceMemory<double>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      DeviceMemory<double>* output_data,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       dnn::ProfileResult* output_profile_result) = 0;
 
   // Enqueues a half-precision convolution operation onto the stream.
@@ -1254,8 +1273,8 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half>* output_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
@@ -1330,15 +1349,15 @@ class DnnSupport {
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
   virtual bool DoConvolveBackwardData(
-      Stream* stream, const FilterDescriptor& filter_descriptor,
+      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
       const DeviceMemory<float>& filter_data,
-      const BatchDescriptor& output_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float> backward_output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const BatchDescriptor& input_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& input_descriptor,
       DeviceMemory<float>* backward_input_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the backward convolution pass for
@@ -1348,27 +1367,27 @@ class DnnSupport {
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual bool DoConvolveBackwardData(
-      Stream* stream, const FilterDescriptor& filter_descriptor,
+      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
       const DeviceMemory<double>& filter_data,
-      const BatchDescriptor& output_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<double> backward_output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const BatchDescriptor& input_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& input_descriptor,
       DeviceMemory<double>* backward_input_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   virtual bool DoConvolveBackwardData(
-      Stream* stream, const FilterDescriptor& filter_descriptor,
+      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
       const DeviceMemory<Eigen::half>& filter_data,
-      const BatchDescriptor& output_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half> backward_output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const BatchDescriptor& input_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& input_descriptor,
       DeviceMemory<Eigen::half>* backward_input_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for filter) operation
@@ -1398,8 +1417,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<float>* backward_filter_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the backward convolution pass for
@@ -1416,8 +1435,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<double>* backward_filter_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   virtual bool DoConvolveBackwardFilter(
@@ -1428,8 +1447,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<Eigen::half>* backward_filter_data,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for bias) operation onto
@@ -1614,6 +1633,17 @@ class DnnSupport {
                              DeviceMemory<Eigen::half>* output_data,
                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolForward not implemented for float16.";
+    return false;
+  }
+
+  virtual bool DoPoolForward(Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
+                             const DeviceMemory<int8>& input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemory<int8>* output_data,
+                             ScratchAllocator* workspace_allocator) {
+    LOG(FATAL) << "DoPoolForward not implemented for int8.";
     return false;
   }
 
@@ -2039,22 +2069,6 @@ class DnnSupport {
       QuantizedActivationMode mode,
       DeviceMemory<float>* gpu_unquantized_dst) = 0;
 
-  // Enqueues an asynchronous copy of the contents of buffer_src to
-  // gpu_unquantized_dst.
-  virtual bool DoCopyHostBuffer2Device(
-      Stream* stream, HostBuffer* buffer_src,
-      DeviceMemory<float>* gpu_unquantized_dst) {
-    return false;
-  }
-
-  // Enqueues an asynchronous copy of the contents of gpu_unquantized_src to
-  // buffer_dst.
-  virtual bool DoCopyDevice2HostBuffer(
-      Stream* stream, const DeviceMemory<float>& gpu_unquantized_src,
-      HostBuffer* buffer_dst) {
-    return false;
-  }
-
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
   //
@@ -2360,6 +2374,20 @@ class DnnSupport {
   }
 
  private:
+  virtual port::Status DoPrepareForConvolution(
+      ConvolutionKind kind, DataType element_type, Stream* stream,
+      const BatchDescriptor& batch_descriptor, DeviceMemoryBase input_data,
+      const FilterDescriptor& filter_descriptor, DeviceMemoryBase filter_data,
+      const BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const AlgorithmConfig& algorithm_config,
+      ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory) {
+    *algorithm_desc = {};
+    *scratch_memory = {};
+    return port::Status::OK();
+  }
+
   SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
 };
 

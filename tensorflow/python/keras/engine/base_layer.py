@@ -25,7 +25,9 @@ import itertools
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -55,7 +57,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.CheckpointableBase):
+class Layer(checkpointable.Checkpointable):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -254,7 +256,7 @@ class Layer(checkpointable.CheckpointableBase):
                  synchronization=tf_variables.VariableSynchronization.AUTO,
                  aggregation=tf_variables.VariableAggregation.NONE,
                  **kwargs):
-    """Adds a new variable to the layer, or gets an existing one; returns it.
+    """Adds a new variable to the layer.
 
     Arguments:
       name: variable name.
@@ -305,6 +307,8 @@ class Layer(checkpointable.CheckpointableBase):
     if dtype is None:
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
+    if self._dtype is None:
+      self._dtype = dtype.base_dtype.name
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
@@ -509,18 +513,23 @@ class Layer(checkpointable.CheckpointableBase):
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
     input_list = nest.flatten(inputs)
-
-    if context.executing_eagerly():
-      # Accept NumPy inputs by converting to Tensors when executing eagerly.
-      if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-        inputs = nest.map_structure(ops.convert_to_tensor, inputs)
-        input_list = nest.flatten(inputs)
+    # Accept NumPy inputs by converting to Tensors.
+    if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+      inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+      input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
     # This is always the case in graph mode. It can also be the case in eager
     # mode when all inputs can be traced back to `keras.Input()` (when building
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
+
+    if build_graph:
+      # Only create Keras history if at least one tensor originates from a
+      # `keras.Input`. Otherwise this Layer may be being used outside the Keras
+      # framework.
+      if base_layer_utils.uses_keras_input_layers(inputs):
+        base_layer_utils.create_keras_history(inputs)
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
@@ -1746,6 +1755,83 @@ class Node(object):
         'node_indices': self.node_indices,
         'tensor_indices': self.tensor_indices
     }
+
+
+class TensorFlowOpLayer(Layer):
+  """Wraps a TensorFlow Operation in a Layer.
+
+  This class is used internally by the Functional API. When a user
+  uses a raw TensorFlow Operation on symbolic tensors originating
+  from an `Input` Layer, the resultant operation will be wrapped
+  with this Layer object in order to make the operation compatible
+  with the Keras API.
+
+  This Layer will create a new, identical operation (except for inputs
+  and outputs) every time it is called. If `run_eagerly` is `True`,
+  the op creation and calculation will happen inside an Eager function.
+
+  Instances of this Layer are created when `autolambda` is called, which
+  is whenever a Layer's `__call__` encounters symbolic inputs that do
+  not have Keras metadata, or when a Network's `__init__` encounters
+  outputs that do not have Keras metadata.
+
+  Attributes:
+    node_def: String, the serialized NodeDef of the Op this layer will wrap.
+    constants: Dict of NumPy arrays, the values of any Tensors needed for this
+      Operation that do not originate from a Keras `Input` Layer. Since all
+      placeholders must come from Keras `Input` Layers, these Tensors must be
+      treated as constant in the Functional API.
+    name: String, the name of the Layer.
+    trainable: Bool, whether this Layer is trainable. Currently Variables are
+      not supported, and so this parameter has no effect.
+    dtype: The default dtype of this Layer. Inherited from `Layer` and has no
+      effect on this class, however is used in `get_config`.
+  """
+
+  def __init__(self,
+               node_def,
+               constants=None,
+               name=None,
+               trainable=True,
+               dtype=None):
+    super(TensorFlowOpLayer, self).__init__(
+        name=name, trainable=trainable, dtype=dtype)
+    self.node_def = node_def_pb2.NodeDef.FromString(node_def)
+    self.constants = constants or {}
+
+  def call(self, inputs):
+    if context.executing_eagerly():
+      return self._defun_call(inputs)
+    return self._make_op(inputs)
+
+  def _make_op(self, inputs):
+    inputs = nest.flatten(inputs)
+    graph = inputs[0].graph
+    with graph.as_default():
+      for index, constant in self.constants.items():
+        constant = ops.convert_to_tensor(constant)
+        inputs.insert(index, constant)
+
+      self.node_def.name = graph.unique_name(self.node_def.name)
+      c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
+      op = graph._create_op_from_tf_operation(c_op)
+
+      if len(op.outputs) == 1:
+        return op.outputs[0]
+      return op.outputs
+
+  @function.defun
+  def _defun_call(self, inputs):
+    """Wraps the op creation method in an Eager function for `run_eagerly`."""
+    return self._make_op(inputs)
+
+  def get_config(self):
+    config = super(TensorFlowOpLayer, self).get_config()
+    config.update({
+        'node_def': self.node_def.SerializeToString(),
+        'constants': self.constants
+    })
+    return config
 
 
 def default(method):

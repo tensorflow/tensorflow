@@ -970,8 +970,8 @@ class DatasetV2(object):
         shapes and types defined by `self.output_shapes` and
        `self.output_types`) to another nested structure of tensors.
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
-        representing the number elements to process in parallel. If not
-        specified, elements will be processed sequentially. If the value
+        representing the number elements to process asynchronously in parallel.
+        If not specified, elements will be processed sequentially. If the value
         `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
 
@@ -1756,8 +1756,8 @@ def make_initializable_iterator(dataset):
     RuntimeError: If eager execution is enabled.
   """
   try:
-    # Call the defined `make_one_shot_iterator()` if there is one, because some
-    # datasets (e.g. for prefetching) override its behavior.
+    # Call the defined `make_initializable_iterator()` if there is one, because
+    # some datasets (e.g. for prefetching) override its behavior.
     return dataset.make_initializable_iterator()
   except AttributeError:
     return DatasetV1Adapter(dataset).make_initializable_iterator()

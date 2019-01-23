@@ -28,6 +28,7 @@ import six
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -68,8 +69,8 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 @six.add_metaclass(abc.ABCMeta)
-@keras_export("keras.optimizers.Optimizer", v1=[])
-class OptimizerV2(checkpointable.CheckpointableBase):
+@keras_export("keras.optimizers.Optimizer")
+class OptimizerV2(checkpointable.Checkpointable):
   """Updated base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -93,6 +94,11 @@ class OptimizerV2(checkpointable.CheckpointableBase):
   # Execute opt_op to do one step of training:
   opt_op.run()
   ```
+
+  ### Thread Compatibility
+
+  The entire optimizer is currently thread compatible, not thread-safe. The user
+  needs to perform synchronization if necessary.
 
   ### Processing gradients before applying them.
 
@@ -289,8 +295,7 @@ class OptimizerV2(checkpointable.CheckpointableBase):
   @staticmethod
   def _scale_loss(loss_value):
     if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = \
-        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= (1. / num_replicas)
     return loss_value
@@ -348,7 +353,7 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     """
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
-    if distribute_ctx.has_distribution_strategy():
+    if distribute_ctx.has_strategy():
       reduced_grads = merge_grads(grads_and_vars)
       grads_and_vars = zip(reduced_grads, var_list)
 
@@ -411,6 +416,8 @@ class OptimizerV2(checkpointable.CheckpointableBase):
         backend.set_value(self._hyper[name], value)
 
   def _get_hyper(self, name, dtype=None):
+    if not self._hypers_created:
+      self._create_hypers()
     value = self._hyper[name]
     if callable(value):
       value = value()
@@ -431,7 +438,7 @@ class OptimizerV2(checkpointable.CheckpointableBase):
       if name == "lr":
         name = "learning_rate"
       if name in self._hyper:
-        return self._hyper[name]
+        return self._get_hyper(name)
       raise e
 
   def __setattr__(self, name, value):
@@ -573,10 +580,11 @@ class OptimizerV2(checkpointable.CheckpointableBase):
 
   def _serialize_hyperparameter(self, hyperparameter_name):
     """Serialize a hyperparameter that can be a float, callable, or Tensor."""
-    value = self._get_hyper(hyperparameter_name)
+    value = self._hyper[hyperparameter_name]
     if callable(value):
       return value()
-    if isinstance(value, (ops.Tensor, tf_variables.Variable)):
+    if isinstance(value, (ops.Tensor, tf_variables.Variable,
+                          distributed_values.TPUMirroredVariable)):
       return backend.get_value(value)
     return value
 
@@ -875,8 +883,8 @@ def merge_grads(grads_and_vars):
   """Merge gradients from different replicas."""
 
   def merge_grad_fn(strategy, grads_and_vars):
-    reduced_grads = strategy.batch_reduce(ds_reduce_util.ReduceOp.SUM,
-                                          grads_and_vars)
+    reduced_grads = strategy.extended.batch_reduce_to(
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     return reduced_grads
 
   return distribute_ctx.get_replica_context().merge_call(
@@ -898,8 +906,7 @@ def _var_key(var):
   """
 
   # pylint: disable=protected-access
-  if distribute_ctx.has_distribution_strategy() and hasattr(
-      var, "_primary_var"):
+  if distribute_ctx.has_strategy() and hasattr(var, "_primary_var"):
     var = var._primary_var
   if hasattr(var, "op"):
     return var._shared_name

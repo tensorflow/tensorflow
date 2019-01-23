@@ -1109,6 +1109,102 @@ void ProcessUnidirectionalSequenceLstmOperator(
   output_shape->ReplaceDims({timestamp, batch_size, output_size});
 }
 
+void ProcessUnidirectionalSequenceRnnOperator(
+    Model* model, UnidirectionalSequenceRnnOperator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // Shape already propagated.
+    return;
+  }
+
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  // TODO(renjieliu): check the inputs, as well as all kinds of weights.
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const int batch_size = input_shape.dims(1);
+  const int timestamp = input_shape.dims(0);
+
+  const auto& bias_array = model->GetArray(op->inputs[3]);
+  // Yield until input dims have been resolved.
+  if (!bias_array.has_shape()) {
+    return;
+  }
+
+  constexpr int kHiddenStateTensor = 4;
+  // b(115961645): This is a hack to work around.
+  model->GetArray(op->inputs[kHiddenStateTensor]).buffer.reset();
+
+  const auto& bias_shape = bias_array.shape();
+  const int output_size = bias_shape.dims(0);
+
+  Shape* output_shape = output_array.mutable_shape();
+  output_shape->ReplaceDims({timestamp, batch_size, output_size});
+}
+
+void ProcessBidirectionalSequenceLstmOperator(
+    Model* model, BidirectionalSequenceLstmOperator* op) {
+  // We assume time major.
+  auto& fw_output_array = model->GetArray(op->outputs[0]);
+  auto& bw_output_array = model->GetArray(op->outputs[1]);
+  if (fw_output_array.has_shape()) {
+    // Shape already propagated
+    return;
+  }
+
+  if (fw_output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  // TODO(renjieliu): check the inputs, as well as all kinds of weights.
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const int batch_size = input_shape.dims(1);
+  const int timestamp = input_shape.dims(0);
+
+  constexpr int kBwRecurrentToOutputWeightsTensor = 25;
+  const auto& recurrent_to_output_weights_array =
+      model->GetArray(op->inputs[kBwRecurrentToOutputWeightsTensor]);
+  // Yield until input dims have been resolved.
+  if (!recurrent_to_output_weights_array.has_shape()) {
+    return;
+  }
+
+  constexpr int kFwInputActivationStateTensor = 35;
+  constexpr int kFwInputCellStateTensor = 36;
+  constexpr int kBwInputActivationStateTensor = 37;
+  constexpr int kBwInputCellStateTensor = 38;
+  // b(115961645): This is a hack to work around.
+  model->GetArray(op->inputs[kFwInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kFwInputCellStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kBwInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kBwInputCellStateTensor]).buffer.reset();
+
+  const auto& output_weights_shape = recurrent_to_output_weights_array.shape();
+  const int output_size = output_weights_shape.dims(1);
+
+  Shape* fw_output_shape = fw_output_array.mutable_shape();
+  if (op->merge_outputs) {
+    fw_output_shape->ReplaceDims({timestamp, batch_size, 2 * output_size});
+  } else {
+    fw_output_shape->ReplaceDims({timestamp, batch_size, output_size});
+    Shape* bw_output_shape = bw_output_array.mutable_shape();
+    bw_output_shape->ReplaceDims({timestamp, batch_size, output_size});
+  }
+}
+
 void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -1828,6 +1924,20 @@ void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
   output_array.copy_shape(output_shape);
 }
 
+void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // We have 2 outputs, the shape of the index tensor, is the same size
+  // as the input array. The unique values tensor, is unknown until runtime.
+  CHECK_EQ(op->outputs.size(), 2);
+  auto& idx_output_array = model->GetArray(op->outputs[1]);
+
+  // Yield until input dims have been resolved, or output already computed
+  if (!input_array.has_shape() || idx_output_array.has_shape()) {
+    return;
+  }
+  idx_output_array.copy_shape(input_array.shape());
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -1869,6 +1979,7 @@ void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
     case OperatorType::kAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
+    case OperatorType::kCeil:
     case OperatorType::kExp:
     case OperatorType::kSin:
     case OperatorType::kLogicalAnd:
@@ -2023,6 +2134,14 @@ void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
       ProcessUnidirectionalSequenceLstmOperator(
           model, static_cast<UnidirectionalSequenceLstmOperator*>(op));
       break;
+    case OperatorType::kUnidirectionalSequenceRnn:
+      ProcessUnidirectionalSequenceRnnOperator(
+          model, static_cast<UnidirectionalSequenceRnnOperator*>(op));
+      break;
+    case OperatorType::kBidirectionalSequenceLstm:
+      ProcessBidirectionalSequenceLstmOperator(
+          model, static_cast<BidirectionalSequenceLstmOperator*>(op));
+      break;
     case OperatorType::kLstmCell:
       ProcessLstmCellOperator(model, static_cast<LstmCellOperator*>(op));
       break;
@@ -2102,6 +2221,9 @@ void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
       break;
     case OperatorType::kMirrorPad:
       ProcessMirrorPadOperator(model, static_cast<MirrorPadOperator*>(op));
+      break;
+    case OperatorType::kUnique:
+      ProcessUniqueOperator(model, static_cast<UniqueOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

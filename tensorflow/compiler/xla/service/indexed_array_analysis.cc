@@ -103,7 +103,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
 
   do {
     const HloInstruction* instr = stack.back();
-    if (cache_.count(instr)) {
+    if (cache_.contains(instr)) {
       stack.pop_back();
       continue;
     }
@@ -111,9 +111,9 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     switch (FindOrDie(dfs_state_map, instr)) {
       case kDiscovered: {
         for (const HloInstruction* operand : instr->operands()) {
-          if (!cache_.count(operand)) {
+          if (!cache_.contains(operand)) {
             stack.push_back(operand);
-            CHECK(!dfs_state_map.count(operand) ||
+            CHECK(!dfs_state_map.contains(operand) ||
                   dfs_state_map[operand] == kDiscovered);
             dfs_state_map[operand] = kDiscovered;
           }

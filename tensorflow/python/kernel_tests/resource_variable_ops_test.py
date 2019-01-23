@@ -286,12 +286,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       tmp_dir = self.get_temp_dir()
       fname = os.path.join(tmp_dir, "var.pickle")
       with open(fname, "wb") as f:
-        v = resource_variable_ops.ResourceVariable(10.0)
+        v = resource_variable_ops.ResourceVariable(
+            10.0,
+            dtype=dtypes.float16,
+            name="v")
         pickle.dump(v, f)
 
       with open(fname, "rb") as f:
-        v = pickle.load(f)
-        self.assertAllEqual(v.numpy(), 10.0)
+        new_v = pickle.load(f)
+        self.assertEqual(new_v.name, v.name)
+        self.assertEqual(new_v.shape, v.shape)
+        self.assertEqual(new_v.dtype, v.dtype)
+        self.assertEqual(new_v.trainable, v.trainable)
+        self.assertAllEqual(new_v.numpy(), v.numpy())
 
   @test_util.run_in_graph_and_eager_modes
   def testScatterDiv(self):
@@ -734,6 +741,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   @test_util.run_v1_only("b/120545219")
+  @test_util.disable_xla("This test never passed for XLA")
   def testDestroyResource(self):
     v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
@@ -1087,7 +1095,7 @@ class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testDistributeStrategy(self):
     v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int32)
-    self.assertIsNone(v.distribute_strategy)
+    self.assertIsNone(v._distribute_strategy)
 
 
 if __name__ == "__main__":

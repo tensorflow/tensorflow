@@ -100,7 +100,7 @@ class SquareLinearOperatorKroneckerTest(
 
   @property
   def _tests_to_skip(self):
-    return ["det", "solve", "solve_with_broadcast"]
+    return ["det", "inverse", "solve", "solve_with_broadcast"]
 
   def _operator_and_matrix(
       self, build_info, dtype, use_placeholder,
@@ -211,20 +211,33 @@ class SquareLinearOperatorKroneckerTest(
         is_self_adjoint=True,
     )
     cholesky_factor = operator.cholesky()
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         cholesky_factor,
-        kronecker.LinearOperatorKronecker))
+        kronecker.LinearOperatorKronecker)
     self.assertEqual(2, len(cholesky_factor.operators))
-    self.assertTrue(
-        isinstance(
-            cholesky_factor.operators[0],
-            lower_triangular.LinearOperatorLowerTriangular)
+    self.assertIsInstance(
+        cholesky_factor.operators[0],
+        lower_triangular.LinearOperatorLowerTriangular)
+    self.assertIsInstance(
+        cholesky_factor.operators[1],
+        lower_triangular.LinearOperatorLowerTriangular)
+
+  def test_kronecker_inverse_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix, is_non_singular=True),
+            linalg.LinearOperatorFullMatrix(
+                matrix, is_non_singular=True),
+        ],
+        is_non_singular=True,
     )
-    self.assertTrue(
-        isinstance(
-            cholesky_factor.operators[1],
-            lower_triangular.LinearOperatorLowerTriangular)
-    )
+    inverse = operator.inverse()
+    self.assertIsInstance(
+        inverse,
+        kronecker.LinearOperatorKronecker)
+    self.assertEqual(2, len(inverse.operators))
 
 
 if __name__ == "__main__":

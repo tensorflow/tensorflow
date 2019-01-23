@@ -886,44 +886,6 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
-  def _adjust_saturation(self, image, saturation_factor):
-    image = ops.convert_to_tensor(image, name="image")
-    orig_dtype = image.dtype
-    flt_image = image_ops.convert_image_dtype(image, dtypes.float32)
-    saturation_adjusted_image = gen_image_ops.adjust_saturation(
-        flt_image, saturation_factor)
-    return image_ops.convert_image_dtype(saturation_adjusted_image, orig_dtype)
-
-  def testHalfSaturationFused(self):
-    x_shape = [2, 2, 3]
-    x_rgb_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
-    x_np = np.array(x_rgb_data, dtype=np.uint8).reshape(x_shape)
-
-    saturation_factor = 0.5
-    y_rgb_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
-    y_np = np.array(y_rgb_data, dtype=np.uint8).reshape(x_shape)
-
-    with self.test_session(use_gpu=True):
-      x = constant_op.constant(x_np, shape=x_shape)
-      y = self._adjust_saturation(x, saturation_factor)
-      y_tf = self.evaluate(y)
-      self.assertAllEqual(y_tf, y_np)
-
-  def testTwiceSaturationFused(self):
-    x_shape = [2, 2, 3]
-    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
-    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
-
-    saturation_factor = 2.0
-    y_data = [0, 5, 13, 0, 106, 226, 30, 0, 234, 89, 255, 0]
-    y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
-
-    with self.test_session(use_gpu=True):
-      x = constant_op.constant(x_np, shape=x_shape)
-      y = self._adjust_saturation(x, saturation_factor)
-      y_tf = self.evaluate(y)
-      self.assertAllEqual(y_tf, y_np)
-
   def _adjustSaturationNp(self, x_np, scale):
     self.assertEqual(x_np.shape[-1], 3)
     x_v = x_np.reshape([-1, 3])
@@ -977,7 +939,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
           else:
             raise AssertionError("Invalid test style: %s" % (test_style))
           y_baseline = self._adjustSaturationNp(x_np, scale)
-          y_fused = self._adjust_saturation(x_np, scale).eval()
+          y_fused = image_ops.adjust_saturation(x_np, scale).eval()
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
@@ -1438,12 +1400,12 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
 
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
-  def _testBrightness(self, x_np, y_np, delta):
+  def _testBrightness(self, x_np, y_np, delta, tol=1e-6):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_brightness(x, delta)
       y_tf = self.evaluate(y)
-      self.assertAllClose(y_tf, y_np, 1e-6)
+      self.assertAllClose(y_tf, y_np, tol)
 
   def testPositiveDeltaUint8(self):
     x_shape = [2, 2, 3]
@@ -1455,7 +1417,7 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
     self._testBrightness(x_np, y_np, delta=10. / 255.)
 
-  def testPositiveDeltaFloat(self):
+  def testPositiveDeltaFloat32(self):
     x_shape = [2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.float32).reshape(x_shape) / 255.
@@ -1464,6 +1426,16 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
     y_np = np.array(y_data, dtype=np.float32).reshape(x_shape) / 255.
 
     self._testBrightness(x_np, y_np, delta=10. / 255.)
+
+  def testPositiveDeltaFloat16(self):
+    x_shape = [2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.float16).reshape(x_shape) / 255.
+
+    y_data = [10, 15, 23, 64, 145, 236, 47, 18, 244, 100, 265, 11]
+    y_np = np.array(y_data, dtype=np.float16).reshape(x_shape) / 255.
+
+    self._testBrightness(x_np, y_np, delta=10. / 255., tol=1e-3)
 
   def testNegativeDelta(self):
     x_shape = [2, 2, 3]

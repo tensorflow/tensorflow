@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.compiler import xla
@@ -503,7 +504,17 @@ def replicate(computation,
       replicas is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
   Returns:
-    A list of lists of output tensors, indexed by `[replica_num][output_num]`.
+    A list of outputs, indexed by `[replica_num]` each output can be a nested
+    structure same as what computation() returns with a few exceptions.
+
+    Exceptions include:
+      1) None output: a NoOp would be returned which control-depends on
+         computation.
+      2) Single value output: A tuple containing the value would be returned.
+      3) Operation-only outputs: a NoOp would be returned which
+         control-depends on computation.
+      TODO(b/121383831): Investigate into removing these special cases.
+
   Raises:
     ValueError: If all replicas do not have equal numbers of input tensors.
     ValueError: If the number of inputs per replica does not match
@@ -712,51 +723,12 @@ def split_compile_and_replicate(computation,
       vscope.set_use_resource(saved_use_resource)
       vscope.set_custom_getter(saved_custom_getter)
 
-    # If the computation returns `None`, make it an empty tuple.
-    if outputs is None:
-      outputs = tuple()
-    # If the computation only returned one value, makes it a tuple.
-    if not isinstance(outputs, (list, tuple)):
-      outputs = (outputs,)
+    outputs_is_flat = xla.is_flat(outputs)
+    if outputs_is_flat:
+      output_tensors, control_deps = _postprocess_flat_outputs(outputs)
+    else:
+      output_tensors, control_deps = _postprocess_non_flat_outputs(outputs)
 
-    # Append `no_op` here so that fetching any return value of this function
-    # will trigger TPUExecute node.
-    outputs += (control_flow_ops.no_op(),)
-    try:
-      with ops.device(core(0)):
-        outputs = [
-            o if isinstance(o, ops.Operation) else ops.convert_to_tensor(o)
-            for o in outputs
-        ]
-    except Exception as e:
-      raise ValueError(
-          "TPU function return values must all either be Operations or "
-          "convertible to Tensors. Got '%s'" % str(e))
-
-    # Separates the returned Operations and Tensors.
-    output_operations = [o for o in outputs if isinstance(o, ops.Operation)]
-    output_tensors = [o for o in outputs if not isinstance(o, ops.Operation)]
-
-    if outputs != output_tensors + output_operations:
-      raise ValueError(
-          "TPU functions must return zero-or more Tensor values followed by "
-          "zero or more Operations.")
-    output_arity = len(output_tensors)
-
-    # Wraps outputs in Identity ops. Otherwise a replicated input copied
-    # straight to an output would bypass the replicate(). This would be bad
-    # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
-    # be rewritten away, leading to a runtime error.
-    # TODO(phawkins): extend the rewrite to elide these nodes instead.
-    new_output_tensors = []
-    for t in output_tensors:
-      with ops.device(t.device if t.device else core(0)):
-        o = array_ops.identity(t)
-        # pylint: disable=protected-access
-        o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
-        # pylint: enable=protected-access
-        new_output_tensors.append(o)
-    output_tensors = new_output_tensors
     context.ExitResult(output_tensors)
   finally:
     context.report_unsupported_operations()
@@ -768,11 +740,6 @@ def split_compile_and_replicate(computation,
     attr_value.list.s.extend([compat.as_bytes(x) for x in host_compute_core])
     metadata._set_attr("host_compute_core", attr_value)  # pylint: disable=protected-access
 
-  # Fan-out: Builds a TPUReplicatedOutput node for each output.
-  outputs = [tpu_ops.tpu_replicated_output(output_tensors[i], num_replicas,
-                                           name="output{}".format(i))
-             for i in xrange(output_arity)]
-
   with ops.control_dependencies([metadata]):
     if use_tpu:
       compile_status = tpu_ops.tpu_compilation_result()
@@ -782,28 +749,146 @@ def split_compile_and_replicate(computation,
     else:
       compile_status = control_flow_ops.no_op(name="compilation_status")
 
-  with ops.control_dependencies(output_operations):
-    if output_arity == 0:
-      # Returns a list of NoOps dependent on the replication Op, indexed by
-      # [replica_num].
-      return [
-          compile_status, [
-              control_flow_ops.no_op(name="shard_%d" % i)
-              for i in range(num_replicas)
-          ]
+  if not output_tensors:
+    # Returns a list of NoOps dependent on the replication Op, indexed by
+    # [replica_num].
+    return [
+        compile_status,
+        [
+            control_flow_ops.group(control_deps, name="shard_%d" % i)
+            for i in range(num_replicas)
+        ]
+    ]
+
+  # Fan-out: Builds a TPUReplicatedOutput node for each output.
+  replicated_outputs = [[] for i in xrange(num_replicas)]
+  for i, t in enumerate(output_tensors):
+    # Fan-out: Builds a TPUReplicatedOutput node for each output.
+    ys = tpu_ops.tpu_replicated_output(
+        t, num_replicas, name="output{}".format(i))
+
+    # Wraps the outputs in identity operators so the names of any possible
+    # `fetch` nodes are preserved by the replication rewrite.
+    with ops.control_dependencies(control_deps):
+      for replica in xrange(num_replicas):
+        replicated_outputs[replica].append(
+            array_ops.identity(
+                ys[replica], name="output_%d_shard_%d" % (i, replica)))
+
+  if not outputs_is_flat:
+    replicated_outputs = [
+        nest.pack_sequence_as(outputs, replica_outs)
+        for replica_outs in replicated_outputs
+    ]
+
+  return [compile_status, replicated_outputs]
+
+
+def _postprocess_flat_outputs(outputs):
+  """Validates non-flat outputs, add backs device assignments and other attrs.
+
+  Args:
+    outputs: Output from `computation` inside `tpu.rewrite`.
+
+  Returns:
+    Tensors and Operations extracted from outputs.
+  """
+  # Following code segment is to preserve legacy behavior. Previously we only
+  # supported flat outputs and thus for consistency it was nice to convert even
+  # single element into a tuple. But now that we support arbitrary output
+  # structure, this is no longer necessary.
+  # TODO(b/121383831): Migrate all legacy use cases and delete this special
+  # case.
+  # If the computation returns `None`, make it an empty tuple.
+  if outputs is None:
+    outputs = tuple()
+  # If the computation only returned one value, makes it a tuple.
+  if not isinstance(outputs, collections.Sequence):
+    outputs = (outputs,)
+
+  # Append `no_op` here so that fetching any return value of this function
+  # will trigger TPUExecute node.
+  outputs += (control_flow_ops.no_op(),)
+  try:
+    with ops.device(core(0)):
+      outputs = [
+          o if isinstance(o, ops.Operation) else ops.convert_to_tensor(o)
+          for o in outputs
       ]
-    else:
-      # Wraps the outputs in identity operators so the names of any possible
-      # `fetch` nodes are preserved by the replication rewrite.
-      return [
-          compile_status, [[
-              array_ops.identity(
-                  outputs[out][replica],
-                  name="output_%d_shard_%d" % (out, replica))
-              for out in xrange(output_arity)
-          ]
-                           for replica in xrange(num_replicas)]
-      ]
+  except Exception as e:
+    raise ValueError(
+        "TPU function return values must all either be Operations or "
+        "convertible to Tensors. Got '%s'" % str(e))
+
+  # Separates the returned Operations and Tensors.
+  output_operations = [o for o in outputs if isinstance(o, ops.Operation)]
+  output_tensors = [o for o in outputs if not isinstance(o, ops.Operation)]
+
+  if outputs != output_tensors + output_operations:
+    raise ValueError(
+        "TPU functions must return zero-or more Tensor values followed by "
+        "zero or more Operations.")
+
+  # Wraps outputs in Identity ops. Otherwise a replicated input copied
+  # straight to an output would bypass the replicate(). This would be bad
+  # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
+  # be rewritten away, leading to a runtime error.
+  # TODO(phawkins): extend the rewrite to elide these nodes instead.
+  new_output_tensors = []
+  for t in output_tensors:
+    with ops.device(t.device if t.device else core(0)):
+      o = array_ops.identity(t)
+      # pylint: disable=protected-access
+      o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
+      # pylint: enable=protected-access
+      new_output_tensors.append(o)
+  return new_output_tensors, output_operations
+
+
+def _postprocess_non_flat_outputs(outputs):
+  """Validates non-flat outputs, add backs device assignments and other attrs.
+
+  Args:
+    outputs: Output from `computation` inside `tpu.rewrite`.
+
+  Returns:
+    Tensors extracted from outputs and an empty list because Operations are not
+    allowed in non-flat outputs..
+  """
+
+  # Flatten output items.
+  flat_outputs = nest.flatten(outputs)
+
+  # Convert all non-Operation outputs to Tensors.
+  for i, o in enumerate(flat_outputs):
+    if isinstance(o, ops.Operation):
+      raise ValueError(
+          "tpu.rewrite does not support Operation as return value in non-flat "
+          "output structure. You can set returned Operations as control "
+          "dependencies of returned Tensors so Operations are triggered when "
+          'Tensors are evaluated. Operation found: "%s"' % o.name)
+
+    try:
+      o = ops.convert_to_tensor(o)
+    except Exception as e:
+      raise ValueError(
+          "TPU function return values must all either be Operations or "
+          'convertible to Tensors. Got error: "%s"' % str(e))
+
+    # Wraps outputs in Identity ops. Otherwise a replicated input copied
+    # straight to an output would bypass the replicate(). This would be bad
+    # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
+    # be rewritten away, leading to a runtime error.
+    # TODO(phawkins): extend the rewrite to elide these nodes instead.
+    with ops.device(core(0)):
+      o = array_ops.identity(o)
+      # pylint: disable=protected-access
+      o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
+      # pylint: enable=protected-access
+      flat_outputs[i] = array_ops.identity(o)
+
+  # All flat_outputs are Tensors, and no Operations.
+  return flat_outputs, []
 
 
 def split_compile_and_shard(computation,
@@ -1126,11 +1211,15 @@ def rewrite(computation,
       case the core attached to task 0, TPU device 0 is used.
     name: (Deprecated) Does nothing.
   Returns:
-    A list of output tensors.
+    Same data structure as if computation(*inputs) is called directly with some
+    exceptions for correctness. Exceptions include:
+      1) None output: a NoOp would be returned which control-depends on
+         computation.
+      2) Single value output: A tuple containing the value would be returned.
+      3) Operation-only outputs: a NoOp would be returned which
+         control-depends on computation.
+      TODO(b/121383831): Investigate into removing these special cases.
   """
-  if inputs is not None and not isinstance(inputs, (list, tuple)):
-    raise TypeError("tpu.rewrite() inputs must be a list or tuple")
-
   # TODO(b/36647078) remove disable when pylint bug is fixed.
   # pylint: disable=indexing-exception
   return replicate(

@@ -47,6 +47,8 @@ namespace grappler {
 class GraphTopologyView {
  public:
   GraphTopologyView() = default;
+  explicit GraphTopologyView(bool skip_invalid_edges)
+      : skip_invalid_edges_(skip_invalid_edges) {}
 
   // Initialize graph topology view from the graph. It's possible to pass
   // additional edges that do not exist in a graph, but must be respected when
@@ -84,6 +86,10 @@ class GraphTopologyView {
   const absl::InlinedVector<int, 2>& GetFanout(int node_idx) const;
 
  private:
+  // If true, all invalid edges and inputs (srd, dst or input node not found in
+  // a graph) will be skipped, otherwise initialization will fail with error.
+  bool skip_invalid_edges_ = false;
+
   // WARN: `graph_` must outlive this object and graph nodes must not be
   // destructed, because node names captured with absl::string_view.
   const GraphDef* graph_ = nullptr;  // do not own

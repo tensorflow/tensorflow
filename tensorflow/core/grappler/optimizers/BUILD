@@ -145,12 +145,16 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/grappler/utils:traversal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -252,12 +256,16 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/grappler/utils:traversal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -409,6 +417,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
@@ -611,11 +620,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
+        "//tensorflow/core/grappler/utils:traversal",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -674,7 +685,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "remapper",
     srcs = ["remapper.cc"],
     hdrs = [
@@ -691,6 +702,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -702,6 +714,7 @@ tf_cuda_cc_test(
     deps = [
         ":remapper",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

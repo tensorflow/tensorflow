@@ -178,7 +178,7 @@ class HloModuleGroupMetadata {
   // Precondition: IsCompanionWhile(instruction) is true.
   const std::vector<HloInstruction*>& Companions(
       const HloInstruction* instruction) const {
-    CHECK_EQ(companion_set_index_.count(instruction), 1);
+    CHECK(companion_set_index_.contains(instruction));
     return companion_set(companion_set_index_.at(instruction));
   }
 

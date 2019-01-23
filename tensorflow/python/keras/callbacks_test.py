@@ -27,11 +27,11 @@ import tempfile
 import threading
 import unittest
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
@@ -89,6 +89,23 @@ class Counter(keras.callbacks.Callback):
     return _call_and_count
 
 
+def _get_numpy():
+  return np.ones((10, 10)), np.ones((10, 1))
+
+
+def _get_sequence():
+
+  class MySequence(keras.utils.data_utils.Sequence):
+
+    def __getitem__(self, _):
+      return np.ones((2, 10)), np.ones((2, 1))
+
+    def __len__(self):
+      return 5
+
+  return MySequence(), None
+
+
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
 class CallbackCountsTest(keras_parameterized.TestCase):
@@ -114,8 +131,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     return model
 
-  def test_callback_hooks_are_called_in_fit(self):
-    x, y = np.ones((10, 10)), np.ones((10, 1))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_fit(self, data):
+    x, y = data
     val_x, val_y = np.ones((4, 10)), np.ones((4, 1))
 
     model = self._get_model()
@@ -148,8 +167,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
             'on_train_end': 1
         })
 
-  def test_callback_hooks_are_called_in_evaluate(self):
-    x, y = np.ones((10, 10)), np.ones((10, 1))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_evaluate(self, data):
+    x, y = data
 
     model = self._get_model()
     counter = Counter()
@@ -162,8 +183,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
             'on_test_end': 1
         })
 
-  def test_callback_hooks_are_called_in_predict(self):
-    x = np.ones((10, 10))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_predict(self, data):
+    x = data[0]
 
     model = self._get_model()
     counter = Counter()
@@ -1397,47 +1420,6 @@ class KerasCallbacksTest(test.TestCase):
             callbacks=cbks,
             epochs=1)
 
-  @test_util.run_deprecated_v1
-  def test_fit_generator_with_callback(self):
-
-    class TestCallback(keras.callbacks.Callback):
-
-      def set_model(self, model):
-        # Check the model operations for the optimizer operations that
-        # the _make_train_function adds under a named scope for the
-        # optimizer. This ensurs the full model is populated before the
-        # set_model callback is called.
-        optimizer_name_scope = 'training/' + model.optimizer.__class__.__name__
-        graph_def = ops.get_default_graph().as_graph_def()
-        for node in graph_def.node:
-          if node.name.startswith(optimizer_name_scope):
-            return
-        raise RuntimeError('The optimizer operations are not present in the '
-                           'model graph when the Callback.set_model function '
-                           'is called')
-    np.random.seed(1337)
-
-    def generator():
-      x = np.random.randn(10, 100).astype(np.float32)
-      y = np.random.randn(10, 10).astype(np.float32)
-      while True:
-        yield x, y
-
-    with self.cached_session():
-      model = testing_utils.get_small_sequential_mlp(
-          num_hidden=10, num_classes=10, input_dim=100)
-      model.compile(
-          loss='categorical_crossentropy',
-          optimizer='sgd',
-          metrics=['accuracy'])
-      model.fit_generator(
-          generator(),
-          steps_per_epoch=2,
-          epochs=1,
-          validation_data=generator(),
-          validation_steps=2,
-          callbacks=[TestCallback()],
-          verbose=0)
 
 if __name__ == '__main__':
   test.main()

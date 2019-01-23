@@ -31,6 +31,12 @@ py_binary(
 
 py_binary(
     name = "keras_mnist",
+    srcs = ["keras_mnist.py"],
+    deps = [":keras_mnist_lib"],
+)
+
+py_library(
+    name = "keras_mnist_lib",
     srcs = [
         "keras_mnist.py",
     ],

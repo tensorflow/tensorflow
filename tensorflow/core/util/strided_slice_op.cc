@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #include <array>
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {

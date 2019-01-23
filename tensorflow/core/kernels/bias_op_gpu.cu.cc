@@ -195,10 +195,10 @@ __global__ void BiasGradNCHW_SharedAtomics(const T* output_backprop,
 template <typename T>
 void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
                              T* bias_backprop, int32 batch, int32 height,
-                             int32 width, int32 channel,
+                             int32 width, int32 depth, int32 channel,
                              TensorFormat data_format) {
   const int32 bias_size = channel;
-  const int32 image_size = height * width;
+  const int32 image_size = height * width * depth;
   const int32 total_count = batch * bias_size * image_size;
   if (total_count == 0) {
     return;

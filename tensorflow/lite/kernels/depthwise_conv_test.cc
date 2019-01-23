@@ -437,11 +437,11 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
               ElementsAreArray({4, 7, 3, 6, 10, 4, 2, 3, 1}));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     DepthwiseConvolutionOpTest, DepthwiseConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     QuantizedDepthwiseConvolutionOpTest, QuantizedDepthwiseConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
