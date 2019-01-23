@@ -2417,6 +2417,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/stream_executor:stream",
+        "@com_google_absl//absl/strings",
     ],
 )
 
