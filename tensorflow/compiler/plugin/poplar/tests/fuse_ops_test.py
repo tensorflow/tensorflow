@@ -223,26 +223,44 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFwdAndBwdMaxPool(self):
+    input = np.arange(16).reshape(1,4,4,1)
+    output_grad = np.full((1,2,2,1), 0.1)
+
     with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float32, [1,1,2,2], name="a")
-      pb = array_ops.placeholder(np.float32, [1,1,2,2], name="a")
-      c = nn.max_pool(pa, ksize=[1,1,2,2], strides=[1,1,1,1],
+      pa = array_ops.placeholder(np.float32, [1,4,4,1], name="a")
+      pb = array_ops.placeholder(np.float32, [1,2,2,1], name="b")
+      c = nn.max_pool(pa, ksize=[1,2,2,1], strides=[1,2,2,1],
                       data_format='NCHW', padding='SAME')
-      d = gen_nn_ops.max_pool_grad(pa, pb, c, ksize=[1,1,2,2],
-              strides=[1,1,1,1], data_format='NCHW', padding='SAME')
+      d = gen_nn_ops.max_pool_grad(pa, c, pb, ksize=[1,2,2,1], strides=[1,2,2,1], data_format='NCHW', padding='SAME')
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       sess.run(report)
-
       fe = {
-        pa: np.ones([1,1,2,2]),
-        pb: np.zeros([1,1,2,2]),
+        pa: input,
+        pb: output_grad,
       }
-      result = sess.run(d, fe)
-      self.assertAllClose(result, [[[[1, 2], [ 2, 4]]]])
+      output, input_grad = sess.run((c,d), fe)
+      self.assertAllClose(output, [[[[ 5.], [ 7.]], [[13.], [15.]]]])
+      self.assertAllClose(input_grad,
+        [[[[0. ],
+           [0. ],
+           [0. ],
+           [0. ]],
+          [[0. ],
+           [0.1],
+           [0. ],
+           [0.1]],
+          [[0. ],
+           [0. ],
+           [0. ],
+           [0. ]],
+          [[0. ],
+           [0.1],
+           [0. ],
+           [0.1]]]])
 
       result = sess.run(report)
       self.assertTrue(len(result) == 3)

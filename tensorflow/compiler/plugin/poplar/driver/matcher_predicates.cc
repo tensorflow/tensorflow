@@ -97,7 +97,6 @@ bool Is2DMaxPoolGrad(const HloInstruction* inst) {
         reduction_dims++;
       }
     }
-    VLOG(0) << "reduction_dims " << reduction_dims;
     return inst->window().dimensions_size() == 4 && reduction_dims == 2;
   }
   return false;
