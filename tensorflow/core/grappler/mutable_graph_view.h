@@ -68,9 +68,12 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // it can have edges to the nodes that are not in it, however after adding
   // it to the underlying graph, final graph must be valid.
   //
-  // TODO(ezhulenev): Currently it will fail if subgraph has non-empty function
-  // library. Add support for adding new functions from the subgraph function
-  // library into the underlying graph.
+  // If subgraph function library is not empty, all new functions will be added
+  // to the graph. Functions that appear with the same name in both subgraph and
+  // the graph represented by *this, must have identical function definitions.
+  //
+  // IMPORTANT: All nodes and functions of the given subgraph moved into the
+  // underlying graph, which leaves subgraph in valid but undefined state.
   Status AddSubgraph(GraphDef&& subgraph);
 
   // Updates all fanouts (input ports fetching output tensors) from

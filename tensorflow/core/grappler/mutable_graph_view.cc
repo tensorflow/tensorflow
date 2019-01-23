@@ -18,10 +18,12 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -222,28 +224,40 @@ NodeDef* MutableGraphView::AddNode(NodeDef&& node) {
 }
 
 Status MutableGraphView::AddSubgraph(GraphDef&& subgraph) {
-  if (subgraph.library().function_size() != 0) {
-    constexpr int kMaxNumNodesForDebugStr = 100;
-    string subgraph_str = "too large to display";
-    if (subgraph.node_size() < kMaxNumNodesForDebugStr) {
-      constexpr int kMaxLenSubgraphStr = 1000;
-      subgraph_str = subgraph.ShortDebugString();
-      if (subgraph_str.length() > kMaxLenSubgraphStr) {
-        subgraph_str =
-            absl::StrCat(subgraph_str.substr(0, kMaxLenSubgraphStr), "...");
+  // 1. Add all new functions and check that functions with the same name
+  // have identical definition.
+  const int function_size = subgraph.library().function_size();
+  if (function_size > 0) {
+    absl::flat_hash_map<absl::string_view, const FunctionDef*> graph_fdefs;
+    for (const FunctionDef& fdef : graph()->library().function()) {
+      graph_fdefs.emplace(fdef.signature().name(), &fdef);
+    }
+
+    for (FunctionDef& fdef : *subgraph.mutable_library()->mutable_function()) {
+      const auto graph_fdef = graph_fdefs.find(fdef.signature().name());
+
+      if (graph_fdef == graph_fdefs.end()) {
+        VLOG(3) << "Add new function definition: " << fdef.signature().name();
+        graph()->mutable_library()->add_function()->Swap(&fdef);
+      } else {
+        if (!FunctionDefsEqual(fdef, *graph_fdef->second)) {
+          return MutationError(
+              "AddSubgraph",
+              absl::Substitute("function_size=$0", function_size),
+              absl::StrCat(
+                  "Found different function definition with the same name: ",
+                  fdef.signature().name()));
+        }
       }
     }
-    string params = absl::Substitute("subgraph='$0'", subgraph_str);
-    return MutationError(
-        "AddSubgraph", params,
-        "can't add a subgraph with non-empty function library");
   }
 
+  // 2. Add all nodes to the underlying graph.
   int node_size_before = graph()->node_size();
 
   for (NodeDef& node : *subgraph.mutable_node()) {
     auto* node_in_graph = graph()->add_node();
-    *node_in_graph = std::move(node);
+    node_in_graph->Swap(&node);
     TF_RETURN_IF_ERROR(AddUniqueNode(node_in_graph));
   }
 
