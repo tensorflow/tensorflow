@@ -27,7 +27,7 @@ cuda_py_test(
     size = "small",
     srcs = ["linear_regression_test.py"],
     additional_deps = [
-        ":linear_regression",
+        ":linear_regression_lib",
         "//tensorflow:tensorflow_py",
     ],
     tags = [
@@ -41,7 +41,7 @@ cuda_py_test(
     size = "small",
     srcs = ["linear_regression_graph_test.py"],
     additional_deps = [
-        ":linear_regression",
+        ":linear_regression_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
