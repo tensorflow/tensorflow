@@ -1808,6 +1808,19 @@ def round(x):
   return math_ops.round(x)
 
 
+@keras_export('keras.backend.erf')
+def erf(x):
+  """Computes the Gauss error function of x element-wise..
+
+  Arguments:
+      x: Tensor or variable.
+
+  Returns:
+      A tensor.
+  """
+  return math_ops.erf(x)
+
+
 @keras_export('keras.backend.sign')
 def sign(x):
   """Element-wise sign.

@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 import scipy.sparse
+import scipy.special
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
@@ -298,6 +299,7 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.square, np.square),
         (keras.backend.abs, np.abs),
         (keras.backend.round, np.round),
+        (keras.backend.erf, scipy.special.erf),
         (keras.backend.sign, np.sign),
         (keras.backend.sin, np.sin),
         (keras.backend.cos, np.cos),
