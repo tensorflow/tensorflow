@@ -1237,45 +1237,34 @@ class DnnSupport {
   //   that if the inverse of the filter is applied to the output in VALID mode
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
-  virtual bool DoConvolve(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<float>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
+  virtual port::Status DoConvolve(
+      ConvolutionKind kind, DataType element_type, Stream* stream,
+      const BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const FilterDescriptor& filter_descriptor, DeviceMemoryBase filter_data,
+      const BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
-  // Enqueues a double-precision convolution operation onto the stream.
-  // See DoConvolve above for argument details.
-  virtual bool DoConvolve(
-      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-      const DeviceMemory<double>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<double>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double>* output_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result) = 0;
-
-  // Enqueues a half-precision convolution operation onto the stream.
-  // See DoConvolve above for argument details.
-  virtual bool DoConvolve(
-      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-      const DeviceMemory<Eigen::half>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<Eigen::half>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half>* output_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) = 0;
+  template <typename ElementType>
+  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+                  const DeviceMemory<ElementType>& input_data,
+                  const dnn::FilterDescriptor& filter_descriptor,
+                  const DeviceMemory<ElementType>& filter_data,
+                  const dnn::ConvolutionDescriptor& convolution_descriptor,
+                  const dnn::BatchDescriptor& output_descriptor,
+                  DeviceMemory<ElementType>* output_data,
+                  const dnn::AlgorithmDesc& algorithm_desc,
+                  DeviceMemory<uint8>* scratch_memory,
+                  ProfileResult* output_profile_result) {
+    return IsStatusOk(
+        DoConvolve(ConvolutionKind::FORWARD, ToDataType<ElementType>::value,
+                   stream, input_descriptor, input_data, filter_descriptor,
+                   filter_data, output_descriptor, *output_data,
+                   convolution_descriptor, algorithm_desc, *scratch_memory,
+                   output_profile_result),
+        !output_profile_result);
+  }
 
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
@@ -1348,47 +1337,33 @@ class DnnSupport {
   //    backprop of the input.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  virtual bool DoConvolveBackwardData(
+  template <typename ElementType>
+  bool DoConvolveBackwardData(
       Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<float>& filter_data,
+      const DeviceMemory<ElementType>& filter_data,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float> backward_output_data,
+      const DeviceMemory<ElementType>& backward_output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<float>* backward_input_data,
+      DeviceMemory<ElementType>* backward_input_data,
       const dnn::AlgorithmDesc& algorithm_desc,
       DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) = 0;
+      ProfileResult* output_profile_result) {
+    return IsStatusOk(
+        DoConvolve(ConvolutionKind::BACKWARD_DATA,
+                   ToDataType<ElementType>::value, stream, input_descriptor,
+                   *backward_input_data, filter_descriptor, filter_data,
+                   output_descriptor, backward_output_data,
+                   convolution_descriptor, algorithm_desc, *scratch_memory,
+                   output_profile_result),
+        !output_profile_result);
+  }
 
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
-
-  virtual bool DoConvolveBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<double>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<double>* backward_input_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) = 0;
-
-  virtual bool DoConvolveBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<Eigen::half>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<Eigen::half>* backward_input_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for filter) operation
   // onto the stream.
@@ -1409,47 +1384,33 @@ class DnnSupport {
   //    backprop of the filter.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  virtual bool DoConvolveBackwardFilter(
+  template <typename ElementType>
+  bool DoConvolveBackwardFilter(
       Stream* stream, const BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
+      const DeviceMemory<ElementType>& input_data,
       const BatchDescriptor& output_descriptor,
-      DeviceMemory<float> backward_output_data,
+      const DeviceMemory<ElementType>& backward_output_data,
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
-      DeviceMemory<float>* backward_filter_data,
+      DeviceMemory<ElementType>* backward_filter_data,
       const dnn::AlgorithmDesc& algorithm_desc,
       DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) = 0;
+      ProfileResult* output_profile_result) {
+    return IsStatusOk(
+        DoConvolve(ConvolutionKind::BACKWARD_FILTER,
+                   ToDataType<ElementType>::value, stream, input_descriptor,
+                   input_data, filter_descriptor, *backward_filter_data,
+                   output_descriptor, backward_output_data,
+                   convolution_descriptor, algorithm_desc, *scratch_memory,
+                   output_profile_result),
+        !output_profile_result);
+  }
 
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
-
-  virtual bool DoConvolveBackwardFilter(
-      Stream* stream, const BatchDescriptor& input_descriptor,
-      const DeviceMemory<double>& input_data,
-      const BatchDescriptor& output_descriptor,
-      DeviceMemory<double> backward_output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const FilterDescriptor& filter_descriptor,
-      DeviceMemory<double>* backward_filter_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) = 0;
-
-  virtual bool DoConvolveBackwardFilter(
-      Stream* stream, const BatchDescriptor& input_descriptor,
-      const DeviceMemory<Eigen::half>& input_data,
-      const BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const FilterDescriptor& filter_descriptor,
-      DeviceMemory<Eigen::half>* backward_filter_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for bias) operation onto
   // the stream.
@@ -2372,6 +2333,10 @@ class DnnSupport {
                                  DeviceMemoryBase* output_data) {
     return false;
   }
+
+ protected:
+  // Returns whether status is 'ok', and potentially logs the error.
+  static bool IsStatusOk(const port::Status& status, bool report_error);
 
  private:
   virtual port::Status DoPrepareForConvolution(
