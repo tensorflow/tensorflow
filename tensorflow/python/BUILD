@@ -5451,7 +5451,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "accumulate_n_benchmark",
-    size = "large",
+    size = "medium",
     srcs = ["ops/accumulate_n_benchmark.py"],
     additional_deps = [
         ":array_ops",
@@ -5466,6 +5466,7 @@ cuda_py_test(
         ":state_ops_gen",
     ],
     main = "ops/accumulate_n_benchmark.py",
+    shard_count = 6,
 )
 
 cuda_py_test(
