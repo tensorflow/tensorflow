@@ -76,9 +76,10 @@ struct MemRefRegion {
   void setWrite(bool flag) { write = flag; }
 
   /// Returns a constant upper bound on the number of elements in this region if
-  /// bounded by a known constant, None otherwise. The 'shape' vector is set to
-  /// the corresponding dimension-wise bounds major to minor. We use int64_t
-  /// instead of uint64_t since index types can be at most int64_t.
+  /// bounded by a known constant (always possible for static shapes), None
+  /// otherwise. The 'shape' vector is set to the corresponding dimension-wise
+  /// bounds major to minor. We use int64_t instead of uint64_t since index
+  /// types can be at most int64_t.
   Optional<int64_t> getConstantBoundingSizeAndShape(
       SmallVectorImpl<int> *shape = nullptr,
       std::vector<SmallVector<int64_t, 4>> *lbs = nullptr,
@@ -192,6 +193,10 @@ ForInst *insertBackwardComputationSlice(OperationInst *srcOpInst,
                                         OperationInst *dstOpInst,
                                         unsigned dstLoopDepth,
                                         ComputationSliceState *sliceState);
+
+Optional<int64_t> getMemoryFootprintBytes(const ForInst &forInst,
+                                          int memorySpace = -1);
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_UTILS_H

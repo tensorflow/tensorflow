@@ -179,18 +179,15 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
       &fastBufferShape, &lbs, &lbDivisors);
   if (!numElements.hasValue()) {
     LLVM_DEBUG(llvm::dbgs() << "Non-constant region size not supported\n");
-    *sizeInBytes = 0;
     return false;
   }
 
   if (numElements.getValue() == 0) {
     LLVM_DEBUG(llvm::dbgs() << "Nothing to DMA\n");
-    *sizeInBytes = 0;
     return false;
   }
 
   const FlatAffineConstraints *cst = region.getConstraints();
-
   // 'outerIVs' holds the values that this memory region is symbolic/paramteric
   // on; this would correspond to loop IVs surrounding the level at which the
   // DMA generation is being done.

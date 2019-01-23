@@ -60,7 +60,8 @@ Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
     SmallVectorImpl<int64_t> *lbDivisors) const {
   auto memRefType = memref->getType().cast<MemRefType>();
   unsigned rank = memRefType.getRank();
-  shape->reserve(rank);
+  if (shape)
+    shape->reserve(rank);
 
   // Find a constant upper bound on the extent of this memref region along each
   // dimension.
@@ -189,6 +190,7 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
   // Add access function equalities to connect loop IVs to data dimensions.
   if (!regionCst->composeMap(&accessValueMap)) {
     LLVM_DEBUG(llvm::dbgs() << "getMemRefRegion: compose affine map failed\n");
+    LLVM_DEBUG(accessValueMap.getAffineMap().dump());
     return false;
   }
 
@@ -207,14 +209,13 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
   }
   // Project out any local variables (these would have been added for any
   // mod/divs).
-  regionCst->projectOut(regionCst->getNumDimIds() +
-                            regionCst->getNumSymbolIds(),
+  regionCst->projectOut(regionCst->getNumDimAndSymbolIds(),
                         regionCst->getNumLocalIds());
 
   // Set all identifiers appearing after the first 'rank' identifiers as
   // symbolic identifiers - so that the ones correspoding to the memref
   // dimensions are the dimensional identifiers for the memref region.
-  regionCst->setDimSymbolSeparation(regionCst->getNumIds() - rank);
+  regionCst->setDimSymbolSeparation(regionCst->getNumDimAndSymbolIds() - rank);
 
   // Constant fold any symbolic identifiers.
   regionCst->constantFoldIdRange(/*pos=*/regionCst->getNumDimIds(),
@@ -222,20 +223,17 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
 
   assert(regionCst->getNumDimIds() == rank && "unexpected MemRefRegion format");
 
+  LLVM_DEBUG(llvm::dbgs() << "Memory region:\n");
+  LLVM_DEBUG(region->getConstraints()->dump());
+
   return true;
 }
 
-/// Returns the size of memref data in bytes if it's statically shaped, None
-/// otherwise.  If the element of the memref has vector type, takes into account
-/// size of the vector as well.
-Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
-  if (memRefType.getNumDynamicDims() > 0)
-    return None;
+//  TODO(mlir-team): improve/complete this when we have target data.
+static unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
   auto elementType = memRefType.getElementType();
-  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
-    return None;
 
-  uint64_t sizeInBits;
+  unsigned sizeInBits;
   if (elementType.isIntOrFloat()) {
     sizeInBits = elementType.getIntOrFloatBitWidth();
   } else {
@@ -243,10 +241,25 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
     sizeInBits =
         vectorType.getElementTypeBitWidth() * vectorType.getNumElements();
   }
-  for (unsigned i = 0, e = memRefType.getRank(); i < e; i++) {
-    sizeInBits = sizeInBits * memRefType.getDimSize(i);
-  }
   return llvm::divideCeil(sizeInBits, 8);
+}
+
+/// Returns the size of memref data in bytes if it's statically shaped, None
+/// otherwise.  If the element of the memref has vector type, takes into account
+/// size of the vector as well.
+//  TODO(mlir-team): improve/complete this when we have target data.
+Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
+  if (memRefType.getNumDynamicDims() > 0)
+    return None;
+  auto elementType = memRefType.getElementType();
+  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
+    return None;
+
+  unsigned sizeInBytes = getMemRefEltSizeInBytes(memRefType);
+  for (unsigned i = 0, e = memRefType.getRank(); i < e; i++) {
+    sizeInBytes = sizeInBytes * memRefType.getDimSize(i);
+  }
+  return sizeInBytes;
 }
 
 template <typename LoadOrStoreOpPointer>
@@ -524,4 +537,70 @@ unsigned mlir::getNumCommonSurroundingLoops(const Instruction &A,
     ++numCommonLoops;
   }
   return numCommonLoops;
+}
+
+// Returns the size of the region.
+static Optional<int64_t> getRegionSize(const MemRefRegion &region) {
+  auto *memref = region.memref;
+  auto memRefType = memref->getType().cast<MemRefType>();
+
+  auto layoutMaps = memRefType.getAffineMaps();
+  if (layoutMaps.size() > 1 ||
+      (layoutMaps.size() == 1 && !layoutMaps[0].isIdentity())) {
+    LLVM_DEBUG(llvm::dbgs() << "Non-identity layout map not yet supported\n");
+    return false;
+  }
+
+  // Indices to use for the DmaStart op.
+  // Indices for the original memref being DMAed from/to.
+  SmallVector<Value *, 4> memIndices;
+  // Indices for the faster buffer being DMAed into/from.
+  SmallVector<Value *, 4> bufIndices;
+
+  // Compute the extents of the buffer.
+  Optional<int64_t> numElements = region.getConstantBoundingSizeAndShape();
+  if (!numElements.hasValue()) {
+    LLVM_DEBUG(llvm::dbgs() << "Dynamic shapes not yet supported\n");
+    return None;
+  }
+  return getMemRefEltSizeInBytes(memRefType) * numElements.getValue();
+}
+
+Optional<int64_t> mlir::getMemoryFootprintBytes(const ForInst &forInst,
+                                                int memorySpace) {
+  std::vector<std::unique_ptr<MemRefRegion>> regions;
+
+  // Walk this 'for' instruction to gather all memory regions.
+  bool error = false;
+  const_cast<ForInst *>(&forInst)->walkOps([&](OperationInst *opInst) {
+    if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {
+      // Neither load nor a store op.
+      return;
+    }
+
+    // TODO(bondhugula): eventually, we need to be performing a union across
+    // all regions for a given memref instead of creating one region per
+    // memory op. This way we would be allocating O(num of memref's) sets
+    // instead of O(num of load/store op's).
+    auto region = std::make_unique<MemRefRegion>();
+    if (!getMemRefRegion(opInst, 0, region.get())) {
+      LLVM_DEBUG(llvm::dbgs() << "Error obtaining memory region\n");
+      // TODO: stop the walk if an error occurred.
+      error = true;
+      return;
+    }
+    regions.push_back(std::move(region));
+  });
+
+  if (error)
+    return None;
+
+  int64_t totalSizeInBytes = 0;
+  for (const auto &region : regions) {
+    auto size = getRegionSize(*region);
+    if (!size.hasValue())
+      return None;
+    totalSizeInBytes += size.getValue();
+  }
+  return totalSizeInBytes;
 }

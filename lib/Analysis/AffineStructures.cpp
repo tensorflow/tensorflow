@@ -395,7 +395,7 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
   FlatAffineConstraints cst;
   if (!getFlattenedAffineExprs(vMap->getAffineMap(), &flatExprs, &cst)) {
     LLVM_DEBUG(llvm::dbgs()
-               << "composition unimplemented for semi-affine maps");
+               << "composition unimplemented for semi-affine maps\n");
     return false;
   }
   assert(flatExprs.size() == vMap->getNumResults());
@@ -822,6 +822,9 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
 
   if (posStart >= posLimit)
     return 0;
+
+  LLVM_DEBUG(llvm::dbgs() << "Eliminating by Gaussian [" << posStart << ", "
+                          << posLimit << ")\n");
 
   GCDTightenInequalities();
 
@@ -1749,6 +1752,9 @@ getNewNumDimsSymbols(unsigned pos, const FlatAffineConstraints &cst) {
   return {newNumDims, newNumSymbols};
 }
 
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "fm"
+
 /// Eliminates identifier at the specified position using Fourier-Motzkin
 /// variable elimination. This technique is exact for rational spaces but
 /// conservative (in "rare" cases) for integer spaces. The operation corresponds
@@ -1950,6 +1956,9 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   LLVM_DEBUG(llvm::dbgs() << "FM output:\n");
   LLVM_DEBUG(dump());
 }
+
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "affine-structures"
 
 void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
   if (num == 0)

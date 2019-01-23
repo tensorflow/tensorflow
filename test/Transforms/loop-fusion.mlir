@@ -633,7 +633,6 @@ func @fuse_reshape_16_4_64() {
 
 // -----
 
-// TODO(b/123072438) Re-enable test MemRefRegion bug is fixed.
 // All three loop nests below (6-d one, 2-d one, 2-d one is fused into a single
 // 2-d loop nest).
 // CHECK-LABEL: func @R6_to_R2_reshape
@@ -970,24 +969,24 @@ func @should_fuse_deep_loop_nests() {
 // CHECK-NEXT:    for %i1 = 0 to 3 {
 // CHECK-NEXT:      for %i2 = 0 to 2 {
 // CHECK-NEXT:        for %i3 = 0 to 2 {
-// CHECK-NEXT:          for %i4 = 0 to 16 {
-// CHECK-NEXT:            for %i5 = 0 to 10 {
-// CHECK-NEXT:              %3 = load %0[%i2, %i3, %i0, %i1, %i4, %i5] : memref<2x2x3x3x16x10xf32, 2>
-// CHECK-NEXT:            }
-// CHECK-NEXT:          }
-// CHECK-NEXT:          for %i6 = 0 to 16 {
-// CHECK-NEXT:            for %i7 = 0 to 10 {
-// CHECK-NEXT:              %4 = affine_apply #map0(%i2, %i3, %i0, %i1, %i2, %i3, %i0, %i1, %i6, %i7)
-// CHECK-NEXT:              store %cst, %2[%4#0, %4#1, %4#2, %4#3, %4#4, %4#5] : memref<1x1x1x1x16x10xf32, 2>
-// CHECK-NEXT:            }
-// CHECK-NEXT:          }
-// CHECK-NEXT:          for %i8 = 0 to 3 {
-// CHECK-NEXT:            for %i9 = 0 to 3 {
+// CHECK-NEXT:          for %i4 = 0 to 3 {
+// CHECK-NEXT:            for %i5 = 0 to 3 {
+// CHECK-NEXT:              for %i6 = 0 to 16 {
+// CHECK-NEXT:                for %i7 = 0 to 10 {
+// CHECK-NEXT:                  %3 = load %0[%i2, %i3, %i0, %i1, %i6, %i7] : memref<2x2x3x3x16x10xf32, 2>
+// CHECK-NEXT:                }
+// CHECK-NEXT:              }
+// CHECK-NEXT:              for %i8 = 0 to 16 {
+// CHECK-NEXT:                for %i9 = 0 to 10 {
+// CHECK-NEXT:                  %4 = affine_apply #map0(%i2, %i3, %i0, %i1, %i2, %i3, %i0, %i1, %i8, %i9)
+// CHECK-NEXT:                  store %cst, %2[%4#0, %4#1, %4#2, %4#3, %4#4, %4#5] : memref<1x1x1x1x16x10xf32, 2>
+// CHECK-NEXT:                }
+// CHECK-NEXT:              }
 // CHECK-NEXT:              for %i10 = 0 to 2 {
 // CHECK-NEXT:                for %i11 = 0 to 2 {
 // CHECK-NEXT:                  for %i12 = 0 to 16 {
 // CHECK-NEXT:                    for %i13 = 0 to 10 {
-// CHECK-NEXT:                      %5 = load %0[%i10, %i11, %i8, %i9, %i12, %i13] : memref<2x2x3x3x16x10xf32, 2>
+// CHECK-NEXT:                      %5 = load %0[%i10, %i11, %i4, %i5, %i12, %i13] : memref<2x2x3x3x16x10xf32, 2>
 // CHECK-NEXT:                    }
 // CHECK-NEXT:                  }
 // CHECK-NEXT:                  for %i14 = 0 to 16 {
