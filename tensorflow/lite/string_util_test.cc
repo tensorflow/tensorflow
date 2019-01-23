@@ -35,8 +35,9 @@ TEST(StringUtil, TestStringUtil) {
 
   char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'X', 'Y', 'Z'};
 
-  interpreter.SetTensorParametersReadOnly(2, kTfLiteString, "", {1}, {}, data,
-                                          15);
+  TfLiteQuantization quant;
+  interpreter.SetTensorParametersReadOnly(2, kTfLiteString, "", {1}, quant,
+                                          data, 15);
   TfLiteTensor* t2 = interpreter.tensor(2);
   interpreter.AllocateTensors();
 
