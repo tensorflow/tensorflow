@@ -57,9 +57,8 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
   if (*output_size < 0) {
     return errors::InvalidArgument(
         "Computed output size would be negative: ", *output_size,
-        " [input_size: ", input_size,
-        ", effective_filter_size: ", effective_filter_size,
-        ", stride: ", stride, "]");
+        " [input_size: ", input_size, ", effective_filter_size: ",
+        effective_filter_size, ", stride: ", stride, "]");
   }
   return Status::OK();
 }
@@ -1299,6 +1298,12 @@ Status ConcatV2Shape(InferenceContext* c) {
                            c->num_inputs() - 1 /* dim_index */);
 }
 
+Status QuantizedConcatV2Shape(InferenceContext* c, int num_inputs_to_concat) {
+  return ConcatShapeHelper(c, 0 /* start_value_index */,
+                           num_inputs_to_concat /* end_value_index */,
+                           num_inputs_to_concat /* dim_index */);
+}
+
 Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
                                             ShapeHandle shape_x,
                                             ShapeHandle shape_y,
@@ -1562,11 +1567,10 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", num_outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", num_outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
+            "The outer ", num_outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ",
+            num_outer_dims, " dimensions of updates.shape=",
+            c->DebugString(updates_shape), ": ", s.error_message());
       }
 
       ShapeHandle input_suffix;
