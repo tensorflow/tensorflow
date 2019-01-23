@@ -88,9 +88,11 @@ class _Loader(object):
       # exactly the same. Fortunately the repacking logic cares only about
       # the structure.
       # TODO(vbardiovsky): Should we just replicate the structures, with
-      # Nones instead of real objects? Decide when we start solving
-      # idempotency.
+      # Nones instead of real objects?
       function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
+      input_signature = coder.decode_proto(
+          concrete_function.canonicalized_input_signature)
+      function._func_graph.structured_input_signature = input_signature  # pylint: disable=protected-access
 
   def _setup_functions(self):
 
