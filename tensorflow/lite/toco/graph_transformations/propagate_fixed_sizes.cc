@@ -1712,14 +1712,37 @@ void ProcessArgMinMaxOperator(Model* model, Op* op) {
     return;
   }
 
+  const Array& axis_array = model->GetArray(op->inputs[1]);
+  // Yield until input axis array shape has been resolved.
+  if (!axis_array.has_shape()) {
+    return;
+  }
+
   const std::vector<int>& input_dims = input_array.shape().dims();
+
+  CHECK(axis_array.data_type == ArrayDataType::kInt32 ||
+        axis_array.data_type == ArrayDataType::kInt64)
+      << "axis_array must be int32, int64";
+
+  CHECK_EQ(RequiredBufferSizeForShape(axis_array.shape()), 1)
+      << "Axis array must be scalar.";
+
+  int64 axis;
+  if (axis_array.data_type == ArrayDataType::kInt32) {
+    axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+  } else {
+    axis = axis_array.GetBuffer<ArrayDataType::kInt64>().data[0];
+  }
+
   std::vector<int> output_dims;
 
-  output_dims.reserve(input_dims.size());
-  for (int i = 0; i < input_dims.size() - 1; ++i) {
-    output_dims.push_back(input_dims[i]);
+  output_dims.reserve(input_dims.size() - 1);
+  for (int i = 0; i < input_dims.size(); ++i) {
+    if (i != axis) {
+      output_dims.push_back(input_dims[i]);
+    }
   }
-  output_dims.push_back(1);
+
   const string& output_name = op->outputs[0];
   auto& output_array = model->GetArray(output_name);
   if (output_array.has_shape()) {
