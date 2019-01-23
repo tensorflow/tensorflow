@@ -237,6 +237,10 @@ Expr vector_type_cast(Expr memrefExpr, Type memrefType) {
   return VariadicExpr(ExprKind::VectorTypeCast, {memrefExpr}, {memrefType});
 }
 
+Stmt Return(ArrayRef<Expr> values) {
+  return VariadicExpr(ExprKind::Return, values);
+}
+
 void Expr::print(raw_ostream &os) const {
   if (auto unbound = this->dyn_cast<Bindable>()) {
     os << "$" << unbound.getId();
@@ -294,17 +298,20 @@ void Expr::print(raw_ostream &os) const {
     case ExprKind::Store:
       os << "store( ... )";
       return;
+    case ExprKind::Return:
+      interleaveComma(nar.getExprs(), os);
+      return;
     default: {
       os << "unknown_variadic";
     }
     }
   } else if (auto stmtLikeExpr = this->dyn_cast<StmtBlockLikeExpr>()) {
     auto exprs = stmtLikeExpr.getExprs();
-    assert(exprs.size() == 3 && "For StmtBlockLikeExpr expected 3 exprs");
     switch (stmtLikeExpr.getKind()) {
     // We only print the lb, ub and step here, which are the StmtBlockLike
     // part of the `for` StmtBlockLikeExpr.
     case ExprKind::For:
+      assert(exprs.size() == 3 && "For StmtBlockLikeExpr expected 3 exprs");
       os << exprs[0] << " to " << exprs[1] << " step " << exprs[2];
       return;
     default: {

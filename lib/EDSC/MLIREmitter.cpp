@@ -275,6 +275,10 @@ Value *MLIREmitter::emit(Expr e) {
                 ->create<VectorTypeCastOp>(location, exprs[0],
                                            types[0].cast<MemRefType>())
                 ->getResult();
+    } else if (nar.getKind() == ExprKind::Return) {
+      auto exprs = emit(nar.getExprs());
+      builder->create<ReturnOp>(location, exprs);
+      return nullptr; // no Value* produced and this is fine.
     }
   }
 
@@ -335,8 +339,9 @@ void MLIREmitter::emitStmt(const Stmt &stmt) {
     auto *val = emit(stmt.getRHS());
     if (!val) {
       assert((stmt.getRHS().getKind() == ExprKind::Dealloc ||
-              stmt.getRHS().getKind() == ExprKind::Store) &&
-             "dealloc or store expected as the only 0-result ops");
+              stmt.getRHS().getKind() == ExprKind::Store ||
+              stmt.getRHS().getKind() == ExprKind::Return) &&
+             "dealloc, store or return expected as the only 0-result ops");
       return;
     }
     bind(stmt.getLHS(), val);

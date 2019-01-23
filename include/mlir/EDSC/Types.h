@@ -108,7 +108,8 @@ enum class ExprKind {
   Store,
   VectorTypeCast, // Variadic because takes a type and anything taking a type
                   // is variadic for now.
-  LAST_VARIADIC_EXPR = VectorTypeCast,
+  Return,
+  LAST_VARIADIC_EXPR = Return,
   FIRST_STMT_BLOCK_LIKE_EXPR = 600,
   Block = FIRST_STMT_BLOCK_LIKE_EXPR,
   For,
@@ -485,6 +486,7 @@ Expr store(Expr val, Expr m, const llvm::SmallVectorImpl<Bindable> &indices);
 Expr select(Expr cond, Expr lhs, Expr rhs);
 Expr vector_type_cast(Expr memrefExpr, Type memrefType);
 
+Stmt Return(ArrayRef<Expr> values);
 Stmt Block(llvm::ArrayRef<Stmt> stmts);
 Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);
 Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,
