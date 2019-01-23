@@ -360,7 +360,7 @@ llvm::Value *ModuleLowerer::emitMemRefAlloc(ConstOpPointer<AllocOp> allocOp) {
   SmallVector<llvm::Value *, 4> sizes;
   sizes.reserve(allocOp->getNumOperands());
   unsigned i = 0;
-  for (int s : type.getShape()) {
+  for (int64_t s : type.getShape()) {
     llvm::Value *value = (s == -1)
                              ? valueMapping.lookup(allocOp->getOperand(i++))
                              : getIndexConstant(s);

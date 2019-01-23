@@ -258,14 +258,14 @@ struct SimplifyAllocConst : public RewritePattern {
 
     // Ok, we have one or more constant operands.  Collect the non-constant ones
     // and keep track of the resultant memref type to build.
-    SmallVector<int, 4> newShapeConstants;
+    SmallVector<int64_t, 4> newShapeConstants;
     newShapeConstants.reserve(memrefType.getRank());
     SmallVector<Value *, 4> newOperands;
     SmallVector<Value *, 4> droppedOperands;
 
     unsigned dynamicDimPos = 0;
     for (unsigned dim = 0, e = memrefType.getRank(); dim < e; ++dim) {
-      int dimSize = memrefType.getDimSize(dim);
+      int64_t dimSize = memrefType.getDimSize(dim);
       // If this is already static dimension, keep it.
       if (dimSize != -1) {
         newShapeConstants.push_back(dimSize);
@@ -794,7 +794,7 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
                               MLIRContext *context) const {
   // Constant fold dim when the size along the index referred to is a constant.
   auto opType = getOperand()->getType();
-  int indexSize = -1;
+  int64_t indexSize = -1;
   if (auto tensorType = opType.dyn_cast<RankedTensorType>()) {
     indexSize = tensorType.getShape()[getIndex()];
   } else if (auto memrefType = opType.dyn_cast<MemRefType>()) {
@@ -1268,7 +1268,7 @@ bool MemRefCastOp::verify() const {
     return emitOpError("requires input and result ranks to match");
 
   for (unsigned i = 0, e = opType.getRank(); i != e; ++i) {
-    int opDim = opType.getDimSize(i), resultDim = resType.getDimSize(i);
+    int64_t opDim = opType.getDimSize(i), resultDim = resType.getDimSize(i);
     if (opDim != -1 && resultDim != -1 && opDim != resultDim)
       return emitOpError("requires static dimensions to match");
   }
@@ -1628,7 +1628,7 @@ bool TensorCastOp::verify() const {
     return emitOpError("requires input and result ranks to match");
 
   for (unsigned i = 0, e = opRType.getRank(); i != e; ++i) {
-    int opDim = opRType.getDimSize(i), resultDim = resRType.getDimSize(i);
+    int64_t opDim = opRType.getDimSize(i), resultDim = resRType.getDimSize(i);
     if (opDim != -1 && resultDim != -1 && opDim != resultDim)
       return emitOpError("requires static dimensions to match");
   }

@@ -56,7 +56,7 @@ unsigned MemRefRegion::getRank() const {
 }
 
 Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
-    SmallVectorImpl<int> *shape, std::vector<SmallVector<int64_t, 4>> *lbs,
+    SmallVectorImpl<int64_t> *shape, std::vector<SmallVector<int64_t, 4>> *lbs,
     SmallVectorImpl<int64_t> *lbDivisors) const {
   auto memRefType = memref->getType().cast<MemRefType>();
   unsigned rank = memRefType.getRank();
@@ -289,7 +289,7 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
     // of upper and out of lower), and check if the constraint system is
     // feasible. If it is, there is at least one point out of bounds.
     SmallVector<int64_t, 4> ineq(rank + 1, 0);
-    int dimSize = loadOrStoreOp->getMemRefType().getDimSize(r);
+    int64_t dimSize = loadOrStoreOp->getMemRefType().getDimSize(r);
     // TODO(bondhugula): handle dynamic dim sizes.
     if (dimSize == -1)
       continue;

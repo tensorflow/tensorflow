@@ -81,7 +81,7 @@ struct MemRefRegion {
   /// bounds major to minor. We use int64_t instead of uint64_t since index
   /// types can be at most int64_t.
   Optional<int64_t> getConstantBoundingSizeAndShape(
-      SmallVectorImpl<int> *shape = nullptr,
+      SmallVectorImpl<int64_t> *shape = nullptr,
       std::vector<SmallVector<int64_t, 4>> *lbs = nullptr,
       SmallVectorImpl<int64_t> *lbDivisors = nullptr) const;
 

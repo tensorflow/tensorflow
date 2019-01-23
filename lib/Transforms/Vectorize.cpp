@@ -667,7 +667,7 @@ char Vectorize::passID = 0;
 namespace {
 
 struct VectorizationStrategy {
-  ArrayRef<int> vectorSizes;
+  SmallVector<int64_t, 8> vectorSizes;
   DenseMap<ForInst *, unsigned> loopToVectorDim;
 };
 
@@ -1280,7 +1280,8 @@ PassResult Vectorize::runOnFunction(Function *f) {
     for (auto m : matches) {
       VectorizationStrategy strategy;
       // TODO(ntv): depending on profitability, elect to reduce the vector size.
-      strategy.vectorSizes = clVirtualVectorSize;
+      strategy.vectorSizes.assign(clVirtualVectorSize.begin(),
+                                  clVirtualVectorSize.end());
       auto fail = analyzeProfitability(m.second, 1, patternDepth, &strategy);
       if (fail) {
         continue;

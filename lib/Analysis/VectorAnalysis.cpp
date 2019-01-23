@@ -37,8 +37,8 @@ using namespace mlir;
 
 using llvm::SetVector;
 
-Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(ArrayRef<int> superShape,
-                                                    ArrayRef<int> subShape) {
+Optional<SmallVector<unsigned, 4>>
+mlir::shapeRatio(ArrayRef<int64_t> superShape, ArrayRef<int64_t> subShape) {
   if (superShape.size() < subShape.size()) {
     return Optional<SmallVector<unsigned, 4>>();
   }
@@ -55,8 +55,8 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(ArrayRef<int> superShape,
     result.push_back(superSize / subSize);
   };
   functional::zipApply(
-      divide, SmallVector<int, 8>{superShape.rbegin(), superShape.rend()},
-      SmallVector<int, 8>{subShape.rbegin(), subShape.rend()});
+      divide, SmallVector<int64_t, 8>{superShape.rbegin(), superShape.rend()},
+      SmallVector<int64_t, 8>{subShape.rbegin(), subShape.rend()});
 
   // If integral division does not occur, return and let the caller decide.
   if (!divides) {

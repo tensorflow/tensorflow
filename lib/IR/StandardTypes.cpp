@@ -112,6 +112,7 @@ unsigned VectorOrTensorType::getNumElements() const {
   switch (getKind()) {
   case StandardTypes::Vector:
   case StandardTypes::RankedTensor: {
+    assert(hasStaticShape() && "expected type to have static shape");
     auto shape = getShape();
     unsigned num = 1;
     for (auto dim : shape)
@@ -125,7 +126,7 @@ unsigned VectorOrTensorType::getNumElements() const {
 
 /// If this is ranked tensor or vector type, return the rank. If it is an
 /// unranked tensor, return -1.
-int VectorOrTensorType::getRank() const {
+int64_t VectorOrTensorType::getRank() const {
   switch (getKind()) {
   case StandardTypes::Vector:
   case StandardTypes::RankedTensor:
@@ -137,7 +138,7 @@ int VectorOrTensorType::getRank() const {
   }
 }
 
-int VectorOrTensorType::getDimSize(unsigned i) const {
+int64_t VectorOrTensorType::getDimSize(unsigned i) const {
   switch (getKind()) {
   case StandardTypes::Vector:
   case StandardTypes::RankedTensor:
@@ -150,7 +151,7 @@ int VectorOrTensorType::getDimSize(unsigned i) const {
 // Get the number of number of bits require to store a value of the given vector
 // or tensor types.  Compute the value recursively since tensors are allowed to
 // have vectors as elements.
-long VectorOrTensorType::getSizeInBits() const {
+int64_t VectorOrTensorType::getSizeInBits() const {
   assert(hasStaticShape() &&
          "cannot get the bit size of an aggregate with a dynamic shape");
 
@@ -165,7 +166,7 @@ long VectorOrTensorType::getSizeInBits() const {
   return getNumElements() * elementVectorOrTensorType.getSizeInBits();
 }
 
-ArrayRef<int> VectorOrTensorType::getShape() const {
+ArrayRef<int64_t> VectorOrTensorType::getShape() const {
   switch (getKind()) {
   case StandardTypes::Vector:
     return cast<VectorType>().getShape();
@@ -179,18 +180,17 @@ ArrayRef<int> VectorOrTensorType::getShape() const {
 bool VectorOrTensorType::hasStaticShape() const {
   if (isa<UnrankedTensorType>())
     return false;
-  auto dims = getShape();
-  return !std::any_of(dims.begin(), dims.end(), [](int i) { return i < 0; });
+  return llvm::none_of(getShape(), [](int64_t i) { return i < 0; });
 }
 
 /// VectorType
 
-VectorType VectorType::get(ArrayRef<int> shape, Type elementType) {
+VectorType VectorType::get(ArrayRef<int64_t> shape, Type elementType) {
   return Base::get(elementType.getContext(), StandardTypes::Vector, shape,
                    elementType);
 }
 
-VectorType VectorType::getChecked(ArrayRef<int> shape, Type elementType,
+VectorType VectorType::getChecked(ArrayRef<int64_t> shape, Type elementType,
                                   Location location) {
   return Base::getChecked(location, elementType.getContext(),
                           StandardTypes::Vector, shape, elementType);
@@ -198,7 +198,7 @@ VectorType VectorType::getChecked(ArrayRef<int> shape, Type elementType,
 
 bool VectorType::verifyConstructionInvariants(llvm::Optional<Location> loc,
                                               MLIRContext *context,
-                                              ArrayRef<int> shape,
+                                              ArrayRef<int64_t> shape,
                                               Type elementType) {
   if (shape.empty()) {
     if (loc)
@@ -212,7 +212,7 @@ bool VectorType::verifyConstructionInvariants(llvm::Optional<Location> loc,
     return true;
   }
 
-  if (any_of(shape, [](int i) { return i < 0; })) {
+  if (any_of(shape, [](int64_t i) { return i < 0; })) {
     if (loc)
       context->emitError(*loc, "vector types must have static shape");
     return true;
@@ -220,7 +220,7 @@ bool VectorType::verifyConstructionInvariants(llvm::Optional<Location> loc,
   return false;
 }
 
-ArrayRef<int> VectorType::getShape() const {
+ArrayRef<int64_t> VectorType::getShape() const {
   return static_cast<ImplType *>(type)->getShape();
 }
 
@@ -241,12 +241,13 @@ static inline bool checkTensorElementType(Optional<Location> location,
 
 /// RankedTensorType
 
-RankedTensorType RankedTensorType::get(ArrayRef<int> shape, Type elementType) {
+RankedTensorType RankedTensorType::get(ArrayRef<int64_t> shape,
+                                       Type elementType) {
   return Base::get(elementType.getContext(), StandardTypes::RankedTensor, shape,
                    elementType);
 }
 
-RankedTensorType RankedTensorType::getChecked(ArrayRef<int> shape,
+RankedTensorType RankedTensorType::getChecked(ArrayRef<int64_t> shape,
                                               Type elementType,
                                               Location location) {
   return Base::getChecked(location, elementType.getContext(),
@@ -254,16 +255,16 @@ RankedTensorType RankedTensorType::getChecked(ArrayRef<int> shape,
 }
 
 bool RankedTensorType::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, ArrayRef<int> shape,
+    llvm::Optional<Location> loc, MLIRContext *context, ArrayRef<int64_t> shape,
     Type elementType) {
   return checkTensorElementType(loc, context, elementType);
 }
 
-ArrayRef<int> RankedTensorType::getShape() const {
+ArrayRef<int64_t> RankedTensorType::getShape() const {
   return static_cast<ImplType *>(type)->getShape();
 }
 
-ArrayRef<int> MemRefType::getShape() const {
+ArrayRef<int64_t> MemRefType::getShape() const {
   return static_cast<ImplType *>(type)->getShape();
 }
 
@@ -291,7 +292,7 @@ bool UnrankedTensorType::verifyConstructionInvariants(
 /// type would be ill-formed, return nullptr.  If the location is provided,
 /// emit detailed error messages.  To emit errors when the location is unknown,
 /// pass in an instance of UnknownLoc.
-MemRefType MemRefType::getImpl(ArrayRef<int> shape, Type elementType,
+MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
                                ArrayRef<AffineMap> affineMapComposition,
                                unsigned memorySpace,
                                Optional<Location> location) {
@@ -346,12 +347,7 @@ unsigned MemRefType::getMemorySpace() const {
 }
 
 unsigned MemRefType::getNumDynamicDims() const {
-  unsigned numDynamicDims = 0;
-  for (int dimSize : getShape()) {
-    if (dimSize == -1)
-      ++numDynamicDims;
-  }
-  return numDynamicDims;
+  return llvm::count_if(getShape(), [](int64_t i) { return i < 0; });
 }
 
 // Define type identifiers.

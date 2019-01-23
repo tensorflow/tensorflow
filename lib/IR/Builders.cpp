@@ -77,17 +77,18 @@ FunctionType Builder::getFunctionType(ArrayRef<Type> inputs,
   return FunctionType::get(inputs, results, context);
 }
 
-MemRefType Builder::getMemRefType(ArrayRef<int> shape, Type elementType,
+MemRefType Builder::getMemRefType(ArrayRef<int64_t> shape, Type elementType,
                                   ArrayRef<AffineMap> affineMapComposition,
                                   unsigned memorySpace) {
   return MemRefType::get(shape, elementType, affineMapComposition, memorySpace);
 }
 
-VectorType Builder::getVectorType(ArrayRef<int> shape, Type elementType) {
+VectorType Builder::getVectorType(ArrayRef<int64_t> shape, Type elementType) {
   return VectorType::get(shape, elementType);
 }
 
-RankedTensorType Builder::getTensorType(ArrayRef<int> shape, Type elementType) {
+RankedTensorType Builder::getTensorType(ArrayRef<int64_t> shape,
+                                        Type elementType) {
   return RankedTensorType::get(shape, elementType);
 }
 

@@ -101,8 +101,8 @@ char VectorizerTestPass::passID = 0;
 
 void VectorizerTestPass::testVectorShapeRatio(Function *f) {
   using matcher::Op;
-  SmallVector<int, 8> shape(clTestVectorShapeRatio.begin(),
-                            clTestVectorShapeRatio.end());
+  SmallVector<int64_t, 8> shape(clTestVectorShapeRatio.begin(),
+                                clTestVectorShapeRatio.end());
   auto subVectorType = VectorType::get(shape, Type::getF32(f->getContext()));
   // Only filter instructions that operate on a strict super-vector and have one
   // return. This makes testing easier.

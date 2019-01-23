@@ -183,7 +183,7 @@ public:
   // Type parsing.
   VectorType parseVectorType();
   ParseResult parseXInDimensionList();
-  ParseResult parseDimensionListRanked(SmallVectorImpl<int> &dimensions);
+  ParseResult parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions);
   Type parseExtendedType();
   Type parseTensorType();
   Type parseMemRefType();
@@ -386,13 +386,13 @@ VectorType Parser::parseVectorType() {
   if (getToken().isNot(Token::integer))
     return (emitError("expected dimension size in vector type"), nullptr);
 
-  SmallVector<int, 4> dimensions;
+  SmallVector<int64_t, 4> dimensions;
   while (getToken().is(Token::integer)) {
     // Make sure this integer value is in bound and valid.
     auto dimension = getToken().getUnsignedIntegerValue();
     if (!dimension.hasValue())
       return (emitError("invalid dimension in vector type"), nullptr);
-    dimensions.push_back((int)dimension.getValue());
+    dimensions.push_back((int64_t)dimension.getValue());
 
     consumeToken(Token::integer);
 
@@ -442,16 +442,17 @@ ParseResult Parser::parseXInDimensionList() {
 ///   dimension-list-ranked ::= (dimension `x`)*
 ///   dimension ::= `?` | integer-literal
 ///
-ParseResult Parser::parseDimensionListRanked(SmallVectorImpl<int> &dimensions) {
+ParseResult
+Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions) {
   while (getToken().isAny(Token::integer, Token::question)) {
     if (consumeIf(Token::question)) {
       dimensions.push_back(-1);
     } else {
       // Make sure this integer value is in bound and valid.
       auto dimension = getToken().getUnsignedIntegerValue();
-      if (!dimension.hasValue() || (int)dimension.getValue() < 0)
+      if (!dimension.hasValue() || (int64_t)dimension.getValue() < 0)
         return emitError("invalid dimension");
-      dimensions.push_back((int)dimension.getValue());
+      dimensions.push_back((int64_t)dimension.getValue());
       consumeToken(Token::integer);
     }
 
@@ -540,7 +541,7 @@ Type Parser::parseTensorType() {
     return nullptr;
 
   bool isUnranked;
-  SmallVector<int, 4> dimensions;
+  SmallVector<int64_t, 4> dimensions;
 
   if (consumeIf(Token::star)) {
     // This is an unranked tensor type.
@@ -580,7 +581,7 @@ Type Parser::parseMemRefType() {
   if (parseToken(Token::less, "expected '<' in memref type"))
     return nullptr;
 
-  SmallVector<int, 4> dimensions;
+  SmallVector<int64_t, 4> dimensions;
   if (parseDimensionListRanked(dimensions))
     return nullptr;
 
@@ -706,12 +707,12 @@ public:
 
   ArrayRef<Attribute> getValues() const { return storage; }
 
-  ArrayRef<int> getShape() const { return shape; }
+  ArrayRef<int64_t> getShape() const { return shape; }
 
 private:
   /// Parse either a single element or a list of elements. Return the dimensions
   /// of the parsed sub-tensor in dims.
-  ParseResult parseElementOrList(llvm::SmallVectorImpl<int> &dims);
+  ParseResult parseElementOrList(llvm::SmallVectorImpl<int64_t> &dims);
 
   /// Parse a list of either lists or elements, returning the dimensions of the
   /// parsed sub-tensors in dims. For example:
@@ -719,11 +720,11 @@ private:
   ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
   ///   parseList([[1, 2], 3]) -> Failure
   ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
-  ParseResult parseList(llvm::SmallVectorImpl<int> &dims);
+  ParseResult parseList(llvm::SmallVectorImpl<int64_t> &dims);
 
   Parser &p;
   Type eltTy;
-  SmallVector<int, 4> shape;
+  SmallVector<int64_t, 4> shape;
   std::vector<Attribute> storage;
 };
 } // namespace
@@ -731,7 +732,7 @@ private:
 /// Parse either a single element or a list of elements. Return the dimensions
 /// of the parsed sub-tensor in dims.
 ParseResult
-TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
+TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int64_t> &dims) {
   switch (p.getToken().getKind()) {
   case Token::l_square:
     return parseList(dims);
@@ -789,11 +790,12 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
 ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
 ///   parseList([[1, 2], 3]) -> Failure
 ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
-ParseResult TensorLiteralParser::parseList(llvm::SmallVectorImpl<int> &dims) {
+ParseResult
+TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
   p.consumeToken(Token::l_square);
 
-  auto checkDims = [&](const llvm::SmallVectorImpl<int> &prevDims,
-                       const llvm::SmallVectorImpl<int> &newDims) {
+  auto checkDims = [&](const llvm::SmallVectorImpl<int64_t> &prevDims,
+                       const llvm::SmallVectorImpl<int64_t> &newDims) {
     if (prevDims == newDims)
       return ParseSuccess;
     return p.emitError("tensor literal is invalid; ranks are not consistent "
@@ -801,10 +803,10 @@ ParseResult TensorLiteralParser::parseList(llvm::SmallVectorImpl<int> &dims) {
   };
 
   bool first = true;
-  llvm::SmallVector<int, 4> newDims;
+  llvm::SmallVector<int64_t, 4> newDims;
   unsigned size = 0;
   auto parseCommaSeparatedList = [&]() {
-    llvm::SmallVector<int, 4> thisDims;
+    llvm::SmallVector<int64_t, 4> thisDims;
     if (parseElementOrList(thisDims))
       return ParseFailure;
     ++size;

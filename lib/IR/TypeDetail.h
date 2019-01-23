@@ -131,12 +131,12 @@ struct VectorOrTensorTypeStorage : public TypeStorage {
 /// Vector Type Storage and Uniquing.
 struct VectorTypeStorage : public VectorOrTensorTypeStorage {
   VectorTypeStorage(unsigned shapeSize, Type elementTy,
-                    const int *shapeElements)
+                    const int64_t *shapeElements)
       : VectorOrTensorTypeStorage(elementTy, shapeSize),
         shapeElements(shapeElements) {}
 
   /// The hash key used for uniquing.
-  using KeyTy = std::pair<ArrayRef<int>, Type>;
+  using KeyTy = std::pair<ArrayRef<int64_t>, Type>;
   bool operator==(const KeyTy &key) const {
     return key == KeyTy(getShape(), elementType);
   }
@@ -145,28 +145,28 @@ struct VectorTypeStorage : public VectorOrTensorTypeStorage {
   static VectorTypeStorage *construct(TypeStorageAllocator &allocator,
                                       const KeyTy &key) {
     // Copy the shape into the bump pointer.
-    ArrayRef<int> shape = allocator.copyInto(key.first);
+    ArrayRef<int64_t> shape = allocator.copyInto(key.first);
 
     // Initialize the memory using placement new.
     return new (allocator.allocate<VectorTypeStorage>())
         VectorTypeStorage(shape.size(), key.second, shape.data());
   }
 
-  ArrayRef<int> getShape() const {
-    return ArrayRef<int>(shapeElements, getSubclassData());
+  ArrayRef<int64_t> getShape() const {
+    return ArrayRef<int64_t>(shapeElements, getSubclassData());
   }
 
-  const int *shapeElements;
+  const int64_t *shapeElements;
 };
 
 struct RankedTensorTypeStorage : public VectorOrTensorTypeStorage {
   RankedTensorTypeStorage(unsigned shapeSize, Type elementTy,
-                          const int *shapeElements)
+                          const int64_t *shapeElements)
       : VectorOrTensorTypeStorage(elementTy, shapeSize),
         shapeElements(shapeElements) {}
 
   /// The hash key used for uniquing.
-  using KeyTy = std::pair<ArrayRef<int>, Type>;
+  using KeyTy = std::pair<ArrayRef<int64_t>, Type>;
   bool operator==(const KeyTy &key) const {
     return key == KeyTy(getShape(), elementType);
   }
@@ -175,18 +175,18 @@ struct RankedTensorTypeStorage : public VectorOrTensorTypeStorage {
   static RankedTensorTypeStorage *construct(TypeStorageAllocator &allocator,
                                             const KeyTy &key) {
     // Copy the shape into the bump pointer.
-    ArrayRef<int> shape = allocator.copyInto(key.first);
+    ArrayRef<int64_t> shape = allocator.copyInto(key.first);
 
     // Initialize the memory using placement new.
     return new (allocator.allocate<RankedTensorTypeStorage>())
         RankedTensorTypeStorage(shape.size(), key.second, shape.data());
   }
 
-  ArrayRef<int> getShape() const {
-    return ArrayRef<int>(shapeElements, getSubclassData());
+  ArrayRef<int64_t> getShape() const {
+    return ArrayRef<int64_t>(shapeElements, getSubclassData());
   }
 
-  const int *shapeElements;
+  const int64_t *shapeElements;
 };
 
 struct UnrankedTensorTypeStorage : public VectorOrTensorTypeStorage {
@@ -203,7 +203,7 @@ struct UnrankedTensorTypeStorage : public VectorOrTensorTypeStorage {
 
 struct MemRefTypeStorage : public TypeStorage {
   MemRefTypeStorage(unsigned shapeSize, Type elementType,
-                    const int *shapeElements, const unsigned numAffineMaps,
+                    const int64_t *shapeElements, const unsigned numAffineMaps,
                     AffineMap const *affineMapList, const unsigned memorySpace)
       : TypeStorage(shapeSize), elementType(elementType),
         shapeElements(shapeElements), numAffineMaps(numAffineMaps),
@@ -212,7 +212,8 @@ struct MemRefTypeStorage : public TypeStorage {
   /// The hash key used for uniquing.
   // MemRefs are uniqued based on their shape, element type, affine map
   // composition, and memory space.
-  using KeyTy = std::tuple<ArrayRef<int>, Type, ArrayRef<AffineMap>, unsigned>;
+  using KeyTy =
+      std::tuple<ArrayRef<int64_t>, Type, ArrayRef<AffineMap>, unsigned>;
   bool operator==(const KeyTy &key) const {
     return key == KeyTy(getShape(), elementType, getAffineMaps(), memorySpace);
   }
@@ -221,7 +222,7 @@ struct MemRefTypeStorage : public TypeStorage {
   static MemRefTypeStorage *construct(TypeStorageAllocator &allocator,
                                       const KeyTy &key) {
     // Copy the shape into the bump pointer.
-    ArrayRef<int> shape = allocator.copyInto(std::get<0>(key));
+    ArrayRef<int64_t> shape = allocator.copyInto(std::get<0>(key));
 
     // Copy the affine map composition into the bump pointer.
     ArrayRef<AffineMap> affineMapComposition =
@@ -234,8 +235,8 @@ struct MemRefTypeStorage : public TypeStorage {
                           affineMapComposition.data(), std::get<3>(key));
   }
 
-  ArrayRef<int> getShape() const {
-    return ArrayRef<int>(shapeElements, getSubclassData());
+  ArrayRef<int64_t> getShape() const {
+    return ArrayRef<int64_t>(shapeElements, getSubclassData());
   }
 
   ArrayRef<AffineMap> getAffineMaps() const {
@@ -245,7 +246,7 @@ struct MemRefTypeStorage : public TypeStorage {
   /// The type of each scalar element of the memref.
   Type elementType;
   /// An array of integers which stores the shape dimension sizes.
-  const int *shapeElements;
+  const int64_t *shapeElements;
   /// The number of affine maps in the 'affineMapList' array.
   const unsigned numAffineMaps;
   /// List of affine maps in the memref's layout/index map composition.

@@ -80,11 +80,11 @@ public:
   IntegerType getI1Type();
   IntegerType getIntegerType(unsigned width);
   FunctionType getFunctionType(ArrayRef<Type> inputs, ArrayRef<Type> results);
-  MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
+  MemRefType getMemRefType(ArrayRef<int64_t> shape, Type elementType,
                            ArrayRef<AffineMap> affineMapComposition = {},
                            unsigned memorySpace = 0);
-  VectorType getVectorType(ArrayRef<int> shape, Type elementType);
-  RankedTensorType getTensorType(ArrayRef<int> shape, Type elementType);
+  VectorType getVectorType(ArrayRef<int64_t> shape, Type elementType);
+  RankedTensorType getTensorType(ArrayRef<int64_t> shape, Type elementType);
   UnrankedTensorType getTensorType(Type elementType);
 
   /// Get or construct an instance of the type 'ty' with provided arguments.

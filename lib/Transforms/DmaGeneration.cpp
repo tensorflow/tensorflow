@@ -114,7 +114,7 @@ struct StrideInfo {
 /// successively nested.
 //  TODO(bondhugula): make this work with non-identity layout maps.
 static void getMultiLevelStrides(const MemRefRegion &region,
-                                 ArrayRef<int> bufferShape,
+                                 ArrayRef<int64_t> bufferShape,
                                  SmallVectorImpl<StrideInfo> *strideInfos) {
   if (bufferShape.size() <= 1)
     return;
@@ -122,7 +122,7 @@ static void getMultiLevelStrides(const MemRefRegion &region,
   int64_t numEltPerStride = 1;
   int64_t stride = 1;
   for (int d = bufferShape.size() - 1; d >= 1; d--) {
-    int dimSize = region.memref->getType().cast<MemRefType>().getDimSize(d);
+    int64_t dimSize = region.memref->getType().cast<MemRefType>().getDimSize(d);
     stride *= dimSize;
     numEltPerStride *= bufferShape[d];
     // A stride is needed only if the region has a shorter extent than the
@@ -169,7 +169,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
   Value *zeroIndex = top.create<ConstantIndexOp>(loc, 0);
 
   unsigned rank = memRefType.getRank();
-  SmallVector<int, 4> fastBufferShape;
+  SmallVector<int64_t, 4> fastBufferShape;
 
   // Compute the extents of the buffer.
   std::vector<SmallVector<int64_t, 4>> lbs;

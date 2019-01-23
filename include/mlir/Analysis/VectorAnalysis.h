@@ -48,7 +48,7 @@ class VectorType;
 ///   - shapeRatio({3, 4, 4, 8}, {2, 5, 2}) returns None
 ///   - shapeRatio({1, 2, 10, 32}, {2, 5, 2}) returns {1, 1, 2, 16}
 llvm::Optional<llvm::SmallVector<unsigned, 4>>
-shapeRatio(ArrayRef<int> superShape, ArrayRef<int> subShape);
+shapeRatio(ArrayRef<int64_t> superShape, ArrayRef<int64_t> subShape);
 
 /// Computes and returns the multi-dimensional ratio of the shapes of
 /// `superVector` to `subVector`. If integral division is not possible, returns

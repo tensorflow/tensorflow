@@ -484,7 +484,7 @@ bool VectorTypeCastOp::verify() const {
   if (!dstVectorType)
     return emitOpError(
         "expects vector as an element of the target memref type");
-  if (llvm::any_of(dstMemrefType.getShape(), [](int s) { return s == -1; }))
+  if (!dstMemrefType.hasStaticShape())
     return emitOpError("does not support dynamic shapes");
 
   if (!getOperand()->getType().isa<MemRefType>())

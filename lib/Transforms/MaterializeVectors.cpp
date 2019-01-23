@@ -187,7 +187,7 @@ struct MaterializationState {
   MaterializationState() : hwVectorSize(clVectorSize.size(), 0) {
     std::copy(clVectorSize.begin(), clVectorSize.end(), hwVectorSize.begin());
   }
-  SmallVector<int, 8> hwVectorSize;
+  SmallVector<int64_t, 8> hwVectorSize;
   VectorType superVectorType;
   VectorType hwVectorType;
   SmallVector<unsigned, 8> hwVectorInstance;
@@ -458,7 +458,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
   SmallVector<AffineExpr, 4> keep;
   MLIRContext *context = transfer->getInstruction()->getContext();
   functional::zipApply(
-      [&dim, &keep, context](int shape, int ratio) {
+      [&dim, &keep, context](int64_t shape, int64_t ratio) {
         assert(shape >= ratio && "shape dim must be greater than ratio dim");
         if (shape != ratio) {
           // HW vector is not full instantiated along this dim, keep it.

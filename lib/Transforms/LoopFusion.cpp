@@ -711,7 +711,7 @@ static Value *createPrivateMemRef(ForInst *forInst,
   // Compute MemRefRegion for 'srcStoreOpInst' at depth 'dstLoopDepth'.
   MemRefRegion region;
   getMemRefRegion(srcStoreOpInst, dstLoopDepth, &region);
-  SmallVector<int, 4> newShape;
+  SmallVector<int64_t, 4> newShape;
   std::vector<SmallVector<int64_t, 4>> lbs;
   SmallVector<int64_t, 8> lbDivisors;
   lbs.reserve(rank);

@@ -96,9 +96,9 @@ private:
   MLFuncGlobalLoweringState *state;
 
   MemRefType memrefType;
-  ArrayRef<int> memrefShape;
+  ArrayRef<int64_t> memrefShape;
   VectorType vectorType;
-  ArrayRef<int> vectorShape;
+  ArrayRef<int64_t> vectorShape;
   AffineMap permutationMap;
 
   /// Used for staging the transfer in a local scalar buffer.
@@ -232,9 +232,9 @@ VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
   }
   emitter
       .template bindZipRangeConstants<ConstantIndexOp>(
-          llvm::zip(lbs, SmallVector<int, 8>(ivs.size(), 0)))
+          llvm::zip(lbs, SmallVector<int64_t, 8>(ivs.size(), 0)))
       .template bindZipRangeConstants<ConstantIndexOp>(
-          llvm::zip(steps, SmallVector<int, 8>(ivs.size(), 1)));
+          llvm::zip(steps, SmallVector<int64_t, 8>(ivs.size(), 1)));
 
   return VectorTransferAccessInfo{ivs,
                                   makeExprs(lbs),

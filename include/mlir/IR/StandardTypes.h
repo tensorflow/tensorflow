@@ -186,11 +186,11 @@ public:
 
   /// If this is ranked tensor or vector type, return the rank. If it is an
   /// unranked tensor, return -1.
-  int getRank() const;
+  int64_t getRank() const;
 
   /// If this is ranked tensor or vector type, return the shape. If it is an
   /// unranked tensor, abort.
-  ArrayRef<int> getShape() const;
+  ArrayRef<int64_t> getShape() const;
 
   /// If this is unranked tensor or any dimension has unknown size (<0),
   /// it doesn't have static shape. If all dimensions have known size (>= 0),
@@ -200,7 +200,7 @@ public:
   /// If this is ranked tensor or vector type, return the size of the specified
   /// dimension. It aborts if the tensor is unranked (this can be checked by
   /// the getRank call method).
-  int getDimSize(unsigned i) const;
+  int64_t getDimSize(unsigned i) const;
 
   /// Get the total amount of bits occupied by a value of this type.  This does
   /// not take into account any memory layout or widening constraints, e.g. a
@@ -208,7 +208,7 @@ public:
   /// it will likely be stored as in a 4xi64 vector register.  Fail an assertion
   /// if the size cannot be computed statically, i.e. if the tensor has a
   /// dynamic shape or if its elemental type does not have a known bit width.
-  long getSizeInBits() const;
+  int64_t getSizeInBits() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
@@ -227,26 +227,26 @@ public:
 
   /// Get or create a new VectorType of the provided shape and element type.
   /// Assumes the arguments define a well-formed VectorType.
-  static VectorType get(ArrayRef<int> shape, Type elementType);
+  static VectorType get(ArrayRef<int64_t> shape, Type elementType);
 
   /// Get or create a new VectorType of the provided shape and element type
   /// declared at the given, potentially unknown, location.  If the VectorType
   /// defined by the arguments would be ill-formed, emit errors and return
   /// nullptr-wrapping type.
-  static VectorType getChecked(ArrayRef<int> shape, Type elementType,
+  static VectorType getChecked(ArrayRef<int64_t> shape, Type elementType,
                                Location location);
 
   /// Verify the construction of a vector type.
   static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
                                            MLIRContext *context,
-                                           ArrayRef<int> shape,
+                                           ArrayRef<int64_t> shape,
                                            Type elementType);
 
   /// Returns true of the given type can be used as an element of a vector type.
   /// In particular, vectors can consist of integer or float primitives.
   static bool isValidElementType(Type t) { return t.isIntOrFloat(); }
 
-  ArrayRef<int> getShape() const;
+  ArrayRef<int64_t> getShape() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) { return kind == StandardTypes::Vector; }
@@ -290,22 +290,22 @@ public:
 
   /// Get or create a new RankedTensorType of the provided shape and element
   /// type. Assumes the arguments define a well-formed type.
-  static RankedTensorType get(ArrayRef<int> shape, Type elementType);
+  static RankedTensorType get(ArrayRef<int64_t> shape, Type elementType);
 
   /// Get or create a new RankedTensorType of the provided shape and element
   /// type declared at the given, potentially unknown, location.  If the
   /// RankedTensorType defined by the arguments would be ill-formed, emit errors
   /// and return a nullptr-wrapping type.
-  static RankedTensorType getChecked(ArrayRef<int> shape, Type elementType,
+  static RankedTensorType getChecked(ArrayRef<int64_t> shape, Type elementType,
                                      Location location);
 
   /// Verify the construction of a ranked tensor type.
   static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
                                            MLIRContext *context,
-                                           ArrayRef<int> shape,
+                                           ArrayRef<int64_t> shape,
                                            Type elementType);
 
-  ArrayRef<int> getShape() const;
+  ArrayRef<int64_t> getShape() const;
 
   static bool kindof(unsigned kind) {
     return kind == StandardTypes::RankedTensor;
@@ -338,7 +338,7 @@ public:
                                            MLIRContext *context,
                                            Type elementType);
 
-  ArrayRef<int> getShape() const { return ArrayRef<int>(); }
+  ArrayRef<int64_t> getShape() const { return llvm::None; }
 
   static bool kindof(unsigned kind) {
     return kind == StandardTypes::UnrankedTensor;
@@ -361,7 +361,7 @@ public:
   /// map composition, and memory space.  Assumes the arguments define a
   /// well-formed MemRef type.  Use getChecked to gracefully handle MemRefType
   /// construction failures.
-  static MemRefType get(ArrayRef<int> shape, Type elementType,
+  static MemRefType get(ArrayRef<int64_t> shape, Type elementType,
                         ArrayRef<AffineMap> affineMapComposition,
                         unsigned memorySpace) {
     auto result = getImpl(shape, elementType, affineMapComposition, memorySpace,
@@ -376,7 +376,7 @@ public:
   /// UnknownLoc.  If the MemRefType defined by the arguments would be
   /// ill-formed, emits errors (to the handler registered with the context or to
   /// the error stream) and returns nullptr.
-  static MemRefType getChecked(ArrayRef<int> shape, Type elementType,
+  static MemRefType getChecked(ArrayRef<int64_t> shape, Type elementType,
                                ArrayRef<AffineMap> affineMapComposition,
                                unsigned memorySpace, Location location) {
     return getImpl(shape, elementType, affineMapComposition, memorySpace,
@@ -386,10 +386,10 @@ public:
   unsigned getRank() const { return getShape().size(); }
 
   /// Returns an array of memref shape dimension sizes.
-  ArrayRef<int> getShape() const;
+  ArrayRef<int64_t> getShape() const;
 
   /// Return the size of the specified dimension, or -1 if unspecified.
-  int getDimSize(unsigned i) const { return getShape()[i]; }
+  int64_t getDimSize(unsigned i) const { return getShape()[i]; }
 
   /// Returns the elemental type for this memref shape.
   Type getElementType() const;
@@ -404,6 +404,10 @@ public:
   /// Returns the number of dimensions with dynamic size.
   unsigned getNumDynamicDims() const;
 
+  /// If any dimension of the shape has unknown size (<0), it doesn't have
+  /// static shape.
+  bool hasStaticShape() const { return getNumDynamicDims() == 0; }
+
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
 
   /// Unique identifier for this type class.
@@ -413,7 +417,7 @@ private:
   /// Get or create a new MemRefType defined by the arguments.  If the resulting
   /// type would be ill-formed, return nullptr.  If the location is provided,
   /// emit detailed error messages.
-  static MemRefType getImpl(ArrayRef<int> shape, Type elementType,
+  static MemRefType getImpl(ArrayRef<int64_t> shape, Type elementType,
                             ArrayRef<AffineMap> affineMapComposition,
                             unsigned memorySpace, Optional<Location> location);
 };

@@ -168,7 +168,7 @@ Attribute DenseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   // Reduce the provided multidimensional index into a 1D index.
   uint64_t valueIndex = 0;
   uint64_t dimMultiplier = 1;
-  for (int i = rank - 1; i >= 0; --i) {
+  for (auto i = rank - 1; i >= 0; --i) {
     valueIndex += index[i] * dimMultiplier;
     dimMultiplier *= shape[i];
   }
@@ -346,7 +346,7 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 
   // Build a mapping between known indices and the offset of the stored element.
   llvm::SmallDenseMap<llvm::ArrayRef<uint64_t>, size_t> mappedIndices;
-  size_t numSparseIndices = sparseIndices.getType().getDimSize(0);
+  auto numSparseIndices = sparseIndices.getType().getDimSize(0);
   for (size_t i = 0, e = numSparseIndices; i != e; ++i)
     mappedIndices.try_emplace(
         {sparseIndexValues + (i * rank), static_cast<size_t>(rank)}, i);

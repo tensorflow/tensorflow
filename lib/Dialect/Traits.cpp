@@ -86,7 +86,7 @@ Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   }
 
   // Returns the shape of the given type.
-  auto getShape = [](Type type) -> ArrayRef<int> {
+  auto getShape = [](Type type) -> ArrayRef<int64_t> {
     if (auto vtType = type.dyn_cast<VectorOrTensorType>())
       return vtType.getShape();
     return {};
@@ -104,7 +104,7 @@ Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   // The result shape has the maximum among the two inputs at every
   // dimension index.
 
-  SmallVector<int, 4> resultShape;
+  SmallVector<int64_t, 4> resultShape;
   if (shape1.size() > shape2.size()) {
     std::copy(shape1.begin(), shape1.end(), std::back_inserter(resultShape));
   } else {
