@@ -126,6 +126,28 @@ TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroInRange) {
   EXPECT_LT(zero_point, quant_max);
 }
 
+TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroMinMax) {
+  const float float_min = 0;
+  const float float_max = 0;
+  const int quant_min = -128;
+  const int quant_max = 127;
+  QuantizationParametersT params;
+  GetAsymmetricQuantizationParams(float_min, float_max, quant_min, quant_max,
+                                  &params);
+  ASSERT_EQ(params.max.size(), 1);
+  ASSERT_EQ(params.min.size(), 1);
+  ASSERT_EQ(params.scale.size(), 1);
+  ASSERT_EQ(params.zero_point.size(), 1);
+  EXPECT_EQ(params.max[0], float_max);
+  EXPECT_EQ(params.min[0], float_min);
+  int64_t zero_point = params.zero_point[0];
+  float scale = params.scale[0];
+  const float eps = 1e-7f;
+  EXPECT_NEAR(scale, 0, eps);
+  EXPECT_NEAR(zero_point, quant_min, eps);
+  EXPECT_LT(zero_point, quant_max);
+}
+
 TEST(QuantizationUtilsTest, SymmetricPerChannelQuantization) {
   // Set up an input with [3, 2, 2, 2] size and 0 is the channel index.
   const std::vector<float> input = {
