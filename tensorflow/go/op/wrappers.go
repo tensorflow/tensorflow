@@ -16317,7 +16317,7 @@ func TensorListStackNumElements(value int64) TensorListStackAttr {
 // tensor: the gathered result
 // num_elements: optional. If not -1, the number of elements in the list.
 //
-func TensorListStack(scope *Scope, input_handle tf.Output, element_dtype tf.DataType, optional ...TensorListStackAttr) (tensor tf.Output) {
+func TensorListStack(scope *Scope, input_handle tf.Output, element_shape tf.Output, element_dtype tf.DataType, optional ...TensorListStackAttr) (tensor tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -16328,7 +16328,7 @@ func TensorListStack(scope *Scope, input_handle tf.Output, element_dtype tf.Data
 	opspec := tf.OpSpec{
 		Type: "TensorListStack",
 		Input: []tf.Input{
-			input_handle,
+			input_handle, element_shape,
 		},
 		Attrs: attrs,
 	}
@@ -17359,7 +17359,7 @@ func StringToHashBucketFast(scope *Scope, input tf.Output, num_buckets int64) (o
 // tensor: the withdrawn last element of the list
 // element_dtype: the type of elements in the list
 // element_shape: the shape of the output tensor
-func TensorListPopBack(scope *Scope, input_handle tf.Output, element_dtype tf.DataType) (output_handle tf.Output, tensor tf.Output) {
+func TensorListPopBack(scope *Scope, input_handle tf.Output, element_shape tf.Output, element_dtype tf.DataType) (output_handle tf.Output, tensor tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -17367,7 +17367,7 @@ func TensorListPopBack(scope *Scope, input_handle tf.Output, element_dtype tf.Da
 	opspec := tf.OpSpec{
 		Type: "TensorListPopBack",
 		Input: []tf.Input{
-			input_handle,
+			input_handle, element_shape,
 		},
 		Attrs: attrs,
 	}
@@ -28621,7 +28621,7 @@ func TensorListElementShape(scope *Scope, input_handle tf.Output, shape_type tf.
 // item: the element at that position
 //
 //
-func TensorListGetItem(scope *Scope, input_handle tf.Output, index tf.Output, element_dtype tf.DataType) (item tf.Output) {
+func TensorListGetItem(scope *Scope, input_handle tf.Output, index tf.Output, element_shape tf.Output, element_dtype tf.DataType) (item tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -28629,7 +28629,7 @@ func TensorListGetItem(scope *Scope, input_handle tf.Output, index tf.Output, el
 	opspec := tf.OpSpec{
 		Type: "TensorListGetItem",
 		Input: []tf.Input{
-			input_handle, index,
+			input_handle, index, element_shape,
 		},
 		Attrs: attrs,
 	}
@@ -28781,7 +28781,7 @@ func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, it
 // input_handle: The input tensor list.
 // indices: The indices used to index into the list.
 // values: The tensor.
-func TensorListGather(scope *Scope, input_handle tf.Output, indices tf.Output, element_dtype tf.DataType) (values tf.Output) {
+func TensorListGather(scope *Scope, input_handle tf.Output, indices tf.Output, element_shape tf.Output, element_dtype tf.DataType) (values tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -28789,7 +28789,7 @@ func TensorListGather(scope *Scope, input_handle tf.Output, indices tf.Output, e
 	opspec := tf.OpSpec{
 		Type: "TensorListGather",
 		Input: []tf.Input{
-			input_handle, indices,
+			input_handle, indices, element_shape,
 		},
 		Attrs: attrs,
 	}
