@@ -107,7 +107,9 @@ def convert_structure_to_signature(structure, arg_names=None):
           "Passed in arg_names don't match actual signature (%s)." % arg_names)
     # Replace all top-level names with their actual arg_names. If a path before
     # was "(2,'a',1)", it will become "(arg_names[2],'a',1)".
-    flattened = [((arg_names[0],) + path[1:], arg) for path, arg in flattened]
+    flattened = [
+        ((arg_names[path[0]],) + path[1:], arg) for path, arg in flattened
+    ]
 
   mapped = [
       encode_arg(arg, "/".join([str(p) for p in path]))
