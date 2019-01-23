@@ -257,9 +257,141 @@ class Metric(Layer):
 
   ### End: For use by subclasses ###
 
+class Reduce(Metric):
+  """Encapsulates metrics that perform a reduce operation on the values."""
+
+  def __init__(self, reduction, name, dtype=None):
+    """Creates a `Reduce` instance.
+
+    Args:
+      reduction: a `tf.keras.metrics.Reduction` enum value.
+      name: string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(Reduce, self).__init__(name=name, dtype=dtype)
+    self.reduction = reduction
+    self.total = self.add_weight(
+        'total', initializer=init_ops.zeros_initializer)
+    if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
+                     metrics_utils.Reduction.WEIGHTED_MEAN]:
+      self.count = self.add_weight(
+          'count', initializer=init_ops.zeros_initializer)
+
+  def update_state(self, values, sample_weight=None):
+    """Accumulates statistics for computing the reduction metric.
+
+    For example, if `values` is [1, 3, 5, 7] and reduction=SUM_OVER_BATCH_SIZE,
+    then the value of `result()` is 4. If the `sample_weight` is specified as
+    [1, 1, 0, 0] then value of `result()` would be 2.
+
+    Args:
+      values: Per-example value.
+      sample_weight: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      Update op.
+    """
+    values = math_ops.cast(values, self._dtype)
+    if sample_weight is not None:
+      sample_weight = math_ops.cast(sample_weight, self._dtype)
+      # Update dimensions of weights to match with values if possible.
+      values, _, sample_weight = squeeze_or_expand_dimensions(
+          values, None, sample_weight)
+      try:
+        # Broadcast weights if possible.
+        sample_weight = weights_broadcast_ops.broadcast_weights(
+            sample_weight, values)
+      except ValueError:
+        # Reduce values to same ndim as weight array
+        ndim = K.ndim(values)
+        weight_ndim = K.ndim(sample_weight)
+        if self.reduction == metrics_utils.Reduction.SUM:
+          values = math_ops.reduce_sum(
+              values, axis=list(range(weight_ndim, ndim)))
+        else:
+          values = math_ops.reduce_mean(
+              values, axis=list(range(weight_ndim, ndim)))
+      values = math_ops.multiply(values, sample_weight)
+
+    value_sum = math_ops.reduce_sum(values)
+    with ops.control_dependencies([value_sum]):
+      update_total_op = state_ops.assign_add(self.total, value_sum)
+
+    # Exit early if the reduction doesn't have a denominator.
+    if self.reduction == metrics_utils.Reduction.SUM:
+      return update_total_op
+
+    # Update `count` for reductions that require a denominator.
+    if self.reduction == metrics_utils.Reduction.SUM_OVER_BATCH_SIZE:
+      num_values = math_ops.cast(array_ops.size(values), self._dtype)
+    elif self.reduction == metrics_utils.Reduction.WEIGHTED_MEAN:
+      if sample_weight is None:
+        num_values = math_ops.cast(array_ops.size(values), self._dtype)
+      else:
+        num_values = math_ops.reduce_sum(sample_weight)
+    else:
+      raise NotImplementedError(
+          'reduction [%s] not implemented' % self.reduction)
+
+    with ops.control_dependencies([update_total_op]):
+      return state_ops.assign_add(self.count, num_values)
+
+  def result(self):
+    if self.reduction == metrics_utils.Reduction.SUM:
+      return array_ops.identity(self.total)
+    elif self.reduction in [
+        metrics_utils.Reduction.WEIGHTED_MEAN,
+        metrics_utils.Reduction.SUM_OVER_BATCH_SIZE
+    ]:
+      return math_ops.div_no_nan(self.total, self.count)
+    else:
+      raise NotImplementedError(
+          'reduction [%s] not implemented' % self.reduction)
+
+
+@keras_export('keras.metrics.Sum')
+class Sum(Reduce):
+  """Computes the (weighted) sum of the given values.
+
+  For example, if values is [1, 3, 5, 7] then the sum is 16.
+  If the weights were specified as [1, 1, 0, 0] then the sum would be 4.
+
+  This metric creates one variable, `total`, that is used to compute the sum of
+  `values`. This is ultimately returned as `sum`.
+
+  If `sample_weight` is `None`, weights default to 1.  Use `sample_weight` of 0
+  to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.Sum()
+  m.update_state([1, 3, 5, 7])
+  print('Final result: ', m.result().numpy())  # Final result: 16.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.add_metric(tf.keras.metrics.Sum(name='sum_1')(outputs))
+  model.compile('sgd', loss='mse')
+  ```
+  """
+
+  def __init__(self, name='sum', dtype=None):
+    """Creates a `Sum` instance.
+
+    Args:
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(Sum, self).__init__(reduction=metrics_utils.Reduction.SUM,
+                              name=name, dtype=dtype)
+
 
 @keras_export('keras.metrics.Mean')
-class Mean(Metric):
+class Mean(Reduce):
   """Computes the (weighted) mean of the given values.
 
   For example, if values is [1, 3, 5, 7] then the mean is 4.
@@ -296,58 +428,8 @@ class Mean(Metric):
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
-    super(Mean, self).__init__(name=name, dtype=dtype)
-    # Create new state variables
-    self.total = self.add_weight(
-        'total', initializer=init_ops.zeros_initializer)
-    self.count = self.add_weight(
-        'count', initializer=init_ops.zeros_initializer)
-
-  def update_state(self, values, sample_weight=None):
-    """Accumulates statistics for computing the mean.
-
-    For example, if `values` is [1, 3, 5, 7] then the mean is 4. If
-    the `sample_weight` is specified as [1, 1, 0, 0] then the mean would be 2.
-
-    Args:
-      values: Per-example value.
-      sample_weight: Optional weighting of each example. Defaults to 1.
-
-    Returns:
-      Update op.
-    """
-    values = math_ops.cast(values, self._dtype)
-    if sample_weight is None:
-      num_values = math_ops.cast(array_ops.size(values), self._dtype)
-    else:
-      sample_weight = math_ops.cast(sample_weight, self._dtype)
-
-      # Update dimensions of weights to match with values if possible.
-      values, _, sample_weight = squeeze_or_expand_dimensions(
-          values, None, sample_weight)
-      try:
-        # Broadcast weights if possible.
-        sample_weight = weights_broadcast_ops.broadcast_weights(
-            sample_weight, values)
-      except ValueError:
-        # Reduce values to same ndim as weight array
-        ndim = K.ndim(values)
-        weight_ndim = K.ndim(sample_weight)
-        values = math_ops.reduce_mean(
-            values, axis=list(range(weight_ndim, ndim)))
-
-      num_values = math_ops.reduce_sum(sample_weight)
-      values = math_ops.multiply(values, sample_weight)
-    values = math_ops.reduce_sum(values)
-
-    # Update state variables. Count should be updated only when total is
-    # updated.
-    update_total_op = state_ops.assign_add(self.total, values)
-    with ops.control_dependencies([update_total_op]):
-      return state_ops.assign_add(self.count, num_values)
-
-  def result(self):
-    return math_ops.div_no_nan(self.total, self.count)
+    super(Mean, self).__init__(
+        reduction=metrics_utils.Reduction.WEIGHTED_MEAN, name=name, dtype=dtype)
 
 
 class MeanRelativeError(Mean):

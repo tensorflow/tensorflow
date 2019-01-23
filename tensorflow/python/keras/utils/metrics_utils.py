@@ -37,9 +37,25 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util import tf_decorator
-
+from tensorflow.python.util.tf_export import keras_export
 
 NEG_INF = -1e10
+
+
+@keras_export('keras.metrics.Reduction')
+class Reduction(Enum):
+  """Types of metrics reduction.
+
+  Contains the following values:
+
+  * `SUM`: Scalar sum of weighted values.
+  * `SUM_OVER_BATCH_SIZE`: Scalar sum of weighted values divided by
+        number of elements.
+  * `WEIGHTED_MEAN`: Scalar sum of weighted values divided by sum of weights.
+  """
+  SUM = 'sum'
+  SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
+  WEIGHTED_MEAN = 'weighted_mean'
 
 
 def update_state_wrapper(update_state_fn):

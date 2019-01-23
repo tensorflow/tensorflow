@@ -1,8 +1,6 @@
-path: "tensorflow.keras.metrics.MeanAbsoluteError"
+path: "tensorflow.keras.metrics.Sum"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.metrics.MeanAbsoluteError\'>"
-  is_instance: "<class \'tensorflow.python.keras.metrics.MeanMetricWrapper\'>"
-  is_instance: "<class \'tensorflow.python.keras.metrics.Mean\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.Sum\'>"
   is_instance: "<class \'tensorflow.python.keras.metrics.Reduce\'>"
   is_instance: "<class \'tensorflow.python.keras.metrics.Metric\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
@@ -90,7 +88,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'mean_absolute_error\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'sum\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -194,6 +192,6 @@ tf_class {
   }
   member_method {
     name: "update_state"
-    argspec: "args=[\'self\', \'y_true\', \'y_pred\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'values\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

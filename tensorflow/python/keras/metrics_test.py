@@ -40,6 +40,123 @@ from tensorflow.python.training.checkpointable import util as checkpointable_uti
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class KerasSumTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_sum(self):
+    m = metrics.Sum(name='my_sum')
+
+    # check config
+    self.assertEqual(m.name, 'my_sum')
+    self.assertTrue(m.stateful)
+    self.assertEqual(m.dtype, dtypes.float32)
+    self.assertEqual(len(m.variables), 1)
+    self.evaluate(variables.variables_initializer(m.variables))
+
+    # check initial state
+    self.assertEqual(self.evaluate(m.total), 0)
+
+    # check __call__()
+    self.assertEqual(self.evaluate(m(100)), 100)
+    self.assertEqual(self.evaluate(m.total), 100)
+
+    # check update_state() and result() + state accumulation + tensor input
+    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+    self.evaluate(update_op)
+    self.assertAlmostEqual(self.evaluate(m.result()), 106)
+    self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
+
+    # check reset_states()
+    m.reset_states()
+    self.assertEqual(self.evaluate(m.total), 0)
+
+  def test_sum_with_sample_weight(self):
+    m = metrics.Sum(dtype=dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float64)
+    self.evaluate(variables.variables_initializer(m.variables))
+
+    # check scalar weight
+    result_t = m(100, sample_weight=0.5)
+    self.assertEqual(self.evaluate(result_t), 50)
+    self.assertEqual(self.evaluate(m.total), 50)
+
+    # check weights not scalar and weights rank matches values rank
+    result_t = m([1, 5], sample_weight=[1, 0.2])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 52., 4)  # 50 + 1 + 5 * 0.2
+    self.assertAlmostEqual(self.evaluate(m.total), 52., 4)
+
+    # check weights broadcast
+    result_t = m([1, 2], sample_weight=0.5)
+    self.assertAlmostEqual(self.evaluate(result_t), 53.5, 1)  # 52 + 0.5 + 1
+    self.assertAlmostEqual(self.evaluate(m.total), 53.5, 1)
+
+    # check weights squeeze
+    result_t = m([1, 5], sample_weight=[[1], [0.2]])
+    self.assertAlmostEqual(self.evaluate(result_t), 55.5, 1)  # 53.5 + 1 + 1
+    self.assertAlmostEqual(self.evaluate(m.total), 55.5, 1)
+
+    # check weights expand
+    result_t = m([[1], [5]], sample_weight=[1, 0.2])
+    self.assertAlmostEqual(self.evaluate(result_t), 57.5, 2)  # 55.5 + 1 + 1
+    self.assertAlmostEqual(self.evaluate(m.total), 57.5, 1)
+
+    # check values reduced to the dimensions of weight
+    result_t = m([[[1., 2.], [3., 2.], [0.5, 4.]]], sample_weight=[0.5])
+    result = np.round(self.evaluate(result_t), decimals=2)
+    # result = (prev: 57.5) + 0.5 + 1 + 1.5 + 1 + 0.25 + 2
+    self.assertAlmostEqual(result, 63.75, 2)
+    self.assertAlmostEqual(self.evaluate(m.total), 63.75, 2)
+
+  def test_sum_graph_with_placeholder(self):
+    with context.graph_mode(), self.cached_session() as sess:
+      m = metrics.Sum()
+      v = array_ops.placeholder(dtypes.float32)
+      w = array_ops.placeholder(dtypes.float32)
+      self.evaluate(variables.variables_initializer(m.variables))
+
+      # check __call__()
+      result_t = m(v, sample_weight=w)
+      result = sess.run(result_t, feed_dict=({v: 100, w: 0.5}))
+      self.assertEqual(result, 50)
+      self.assertEqual(self.evaluate(m.total), 50)
+
+      # check update_state() and result()
+      result = sess.run(result_t, feed_dict=({v: [1, 5], w: [1, 0.2]}))
+      self.assertAlmostEqual(result, 52., 2)  # 50 + 1 + 5 * 0.2
+      self.assertAlmostEqual(self.evaluate(m.total), 52., 2)
+
+  def test_save_restore(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
+    m = metrics.Sum()
+    checkpoint = checkpointable_utils.Checkpoint(sum=m)
+    self.evaluate(variables.variables_initializer(m.variables))
+
+    # update state
+    self.evaluate(m(100.))
+    self.evaluate(m(200.))
+
+    # save checkpoint and then add an update
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.evaluate(m(1000.))
+
+    # restore to the same checkpoint sum object (= 300)
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    self.evaluate(m(300.))
+    self.assertEqual(600., self.evaluate(m.result()))
+
+    # restore to a different checkpoint sum object
+    restore_sum = metrics.Sum()
+    restore_checkpoint = checkpointable_utils.Checkpoint(sum=restore_sum)
+    status = restore_checkpoint.restore(save_path)
+    restore_update = restore_sum(300.)
+    status.assert_consumed().run_restore_ops()
+    self.evaluate(restore_update)
+    self.assertEqual(600., self.evaluate(restore_sum.result()))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class KerasMeanTest(test.TestCase):
 
   # TODO(b/120949004): Re-enable garbage collection check

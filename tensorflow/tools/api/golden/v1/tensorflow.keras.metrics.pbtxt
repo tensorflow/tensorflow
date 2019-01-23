@@ -61,6 +61,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Reduction"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "SensitivityAtSpecificity"
     mtype: "<type \'type\'>"
   }
@@ -74,6 +78,10 @@ tf_module {
   }
   member {
     name: "SquaredHinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Sum"
     mtype: "<type \'type\'>"
   }
   member {
