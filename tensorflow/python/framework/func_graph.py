@@ -25,6 +25,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
@@ -86,7 +87,14 @@ def convert_structure_to_signature(structure, arg_names=None):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
-    if isinstance(arg, (int, float, bool, tensor_spec.TensorSpec)):
+    if isinstance(arg, (
+        int,
+        float,
+        bool,
+        type(None),
+        dtypes.DType,
+        tensor_spec.TensorSpec,
+    )):
       return arg
     return UnknownArgument()
 

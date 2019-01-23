@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
@@ -197,6 +198,46 @@ class LoadTest(test.TestCase):
 
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+
+  def test_function_with_default_none_input(self):
+
+    def func(x, dtype=None):
+      if dtype:
+        return array_ops.zeros(shape=x.shape, dtype=dtype)
+      else:
+        return array_ops.zeros(shape=x.shape, dtype=dtypes.float32)
+
+    root = tracking.AutoCheckpointable()
+    root.f = def_function.function(func)
+
+    self.assertAllEqual([0.0, 0.0, 0.0],
+                        root.f(constant_op.constant([1, 2, 3])).numpy())
+    self.assertAllEqual([0.0, 0.0, 0.0],
+                        root.f(constant_op.constant([1.0, 2.0, 3.0])).numpy())
+    self.assertAllEqual([0.0, 0.0, 0.0, 0.0],
+                        root.f(constant_op.constant([1, 2, 3, 4])).numpy())
+    self.assertAllEqual([0, 0, 0],
+                        root.f(
+                            constant_op.constant([1.0, 2.0, 3.0]),
+                            dtype=dtypes.int32).numpy())
+
+    concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+    self.assertEqual(4, len(concrete_functions))
+
+    imported = self.cycle(root)
+
+    self.assertAllEqual([0.0, 0.0, 0.0],
+                        imported.f(constant_op.constant([1, 2, 3]),
+                                   None).numpy())
+    self.assertAllEqual([0.0, 0.0, 0.0],
+                        imported.f(constant_op.constant([1.0, 2.0,
+                                                         3.0])).numpy())
+    self.assertAllEqual([0.0, 0.0, 0.0, 0.0],
+                        imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
+    self.assertAllEqual([0, 0, 0],
+                        imported.f(
+                            constant_op.constant([1.0, 2.0, 3.0]),
+                            dtype=dtypes.int32).numpy())
 
   def test_structured_inputs(self):
 
