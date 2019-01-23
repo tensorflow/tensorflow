@@ -64,9 +64,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
 
   const TfLiteType type = input1->type;
-  if (type != kTfLiteInt32) {
-    context->ReportError(context, "Currently floor_div only supports int32.");
-    return kTfLiteError;
+  switch (type) {
+    case kTfLiteFloat32:
+    case kTfLiteInt32:
+    case kTfLiteUInt8:
+    case kTfLiteInt64:
+      break;
+    default:
+      context->ReportError(context, "Type '%s' is not supported by floor_div.",
+                           TfLiteTypeGetName(type));
+      return kTfLiteError;
   }
   output->type = type;
 
@@ -123,8 +130,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalImpl<int32_t>(context, data->requires_broadcast, input1,
                                input2, output);
     }
+    case kTfLiteFloat32: {
+      return EvalImpl<float>(context, data->requires_broadcast, input1, input2,
+                             output);
+    }
+    case kTfLiteUInt8: {
+      return EvalImpl<uint8_t>(context, data->requires_broadcast, input1,
+                               input2, output);
+    }
+    case kTfLiteInt64: {
+      return EvalImpl<int64_t>(context, data->requires_broadcast, input1,
+                               input2, output);
+    }
     default: {
-      context->ReportError(context, "Currently floor_div only supports int32.");
+      context->ReportError(context, "Type '%s' is not supported by floor_div.",
+                           TfLiteTypeGetName(input1->type));
       return kTfLiteError;
     }
   }
