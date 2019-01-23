@@ -712,6 +712,16 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testKerasSavedModel(self):
+    text = (
+        "tf.contrib.saved_model.save_keras_model(model, './saved_models')\n"
+        "tf.contrib.saved_model.load_keras_model(saved_model_path)\n")
+    expected_text = (
+        "tf.keras.experimental.export(model, './saved_models')\n"
+        "tf.keras.experimental.load_from_saved_model(saved_model_path)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testStatelessMultinomial(self):
     text = (
         "tf.random.stateless_multinomial(logits, num_samples, seed, "
