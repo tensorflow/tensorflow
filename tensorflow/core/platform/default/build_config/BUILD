@@ -8,8 +8,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "check_deps")
-load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
@@ -34,7 +32,13 @@ cc_library(
 
 tf_gpu_library(
     name = "stream_executor",
-    cuda_deps = ["//tensorflow/stream_executor/cuda:cuda_activation"],
+    cuda_deps = if_cuda_is_configured(
+        ["//tensorflow/stream_executor/cuda:cuda_activation"]
+    ) + if_rocm_is_configured(
+        ["//tensorflow/stream_executor/rocm:rocm_activation"]
+        # "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
+        # "//tensorflow/stream_executor/rocm:rocm_platform"]
+    ),
     deps = [
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:dnn",
@@ -43,6 +47,7 @@ tf_gpu_library(
         "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
         "//tensorflow/stream_executor/platform:dso_loader",
     ] + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
@@ -52,7 +57,7 @@ tf_gpu_library(
         "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
         "//tensorflow:using_cuda_clang_with_dynamic_build": [],
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
-        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor:rocm_platform"],
+        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor/rocm:all_runtime"],
         "//conditions:default": [],
     }),
 )
@@ -90,6 +95,7 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/stream_executor/host:host_platform",
         "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
         "//tensorflow/stream_executor/platform:dso_loader",
     ],
 )
