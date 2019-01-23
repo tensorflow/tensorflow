@@ -265,12 +265,10 @@ You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
 
 Follow these steps to get the pushbutton yes/no example working on Apollo 3:
 
-1.  Make sure to run the "Getting Started" section before performing the
-    following steps
-2.  Download Apollo3-SDK-2018.08.13 and place in
-    `tensorflow/lite/experimental/micro/tools/make/downloads`. This is not yet
-    publicly released, but you can contact ashah@ambiqmicro.com to request a
-    copy.
+1.  Make sure to run the "Building Portable Reference Code using Make" section 
+    before performing the following steps
+2.  The Ambiq Micro SDK is downloaded into
+    `tensorflow/lite/experimental/micro/tools/make/downloads` by 'download_dependencies.sh'.
 3.  Compile the project with the following command: make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb
     pushbutton_cmsis_speech_test_bin
@@ -296,8 +294,12 @@ Follow these steps to get the pushbutton yes/no example working on Apollo 3:
         5.  Press Ctrl+c to exit
     4.  Press BTN2. An LED will flash for 1 second. Speak your utterance during
         this one second
-    5.  The debugger will print out four numbers. They are the probabilites for
-        1) no speech, 2) unknown speech, 3) yes, 4) no
+    5.  The debugger will print out four numbers.
+        They are the probabilites for
+        1.  no speech
+        2.  unkown speech
+        3.  yes
+        4.  no
     6.  The EVB LEDs will indicate detection.
         1.  LED0 (rightmost LED) - ON when capturing 1sec of audio
         2.  LED1 - ON when detecting silence
