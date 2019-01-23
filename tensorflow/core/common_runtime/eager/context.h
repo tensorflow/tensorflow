@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/platform/env.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
@@ -238,6 +239,9 @@ class EagerContext {
 
   tensorflow::Env* TFEnv() const { return env_; }
 
+  // All child threads will be reset() when destructing EagerContext.
+  void AddChildThread(std::unique_ptr<Thread> thread);
+
  private:
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
@@ -334,6 +338,7 @@ class EagerContext {
 
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
+  std::vector<std::unique_ptr<tensorflow::Thread>> child_threads_;
 };
 
 }  // namespace tensorflow
