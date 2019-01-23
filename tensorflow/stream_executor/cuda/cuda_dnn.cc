@@ -82,17 +82,6 @@ static_assert(CUDNN_VERSION >= 6000, "cuDNN needs to be version 6.0 or higher");
     }                                                                    \
   } while (false)
 
-// Returns whether status is 'ok', and potentially logs the error.
-bool IsStatusOk(const port::Status& status, bool report_error) {
-  if (status.ok()) {
-    return true;
-  }
-  if (report_error) {
-    LOG(ERROR) << status.error_message();
-  }
-  return false;
-}
-
 // Converts (via narrowing) a type T value to a type U, and checks that the
 // value has no value change due to the conversion.
 template <typename WideT, typename NarrowT>
@@ -2778,17 +2767,15 @@ bool ShouldIncludeWinogradNonfusedAlgo(
 }
 #endif
 
-template <class ElementType>
 dnn::ConvolutionProto GenerateConvProto(
-    dnn::ConvolutionKind kind, const dnn::BatchDescriptor& input_descriptor,
+    dnn::ConvolutionKind kind, dnn::DataType element_type,
+    const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor, dnn::AlgorithmDesc algorithm,
     const dnn::ConvolutionDescriptor& convolution_descriptor, double conv_scale,
     double side_value_scale, dnn::DataType acc_type,
     dnn::ActivationMode activation) {
   dnn::ConvolutionProto conv_config;
-  auto element_type = dnn::ToDataType<ElementType>::value;
-
   conv_config.set_kind(kind);
   *conv_config.mutable_input() = input_descriptor.ToProto(element_type);
   *conv_config.mutable_filter() = filter_descriptor.ToProto(element_type);
@@ -2897,21 +2884,20 @@ port::Status CudnnSupport::DoPrepareForConvolution(
   return port::Status::OK();
 }
 
-template <class T>
-port::Status CudnnSupport::DoConvolveImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<T>& input_data,
+port::Status CudnnSupport::DoConvolve(
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<T>& filter_data,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& output_descriptor, DeviceMemory<T>* output_data,
-    dnn::DataType accumulator_type, const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
+    dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  cudnnDataType_t cudnn_type = GetCudnnDataType<T>();
+  cudnnDataType_t cudnn_type = ToCudnnDataType(element_type);
   CudnnTensorDescriptor input_nd(input_descriptor, cudnn_type);
   CudnnTensorDescriptor output_nd(output_descriptor, cudnn_type);
-  CudnnFilterDescriptor filter(filter_descriptor, cudnn_type);
+  CudnnFilterDescriptor filter_nd(filter_descriptor, cudnn_type);
+  auto accumulator_type = GetConvAccumulatorType(element_type);
   CudnnConvolutionDescriptor conv(convolution_descriptor,
                                   ToCudnnDataType(accumulator_type));
 
@@ -2940,10 +2926,10 @@ port::Status CudnnSupport::DoConvolveImpl(
     }
   }
 
-  // Report an error if we might be hitting a cuDNN bug that accesses illegal
-  // memory. See nvbugs/2138754, b/80018418.
-  if (CUDNN_VERSION < 7300) {
-    SE_RETURN_IF_ERROR([&] {
+  auto get_fwd_bugs = [&]() -> port::Status {
+    // Report an error if we might be hitting a cuDNN bug that accesses illegal
+    // memory. See nvbugs/2138754, b/80018418.
+    if (CUDNN_VERSION < 7300) {
       if (algorithm_desc.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING) {
         return port::Status::OK();
       }
@@ -2966,26 +2952,162 @@ port::Status CudnnSupport::DoConvolveImpl(
       SE_RETURN_IF_ERROR(check_sizes(input_descriptor.count(),
                                      output_descriptor.feature_map_count()));
       return port::Status::OK();
-    }());
-  }
+    }
+    if (algorithm_desc.algo_id() ==
+            CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
+        !ShouldIncludeWinogradNonfusedAlgo(input_descriptor,
+                                           output_descriptor)) {
+      return port::Status(
+          port::error::FAILED_PRECONDITION,
+          "This configuration has potential integer overflow in "
+          "cuDNNv5 and cuDNNv6. See b/68264959.");
+    }
+    return port::Status::OK();
+  };
 
-  if (algorithm_desc.algo_id() ==
-          CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-      !ShouldIncludeWinogradNonfusedAlgo(input_descriptor, output_descriptor)) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "This configuration has potential integer overflow in "
-                        "cuDNNv5 and cuDNNv6. See b/68264959.");
-  }
+  auto get_bwd_data_bugs = [&]() -> port::Status {
+    if (algorithm_desc.algo_id() ==
+            CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
+        !ShouldIncludeWinogradNonfusedAlgo(input_descriptor,
+                                           output_descriptor)) {
+      return port::Status(
+          port::error::FAILED_PRECONDITION,
+          "This configuration has potential integer overflow in "
+          "cuDNNv5 and cuDNNv6. See b/68264959.");
+    }
 
-  RETURN_IF_CUDNN_ERROR(cudnnConvolutionForward(
-      cudnn.handle(),
-      /*alpha=*/alpha, /*srcDesc=*/input_nd.handle(),
-      /*srcData=*/input_data.opaque(), /*filterDesc=*/filter.handle(),
-      /*filterData=*/filter_data.opaque(), /*convDesc=*/conv.handle(),
-      /*algo=*/ToConvForwardAlgo(algorithm_desc),
-      /*workSpace=*/scratch_memory->opaque(),
-      /*workSpaceSizeInBytes=*/scratch_memory->size(), /*beta=*/beta,
-      /*yDesc=*/output_nd.handle(), /*y=*/output_data->opaque()));
+    // Cudnn 7.1.4 has a bug if the workspace of the following convolution is
+    // not zero-initialized, nvbugs/2254619.
+    if (CUDNN_VERSION >= 7000 && CUDNN_VERSION < 7300 &&
+        algorithm_desc.algo_id() == CUDNN_CONVOLUTION_BWD_DATA_ALGO_1 &&
+        cudnn_type == CUDNN_DATA_HALF && algorithm_desc.tensor_ops_enabled() &&
+        input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
+        filter_descriptor.layout() == dnn::FilterLayout::kOutputInputYX &&
+        output_descriptor.layout() == dnn::DataLayout::kBatchDepthYX &&
+        (convolution_descriptor.vertical_filter_stride() > 1 ||
+         convolution_descriptor.horizontal_filter_stride() > 1)) {
+      stream->ThenMemZero(&scratch_memory, scratch_memory.size());
+    }
+    return port::Status::OK();
+  };
+
+  auto get_bwd_filter_bugs = [&]() -> port::Status {
+    // Report an error if we might be hitting a cuDNN bug that produces
+    // incorrect results. See nvbugs/2072856
+    if (CUDNN_VERSION < 7300) {
+      SE_RETURN_IF_ERROR([&] {
+        if (algorithm_desc.algo_id() !=
+            CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING) {
+          return port::Status::OK();
+        }
+        if (output_descriptor.height() > 1 && output_descriptor.width() > 1) {
+          return port::Status::OK();
+        }
+        int convolution_size = output_descriptor.height() > 1
+                                   ? filter_descriptor.input_filter_height()
+                                   : filter_descriptor.input_filter_width();
+        if (convolution_size <= 32) {
+          return port::Status::OK();
+        }
+        cudnnConvolutionMode_t convolution_mode;
+        cudnnDataType_t compute_type;
+        RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionNdDescriptor(
+            conv.handle(), 0, nullptr, nullptr, nullptr, nullptr,
+            &convolution_mode, &compute_type));
+        if (convolution_mode != CUDNN_CONVOLUTION) {
+          return port::Status::OK();
+        }
+        return port::Status(
+            port::error::FAILED_PRECONDITION,
+            "This configuration potentially produces incorrect results.");
+      }());
+    }
+
+    if (algorithm_desc.algo_id() ==
+            CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
+        !ShouldIncludeWinogradNonfusedAlgo(input_descriptor,
+                                           output_descriptor)) {
+      return port::Status(
+          port::error::FAILED_PRECONDITION,
+          "This configuration has potential integer overflow in "
+          "cuDNNv5 and cuDNNv6. See b/68264959.");
+    }
+
+    // Zero out the result buffer for strided conv backward filter for NHWC
+    // layouts. cuDNN 7.1.4 and 7.2 has non-determinisic bug if the buffer is
+    // not zeroed.
+    //
+    // This wrong result caused by the bug is very flaky. It needs to be run for
+    // up to 20 times to produce a mismatch.
+    //
+    // See nvbugs/2379553.
+    if (CUDNN_VERSION >= 7100 && CUDNN_VERSION < 7300 &&
+        algorithm_desc.algo_id() == CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1 &&
+        cudnn_type == CUDNN_DATA_HALF &&
+        input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
+        filter_descriptor.layout() == dnn::FilterLayout::kOutputYXInput &&
+        output_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
+        (convolution_descriptor.vertical_filter_stride() > 1 ||
+         convolution_descriptor.horizontal_filter_stride() > 1)) {
+      stream->ThenMemZero(&filter_data, filter_data.size());
+    }
+    return port::Status::OK();
+  };
+
+  switch (kind) {
+    case dnn::ConvolutionKind::FORWARD: {
+      SE_RETURN_IF_ERROR(get_fwd_bugs());
+      RETURN_IF_CUDNN_ERROR(cudnnConvolutionForward(
+          cudnn.handle(),
+          /*alpha=*/alpha, /*srcDesc=*/input_nd.handle(),
+          /*srcData=*/input_data.opaque(), /*filterDesc=*/filter_nd.handle(),
+          /*filterData=*/filter_data.opaque(), /*convDesc=*/conv.handle(),
+          /*algo=*/ToConvForwardAlgo(algorithm_desc),
+          /*workSpace=*/scratch_memory.opaque(),
+          /*workSpaceSizeInBytes=*/scratch_memory.size(), /*beta=*/beta,
+          /*yDesc=*/output_nd.handle(), /*y=*/output_data.opaque()));
+      break;
+    }
+    case dnn::ConvolutionKind::BACKWARD_DATA: {
+      SE_RETURN_IF_ERROR(get_bwd_data_bugs());
+      RETURN_IF_CUDNN_ERROR(cudnnConvolutionBackwardData(
+          cudnn.handle(),
+          /*alpha=*/alpha,
+          /*wDesc=*/filter_nd.handle(),
+          /*w=*/filter_data.opaque(),
+          /*dyDesc=*/output_nd.handle(),
+          /*dy=*/output_data.opaque(),
+          /*convDesc=*/conv.handle(),
+          /*algo=*/ToConvBackwardDataAlgo(algorithm_desc),
+          /*workSpace=*/scratch_memory.opaque(),
+          /*workSpaceSizeInBytes=*/scratch_memory.size(),
+          /*beta=*/beta,
+          /*dxDesc=*/input_nd.handle(),
+          /*dx=*/input_data.opaque()));
+      break;
+    }
+    case dnn::ConvolutionKind::BACKWARD_FILTER: {
+      SE_RETURN_IF_ERROR(get_bwd_filter_bugs());
+      RETURN_IF_CUDNN_ERROR(cudnnConvolutionBackwardFilter(
+          cudnn.handle(),
+          /*alpha=*/alpha,
+          /*srcDesc=*/input_nd.handle(),
+          /*srcData=*/input_data.opaque(),
+          /*diffDesc=*/output_nd.handle(),
+          /*diffData=*/output_data.opaque(),
+          /*convDesc=*/conv.handle(),
+          /*algo=*/ToConvBackwardFilterAlgo(algorithm_desc),
+          /*workSpace=*/scratch_memory.opaque(),
+          /*workSpaceSizeInBytes=*/scratch_memory.size(),
+          /*beta=*/beta,
+          /*gradDesc=*/filter_nd.handle(),
+          /*dw=*/filter_data.opaque()));
+      break;
+    }
+    default:
+      return port::InternalError(
+          absl::StrCat("Unexpected convolution kind ", static_cast<int>(kind)));
+  }
 
   if (is_profiling) {
     if (!timer->Stop(AsCUDAStream(stream))) {
@@ -2994,13 +3116,13 @@ port::Status CudnnSupport::DoConvolveImpl(
     output_profile_result->set_algorithm(algorithm_desc);
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
-    output_profile_result->set_scratch_size(scratch_memory->size());
+    output_profile_result->set_scratch_size(scratch_memory.size());
 
     LogCudaProto(
-        GenerateConvProto<T>(
-            dnn::ConvolutionKind::FORWARD, input_descriptor, filter_descriptor,
-            output_descriptor, algorithm_desc, convolution_descriptor, dalpha,
-            dbeta, accumulator_type, dnn::ActivationMode::kNone),
+        GenerateConvProto(kind, element_type, input_descriptor,
+                          filter_descriptor, output_descriptor, algorithm_desc,
+                          convolution_descriptor, dalpha, dbeta,
+                          accumulator_type, dnn::ActivationMode::kNone),
         output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
@@ -3120,12 +3242,13 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
 
-    LogCudaProto(GenerateConvProto<ElementType>(
-                     dnn::ConvolutionKind::FORWARD, conv_input_descriptor,
-                     filter_descriptor, output_descriptor, algo_desc,
-                     convolution_descriptor, conv_input_scale, side_input_scale,
-                     accumulator_type, activation_mode),
-                 output_profile_result->elapsed_time_in_ms(), stream->parent());
+    LogCudaProto(
+        GenerateConvProto(
+            dnn::ConvolutionKind::FORWARD, dnn::ToDataType<ElementType>::value,
+            conv_input_descriptor, filter_descriptor, output_descriptor,
+            algo_desc, convolution_descriptor, conv_input_scale,
+            side_input_scale, accumulator_type, activation_mode),
+        output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
@@ -3436,62 +3559,6 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
   return port::Status::OK();
 }
 
-bool CudnnSupport::DoConvolve(
-    Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-    const DeviceMemory<float>& input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<float>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<float>* output_data, const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveImpl(stream, batch_descriptor, input_data, filter_descriptor,
-                     filter_data, convolution_descriptor, output_descriptor,
-                     output_data, GetConvAccumulatorType(dnn::DataType::kFloat),
-                     algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-bool CudnnSupport::DoConvolve(
-    Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-    const DeviceMemory<double>& input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<double>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<double>* output_data, const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveImpl(stream, batch_descriptor, input_data, filter_descriptor,
-                     filter_data, convolution_descriptor, output_descriptor,
-                     output_data,
-                     GetConvAccumulatorType(dnn::DataType::kDouble),
-                     algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-bool CudnnSupport::DoConvolve(
-    Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-    const DeviceMemory<Eigen::half>& input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<Eigen::half>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<Eigen::half>* output_data,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveImpl(stream, batch_descriptor, input_data, filter_descriptor,
-                     filter_data, convolution_descriptor, output_descriptor,
-                     output_data, GetConvAccumulatorType(dnn::DataType::kHalf),
-                     algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
 bool CudnnSupport::DoFusedConvolve(
     Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
     const DeviceMemory<double>& conv_input_data, double conv_input_scale,
@@ -3617,363 +3684,6 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
     return port::Status::OK();
   }();
   return IsStatusOk(status, /*report_error=*/true);
-}
-
-template <class T>
-port::Status CudnnSupport::DoConvolveBackwardDataImpl(
-    Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<T>& filter_data,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<T> backward_output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& input_descriptor,
-    DeviceMemory<T>* backward_input_data, dnn::DataType accumulator_type,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  cudnnDataType_t cudnn_type = GetCudnnDataType<T>();
-  // Alpha is the scaling factor for input.
-  float falpha = 1.0;
-  double dalpha = 1.0;
-  void* alpha = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dalpha)
-                                                : static_cast<void*>(&falpha);
-  // Beta is the scaling factor for output.
-  float fbeta = 0.0;
-  double dbeta = 0.0;
-  void* beta = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dbeta)
-                                               : static_cast<void*>(&fbeta);
-
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-  CudnnTensorDescriptor out_back_nd(output_descriptor, cudnn_type);
-  CudnnTensorDescriptor in_back_nd(input_descriptor, cudnn_type);
-  CudnnFilterDescriptor filter(filter_descriptor, cudnn_type);
-  CudnnConvolutionDescriptor conv(convolution_descriptor,
-                                  ToCudnnDataType(accumulator_type));
-
-  const bool is_profiling = output_profile_result != nullptr;
-
-  std::unique_ptr<CUDATimer, TimerDeleter> timer;
-  if (is_profiling) {
-    timer.reset(new CUDATimer(parent_));  // NOLINT
-    // The start and stop of the timer should be as close to the Cudnn call as
-    // possible. It is still possible for other threads to issue workload on
-    // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
-      return port::Status(port::error::INTERNAL, "Failed to start timer");
-    }
-  }
-
-  if (algorithm_desc.algo_id() ==
-          CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-      !ShouldIncludeWinogradNonfusedAlgo(input_descriptor, output_descriptor)) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "This configuration has potential integer overflow in "
-                        "cuDNNv5 and cuDNNv6. See b/68264959.");
-  }
-
-  // Cudnn 7.1.4 has a bug if the workspace of the following convolution is not
-  // zero-initialized, nvbugs/2254619.
-  if (CUDNN_VERSION >= 7000 && CUDNN_VERSION < 7300 &&
-      algorithm_desc.algo_id() == CUDNN_CONVOLUTION_BWD_DATA_ALGO_1 &&
-      cudnn_type == CUDNN_DATA_HALF && algorithm_desc.tensor_ops_enabled() &&
-      input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
-      filter_descriptor.layout() == dnn::FilterLayout::kOutputInputYX &&
-      output_descriptor.layout() == dnn::DataLayout::kBatchDepthYX &&
-      (convolution_descriptor.vertical_filter_stride() > 1 ||
-       convolution_descriptor.horizontal_filter_stride() > 1)) {
-    stream->ThenMemZero(scratch_memory, scratch_memory->size());
-  }
-
-  RETURN_IF_CUDNN_ERROR(cudnnConvolutionBackwardData(
-      cudnn.handle(),
-      /*alpha=*/alpha,
-      /*wDesc=*/filter.handle(),
-      /*w=*/filter_data.opaque(),
-      /*dyDesc=*/out_back_nd.handle(),
-      /*dy=*/backward_output_data.opaque(),
-      /*convDesc=*/conv.handle(),
-      /*algo=*/ToConvBackwardDataAlgo(algorithm_desc),
-      /*workSpace=*/scratch_memory->opaque(),
-      /*workSpaceSizeInBytes=*/scratch_memory->size(),
-      /*beta=*/beta,
-      /*dxDesc=*/in_back_nd.handle(),
-      /*dx=*/backward_input_data->opaque()));
-  if (is_profiling) {
-    if (!timer->Stop(AsCUDAStream(stream))) {
-      return port::Status(port::error::INTERNAL, "Failed to stop timer");
-    }
-    output_profile_result->set_algorithm(algorithm_desc);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
-    output_profile_result->set_scratch_size(scratch_memory->size());
-
-    LogCudaProto(GenerateConvProto<T>(
-                     dnn::ConvolutionKind::BACKWARD_DATA, input_descriptor,
-                     filter_descriptor, output_descriptor, algorithm_desc,
-                     convolution_descriptor, dalpha, dbeta, accumulator_type,
-                     dnn::ActivationMode::kNone),
-                 output_profile_result->elapsed_time_in_ms(), stream->parent());
-  }
-
-  return port::Status::OK();
-}
-
-bool CudnnSupport::DoConvolveBackwardData(
-    Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<double>& filter_data,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<double> backward_output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& input_descriptor,
-    DeviceMemory<double>* backward_input_data,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveBackwardDataImpl(
-          stream, filter_descriptor, filter_data, output_descriptor,
-          backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, GetConvAccumulatorType(dnn::DataType::kDouble),
-          algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-bool CudnnSupport::DoConvolveBackwardData(
-    Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<float>& filter_data,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<float> backward_output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& input_descriptor,
-    DeviceMemory<float>* backward_input_data,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveBackwardDataImpl(
-          stream, filter_descriptor, filter_data, output_descriptor,
-          backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, GetConvAccumulatorType(dnn::DataType::kFloat),
-          algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-bool CudnnSupport::DoConvolveBackwardData(
-    Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<Eigen::half>& filter_data,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<Eigen::half> backward_output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& input_descriptor,
-    DeviceMemory<Eigen::half>* backward_input_data,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveBackwardDataImpl(
-          stream, filter_descriptor, filter_data, output_descriptor,
-          backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, GetConvAccumulatorType(dnn::DataType::kHalf),
-          algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-template <class T>
-port::Status CudnnSupport::DoConvolveBackwardFilterImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<T>& input_data,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<T> backward_output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemory<T>* backward_filter_data, dnn::DataType accumulator_type,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  cudnnDataType_t cudnn_type = GetCudnnDataType<T>();
-  // Alpha is the scaling factor for input.
-  float falpha = 1.0;
-  double dalpha = 1.0;
-  void* alpha = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dalpha)
-                                                : static_cast<void*>(&falpha);
-  // Beta is the scaling factor for output.
-  float fbeta = 0.0;
-  double dbeta = 0.0;
-  void* beta = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dbeta)
-                                               : static_cast<void*>(&fbeta);
-
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-  CudnnTensorDescriptor out_back_nd(output_descriptor, cudnn_type);
-  CudnnTensorDescriptor input_nd(input_descriptor, cudnn_type);
-  CudnnFilterDescriptor filter(filter_descriptor, cudnn_type);
-  CudnnConvolutionDescriptor conv(convolution_descriptor,
-                                  ToCudnnDataType(accumulator_type));
-
-  const bool is_profiling = output_profile_result != nullptr;
-
-  std::unique_ptr<CUDATimer, TimerDeleter> timer;
-  if (is_profiling) {
-    timer.reset(new CUDATimer(parent_));  // NOLINT
-    // The start and stop of the timer should be as close to the Cudnn call as
-    // possible. It is still possible for other threads to issue workload on
-    // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
-      return port::Status(port::error::INTERNAL, "Failed to start timer");
-    }
-  }
-
-  // Report an error if we might be hitting a cuDNN bug that produces incorrect
-  // results. See nvbugs/2072856
-  if (CUDNN_VERSION < 7300) {
-    SE_RETURN_IF_ERROR([&] {
-      if (algorithm_desc.algo_id() !=
-          CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING) {
-        return port::Status::OK();
-      }
-      if (output_descriptor.height() > 1 && output_descriptor.width() > 1) {
-        return port::Status::OK();
-      }
-      int convolution_size = output_descriptor.height() > 1
-                                 ? filter_descriptor.input_filter_height()
-                                 : filter_descriptor.input_filter_width();
-      if (convolution_size <= 32) {
-        return port::Status::OK();
-      }
-      cudnnConvolutionMode_t convolution_mode;
-      cudnnDataType_t compute_type;
-      RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionNdDescriptor(
-          conv.handle(), 0, nullptr, nullptr, nullptr, nullptr,
-          &convolution_mode, &compute_type));
-      if (convolution_mode != CUDNN_CONVOLUTION) {
-        return port::Status::OK();
-      }
-      return port::Status(
-          port::error::FAILED_PRECONDITION,
-          "This configuration potentially produces incorrect results.");
-    }());
-  }
-
-  if (algorithm_desc.algo_id() ==
-          CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-      !ShouldIncludeWinogradNonfusedAlgo(input_descriptor, output_descriptor)) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "This configuration has potential integer overflow in "
-                        "cuDNNv5 and cuDNNv6. See b/68264959.");
-  }
-
-  // Zero out the result buffer for strided conv backward filter for NHWC
-  // layouts. cuDNN 7.1.4 and 7.2 has non-determinisic bug if the buffer is not
-  // zeroed.
-  //
-  // This wrong result caused by the bug is very flaky. It needs to be run for
-  // up to 20 times to produce a mismatch.
-  //
-  // See nvbugs/2379553.
-  if (CUDNN_VERSION >= 7100 && CUDNN_VERSION < 7300 &&
-      algorithm_desc.algo_id() == CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1 &&
-      cudnn_type == CUDNN_DATA_HALF &&
-      input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
-      filter_descriptor.layout() == dnn::FilterLayout::kOutputYXInput &&
-      output_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
-      (convolution_descriptor.vertical_filter_stride() > 1 ||
-       convolution_descriptor.horizontal_filter_stride() > 1)) {
-    stream->ThenMemZero(backward_filter_data, backward_filter_data->size());
-  }
-
-  RETURN_IF_CUDNN_ERROR(cudnnConvolutionBackwardFilter(
-      cudnn.handle(),
-      /*alpha=*/alpha,
-      /*srcDesc=*/input_nd.handle(),
-      /*srcData=*/input_data.opaque(),
-      /*diffDesc=*/out_back_nd.handle(),
-      /*diffData=*/backward_output_data.opaque(),
-      /*convDesc=*/conv.handle(),
-      /*algo=*/ToConvBackwardFilterAlgo(algorithm_desc),
-      /*workSpace=*/scratch_memory->opaque(),
-      /*workSpaceSizeInBytes=*/scratch_memory->size(),
-      /*beta=*/beta,
-      /*gradDesc=*/filter.handle(),
-      /*dw=*/backward_filter_data->opaque()));
-  if (is_profiling) {
-    if (!timer->Stop(AsCUDAStream(stream))) {
-      return port::Status(port::error::INTERNAL, "Failed to stop timer");
-    }
-    output_profile_result->set_algorithm(algorithm_desc);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
-    output_profile_result->set_scratch_size(scratch_memory->size());
-
-    LogCudaProto(GenerateConvProto<T>(
-                     dnn::ConvolutionKind::BACKWARD_FILTER, input_descriptor,
-                     filter_descriptor, output_descriptor, algorithm_desc,
-                     convolution_descriptor, dalpha, dbeta, accumulator_type,
-                     dnn::ActivationMode::kNone),
-                 output_profile_result->elapsed_time_in_ms(), stream->parent());
-  }
-
-  return port::Status::OK();
-}
-
-bool CudnnSupport::DoConvolveBackwardFilter(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<double>& input_data,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<double> backward_output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemory<double>* backward_filter_data,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveBackwardFilterImpl(
-          stream, input_descriptor, input_data, output_descriptor,
-          backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, GetConvAccumulatorType(dnn::DataType::kDouble),
-          algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-bool CudnnSupport::DoConvolveBackwardFilter(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<float>& input_data,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<float> backward_output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemory<float>* backward_filter_data,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveBackwardFilterImpl(
-          stream, input_descriptor, input_data, output_descriptor,
-          backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, GetConvAccumulatorType(dnn::DataType::kFloat),
-          algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-bool CudnnSupport::DoConvolveBackwardFilter(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<Eigen::half>& input_data,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<Eigen::half> backward_output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemory<Eigen::half>* backward_filter_data,
-    const dnn::AlgorithmDesc& algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  return IsStatusOk(
-      DoConvolveBackwardFilterImpl(
-          stream, input_descriptor, input_data, output_descriptor,
-          backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, GetConvAccumulatorType(dnn::DataType::kHalf),
-          algorithm_desc, scratch_memory, output_profile_result),
-      /*report_error=*/!output_profile_result);
 }
 
 template <class T>
