@@ -200,6 +200,7 @@ cc_library(
         "reshape.cc",
         "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
+        "reverse.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -1255,6 +1256,18 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "reverse_test",
+    size = "small",
+    srcs = ["reverse_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

@@ -4720,6 +4720,33 @@ void Fill(const RuntimeShape& value_shape, const T* value_data,
   }
 }
 
+template <typename Scalar>
+void Reverse(int axis, const RuntimeShape& input_shape,
+             const Scalar* input_data, const RuntimeShape& output_shape,
+             Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Reverse");
+
+  int outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+
+  int copy_size = 1;
+  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
+    copy_size *= input_shape.Dims(i);
+  }
+
+  const int dims_at_axis = input_shape.Dims(axis);
+  for (int i = 0; i < outer_size; ++i) {
+    for (int j = 0; j < dims_at_axis; ++j) {
+      const int start_pos = (i * dims_at_axis + j) * copy_size;
+      Scalar* output_ptr = output_data + start_pos;
+      int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
+      memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
+    }
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 
