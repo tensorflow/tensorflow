@@ -169,34 +169,44 @@ TEST(MutableGraphViewTest, AddSubgraph) {
   CheckGraph(graph);
 }
 
-// TODO(ezhulenev): Add support for adding a subgraph and merging function
-// libraries.
-TEST(MutableGraphViewTest, AddSubgraphWithFunctionLibrary) {
-  GraphDef graph_def = test::function::GDef(
-      {
-          NDef("foo", "NotImportant", {}, {}),
-          NDef("bar", "NotImportant", {}, {}),
-          NDef("baz", "NotImportant", {"foo", "bar"}),
-      },
-      /*funcs=*/{});
+TEST(MutableGraphViewTest, AddSubgraphAndAddFunction) {
+  GraphDef graph_def;
   MutableGraphView graph(&graph_def);
 
   FunctionDef x_times_two = test::function::XTimesTwo();
-  GraphDef subgraph = test::function::GDef(
-      {
-          NDef("s/n0", "NotImportant", {}, {}),
-          NDef("s/n1", "NotImportant", {"bar", "s/n0"}, {}),
-      },
-      /*funcs=*/{x_times_two});
+  GraphDef subgraph = test::function::GDef({}, {x_times_two});
 
-  string subgraph_str = subgraph.ShortDebugString();
+  TF_EXPECT_OK(graph.AddSubgraph(std::move(subgraph)));
+  EXPECT_EQ(graph_def.library().function_size(), 1);
+}
+
+TEST(MutableGraphViewTest, AddSubgraphAndSkipSameFunction) {
+  FunctionDef x_times_two = test::function::XTimesTwo();
+
+  GraphDef graph_def = test::function::GDef({}, {x_times_two});
+  MutableGraphView graph(&graph_def);
+
+  GraphDef subgraph = test::function::GDef({}, {x_times_two});
+
+  TF_EXPECT_OK(graph.AddSubgraph(std::move(subgraph)));
+  EXPECT_EQ(graph_def.library().function_size(), 1);
+}
+
+TEST(MutableGraphViewTest, AddSubgraphAndFailIfFunctionDifferent) {
+  FunctionDef x_times_four = test::function::XTimesFour();
+  x_times_four.mutable_signature()->set_name("XTimesTwo");
+
+  GraphDef graph_def = test::function::GDef({}, {x_times_four});
+  MutableGraphView graph(&graph_def);
+
+  FunctionDef x_times_two = test::function::XTimesTwo();
+  GraphDef subgraph = test::function::GDef({}, {x_times_two});
+
   Status status = graph.AddSubgraph(std::move(subgraph));
   EXPECT_FALSE(status.ok());
-  string expected_msg = absl::Substitute(
-      "MutableGraphView::AddSubgraph(subgraph='$0') error: can't add a "
-      "subgraph with non-empty function library.",
-      subgraph_str);
-  EXPECT_EQ(status.error_message(), expected_msg);
+  EXPECT_EQ(status.error_message(),
+            "MutableGraphView::AddSubgraph(function_size=1) error: Found "
+            "different function definition with the same name: XTimesTwo.");
 }
 
 TEST(MutableGraphViewTest, AddAndUpdateFanouts) {
