@@ -87,11 +87,8 @@ _GRAPH_LEARNING_PHASES = weakref.WeakKeyDictionary()
 
 # _DUMMY_EAGER_GRAPH is used as a key in _GRAPH_LEARNING_PHASES.
 # We keep a separate reference to it to make sure it does not get removed from
-# _GRAPH_LEARNING_PHASES. We use a dummy class instead of something like a
-# string because strings are not weakly-referencable.
-class _DummyEagerGraph(object):
-  pass
-_DUMMY_EAGER_GRAPH = _DummyEagerGraph()
+# _GRAPH_LEARNING_PHASES.
+_DUMMY_EAGER_GRAPH = threading.local()
 
 # This boolean flag can be set to True to leave variable initialization
 # up to the user.
@@ -287,11 +284,25 @@ def set_learning_phase(value):
     raise ValueError('Expected learning phase to be 0 or 1.')
   with ops.init_scope():
     if context.executing_eagerly():
+      # In an eager context, the learning phase values applies to both the eager
+      # context and the internal Keras graph.
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
-    else:
-      _GRAPH_LEARNING_PHASES[get_graph()] = value
+    _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
+def set_eager_learning_phase(value):
+  """Internal utility that sets the learning phase in eager execution only.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers).
+  """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  assert value in {0, 1}
+  assert context.executing_eagerly()
+  _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+
+
+@keras_export('keras.backend.learning_phase_scope')
 @tf_contextlib.contextmanager
 def learning_phase_scope(value):
   """Provides a scope within which the learning phase is equal to `value`.
@@ -302,24 +313,49 @@ def learning_phase_scope(value):
      value: Learning phase value, either 0 or 1 (integers).
 
   Yields:
-    The provided value.
+    None.
 
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
   previous_value = learning_phase()
   try:
     set_learning_phase(value)
-    yield value
+    yield
   finally:
     # Restore learning phase to initial value.
     with ops.init_scope():
       if context.executing_eagerly():
         _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
-      else:
-        _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
+      _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
+
+
+@tf_contextlib.contextmanager
+def eager_learning_phase_scope(value):
+  """Internal scope that sets the learning phase in eager execution only.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers).
+
+  Yields:
+    None.
+
+  Raises:
+     ValueError: if `value` is neither `0` nor `1`.
+  """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  assert value in {0, 1}
+  assert context.executing_eagerly()
+  previous_value = learning_phase()
+  try:
+    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+    yield
+  finally:
+    # Restore learning phase to initial value.
+    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
 
 
 def _get_session():

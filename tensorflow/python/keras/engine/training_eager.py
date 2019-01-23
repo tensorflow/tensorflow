@@ -202,7 +202,7 @@ def _process_single_batch(model,
   Raises:
       ValueError: If the model has no loss to optimize.
   """
-  with backend.learning_phase_scope(1 if training else 0):
+  with backend.eager_learning_phase_scope(1 if training else 0):
     with GradientTape() as tape:
       outs, loss, loss_metrics, aggregated_loss_metrics, masks\
         = _model_loss(
