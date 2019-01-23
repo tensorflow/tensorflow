@@ -36,6 +36,7 @@ _labels = np.reshape(np.repeat(np.arange(_N), 2), (_N,2))/100.0
 class InfeedOutfeedTest(test_util.TensorFlowTestCase):
   # non-commutative operation in loop to make sure tensors are
   # pushed and popped in correct order
+  @staticmethod
   def _loop_computation(batch_data, acc, with_tuple=False, batch_label=None):
     x = math_ops.reduce_sum(batch_data)
     if with_tuple:
@@ -44,6 +45,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     acc = math_ops.divide(x, acc)
     return acc
 
+  @staticmethod
   def _get_ground_truth(with_tuple=False):
     feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
     label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
@@ -73,6 +75,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     return InfeedOutfeedTest._ground_truth
 
 
+  @staticmethod
   def create_dataset_iter(feature_placeholder, label_placeholder, sleep_in_pipeline=False):
     with ops.device('cpu'):
       dataset = Dataset.from_tensor_slices((feature_placeholder, label_placeholder))
@@ -85,6 +88,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       dataset_iter = dataset.make_initializable_iterator()
       return dataset_iter
 
+  @staticmethod
   def create_infeed_enqueue_while_loop(dataset_iter):
     def cond(j):
       return math_ops.less(j, _N_ITER)
@@ -100,6 +104,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     enqueue_loop = control_flow_ops.while_loop(cond, body, (j,), maximum_iterations=_N_ITER)
     return enqueue_loop
 
+  @staticmethod
   def create_infeed_enqueue_tuple_while_loop(dataset_iter):
     def cond(j):
       return math_ops.less(j, _N_ITER)
@@ -115,6 +120,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     enqueue_loop = control_flow_ops.while_loop(cond, body, (j,), maximum_iterations=_N_ITER)
     return enqueue_loop
 
+  @staticmethod
   def my_net():
     def cond(i, acc):
       return math_ops.less(i, _N_ITER)
@@ -132,6 +138,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     r = control_flow_ops.while_loop(cond, body, (i, acc), maximum_iterations=_N_ITER)
     return r
 
+  @staticmethod
   def my_net_tuple():
     def cond(i, acc):
       return math_ops.less(i, _N_ITER)
