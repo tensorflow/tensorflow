@@ -46,12 +46,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def cycle(self, obj, cycles=1, signatures=None):
     to_save = obj
-
     # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
     # point w.r.t. saving/restoring, ideally after 2nd saving.
     for _ in range(cycles):
       path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-      save.save(to_save, path, signatures=signatures or {})
+      save.save(to_save, path, signatures)
       loaded = load.load(path)
       to_save = loaded
     return loaded
@@ -102,7 +101,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.asset2 = tracking.TrackableAsset(file2)
 
     save_dir = os.path.join(self.get_temp_dir(), "save_dir")
-    save.save(root, save_dir, signatures={})
+    save.save(root, save_dir)
 
     file_io.delete_file(file1)
     file_io.delete_file(file2)
@@ -557,7 +556,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
     self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
 
-    imported = self.cycle(root, cycles)
+    # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
+    imported = self.cycle(root, cycles, signatures={})
 
     self.assertAllEqual([2, 4, 6, 8],
                         imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
@@ -576,7 +576,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
 
-    imported = self.cycle(root, cycles)
+    # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
+    imported = self.cycle(root, cycles, signatures={})
 
     self.assertAllEqual([2, 4, 6],
                         imported.f(x=constant_op.constant([1, 2, 3])).numpy())
@@ -589,7 +590,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoCheckpointable()
     root.f = func.get_concrete_function(constant_op.constant([1]))
     self.assertAllEqual([4], root.f(constant_op.constant([2])).numpy())
-    imported = self.cycle(root, cycles)
+    # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
+    imported = self.cycle(root, cycles, signatures={})
     self.assertAllEqual([6],
                         imported.f(constant_op.constant([3])).numpy())
 
@@ -609,7 +611,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       return tape.gradient(output, inp)
 
     self.assertEqual(2., _compute_gradient(root.f).numpy())
-    imported = self.cycle(root, cycles)
+    # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
+    imported = self.cycle(root, cycles, signatures={})
     self.assertEqual(2., _compute_gradient(imported.f).numpy())
 
   def test_revived_concrete_function_kwargs(self, cycles):
@@ -623,7 +626,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec([], dtypes.float32))
     self.assertEqual(8., root.f(y=constant_op.constant(3.),
                                 x=constant_op.constant(2.)).numpy())
-    imported = self.cycle(root, cycles)
+    # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
+    imported = self.cycle(root, cycles, signatures={})
     self.assertEqual(8., imported.f(y=constant_op.constant(3.),
                                     x=constant_op.constant(2.)).numpy())
 
