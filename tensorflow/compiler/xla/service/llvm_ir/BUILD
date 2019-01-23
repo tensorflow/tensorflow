@@ -27,6 +27,20 @@ load(
 )
 
 cc_library(
+    name = "llvm_target_features",
+    srcs = [
+        "llvm_target_features.cc",
+    ],
+    hdrs = ["llvm_target_features.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:support",
+        "@llvm//:core",
+    ],
+)
+
+
+cc_library(
     name = "alias_analysis",
     srcs = ["alias_analysis.cc"],
     hdrs = ["alias_analysis.h"],
@@ -142,11 +156,11 @@ cc_library(
     deps = [
         ":ir_array",
         ":llvm_util",
+        ":llvm_target_features",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend:target_machine_features",
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
@@ -203,9 +217,9 @@ cc_library(
         ":llvm_loop",
         ":llvm_util",
         ":loop_emitter",
+        ":llvm_target_features",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend:target_machine_features",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
         "//tensorflow/compiler/xla/service/gpu:partition_assignment",
         "//tensorflow/core:lib",

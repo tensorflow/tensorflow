@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 
 namespace xla {
 namespace gpu {
@@ -147,7 +147,7 @@ class IrEmitterUnnested : public IrEmitter {
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     const HloComputation* hlo_computation,
                     IrEmitterContext* ir_emitter_context,
-                    TargetMachineFeatures* target_machine_features=nullptr);
+                    llvm_ir::LLVMTargetFeatures* llvm_target_features = nullptr);
   IrEmitterUnnested(const IrEmitterUnnested&) = delete;
   IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
 

@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -292,20 +292,17 @@ string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b, TargetMachineFeatures& target_machine_features) {
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b,
+                             llvm_ir::LLVMTargetFeatures& llvm_target_features) {
   llvm::Intrinsic::ID tid_intrinsic =
-      target_machine_features.simt_intrinsic("__thread_id_x");
+      llvm_target_features.simt_intrinsic("__thread_id_x");
   llvm::Intrinsic::ID group_id_intrinsic =
-      target_machine_features.simt_intrinsic("__block_id_x");
+      llvm_target_features.simt_intrinsic("__block_id_x");
   return b->CreateAnd(
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          llvm_ir::EmitCallToIntrinsic(
-              tid_intrinsic, {}, {}, b)),
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          llvm_ir::EmitCallToIntrinsic(
-              group_id_intrinsic, {}, {}, b)));
+      b->CreateICmpEQ(b->getInt32(0),
+                      llvm_ir::EmitCallToIntrinsic(tid_intrinsic, {}, {}, b)),
+      b->CreateICmpEQ(b->getInt32(0), llvm_ir::EmitCallToIntrinsic(
+                                          group_id_intrinsic, {}, {}, b)));
 }
 
 }  // namespace gpu

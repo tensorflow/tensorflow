@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/target_machine_features.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
@@ -71,9 +71,8 @@ using llvm_ir::SetToFirstInsertPoint;
 namespace gpu {
 
 IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
-                     IrEmitterContext* ir_emitter_context,
-                     bool is_nested,
-                     TargetMachineFeatures* target_machine_features)
+                     IrEmitterContext* ir_emitter_context, bool is_nested,
+                     llvm_ir::LLVMTargetFeatures* llvm_target_features)
     : ir_emitter_context_(ir_emitter_context),
       module_(ir_emitter_context->llvm_module()),
       b_(module_->getContext()),
@@ -81,7 +80,7 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                 &ir_emitter_context->buffer_assignment(), &b_, module_,
                 is_nested),
       hlo_module_config_(hlo_module_config),
-      target_machine_features_(*target_machine_features) {
+      llvm_target_features_(*llvm_target_features) {
   b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config.debug_options()
           .xla_gpu_enable_fast_math()));

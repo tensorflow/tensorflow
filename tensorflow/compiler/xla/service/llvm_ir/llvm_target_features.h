@@ -13,35 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TARGET_MACHINE_FEATURES_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TARGET_MACHINE_FEATURES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_LLVM_TARGET_FEATURES_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_LLVM_TARGET_FEATURES_H_
 
 #include <string>
 #include "llvm/IR/Intrinsics.h"
 
-
 namespace xla {
-namespace gpu {
+namespace llvm_ir {
 
-// Abstract interface for classes providing information about the gpu target we're
-// compiling for.
-class TargetMachineFeatures {
+// Abstract interface for classes providing information about the gpu target
+// we're compiling for.
+class LLVMTargetFeatures {
  public:
-  // Return simt intrinsic for  
-  virtual llvm::Intrinsic::ID  simt_intrinsic(const std::string &name) = 0;
+  // Return simt intrinsic for
+  virtual llvm::Intrinsic::ID simt_intrinsic(const std::string &name) = 0;
 
-  virtual ~TargetMachineFeatures() = default;
-
+  virtual ~LLVMTargetFeatures() = default;
 };
 
-class AMDGPUMachineFeatures : public TargetMachineFeatures {
+class AMDGPUMachineFeatures : public LLVMTargetFeatures {
  public:
   llvm::Intrinsic::ID simt_intrinsic(const std::string &name);
   AMDGPUMachineFeatures(){};
   ~AMDGPUMachineFeatures(){};
 };
 
-class NVPTXMachineFeatures : public TargetMachineFeatures {
+class NVPTXMachineFeatures : public LLVMTargetFeatures {
  public:
   llvm::Intrinsic::ID simt_intrinsic(const std::string &name);
   NVPTXMachineFeatures(){};
@@ -51,4 +49,4 @@ class NVPTXMachineFeatures : public TargetMachineFeatures {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TARGET_MACHINE_FEATURES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_LLVM_TARGET_FEATURES_H_

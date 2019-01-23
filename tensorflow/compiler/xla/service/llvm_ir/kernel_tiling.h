@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -161,7 +161,8 @@ class KernelMappingScheme {
     }
   }
 
-  IrArray::Index EmitBlockIndex(llvm::Type* index_ty, TargetMachineFeatures& target_machine_features);
+  IrArray::Index EmitBlockIndex(llvm::Type* index_ty,
+                                LLVMTargetFeatures& llvm_target_features);
   // Returns the index for the first tile in the block with the given block
   // index.
   IrArray::Index GetTileIndexForBlockOrigin(const IrArray::Index& block_index);
@@ -170,7 +171,7 @@ class KernelMappingScheme {
   IrArray::Index GetElementIndexForTileOrigin(const IrArray::Index& tile_index);
 
   std::tuple<llvm::Value*, llvm::Value*> EmitThreadYXCoordinate(
-      llvm::Type* index_ty, TargetMachineFeatures& target_machine_features);
+      llvm::Type* index_ty, LLVMTargetFeatures& llvm_target_features);
 
   IrArray::Index GetUnnormalizedIndex(
       const IrArray::Index& normalized_shape_index,

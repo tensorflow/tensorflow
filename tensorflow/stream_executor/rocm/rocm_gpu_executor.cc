@@ -240,11 +240,10 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     module = in_memory_modules_[hsaco];
 
     if (module == nullptr) {
-      if (!GpuDriver::LoadHsaco(context_, hsaco, &module)) {
+      if (!LoadModuleFromHsaco(hsaco, &module)) {
         LOG(ERROR) << "failed to load HSACO\n";
         return false;
       }
-      in_memory_modules_[hsaco] = module;
     }
   } else {
     LOG(WARNING) << "no method of loading ROCM kernel provided";
@@ -401,6 +400,7 @@ bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {
       return false;
     }
     module_refcount = 1;
+    in_memory_modules_[hsaco] = *module;
     VLOG(3) << "Loaded HSACO " << static_cast<const void*>(hsaco)
             << " as module " << *module;
   } else {
@@ -768,29 +768,6 @@ bool GpuExecutor::DeviceMemoryUsage(int64* free, int64* total) const {
 bool GpuExecutor::GetSymbol(const string& symbol_name,
                             ModuleHandle module_handle, void** mem,
                             size_t* bytes) {
-  {  // give limited scope to mutex_lock
-    mutex_lock lock{disk_modules_mu_};
-    for (auto& it : disk_modules_) {
-      if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
-                                     reinterpret_cast<hipDeviceptr_t*>(mem),
-                                     bytes)) {
-        return true;
-      }
-    }
-  }
-
-  {  // give limited scope to mutex_lock
-    mutex_lock lock{in_memory_modules_mu_};
-    for (auto& it : in_memory_modules_) {
-      if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
-                                     reinterpret_cast<hipDeviceptr_t*>(mem),
-                                     bytes)) {
-        return true;
-      }
-    }
-  }
-
-  {  // give limited scope to mutex_lock
     mutex_lock lock{in_memory_modules_mu_};
     if (static_cast<bool>(module_handle)) {
       auto it = gpu_binary_to_module_.find(module_handle.id());
@@ -809,7 +786,6 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
         return true;
       }
     }
-  }
 
   LOG(INFO) << "Falied to find symbol in any modules: " << symbol_name;
   return false;
