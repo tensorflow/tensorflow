@@ -1029,9 +1029,9 @@ and the bound is the maximum/minimum of the returned values. There is no
 semantic ambiguity, but MLIR syntax requires the use of these keywords to make
 things more obvious to human readers.
 
-Many upper and lower bounds are simple, so MLIR accepts two shorthand syntaxes:
-the form that accepts a single 'ssa-id' (e.g. `%N`) is shorthand for applying
-that SSA value to a function that maps a single symbol to itself, e.g.,
+Many upper and lower bounds are simple, so MLIR accepts two custom form
+syntaxes: the form that accepts a single 'ssa-id' (e.g. `%N`) is shorthand for
+applying that SSA value to a function that maps a single symbol to itself, e.g.,
 `()[s]->(s)()[%N]`. The integer literal form (e.g. `-42`) is shorthand for a
 nullary mapping function that returns the constant value (e.g. `()->(-42)()`).
 
@@ -1118,8 +1118,8 @@ The internal representation of an operation is simple: an operation is
 identified by a unique string (e.g. `dim`, `tf.Conv2d`, `x86.repmovsb`,
 `ppc.eieio`, etc), can return zero or more results, take zero or more SSA
 operands, and may have zero or more attributes. When parsed or printed in the
-raw form, these are all printed literally, and a function type is used to
-indicate the types of the results and operands.
+_generic assembly form_, these are all printed literally, and a function type is
+used to indicate the types of the results and operands.
 
 Example:
 
@@ -1145,9 +1145,10 @@ Example:
 "br_cond"(%cond)[^bb1, ^bb2(%v : index)] : (i1) -> ()
 ```
 
-In addition to the basic syntax above, applications may register tables of known
-operations. This allows those applications to support custom syntax for parsing
-and printing operations. In the operation sets listed below, we show both forms.
+In addition to the basic syntax above, dialects may register tables of known
+operations. This allows those dialects to support _custom assembly form_ for
+parsing and printing operations. In the operation sets listed below, we show
+both forms.
 
 **Context:** TensorFlow has an open "op" ecosystem, and we directly apply these
 ideas to the design of MLIR, but generalize it much further. To make it easy to
@@ -1326,7 +1327,7 @@ Examples:
 // Returns the dynamic dimension of %A.
 %y = dim %A, 1 : tensor<4 x ? x f32>
 
-// Equivalent longhand form:
+// Equivalent generic form:
 %x = "dim"(%A){index: 0} : (tensor<4 x ? x f32>) -> index
 %y = "dim"(%A){index: 1} : (tensor<4 x ? x f32>) -> index
 ```
@@ -1732,16 +1733,16 @@ controls.
 Examples:
 
 ```mlir {.mlir}
-// Scalar "signed less than" comparison.
+// Custom form of scalar "signed less than" comparison.
 %x = cmpi "slt", %lhs, %rhs : i32
 
-// Long-hand notation of the same operation.
+// Generic form of the same operation.
 %x = "cmpi"(%lhs, %rhs){predicate: 2} : (i32, i32) -> i1
 
-// Vector equality comparison.
+// Custom form of vector equality comparison.
 %x = cmpi "eq", %lhs, %rhs : vector<4xi64>
 
-// Long-hand notation of the same operation.
+// Generic form of the same operation.
 %x = "cmpi"(%lhs, %rhs){predicate: 0}
     : (vector<4xi64>, vector<4xi64> -> vector<4xi1>
 ```
@@ -1770,10 +1771,10 @@ tensor operands, the comparison is performed elementwise and the element of the
 result indicates whether the comparison is true for the operand elements with
 the same indices as those of the result.
 
-Note: while the short-hand notation uses strings, the actual underlying
+Note: while the custom assembly form uses strings, the actual underlying
 attribute has integer type (or rather enum class in C++ code) as seen from the
-long-hand notation. String literals are used to improve readability of the IR by
-humans.
+generic assembly form. String literals are used to improve readability of the IR
+by humans.
 
 This operation only applies to integer-like operands, but not floats. The main
 reason being that comparison operations have diverging sets of attributes:
@@ -1813,7 +1814,7 @@ Examples:
 // Reference to function @myfn.
 %3 = constant @myfn : (tensor<16xf32>, f32) -> tensor<16xf32>
 
-// Equivalent longhand forms
+// Equivalent generic forms
 %1 = "constant"(){value: 42} : i32
 %3 = "constant"(){value: @myfn}
    : () -> (tensor<16xf32>, f32) -> tensor<16xf32>
@@ -2014,10 +2015,10 @@ operation ::= ssa-id `=` `select` ssa-use, ssa-use, ssa-use `:` type
 Examples:
 
 ```mlir {.mlir}
-// Short-hand notation of scalar selection.
+// Custom form of scalar selection.
 %x = select %cond, %true, %false : i32
 
-// Long-hand notation of the same operation.
+// Generic form of the same operation.
 %x = "select"(%cond, %true, %false) : (i1, i32, i32) -> i32
 
 // Vector selection is element-wise

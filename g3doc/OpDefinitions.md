@@ -65,10 +65,10 @@ requirements that were desirable:
 *   Behavior of the op is documented along with the op with a summary and a
     description. The description is written in markdown and extracted for
     inclusion in the generated LangRef section of the dialect.
-*   The verbose form of printing and parsing is available as normal, but a
-    custom parser and printer can either be specified or automatically generated
-    from an optional string representation showing the mapping of the "assembly"
-    string to operands/type.
+*   The generic assembly form of printing and parsing is available as normal,
+    but a custom parser and printer can either be specified or automatically
+    generated from an optional string representation showing the mapping of the
+    "assembly" string to operands/type.
     *   Parser-level remappings (e.g., `eq` to enum) will be supported as part
         of the parser generation.
 *   Matching patterns are specified separately from the op description.
@@ -189,7 +189,7 @@ Operation definitions consists of:
 
 1.  Custom printer method.
 
-    The custom printer to invoke when producing the short form output.
+    The custom printer to invoke when producing the custom assembly form output.
 
 1.  Custom verifier code.
 
@@ -211,9 +211,10 @@ just being able to specify custom printer/parser methods are sufficient. This
 should presumably be influenced by the design of the assembler/disassembler
 logic that LLVM backends get for free for machine instructions.
 
-The short form/custom emitter form of the operation is specified using a string
-with matching operation name, operands and attributes. With the ability to
-express additional information that needs to be parsed to build the operation:
+The custom assembly form emitter form of the operation is specified using a
+string with matching operation name, operands and attributes. With the ability
+to express additional information that needs to be parsed to build the
+operation:
 
 ```tablegen
 tfl.Add $lhs, $rhs {fused_activation_function:
@@ -235,9 +236,9 @@ tfl.Add $lhs, $rhs {fused_activation_function:
     E.g., attribute axis is matched with `$axis`. Custom parsing for attribute
     type can be defined along with the attribute definition.
 
-1.  The information in the short form should be sufficient to invoke the builder
-    generated. That may require being able to propagate information (e.g., the
-    `$lhs` has the same type as the result).
+1.  The information in the custom assembly form should be sufficient to invoke
+    the builder generated. That may require being able to propagate information
+    (e.g., the `$lhs` has the same type as the result).
 
 Printing is effectively the inverse of the parsing function generated with the
 mnemonic string serving as a template.

@@ -44,8 +44,8 @@ class LLVM_Op<string mnemonic, list<OpProperty> props = [],
   let parser =
       [{ llvm_unreachable("custom parsing triggered instead of default"); }];
 
-  // Just use the verbose form.
-  let printer = [{ p->printDefaultOp(this->getInstruction()); }];
+  // Just use the generic assembly form.
+  let printer = [{ p->printGenericOp(this->getInstruction()); }];
 }
 
 // Base class for LLVM operations with one result.

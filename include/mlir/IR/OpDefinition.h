@@ -196,13 +196,13 @@ protected:
   /// back to this one which accepts everything.
   bool verify() const { return false; }
 
-  /// Unless overridden, the short form of an op is always rejected.  Op
-  /// implementations should implement this to return boolean true on failure.
+  /// Unless overridden, the custom assembly form of an op is always rejected.
+  /// Op implementations should implement this to return true on failure.
   /// On success, they should return false and fill in result with the fields to
   /// use.
   static bool parse(OpAsmParser *parser, OperationState *result);
 
-  // The fallback for the printer is to print it the longhand form.
+  // The fallback for the printer is to print it the generic assembly form.
   void print(OpAsmPrinter *p) const;
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
@@ -895,8 +895,9 @@ namespace impl {
 void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
                    Value *rhs);
 bool parseBinaryOp(OpAsmParser *parser, OperationState *result);
-// Prints the given binary `op` in short-hand notion if both the two operands
-// and the result have the same time. Otherwise, prints the long-hand notion.
+// Prints the given binary `op` in custom assembly form if both the two operands
+// and the result have the same time. Otherwise, prints the generic assembly
+// form.
 void printBinaryOp(const OperationInst *op, OpAsmPrinter *p);
 } // namespace impl
 

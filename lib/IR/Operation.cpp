@@ -55,14 +55,14 @@ OpAsmParser::~OpAsmParser() {}
 // OpState trait class.
 //===----------------------------------------------------------------------===//
 
-// The fallback for the parser is to reject the short form.
+// The fallback for the parser is to reject the custom assembly form.
 bool OpState::parse(OpAsmParser *parser, OperationState *result) {
-  return parser->emitError(parser->getNameLoc(), "has no concise form");
+  return parser->emitError(parser->getNameLoc(), "has no custom assembly form");
 }
 
-// The fallback for the printer is to print it the longhand form.
+// The fallback for the printer is to print in the generic assembly form.
 void OpState::print(OpAsmPrinter *p) const {
-  p->printDefaultOp(getInstruction());
+  p->printGenericOp(getInstruction());
 }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
@@ -349,11 +349,11 @@ void impl::printBinaryOp(const OperationInst *op, OpAsmPrinter *p) {
   assert(op->getNumResults() == 1 && "binary op should have one result");
 
   // If not all the operand and result types are the same, just use the
-  // canonical form to avoid omitting information in printing.
+  // generic assembly form to avoid omitting information in printing.
   auto resultType = op->getResult(0)->getType();
   if (op->getOperand(0)->getType() != resultType ||
       op->getOperand(1)->getType() != resultType) {
-    p->printDefaultOp(op);
+    p->printGenericOp(op);
     return;
   }
 

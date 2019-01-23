@@ -170,9 +170,9 @@ enum class CmpIPredicate {
 /// Since integers are signless, the predicate also explicitly indicates
 /// whether to interpret the operands as signed or unsigned integers for
 /// less/greater than comparisons.  For the sake of readability by humans,
-/// short-hand syntax for the instruction uses a string-typed attribute for the
-/// predicate.  The value of this attribute corresponds to lower-cased name of
-/// the predicate constant, e.g., "slt" means "signed less than".  The string
+/// custom assembly form for the instruction uses a string-typed attribute for
+/// the predicate.  The value of this attribute corresponds to lower-cased name
+/// of the predicate constant, e.g., "slt" means "signed less than".  The string
 /// representation of the attribute is merely a syntactic sugar and is converted
 /// to an integer attribute by the parser.
 ///

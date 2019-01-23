@@ -117,8 +117,8 @@ private:
 
   void recordTypeReference(Type ty) { usedTypes.insert(ty); }
 
-  // Return true if this map could be printed using the shorthand form.
-  static bool hasShorthandForm(AffineMap boundMap) {
+  // Return true if this map could be printed using the custom assembly form.
+  static bool hasCustomForm(AffineMap boundMap) {
     if (boundMap.isSingleConstant())
       return true;
 
@@ -190,11 +190,11 @@ void ModuleState::visitIfInst(const IfInst *ifInst) {
 
 void ModuleState::visitForInst(const ForInst *forInst) {
   AffineMap lbMap = forInst->getLowerBoundMap();
-  if (!hasShorthandForm(lbMap))
+  if (!hasCustomForm(lbMap))
     recordAffineMapReference(lbMap);
 
   AffineMap ubMap = forInst->getUpperBoundMap();
-  if (!hasShorthandForm(ubMap))
+  if (!hasCustomForm(ubMap))
     recordAffineMapReference(ubMap);
 }
 
@@ -985,7 +985,7 @@ public:
   void print(const Block *block);
 
   void printOperation(const OperationInst *op);
-  void printDefaultOp(const OperationInst *op);
+  void printGenericOp(const OperationInst *op);
 
   // Implement OpAsmPrinter.
   raw_ostream &getStream() const { return os; }
@@ -1415,11 +1415,11 @@ void FunctionPrinter::printOperation(const OperationInst *op) {
     return;
   }
 
-  // Otherwise use the standard verbose printing approach.
-  printDefaultOp(op);
+  // Otherwise print with the generic assembly form.
+  printGenericOp(op);
 }
 
-void FunctionPrinter::printDefaultOp(const OperationInst *op) {
+void FunctionPrinter::printGenericOp(const OperationInst *op) {
   os << '"';
   printEscapedString(op->getName().getStringRef(), os);
   os << "\"(";
@@ -1507,11 +1507,11 @@ void FunctionPrinter::printDimAndSymbolList(ArrayRef<InstOperand> ops,
 void FunctionPrinter::printBound(AffineBound bound, const char *prefix) {
   AffineMap map = bound.getMap();
 
-  // Check if this bound should be printed using short-hand notation.
-  // The decision to restrict printing short-hand notation to trivial cases
+  // Check if this bound should be printed using custom assembly form.
+  // The decision to restrict printing custom assembly form to trivial cases
   // comes from the will to roundtrip MLIR binary -> text -> binary in a
   // lossless way.
-  // Therefore, short-hand parsing and printing is only supported for
+  // Therefore, custom assembly form parsing and printing is only supported for
   // zero-operand constant maps and single symbol operand identity maps.
   if (map.getNumResults() == 1) {
     AffineExpr expr = map.getResult(0);

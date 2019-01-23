@@ -1993,7 +1993,7 @@ public:
 
   // Operations
   ParseResult parseOperation();
-  OperationInst *parseVerboseOperation();
+  OperationInst *parseGenericOperation();
   OperationInst *parseCustomOperation();
 
   ParseResult parseForInst();
@@ -2505,7 +2505,7 @@ ParseResult FunctionParser::parseOperation() {
   if (getToken().is(Token::bare_identifier) || getToken().isKeyword())
     op = parseCustomOperation();
   else if (getToken().is(Token::string))
-    op = parseVerboseOperation();
+    op = parseGenericOperation();
   else
     return emitError("expected operation name in quotes");
 
@@ -2537,7 +2537,7 @@ ParseResult FunctionParser::parseOperation() {
   return ParseSuccess;
 }
 
-OperationInst *FunctionParser::parseVerboseOperation() {
+OperationInst *FunctionParser::parseGenericOperation() {
 
   // Get location information for the operation.
   auto srcLocation = getEncodedSourceLocation(getToken().getLoc());
@@ -3055,7 +3055,7 @@ ParseResult FunctionParser::parseBound(SmallVectorImpl<Value *> &operands,
     return ParseSuccess;
   }
 
-  // Parse shorthand form.
+  // Parse custom assembly form.
   if (getToken().isAny(Token::minus, Token::integer)) {
     int64_t val;
     if (!parseIntConstant(val)) {

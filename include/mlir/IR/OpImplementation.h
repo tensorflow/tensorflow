@@ -86,8 +86,8 @@ public:
   printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                         ArrayRef<const char *> elidedAttrs = {}) = 0;
 
-  /// Print the entire operation with the default verbose formatting.
-  virtual void printDefaultOp(const OperationInst *op) = 0;
+  /// Print the entire operation with the default generic assembly form.
+  virtual void printGenericOp(const OperationInst *op) = 0;
 
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;

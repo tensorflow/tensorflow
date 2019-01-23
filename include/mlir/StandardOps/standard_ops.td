@@ -61,7 +61,7 @@ class ArithmeticOp<string mnemonic, list<OpProperty> props = [],
 // tensors thereof.  This operation takes two operands and returns one result,
 // each of these is required to be of the same type.  This type may be an
 // integer scalar type, a vector whose element type is an integer type, or an
-// integer tensor.  The short-hand syntax of the operaton is as follows
+// integer tensor.  The custom assembly form of the operaton is as follows
 //
 //     <op>i %0, %1 : i32
 class IntArithmeticOp<string mnemonic, list<OpProperty> props = [],
@@ -73,8 +73,8 @@ class IntArithmeticOp<string mnemonic, list<OpProperty> props = [],
 // tensors thereof.  This operation has two operands and returns one result,
 // each of these is required to be of the same type.  This type may be a
 // floating point scalar type, a vector whose element type is a floating point
-// type, or a floating point tensor.  The short-hand syntax of the operation is
-// as follows
+// type, or a floating point tensor.  The custom assembly form of the operation
+// is as follows
 //
 //     <op>f %0, %1 : f32
 class FloatArithmeticOp<string mnemonic, list<OpProperty> props = [],

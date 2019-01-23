@@ -328,11 +328,11 @@ number of "reserved" names used by standard operations as well as the size of
 the C++ API while their implementations would have been mostly identical.
 
 The comparison kind is internally an integer attribute. However, for the sake of
-readability by humans, short-hand notation accepts string literals that are
+readability by humans, custom assembly form accepts string literals that are
 mapped to the underlying integer values: `cmpi "eq", %lhs, %rhs` better implies
 integer equality comparison than `cmpi 0, %lhs, %rhs` where it is unclear what
 gets compared to what else. This syntactic sugar is possible thanks to parser
-logic redefinitions for short-hand notation of non-builtin operations.
+logic redefinitions for custom assembly form of non-builtin operations.
 Supporting it in the full notation would have required changing how the main
 parsing algorithm works and may have unexpected repercussions. While it had been
 possible to store the predicate as string attribute, it would have rendered
@@ -434,18 +434,18 @@ understand. When types of a dialect are:
 Following the separation between the built-in and standard dialect, it makes
 sense to separate built-in types and standard dialect types. Built-in types are
 required for the validity of the IR itself, e.g. the function type (which
-appears in function signatures and long-hand forms of operations). Integer,
-float, vector, memref and tensor types, while important, are not necessary for
-IR validity.
+appears in function signatures and generic assembly forms of operations).
+Integer, float, vector, memref and tensor types, while important, are not
+necessary for IR validity.
 
 #### Unregistered types {#unregistered-types}
 
-MLIR supports unregistered operations in verbose notation. MLIR also supports a
-similar concept for types. When parsing, if the dialect for dialect type has not
-been registered the type is modeled as an 'UnknownType'. This allows for types
-to be round-tripped without needing to link in the dialect library that defined
-them. No additional information about unknown types, outside of
-parsing/printing, will be available.
+MLIR supports unregistered operations in generic assembly form. MLIR also
+supports a similar concept for types. When parsing, if the dialect for dialect
+type has not been registered the type is modeled as an 'UnknownType'. This
+allows for types to be round-tripped without needing to link in the dialect
+library that defined them. No additional information about unknown types,
+outside of parsing/printing, will be available.
 
 #### Dialect type syntax
 
@@ -486,6 +486,26 @@ systems. For these wrapper types there is no simple canonical name, it's logical
 to think of these types as existing within the namespace of the dialect. If a
 dialect wishes to assign a canonical name to a type, it can be done via
 [type aliases](LangRef.md#type-aliases).
+
+### Assembly forms
+
+MLIR decides to support both generic and custom assembly forms under the
+following considerations:
+
+MLIR is an open system; it is designed to support modular and pluggable
+dialects. Depending on whether there exists a corresponding dialect and whether
+the dialect is plugged in, operations may or may not be registered into MLIR
+system. Yet we still need a way to investigate these operations. So the generic
+assembly form is mandated by this aspect of MLIR system. It provides a default
+textual form for operations.
+
+On the other hand, an assembly form is for assisting developers to investigate
+the IR. The generic form serves as a safe fallback but it can be too verbose for
+certain ops. Therefore, MLIR gives each dialect the choice to define a custom
+assembly form for each operation according to the operation's semantics and
+specific needs. The custom assembly form can de-duplicate information from the
+operation to derive a more concise form, thus better facilitating the
+comprehension of the IR.
 
 ## Examples {#examples}
 
