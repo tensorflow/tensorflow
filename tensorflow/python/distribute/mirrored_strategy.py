@@ -413,7 +413,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   This strategy uses one replica per device and sync replication for its
   multi-GPU version.
 
-  The multi-worker version will be added in the fture.
+  The multi-worker version will be added in the future.
 
   Args:
     devices: a list of device strings.
