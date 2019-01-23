@@ -245,18 +245,18 @@ class NotPredicate : public Predicate {
 class AndRecurrencePredicate : public Predicate {
  public:
   explicit AndRecurrencePredicate(Predicate* start, Predicate* step,
-                                  string frame)
+                                  std::vector<string> frame)
       : Predicate(Hash(start, step, frame)),
         operands_({start, step}),
         frame_(std::move(frame)) {}
 
   Predicate* start() const { return operands_[0]; }
   Predicate* step() const { return operands_[1]; }
-  absl::string_view frame() const { return frame_; }
+  absl::Span<const string> frame() const { return frame_; }
 
   string ToString() const override {
     return absl::StrCat("{", start()->ToString(), ",&,", step()->ToString(),
-                        "}<", frame(), ">");
+                        "}<", absl::StrJoin(frame(), ";"), ">");
   }
 
   Kind kind() const override { return Kind::kAndRecurrence; }
@@ -267,12 +267,16 @@ class AndRecurrencePredicate : public Predicate {
 
  private:
   std::array<Predicate*, 2> operands_;
-  string frame_;
+  std::vector<string> frame_;
 
-  static int64 Hash(Predicate* start, Predicate* step, const string& frame) {
+  static int64 Hash(Predicate* start, Predicate* step,
+                    const std::vector<string>& frame) {
+    uint64 frame_hash = 0;
+    for (const string& sub_frame : frame) {
+      frame_hash = Hash64Combine(Hash64(sub_frame), frame_hash);
+    }
     return Hash64Combine(
-        HashPredicateSequence(Kind::kAndRecurrence, {start, step}),
-        Hash64(frame));
+        HashPredicateSequence(Kind::kAndRecurrence, {start, step}), frame_hash);
   }
 };
 
@@ -368,7 +372,7 @@ class PredicateFactory {
   }
 
   Predicate* MakeAndRecurrencePredicate(Predicate* start, Predicate* step,
-                                        string frame) {
+                                        std::vector<string> frame) {
     SignatureForAndRec signature(start, step, std::move(frame));
     auto it = interned_and_rec_instances_.find(signature);
     if (it != interned_and_rec_instances_.end()) {
@@ -473,7 +477,8 @@ class PredicateFactory {
   using SignatureForAndOr =
       std::pair<Predicate::Kind, absl::Span<Predicate* const>>;
   using SignatureForNot = Predicate*;
-  using SignatureForAndRec = std::tuple<Predicate*, Predicate*, string>;
+  using SignatureForAndRec =
+      std::tuple<Predicate*, Predicate*, std::vector<string>>;
   using SignatureForSymbol = std::pair<SafeTensorId, bool>;
 
   struct HashSignatureForAndOr {
@@ -887,17 +892,12 @@ Predicate* DeduceStepPredicate(PredicateFactory* predicate_factory,
   return found_sym ? predicate_factory->MakeAndPredicate(and_ops) : nullptr;
 }
 
-Status GetFullFrameName(const Node* n,
-                        absl::Span<const ControlFlowInfo> cfi_infos,
-                        string* full_frame_name) {
+Status GetFullFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
+                    std::vector<string>* frame) {
   int depth = 0;
   for (const ControlFlowInfo* cfi_iter = &cfi_infos[n->id()]; !n->IsSource();
        n = cfi_iter->parent_frame, cfi_iter = &cfi_infos[n->id()]) {
-    if (depth > 0) {
-      absl::StrAppend(full_frame_name, ";");
-    }
-
-    absl::StrAppend(full_frame_name, cfi_iter->frame_name);
+    frame->push_back(cfi_iter->frame_name);
 
     if (depth++ > 5000) {
       return errors::Internal(
@@ -972,11 +972,10 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
 
         Predicate* start =
             predicate_factory_.MakeOrPredicate(non_recurrent_inputs);
-        string frame_name;
-        TF_RETURN_IF_ERROR(
-            GetFullFrameName(n, control_flow_info_, &frame_name));
+        std::vector<string> frame;
+        TF_RETURN_IF_ERROR(GetFullFrame(n, control_flow_info_, &frame));
         Predicate* and_rec = predicate_factory_.MakeAndRecurrencePredicate(
-            start, step, std::move(frame_name));
+            start, step, std::move(frame));
         SetPredicate(n, {0, 1, Graph::kControlSlot}, and_rec, should_revisit);
         return Status::OK();
       }
