@@ -24,7 +24,7 @@ to build TFLite.
 Running
 
 ```bash
-tensorflow/lite/build_ios_universal_lib.sh
+tensorflow/lite/tools/make/build_ios_universal_lib.sh
 ```
 will also build `tensorflow/lite/gen/lib/benchmark-lib.a` .
 
