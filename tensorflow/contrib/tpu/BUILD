@@ -171,6 +171,7 @@ tf_custom_op_py_library(
         ":tpu_ordinal_selector_op_op_lib",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":tpu_ordinal_selector_op",
     ],
