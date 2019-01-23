@@ -138,7 +138,11 @@ tf_kernel_library(
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
-        "strided_slice_op_gpu.cu.cc",
+        "strided_slice_op_gpu_impl.h",
+        "strided_slice_op_gpu_int.cu.cc",
+        "strided_slice_op_gpu_complex.cu.cc",
+        "strided_slice_op_gpu_bool.cu.cc",
+        "strided_slice_op_gpu_number_types.cu.cc",
     ],
     deps = [
         ":bounds_check",
