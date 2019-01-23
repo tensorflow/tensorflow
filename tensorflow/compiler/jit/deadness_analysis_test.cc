@@ -919,5 +919,43 @@ TEST(DeadnessAnalysisTest, DeMorgan) {
   EXPECT_EQ(predicate_map[ControlOutputFor(should_always_be_alive)], "#true");
 }
 
+TEST(DeadnessAnalysisTest, ConstantTrueSwitchCondition) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output constant_true = ops::Const(root.WithOpName("const_true"), true);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  ops::Switch sw(root.WithOpName("switch"), value, constant_true);
+
+  Output id_false = ops::Identity(root.WithOpName("id_false"), sw.output_false);
+  Output id_true = ops::Identity(root.WithOpName("id_true"), sw.output_true);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_false)], "#false");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_true)], "#true");
+}
+
+TEST(DeadnessAnalysisTest, ConstantFalseSwitchCondition) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output constant_false = ops::Const(root.WithOpName("const_false"), false);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  ops::Switch sw(root.WithOpName("switch"), value, constant_false);
+
+  Output id_false = ops::Identity(root.WithOpName("id_false"), sw.output_false);
+  Output id_true = ops::Identity(root.WithOpName("id_true"), sw.output_true);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_false)], "#true");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_true)], "#false");
+}
+
 }  // namespace
 }  // namespace tensorflow

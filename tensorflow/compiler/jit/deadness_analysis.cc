@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -304,7 +306,7 @@ class SymbolPredicate : public Predicate {
   // "tensor_id() is live and evaluates to true".
   //
   // If `must_be_true()` is false then this SymbolPredicate represents the
-  // proposition "tensor_id() is live (and may evalutate to any value)"
+  // proposition "tensor_id() is live (and may evaluate to any value)"
   TensorId tensor_id() const { return tensor_id_; }
   bool must_be_true() const { return must_be_true_; }
 
@@ -390,7 +392,24 @@ class PredicateFactory {
     return new_pred_ptr;
   }
 
-  Predicate* MakeSymbolPredicate(TensorId tensor_id, bool must_be_true) {
+  Status MakeSymbolPredicate(Node* node, int output_idx, bool must_be_true,
+                             Predicate** predicate) {
+    TensorId tensor_id(node->name(), output_idx);
+
+    bool is_boolean_tensor = node->output_type(tensor_id.index()) == DT_BOOL;
+    TF_RET_CHECK(!must_be_true || is_boolean_tensor);
+
+    if (node->type_string() == "Const" && must_be_true) {
+      const TensorProto* proto = nullptr;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "value", &proto));
+
+      Tensor tensor(proto->dtype());
+      TF_RET_CHECK(tensor.FromProto(*proto));
+
+      *predicate = tensor.scalar<bool>()() ? MakeTrue() : MakeFalse();
+      return Status::OK();
+    }
+
     SignatureForSymbol signature = {tensor_id, must_be_true};
     auto it = interned_symbol_instances_.find(signature);
     if (it == interned_symbol_instances_.end()) {
@@ -399,10 +418,12 @@ class PredicateFactory {
       Predicate* new_pred_ptr = new_pred.get();
       interned_symbol_instances_.emplace(std::move(signature),
                                          std::move(new_pred));
-      return new_pred_ptr;
+      *predicate = new_pred_ptr;
     } else {
-      return it->second.get();
+      *predicate = it->second.get();
     }
+
+    return Status::OK();
   }
 
   Predicate* MakeTrue() { return MakeAndPredicate({}); }
@@ -791,9 +812,12 @@ Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
   TF_RETURN_IF_ERROR(GetInputPreds(n, EdgeKind::kDataAndControl, &input_preds));
   const Edge* pred_edge;
   TF_RETURN_IF_ERROR(n->input_edge(1, &pred_edge));
-  Predicate* true_switch = predicate_factory_.MakeSymbolPredicate(
-      TensorId(pred_edge->src()->name(), pred_edge->src_output()),
-      /*must_be_true=*/true);
+
+  Predicate* true_switch;
+  TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
+      pred_edge->src(), pred_edge->src_output(),
+      /*must_be_true=*/true, &true_switch));
+
   Predicate* false_switch = predicate_factory_.MakeNotPredicate(true_switch);
 
   // Output 0 is alive iff all inputs are alive and the condition is false.
@@ -930,8 +954,10 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
     if (has_unvisited_backedge) {
       // We're visiting this merge for the first time and it has an unvisited
       // backedge.
-      Predicate* input_data_pred = predicate_factory_.MakeSymbolPredicate(
-          TensorId(n->name(), 0), /*must_be_true=*/false);
+      Predicate* input_data_pred;
+      TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
+          n, /*output_idx=*/0, /*must_be_true=*/false, &input_data_pred));
+
       SetPredicate(n, {0, 1, Graph::kControlSlot}, input_data_pred,
                    should_revisit);
       return Status::OK();
@@ -990,8 +1016,10 @@ Status DeadnessAnalysisImpl::HandleRecv(Node* n,
   // acquire a dead signal from a _Send.
   std::vector<Predicate*> input_preds;
   TF_RETURN_IF_ERROR(GetInputPreds(n, EdgeKind::kDataAndControl, &input_preds));
-  input_preds.push_back(predicate_factory_.MakeSymbolPredicate(
-      TensorId(n->name(), 0), /*must_be_true=*/false));
+  Predicate* signal_is_alive;
+  TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
+      n, /*output_idx=*/0, /*must_be_true=*/false, &signal_is_alive));
+  input_preds.push_back(signal_is_alive);
   SetPredicate(n, {0, Graph::kControlSlot},
                predicate_factory_.MakeAndPredicate(input_preds),
                should_revisit);
