@@ -576,12 +576,12 @@ class TPUClusterResolverTest(test.TestCase):
     self.assertEqual(resolver.master(), 'grpc://10.2.3.4:8470')
 
     resolver.task_type = 'worker'
-    resolver.task_index = 3
+    resolver.task_id = 3
     self.assertEqual(resolver.master(), 'grpc://10.2.3.7:8470')
 
     self.assertEqual(
         resolver.master(
-            task_type='worker', task_index=2, rpc_layer='test'),
+            task_type='worker', task_id=2, rpc_layer='test'),
         'test://10.2.3.6:8470')
 
   def testGetDeviceDictAndCoresWithTPUs(self):

@@ -254,10 +254,10 @@ class TPUClusterResolver(ClusterResolver):
       raise RuntimeError('You need to specify a TPU Name if you are running in '
                          'the Google Cloud environment.')
 
-    # By default the task_type is 'worker` and the task_index is 0 (which is the
+    # By default the task_type is 'worker` and the task_id is 0 (which is the
     # first worker in the task).
     self.task_type = job_name
-    self.task_index = 0
+    self.task_id = 0
 
     if tpu.startswith('grpc://'):
       # Cloud environment, where we are using GRPC to communicate to TPUs.
@@ -327,7 +327,7 @@ class TPUClusterResolver(ClusterResolver):
     else:
       self._coordinator_address = coordinator_address
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Get the Master string to be used for the session.
 
     In the normal case, this returns the grpc path (grpc://1.2.3.4:8470) of
@@ -341,7 +341,7 @@ class TPUClusterResolver(ClusterResolver):
     Args:
       task_type: (Optional, string) The type of the TensorFlow task of the
         master.
-      task_index: (Optional, integer) The index of the TensorFlow task of the
+      task_id: (Optional, integer) The index of the TensorFlow task of the
         master.
       rpc_layer: (Optional, string) The RPC protocol TensorFlow should use to
         communicate with TPUs.
@@ -355,12 +355,12 @@ class TPUClusterResolver(ClusterResolver):
     if self._shouldResolve():
       # We are going to communicate with the Cloud TPU APIs to get a Cluster.
       cluster_spec = self.cluster_spec()
-      if task_type is not None and task_index is not None:
-        # task_type and task_index is from the function parameter
-        master = cluster_spec.task_address(task_type, task_index)
-      elif self.task_type is not None and self.task_index is not None:
-        # task_type and task_index is from the object
-        master = cluster_spec.task_address(self.task_type, self.task_index)
+      if task_type is not None and task_id is not None:
+        # task_type and task_id is from the function parameter
+        master = cluster_spec.task_address(task_type, task_id)
+      elif self.task_type is not None and self.task_id is not None:
+        # task_type and task_id is from the object
+        master = cluster_spec.task_address(self.task_type, self.task_id)
       else:
         # by default we take the first item in the cluster with the right name
         job_tasks = cluster_spec.job_tasks(self.task_type)
@@ -458,7 +458,7 @@ class TPUClusterResolver(ClusterResolver):
 
   def num_accelerators(self,
                        task_type=None,
-                       task_index=None,
+                       task_id=None,
                        accelerator_type='TPU',
                        config_proto=None):
     """Returns the number of TPU cores per worker.
@@ -469,7 +469,7 @@ class TPUClusterResolver(ClusterResolver):
 
     Args:
       task_type: Unused.
-      task_index: Unused.
+      task_id: Unused.
       accelerator_type: Unused.
       config_proto: Used to create a connection to a TPU master in order to
         retrieve the system metadata.
