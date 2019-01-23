@@ -197,11 +197,19 @@ class XlaBuilder {
   // status. Note that all ops that have been enqueued will be moved to the
   // computation being returned. The root of the computation will be the last
   // added operation.
-  StatusOr<XlaComputation> Build();
+  //
+  // `remove_dynamic_dimensions` tells the builder whether to remove the
+  // dyanmic dimensions information in all ops.
+  //
+  // TODO(b/121223198): Delete `remove_dynamic_dimensions` and keeps the
+  // dynamic dimensions information when XLA backend can handle dynamic
+  // dimensions.
+  StatusOr<XlaComputation> Build(bool remove_dynamic_dimensions = true);
 
   // Overload of Build which specifies a particular root instruction for the
   // computation.
-  StatusOr<XlaComputation> Build(XlaOp root);
+  StatusOr<XlaComputation> Build(XlaOp root,
+                                 bool remove_dynamic_dimensions = true);
 
   // Builds the computation with the requested operations, or notes an error in
   // the parent XlaBuilder and returns an empty computation if building failed.
@@ -293,7 +301,7 @@ class XlaBuilder {
   };
 
   // Build helper which takes the id of the root operation..
-  StatusOr<XlaComputation> Build(int64 root_id);
+  StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
 
   // Description for the methods below can be found in the corresponding public
   // functions section in this file.
@@ -359,11 +367,18 @@ class XlaBuilder {
   XlaOp SliceInDim(const XlaOp& operand, int64 start_index, int64 limit_index,
                    int64 stride, int64 dimno);
 
+  ABSL_DEPRECATED("Use span-of-indices form instead")
   XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                      absl::Span<const int64> slice_sizes);
+  XlaOp DynamicSlice(const XlaOp& operand,
+                     absl::Span<const XlaOp> start_indices,
+                     absl::Span<const int64> slice_sizes);
 
+  ABSL_DEPRECATED("Use span-of-indices form instead")
   XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                            const XlaOp& start_indices);
+  XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                           absl::Span<const XlaOp> start_indices);
 
   XlaOp ConcatInDim(absl::Span<const XlaOp> operands, int64 dimension);
 
@@ -727,7 +742,8 @@ class XlaBuilder {
   // operation such as `RngNormal` or `Infeed`. The visitor walks the
   // computation starting at a given operation and sets is_constant to false iff
   // a parameter or stateful operation is encountered.
-  void IsConstantVisitor(const int64 op_handle, std::set<int64>* visited,
+  void IsConstantVisitor(const int64 op_handle,
+                         absl::flat_hash_set<int64>* visited,
                          bool* is_constant) const;
 
   // Checks bounds for convolution parameters.
@@ -874,9 +890,14 @@ class XlaBuilder {
 
   friend XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                             absl::Span<const int64> slice_sizes);
+  friend XlaOp DynamicSlice(const XlaOp& operand,
+                            absl::Span<const XlaOp> start_indices,
+                            absl::Span<const int64> slice_sizes);
 
   friend XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                                   const XlaOp& start_indices);
+  friend XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                                  absl::Span<const XlaOp> start_indices);
 
   friend XlaOp ConcatInDim(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands, int64 dimension);
@@ -1318,10 +1339,15 @@ XlaOp SliceInDim(const XlaOp& operand, int64 start_index, int64 limit_index,
 // The size of the slice in each dimension is passed in 'slice_sizes',
 // which specify the end point of exclusive slice intervals in each
 // dimension [start, start + size).
-// The shape of 'start_indices' must be rank == 1, with dimension size
-// equal to the rank of the 'operand'.
+// The shape of each element of 'start_indices' must be scalar, with the span
+// size equal to the rank of the 'operand'. All elements of 'start_indices' must
+// have the same shape.
 // Slice index calculations are computed modulo input dimension sizes to
 // prevent dynamic start indices from generating out-of-bound array accesses.
+XlaOp DynamicSlice(const XlaOp& operand, absl::Span<const XlaOp> start_indices,
+                   absl::Span<const int64> slice_sizes);
+
+ABSL_DEPRECATED("Use span-of-indices form instead")
 XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                    absl::Span<const int64> slice_sizes);
 
@@ -1337,10 +1363,15 @@ XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
 //   [4 5 6]  => DynamicUpdateslice(data, update, start)   => [4 10 11]
 //   [7 8 9]                                                  [7 8  9 ]
 //
-// The shape of 'start_indices' must be rank == 1, with dimension size
-// equal to the rank of the 'operand'.
+// The shape of each element of 'start_indices' must be scalar, with the span
+// size equal to the rank of the 'operand'. All elements of 'start_indices' must
+// have the same shape.
 // Slice index calculations are computed modulo update dimension sizes to
 // prevent dynamic start indices from generating out-of-bound array accesses.
+XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                         absl::Span<const XlaOp> start_indices);
+
+ABSL_DEPRECATED("Use span-of-indices form instead")
 XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                          const XlaOp& start_indices);
 

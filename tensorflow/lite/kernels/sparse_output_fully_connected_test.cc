@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
@@ -61,7 +62,7 @@ class BaseSparseOutputFullyConnectedOpModel : public SingleOpModel {
     PopulateTensor(input_, data);
   }
 
-  void SetLookup(const std::vector<int32>& f) { PopulateTensor(lookup_, f); }
+  void SetLookup(const std::vector<int32_t>& f) { PopulateTensor(lookup_, f); }
 
   void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
 

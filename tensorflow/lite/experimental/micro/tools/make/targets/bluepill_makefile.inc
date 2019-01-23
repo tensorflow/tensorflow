@@ -47,7 +47,10 @@ ifeq ($(TARGET), bluepill)
   MICROLITE_CC_SRCS += \
     $(wildcard $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/*.c) \
     $(wildcard $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/*.cc)
-    TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_bluepill_binary.sh
+  EXCLUDED_SRCS := \
+    $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/debug_log.c
+  MICROLITE_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(MICROLITE_CC_SRCS))
+  TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_bluepill_binary.sh
   # These are tests that don't currently work on the blue pill.
   EXCLUDED_TESTS := \
     tensorflow/lite/experimental/micro/micro_interpreter_test.cc \

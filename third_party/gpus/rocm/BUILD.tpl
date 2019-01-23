@@ -96,4 +96,4 @@ cc_library(
     ],
 )
 
-%{rocm_include_genrules}
+%{copy_rules}

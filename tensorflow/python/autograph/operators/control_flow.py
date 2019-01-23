@@ -23,6 +23,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.util import nest
 
 
 def for_stmt(iter_, extra_test, body, init_state):
@@ -160,7 +161,8 @@ def while_stmt(test, body, init_state, extra_deps, opts=None):
   # TODO(mdan): Consider adding a generic mechanism for dynamic dispatch.
   # That could be something as simple as a collection of dispatch rules, with
   # some prioritization.
-  if any(tensor_util.is_tensor(v) for v in init_state + extra_deps):
+  if any(tensor_util.is_tensor(v)
+         for v in nest.flatten(init_state + extra_deps)):
     return _tf_while_stmt(test, body, init_state, opts)
   else:
     return _py_while_stmt(test, body, init_state, opts)

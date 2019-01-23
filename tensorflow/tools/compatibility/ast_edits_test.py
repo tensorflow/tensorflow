@@ -54,7 +54,6 @@ class NoUpdateSpec(ast_edits.APIChangeSpec):
     self.function_keyword_renames = {}
     self.symbol_renames = {}
     self.function_warnings = {}
-    self.unrestricted_function_warnings = {}
     self.change_to_function = {}
 
 
@@ -190,6 +189,20 @@ class TestAstEdits(test_util.TensorFlowTestCase):
     text = "f(a, b, c, d)\n"
     _, new_text = self._upgrade(RenameKeywordSpec(), text)
     self.assertEqual(new_text, text)
+
+  def testKeywordReorderWithParens(self):
+    """Test that we get the expected result if there are parens around args."""
+    text = "f((a), ( ( b ) ))\n"
+    acceptable_outputs = [
+        # No change is a valid output
+        text,
+        # Also cases where all arguments are fully specified are allowed
+        "f(a=(a), b=( ( b ) ))\n",
+        # Making the parens canonical is ok
+        "f(a=(a), b=((b)))\n",
+    ]
+    _, new_text = self._upgrade(ReorderKeywordSpec(), text)
+    self.assertIn(new_text, acceptable_outputs)
 
   def testKeywordReorder(self):
     """Test that we get the expected result if kw2 is now before kw1."""
@@ -401,7 +414,8 @@ class TestAstEdits(test_util.TensorFlowTestCase):
 
       def __init__(self):
         NoUpdateSpec.__init__(self)
-        self.unrestricted_function_warnings = {"foo": "not good"}
+        self.function_warnings = {"*.foo": "not good"}
+
     texts = ["object.foo()", "get_object().foo()",
              "get_object().foo()", "object.foo().bar()"]
     for text in texts:

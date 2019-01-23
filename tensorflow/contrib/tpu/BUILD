@@ -171,6 +171,7 @@ tf_custom_op_py_library(
         ":tpu_ordinal_selector_op_op_lib",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":tpu_ordinal_selector_op",
     ],
@@ -263,7 +264,6 @@ py_library(
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
         "//third_party/cloud_tpu/models/keras_colab:__subpackages__",
-        "//third_party/cloud_tpu/models/mnist_keras:__subpackages__",
         "//third_party/cloud_tpu/models/resnet50_keras:__subpackages__",
     ],
     deps = [
@@ -453,7 +453,8 @@ py_library(
     srcs = ["python/tpu/tpu_embedding.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/tpu:tpu_ops",
+        ":tpu_lib",
+        ":tpu_ops",
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",

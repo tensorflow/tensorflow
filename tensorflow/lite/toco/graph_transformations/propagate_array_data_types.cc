@@ -252,6 +252,34 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
       SetDataTypeForAllOutputs(model, op, data_type);
       break;
     }
+    case OperatorType::kUnidirectionalSequenceRnn: {
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      if (data_type != ArrayDataType::kFloat) return ::tensorflow::Status::OK();
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
+    case OperatorType::kUnique: {
+      CHECK_EQ(op->outputs.size(), 2);
+      const UniqueOperator* unique_op = static_cast<UniqueOperator*>(op);
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      model->GetArray(op->outputs[0]).data_type = data_type;
+      model->GetArray(op->outputs[1]).data_type = unique_op->idx_out_type;
+      break;
+    }
+    case OperatorType::kBidirectionalSequenceLstm: {
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      if (data_type != ArrayDataType::kFloat) return ::tensorflow::Status::OK();
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
+    case OperatorType::kLstmCell: {
+      // It's tricky to propagate data types through a LstmCell, as that has
+      // multiple inputs and outputs, and there are quantized cases with
+      // mixed (8bit vs 16bit) cases. Fortunately, that should never be needed,
+      // as the data formats, such as TFLITE, that have LstmCell nodes, also
+      // have data type fields for all their arrays.
+      break;
+    }
     default: {
       // These operators produce outputs with the same type as their 1st input
       CHECK_GT(op->inputs.size(), 0);

@@ -62,8 +62,7 @@ class HloEvaluatorTest : public HloTestBase {
     if (use_bfloat16_) {
       HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
     }
-    return HloEvaluator()
-        .Evaluate(*m_->entry_computation(), arg_literals)
+    return evaluator_.Evaluate(*m_->entry_computation(), arg_literals)
         .ConsumeValueOrDie();
   }
 
@@ -75,8 +74,7 @@ class HloEvaluatorTest : public HloTestBase {
     if (use_bfloat16_) {
       HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
     }
-    return HloEvaluator()
-        .Evaluate(*module->entry_computation(), arg_literals)
+    return evaluator_.Evaluate(*module->entry_computation(), arg_literals)
         .ConsumeValueOrDie();
   }
 
@@ -115,6 +113,7 @@ class HloEvaluatorTest : public HloTestBase {
 
  protected:
   explicit HloEvaluatorTest(bool use_bfloat16) : use_bfloat16_(use_bfloat16) {}
+  HloEvaluator evaluator_;
 
   const bool use_bfloat16_;
   std::unique_ptr<HloModule> m_ = CreateNewVerifiedModule();
@@ -127,8 +126,8 @@ class HloEvaluatorBf16Test : public ::testing::WithParamInterface<bool>,
   HloEvaluatorBf16Test() : HloEvaluatorTest(/*use_bfloat16=*/GetParam()) {}
 };
 
-INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorBf16Test,
-                        ::testing::ValuesIn(use_bf16_params));
+INSTANTIATE_TEST_SUITE_P(HloEvaluatorTest_Instantiation, HloEvaluatorBf16Test,
+                         ::testing::ValuesIn(use_bf16_params));
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs clamp
 // with 3 operands.
@@ -309,6 +308,19 @@ TEST_F(HloEvaluatorTest, DoesNotR2) {
                                     {0, std::numeric_limits<int>::min()}});
   TestUnaryOp(HloOpcode::kNot, std::move(expected), std::move(operand));
 }
+
+TEST_F(HloEvaluatorTest, DoesRealC128) {
+  auto x = LiteralUtil::CreateR1<complex128>({{1, 0}, {-100, 4}});
+  auto expected_real = LiteralUtil::CreateR1<double>({1, -100});
+  TestUnaryOp(HloOpcode::kReal, std::move(expected_real), std::move(x));
+}
+
+TEST_F(HloEvaluatorTest, DoesImagC128) {
+  auto x = LiteralUtil::CreateR1<complex128>({{1, 0}, {-100, 4}});
+  auto expected_imag = LiteralUtil::CreateR1<double>({0, 4});
+  TestUnaryOp(HloOpcode::kImag, std::move(expected_imag), std::move(x));
+}
+
 // Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
 // constant operands.
 TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
@@ -1740,12 +1752,14 @@ TEST_P(HloEvaluatorBf16Test, DynamicSlice) {
   HloInstruction* operand = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(operand_literal)));
 
-  auto start_indices = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({0, 1})));
+  auto zero = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  auto one = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
-                                                      start_indices, {2, 3}));
+  b.AddInstruction(
+      HloInstruction::CreateDynamicSlice(shape, operand, {zero, one}, {2, 3}));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1776,12 +1790,14 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceModSlice) {
   HloInstruction* operand = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(operand_literal)));
 
-  auto start_indices = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2, 1})));
+  auto two = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
+  auto one = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
-                                                      start_indices, {2, 3}));
+  b.AddInstruction(
+      HloInstruction::CreateDynamicSlice(shape, operand, {two, one}, {2, 3}));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1810,15 +1826,17 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceUpdate) {
   HloInstruction* operand = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(operand_literal)));
 
-  auto start_indices = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int64>({0, 1})));
+  auto zero = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  auto one = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
   auto update = b.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<double>({{-2.0, -3.0}, {-6.0, -7.0}})));
 
   Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      shape, operand, update, start_indices));
+      shape, operand, update, {zero, one}));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -2874,6 +2892,39 @@ ENTRY main {
             static_cast<int32>(pow31 * pow31));
 }
 
+TEST_F(HloEvaluatorTest, GetDimensionSize) {
+  constexpr absl::string_view hlo_text = R"(
+HloModule Test
+
+ENTRY main {
+  size = u32[] parameter(0)
+
+  data = s32[4] parameter(1)
+
+  sum = s32[4] add(data, data)
+
+  ROOT dynamic_size = u32[] get-dimension-size(sum), dimensions={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(m_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{0, {}},
+      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
+
+  TF_ASSERT_OK_AND_ASSIGN(DynamicDimensionInference dynamic_dimension_inference,
+                          DynamicDimensionInference::Run(m_.get()));
+
+  evaluator_.set_dynamic_dimension_inference(&dynamic_dimension_inference);
+  Literal size_arg = LiteralUtil::CreateR0<uint32>(3);
+  Literal data_arg = LiteralUtil::CreateR1<int32>({1, 2, 3, 4});
+
+  Literal actual = Evaluate({&size_arg, &data_arg});
+
+  EXPECT_EQ(actual.GetFirstElement<uint32>(), static_cast<uint32>(3));
+}
+
 // Check that we get a useful error if we pass inputs of the wrong shape.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongInputShapes) {
   constexpr absl::string_view hlo_text = R"(
@@ -2922,6 +2973,72 @@ ENTRY main {
                 .status()
                 .error_message(),
             "Expected 1 argument, but got 2.");
+}
+
+TEST_F(HloEvaluatorTest, PreserveFusionInputLayout) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule FusionInputLayout
+
+    fused_computation {
+      param_0 = f32[20,20]{0,1} parameter(0)
+      ROOT bitcast = f32[20,20]{1,0} bitcast(param_0)
+    }
+
+    ENTRY kernel_entry {
+      parameter.0 = f32[20,20]{0,1} parameter(0)
+      ROOT fusion = f32[20,20]{1,0} fusion(parameter.0),
+        kind=kLoop, calls=fused_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  Literal actual = Evaluate({&args[0]});
+  EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
+}
+
+TEST_F(HloEvaluatorTest, PreserveFusionOutputLayout) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule FusionOutputLayout
+
+    fused_computation {
+      param_0 = f32[20,20]{1,0} parameter(0)
+      ROOT bitcast = f32[20,20]{0,1} bitcast(param_0)
+    }
+
+    ENTRY kernel_entry {
+      parameter.0 = f32[20,20]{1,0} parameter(0)
+      ROOT fusion = f32[20,20]{0,1} fusion(parameter.0),
+        kind=kLoop, calls=fused_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  Literal actual = Evaluate({&args[0]});
+  EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
+}
+
+TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule MOFusionOutputLayout
+
+    fused_computation {
+      param_0 = f32[20,20]{1,0} parameter(0)
+      bitcast = f32[20,20]{0,1} bitcast(param_0)
+      ROOT tuple = (f32[20,20]{0,1}) tuple(bitcast)
+    }
+
+    ENTRY kernel_entry {
+      parameter.0 = f32[20,20]{1,0} parameter(0)
+      ROOT fusion = (f32[20,20]{0,1}) fusion(parameter.0),
+        kind=kLoop, calls=fused_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  Literal actual_tuple = Evaluate({&args[0]});
+  std::vector<Literal> actual_literals = actual_tuple.DecomposeTuple();
+  EXPECT_TRUE(
+      absl::c_equal(args[0].data<float>(), actual_literals[0].data<float>()));
 }
 
 }  // namespace

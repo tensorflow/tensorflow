@@ -806,8 +806,8 @@ def sparse_split(keyword_required=KeywordRequired(),
   Graphically the output tensors are:
 
       output_tensor[0] =
-      [    a ]
-      [b c   ]
+      [    a   ]
+      [b c     ]
 
       output_tensor[1] =
       [ d e  ]

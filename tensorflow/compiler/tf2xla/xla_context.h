@@ -47,7 +47,7 @@ class XlaContext : public ResourceBase {
   XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder);
 
   // Virtual method defined by ResourceBase.
-  string DebugString() override;
+  string DebugString() const override;
 
   XlaCompiler* compiler() const { return compiler_; }
 

@@ -68,7 +68,7 @@ class SliceTest(converter_testing.TestCase):
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.float32')
     }
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(transformer.AutoGraphParseError):
       slices.transform(node, ctx)
 
 

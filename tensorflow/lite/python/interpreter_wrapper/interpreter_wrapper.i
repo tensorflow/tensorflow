@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
+#include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 %}
 
 

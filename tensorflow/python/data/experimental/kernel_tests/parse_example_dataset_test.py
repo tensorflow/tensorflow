@@ -27,6 +27,7 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import parsing_ops as contrib_parsing_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
@@ -671,8 +672,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
     for batch_size in (1, 10, 20, 100, 256):
       self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
-  @test_util.run_deprecated_v1
-  def testSkipEagerSerializedShapeMismatch(self):
+  def testSerializedShapeMismatch(self):
     aname = "a"
     bname = "b"
     cname = "c"
@@ -695,19 +695,34 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
     ]
 
     serialized = [m.SerializeToString() for m in original]
-    self._test(
-        ops.convert_to_tensor(serialized), {
-            aname:
-                parsing_ops.FixedLenSequenceFeature((2, 1),
-                                                    dtype=dtypes.float32,
-                                                    allow_missing=True,
-                                                    default_value=[]),
-            bname:
-                parsing_ops.FixedLenSequenceFeature(
-                    (2, 1, 1), dtype=dtypes.string, allow_missing=True),
-        },
-        expected_err=(ValueError,
-                      "Cannot reshape a tensor with 0 elements to shape"))
+    if context.executing_eagerly():
+      self._test(
+          ops.convert_to_tensor(serialized), {
+              aname:
+                  parsing_ops.FixedLenSequenceFeature((2, 1),
+                                                      dtype=dtypes.float32,
+                                                      allow_missing=True,
+                                                      default_value=[]),
+              bname:
+                  parsing_ops.FixedLenSequenceFeature(
+                      (2, 1, 1), dtype=dtypes.string, allow_missing=True),
+          },
+          expected_err=(errors_impl.InvalidArgumentError,
+                        "Input to reshape is a tensor with 0 values"))
+    else:
+      self._test(
+          ops.convert_to_tensor(serialized), {
+              aname:
+                  parsing_ops.FixedLenSequenceFeature((2, 1),
+                                                      dtype=dtypes.float32,
+                                                      allow_missing=True,
+                                                      default_value=[]),
+              bname:
+                  parsing_ops.FixedLenSequenceFeature(
+                      (2, 1, 1), dtype=dtypes.string, allow_missing=True),
+          },
+          expected_err=(ValueError,
+                        "Cannot reshape a tensor with 0 elements to shape"))
 
   @test_util.run_deprecated_v1
   def testSerializedContainingVarLenDense(self):

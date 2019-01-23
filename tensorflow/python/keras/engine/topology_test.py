@@ -30,12 +30,10 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training import rmsprop
 
 try:
   import yaml  # pylint:disable=g-import-not-at-top
@@ -360,17 +358,17 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     x = keras.layers.Dropout(0.5)(x, training=True)
     model = keras.models.Model(inp, x)
     # Would be `dropout/cond/Merge` by default
-    self.assertTrue(model.output.op.name.endswith('dropout/mul'))
+    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
 
     # Test that argument is kept when applying the model
     inp2 = keras.layers.Input(shape=(2,))
     out2 = model(inp2)
-    self.assertTrue(out2.op.name.endswith('dropout/mul'))
+    self.assertTrue(out2.op.name.endswith('dropout/mul_1'))
 
     # Test that argument is kept after loading a model
     config = model.get_config()
     model = keras.models.Model.from_config(config)
-    self.assertTrue(model.output.op.name.endswith('dropout/mul'))
+    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
 
   def test_node_construction(self):
     # test basics
@@ -860,7 +858,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     x = np.ones((100, 2))
     y = np.ones((100, 2))
     model.compile(
-        optimizer=gradient_descent.SGD(),
+        optimizer='sgd',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly())
     loss = model.train_on_batch(x, y)
@@ -909,7 +907,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     model.add(keras.layers.Dense(3))
     model.compile(
         loss='mse',
-        optimizer=gradient_descent.SGD(),
+        optimizer='sgd',
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly())
 
@@ -919,6 +917,16 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     if yaml is not None:
       yaml_str = model.to_yaml()
       keras.models.model_from_yaml(yaml_str)
+
+  def test_subclassed_error_if_init_not_called(self):
+
+    class MyNetwork(network_lib.Network):
+
+      def __init__(self):
+        self._foo = [keras.layers.Dense(10), keras.layers.Dense(10)]
+
+    with self.assertRaisesRegexp(RuntimeError, 'forgot to call'):
+      MyNetwork()
 
 
 class DeferredModeTest(test.TestCase):
@@ -1151,7 +1159,7 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     x = keras.layers.wrappers.TimeDistributed(s)(x)
     model = keras.Model(inputs=inputs, outputs=x)
     model.compile(
-        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        optimizer='rmsprop',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly())
 
@@ -1220,8 +1228,12 @@ class NestedNetworkTest(test.TestCase):
     result = self.evaluate(result_tensor)
     self.assertAllEqual(result, [[2.]])
 
-    output_shape = network.compute_output_shape({'x1': (10, 1), 'x2': (10, 1)})
-    self.assertListEqual(output_shape.as_list(), [10, 1])
+    # TODO(b/122726584): Investigate why concrete batch is flaky in some builds.
+    output_shape = network.compute_output_shape({
+        'x1': (None, 1),
+        'x2': (None, 1)
+    })
+    self.assertListEqual(output_shape.as_list(), [None, 1])
 
   def test_nested_outputs_network(self):
     inputs = keras.Input(shape=(1,))

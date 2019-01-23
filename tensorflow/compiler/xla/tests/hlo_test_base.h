@@ -46,10 +46,12 @@ class VerifiedHloModule : public HloModule {
  public:
   VerifiedHloModule(const string& name, const HloModuleConfig& config,
                     bool verifier_layout_sensitive,
-                    bool allow_mixed_precision_in_hlo_verifier)
+                    bool allow_mixed_precision_in_hlo_verifier,
+                    std::function<int64(const Shape&)> shape_size_function)
       : HloModule(name, config),
-        verifier_(verifier_layout_sensitive,
-                  allow_mixed_precision_in_hlo_verifier) {}
+        verifier_(
+            verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
+            /*instruction_can_change_layout_func=*/{}, shape_size_function) {}
 
   ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -63,8 +64,10 @@ NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
 
 }  // namespace
 
-Status LatencyAllEdges::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output) {
+Status LatencyAllEdges::OptimizeAndCollectStats(Cluster* cluster,
+                                                const GrapplerItem& item,
+                                                GraphDef* output,
+                                                OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
 
@@ -72,10 +75,8 @@ Status LatencyAllEdges::Optimize(Cluster* cluster, const GrapplerItem& item,
   // TODO(shivaniagrawal): Add Op to return Latency for the particular Op than
   // for the edge (e2 - e1?).
   for (const NodeDef& node : item.graph.node()) {
-    if (node.op().rfind("Dataset") != node.op().size() - strlen("Dataset") ||
-        node.attr().empty() ||
-        node.name().rfind("_generated") ==
-            node.name().size() - strlen("_generated")) {
+    if (!str_util::EndsWith(node.op(), "Dataset") || node.attr().empty() ||
+        str_util::EndsWith(node.name(), "_generated")) {
       // TODO(b/111805951): Replace this with non-approximate way to check if
       // node corresponds to a `Dataset` op.
       continue;
@@ -89,15 +90,15 @@ Status LatencyAllEdges::Optimize(Cluster* cluster, const GrapplerItem& item,
     } else {  // fanout will have size 0 for last dataset node in the pipeline.
       if (fanout.size() == 1) {
         NodeDef* output_node = (*(fanout.begin())).node;
-        if (output_node->name().rfind("_generated") ==
-            output_node->name().size() - strlen("_generated")) {
+        if (str_util::EndsWith(output_node->name(), "_generated")) {
           continue;
         }
       }
     }
 
     NodeDef* latency_node = graph.AddNode(MakeLatencyNode(node, &graph));
-    graph.UpdateFanouts(node.name(), latency_node->name());
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), latency_node->name()));
+    stats->num_changes++;
   }
   return Status::OK();
 }
@@ -109,5 +110,5 @@ void LatencyAllEdges::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(LatencyAllEdges, "latency_all_edges");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

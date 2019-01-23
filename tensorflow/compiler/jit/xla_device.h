@@ -167,35 +167,14 @@ class XlaDevice : public LocalDevice {
   Status UseGpuDeviceInfo() LOCKS_EXCLUDED(mu_);
 
   // Instructs this XlaDevice to return 'sync_on_completion' for
-  // RequiresSyncOnCompletion().
-  void SetRequiresSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
+  // AllowsSyncOnCompletion().
+  void SetAllowsSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
 
-  bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
+  bool AllowsSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
 
-  // A simple RAII handle. On construction the device's
-  // outstanding_asynchronous_operations_ field is incremented; on destruction
-  // it is decremented.
-  class AsynchronousOperationHandle {
-   public:
-    AsynchronousOperationHandle(XlaDevice* device);
-    ~AsynchronousOperationHandle();
-    AsynchronousOperationHandle(const AsynchronousOperationHandle& other);
-    AsynchronousOperationHandle(AsynchronousOperationHandle&& other);
-    AsynchronousOperationHandle& operator=(
-        const AsynchronousOperationHandle& other);
-    AsynchronousOperationHandle& operator=(AsynchronousOperationHandle&& other);
-
-   private:
-    XlaDevice* device_ = nullptr;
-  };
-
-  AsynchronousOperationHandle CreateAsynchronousOperationHandle() {
-    return AsynchronousOperationHandle(this);
-  }
+  Status CurrentStatus() override LOCKS_EXCLUDED(mu_);
 
  private:
-  friend class AsynchronousOperationHandle;
-
   xla::LocalClient* client() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -255,14 +234,9 @@ class XlaDevice : public LocalDevice {
   // Thread pool used for running closures
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
-  // True if the device requires XlaDevice::Sync to be called on completion
+  // True if the device allows XlaDevice::Sync to be called on completion
   // regardless of status.
-  bool sync_on_completion_ GUARDED_BY(mu_) = false;
-
-  // Count of outstanding asynchronous operations which must be zero on Sync()
-  // completion.
-  int64 outstanding_asynchronous_operations_ GUARDED_BY(mu_) = 0;
-  condition_variable outstanding_asynchronous_operations_cv_;
+  bool sync_on_completion_ GUARDED_BY(mu_) = true;
 
   // Set of devices to use. This controls which of the devices on the given
   // platform will have resources allocated. For GPUs this will be

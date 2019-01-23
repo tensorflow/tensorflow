@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorboard/db/schema.h"
-#include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
-#include "tensorflow/contrib/tensorboard/db/summary_file_writer.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/summary/schema.h"
+#include "tensorflow/core/summary/summary_db_writer.h"
+#include "tensorflow/core/summary/summary_file_writer.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {

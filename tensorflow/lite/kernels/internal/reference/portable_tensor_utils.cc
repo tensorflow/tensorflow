@@ -101,7 +101,6 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
                          3 /* temporal locality */);
 #endif
-      // For every block of 16 8-bit elements (128-bit register) from each row.
       for (col = 0; col < m_cols; ++col, ++row_ptr) {
         dotprod += (*row_ptr) * (vectors[col]);
       }  // for col

@@ -221,6 +221,15 @@ class GroupNormTest(test.TestCase):
       normalization.group_norm(inputs, channels_axis=-1,
                                reduction_axes=[-3, -2])
 
+  def testParamsShapeNotFullyDefinedBatchAxis(self):
+    height, width, groups = 3, 3, 4
+    inputs = array_ops.placeholder(dtypes.float32,
+                                   shape=(None, height, width, 2*groups))
+    output = normalization.group_norm(inputs, channels_axis=-1,
+                                      reduction_axes=[-3, -2], groups=groups)
+    self.assertListEqual([None, height, width, 2 * groups],
+                         output.shape.as_list())
+
   def testCreateOp(self):
     height, width, groups = 3, 3, 4
     images = random_ops.random_uniform((5, height, width, 2*groups), seed=1)

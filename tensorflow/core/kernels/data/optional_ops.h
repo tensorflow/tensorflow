@@ -44,8 +44,9 @@ class OptionalVariant {
 
   // Create an `OptionalVariant` with the actual value given by the tuple of
   // tensors in `values`.
-  explicit OptionalVariant(std::vector<Tensor> values)
-      : values_(new std::vector<Tensor>(std::move(values))) {}
+  explicit OptionalVariant(std::vector<Tensor> values) {
+    values_ = std::make_shared<std::vector<Tensor>>(std::move(values));
+  }
 
   OptionalVariant(const OptionalVariant& other) : values_(other.values_) {}
 
@@ -79,7 +80,7 @@ class OptionalVariant {
       return false;
     }
     if (has_value) {
-      values_.reset(new std::vector<Tensor>(data.tensors()));
+      values_ = std::make_shared<std::vector<Tensor>>(data.tensors());
     } else {
       values_.reset();
     }

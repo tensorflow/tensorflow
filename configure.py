@@ -33,7 +33,7 @@ except ImportError:
   from distutils.spawn import find_executable as which
 # pylint: enable=g-import-not-at-top
 
-_DEFAULT_CUDA_VERSION = '9.0'
+_DEFAULT_CUDA_VERSION = '10.0'
 _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
@@ -1694,7 +1694,7 @@ def main():
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')
   config_info_line('nogcp', 'Disable GCP support.')
   config_info_line('nohdfs', 'Disable HDFS support.')
-  config_info_line('noignite', 'Disable Apacha Ignite support.')
+  config_info_line('noignite', 'Disable Apache Ignite support.')
   config_info_line('nokafka', 'Disable Apache Kafka support.')
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 

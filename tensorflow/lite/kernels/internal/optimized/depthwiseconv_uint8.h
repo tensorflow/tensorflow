@@ -1983,6 +1983,7 @@ inline void DepthwiseConv(
           input_shape, filter_shape, stride_width, stride_height,
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, output_shift)) {
+    gemmlowp::ScopedProfilingLabel specialized_label("DepthwiseConv/8bit/3x3");
     DepthwiseConv3x3Filter(params, input_shape, input_data, filter_shape,
                            filter_data, bias_shape, bias_data, output_shape,
                            output_data);
@@ -1990,6 +1991,8 @@ inline void DepthwiseConv(
   }
 #endif
 
+  gemmlowp::ScopedProfilingLabel specialized_label(
+      "DepthwiseConv/8bit/General");
   DepthwiseConvGeneral(params, input_shape, input_data, filter_shape,
                        filter_data, bias_shape, bias_data, output_shape,
                        output_data);

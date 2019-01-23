@@ -48,24 +48,39 @@ class ListOpsTest(xla_test.XLATestCase):
 
   def testPushPop(self):
     with self.cached_session() as sess, self.test_scope():
-      num = array_ops.placeholder(dtypes.int32)
       l = list_ops.tensor_list_reserve(
-          element_shape=(7, 15), num_elements=num, element_dtype=dtypes.float32)
+          element_shape=(7, 15), num_elements=10, element_dtype=dtypes.float32)
       l = list_ops.tensor_list_push_back(
           l, constant_op.constant(1.0, shape=(7, 15)))
       l = list_ops.tensor_list_push_back(
           l, constant_op.constant(2.0, shape=(7, 15)))
       l, e2 = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       _, e1 = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
-      self.assertAllEqual(sess.run(e2, {num: 10}), 2.0 * np.ones((7, 15)))
-      self.assertAllEqual(sess.run(e1, {num: 10}), 1.0 * np.ones((7, 15)))
+      self.assertAllEqual(sess.run(e2), 2.0 * np.ones((7, 15)))
+      self.assertAllEqual(sess.run(e1), 1.0 * np.ones((7, 15)))
+
+  def testDoNotConstantFoldVariants(self):
+    with self.cached_session() as sess, self.test_scope():
+      val = array_ops.placeholder(dtype=dtypes.float32)
+      l = list_ops.tensor_list_reserve(
+          element_shape=(7, 15), num_elements=10, element_dtype=dtypes.float32)
+      # Note: Pushing a Placeholder will force the constant folding code
+      # to build a Const node with a DT_VARIANT output. This tests that XLA
+      # passes a cf_consider_fn which prevent folding such nodes.
+      l = list_ops.tensor_list_push_back(
+          l, array_ops.fill(value=val, dims=(7, 15)))
+      l = list_ops.tensor_list_push_back(
+          l, constant_op.constant(2.0, shape=(7, 15)))
+      l, e2 = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
+      _, e1 = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
+      self.assertAllEqual(sess.run(e2, {val: 1.0}), 2.0 * np.ones((7, 15)))
+      self.assertAllEqual(sess.run(e1, {val: 1.0}), 1.0 * np.ones((7, 15)))
 
   def testPushPopSeparateLists(self):
     with self.cached_session() as sess, self.test_scope():
-      num = array_ops.placeholder(dtypes.int32)
       l = list_ops.tensor_list_reserve(
           element_shape=scalar_shape(),
-          num_elements=num,
+          num_elements=20,
           element_dtype=dtypes.float32)
       l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
       l2 = list_ops.tensor_list_push_back(l, constant_op.constant(2.0))
@@ -75,21 +90,29 @@ class ListOpsTest(xla_test.XLATestCase):
       l2, e22 = list_ops.tensor_list_pop_back(l2, element_dtype=dtypes.float32)
       l3, e31 = list_ops.tensor_list_pop_back(l3, element_dtype=dtypes.float32)
       l3, e32 = list_ops.tensor_list_pop_back(l3, element_dtype=dtypes.float32)
-      result = sess.run([e11, [e21, e22], [e31, e32]], {num: 20})
+      result = sess.run([e11, [e21, e22], [e31, e32]])
       self.assertEqual(result, [1.0, [2.0, 1.0], [3.0, 1.0]])
 
-  def testEmptyTensorList(self):
-    dim = 7
+  def testEmptyTensorListNoMax(self):
     with self.cached_session() as sess, self.test_scope():
-      p = array_ops.placeholder(dtypes.int32)
       l = list_ops.empty_tensor_list(
-          element_shape=(p, 15), element_dtype=dtypes.float32)
+          element_shape=(7, 15), element_dtype=dtypes.float32)
       l = list_ops.tensor_list_push_back(
-          l, constant_op.constant(1.0, shape=(dim, 15)))
+          l, constant_op.constant(1.0, shape=(7, 15)))
       _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Use TensorListReserve instead"):
-        self.assertEqual(sess.run(e, {p: dim}), 1.0 * np.ones((dim, 15)))
+                                   "Set the max number of elements"):
+        self.assertEqual(sess.run(e), 1.0 * np.ones((7, 15)))
+
+  def testEmptyTensorListMax(self):
+    with self.cached_session() as sess, self.test_scope():
+      l = list_ops.empty_tensor_list(
+          element_shape=(10, 15), element_dtype=dtypes.float32,
+          max_num_elements=2)
+      l = list_ops.tensor_list_push_back(
+          l, array_ops.fill(value=3.0, dims=(10, 15)))
+      _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
+      self.assertAllEqual(sess.run(e), 3.0 * np.ones((10, 15)))
 
 
 if __name__ == "__main__":

@@ -663,8 +663,9 @@ def tf_additional_cloud_op_deps():
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_gcp_support": [],
         "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
+        "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
             "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
@@ -678,8 +679,9 @@ def tf_additional_cloud_kernel_deps():
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_gcp_support": [],
         "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
+        "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
             "//tensorflow/contrib/cloud/kernels:gcs_config_ops",

@@ -835,15 +835,15 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
 }
 
 const char* TFE_GetPythonString(PyObject* o) {
+#if PY_MAJOR_VERSION >= 3
   if (PyBytes_Check(o)) {
     return PyBytes_AsString(o);
-  }
-#if PY_MAJOR_VERSION >= 3
-  if (PyUnicode_Check(o)) {
+  } else {
     return PyUnicode_AsUTF8(o);
   }
+#else
+  return PyBytes_AsString(o);
 #endif
-  return nullptr;
 }
 
 int64_t get_uid() {

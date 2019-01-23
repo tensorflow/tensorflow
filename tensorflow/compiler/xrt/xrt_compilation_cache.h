@@ -118,7 +118,7 @@ class XRTCompilationCache : public ResourceBase {
   // EntryRef holding the program is returned in entry.
   Status Lookup(int64 uid, std::unique_ptr<XRTCompilationCacheEntryRef>* entry);
 
-  string DebugString() override;
+  string DebugString() const override;
 
  private:
   // An entry in the compilation cache. The entry is deleted once it has been

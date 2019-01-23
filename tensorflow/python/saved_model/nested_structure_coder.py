@@ -14,14 +14,14 @@
 # ==============================================================================
 """Module that encodes (decodes) nested structures into (from) protos.
 
-The intended use is to serialize everything needed to restore a
-PolymorphicFunction that was saved into a SavedModel. This may include concrete
-function inputs and outputs, signatures, function specs, etc.
+The intended use is to serialize everything needed to restore a `Function` that
+was saved into a SavedModel. This may include concrete function inputs and
+outputs, signatures, function specs, etc.
 
 Example use:
 coder = nested_structure_coder.StructureCoder()
 # Encode into proto.
-signature_proto = coder.encode_structure(polymorphic_function.input_signature)
+signature_proto = coder.encode_structure(function.input_signature)
 # Decode into a Python object.
 restored_signature = coder.decode_proto(signature_proto)
 """
@@ -82,7 +82,6 @@ class StructureCoder(object):
       NotEncodableError: For values for which there are no encoders.
     """
     return self._map_structure(nested_structure, self._get_encoders())
-
 
   def can_encode(self, nested_structure):
     """Determines whether a nested structure can be encoded into a proto.
@@ -361,7 +360,10 @@ class _TensorShapeCodec(object):
   """Codec for `TensorShape`."""
 
   def can_encode(self, pyobj):
-    return isinstance(pyobj, tensor_shape.TensorShape)
+    return isinstance(pyobj, (tensor_shape.TensorShape,
+                              # TODO(b/121255889): Should not need these.
+                              tensor_shape.TensorShapeV1,
+                              tensor_shape.TensorShapeV2))
 
   def do_encode(self, tensor_shape_value, encode_fn):
     del encode_fn

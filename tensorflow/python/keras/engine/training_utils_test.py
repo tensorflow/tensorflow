@@ -18,33 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from absl.testing import parameterized
 import numpy as np
 
 
-from tensorflow.python import keras
-from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.python.saved_model import loader
-from tensorflow.python.saved_model import save as save_lib
-from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.platform import tf_logging as logging
 
 
 class ModelInputsTest(test.TestCase):
@@ -103,170 +89,6 @@ class ModelInputsTest(test.TestCase):
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['a']))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['b']))
-
-
-class TraceModelCallTest(keras_parameterized.TestCase):
-
-  def _assert_all_close(self, expected, actual):
-    if not context.executing_eagerly():
-      with self.cached_session() as sess:
-        K._initialize_variables(sess)
-        self.assertAllClose(expected, actual)
-    else:
-      self.assertAllClose(expected, actual)
-
-  @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
-  def test_trace_model_outputs(self):
-    input_dim = 5 if testing_utils.get_model_type() == 'functional' else None
-    model = testing_utils.get_small_mlp(10, 3, input_dim)
-    inputs = array_ops.ones((8, 5))
-
-    if input_dim is None:
-      with self.assertRaisesRegexp(ValueError,
-                                   'input shapes have not been set'):
-        training_utils.trace_model_call(model)
-      model._set_inputs(inputs)
-
-    fn = training_utils.trace_model_call(model)
-    signature_outputs = fn(inputs)
-    expected_outputs = {model.output_names[0]: model(inputs)}
-
-    self._assert_all_close(expected_outputs, signature_outputs)
-
-  @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
-  def test_trace_model_outputs_after_fitting(self):
-    input_dim = 5 if testing_utils.get_model_type() == 'functional' else None
-    model = testing_utils.get_small_mlp(10, 3, input_dim)
-    model.compile(optimizer='sgd', loss='mse')
-    model.fit(x=np.random.random((8, 5)),
-              y=np.random.random((8, 3)), epochs=2)
-
-    inputs = array_ops.ones((8, 5))
-
-    fn = training_utils.trace_model_call(model)
-    signature_outputs = fn(inputs)
-    expected_outputs = {model.output_names[0]: model(inputs)}
-
-    self._assert_all_close(expected_outputs, signature_outputs)
-
-  @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
-  @keras_parameterized.run_all_keras_modes
-  def test_trace_multi_io_model_outputs(self):
-    input_dim = 5
-    num_classes = 3
-    num_classes_b = 4
-    input_a = keras.layers.Input(shape=(input_dim,), name='input_a')
-    input_b = keras.layers.Input(shape=(input_dim,), name='input_b')
-
-    dense = keras.layers.Dense(num_classes, name='dense')
-    dense2 = keras.layers.Dense(num_classes_b, name='dense2')
-    dropout = keras.layers.Dropout(0.5, name='dropout')
-    branch_a = [input_a, dense]
-    branch_b = [input_b, dense, dense2, dropout]
-
-    model = testing_utils.get_multi_io_model(branch_a, branch_b)
-
-    input_a_np = np.random.random((10, input_dim)).astype(np.float32)
-    input_b_np = np.random.random((10, input_dim)).astype(np.float32)
-
-    if testing_utils.get_model_type() == 'subclass':
-      with self.assertRaisesRegexp(ValueError,
-                                   'input shapes have not been set'):
-        training_utils.trace_model_call(model)
-
-    model.compile(optimizer='sgd', loss='mse')
-    model.fit(x=[np.random.random((8, input_dim)).astype(np.float32),
-                 np.random.random((8, input_dim)).astype(np.float32)],
-              y=[np.random.random((8, num_classes)).astype(np.float32),
-                 np.random.random((8, num_classes_b)).astype(np.float32)],
-              epochs=2)
-
-    fn = training_utils.trace_model_call(model)
-    signature_outputs = fn([input_a_np, input_b_np])
-    outputs = model([input_a_np, input_b_np])
-    expected_outputs = {model.output_names[0]: outputs[0],
-                        model.output_names[1]: outputs[1]}
-
-    self._assert_all_close(expected_outputs, signature_outputs)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_specify_input_signature(self):
-    model = testing_utils.get_small_sequential_mlp(10, 3, None)
-    inputs = array_ops.ones((8, 5))
-
-    with self.assertRaisesRegexp(ValueError, 'input shapes have not been set'):
-      training_utils.trace_model_call(model)
-
-    fn = training_utils.trace_model_call(
-        model, [tensor_spec.TensorSpec(shape=[None, 5], dtype=dtypes.float32)])
-    signature_outputs = fn(inputs)
-    expected_outputs = {model.output_names[0]: model(inputs)}
-    self._assert_all_close(expected_outputs, signature_outputs)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_subclassed_model_with_input_signature(self):
-
-    class Model(keras.Model):
-
-      def __init__(self):
-        super(Model, self).__init__()
-        self.dense = keras.layers.Dense(3, name='dense')
-
-      @def_function.function(
-          input_signature=[[tensor_spec.TensorSpec([None, 5], dtypes.float32),
-                            tensor_spec.TensorSpec([None], dtypes.float32)]],)
-      def call(self, inputs, *args):
-        x, y = inputs
-        return self.dense(x) + y
-
-    model = Model()
-    fn = training_utils.trace_model_call(model)
-    x = array_ops.ones((8, 5), dtype=dtypes.float32)
-    y = array_ops.ones((3,), dtype=dtypes.float32)
-    expected_outputs = {'output_1': model([x, y])}
-    signature_outputs = fn([x, y])
-    self._assert_all_close(expected_outputs, signature_outputs)
-
-
-def _import_and_infer(save_dir, inputs):
-  """Import a SavedModel into a TF 1.x-style graph and run `signature_key`."""
-  graph = ops.Graph()
-  with graph.as_default(), session_lib.Session() as session:
-    model = loader.load(session, [tag_constants.SERVING], save_dir)
-    signature = model.signature_def[
-        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-    assert set(inputs.keys()) == set(signature.inputs.keys())
-    feed_dict = {}
-    for arg_name in inputs.keys():
-      feed_dict[graph.get_tensor_by_name(signature.inputs[arg_name].name)] = (
-          inputs[arg_name])
-    output_dict = {}
-    for output_name, output_tensor_info in signature.outputs.items():
-      output_dict[output_name] = graph.get_tensor_by_name(
-          output_tensor_info.name)
-    return session.run(output_dict, feed_dict=feed_dict)
-
-
-class ModelSaveTest(keras_parameterized.TestCase):
-
-  @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_model_save(self):
-    input_dim = 5
-    model = testing_utils.get_small_mlp(10, 3, input_dim)
-    inputs = array_ops.ones((8, 5))
-
-    if testing_utils.get_model_type() == 'subclass':
-      model._set_inputs(inputs)
-
-    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
-    save_lib.save(model, save_dir)
-
-    self.assertAllClose(
-        {model.output_names[0]: model.predict_on_batch(inputs)},
-        _import_and_infer(save_dir, {model.input_names[0]: np.ones((8, 5))}))
 
 
 class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
@@ -365,6 +187,19 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
     else:
       with self.assertRaises(expected_error):
         training_utils.assert_not_shuffled(dataset_fn())
+
+  def test_verify_dataset_shuffled(self):
+    dataset = dataset_ops.Dataset.range(5)
+    training_utils.assert_not_shuffled(dataset)
+
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      training_utils.verify_dataset_shuffled(dataset)
+      self.assertRegexpMatches(
+          str(mock_log.call_args),
+          'input dataset `x` is not shuffled.')
+
+    shuffled_dataset = dataset.shuffle(10)
+    training_utils.verify_dataset_shuffled(shuffled_dataset)
 
 
 class StandardizeWeightsTest(keras_parameterized.TestCase):

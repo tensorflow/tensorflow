@@ -26,6 +26,7 @@ import enum
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import constant_op
@@ -33,6 +34,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses_impl
@@ -208,12 +210,14 @@ class _SameScopeAgainContext(object):
 # TODO(yuefengz): add more replication modes.
 @tf_export("distribute.InputReplicationMode")
 class InputReplicationMode(enum.Enum):
-  """Replication mode for input function."""
+  """Replication mode for input function.
 
-  # The input function will be called on each worker independently, creating as
-  # many input pipelines as number of workers. Replicas will dequeue from the
-  # local Dataset on their worker. Distribution Strategy doesn't manage any
-  # state sharing between such separate input pipelines.
+  * `PER_WORKER`: The input function will be called on each worker
+    independently, creating as many input pipelines as number of workers.
+    Replicas will dequeue from the local Dataset on their worker.
+    `tf.distribute.Strategy` doesn't manage any state sharing between such
+    separate input pipelines.
+  """
   PER_WORKER = "PER_WORKER"
 
 
@@ -329,37 +333,8 @@ class DistributionStrategy(object):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED
-  def distribute_dataset(self, dataset_fn):
-    """Return a `dataset` split across all replicas.  DEPRECATED.
-
-    DEPRECATED: Please use `make_dataset_iterator` or
-    `make_input_fn_iterator` instead.
-
-    Suitable for providing input to `extended.call_for_each_replica()` by
-    creating an iterator:
-
-    ```
-    def dataset_fn():
-      return tf.data.Dataset.from_tensors([[1.]]).repeat()
-
-    with strategy.scope():
-      distributed_dataset = strategy.distribute_dataset(dataset_fn)
-      iterator = distributed_dataset.make_initializable_iterator()
-      replica_results = strategy.extended.call_for_each_replica(
-          replica_fn, args=(iterator.get_next(),))
-    ```
-
-    Args:
-      dataset_fn: A function that returns a `tf.data.Dataset`.
-
-    Returns:
-      A `PerReplicaDataset` that will produce data for each replica.
-    """
-    return self._extended._distribute_dataset(dataset_fn)  # pylint: disable=protected-access
-
   def make_dataset_iterator(self, dataset):
-    """Makes an iterator for input provided via input_dataset.
+    """Makes an iterator for input provided via `dataset`.
 
     Data from the given dataset will be distributed evenly across all the
     compute replicas. We will assume that the input dataset is batched by the
@@ -388,34 +363,76 @@ class DistributionStrategy(object):
     """Returns an iterator split across replicas created from an input function.
 
     The `input_fn` should take an `tf.distribute.InputContext` object where
-    information about input sharding can be accessed:
+    information about batching and input sharding can be accessed:
 
     ```
     def input_fn(input_context):
-      d = tf.data.Dataset.from_tensors([[1.]]).repeat()
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
       return d.shard(input_context.num_input_pipelines,
                      input_context.input_pipeline_id)
     with strategy.scope():
-      iterator = strategy.make_input_fn_iterator(
-          input_fn)
-      replica_results = strategy.extended.call_for_each_replica(
-          replica_fn, iterator.get_next())
+      iterator = strategy.make_input_fn_iterator(input_fn)
+      replica_results = strategy.experimental_run(replica_fn, iterator)
     ```
 
+    The `tf.data.Dataset` returned by `input_fn` should have a per-replica
+    batch size, which may be computed using
+    `input_context.get_per_replica_batch_size`.
+
     Args:
-      input_fn: A function that returns a `tf.data.Dataset`. This function is
-        expected to take an `tf.distribute.InputContext` object.
+      input_fn: A function taking a `tf.distribute.InputContext` object and
+        returning a `tf.data.Dataset`.
       replication_mode: an enum value of `tf.distribute.InputReplicationMode`.
-        Only `PER_WORKER` is supported currently.
+        Only `PER_WORKER` is supported currently, which means there will be
+        a single call to `input_fn` per worker. Replicas will dequeue from the
+        local `tf.data.Dataset` on their worker.
 
     Returns:
-      An iterator object that can be initialized and fetched next element.
+      An iterator object that should first be `.initialize()`-ed. It may then
+      either be passed to `strategy.experimental_run()` or you can
+      `iterator.get_next()` to get the next value to pass to
+      `strategy.extended.call_for_each_replica()`.
     """
     if replication_mode != InputReplicationMode.PER_WORKER:
       raise ValueError(
           "Input replication mode not supported: %r" % replication_mode)
     return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
         input_fn, replication_mode=replication_mode)
+
+  def experimental_make_numpy_iterator(
+      self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
+    """Makes an iterator for input provided via a nest of numpy arrays.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+      batch_size: The number of entries from the array we should consume in one
+        step of the computation, across all replicas. This is the global batch
+        size. It should be divisible by `num_replicas_in_sync`.
+      num_epochs: The number of times to iterate through the examples. A value
+        of `None` means repeat forever.
+      shuffle: Size of buffer to use for shuffling the input examples.
+        Use `None` to disable shuffling.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      An `tf.distribute.InputIterator` which returns inputs for each step of the
+      computation.  User should call `initialize` on the returned iterator.
+    """
+    ds = self.extended.experimental_make_numpy_dataset(
+        numpy_input, session=session)
+    if shuffle:
+      ds = ds.shuffle(shuffle)
+    if num_epochs != 1:
+      ds = ds.repeat(num_epochs)
+    # We need to use the drop_remainder argument to get a known static
+    # input shape which is required for TPUs.
+    drop_remainder = self.extended.experimental_require_static_shapes
+    ds = ds.batch(batch_size, drop_remainder=drop_remainder)
+    return self.make_dataset_iterator(ds)
 
   def experimental_run(self, fn, input_iterator=None):
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
@@ -453,73 +470,11 @@ class DistributionStrategy(object):
         inputs = input_iterator.get_next()
         return self._extended.call_for_each_replica(fn, args=(inputs,))
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def broadcast(self, tensor, destinations=None):
-    """DEPRECATED: use extended.broadcast_to() instead."""
-    return self._extended.broadcast_to(tensor, destinations)
-
-  @doc_controls.do_not_generate_docs  # Use experimental_initialize() instead.
-  def initialize(self):
-    """DEPRECATED: Use `experimental_initialize()` instead."""
-    return self._extended._initialize()  # pylint: disable=protected-access
-
-  def experimental_initialize(self):
-    """Any initialization to be done before running any computations.
-
-    In eager mode, it executes any initialization as a side effect.
-    In graph mode, it creates the initialization ops and returns them.
-
-    For example, TPU initialize_system ops.
-
-    Returns:
-      A list of ops to execute.
-    """
-    return self._extended._initialize()  # pylint: disable=protected-access
-
-  @doc_controls.do_not_generate_docs  # Use experimental_finalize() instead.
-  def finalize(self):
-    """DEPRECATED: Use `experimental_finalize()` instead."""
-    return self._extended._finalize()  # pylint: disable=protected-access
-
-  def experimental_finalize(self):
-    """Any final actions to be done at the end of all computations.
-
-    In eager mode, it executes any finalize actions as a side effect.
-    In graph mode, it creates the finalize ops and returns them.
-
-    For example, TPU shutdown ops.
-
-    Returns:
-      A list of ops to execute.
-    """
-    return self._extended._finalize()  # pylint: disable=protected-access
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def run_steps_on_dataset(self, fn, iterator, iterations=1,
-                           initial_loop_values=None):
-    """DEPRECATED: use extended.experimental_run_steps_on_iterator() instead."""
-    return self._extended.experimental_run_steps_on_iterator(
-        fn, iterator, iterations, initial_loop_values)
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def call_for_each_replica(self, fn, *args, **kwargs):
-    """DEPRECATED: use extended.call_for_each_replica() instead."""
-    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
-    # allow transition.
-    a = kwargs.pop("args", None)
-    if a is not None:
-      if args:
-        raise ValueError(
-            "Can't pass *args and args=... to call_for_each_replica")
-      args = a
-    k = kwargs.pop("kwargs", None)
-    if k is not None:
-      if kwargs:
-        raise ValueError(
-            "Can't pass **kwargs and kwargs=... to call_for_each_replica")
-      kwargs = k
-    kwargs.pop("run_concurrently", None)  # Ignore old option.
-    return self._extended.call_for_each_replica(fn, args, kwargs)
+  # TODO(b/121296772,b/121300973): Add logical_device argument (default of 0).
+  def broadcast(self, tensor):
+    """Broadcasts `tensor` to all replicas, returning a per-replica value."""
+    _require_cross_replica_context_extended(self._extended)
+    return self._extended._broadcast(tensor)  # pylint: disable=protected-access
 
   def reduce(self, reduce_op, value):
     """Reduce `value` across replicas.
@@ -535,58 +490,6 @@ class DistributionStrategy(object):
     _require_cross_replica_context_extended(self._extended)
     return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def batch_reduce(self, aggregation, value_destination_pairs):
-    """DEPRECATED: use extended.batch_reduce_to() instead."""
-    return self._extended.batch_reduce_to(aggregation, value_destination_pairs)
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def update(self, var, fn, *args, **kwargs):
-    """DEPRECATED: use extended.update() instead."""
-    group = kwargs.pop("group", True)
-    # We temporarily support "grouped" in addition to "group" for backward-
-    # compatibility.
-    group = kwargs.pop("grouped", True) and group
-    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
-    # allow transition.
-    a = kwargs.pop("args", None)
-    if a is not None:
-      if args:
-        raise ValueError(
-            "Can't pass *args and args=... to update")
-      args = a
-    k = kwargs.pop("kwargs", None)
-    if k is not None:
-      if kwargs:
-        raise ValueError(
-            "Can't pass **kwargs and kwargs=... to update")
-      kwargs = k
-    return self._extended.update(var, fn, args, kwargs, group)
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def update_non_slot(self, colocate_with, fn, *args, **kwargs):
-    """DEPRECATED: use extended.update_non_slot() instead."""
-    group = kwargs.pop("group", True)
-    # We temporarily support "grouped" in addition to "group" for backward-
-    # compatibility.
-    group = kwargs.pop("grouped", True) and group
-    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
-    # allow transition.
-    a = kwargs.pop("args", None)
-    if a is not None:
-      if args:
-        raise ValueError(
-            "Can't pass *args and args=... to update_non_slot")
-      args = a
-    k = kwargs.pop("kwargs", None)
-    if k is not None:
-      if kwargs:
-        raise ValueError(
-            "Can't pass **kwargs and kwargs=... to update_non_slot")
-      kwargs = k
-    return self._extended.update_non_slot(
-        colocate_with, fn, args, kwargs, group)
-
   @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
   def unwrap(self, value):
     """Returns the list of all per-replica values contained in `value`.
@@ -601,49 +504,15 @@ class DistributionStrategy(object):
     """
     return self._extended._unwrap(value)  # pylint: disable=protected-access
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def value_container(self, value):
-    """DEPRECATED: use extended.value_container() instead."""
-    return self._extended.value_container(value)
-
   @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
   def group(self, value, name=None):
     """Shortcut for `tf.group(self.unwrap(value))`."""
     return self._extended._group(value, name)  # pylint: disable=protected-access
 
   @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def require_static_shapes(self):
-    """DEPRECATED: use extended.require_static_shapes instead."""
-    return self._extended.experimental_require_static_shapes
-
-  @property
   def num_replicas_in_sync(self):
     """Returns number of replicas over which gradients are aggregated."""
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def worker_devices(self):
-    """DEPRECATED: use extended.worker_devices instead."""
-    return self._extended.worker_devices
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def parameter_devices(self):
-    """DEPRECATED: use extended.parameter_devices instead."""
-    return self._extended.parameter_devices
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def non_slot_devices(self, var_list):
-    """DEPRECATED: use extended.non_slot_devices instead."""
-    return self._extended.non_slot_devices(var_list)
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def between_graph(self):
-    """DEPRECATED: use extended.experimental_between_graph instead."""
-    return self._extended.experimental_between_graph
 
   @doc_controls.do_not_generate_docs  # DEPRECATED, being replaced by a new API.
   def configure(self,
@@ -679,24 +548,6 @@ class DistributionStrategy(object):
       The updated copy of the `config_proto`.
     """
     return self._extended._update_config_proto(config_proto)  # pylint: disable=protected-access
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def should_init(self):
-    """DEPRECATED: use extended.should_init instead."""
-    return self._extended.experimental_should_init
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def should_checkpoint(self):
-    """DEPRECATED: use extended.should_checkpoint instead."""
-    return self._extended.should_checkpoint
-
-  @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def should_save_summary(self):
-    """DEPRECATED: use extended.should_save_summary instead."""
-    return self._extended.should_save_summary
 
   def __deepcopy__(self, memo):
     # First do a regular deepcopy of `self`.
@@ -875,11 +726,9 @@ class DistributionStrategyExtended(object):
     a variable (which by definition will have locality V(`v`), though
     will match another locality if inside a `colocate_vars_with`
     scope).
-  * `d.make_dataset_iterator(dataset)` (or the deprecated
-    `d.distribute_dataset(dataset).make_one_shot_iterator()`): in cross-replica
+  * `d.make_dataset_iterator(dataset)`: in cross-replica
     context, produces an iterator with locality T
-  * `d.extended.broadcast_to(t)`: in cross-replica context, produces a value
-    with locality M
+  * `d.broadcast(t)`: in cross-replica context, produces a value with locality M
   * `d.extended.broadcast_to(t, v)`: in cross-replica context, produces a value
     with locality V(`v`)
   * `d.extended.call_for_each_replica(fn, ...)`: in cross-replica context, runs
@@ -996,6 +845,30 @@ class DistributionStrategyExtended(object):
     # Note: should support "colocate_with" argument.
     raise NotImplementedError("must be implemented in descendants")
 
+  def variable_created_in_scope(self, v):
+    """Tests whether `v` was created while this strategy scope was active.
+
+    Variables created inside the strategy scope are "owned" by it:
+
+    >>> with strategy.scope():
+    ...   v = tf.Variable(1.)
+    >>> strategy.variable_created_in_scope(v)
+    True
+
+    Variables created outside the strategy are not owned by it:
+
+    >>> v = tf.Variable(1.)
+    >>> strategy.variable_created_in_scope(v)
+    False
+
+    Args:
+      v: A `tf.Variable` instance.
+
+    Returns:
+      True if `v` was created inside the scope, False if not.
+    """
+    return v._distribute_strategy == self._container_strategy_weakref()  # pylint: disable=protected-access
+
   def read_var(self, v):
     """Reads the value of a variable.
 
@@ -1061,25 +934,33 @@ class DistributionStrategyExtended(object):
     """Validate `colocate_with_variable` argument to `colocate_vars_with`."""
     pass
 
-  def _call_dataset_fn(self, dataset_fn):
-    """Call the `dataset_fn` with `input_context` as argument."""
-    result = dataset_fn()
-    if not isinstance(result, dataset_ops.DatasetV2):
-      raise ValueError(
-          "dataset_fn() must return a tf.data.Dataset when using a "
-          "tf.distribute.Strategy.")
-    return result
-
-  # TODO(josh11b): `PerReplicaDataset` currently only implements a few methods of
-  # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
-  # Extend to implement more functionality of datasets.
-  def _distribute_dataset(self, dataset_fn):
-    raise NotImplementedError("must be implemented in descendants")
-
   def _make_dataset_iterator(self, dataset):
     raise NotImplementedError("must be implemented in descendants")
 
   def _make_input_fn_iterator(self, input_fn, replication_mode):
+    raise NotImplementedError("must be implemented in descendants")
+
+  def experimental_make_numpy_dataset(self, numpy_input, session=None):
+    """Makes a dataset for input provided via a numpy array.
+
+    This avoids adding `numpy_input` as a large constant in the graph,
+    and copies the data to the machine or machines that will be processing
+    the input.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      A `tf.data.Dataset` representing `numpy_input`.
+    """
+    _require_cross_replica_context_extended(self)
+    return self._experimental_make_numpy_dataset(numpy_input, session=session)
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
     raise NotImplementedError("must be implemented in descendants")
 
   def broadcast_to(self, tensor, destinations):
@@ -1098,14 +979,11 @@ class DistributionStrategyExtended(object):
     assert not isinstance(destinations, (list, tuple))
     return self._broadcast_to(tensor, destinations)
 
+  def _broadcast(self, tensor):
+    return self._broadcast_to(tensor, None)  # Default implementation
+
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
-
-  def _initialize(self):
-    return []
-
-  def _finalize(self):
-    return []
 
   def experimental_run_steps_on_iterator(self, fn, iterator, iterations=1,
                                          initial_loop_values=None):
@@ -1213,9 +1091,6 @@ class DistributionStrategyExtended(object):
 
     Args:
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-        DEPRECATED but still accepted values:
-        `tf.VariableAggregation.SUM`,
-        `tf.VariableAggregation.MEAN`,
       value: A per-replica value with one value per replica.
       destinations: A mirrored variable, a per-replica tensor, or a device
         string. The return value will be copied to all destination devices (or
@@ -1228,14 +1103,7 @@ class DistributionStrategyExtended(object):
     # TODO(josh11b): More docstring
     _require_cross_replica_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
-
-    # TODO(priyag): Remove this when all callers have been updated.
-    if isinstance(reduce_op, variable_scope.VariableAggregation):
-      assert reduce_op in (
-          variable_scope.VariableAggregation.SUM,
-          variable_scope.VariableAggregation.MEAN,
-      )
-      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(reduce_op)
+    assert not isinstance(reduce_op, variable_scope.VariableAggregation)
     assert (reduce_op == reduce_util.ReduceOp.SUM or
             reduce_op == reduce_util.ReduceOp.MEAN)
     return self._reduce_to(reduce_op, value, destinations)
@@ -1248,9 +1116,6 @@ class DistributionStrategyExtended(object):
 
     Args:
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-        DEPRECATED but still accepted values:
-        `tf.VariableAggregation.SUM`,
-        `tf.VariableAggregation.MEAN`,
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce_to()` for a description.
 
@@ -1259,14 +1124,7 @@ class DistributionStrategyExtended(object):
     """
     # TODO(josh11b): More docstring
     _require_cross_replica_context_extended(self)
-
-    # TODO(priyag): Remove this when all callers have been updated.
-    if isinstance(reduce_op, variable_scope.VariableAggregation):
-      assert reduce_op in [
-          variable_scope.VariableAggregation.SUM,
-          variable_scope.VariableAggregation.MEAN,
-      ]
-      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(reduce_op)
+    assert not isinstance(reduce_op, variable_scope.VariableAggregation)
     return self._batch_reduce_to(reduce_op, value_destination_pairs)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
@@ -1538,12 +1396,6 @@ class ReplicaContext(object):
     return self._replica_id_in_sync_group
 
   @property
-  @doc_controls.do_not_generate_docs  # DEPRECATED, use `strategy`
-  def distribution_strategy(self):
-    """DEPRECATED: use `self.strategy` instead."""
-    return self._strategy
-
-  @property
   def strategy(self):
     """The current `tf.distribute.Strategy` object."""
     return self._strategy
@@ -1554,6 +1406,50 @@ class ReplicaContext(object):
     require_replica_context(self)
     return (device_util.current(),)
 
+  def all_reduce(self, reduce_op, value):
+    """All-reduces the given `Tensor` nest across replicas.
+
+    If `all_reduce` is called in any replica, it must be called in all replicas.
+    The nested structure and `Tensor` shapes must be identical in all replicas.
+
+    IMPORTANT: The ordering of communications must be identical in all replicas.
+
+    Example with two replicas:
+      Replica 0 `value`: {'a': 1, 'b': [40,  1]}
+      Replica 1 `value`: {'a': 3, 'b': [ 2, 98]}
+
+      If `reduce_op` == `SUM`:
+        Result (on all replicas): {'a': 4, 'b': [42, 99]}
+
+      If `reduce_op` == `MEAN`:
+        Result (on all replicas): {'a': 2, 'b': [21, 49.5]}
+
+    Args:
+      reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
+      value: The nested structure of `Tensor`s to all-reduced.
+        The structure must be compatible with `tf.nest`.
+
+    Returns:
+       A `Tensor` nest with the reduced `value`s from each replica.
+    """
+    def batch_all_reduce(strategy, *value_flat):
+      return strategy.extended.batch_reduce_to(
+          reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat])
+
+    if reduce_op in [reduce_util.ReduceOp.SUM, reduce_util.ReduceOp.MEAN]:
+      # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
+      @custom_gradient.custom_gradient
+      def grad_wrapper(*xs):
+        ys = self.merge_call(batch_all_reduce, args=xs)
+        # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
+        return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
+      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+    else:
+      # TODO(cjfj): Implement gradients for other reductions.
+      reduced = nest.pack_sequence_as(
+          value, self.merge_call(batch_all_reduce, args=nest.flatten(value)))
+      return nest.map_structure(array_ops.prevent_gradient, reduced)
+
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
   # across all replicas. The caller would wait to call this function until they
@@ -1563,6 +1459,15 @@ class ReplicaContext(object):
   # * When constructing a graph, it could batch up all reduction requests up
   #   to that point that the first result is needed. Most likely this can be
   #   implemented in terms of `merge_call()` and `batch_reduce_to()`.
+
+
+def _batch_reduce_destination(x):
+  """Returns the destinations for batch all-reduce."""
+  if isinstance(x, ops.Tensor):  # One device strategies.
+    return x.device
+  else:
+    return x
+
 
 # ------------------------------------------------------------------------------
 
@@ -1595,8 +1500,8 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
     _require_strategy_scope_extended(self)
     return ops.colocate_with(colocate_with_variable)
 
-  def _distribute_dataset(self, dataset_fn):
-    return self._call_dataset_fn(dataset_fn)
+  def variable_created_in_scope(self, v):
+    return v._distribute_strategy is None  # pylint: disable=protected-access
 
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)
@@ -1604,7 +1509,20 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
   def _make_input_fn_iterator(self,
                               input_fn,
                               replication_mode=InputReplicationMode.PER_WORKER):
-    return input_fn(InputContext()).make_initializable_iterator()
+    dataset = input_fn(InputContext())
+    return _DefaultDistributionExtended.DefaultInputIterator(dataset)
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    numpy_flat = nest.flatten(numpy_input)
+    vars_flat = tuple(
+        variable_scope.variable(array_ops.zeros(i.shape, i.dtype),
+                                trainable=False, use_resource=True)
+        for i in numpy_flat
+    )
+    for v, i in zip(vars_flat, numpy_flat):
+      numpy_dataset.init_var_from_numpy(v, i, session)
+    vars_nested = nest.pack_sequence_as(numpy_input, vars_flat)
+    return dataset_ops.Dataset.from_tensor_slices(vars_nested)
 
   def _broadcast_to(self, tensor, destinations):
     if destinations is None:
@@ -1689,6 +1607,7 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """Global and per-replica batching are equivalent for this strategy."""
     return True
 
 

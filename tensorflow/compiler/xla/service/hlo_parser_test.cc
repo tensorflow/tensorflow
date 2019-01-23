@@ -553,6 +553,17 @@ ENTRY %Transpose.v2 () -> s32[1,2,3] {
 
 )"
 },
+{
+"TransposeC128",
+R"(HloModule TransposeC128_module
+
+ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
+  %input = c128[1,2,3]{2,1,0} parameter(0)
+  ROOT %transpose = c128[1,2,3]{2,1,0} transpose(c128[1,2,3]{2,1,0} %input), dimensions={0,1,2}
+}
+
+)"
+},
 // Dynamic slice
 {
 "DynamicSlice",
@@ -568,16 +579,47 @@ ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[1]) -
 
 )"
 },
+// Dynamic slice with scalar indices
+{
+"DynamicSliceScalarIndices",
+R"(HloModule DynamicSlice_module
+
+ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[]) -> s32[2,2,258] {
+  %original_parameter = s32[2,2,258]{2,1,0} parameter(0)
+  %constant = s32[] constant(0)
+  %start_index = s32[] parameter(1)
+  ROOT %dynamic-slice = s32[2,2,258]{2,1,0} dynamic-slice(s32[2,2,258]{2,1,0} %original_parameter, s32[] %constant, s32[] %constant, s32[] %start_index), dynamic_slice_sizes={2,2,258}
+}
+
+)"
+},
 // Dynamic update slice
 {
 "DynamicUpdateSlice",
-R"(HloModule DynamicUpdateSlice_module
+R"(HloModule DynamicSlice_module
 
 ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_indices: s32[4]) -> s32[1,1,25,1] {
   %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
   %update = s32[1,1,2,1]{3,2,1,0} parameter(1)
   %start_indices = s32[4]{0} parameter(2)
   ROOT %dynamic-update-slice = s32[1,1,25,1]{3,2,1,0} dynamic-update-slice(s32[1,1,25,1]{3,2,1,0} %input, s32[1,1,2,1]{3,2,1,0} %update, s32[4]{0} %start_indices)
+}
+
+)"
+},
+// Dynamic update slice with scalar indices
+{
+"DynamicUpdateSliceScalarIndex",
+R"(HloModule DynamicUpdateSlice_module
+
+ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_index.0: s32[], start_index.1: s32[], start_index.2: s32[], start_index.3: s32[]) -> s32[1,1,25,1] {
+  %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
+  %update = s32[1,1,2,1]{3,2,1,0} parameter(1)
+  %start_index.0 = s32[] parameter(2)
+  %start_index.1 = s32[] parameter(3)
+  %start_index.2 = s32[] parameter(4)
+  %start_index.3 = s32[] parameter(5)
+  ROOT %dynamic-update-slice = s32[1,1,25,1]{3,2,1,0} dynamic-update-slice(s32[1,1,25,1]{3,2,1,0} %input, s32[1,1,2,1]{3,2,1,0} %update, s32[] %start_index.0, s32[] %start_index.1, s32[] %start_index.2, s32[] %start_index.3)
 }
 
 )"
@@ -1329,20 +1371,20 @@ TEST_P(HloParserTestLongProto, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShort, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShortProto, Run) { ExpectEqual(); }
 
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestLongProto,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestShortProto,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestLongProto,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestShortProto,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
 
 class HloParserTest : public ::testing::Test {
  protected:

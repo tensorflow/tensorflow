@@ -433,7 +433,7 @@ Status DynamicDimensionInferenceVisitor::ForEachOperandDynamicDimension(
 /* static */
 StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
     HloModule* module) {
-  VLOG(0) << "Param Config " << module->dynamic_parameter_binding().ToString();
+  VLOG(2) << "Param Config " << module->dynamic_parameter_binding().ToString();
   DynamicDimensionInference inference(module);
   TF_RETURN_IF_ERROR(inference.AnalyzeDynamicDimensions());
   return inference;

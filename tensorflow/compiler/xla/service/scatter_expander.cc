@@ -26,7 +26,6 @@ limitations under the License.
 
 namespace xla {
 
-
 // Transposes the given scatter_indices such that the index_vector_dim becomes
 // the most-minor dimension.
 static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
@@ -60,6 +59,13 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
   TF_ASSIGN_OR_RETURN(
       HloInstruction * transposed_scatter_indices,
       TransposeIndexVectorDimToLast(scatter_indices, index_vector_dim));
+  if (scatter_indices->shape().rank() == index_vector_dim + 1 &&
+      scatter_indices->shape().dimensions(index_vector_dim) == 1) {
+    auto new_shape =
+        ShapeUtil::DeleteDimension(index_vector_dim, scatter_indices->shape());
+    TF_ASSIGN_OR_RETURN(scatter_indices,
+                        MakeReshapeHlo(new_shape, scatter_indices));
+  }
   bool indices_are_scalar =
       index_vector_dim == scatter_indices->shape().dimensions_size();
 
@@ -165,10 +171,9 @@ static StatusOr<HloInstruction*> CheckIndexValidity(
   // Valid range for the index: [0, operand_dims - window_sizes]
 
   // Check if the index has any negative values.
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * zero_index,
+  HloInstruction* zero_index =
       BroadcastZeros(computation, index->shape().element_type(),
-                     AsInt64Slice(index->shape().dimensions())));
+                     AsInt64Slice(index->shape().dimensions()));
   TF_ASSIGN_OR_RETURN(HloInstruction * negative_index_check,
                       MakeBinaryHlo(HloOpcode::kLe, zero_index, index));
 
@@ -214,15 +219,11 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   HloInstruction* updates = loop_state[2];
 
   bool has_scalar_indices = scatter_indices->shape().dimensions_size() == 1;
-  CHECK_EQ(has_scalar_indices,
-           dim_numbers.index_vector_dim() ==
-               scatter->operand(1)->shape().dimensions_size());
 
   // Build a vector form of the induction variable of the while loop.
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * induction_var_as_vector,
+  HloInstruction* induction_var_as_vector =
       MakeBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
-                       /*result_shape_bounds=*/{1}));
+                       /*result_shape_bounds=*/{1});
 
   // Pick the index to scatter from scatter_indices based on the induction_var
   // and transform that to an index into the `operand` space.

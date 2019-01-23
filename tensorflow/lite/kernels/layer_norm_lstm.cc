@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// DEPRECATED: Tensorflow Lite has implemented layer norm lstm as builtin Op and
+// the implementation of layer norm lstm as custom Op in this file is
+// deprecated. It is only kept for backward compatibility.
+//
 // Layer Normalization LSTM op that applies normalization by mean and standard
 // deviation to the activation of the LSTM layers. Please see
 // https://arxiv.org/abs/1607.06450 for details.
