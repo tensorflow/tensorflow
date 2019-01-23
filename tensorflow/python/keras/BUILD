@@ -770,7 +770,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_utils_test",
-    size = "large",
+    size = "medium",
     srcs = ["utils/data_utils_test.py"],
     additional_deps = [
         ":keras",
@@ -778,6 +778,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 6,
     tags = [
         "no_oss",
         "no_windows",
@@ -967,7 +968,7 @@ tf_py_test(
 
 tf_py_test(
     name = "training_generator_test",
-    size = "large",
+    size = "medium",
     srcs = ["engine/training_generator_test.py"],
     additional_deps = [
         ":keras",
@@ -975,7 +976,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 3,
+    shard_count = 6,
     tags = [
         "no_oss",
         "notsan",
