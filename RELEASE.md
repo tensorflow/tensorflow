@@ -38,21 +38,21 @@
     *   Remove integer types from `tf.nn.softplus` and `tf.nn.softsign` OpDefs.
         This is a bugfix; these ops were never meant to support integers.
     *   Allow subslicing Tensors with a single dimension.
-    *   Add option to calculate string length in Unicode characters
+    *   Add option to calculate string length in Unicode characters.
     *   Add functionality to SubSlice a tensor.
     *   Add searchsorted (ie lower/upper_bound) op.
     *   Add model explainability to Boosted Trees.
-    *   Support negative positions for tf.substr
+    *   Support negative positions for tf.substr.
     *   There was previously a bug in the bijector_impl where the
         _reduce_jacobian_det_over_event does not handle scalar ILDJ
         implementations properly.
-    *   In tf eager execution, allow re-entering a GradientTape context
+    *   In tf eager execution, allow re-entering a GradientTape context.
     *   Add tf_api_version flag. If --define=tf_api_version=2 flag is passed in,
         then bazel will build TensorFlow API version 2.0. Note that TensorFlow
         2.0 is under active development and has no guarantees at this point.
-    *   Add additional compression options to TfRecordWriter
+    *   Add additional compression options to TfRecordWriter.
     *   Performance improvements for regex full match operations.
-    *   Replace tf.GraphKeys.VARIABLES with `tf.GraphKeys.GLOBAL_VARIABLES`
+    *   Replace tf.GraphKeys.VARIABLES with `tf.GraphKeys.GLOBAL_VARIABLES`.
     *   Remove unused dynamic learning rate support.
 
 ## Thanks to our Contributors
@@ -83,7 +83,7 @@ Facai (颜发才), Yanbo Liang, Yash Katariya, Yong Tang, 在原佐为
 * DistributionStrategy:
   * Add multi-GPU DistributionStrategy support in tf.keras. Users can now use `fit`, `evaluate` and `predict` to distribute their model on multiple GPUs.
   * Add multi-worker DistributionStrategy and standalone client support in Estimator. See [README] (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute) for more details.
-* Add C, C++, and Python functions for querying kernels
+* Add C, C++, and Python functions for querying kernels.
 
 ## Breaking Changes
 
@@ -134,18 +134,18 @@ Facai (颜发才), Yanbo Liang, Yash Katariya, Yong Tang, 在原佐为
     *   Deprecate self.test_session() in favor of self.session() or
         self.cached_session().
     *   Directly import tensor.proto.h (the transitive import will be removed
-        from tensor.h soon)
+        from tensor.h soon).
     *   Estimator.train() now supports tf.contrib.summary.\* summaries out of
         the box; each call to .train() will now create a separate tfevents file
         rather than re-using a shared one.
     *   Fix FTRL L2-shrinkage behavior: the gradient from the L2 shrinkage term
         should not end up in the accumulator.
-    *   Fix toco compilation/execution on Windows
+    *   Fix toco compilation/execution on Windows.
     *   GoogleZoneProvider class added to detect which Google Cloud Engine zone
         tensorflow is running in.
     *   It is now safe to call any of the C API's TF_Delete\* functions on
-        nullptr
-    *   Log some errors on Android to logcat
+        nullptr.
+    *   Log some errors on Android to logcat.
     *   Match FakeQuant numerics in TFLite to improve accuracy of TFLite
         quantized inference models.
     *   Optional bucket location check for the GCS Filesystem.
@@ -166,7 +166,7 @@ Facai (颜发才), Yanbo Liang, Yash Katariya, Yong Tang, 在原佐为
         the existing zero_state() method.
     *   Update initialization of variables in Keras.
     *   Updates to "constrained_optimization" in tensorflow/contrib.
-    *   boosted trees: adding pruning mode
+    *   boosted trees: adding pruning mode.
     *   tf.train.Checkpoint does not delete old checkpoints by default.
     *   tfdbg: Limit the total disk space occupied by dumped tensor data to 100
         GBytes. Add environment variable `TFDBG_DISK_BYTES_LIMIT` to allow
