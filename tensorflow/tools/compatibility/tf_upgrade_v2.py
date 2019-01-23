@@ -508,6 +508,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.saved_model.load_keras_model":
+            "tf.keras.experimental.load_from_saved_model",
+        "tf.contrib.saved_model.save_keras_model":
+            "tf.keras.experimental.export",
         "tf.contrib.rnn.RNNCell":
             "tf.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
