@@ -1746,6 +1746,19 @@ def sqrt(x):
   return math_ops.sqrt(x)
 
 
+@keras_export('keras.backend.reciprocal')
+def reciprocal(x):
+  """Computes the reciprocal of x element-wise.
+
+  Arguments:
+      x: Tensor or variable.
+
+  Returns:
+      A tensor.
+  """
+  return math_ops.reciprocal(x)
+
+
 @keras_export('keras.backend.exp')
 def exp(x):
   """Element-wise exponential.

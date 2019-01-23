@@ -309,6 +309,7 @@ class BackendLinearAlgebraTest(test.TestCase):
     ops_to_test = [
         (keras.backend.sqrt, np.sqrt),
         (keras.backend.log, np.log),
+        (keras.backend.reciprocal, np.reciprocal),
     ]
     for keras_op, np_op in ops_to_test:
       compare_single_input_op_to_numpy(keras_op, np_op,
