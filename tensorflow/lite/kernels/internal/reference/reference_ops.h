@@ -3960,11 +3960,8 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
                const T3* input2_data, const RuntimeShape& output_shape,
                T2* output_data, const Cmp& cmp) {
   gemmlowp::ScopedProfilingLabel label("ArgMinMax");
-  // For ArgMax, the number of output dimensions = (number of input dimensions -
-  // 1). For the sake of simplicity, the output dimensions are equal to the
-  // input dimensions here. We enforce the constraint that the axis dimension
-  // must always be 1.
-  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount(),
+  TFLITE_DCHECK_GT(input1_shape.DimensionsCount(), 0);
+  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount() - 1,
                    output_shape.DimensionsCount());
 
   int axis = input2_data[0];
@@ -3973,7 +3970,6 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   }
 
   const int axis_size = input1_shape.Dims(axis);
-  TFLITE_DCHECK_EQ(output_shape.Dims(axis), 1);
 
   int outer_size = 1;
   for (int i = 0; i < axis; ++i) {
@@ -3984,7 +3980,7 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   int inner_size = 1;
   const int dims_count = input1_shape.DimensionsCount();
   for (int i = axis + 1; i < dims_count; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
+    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i - 1));
     inner_size *= input1_shape.Dims(i);
   }
 

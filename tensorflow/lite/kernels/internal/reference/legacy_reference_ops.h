@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
@@ -2033,7 +2034,16 @@ template <typename T1, typename T2, typename T3>
 void ArgMax(const T3* axis, const T1* input_data,
             const tflite::Dims<4>& input_dims, T2* output_data,
             const tflite::Dims<4>& output_dims) {
-  ArgMinMax(DimsToShape(input_dims), input_data, axis, DimsToShape(output_dims),
+  // Assumes the input always has 4 dimensions, and therefore,
+  // output always has three dimensions.
+  auto output_shape = RuntimeShape(
+      {output_dims.sizes[2], output_dims.sizes[1], output_dims.sizes[0]});
+  // Another way to interpret this is that output_dims.sizes[4] is always 1.
+  TFLITE_DCHECK_EQ(output_shape.FlatSize(),
+                   DimsToShape(output_dims).FlatSize());
+  // Legacy path only supported this.
+  TFLITE_DCHECK_EQ(axis[0], 3);
+  ArgMinMax(DimsToShape(input_dims), input_data, axis, output_shape,
             output_data, std::greater<T1>());
 }
 
