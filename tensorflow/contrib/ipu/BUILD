@@ -203,7 +203,7 @@ test_suite(
         "while_loop_test",
         "sort_op_test",
         "multi_ipu_test",
-        "infeed_outfeed_test",
+#       "infeed_outfeed_test",
     ],
 )
 
