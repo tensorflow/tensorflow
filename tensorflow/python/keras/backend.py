@@ -1793,6 +1793,19 @@ def logsumexp(x, axis=None, keepdims=False):
   return math_ops.reduce_logsumexp(x, axis, keepdims)
 
 
+def zeta(x, q):
+  """Compute the Hurwitz zeta function.
+
+  Arguments:
+      x: A tensor or variable.
+      q: A tensor, must be of same type as x.
+
+  Returns:
+      The tensor of same type as x.
+  """
+  return math_ops.zeta(x, q)
+
+
 @keras_export('keras.backend.round')
 def round(x):
   """Element-wise rounding to the closest integer.

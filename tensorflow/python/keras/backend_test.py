@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 import scipy.sparse
+import scipy.special
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
@@ -337,6 +338,7 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.less_equal, np.less_equal),
         (keras.backend.maximum, np.maximum),
         (keras.backend.minimum, np.minimum),
+        (keras.backend.zeta, scipy.special.zeta),
     ]
     for keras_op, np_op in ops_to_test:
       compare_two_inputs_op_to_numpy(keras_op, np_op,
