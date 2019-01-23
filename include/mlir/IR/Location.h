@@ -188,7 +188,7 @@ public:
 /// Represents a location as call site. "callee" is the concrete location
 /// (Unknown/NameLocation/FileLineColLoc) and "caller" points to the caller's
 /// location (another CallLocation or a concrete location). Multiple
-/// CallLocations can be chained to form a call stack.
+/// CallSiteLocs can be chained to form a call stack.
 class CallSiteLoc : public Location {
 public:
   using ImplType = detail::CallSiteLocationStorage;
@@ -196,6 +196,12 @@ public:
 
   /// Return a uniqued call location object.
   static CallSiteLoc get(Location callee, Location caller,
+                         MLIRContext *context);
+
+  /// Return a call site location which represents a name reference in one line
+  /// or a stack of frames. The input frames are ordered from innermost to
+  /// outermost.
+  static CallSiteLoc get(Location name, ArrayRef<Location> frames,
                          MLIRContext *context);
 
   /// The concrete location information this object presents.

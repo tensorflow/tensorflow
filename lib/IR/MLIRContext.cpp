@@ -620,6 +620,17 @@ CallSiteLoc CallSiteLoc::get(Location callee, Location caller,
   return *existing.first = result;
 }
 
+CallSiteLoc CallSiteLoc::get(Location name, ArrayRef<Location> frames,
+                             MLIRContext *context) {
+  assert(!frames.empty() && "required at least 1 frames");
+  auto it = frames.rbegin();
+  Location caller = *it++;
+  for (auto e = frames.rend(); it != e; ++it) {
+    caller = CallSiteLoc::get(*it, caller, context);
+  }
+  return CallSiteLoc::get(name, caller, context);
+}
+
 Location FusedLoc::get(ArrayRef<Location> locs, MLIRContext *context) {
   return get(locs, Attribute(), context);
 }
