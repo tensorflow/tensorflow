@@ -769,7 +769,7 @@ def split_compile_and_replicate(computation,
           "Dynamic input shapes are not supported with infeed queues")
 
     # Make sure maximum_shapes has the same structure as inputs.
-    nest.assert_same_structure(inputs[0], maximum_shapes)
+    nest.assert_same_structure(inputs[0], maximum_shapes, check_types=False)
 
     # Flatten padded shapes.
     flat_maximum_shapes = nest.flatten(maximum_shapes)
