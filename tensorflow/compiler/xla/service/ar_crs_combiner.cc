@@ -37,10 +37,12 @@ namespace {
 
 namespace m = match;
 
-// Returns true iff the argument instruction is an AllReduce, followed by a
-// certain sequence of instructions and then a CRS. It must be possible to move
-// the AR past each instruction in the sequence.
-bool MatchesArCrsPattern(HloInstruction* instruction) {
+// Checks if the argument instruction is an AllReduce, followed by a certain
+// sequence of instructions and then a CRS. It must be possible to move
+// the AR past each instruction in the sequence. Returns the CRS, which is the
+// last instruction in the sequence.
+absl::optional<HloInstruction*> MatchesArCrsPattern(
+    HloInstruction* instruction) {
   auto can_ar_move_past_instruction = [](HloInstruction* instruction) -> bool {
     if (instruction->user_count() != 1) {
       return false;
@@ -73,17 +75,19 @@ bool MatchesArCrsPattern(HloInstruction* instruction) {
   if (!instruction->IsCrossModuleAllReduce() ||
       !computation_is_addition(instruction->called_computations()[0]) ||
       instruction->user_count() != 1) {
-    return false;
+    return absl::nullopt;
   }
   auto next = instruction->users()[0];
   while (!next->IsCrossReplicaAllReduce()) {
     if (can_ar_move_past_instruction(next)) {
       next = next->users()[0];
     } else {
-      return false;
+      return absl::nullopt;
     }
   }
-  return computation_is_addition(next->called_computations()[0]);
+  return computation_is_addition(next->called_computations()[0])
+             ? absl::optional<HloInstruction*>(next)
+             : absl::nullopt;
 }
 
 }  // namespace
@@ -99,7 +103,7 @@ absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
       return caller_instruction;
     }
   }
-  return absl::optional<HloInstruction*>();
+  return absl::nullopt;
 }
 
 std::vector<HloInstruction*> ArCrsCombiner::GetAllTuples(
@@ -231,8 +235,14 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
 void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (MatchesArCrsPattern(instruction)) {
-        all_reduce_map_[*(instruction->all_reduce_id())].push_back(instruction);
+      auto maybe_crs = MatchesArCrsPattern(instruction);
+      if (maybe_crs) {
+        auto crs = *maybe_crs;
+        int64 ar_id = *(instruction->all_reduce_id());
+        if (crs_reserved_map_.find(crs) == crs_reserved_map_.end()) {
+          all_reduce_map_[ar_id].push_back(instruction);
+          crs_reserved_map_[crs] = ar_id;
+        }
       }
     }
   }
