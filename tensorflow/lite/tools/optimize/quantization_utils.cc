@@ -55,7 +55,11 @@ void GetAsymmetricQuantizationParams(
   min = std::min(static_cast<float>(min), 0.0f);
   max = std::max(static_cast<float>(max), 0.0f);
   const float scale = (max - min) / (quant_max_float - quant_min_float);
-  const float zero_point_from_min = quant_min_float - min / scale;
+  // Scale can be zero if min and max are exactly 0.0f.
+  float zero_point_from_min = quant_min_float;
+  if (scale != 0) {
+    zero_point_from_min = quant_min_float - min / scale;
+  }
   int64_t zero_point;
   if (zero_point_from_min < quant_min_float) {
     zero_point = static_cast<int64_t>(quant_min);
