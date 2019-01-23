@@ -24,16 +24,20 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.framework.python.framework import experimental
+from tensorflow.contrib.tpu.proto import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -482,7 +486,8 @@ def replicate(computation,
               inputs=None,
               infeed_queue=None,
               device_assignment=None,
-              name=None):
+              name=None,
+              maximum_shapes=None):
   """Builds a graph operator that runs a replicated TPU computation.
 
   Args:
@@ -503,6 +508,14 @@ def replicate(computation,
       only one core, and there is either only one replica, or the number of
       replicas is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    maximum_shapes: A nested structure of tf.TensorShape representing the shape
+      to which the respective component of each input element in each replica
+      should be padded. Any unknown dimensions (e.g. tf.Dimension(None) in a
+      tf.TensorShape or -1 in a tensor-like object) will be padded to the
+      maximum size of that dimension over all replicas. Note that if the input
+      dimension is already static, we won't do padding on it and we require the
+      maximum_shapes to have the same value or None on that dimension. The
+      structure of `maximum_shapes` needs to be the same as `inputs[0]`.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -519,9 +532,101 @@ def replicate(computation,
     ValueError: If all replicas do not have equal numbers of input tensors.
     ValueError: If the number of inputs per replica does not match
       the number of formal parameters to `computation`.
+    ValueError: If the static `inputs` dimensions don't match with the values
+      given in `maximum_shapes`.
+    ValueError: If the structure of inputs per replica does not match
+      the structure of `maximum_shapes`.
   """
-  return split_compile_and_replicate(computation, inputs, infeed_queue,
-                                     device_assignment, name)[1]
+  return split_compile_and_replicate(
+      computation,
+      inputs,
+      infeed_queue,
+      device_assignment,
+      name,
+      maximum_shapes=maximum_shapes)[1]
+
+
+def _pad_all_input(inputs, padded_shapes):
+  """Pad all input tensors given padded_shapes.
+
+  The real shape tensors will be concatenated with the padded original inputs.
+
+  Args:
+    inputs: The original inputs.
+    padded_shapes: A list of padded shapes for each input.
+
+  Returns:
+    The padded inputs and a PaddingMap list which maps the padded input
+    dimension to the real shape argument index.
+  """
+  input_shape_tensors = []
+  for core_idx, inputs_per_core in enumerate(inputs):
+    for idx, input_tensor in enumerate(inputs_per_core):
+      if core_idx == 0:
+        input_shape_tensors.append([])
+      input_shape_tensors[idx].append(array_ops.shape(input_tensor))
+
+  maximum_shapes = []
+  for shapes_per_input in input_shape_tensors:
+    maximum_shapes.append(
+        math_ops.reduce_max(array_ops.stack(shapes_per_input), axis=0))
+
+  padded_inputs = []
+  real_shapes = []
+  padding_maps = []
+  for core_idx, inputs_per_core in enumerate(inputs):
+    padded_inputs.append([])
+    real_shapes.append([])
+    real_shape_idx = len(inputs_per_core) - 1
+    for idx, input_tensor in enumerate(inputs_per_core):
+      input_shape_tensor = input_shape_tensors[idx][core_idx]
+      input_shape = input_tensor.get_shape()
+      padded_shape = padded_shapes[idx]
+
+      # The static shape of inputs should be compatible with the given padded
+      # shapes.
+      input_shape.assert_is_compatible_with(padded_shape)
+
+      if input_shape.is_fully_defined():
+        # Do nothing if the shape of the whole tensor is already static.
+        padded_inputs[core_idx].append(input_tensor)
+      else:
+        # Only pad the non static shape dimension.
+        for i, s in enumerate(input_shape):
+          if s.value is None:
+            if core_idx == 0:
+              real_shape_idx += 1
+              padding_map = dynamic_padding.PaddingMap()
+              padding_map.arg_index = idx
+              padding_map.shape_index = i
+              padding_map.padding_arg_index = real_shape_idx
+              padding_maps.append(padding_map)
+            real_shapes[core_idx].append(
+                math_ops.cast(input_shape_tensor[i], dtypes.uint32))
+
+        paddings = []
+        for i, s in enumerate(padded_shape):
+          if input_shape[i].value:
+            # Don't pad if input shape is already static.
+            padding = [0, 0]
+          else:
+            if s.value:
+              # Pad to the given maximum value.
+              padding = [0, s.value - input_shape_tensor[i]]
+            else:
+              # If maximum value is not given, then pad to the maximum dimension
+              # among all the cores.
+              padding = [0, maximum_shapes[idx][i] - input_shape_tensor[i]]
+          paddings.append(padding)
+
+        padded_input = array_ops.pad(input_tensor, paddings)
+        padded_inputs[core_idx].append(padded_input)
+
+  num_replicas = len(padded_inputs)
+  for i in range(num_replicas):
+    padded_inputs[i].extend(real_shapes[i])
+
+  return padded_inputs, padding_maps
 
 
 def split_compile_and_replicate(computation,
@@ -529,7 +634,8 @@ def split_compile_and_replicate(computation,
                                 infeed_queue=None,
                                 device_assignment=None,
                                 name=None,
-                                use_tpu=True):
+                                use_tpu=True,
+                                maximum_shapes=None):
   """Builds graph operators that runs compilation and replicated computation.
 
   This is a lower level interface than replicate that returns a separate compile
@@ -559,6 +665,15 @@ def split_compile_and_replicate(computation,
     use_tpu: When false, the input `computation` is executed on the XLA CPU/GPU
       backends. Currently, only supports a default placement (computation is
       placed on GPU if one is available, and on CPU if not).
+    maximum_shapes: A nested structure of tf.TensorShape representing the shape
+      to which the respective component of each input element in each replica
+      should be padded. Any unknown dimensions (e.g. tf.Dimension(None) in a
+      tf.TensorShape or -1 in a tensor-like object) will be padded to the
+      maximum size of that dimension over all replicas. Note that if the input
+      dimension is already static, we won't do padding on it and we require the
+      maximum_shapes to have the same value or None on that dimension. The
+      structure of `maximum_shapes` needs to be the same as `inputs[0]`.
+
   Returns:
     A list of lists with the first list corresponding to the compile op and the
     second a list of output tensors, indexed by `[replica_num][output_num]`.
@@ -566,6 +681,10 @@ def split_compile_and_replicate(computation,
     ValueError: If all replicas do not have equal numbers of input tensors.
     ValueError: If the number of inputs per replica does not match
       the number of formal parameters to `computation`.
+    ValueError: If the static `inputs` dimensions don't match with the values
+      given in `maximum_shapes`.
+    ValueError: If the structure of inputs per replica does not match
+      the structure of `maximum_shapes`.
   """
   del name
   inputs = [[]] if inputs is None else inputs
@@ -644,13 +763,34 @@ def split_compile_and_replicate(computation,
                for i in inputs[0]]), infeed_queue.number_of_tuple_elements,
                                              arg_error))
 
+  if maximum_shapes:
+    if infeed_queue:
+      raise ValueError(
+          "Dynamic input shapes are not supported with infeed queues")
+
+    # Make sure maximum_shapes has the same structure as inputs.
+    nest.assert_same_structure(inputs[0], maximum_shapes)
+
+    # Flatten padded shapes.
+    flat_maximum_shapes = nest.flatten(maximum_shapes)
+    flat_maximum_shapes = [
+        tensor_shape.TensorShape(s) for s in flat_maximum_shapes
+    ]
+
+    flat_inputs, padding_maps = _pad_all_input(flat_inputs, flat_maximum_shapes)
+
+    serialized_padding_maps = []
+    for padding_map in padding_maps:
+      serialized_padding_maps.append(padding_map.SerializeToString())
+    metadata_kwargs["padding_map"] = serialized_padding_maps
+
   graph = ops.get_default_graph()
 
   # Fan-in: Builds a TPUReplicatedInput node for each input.
-  computation_inputs = []
-  for i in range(0, flat_input_arity):
+  flat_replicated_inputs = []
+  for i in range(0, len(flat_inputs[0])):
     replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
-    computation_inputs.append(
+    flat_replicated_inputs.append(
         tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
   cluster_name = graph.unique_name("cluster")
@@ -670,18 +810,26 @@ def split_compile_and_replicate(computation,
       # computation. This is to avoid orphaned TPUReplicatedInput nodes.
       # TODO(phawkins): consider instead pruning unused TPUReplicatedInput
       # and eliding trivial TPUReplicatedInput/TPUReplicatedOutput pairs.
-      computation_inputs = [
+      flat_replicated_inputs = [
           array_ops.identity(x, name="replicated_input_{}".format(i))
-          for i, x in enumerate(computation_inputs)
+          for i, x in enumerate(flat_replicated_inputs)
       ]
-      for i in computation_inputs:
+      for i in flat_replicated_inputs:
         # pylint: disable=protected-access
-        i.op._set_attr("_tpu_input_identity", attr_value_pb2.AttrValue(b=True))
+        # Add an attribute to the identity node so that they could be removed in
+        # encapsulate TPU computation pass if unused. However we don't remove
+        # inputs when dynamic padding is enabled.
+        # TODO(rxsang): Use other ways except argument index in padding_map so
+        # outside compilation can work with dynamic padding correctly.
+        if maximum_shapes is None:
+          i.op._set_attr("_tpu_input_identity",
+                         attr_value_pb2.AttrValue(b=True))
         # pylint: enable=protected-access
 
       # Unflatten the computation inputs to match original input structure.
       computation_inputs = nest.pack_sequence_as(
-          structure=inputs[0], flat_sequence=computation_inputs)
+          structure=inputs[0],
+          flat_sequence=flat_replicated_inputs[:flat_input_arity])
 
       # If there is an infeed queue, adds the dequeued values to the
       # computation's inputs.
