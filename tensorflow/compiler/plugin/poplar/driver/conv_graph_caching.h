@@ -71,20 +71,41 @@ poplar::Tensor DoCachedConvolution(
 // * Learning rate constant (0 if using a tensor for the learning rate)
 // * The HloOpcode opcode for the scaled inplace application
 // * sharding device ID
-using WeightUpdateConvolutionCacheKey =
+using ConvolutionScaledInplaceCacheKey =
     std::tuple<PoplarTensorSignature, PoplarTensorSignature, poplin::ConvParams,
                ConvClassificationType, bool, double, HloOpcode, uint64>;
-using WeightUpdateConvolutionGraphCache =
-    std::map<WeightUpdateConvolutionCacheKey, poputil::graphfn::VoidFunction>;
+using ConvolutionScaledInplaceGraphCache =
+    std::map<ConvolutionScaledInplaceCacheKey, poputil::graphfn::VoidFunction>;
 
-Status DoCachedWeightUpdateConvolution(
+Status DoCachedConvolutionScaledInplace(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& weights,
     const poplar::Tensor& in, const poplar::Tensor& deltas,
     const poplin::ConvParams& params, const uint64 device_id,
     poplar::program::Sequence& prog, const HloInstruction* inst,
     TensorMap& tensor_map);
-}  // namespace conv_graph_caching
 
+// The bias apply key is:
+// * Shape of the input (biases) tensor
+// * Shape of the deltas tensor
+// * Reduction dimensions.
+// * Whether the learning rate is a constant
+// * Learning rate constant (0 if using a tensor for the learning rate)
+// * sharding device ID
+using BiasApplyCacheKey =
+    std::tuple<PoplarTensorSignature, PoplarTensorSignature,
+               std::vector<std::size_t>, bool, double, uint64>;
+using BiasApplyGraphCache =
+    std::map<BiasApplyCacheKey, poputil::graphfn::VoidFunction>;
+
+Status DoCachedBiasApply(poplar::Graph& graph, CompilerResources& res,
+                         const poplar::Tensor& input,
+                         const poplar::Tensor& deltas,
+                         const std::vector<std::size_t> reduction_dims,
+                         const uint64 device_id,
+                         poplar::program::Sequence& prog,
+                         const HloInstruction* inst, TensorMap& tensor_map);
+
+}  // namespace conv_graph_caching
 }  // namespace poplarplugin
 }  // namespace xla
 

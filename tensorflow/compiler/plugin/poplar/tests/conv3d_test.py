@@ -145,7 +145,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_',
             'Conv3D/convolution.*/Conv_1x1',
             'add/fusion/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -180,10 +179,10 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_',
+            'Conv3DBackpropInputV2/fusion*/WeightTranspose',
             'Conv3DBackpropInputV2/fusion*/Conv_2x2x2']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
-
 
   def test3DConvBackpropFilter(self):
     with ops.device("/device:IPU:0"):

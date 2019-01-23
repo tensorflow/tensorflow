@@ -221,7 +221,7 @@ bool IsPopOpsConvolution(const HloInstruction* inst) {
   return false;
 }
 
-bool IsPopOpsConvolutionInputGradient(const HloInstruction* inst) {
+bool IsPopOpsConvolutionWithReverse(const HloInstruction* inst) {
   return (IsPopOpsFusion(inst, "conv_with_reverse"));
 }
 

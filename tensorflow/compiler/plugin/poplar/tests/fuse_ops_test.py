@@ -418,35 +418,19 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       ok = ['GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion.*/Reduce']
       self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
 
-  def testConvolutionBiasApply2(self):
+  def testConvolutionBiasApplyVariableLR(self):
     with ops.device("/device:IPU:0"):
-      inp = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+      lr = array_ops.placeholder(np.float32, shape=[])
 
       with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer())
+        y = convolutional.conv2d(y, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer())
 
-        x = inp
-
-        shortcut = x
-        shape_in = x.get_shape()
-
-        init = init_ops.ones_initializer()
-
-        x = convolutional.conv2d(x, 8, 1, use_bias=True,
-                                 kernel_initializer=init, name="c1")
-
-        x = convolutional.conv2d(x, 8, 1, use_bias=True, activation=None,
-                                 kernel_initializer=init, name="c2")
-
-        # shortcut
-        pad = int(x.get_shape()[3] - shape_in[3])
-        if (pad != 0):
-          shortcut = array_ops.pad(shortcut,
-                                   paddings=[[0,0],[0,0],[0,0],[0,pad]])
-
-        x = nn_ops.relu(x + shortcut)
-
-      loss = math_ops.reduce_sum(x)
-      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(lr)
       train = optimizer.minimize(loss)
 
       with ops.device('cpu'):
@@ -457,17 +441,28 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       sess.run(report)
 
-      sess.run([train,loss], {inp: np.zeros([1,4,4,2])})
+      sess.run([train,loss], {x: np.zeros([1,4,4,2]), lr: 0.1})
 
       result = sess.run(report)
       self.assertEqual(len(result), 6) # 2xcompile, 1xupload, 1xload, 1xdownload, 1xexecute
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
-
-      ok = ['GradientDescent/update_vs/c1/bias/ResourceApplyGradientDescent/fusion.*/Reduce',
-            'GradientDescent/update_vs/c2/bias/ResourceApplyGradientDescent/fusion.*/Reduce']
-      self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
+      ok = ['progIdCopy',
+            'Copy_',
+            'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropInput/fusion*/Conv_1x1/Convolve',
+            'host-exchange-local-copy-',
+            'vs/conv2d/Conv2D/convolution*/Conv_1x1/Convolve',
+            'vs/conv2d/BiasAdd/fusion*/addToChannel',
+            'GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion*/ReduceFinalStage/IntermediateToOutput/Reduce',
+            'GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion*/AddTo',
+            'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4/Convolve',
+            'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/AddTo',
+            'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/multiply*/Op/Multiply',
+            'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/subtract*/AddTo',
+            'vs/conv2d_1/BiasAdd/fusion*/addToChannel',
+            'Sum/reduce*/ReduceFinalStage/IntermediateToOutput/Reduce']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAvgPoolValid(self):
     np.random.seed(0)

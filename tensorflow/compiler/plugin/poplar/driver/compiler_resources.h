@@ -65,7 +65,10 @@ struct CompilerResources {
 
   conv_graph_caching::BwdWeightGraphCache bwd_weight_graph_cache;
 
-  conv_graph_caching::WeightUpdateConvolutionGraphCache wu_graph_cache;
+  conv_graph_caching::ConvolutionScaledInplaceGraphCache
+      conv_scaled_inplace_graph_cache;
+
+  conv_graph_caching::BiasApplyGraphCache bias_apply_graph_cache;
 
   norm_graph_caching::NormInferenceGraphCache norm_inf_graph_cache;
 

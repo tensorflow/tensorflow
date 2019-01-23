@@ -83,7 +83,6 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       # Matches two convolutions
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/Cast/convert.*/Cast',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
@@ -117,7 +116,6 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       # Matches two convolutions
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -149,7 +147,6 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       # Matches two convolutions
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -314,11 +311,8 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'Copy_',
             'vs/conv1/Conv2D/convolution.*/Conv_1x1',
-            'Sum/reduce.*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
             'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
-            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/fusion.*/WeightTranspose',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4',
-            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/DeltasPartialTranspose',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
