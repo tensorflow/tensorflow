@@ -915,9 +915,6 @@ def split_compile_and_shard(computation,
     return x + 3
   ... = shard(computation, ...)
 
-  TODO(phawkins): consider adding support for broadcasting Tensors passed
-  as inputs.
-
   If `outputs_from_all_shards` is true, the outputs from all shards of
   `computation` are concatenated back together along their `output_shards_axes`.
   Otherwise, each output is taken from an arbitrary shard.
@@ -959,6 +956,8 @@ def split_compile_and_shard(computation,
     ValueError: If len(input_shard_axes) != len(inputs)
     ValueError: If len(output_shard_axes) != len(outputs from `computation`)
   """
+  # TODO(phawkins): consider adding support for broadcasting Tensors passed as
+  # inputs.
 
   if num_shards <= 0:
     raise ValueError("num_shards must be a positive integer.")
