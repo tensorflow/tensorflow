@@ -283,7 +283,7 @@ def _normalize_include_path(repository_ctx, path):
     path is returned.
     If path points outside the 'crosstool' folder, an absolute path is returned.
     """
-  path = str(repository_ctx.path(path))
+  path = str(repository_ctx.path(path).realpath)
   crosstool_folder = str(repository_ctx.path(".").get_child("crosstool"))
 
   if path.startswith(crosstool_folder):
