@@ -130,7 +130,7 @@ class ParameterServerStrategyExtended(
     num_gpus = cluster_resolver.num_accelerators()
     cluster_spec = cluster_resolver.cluster_spec()
     task_type = cluster_resolver.task_type
-    task_id = cluster_resolver.task_index
+    task_id = cluster_resolver.task_id
     if not task_type or task_id is None:
       raise ValueError("When `cluster_spec` is given, you must also specify "
                        "`task_type` and `task_id`")
@@ -463,7 +463,7 @@ class ParameterServerStrategyExtended(
       cluster_resolver = SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
-          task_index=task_id,
+          task_id=task_id,
           num_accelerators=self._num_gpus_per_worker)
       self._initialize_multi_worker(cluster_resolver)
 

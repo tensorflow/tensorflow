@@ -90,7 +90,7 @@ def create_test_objects(cluster_spec=None,
       cluster_resolver = SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
-          task_index=task_id,
+          task_id=task_id,
           num_accelerators=num_gpus)
       target = 'grpc://' + cluster_spec[WORKER][task_id]
     else:
