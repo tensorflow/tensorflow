@@ -57,6 +57,7 @@
   * Add experimental Java API for injecting TensorFlow Lite delegates
   * Add support for strings in TensorFlow Lite Java API.
 * `tf.contrib`:
+  * Add Apache Ignite Filesystem plugin to support accessing Apache IGFS.
   * Dropout now takes `rate` argument, `keep_prob` is deprecated.
   * Estimator occurrences references `tf.contrib.estimator` were changed to `tf.estimator`:
     * `tf.contrib.estimator.BaselineEstimator` with `tf.estimator.BaselineEstimator`
