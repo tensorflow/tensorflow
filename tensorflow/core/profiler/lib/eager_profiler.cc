@@ -56,8 +56,8 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
       event->set_device_id(device_id);
       event->set_resource_id(0);
       event->set_name(node.node_name());
-      event->set_timestamp_ps(node.all_start_micros() * 1000000000);
-      event->set_duration_ps(node.all_end_rel_micros() * 1000000000);
+      event->set_timestamp_ps(node.all_start_micros() * 1000000);
+      event->set_duration_ps(node.all_end_rel_micros() * 1000000);
       (*args)["label"] = node.timeline_label();
     }
   }
