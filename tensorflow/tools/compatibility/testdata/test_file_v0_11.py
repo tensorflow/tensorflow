@@ -196,14 +196,14 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       # make some variables
       _ = [tf.Variable([1, 2, 3], dtype=tf.float32),
            tf.Variable([1, 2, 3], dtype=tf.int32)]
-      s.run(tf.initialize_all_variables())
+      s.run(tf.global_variables_initializer())
       _ = [v.name for v in tf.all_variables()]
       _ = [v.name for v in tf.local_variables()]
 
   def testSummaries(self):
     with self.cached_session() as s:
       var = tf.Variable([1, 2, 3], dtype=tf.float32)
-      s.run(tf.initialize_all_variables())
+      s.run(tf.global_variables_initializer())
       x, y = np.meshgrid(np.linspace(-10, 10, 256), np.linspace(-10, 10, 256))
       image = np.sin(x**2 + y**2) / np.sqrt(x**2 + y**2) * .5 + .5
       image = image[None, :, :, None]
