@@ -207,7 +207,6 @@ cc_library(
         "slice.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
-        "sparse_output_fully_connected.cc",
         "sparse_to_dense.cc",
         "split.cc",
         "split_v.cc",
@@ -339,20 +338,6 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
-    ],
-)
-
-tf_cc_test(
-    name = "sparse_output_fully_connected_test",
-    size = "small",
-    srcs = ["sparse_output_fully_connected_test.cc"],
-    deps = [
-        ":builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
-        "//tensorflow/lite/kernels/internal:types",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
