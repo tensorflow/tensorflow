@@ -279,6 +279,8 @@ Status ConcatShape(shape_inference::InferenceContext* c,
 // Shape function for concat operations.
 Status ConcatV2Shape(shape_inference::InferenceContext* c);
 
+Status QuantizedConcatV2Shape(InferenceContext* c, int num_inputs_to_concat);
+
 // Shape function for binary operators that broadcast their inputs
 // and with output to output_index.
 // Note: out cannot be NULL.

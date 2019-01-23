@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -135,8 +135,8 @@ class QuantizedConcatOp : public OpKernel {
           context, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i,
-              "] = ", in.shape().DebugString()));
+              input_shape.DebugString(), " vs. shape[", i, "] = ",
+              in.shape().DebugString()));
       for (int j = 0; j < input_dims; ++j) {
         if (j == concat_dim) {
           continue;
@@ -145,8 +145,8 @@ class QuantizedConcatOp : public OpKernel {
             context, in.dim_size(j) == input_shape.dim_size(j),
             errors::InvalidArgument(
                 "ConcatOp : Dimensions of inputs should match: shape[0] = ",
-                input_shape.DebugString(), " vs. shape[", i,
-                "] = ", in.shape().DebugString()));
+                input_shape.DebugString(), " vs. shape[", i, "] = ",
+                in.shape().DebugString()));
       }
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
@@ -184,9 +184,8 @@ class QuantizedConcatOp : public OpKernel {
     const int input_dims = values[0].dims();
     const TensorShape& input_shape = values[0].shape();
     OP_REQUIRES(
-        context,
-        (0 <= concat_dim && concat_dim < input_dims) ||
-            (allow_legacy_scalars() && concat_dim == 0),
+        context, (0 <= concat_dim && concat_dim < input_dims) ||
+                     (allow_legacy_scalars() && concat_dim == 0),
         errors::InvalidArgument(
             "ConcatOp : Expected concatenating dimensions in the range [", 0,
             ", ", input_dims, "), but got ", concat_dim));
@@ -245,5 +244,15 @@ REGISTER_QUANTIZED_CONCAT(quint8);
 REGISTER_QUANTIZED_CONCAT(qint32);
 
 #undef REGISTER_QUANTIZED_CONCAT
+
+#define REGISTER_QUANTIZED_CONCATV2(type)                \
+  REGISTER_KERNEL_BUILDER(Name("QuantizedConcatV2")      \
+                              .Device(DEVICE_CPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("axis"),       \
+                          QuantizedConcatOp<type>)
+
+REGISTER_QUANTIZED_CONCATV2(quint8);
+REGISTER_QUANTIZED_CONCATV2(qint32);
 
 }  // namespace tensorflow
