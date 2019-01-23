@@ -571,15 +571,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   DumpGraph("Before running POST_PLACEMENT passes", graph.get());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
-  DumpGraph("Before running POST_REWRITE_FOR_EXEC passes", graph.get());
-  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
-      OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
-  DumpGraph("After all optimization passes", graph.get());
 
   Device* cpu_device;
   TF_RETURN_IF_ERROR(device_mgr_->LookupDevice("CPU:0", &cpu_device));
 
   if (options.optimize_graph_fn) {
+    DumpGraph("Before running graph optimization fn", graph.get());
     Status status = options.optimize_graph_fn(std::move(ret_node_names),
                                               &data->overlay_lib_, device_set,
                                               cpu_device, &graph);
@@ -589,6 +586,11 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
     DumpGraph("After optimization", graph.get());
   }
+
+  DumpGraph("Before running POST_REWRITE_FOR_EXEC passes", graph.get());
+  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+      OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
+  DumpGraph("After all optimization passes", graph.get());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(

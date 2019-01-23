@@ -631,16 +631,18 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
   return status;
 }
 
-Status OptimizeGraph(std::vector<string> ret_node_names,
-                     FunctionLibraryDefinition* flib,
-                     const DeviceSet& device_set, Device* cpu_device,
-                     const ConfigProto& config_proto,
-                     std::unique_ptr<tensorflow::Graph>* g) {
+Status OptimizeGraph(
+    std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto,
+    const GrapplerItem::OptimizationOptions& optimization_options,
+    std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
     return Status::OK();
   }
 
   tensorflow::grappler::GrapplerItem item;
+  item.optimization_options() = optimization_options;
 
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {
