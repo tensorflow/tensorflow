@@ -1177,9 +1177,9 @@ public:
           // Skip if 'srcNode' is not a loop nest.
           if (!isa<ForInst>(srcNode->inst))
             continue;
-
-          // Skip if 'srcNode' has more than one store to 'memref'.
-          if (srcNode->getStoreOpCount(memref) != 1)
+          // Skip if 'srcNode' has more than one store to any memref.
+          // TODO(andydavis) Support fusing multi-output src loop nests.
+          if (srcNode->stores.size() != 1)
             continue;
 
           // Skip 'srcNode' if it has in dependence edges. NOTE: This is overly

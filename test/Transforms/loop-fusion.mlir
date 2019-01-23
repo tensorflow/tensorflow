@@ -1288,3 +1288,31 @@ func @R3_to_R2_reshape() {
 // CHECK-NEXT:   }
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
+
+// -----
+
+// CHECK-LABEL: func @should_not_fuse_multi_output_producer() {
+func @should_not_fuse_multi_output_producer() {
+  %a = alloc() : memref<10xf32>
+  %b = alloc() : memref<10xf32>
+
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %a[%i0] : memref<10xf32>
+    store %cf7, %b[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %a[%i1] : memref<10xf32>
+  }
+
+  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT:    store %cst, %1[%i0] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:    %2 = load %0[%i1] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
+  return
+}
