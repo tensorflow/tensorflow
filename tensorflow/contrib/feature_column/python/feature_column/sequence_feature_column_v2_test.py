@@ -363,14 +363,14 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            # feature 0, ids [[20, 3], [5]]
            # feature 1, ids [[3], [8]]
            'indices': ((0, 0, 0), (0, 0, 1), (0, 1, 0), (1, 0, 0), (1, 1, 0)),
-           'values': (20, 3, 5., 3., 8.),
+           'values': (20., 3., 5., 3., 8.),
            'dense_shape': (2, 2, 2)},
        'expected_input_layer': [
            [[20.], [3.], [5.], [0.]],
            [[3.], [0.], [8.], [0.]]],
        'expected_sequence_length': [2, 2]},
       )
-  def DISABLED_test_numeric_column(  # See b/123240957
+  def test_numeric_column(
       self, sparse_input_args, expected_input_layer, expected_sequence_length):
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
 
