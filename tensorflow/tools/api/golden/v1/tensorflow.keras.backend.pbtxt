@@ -257,6 +257,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "learning_phase_scope"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "less"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }

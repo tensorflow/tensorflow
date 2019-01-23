@@ -108,27 +108,23 @@ class BackendUtilsTest(test.TestCase):
 
   def test_learning_phase(self):
     with self.cached_session() as sess:
-      keras.backend.set_learning_phase(1)
-      self.assertEqual(keras.backend.learning_phase(), 1)
       with self.assertRaises(ValueError):
         keras.backend.set_learning_phase(2)
 
       # Test running with a learning-phase-consuming layer
-      keras.backend.set_learning_phase(0)
-      x = keras.Input((3,))
-      y = keras.layers.BatchNormalization()(x)
-      if not context.executing_eagerly():
-        self.evaluate(variables.global_variables_initializer())
-        sess.run(y, feed_dict={x: np.random.random((2, 3))})
+      with keras.backend.learning_phase_scope(0):
+        x = keras.Input((3,))
+        y = keras.layers.BatchNormalization()(x)
+        if not context.executing_eagerly():
+          self.evaluate(variables.global_variables_initializer())
+          sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_scope(self):
     initial_learning_phase = keras.backend.learning_phase()
-    with keras.backend.learning_phase_scope(1) as lp:
-      self.assertEqual(lp, 1)
+    with keras.backend.learning_phase_scope(1):
       self.assertEqual(keras.backend.learning_phase(), 1)
     self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
-    with keras.backend.learning_phase_scope(0) as lp:
-      self.assertEqual(lp, 0)
+    with keras.backend.learning_phase_scope(0):
       self.assertEqual(keras.backend.learning_phase(), 0)
     self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
     with self.assertRaises(ValueError):
