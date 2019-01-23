@@ -9,6 +9,13 @@ py_binary(
     name = "rnn_ptb",
     srcs = ["rnn_ptb.py"],
     srcs_version = "PY2AND3",
+    deps = [":rnn_ptb_lib"],
+)
+
+py_library(
+    name = "rnn_ptb_lib",
+    srcs = ["rnn_ptb.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",

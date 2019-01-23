@@ -9,6 +9,13 @@ py_binary(
     name = "densenet",
     srcs = ["densenet.py"],
     srcs_version = "PY2AND3",
+    deps = [":densenet_lib"],
+)
+
+py_library(
+    name = "densenet_lib",
+    srcs = ["densenet.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/eager/python:tfe",
