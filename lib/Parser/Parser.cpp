@@ -210,6 +210,32 @@ public:
   DenseElementsAttr parseDenseElementsAttr(Type eltType, bool isVector);
   VectorOrTensorType parseVectorOrTensorType();
 
+  // Location Parsing.
+
+  /// Trailing locations.
+  ///
+  ///   trailing-location     ::= location?
+  ///
+  template <typename Owner>
+  ParseResult parseOptionalTrailingLocation(Owner *owner) {
+    // If there is a 'loc' we parse a trailing location.
+    if (!getToken().is(Token::kw_loc))
+      return ParseSuccess;
+
+    // Parse the location.
+    llvm::Optional<Location> directLoc;
+    if (parseLocation(&directLoc))
+      return ParseFailure;
+    owner->setLoc(*directLoc);
+    return ParseSuccess;
+  }
+
+  /// Parse an inline location.
+  ParseResult parseLocation(llvm::Optional<Location> *loc);
+
+  /// Parse a raw location instance.
+  ParseResult parseLocationInstance(llvm::Optional<Location> *loc);
+
 private:
   // The Parser is subclassed and reinstantiated.  Do not add additional
   // non-trivial state here, add it to the ParserState class.
@@ -1211,6 +1237,171 @@ VectorOrTensorType Parser::parseVectorOrTensorType() {
             nullptr);
   }
   return type;
+}
+
+/// Debug Location.
+///
+///   location           ::= `loc` inline-location
+///   inline-location    ::= '(' location-inst ')'
+///
+ParseResult Parser::parseLocation(llvm::Optional<Location> *loc) {
+  assert(loc && "loc is expected to be non-null");
+
+  // Check for 'loc' identifier.
+  if (getToken().isNot(Token::kw_loc))
+    return emitError("expected location keyword");
+  consumeToken(Token::kw_loc);
+
+  // Parse the inline-location.
+  if (parseToken(Token::l_paren, "expected '(' in inline location") ||
+      parseLocationInstance(loc) ||
+      parseToken(Token::r_paren, "expected ')' in inline location"))
+    return ParseFailure;
+  return ParseSuccess;
+}
+
+/// Specific location instances.
+///
+/// location-inst ::= filelinecol-location |
+///                   name-location |
+///                   callsite-location |
+///                   fused-location |
+///                   unknown-location
+/// filelinecol-location ::= string-literal ':' integer-literal
+///                                         ':' integer-literal
+/// name-location ::= string-literal
+/// callsite-location ::= 'callsite' '(' location-inst 'at' location-inst ')'
+/// fused-location ::= fused ('<' attribute-value '>')?
+///                    '[' location-inst (location-inst ',')* ']'
+/// unknown-location ::= 'unknown'
+///
+ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
+  auto *ctx = getContext();
+
+  // Handle either name or filelinecol locations.
+  if (getToken().is(Token::string)) {
+    auto str = getToken().getStringValue();
+    consumeToken(Token::string);
+
+    // If the next token is ':' this is a filelinecol location.
+    if (consumeIf(Token::colon)) {
+      // Parse the line number.
+      if (getToken().isNot(Token::integer))
+        return emitError("expected integer line number in FileLineColLoc");
+      auto line = getToken().getUnsignedIntegerValue();
+      if (!line.hasValue())
+        return emitError("expected integer line number in FileLineColLoc");
+      consumeToken(Token::integer);
+
+      // Parse the ':'.
+      if (parseToken(Token::colon, "expected ':' in FileLineColLoc"))
+        return ParseFailure;
+
+      // Parse the column number.
+      if (getToken().isNot(Token::integer))
+        return emitError("expected integer column number in FileLineColLoc");
+      auto column = getToken().getUnsignedIntegerValue();
+      if (!column.hasValue())
+        return emitError("expected integer column number in FileLineColLoc");
+      consumeToken(Token::integer);
+
+      auto file = UniquedFilename::get(str, ctx);
+      *loc = FileLineColLoc::get(file, line.getValue(), column.getValue(), ctx);
+      return ParseSuccess;
+    }
+
+    // Otherwise, this is a NameLoc.
+    *loc = NameLoc::get(Identifier::get(str, ctx), ctx);
+    return ParseSuccess;
+  }
+
+  // Check for a 'unknown' for an unknown location.
+  if (getToken().is(Token::bare_identifier) &&
+      getToken().getSpelling() == "unknown") {
+    consumeToken(Token::bare_identifier);
+    *loc = UnknownLoc::get(ctx);
+    return ParseSuccess;
+  }
+
+  // If the token is 'fused', then this is a fused location.
+  if (getToken().is(Token::bare_identifier) &&
+      getToken().getSpelling() == "fused") {
+    consumeToken(Token::bare_identifier);
+
+    // Try to parse the optional metadata.
+    Attribute metadata;
+    if (consumeIf(Token::less)) {
+      metadata = parseAttribute();
+      if (!metadata)
+        return emitError("expected valid attribute metadata");
+      // Parse the '>' token.
+      if (parseToken(Token::greater,
+                     "expected '>' after fused location metadata"))
+        return ParseFailure;
+    }
+
+    // Parse the '['.
+    if (parseToken(Token::l_square, "expected '[' in fused location"))
+      return ParseFailure;
+
+    // Parse the internal locations.
+    llvm::SmallVector<Location, 4> locations;
+    do {
+      llvm::Optional<Location> newLoc;
+      if (parseLocationInstance(&newLoc))
+        return ParseFailure;
+      locations.push_back(*newLoc);
+
+      // Parse the ','.
+    } while (consumeIf(Token::comma));
+
+    // Parse the ']'.
+    if (parseToken(Token::r_square, "expected ']' in fused location"))
+      return ParseFailure;
+
+    // Return the fused location.
+    if (metadata)
+      *loc = FusedLoc::get(locations, metadata, getContext());
+    else
+      *loc = FusedLoc::get(locations, ctx);
+    return ParseSuccess;
+  }
+
+  // Check for the 'callsite' signifying a callsite location.
+  if (getToken().is(Token::bare_identifier) &&
+      getToken().getSpelling() == "callsite") {
+    consumeToken(Token::bare_identifier);
+
+    // Parse the '('.
+    if (parseToken(Token::l_paren, "expected '(' in callsite location"))
+      return ParseFailure;
+
+    // Parse the callee location.
+    llvm::Optional<Location> calleeLoc;
+    if (parseLocationInstance(&calleeLoc))
+      return ParseFailure;
+
+    // Parse the 'at'.
+    if (getToken().isNot(Token::bare_identifier) ||
+        getToken().getSpelling() != "at")
+      return emitError("expected 'at' in callsite location");
+    consumeToken(Token::bare_identifier);
+
+    // Parse the caller location.
+    llvm::Optional<Location> callerLoc;
+    if (parseLocationInstance(&callerLoc))
+      return ParseFailure;
+
+    // Parse the ')'.
+    if (parseToken(Token::r_paren, "expected ')' in callsite location"))
+      return ParseFailure;
+
+    // Return the callsite location.
+    *loc = CallSiteLoc::get(*calleeLoc, *callerLoc, ctx);
+    return ParseSuccess;
+  }
+
+  return emitError("expected location instance");
 }
 
 /// Attribute dictionary.
@@ -2488,7 +2679,7 @@ ParseResult FunctionParser::parseOptionalBlockArgList(
 ///
 ///  operation ::=
 ///    (ssa-id `=`)? string '(' ssa-use-list? ')' attribute-dict?
-///    `:` function-type
+///    `:` function-type trailing-location?
 ///
 ParseResult FunctionParser::parseOperation() {
   auto loc = getToken().getLoc();
@@ -2533,6 +2724,10 @@ ParseResult FunctionParser::parseOperation() {
       if (addDefinition({resultID, i, loc}, op->getResult(i)))
         return ParseFailure;
   }
+
+  // Try to parse the optional trailing location.
+  if (parseOptionalTrailingLocation(op))
+    return ParseFailure;
 
   return ParseSuccess;
 }
@@ -2890,7 +3085,7 @@ OperationInst *FunctionParser::parseCustomOperation() {
 /// For instruction.
 ///
 ///    ml-for-inst ::= `for` ssa-id `=` lower-bound `to` upper-bound
-///                   (`step` integer-literal)? `{` inst* `}`
+///                   (`step` integer-literal)? trailing-location? `{` inst* `}`
 ///
 ParseResult FunctionParser::parseForInst() {
   consumeToken(Token::kw_for);
@@ -2940,6 +3135,10 @@ ParseResult FunctionParser::parseForInst() {
 
   // Create SSA value definition for the induction variable.
   if (addDefinition({inductionVariableName, 0, loc}, forInst))
+    return ParseFailure;
+
+  // Try to parse the optional trailing location.
+  if (parseOptionalTrailingLocation(forInst))
     return ParseFailure;
 
   // If parsing of the for instruction body fails,
@@ -3178,8 +3377,9 @@ IntegerSet Parser::parseIntegerSetInline() {
 
 /// If instruction.
 ///
-///   ml-if-head ::= `if` ml-if-cond `{` inst* `}`
-///               | ml-if-head `else` `if` ml-if-cond `{` inst* `}`
+///   ml-if-head ::= `if` ml-if-cond trailing-location? `{` inst* `}`
+///               | ml-if-head `else` `if` ml-if-cond trailing-location?
+///                                                   `{` inst* `}`
 ///   ml-if-inst ::= ml-if-head
 ///               | ml-if-head `else` `{` inst* `}`
 ///
@@ -3198,6 +3398,10 @@ ParseResult FunctionParser::parseIfInst() {
 
   IfInst *ifInst =
       builder.createIf(getEncodedSourceLocation(loc), operands, set);
+
+  // Try to parse the optional trailing location.
+  if (parseOptionalTrailingLocation(ifInst))
+    return ParseFailure;
 
   Block *thenClause = ifInst->getThen();
 
@@ -3416,7 +3620,8 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
 
 /// Function declarations.
 ///
-///   function ::= `func` function-signature function-attributes? function-body?
+///   function ::= `func` function-signature function-attributes?
+///                                          trailing-location? function-body?
 ///   function-body ::= `{` block+ `}`
 ///   function-attributes ::= `attributes` attribute-dict
 ///
@@ -3447,6 +3652,10 @@ ParseResult ModuleParser::parseFunc() {
   if (function->getName() != name)
     return emitError(loc,
                      "redefinition of function named '" + name.str() + "'");
+
+  // Parse an optional trailing location.
+  if (parseOptionalTrailingLocation(function))
+    return ParseFailure;
 
   // External functions have no body.
   if (getToken().isNot(Token::l_brace))

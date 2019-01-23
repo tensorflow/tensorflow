@@ -51,8 +51,11 @@ public:
            ArrayRef<NamedAttribute> attrs = {});
   ~Function();
 
-  /// The source location the operation was defined or derived from.
+  /// The source location the function was defined or derived from.
   Location getLoc() const { return location; }
+
+  /// Set the source location this function was defined or derived from.
+  void setLoc(Location loc) { location = loc; }
 
   /// Return the name of this function, without the @.
   Identifier getName() const { return name; }

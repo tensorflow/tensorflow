@@ -40,6 +40,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Regex.h"
 using namespace mlir;
 
@@ -56,6 +57,13 @@ OpAsmPrinter::~OpAsmPrinter() {}
 //===----------------------------------------------------------------------===//
 // ModuleState
 //===----------------------------------------------------------------------===//
+
+// TODO(riverriddle) Rethink this flag when we have a pass that can remove debug
+// info or when we have a system for printer flags.
+static llvm::cl::opt<bool>
+    shouldPrintDebugInfoOpt("mlir-print-debuginfo",
+                            llvm::cl::desc("Include debug info in MLIR output"),
+                            llvm::cl::init(false));
 
 namespace {
 class ModuleState {
@@ -319,6 +327,7 @@ public:
   void printAttribute(Attribute attr);
   void printType(Type type);
   void print(const Function *fn);
+  void printLocation(Location loc);
 
   void printAffineMap(AffineMap map);
   void printAffineExpr(AffineExpr expr);
@@ -337,6 +346,8 @@ protected:
   void printIntegerSetId(int integerSetId) const;
   void printIntegerSetReference(IntegerSet integerSet);
   void printIntegerSetAlias(StringRef alias) const;
+  void printTrailingLocation(Location loc);
+  void printLocationInternal(Location loc);
   void printDenseElementsAttr(DenseElementsAttr attr);
 
   /// This enum is used to represent the binding stength of the enclosing
@@ -400,6 +411,59 @@ void ModulePrinter::printIntegerSetReference(IntegerSet integerSet) {
   } else {
     // Set not in module state so print inline.
     integerSet.print(os);
+  }
+}
+
+void ModulePrinter::printTrailingLocation(Location loc) {
+  // Check to see if we are printing debug information.
+  if (!shouldPrintDebugInfoOpt)
+    return;
+
+  // If the location is not unknown then print it.
+  if (!loc.isa<UnknownLoc>()) {
+    os << " ";
+    printLocation(loc);
+  }
+}
+
+void ModulePrinter::printLocationInternal(Location loc) {
+  switch (loc.getKind()) {
+  case Location::Kind::Unknown:
+    os << "unknown";
+    break;
+  case Location::Kind::FileLineCol: {
+    auto fileLoc = loc.cast<FileLineColLoc>();
+    os << '\"' << fileLoc.getFilename() << '\"' << ':' << fileLoc.getLine()
+       << ':' << fileLoc.getColumn();
+    break;
+  }
+  case Location::Kind::Name: {
+    os << '\"' << loc.cast<NameLoc>().getName() << '\"';
+    break;
+  }
+  case Location::Kind::CallSite: {
+    auto callLocation = loc.cast<CallSiteLoc>();
+    auto caller = callLocation.getCaller();
+    os << "callsite(";
+    printLocationInternal(callLocation.getCallee());
+    os << " at ";
+    printLocationInternal(caller);
+    os << ")";
+    break;
+  }
+  case Location::Kind::FusedLocation: {
+    auto fusedLoc = loc.cast<FusedLoc>();
+    os << "fused";
+    if (auto metadata = fusedLoc.getMetadata())
+      os << '<' << metadata << '>';
+    os << '[';
+    interleave(
+        fusedLoc.getLocations(),
+        [&](Location loc) { printLocationInternal(loc); },
+        [&]() { os << ", "; });
+    os << ']';
+    break;
+  }
   }
 }
 
@@ -467,6 +531,12 @@ static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
 
 void ModulePrinter::printFunctionReference(const Function *func) {
   os << '@' << func->getName();
+}
+
+void ModulePrinter::printLocation(Location loc) {
+  os << "loc(";
+  printLocationInternal(loc);
+  os << ')';
 }
 
 void ModulePrinter::printAttribute(Attribute attr) {
@@ -1201,6 +1271,9 @@ void FunctionPrinter::print() {
     printOptionalAttrDict(attrs);
   }
 
+  // Print the trailing location.
+  printTrailingLocation(function->getLoc());
+
   if (!function->empty()) {
     os << " {\n";
     for (const auto &block : *function)
@@ -1330,6 +1403,7 @@ void FunctionPrinter::print(const Instruction *inst) {
 void FunctionPrinter::print(const OperationInst *inst) {
   os.indent(currentIndent);
   printOperation(inst);
+  printTrailingLocation(inst->getLoc());
 }
 
 void FunctionPrinter::print(const ForInst *inst) {
@@ -1343,6 +1417,8 @@ void FunctionPrinter::print(const ForInst *inst) {
   if (inst->getStep() != 1)
     os << " step " << inst->getStep();
 
+  printTrailingLocation(inst->getLoc());
+
   os << " {\n";
   print(inst->getBody());
   os.indent(currentIndent) << "}";
@@ -1353,6 +1429,7 @@ void FunctionPrinter::print(const IfInst *inst) {
   IntegerSet set = inst->getIntegerSet();
   printIntegerSetReference(set);
   printDimAndSymbolList(inst->getInstOperands(), set.getNumDims());
+  printTrailingLocation(inst->getLoc());
   os << " {\n";
   print(inst->getThen());
   os.indent(currentIndent) << "}";
@@ -1676,44 +1753,8 @@ void Module::print(raw_ostream &os) const {
 void Module::dump() const { print(llvm::errs()); }
 
 void Location::print(raw_ostream &os) const {
-  switch (getKind()) {
-  case Kind::Unknown:
-    os << "[unknown-location]";
-    break;
-  case Kind::FileLineCol: {
-    auto fileLoc = cast<FileLineColLoc>();
-    os << fileLoc.getFilename() << ':' << fileLoc.getLine() << ':'
-       << fileLoc.getColumn();
-    break;
-  }
-  case Kind::Name: {
-    auto nameLoc = cast<NameLoc>();
-    os << nameLoc.getName();
-    break;
-  }
-  case Kind::CallSite: {
-    auto callLocation = cast<CallSiteLoc>();
-    auto callee = callLocation.getCallee();
-    auto caller = callLocation.getCaller();
-    callee.print(os);
-    if (caller.isa<CallSiteLoc>()) {
-      os << "\n at ";
-    }
-    caller.print(os);
-    break;
-  }
-  case Kind::FusedLocation: {
-    auto fusedLoc = cast<FusedLoc>();
-    if (auto metadata = fusedLoc.getMetadata())
-      os << '<' << metadata << '>';
-    os << '[';
-    interleave(
-        fusedLoc.getLocations(), [&](Location loc) { loc.print(os); },
-        [&]() { os << ", "; });
-    os << ']';
-    break;
-  }
-  }
+  ModuleState state(nullptr);
+  ModulePrinter(os, state).printLocation(*this);
 }
 
 void Location::dump() const { print(llvm::errs()); }
