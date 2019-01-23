@@ -350,10 +350,13 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
               }
               std::vector<Device*> matching_devices;
               device_set.FindMatchingDevices(parsed, &matching_devices);
-              if (matching_devices.size() != 1) {
+              if (matching_devices.empty()) {
+                return errors::InvalidArgument(
+                    "Unable to find any devices for spec ", *src_device);
+              } else if (matching_devices.size() != 1) {
                 // Convert a vector of devices to a string.
                 // Using absl::StrJoin did not work in Android builds.
-                string devices = "]";
+                string devices = "[";
                 for (Device* device : matching_devices) {
                   devices.append(device->name());
                   devices.append(", ");
