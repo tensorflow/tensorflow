@@ -28,7 +28,7 @@ cuda_py_test(
     name = "rnn_colorbot_test",
     srcs = ["rnn_colorbot_test.py"],
     additional_deps = [
-        ":rnn_colorbot",
+        ":rnn_colorbot_lib",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow:tensorflow_py",
     ],

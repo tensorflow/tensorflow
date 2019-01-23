@@ -27,7 +27,7 @@ cuda_py_test(
     name = "mnist_test",
     srcs = ["mnist_test.py"],
     additional_deps = [
-        ":mnist",
+        ":mnist_lib",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow:tensorflow_py",
     ],
@@ -37,7 +37,7 @@ cuda_py_test(
     name = "mnist_graph_test",
     srcs = ["mnist_graph_test.py"],
     additional_deps = [
-        ":mnist",
+        ":mnist_lib",
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
     ],

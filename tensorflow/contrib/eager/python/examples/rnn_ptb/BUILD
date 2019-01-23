@@ -28,7 +28,7 @@ cuda_py_test(
     name = "rnn_ptb_test",
     srcs = ["rnn_ptb_test.py"],
     additional_deps = [
-        ":rnn_ptb",
+        ":rnn_ptb_lib",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow:tensorflow_py",
     ],
@@ -39,7 +39,7 @@ cuda_py_test(
     name = "rnn_ptb_graph_test",
     srcs = ["rnn_ptb_graph_test.py"],
     additional_deps = [
-        ":rnn_ptb",
+        ":rnn_ptb_lib",
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
     ],
