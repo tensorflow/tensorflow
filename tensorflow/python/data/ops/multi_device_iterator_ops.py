@@ -126,13 +126,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
 
 
 class MultiDeviceIterator(object):
-  """An iterator over multiple devices.
-
-  @compatibility(eager)
-  MultiDeviceIterator isn't currently supported in Eager mode but support is
-  coming soon.
-  @end_compatibility
-  """
+  """An iterator over multiple devices."""
 
   def __init__(self,
                dataset,
