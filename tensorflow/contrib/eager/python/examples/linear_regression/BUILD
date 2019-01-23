@@ -9,6 +9,13 @@ py_binary(
     name = "linear_regression",
     srcs = ["linear_regression.py"],
     srcs_version = "PY2AND3",
+    deps = [":linear_regression_lib"],
+)
+
+py_library(
+    name = "linear_regression_lib",
+    srcs = ["linear_regression.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/eager/python:tfe",

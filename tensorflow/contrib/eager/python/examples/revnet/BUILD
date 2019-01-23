@@ -135,6 +135,13 @@ py_binary(
     name = "main",
     srcs = ["main.py"],
     srcs_version = "PY2AND3",
+    deps = [":main_lib"],
+)
+
+py_library(
+    name = "main_lib",
+    srcs = ["main.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",
         ":config",
@@ -149,7 +156,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",
-        ":main",
+        ":main_lib",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
@@ -161,7 +168,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",
-        ":main",
+        ":main_lib",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
@@ -173,7 +180,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",
-        ":main",
+        ":main_lib",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
