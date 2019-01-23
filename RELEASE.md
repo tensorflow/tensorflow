@@ -79,6 +79,8 @@
   * Enable nested dataset support in core `tf.data` transformations.
   * For `tf.data.Dataset` implementers: Added `tf.data.Dataset._element_structured property` to replace `Dataset.output_{types,shapes,classes}`.
 * Toolchains
+  * Fixed OpenSSL compatibility by avoiding `EVP_MD_CTX_destroy`.
+  * Added bounds checking to printing deprecation warnings.
   * Upgraded CUDA dependency to 10.0
   * To build with Android NDK r14b, add "#include <linux/compiler.h>" to android-ndk-r14b/platforms/android-14/arch-*/usr/include/linux/futex.h
   * Removed `:android_tensorflow_lib_selective_registration*` targets, use `:android_tensorflow_lib_lite*` targets instead.
