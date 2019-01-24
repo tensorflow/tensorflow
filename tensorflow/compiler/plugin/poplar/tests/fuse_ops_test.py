@@ -669,5 +669,82 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'vs/Relu/fusion/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
+  def testBiasApplyFixedLR(self):
+    input = np.ones((1,4,4,2))
+
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 bias_initializer=init_ops.ones_initializer(), name="a")
+        y = nn.relu(y)
+
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+      train = optimizer.minimize(loss)
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(report)
+      fe = {
+        x: input,
+      }
+      l, _ = sess.run((loss, train), fe)
+      tvars = variables.global_variables()
+      tvars_vals = sess.run(tvars)
+
+      found = False
+      for var, val in zip(tvars, tvars_vals):
+        print(var.name, val)
+        if var.name == "vs/a/bias:0":
+          # Value computed using the CPU backend
+          self.assertAllClose(val, [-0.6, -0.6])
+          found = True
+      self.assertTrue(found)
+
+  def testBiasApplyVariableLR(self):
+    input = np.ones((1,4,4,2))
+
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+      lr = array_ops.placeholder(np.float32, shape=[])
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 bias_initializer=init_ops.ones_initializer(), name="a")
+        y = nn.relu(y)
+
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(lr)
+      train = optimizer.minimize(loss)
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(report)
+      fe = {
+        x: input,
+        lr: 0.1,
+      }
+      l, _ = sess.run((loss, train), fe)
+      tvars = variables.global_variables()
+      tvars_vals = sess.run(tvars)
+
+      found = False
+      for var, val in zip(tvars, tvars_vals):
+        print(var.name, val)
+        if var.name == "vs/a/bias:0":
+          # Value computed using the CPU backend
+          self.assertAllClose(val, [-0.6, -0.6])
+          found = True
+      self.assertTrue(found)
+
 if __name__ == "__main__":
     googletest.main()

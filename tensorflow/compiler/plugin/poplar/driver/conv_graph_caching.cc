@@ -283,8 +283,9 @@ Status DoCachedConvolutionScaledInplaceVariableLearningRate(
 
   using namespace poputil::graphfn;
   auto f = VoidFunction(
-      graph, {input(in, "in"), input(deltas, "deltas"), input(scale, "scale"),
-              inout(w, "w")},
+      graph,
+      {input(in, "in"), input(deltas, "deltas"), input(scale, "scale"),
+       inout(w, "w")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         auto c_out = DoCachedConvolutionScaledInplace(
             graph, res, args[0], args[1], params, conv_type, seq, inst);
@@ -353,7 +354,7 @@ Status DoCachedBiasApplyConstLearningRate(
       graph, {inout(in, "in"), input(deltas, "deltas")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         popops::reduceWithOutput(graph, args[1], args[0], reduction_dims,
-                                 {popops::Operation::ADD, const_lr, true}, seq,
+                                 {popops::Operation::ADD, -const_lr, true}, seq,
                                  GetDebugName(inst));
       });
   res.bias_apply_graph_cache.emplace(key, f);
