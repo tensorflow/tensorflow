@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import test
@@ -224,6 +225,25 @@ class StandardizeWeightsTest(keras_parameterized.TestCase):
                                                  class_weights)
     expected = sample_weights * np.array([0.5, 1., 0.5, 0.5, 1.5])
     self.assertAllClose(weights, expected)
+
+  def test_dataset_with_class_weight(self):
+    model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+    model.compile('rmsprop', 'mse')
+
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+    class_weight_np = np.array([0.25, 0.25, 0.25, 0.25])
+    class_weight = dict(enumerate(class_weight_np))
+
+    model.fit(
+        dataset,
+        epochs=1,
+        steps_per_epoch=2,
+        verbose=1,
+        class_weight=class_weight)
 
 
 if __name__ == '__main__':
