@@ -691,8 +691,9 @@ LocalOp LocalComputationBuilder::Collapse(const LocalOp& operand,
   return xla::Collapse(operand.op(), dimensions);
 }
 
-LocalOp LocalComputationBuilder::CrossReplicaSum(const LocalOp& operand) {
-  return xla::CrossReplicaSum(operand.op());
+LocalOp LocalComputationBuilder::CrossReplicaSum(
+    const LocalOp& operand, absl::Span<const ReplicaGroup> replica_groups) {
+  return xla::CrossReplicaSum(operand.op(), replica_groups);
 }
 
 LocalOp LocalComputationBuilder::Slice(const LocalOp& operand,
