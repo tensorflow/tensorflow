@@ -72,12 +72,13 @@ class TypeInfoResolverTest(test.TestCase):
         owner_type=None)
     node = qual_names.resolve(node)
     graphs = cfg.build(node)
-    node = activity.resolve(node, entity_info)
-    node = reaching_definitions.resolve(node, entity_info, graphs,
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
+    node = reaching_definitions.resolve(node, ctx, graphs,
                                         reaching_definitions.Definition)
-    node = live_values.resolve(node, entity_info, {})
-    node = type_info.resolve(node, entity_info)
-    node = live_values.resolve(node, entity_info, {})
+    node = live_values.resolve(node, ctx, {})
+    node = type_info.resolve(node, ctx)
+    node = live_values.resolve(node, ctx, {})
     return node
 
   def test_constructor_detection(self):

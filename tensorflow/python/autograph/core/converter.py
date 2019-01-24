@@ -216,7 +216,8 @@ class ConversionOptions(object):
     """
 
     def as_qualified_name(o):
-      name = inspect_utils.getqualifiedname(ctx.info.namespace, o, max_depth=1)
+      name = inspect_utils.getqualifiedname(
+          ctx.info.namespace, o, max_depth=1)
       if not name:
         if isinstance(o, weakref.ref):
           # `o` might already be a weak reference, if this object was
@@ -349,7 +350,7 @@ class ProgramContext(object):
     self.dependency_cache[original_entity] = converted_ast
 
 
-class EntityContext(object):
+class EntityContext(transformer.Context):
   """Tracks the conversion of a single entity.
 
   This object is mutable, and is updated during conversion. Not thread safe.
@@ -361,8 +362,8 @@ class EntityContext(object):
   """
 
   def __init__(self, namer, entity_info, program_ctx):
+    super(EntityContext, self).__init__(entity_info)
     self.namer = namer
-    self.info = entity_info
     self.program = program_ctx
 
 
@@ -374,8 +375,7 @@ class Base(transformer.Base):
   """
 
   def __init__(self, ctx):
-    super(Base, self).__init__(ctx.info)
-    self.ctx = ctx  # Keeping this short because it's used frequently.
+    super(Base, self).__init__(ctx)
 
     self._used = False
     self._ast_depth = 0
@@ -475,13 +475,13 @@ def standard_analysis(node, context, is_initial=False):
   # TODO(mdan): Don't return a node because it's modified by reference.
   graphs = cfg.build(node)
   node = qual_names.resolve(node)
-  node = activity.resolve(node, context.info, None)
-  node = reaching_definitions.resolve(node, context.info, graphs, AnnotatedDef)
-  node = liveness.resolve(node, context.info, graphs)
-  node = live_values.resolve(node, context.info, config.PYTHON_LITERALS)
-  node = type_info.resolve(node, context.info)
+  node = activity.resolve(node, context, None)
+  node = reaching_definitions.resolve(node, context, graphs, AnnotatedDef)
+  node = liveness.resolve(node, context, graphs)
+  node = live_values.resolve(node, context, config.PYTHON_LITERALS)
+  node = type_info.resolve(node, context)
   # This second call allows resolving first-order class attributes.
-  node = live_values.resolve(node, context.info, config.PYTHON_LITERALS)
+  node = live_values.resolve(node, context, config.PYTHON_LITERALS)
   if is_initial:
     anno.dup(
         node,

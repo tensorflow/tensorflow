@@ -40,9 +40,10 @@ class DefinitionInfoTest(test.TestCase):
         arg_types=None,
         owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, entity_info)
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
-    node = reaching_definitions.resolve(node, entity_info, graphs,
+    node = reaching_definitions.resolve(node, ctx, graphs,
                                         reaching_definitions.Definition)
     return node
 
