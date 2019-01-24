@@ -2721,7 +2721,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
   return InvalidArgument(
       "Select operation with non-scalar predicate with dimensionality "
-      " different from the other operands: %s.",
+      "different from the other operands: %s.",
       ShapeUtil::HumanString(pred));
 }
 

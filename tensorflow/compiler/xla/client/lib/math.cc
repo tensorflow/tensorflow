@@ -389,4 +389,82 @@ XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
   });
 }
 
+XlaOp NextAfter(XlaOp from, XlaOp to) {
+  auto builder = from.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, builder->GetShape(from));
+    int bitwidth = primitive_util::BitWidth(shape.element_type());
+    auto int_type = primitive_util::UnsignedIntegralTypeForBitWidth(bitwidth);
+    auto from_as_int = BitcastConvertType(from, int_type);
+    auto to_as_int = BitcastConvertType(to, int_type);
+
+    // The result is NaN if either "from" or "to" are NaN.
+    auto from_is_nan = Ne(from, from);
+    auto to_is_nan = Ne(to, to);
+    auto nan_input = Or(from_is_nan, to_is_nan);
+    auto result_for_nan =
+        Broadcast(ScalarLike(from, std::numeric_limits<double>::quiet_NaN()),
+                  shape.dimensions());
+    result_for_nan = BitcastConvertType(result_for_nan, int_type);
+
+    // The sign bit is the MSB.
+    const int64 sign_mask = int64{1} << (bitwidth - 1);
+    // Discard the sign bit to make the result non-negative.
+    auto from_abs = And(from_as_int, ScalarLike(from_as_int, ~sign_mask));
+    auto to_abs = And(to_as_int, ScalarLike(to_as_int, ~sign_mask));
+
+    // When both "from" and "to" are equal, the result is "to".
+    // N.B. It would not make a difference if we chose the result to be "from".
+    auto from_and_to_are_equal = Eq(from_as_int, to_as_int);
+    auto result_for_equal = to_as_int;
+
+    // When both "from" and "to" are both 0, the result is "to". This ensures we
+    // get a zero signed like "to".
+    auto from_is_zero = Eq(from_abs, ZerosLike(from_abs));
+    auto to_is_zero = Eq(to_abs, ZerosLike(to_abs));
+    auto result_for_both_zero = to_as_int;
+
+    auto from_sign = And(from_as_int, ScalarLike(from_as_int, sign_mask));
+    auto to_sign = And(to_as_int, ScalarLike(to_as_int, sign_mask));
+
+    // If from == 0 && to != 0, we need to return the smallest subnormal number
+    // signed like "to".
+    auto result_for_from_zero_to_non_zero =
+        Or(to_sign, ScalarLike(from_as_int, 1));
+
+    // If the sign of "from" and "to" disagree:
+    // - we need to make the magnitude of "from" smaller so that it is closer to
+    //   zero.
+    //
+    // Otherwise the signs agree:
+    // - "from" with a magnitude larger than "to" means we need to make the
+    //   magnitude smaller.
+    // - "from" with a magnitude smaller than "to" means we need to make the
+    //   magnitude larger.
+    // - "from" with the same magnitude and sign as "to" has already been
+    //   handled.
+    auto signs_disagree = Ne(from_sign, to_sign);
+    auto from_magnitude_larger_than_to = Gt(from_abs, to_abs);
+    auto result_has_smaller_magnitude =
+        Or(from_magnitude_larger_than_to, signs_disagree);
+    auto magnitude_adjustment =
+        Select(result_has_smaller_magnitude,
+               Broadcast(ScalarLike(from_as_int, -1), shape.dimensions()),
+               Broadcast(ScalarLike(from_as_int, 1), shape.dimensions()));
+    auto result = Add(from_as_int, magnitude_adjustment);
+    // Handle from == ±0.
+    result = Select(from_is_zero,
+                    Select(to_is_zero, result_for_both_zero,
+                           result_for_from_zero_to_non_zero),
+                    result);
+    // Handle from == to.
+    result = Select(from_and_to_are_equal, result_for_equal, result);
+    // Handle isnan(from) || isnan(to).
+    result = Select(nan_input, result_for_nan, result);
+
+    // Cast back to the original type.
+    return BitcastConvertType(result, shape.element_type());
+  });
+}
+
 }  // namespace xla
