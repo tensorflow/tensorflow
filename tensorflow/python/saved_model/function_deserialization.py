@@ -198,6 +198,8 @@ def load_function_def_library(library):
     copy = _fix_fdef(fdef, functions)
 
     func_graph = function_def_lib.function_def_to_graph(copy)
+    for dep in _list_function_deps(fdef):
+      functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)
     func.add_to_graph()
 

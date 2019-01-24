@@ -191,10 +191,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = tracking.AutoCheckpointable()
     root.g = g
-    # TODO(vbardiovsky): Enable this test. For this to work, we must ensure that
-    # concrete_function._inference_function._graph._functions contains all
-    # functions that were on the graph before saving.
-    imported = self.cycle(root, 1)
+    imported = self.cycle(root, cycles)
     imported.g(constant_op.constant([1.0]))
 
   def test_function_with_default_bool_input(self, cycles):
@@ -460,10 +457,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.bias = bias
     root.g = h
 
-    # TODO(vbardiovsky): Enable this test. For this to work, we must ensure that
-    # concrete_function._inference_function._graph._functions contains all
-    # functions that were on the graph before saving.
-    imported = self.cycle(root, 1)
+    imported = self.cycle(root, cycles)
     with backprop.GradientTape() as t:
       x = constant_op.constant([3.5])
       loss = imported.g(x)
