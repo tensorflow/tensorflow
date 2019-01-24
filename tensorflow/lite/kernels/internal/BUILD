@@ -405,6 +405,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
