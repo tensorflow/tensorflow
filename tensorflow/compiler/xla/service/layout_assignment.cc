@@ -1585,8 +1585,9 @@ Status SetFusionLayouts(HloInstruction* fusion) {
           fused_instruction->mutable_shape()));
     } else if (fused_instruction->opcode() == HloOpcode::kInfeed) {
       // Nop; leave the infeed layout alone.
-    } else {
+    } else if (fusion->fusion_kind() != HloInstruction::FusionKind::kCustom) {
       // Other instructions don't have layouts inside of fusion nodes.
+      // But do not clear layouts for other instructions in custom fusion nodes.
       LayoutUtil::ClearLayout(fused_instruction->mutable_shape());
     }
   }
