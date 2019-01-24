@@ -1356,8 +1356,11 @@ class MklConvOp : public OpKernel {
     stream(stream::kind::eager).submit(net).wait();
   }
 
-  inline bool IsFilterCacheEmpty(OpKernelContext* context)
-      SHARED_LOCKS_REQUIRED(mu_) {
+  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
+  // be acquired before entering the function, since it is acquired
+  // inside the function.
+  inline bool IsFilterCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
     const Tensor& cached_filter_data_tensor =
         *cached_filter_data_ptensor_.AccessTensor(context);
     return (cached_filter_data_tensor.NumElements() == 0);
@@ -1369,7 +1372,8 @@ class MklConvOp : public OpKernel {
                    const std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
                    Tfilter* filter_data, const Tensor& filter_tensor,
                    MklDnnData<Tfilter>& filter, const memory::desc& filter_md)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
     const Tensor& cached_filter_data_tensor =
         *cached_filter_data_ptensor_.AccessTensor(context);
 
@@ -1393,7 +1397,8 @@ class MklConvOp : public OpKernel {
 
   Tfilter* GetCachedFilter(OpKernelContext* context,
                            const memory::format& filter_mf)
-      SHARED_LOCKS_REQUIRED(mu_) {
+      LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
     const Tensor& cached_filter_data =
         *cached_filter_data_ptensor_.AccessTensor(context);
     const Tensor& cached_filter_md =

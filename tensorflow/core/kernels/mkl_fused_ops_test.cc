@@ -437,8 +437,10 @@ class FilterCacheTest : public OpsTestBase {
     ConvMklToTF<T> conv_comp;
     conv_comp.ConvertAndCompare(dtype, output, output_layout, expected);
 
-    // Run kernel again to ensure cached data is being reused
-    // TODO: Check if data is actually cached and reused
+    // TODO(bhavanis): For now, we rely on internal performance tests to
+    // determine if filter data is being cached and reused.
+    // However, we still need to add a check here to determine if this is
+    // still the case by inspecting the contents of the persistent tensor.
     TF_ASSERT_OK(RunOpKernel());
 
     // Compare output to expected results
