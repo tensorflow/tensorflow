@@ -1625,7 +1625,8 @@ class MklQuantizedConv2DSumReluOp
       auto dst_md = summand_mkl_shape.GetMklLayout();
       if (summand_mkl_shape.IsMklTensor()) {
         if (summand_type == DT_QINT8) {
-          summand.UnsafeCopyFromInternal(summand, DT_QUINT8, summand.shape());
+          OP_REQUIRES_OK(context, summand.BitcastFrom(summand, DT_QUINT8,
+                                                      summand.shape()));
           dst_md.data.data_type =
               static_cast<mkldnn_data_type_t>(MklDnnType<Toutput>());
           summand_mkl_shape.SetMklLayout(&dst_md);
