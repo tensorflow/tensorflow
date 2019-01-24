@@ -406,7 +406,7 @@ def tf_cc_shared_object(
         framework_so = tf_binary_additional_srcs(),
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
-        visibility = ["//visibility:private"],
+        visibility = None,
         **kwargs):
     if per_os_targets:
         names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
@@ -462,7 +462,7 @@ def tf_cc_binary(
         copts = tf_copts(),
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
-        visibility = ["//visibility:private"],
+        visibility = None,
         **kwargs):
     if per_os_targets:
         names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
