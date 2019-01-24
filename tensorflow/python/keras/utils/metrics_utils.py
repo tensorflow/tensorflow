@@ -37,12 +37,10 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.tf_export import keras_export
 
 NEG_INF = -1e10
 
 
-@keras_export('keras.metrics.Reduction')
 class Reduction(Enum):
   """Types of metrics reduction.
 
