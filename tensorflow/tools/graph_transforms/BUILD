@@ -12,6 +12,7 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
     "tf_py_test",
+    "if_not_v2",
 )
 
 exports_files(["LICENSE"])
@@ -131,12 +132,26 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
-        "//tensorflow/contrib/rnn:gru_ops_op_lib",
-        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
         "//tensorflow/core/kernels:quantization_utils",
     ] + if_not_windows([
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
         "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
+        "//tensorflow/core:user_ops_op_lib",
+        "//tensorflow/core:training_ops_op_lib",
+        "//tensorflow/core:string_ops_op_lib",
+        "//tensorflow/core:remote_fused_graph_ops_op_lib",
+        "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:manip_ops_op_lib",
+        "//tensorflow/core:list_ops_op_lib",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:control_flow_ops_op_lib",
+        "//tensorflow/core:candidate_sampling_ops_op_lib",
+        "//tensorflow/core:array_ops_op_lib",
+    ]) + if_not_v2([
+        "//tensorflow/contrib/rnn:gru_ops_op_lib",
+        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
     ]),
     alwayslink = 1,
 )
@@ -173,6 +188,7 @@ tf_cc_test(
         ":transforms_lib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

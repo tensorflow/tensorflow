@@ -403,6 +403,117 @@ class AdjustSaturationTest(xla_test.XLATestCase):
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
+class ResizeNearestNeighborTest(xla_test.XLATestCase):
+  # TODO(ilch): Wrap each test with `for dtype in self.float_types:`
+  # Some work to understand how that should be done was presented here:
+  # cl/227850213
+
+  def _assertForwardOpMatchesExpected(self,
+                                      image_np,
+                                      target_shape,
+                                      expected=None,
+                                      large_tolerance=False,
+                                      align_corners=True):
+    if expected is None:
+      self.fail("expected must be specified")
+    with self.cached_session() as sess, self.test_scope():
+      image = array_ops.placeholder(image_np.dtype)
+      resized = gen_image_ops.resize_nearest_neighbor(
+          image, target_shape, align_corners=align_corners)
+      out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
+      if large_tolerance:
+        self.assertAllClose(
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.03, atol=0.1)
+      else:
+        self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
+
+  def testAlignCorners2x2To1x1(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2], [3, 4]], dtype=np.float32), [1, 1],
+        expected=np.array([[1]], dtype=np.float32))
+
+  def testAlignCorners1x1To2x2(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1]], dtype=np.float32), [2, 2],
+        expected=np.array([[1, 1], [1, 1]], dtype=np.float32))
+
+  def testAlignCorners1x1To3x3(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1]], dtype=np.float32), [3, 3],
+        expected=np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]], dtype=np.float32))
+
+  def testAlignCorners2x2To3x3(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2], [3, 4]], dtype=np.float32), [3, 3],
+        expected=np.array([[1, 2, 2], [3, 4, 4], [3, 4, 4]], dtype=np.float32))
+
+  def testAlignCorners2x2To4x4(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2], [3, 4]], dtype=np.float32), [4, 4],
+        expected=np.array(
+            [[1, 1, 2, 2], [1, 1, 2, 2], [3, 3, 4, 4], [3, 3, 4, 4]],
+            dtype=np.float32))
+
+  def testAlignCorners3x3To2x2(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32), [2, 2],
+        expected=np.array([[1, 3], [7, 9]], dtype=np.float32))
+
+  def testAlignCorners4x4To3x3(self):
+    self._assertForwardOpMatchesExpected(
+        np.array(
+            [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]],
+            dtype=np.float32), [3, 3],
+        expected=np.array([[1, 3, 4], [9, 11, 12], [13, 15, 16]],
+                          dtype=np.float32))
+
+  def testAlignCorners3x3To4x4(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32), [4, 4],
+        expected=np.array(
+            [[1, 2, 2, 3], [4, 5, 5, 6], [4, 5, 5, 6], [7, 8, 8, 9]],
+            dtype=np.float32))
+
+  def testAlignCorners3x3To6x6(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32), [6, 6],
+        expected=np.array(
+            [[1, 1, 2, 2, 3, 3], [1, 1, 2, 2, 3, 3], [4, 4, 5, 5, 6, 6],
+             [4, 4, 5, 5, 6, 6], [7, 7, 8, 8, 9, 9], [7, 7, 8, 8, 9, 9]],
+            dtype=np.float32))
+
+  def testAlignCorners3x3To9x9(self):
+    # The expected matrix might look uneven in terms of how many of each number
+    # there is, but this is an artifact of doing the dilation and convolution
+    # iteratively. The behavior is less esoteric in the 3x3To12x12 case below.
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32), [9, 9],
+        expected=np.array(
+            [[1, 2, 2, 2, 2, 3, 3, 3, 3], [4, 5, 5, 5, 5, 6, 6, 6, 6],
+             [4, 5, 5, 5, 5, 6, 6, 6, 6], [4, 5, 5, 5, 5, 6, 6, 6, 6],
+             [4, 5, 5, 5, 5, 6, 6, 6, 6], [7, 8, 8, 8, 8, 9, 9, 9, 9],
+             [7, 8, 8, 8, 8, 9, 9, 9, 9], [7, 8, 8, 8, 8, 9, 9, 9, 9],
+             [7, 8, 8, 8, 8, 9, 9, 9, 9]],
+            dtype=np.float32))
+
+  def testAlignCorners3x3To12x12(self):
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32), [12, 12],
+        expected=np.array([[1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
+                          dtype=np.float32))
+
+
 class ResizeBilinearTest(xla_test.XLATestCase):
 
   def _assertForwardOpMatchesExpected(self,
@@ -444,14 +555,14 @@ class ResizeBilinearTest(xla_test.XLATestCase):
       self.assertAllCloseAccordingToType(expected[np.newaxis, :, :, np.newaxis],
                                          out)
 
-  def testAlignCorners1x2To3x2(self):
+  def testAlignCorners1x2To3x3(self):
     for dtype in self.float_types:
       self._assertForwardOpMatchesExpected(
           np.array([[1, 2]], dtype=dtype), [3, 3],
           expected=np.array([[1, 1.5, 2], [1, 1.5, 2], [1, 1.5, 2]],
                             dtype=np.float32))
 
-  def testAlignCorners1x2To3x2Grad(self):
+  def testAlignCorners1x2To3x3Grad(self):
     for dtype in self.float_types:
       self._assertBackwardOpMatchesExpected(
           np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float32),

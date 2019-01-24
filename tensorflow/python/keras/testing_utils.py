@@ -25,7 +25,13 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
+from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
+from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
+from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
+from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
+from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
@@ -162,10 +168,13 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # See b/120160788 for more details. This should be mitigated after 2.0.
   model = keras.models.Model(x, layer(x))
   if _thread_local_data.run_eagerly is not None:
-    model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'],
-                  run_eagerly=should_run_eagerly())
+    model.compile(
+        'rmsprop',
+        'mse',
+        weighted_metrics=['acc'],
+        run_eagerly=should_run_eagerly())
   else:
-    model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'])
+    model.compile('rmsprop', 'mse', weighted_metrics=['acc'])
   model.train_on_batch(input_data, actual_output)
 
   # test as first layer in Sequential API
@@ -355,11 +364,20 @@ class _SubclassModel(keras.Model):
 
   def __init__(self, layers):
     super(_SubclassModel, self).__init__()
-    self.all_layers = layers
+    # Note that clone and build doesn't support lists of layers in subclassed
+    # models. Adding each layer directly here.
+    for i, layer in enumerate(layers):
+      setattr(self, self._layer_name_for_i(i), layer)
+
+    self.num_layers = len(layers)
+
+  def _layer_name_for_i(self, i):
+    return 'layer{}'.format(i)
 
   def call(self, inputs, **kwargs):
     x = inputs
-    for layer in self.all_layers:
+    for i in range(self.num_layers):
+      layer = getattr(self, self._layer_name_for_i(i))
       x = layer(x)
     return x
 
@@ -626,3 +644,39 @@ def get_multi_io_model(
     return keras.Model(inputs, outputs)
 
   raise ValueError('Unknown model type {}'.format(model_type))
+
+
+_V2_OPTIMIZER_MAP = {
+    'adadelta': adadelta_v2.Adadelta,
+    'adagrad': adagrad_v2.Adagrad,
+    'adam': adam_v2.Adam,
+    'adamax': adamax_v2.Adamax,
+    'nadam': nadam_v2.Nadam,
+    'rmsprop': rmsprop_v2.RMSprop,
+    'sgd': gradient_descent_v2.SGD
+}
+
+
+def get_v2_optimizer(name, **kwargs):
+  """Get the v2 optimizer requested.
+
+  This is only necessary until v2 are the default, as we are testing in Eager,
+  and Eager + v1 optimizers fail tests. When we are in v2, the strings alone
+  should be sufficient, and this mapping can theoretically be removed.
+
+  Args:
+    name: string name of Keras v2 optimizer.
+    **kwargs: any kwargs to pass to the optimizer constructor.
+
+  Returns:
+    Initialized Keras v2 optimizer.
+
+  Raises:
+    ValueError: if an unknown name was passed.
+  """
+  try:
+    return _V2_OPTIMIZER_MAP[name](**kwargs)
+  except KeyError:
+    raise ValueError(
+        'Could not find requested v2 optimizer: {}\nValid choices: {}'.format(
+            name, list(_V2_OPTIMIZER_MAP.keys())))

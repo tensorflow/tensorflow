@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/lib/eager_profiler.h"
 #include "tensorflow/core/public/version.h"
 
 struct TFE_ContextOptions {
@@ -82,6 +83,12 @@ struct TFE_TensorHandle {
   TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
 
   tensorflow::TensorHandle* handle;
+
+  // Create a symbolic tensor.
+  TFE_TensorHandle(TF_Output t, TF_DataType dtype)
+      : handle(new tensorflow::TensorHandle(
+            tensorflow::OutputGraphNode{t.oper, t.index},
+            static_cast<tensorflow::DataType>(dtype))) {}
 };
 
 struct TFE_TensorDebugInfo {
@@ -100,11 +107,38 @@ struct TFE_Op {
   tensorflow::EagerOperation operation;
 };
 
+struct TFE_Profiler {
+  TFE_Profiler(TFE_Context* ctx)
+      : profiler(tensorflow::EagerProfiler::Create(&ctx->context)) {}
+
+  std::unique_ptr<tensorflow::EagerProfiler> profiler;
+};
+
 namespace tensorflow {
 // Set an AttrValue on the op. Doesn't handle the list types.
 void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,
                           const char* attr_name, TF_Status* status);
 }  // namespace tensorflow
+
+struct TFE_TraceContext {
+  TF_Graph* const graph;
+
+  unsigned int node_counter = 0;
+  // Each tensor handle will have its ref count incremented when it's added as a
+  // map key, and decremented when this object is destroyed.
+  std::map<tensorflow::TensorHandle*, TF_Output> input_tensor_map;
+  std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>* input_tensors =
+      nullptr;
+
+  TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
+
+  ~TFE_TraceContext() {
+    delete input_tensors;
+    for (auto input : input_tensor_map) {
+      input.first->Unref();
+    }
+  }
+};
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

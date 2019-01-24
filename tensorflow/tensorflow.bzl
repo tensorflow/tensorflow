@@ -9,6 +9,7 @@ load(
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
     "tf_cuda_tests_tags",
+    "tf_exec_compatible_with",
     "tf_sycl_tests_tags",
 )
 load(
@@ -785,6 +786,7 @@ def tf_cc_test(
             ],
         ),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),
+        exec_compatible_with = tf_exec_compatible_with(kwargs),
         # Nested select() statements seem not to be supported when passed to
         # linkstatic, and we already have a cuda select() passed in to this
         # function.
@@ -897,6 +899,7 @@ def tf_cuda_only_cc_test(
         args = [],
         kernels = [],
         linkopts = []):
+    tags = tags + tf_cuda_tests_tags()
     native.cc_test(
         name = "%s%s" % (name, "_gpu"),
         srcs = srcs + tf_binary_additional_srcs(),
@@ -919,7 +922,8 @@ def tf_cuda_only_cc_test(
             clean_dep("//tensorflow:darwin"): 1,
             "//conditions:default": 0,
         }),
-        tags = tags + tf_cuda_tests_tags(),
+        tags = tags,
+        exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
     )
 
 register_extension_info(
@@ -983,6 +987,7 @@ def tf_cc_test_mkl(
             }) + _rpath_linkopts(src_to_test_name(src)),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
             data = data + tf_binary_dynamic_kernel_dsos(kernels),
+            exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
             linkstatic = linkstatic,
             tags = tags,
             size = size,
@@ -1644,7 +1649,9 @@ def tf_py_wrap_cc(
         swig_includes = [],
         deps = [],
         copts = [],
+        version_script = None,
         **kwargs):
+    """Builds a Python extension module."""
     module_name = name.split("/")[-1]
 
     # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
@@ -1663,6 +1670,11 @@ def tf_py_wrap_cc(
         toolchain_deps = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
         deps = deps + extra_deps,
     )
+    if not version_script:
+        version_script = select({
+            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
+            "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
+        })
     vscriptname = name + "_versionscript"
     _append_init_to_versionscript(
         name = vscriptname,
@@ -1671,10 +1683,7 @@ def tf_py_wrap_cc(
             "//conditions:default": True,
         }),
         module_name = module_name,
-        template_file = select({
-            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
-            "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
-        }),
+        template_file = version_script,
     )
     extra_linkopts = select({
         "@local_config_cuda//cuda:darwin": [
@@ -1752,6 +1761,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             "//conditions:default": [],
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
         }) + tf_binary_dynamic_kernel_dsos(kernels),
+        exec_compatible_with = tf_exec_compatible_with(kwargs),
         **kwargs
     )
 
@@ -1793,10 +1803,20 @@ def tf_py_test(
         tags = [],
         shard_count = 1,
         additional_deps = [],
+        additional_visibility = [],
         kernels = [],
         flaky = 0,
+        xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False):
+    """Create one or more python tests with extra tensorflow dependencies."""
+    xla_test_true_list = []
+
+    # xla_enable_strict_auto_jit is used to run Tensorflow unit tests with all XLA compilable
+    # kernels compiled with XLA.
+    if xla_enable_strict_auto_jit:
+        xla_enabled = True
+        xla_test_true_list += ["//tensorflow/python:is_xla_test_true"]
     if xla_enabled:
         additional_deps = additional_deps + tf_additional_xla_deps_py()
     if grpc_enabled:
@@ -1813,11 +1833,11 @@ def tf_py_test(
         shard_count = shard_count,
         srcs_version = "PY2AND3",
         tags = tags,
-        visibility = [clean_dep("//tensorflow:internal")],
+        visibility = [clean_dep("//tensorflow:internal")] + additional_visibility,
         deps = [
             clean_dep("//tensorflow/python:extra_py_tests_deps"),
             clean_dep("//tensorflow/python:gradient_checker"),
-        ] + additional_deps,
+        ] + additional_deps + xla_test_true_list,
     )
 
 register_extension_info(
@@ -1837,8 +1857,12 @@ def cuda_py_test(
         kernels = [],
         tags = [],
         flaky = 0,
+        xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False):
+    # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
+    # XLA tests once enough compute resources are available.
+    _ignored = [xla_enable_strict_auto_jit]
     if main == None:
         main = name + ".py"
     for config in ["cpu", "gpu"]:
@@ -1861,6 +1885,7 @@ def cuda_py_test(
             shard_count = shard_count,
             tags = test_tags,
             xla_enabled = xla_enabled,
+            xla_enable_strict_auto_jit = False,
         )
 
 register_extension_info(
@@ -1914,6 +1939,7 @@ def py_tests(
         tags = [],
         shard_count = 1,
         prefix = "",
+        xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False):
     for src in srcs:
@@ -1932,6 +1958,7 @@ def py_tests(
             shard_count = shard_count,
             tags = tags,
             xla_enabled = xla_enabled,
+            xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
         )
 
 def cuda_py_tests(
@@ -1944,8 +1971,12 @@ def cuda_py_tests(
         shard_count = 1,
         tags = [],
         prefix = "",
+        xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False):
+    # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
+    # XLA tests once enough compute resources are available.
+    _ignored = [xla_enable_strict_auto_jit]
     test_tags = tags + tf_cuda_tests_tags()
     py_tests(
         name = name,
@@ -1959,6 +1990,7 @@ def cuda_py_tests(
         shard_count = shard_count,
         tags = test_tags,
         xla_enabled = xla_enabled,
+        xla_enable_strict_auto_jit = False,
     )
 
 # Creates a genrule named <name> for running tools/proto_text's generator to

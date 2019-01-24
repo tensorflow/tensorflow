@@ -222,64 +222,6 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
               ElementsAre(0, 0, 0, 0.123f, 0, 0));
 }
 
-TEST(BufferMapTest, RemoveTensorFlowTensor) {
-  tensorflow::Tensor t1 =
-      MakeTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
-  BufferMap buffer_map;
-  buffer_map.SetFromTensorFlow(0, t1);
-  EXPECT_TRUE(buffer_map.HasTensor(0));
-  buffer_map.RemoveTensor(0);
-  EXPECT_FALSE(buffer_map.HasTensor(0));
-}
-
-TEST(BufferMapTest, RemoveTfLiteTensor) {
-  UniqueTfLiteTensor t2 =
-      MakeLiteTensor<int>({1, 2, 4}, {0, 0, 0, 3, 0, 0, 1, 2});
-  BufferMap buffer_map;
-  buffer_map.SetFromTfLite(0, t2.get());
-  EXPECT_TRUE(buffer_map.HasTensor(0));
-  buffer_map.RemoveTensor(0);
-  EXPECT_FALSE(buffer_map.HasTensor(0));
-}
-
-TEST(BufferMapTest, RemoveTensorsInSet) {
-  tensorflow::Tensor t1 =
-      MakeTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
-  UniqueTfLiteTensor t2 =
-      MakeLiteTensor<int>({1, 2, 4}, {0, 0, 0, 3, 0, 0, 1, 2});
-  BufferMap buffer_map;
-
-  auto list_existing_tensors = [&buffer_map]() {
-    std::vector<int> result;
-    for (int i : {0, 1, 2, 3}) {
-      if (buffer_map.HasTensor(i)) {
-        result.push_back(i);
-      }
-    }
-    return result;
-  };
-
-  buffer_map.SetFromTensorFlow(0, t1);
-  buffer_map.SetFromTfLite(1, t2.get());
-  buffer_map.SetFromTfLite(2, t2.get());
-  buffer_map.SetFromTensorFlow(3, t1);
-
-  EXPECT_THAT(list_existing_tensors(), ElementsAre(0, 1, 2, 3));
-
-  buffer_map.RemoveTensorsNotInSet({0, 3});
-  EXPECT_THAT(list_existing_tensors(), ElementsAre(0, 1, 2, 3));
-
-  buffer_map.RemoveTensorsNotInSet({});
-  EXPECT_THAT(list_existing_tensors(), ElementsAre(1, 2));
-}
-
-TEST(BufferMapTest, Forwardable) {
-  BufferMap buffer_map;
-  EXPECT_FALSE(buffer_map.IsForwardable(0));
-  buffer_map.SetForwardable(0);
-  EXPECT_TRUE(buffer_map.IsForwardable(0));
-}
-
 }  // namespace
 }  // namespace flex
 }  // namespace tflite

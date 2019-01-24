@@ -162,11 +162,12 @@ TEST_P(EigenMatMulTest, DoIt) {
   CheckMatrixMultiply(*a, *b, *c);
 }
 
-INSTANTIATE_TEST_CASE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
-                        ::testing::Combine(::testing::ValuesIn(MatMulShapes),
-                                           ::testing::Bool(), ::testing::Bool(),
-                                           ::testing::Bool()),
-                        EigenMatMulTest::Name);
+INSTANTIATE_TEST_SUITE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
+                         ::testing::Combine(::testing::ValuesIn(MatMulShapes),
+                                            ::testing::Bool(),
+                                            ::testing::Bool(),
+                                            ::testing::Bool()),
+                         EigenMatMulTest::Name);
 
 #ifdef INTEL_MKL
 class MKLMatMulTest : public CpuRuntimeTest,

@@ -62,6 +62,17 @@ class DynamicDimensionInferenceTest : public HloTestBase {
     return module_->AddEmbeddedComputation(embedded_builder.Build());
   }
 
+  HloComputation* GetGe() {
+    auto embedded_builder = HloComputation::Builder("ge");
+    auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
+    auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
+    embedded_builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGe, lhs, rhs));
+    return module_->AddEmbeddedComputation(embedded_builder.Build());
+  }
+
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<DynamicDimensionInference> inference_;
   const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
@@ -487,7 +498,7 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
   // Test the ability to trace select and scatter batch dimensions.
   auto builder = HloComputation::Builder(TestName());
   auto input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
-  auto output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  auto source_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
 
   Window window;
   // First dimension is unchanged.
@@ -514,22 +525,26 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
       /*parameter_number=*/0, input_shape, "A"));
   auto* size_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/1, scalar_shape_, "size_param"));
+  auto* source = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, source_shape, "B"));
 
   auto init = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
 
-  auto* reduce_window =
-      builder.AddInstruction(HloInstruction::CreateReduceWindow(
-          output_shape, a_param, init, window, GetAdd()));
+  auto* sns = builder.AddInstruction(HloInstruction::CreateSelectAndScatter(
+      input_shape, a_param, GetGe(), window, source, init, GetAdd()));
 
   module_->AddEntryComputation(builder.Build());
 
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{2, {}, 0}));
 
   TF_ASSERT_OK(RunInference());
-  EXPECT_EQ(inference_->GetDynamicSize(reduce_window, {}, 0), size_param);
+  EXPECT_EQ(inference_->GetDynamicSize(sns, {}, 0), size_param);
 }
 
 }  // namespace

@@ -158,6 +158,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       line += ' ' * (positions[i] - len(line))
     print_fn(line)
 
+  print_fn('Model: "{}"'.format(model.name))
   print_fn('_' * line_length)
   print_row(to_display, positions)
   print_fn('=' * line_length)
@@ -196,7 +197,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
         continue
 
       for inbound_layer, node_index, tensor_index, _ in node.iterate_inbound():
-        connections.append('{}[{}][{}]'.format(inbound_layer, node_index,
+        connections.append('{}[{}][{}]'.format(inbound_layer.name, node_index,
                                                tensor_index))
 
     name = layer.name

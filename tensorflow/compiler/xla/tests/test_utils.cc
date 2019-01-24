@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -274,16 +275,9 @@ bool NeedsInitValue(const HloUse& use) {
 
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
-Literal MakeRandomIndex(absl::Span<const int64> index_space,
-                        std::minstd_rand0* engine) {
-  std::vector<int32> start_indices(index_space.size());
-  if (engine != nullptr) {
-    for (int i = 0; i < index_space.size(); ++i) {
-      std::uniform_int_distribution<int32> generator(0, index_space[i]);
-      start_indices[i] = generator(*engine);
-    }
-  }
-  return LiteralUtil::CreateR1<int32>(start_indices);
+Literal MakeRandomIndex(int64 index_bound, std::minstd_rand0* engine) {
+  std::uniform_int_distribution<int32> generator(0, index_bound);
+  return LiteralUtil::CreateR0<int32>(generator(*engine));
 }
 
 // Use dataflow analysis on each parameter to see if there are uses that would
@@ -300,8 +294,8 @@ std::vector<HloInstruction*> FindConstrainedUses(
       HloInstruction* instruction = use.instruction;
       const HloOpcode opcode = instruction->opcode();
       const int64 op_num = use.operand_number;
-      if ((opcode == HloOpcode::kDynamicSlice && op_num == 1) ||
-          (opcode == HloOpcode::kDynamicUpdateSlice && op_num == 2)) {
+      if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
+          (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
         constrained_uses.push_back(instruction);
       } else if (opcode == HloOpcode::kFusion) {
         const HloInstruction* const to_analyze =
@@ -336,7 +330,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
 StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, std::minstd_rand0* engine) {
-  std::vector<int64> index_space;
+  int64 index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
   ConstantType constant_type = ConstantType::kUnknown;
@@ -348,19 +342,16 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         const Shape& slice_shape = use->opcode() == HloOpcode::kDynamicSlice
                                        ? use->shape()
                                        : use->operand(1)->shape();
-        const int64 rank = indexed_shape.rank();
-        if (!index_space.empty()) {
-          TF_RET_CHECK(rank == index_space.size());
-          for (int64 i = 0; i < rank; ++i) {
-            index_space[i] = std::min(
-                index_space[i], ShapeUtil::GetDimension(indexed_shape, i) -
-                                    ShapeUtil::GetDimension(slice_shape, i));
-          }
-        } else {
-          index_space.resize(rank);
-          for (int64 i = 0; i < rank; ++i) {
-            index_space[i] = ShapeUtil::GetDimension(indexed_shape, i) -
-                             ShapeUtil::GetDimension(slice_shape, i);
+        const int64 first_index =
+            Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
+        for (int64 operand = first_index; operand < use->operand_count();
+             ++operand) {
+          if (use->operand(operand) == &param) {
+            index_bound = std::min(
+                index_bound,
+                ShapeUtil::GetDimension(indexed_shape, operand - first_index) -
+                    ShapeUtil::GetDimension(slice_shape,
+                                            operand - first_index));
           }
         }
         break;
@@ -388,13 +379,14 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
   }
   int constraint_count = 0;
   constraint_count += no_duplicates ? 1 : 0;
-  constraint_count += !index_space.empty() ? 1 : 0;
+  constraint_count += (index_bound != INT64_MAX) ? 1 : 0;
   constraint_count += needs_constant ? 1 : 0;
   if (constraint_count > 1) {
     return Unimplemented("Conflicting operand generation constraints.");
   }
-  if (!index_space.empty()) {
-    return MakeRandomIndex(index_space, engine);
+  if (index_bound != INT64_MAX) {
+    return MakeRandomIndex(index_bound, engine)
+        .Reshape(param.shape().dimensions());
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:

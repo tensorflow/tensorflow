@@ -30,6 +30,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.engine import training_arrays
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -51,7 +52,8 @@ def fit_distributed(model,
                     sample_weight=None,
                     initial_epoch=0,
                     steps_per_epoch=None,
-                    validation_steps=None):
+                    validation_steps=None,
+                    validation_freq=1):
   """Fit loop for Distribution Strategies."""
   distributed_training_utils.validate_callbacks(callbacks, model.optimizer)
   distributed_training_utils.validate_inputs(
@@ -65,7 +67,7 @@ def fit_distributed(model,
             batch_size, is_training=True))
   batch_size = model._validate_or_infer_batch_size(
       batch_size, steps_per_epoch, x)
-  iterator = model._distribution_standardize_user_data(
+  dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
       class_weight=class_weight,
@@ -76,7 +78,7 @@ def fit_distributed(model,
       validation_split=validation_split,
       shuffle=shuffle)
 
-  val_iterator = None
+  val_dataset = None
   if validation_data:
     val_x, val_y, val_sample_weights = model._unpack_validation_data(
         validation_data)
@@ -87,7 +89,7 @@ def fit_distributed(model,
       validation_steps, _ = distributed_training_utils.get_input_params(
           model._distribution_strategy, first_valx_value, validation_steps,
           batch_size)
-    val_iterator = model._distribution_standardize_user_data(
+    val_dataset = model._distribution_standardize_user_data(
         val_x, val_y,
         sample_weight=val_sample_weights,
         class_weight=None,
@@ -104,27 +106,29 @@ def fit_distributed(model,
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
     return experimental_tpu_fit_loop(
         model,
-        iterator,
+        dataset,
         epochs=epochs,
         verbose=verbose,
         callbacks=callbacks,
-        val_iterator=val_iterator,
+        val_dataset=val_dataset,
         initial_epoch=initial_epoch,
         steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps)
+        validation_steps=validation_steps,
+        validation_freq=1)
   else:
     return training_arrays.fit_loop(
         model,
-        iterator,
+        dataset,
         batch_size=batch_size,
         epochs=epochs,
         verbose=verbose,
         callbacks=callbacks,
-        val_inputs=val_iterator,
+        val_inputs=val_dataset,
         shuffle=shuffle,
         initial_epoch=initial_epoch,
         steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps)
+        validation_steps=validation_steps,
+        validation_freq=validation_freq)
 
 
 def evaluate_distributed(model,
@@ -142,7 +146,7 @@ def evaluate_distributed(model,
     steps, batch_size = distributed_training_utils.get_input_params(
         model._distribution_strategy, first_x_value, steps, batch_size)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
-  iterator = model._distribution_standardize_user_data(
+  dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
       batch_size=batch_size,
@@ -153,11 +157,11 @@ def evaluate_distributed(model,
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
     # TODO(fchollet): why aren't callbacks supported here?
     return experimental_tpu_test_loop(
-        model, iterator=iterator, verbose=verbose, steps=steps)
+        model, dataset, verbose=verbose, steps=steps)
   else:
     return training_arrays.test_loop(
         model,
-        inputs=iterator,
+        inputs=dataset,
         batch_size=batch_size,
         verbose=verbose,
         steps=steps,
@@ -178,7 +182,7 @@ def predict_distributed(model,
     steps, batch_size = distributed_training_utils.get_input_params(
         model._distribution_strategy, first_x_value, steps, batch_size)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
-  iterator = model._distribution_standardize_user_data(
+  dataset = model._distribution_standardize_user_data(
       x,
       batch_size=batch_size,
       check_steps=True,
@@ -187,11 +191,11 @@ def predict_distributed(model,
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
     # TODO(fchollet): why aren't callbacks supported here?
     return experimental_tpu_predict_loop(
-        model, iterator, verbose=verbose, steps=steps)
+        model, dataset, verbose=verbose, steps=steps)
   else:
     return training_arrays.predict_loop(
         model,
-        iterator,
+        dataset,
         batch_size=batch_size,
         verbose=verbose,
         steps=steps,
@@ -199,19 +203,20 @@ def predict_distributed(model,
 
 
 def experimental_tpu_fit_loop(model,
-                              iterator,
+                              dataset,
                               epochs=100,
                               verbose=1,
                               callbacks=None,
                               initial_epoch=0,
                               steps_per_epoch=None,
-                              val_iterator=None,
-                              validation_steps=None):
+                              val_dataset=None,
+                              validation_steps=None,
+                              validation_freq=1):
   """Fit loop for training with TPU DistributionStrategy.
 
   Arguments:
       model: Keras Model instance.
-      iterator: Iterator that returns inputs and targets
+      dataset: Dataset that returns inputs and targets
       epochs: Number of times to iterate over the data
       verbose: Integer, Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
@@ -220,10 +225,17 @@ def experimental_tpu_fit_loop(model,
       steps_per_epoch: Total number of steps (batches of samples)
           before declaring one epoch finished and starting the
           next epoch. Ignored with the default value of `None`.
-      val_iterator: Iterator for validation data.
+      val_dataset: Dataset for validation data.
       validation_steps: Number of steps to run validation for
           (only if doing validation from data tensors).
           Ignored with the default value of `None`.
+      validation_freq: Only relevant if validation data is provided. Integer or
+          `collections.Container` instance (e.g. list, tuple, etc.). If an
+          integer, specifies how many training epochs to run before a new
+          validation run is performed, e.g. `validation_freq=2` runs
+          validation every 2 epochs. If a Container, specifies the epochs on
+          which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+          validation at the end of the 1st, 2nd, and 10th epochs.
 
   Returns:
       Returns `None`.
@@ -231,7 +243,9 @@ def experimental_tpu_fit_loop(model,
   Raises:
       ValueError: in case of invalid arguments.
   """
+  # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
   current_strategy = model._distribution_strategy
+  iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
   scope = current_strategy.scope()
   scope.__enter__()
 
@@ -300,10 +314,9 @@ def experimental_tpu_fit_loop(model,
       dtype='int32',
       name='steps_per_run')
 
-  with current_strategy.scope():
-    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
-        step_fn, iterator, iterations=steps_per_run,
-        initial_loop_values=initial_loop_values)
+  ctx = current_strategy.extended.experimental_run_steps_on_iterator(
+      step_fn, iterator, iterations=steps_per_run,
+      initial_loop_values=initial_loop_values)
 
   train_op = ctx.run_op
   output_tensors = ctx.last_step_outputs
@@ -311,9 +324,8 @@ def experimental_tpu_fit_loop(model,
   do_validation = bool(validation_steps)
 
   if model._compile_distribution:
-    with current_strategy.scope():
-      distributed_training_utils._copy_weights_to_distributed_model(
-          model, model._distributed_model_train)
+    distributed_training_utils._copy_weights_to_distributed_model(
+        model, model._distributed_model_train)
 
   callbacks = cbks.configure_callbacks(
       callbacks,
@@ -332,9 +344,8 @@ def experimental_tpu_fit_loop(model,
 
   callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
-    with current_strategy.scope():
-      distributed_training_utils._reset_metrics(
-          model, model._distributed_model_train)
+    distributed_training_utils._reset_metrics(
+        model, model._distributed_model_train)
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     step_index = 0
@@ -361,19 +372,19 @@ def experimental_tpu_fit_loop(model,
       if callbacks.model.stop_training:
         break
 
-    if do_validation:
+    if (do_validation and
+        training_utils.should_run_validation(validation_freq, epoch)):
       logging.info('Running validation at fit epoch: %s', epoch)
 
       if model._compile_distribution:
         # Since we create a new clone from the original model we need to copy
         # the weights back to the original model before we can run validation.
-        with current_strategy.scope():
-          distributed_training_utils._copy_weights_to_original_model(
-              model, model._distributed_model_train, ModeKeys.TRAIN)
+        distributed_training_utils._copy_weights_to_original_model(
+            model, model._distributed_model_train, ModeKeys.TRAIN)
 
       val_outs = experimental_tpu_test_loop(  # pylint: disable=undefined-variable
           model,
-          val_iterator,
+          val_dataset,
           steps=validation_steps,
           verbose=verbose)
       if not isinstance(val_outs, list):
@@ -389,22 +400,21 @@ def experimental_tpu_fit_loop(model,
 
   if model._compile_distribution:
     # Copy the weights back from the replicated model to the original model.
-    with current_strategy.scope():
-      distributed_training_utils._copy_weights_to_original_model(
-          model, model._distributed_model_train, ModeKeys.TRAIN)
+    distributed_training_utils._copy_weights_to_original_model(
+        model, model._distributed_model_train, ModeKeys.TRAIN)
   scope.__exit__(None, None, None)
   return model.history
 
 
 def experimental_tpu_test_loop(model,
-                               iterator,
+                               dataset,
                                verbose=0,
                                steps=None):
   """Test loop for evaluating with TPU DistributionStrategy.
 
   Arguments:
       model: Keras Model instance.
-      iterator: Iterator for input data.
+      dataset: Dataset for input data.
       verbose: Integer, Verbosity mode 0 or 1.
       steps: Total number of steps (batches of samples)
           before declaring predictions finished.
@@ -417,6 +427,7 @@ def experimental_tpu_test_loop(model,
       the display labels for the outputs.
   """
   current_strategy = model._distribution_strategy
+  iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
   scope = current_strategy.scope()
   scope.__enter__()
 
@@ -475,12 +486,11 @@ def experimental_tpu_test_loop(model,
     tensor = model._all_stateful_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
-  with current_strategy.scope():
-    # TODO(priyag): Use steps_per_run when we use new metrics as they will
-    # allow handling metric computation at each step using variables.
-    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
-        step_fn, iterator, iterations=1,
-        initial_loop_values=initial_loop_values)
+  # TODO(priyag): Use steps_per_run when we use new metrics as they will
+  # allow handling metric computation at each step using variables.
+  ctx = current_strategy.extended.experimental_run_steps_on_iterator(
+      step_fn, iterator, iterations=1,
+      initial_loop_values=initial_loop_values)
 
   test_op = ctx.run_op
   output_tensors = ctx.last_step_outputs
@@ -489,12 +499,11 @@ def experimental_tpu_test_loop(model,
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
-    with current_strategy.scope():
-      distributed_training_utils._copy_weights_to_distributed_model(
-          model, model._distributed_model_test)
-  with current_strategy.scope():
-    distributed_training_utils._reset_metrics(
+    distributed_training_utils._copy_weights_to_distributed_model(
         model, model._distributed_model_test)
+
+  distributed_training_utils._reset_metrics(
+      model, model._distributed_model_test)
 
   assert steps is not None
   outs = [0.] * len(model.metrics_names)
@@ -520,12 +529,12 @@ def experimental_tpu_test_loop(model,
   return outs
 
 
-def experimental_tpu_predict_loop(model, iterator, verbose=0, steps=None):
+def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
   """Predict loop for predicting with TPU DistributionStrategy.
 
   Arguments:
       model: Keras Model instance.
-      iterator: Iterator for input data.
+      dataset: Dataset for input data.
       verbose: Integer, Verbosity mode 0 or 1.
       steps: Total number of steps (batches of samples)
           before declaring `_predict_loop` finished.
@@ -537,6 +546,7 @@ def experimental_tpu_predict_loop(model, iterator, verbose=0, steps=None):
       (if the model has multiple outputs).
   """
   current_strategy = model._distribution_strategy
+  iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
   scope = current_strategy.scope()
   scope.__enter__()
 
@@ -592,11 +602,10 @@ def experimental_tpu_predict_loop(model, iterator, verbose=0, steps=None):
     shape.dims = [batch_dimension] + shape.dims[1:]
     initial_loop_values[name] = array_ops.zeros(shape, tensor.dtype)
 
-  with current_strategy.scope():
-    # TODO(priyag, sourabhbajaj): Support steps_per_run if/when we add outfeed.
-    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
-        step_fn, iterator, iterations=1,
-        initial_loop_values=initial_loop_values)
+  # TODO(priyag, sourabhbajaj): Support steps_per_run if/when we add outfeed.
+  ctx = current_strategy.extended.experimental_run_steps_on_iterator(
+      step_fn, iterator, iterations=1,
+      initial_loop_values=initial_loop_values)
 
   predict_op = ctx.run_op
   output_tensors = ctx.last_step_outputs
@@ -605,12 +614,11 @@ def experimental_tpu_predict_loop(model, iterator, verbose=0, steps=None):
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
-    with current_strategy.scope():
-      distributed_training_utils._copy_weights_to_distributed_model(
-          model, model._distributed_model_predict)
-  with current_strategy.scope():
-    distributed_training_utils._reset_metrics(
+    distributed_training_utils._copy_weights_to_distributed_model(
         model, model._distributed_model_predict)
+
+  distributed_training_utils._reset_metrics(
+      model, model._distributed_model_predict)
 
   assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate

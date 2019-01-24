@@ -57,6 +57,15 @@ using ::tensorflow::strings::HumanReadableNumBytes;
 
 // Returns true if the given instruction is rematerializable.
 bool IsRematerializable(const HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kCopy) {
+    if (LayoutUtil::Equal(instruction->shape().layout(),
+                          instruction->operand(0)->shape().layout())) {
+      // Don't rematerialize copies added by copy insertion (layout doesn't
+      // change).
+      return false;
+    }
+  }
+
   // Don't rematerialize instructions with side effects or instructions which
   // cannot be cloned safely.
   switch (instruction->opcode()) {
@@ -235,8 +244,7 @@ class InstructionList {
     }
 
     // Now scan forwards until we find one of the before_instructions.
-    while (std::find(before_instructions.begin(), before_instructions.end(),
-                     min_position_item) == before_instructions.end()) {
+    while (!absl::c_linear_search(before_instructions, min_position_item)) {
       min_position_item = min_position_item->next;
     }
     return InsertBefore(to_insert, min_position_item);
@@ -302,7 +310,7 @@ ItemList GetUsers(const InstructionList& instruction_list,
       // A buffer may be used by the instruction via more than one alias. For
       // example, a buffer which appears in more than one element of a tuple.
       Item* user_item = instruction_list.GetItem(user);
-      if (std::find(users.begin(), users.end(), user_item) == users.end()) {
+      if (!absl::c_linear_search(users, user_item)) {
         users.push_back(user_item);
       }
     }
@@ -456,8 +464,7 @@ class MemoryUsageTracker {
       return false;
     }
     const BufferIdList& in_progress_uses = in_progress_item_->buffers_used;
-    return std::find(in_progress_uses.begin(), in_progress_uses.end(),
-                     buffer_id) != in_progress_uses.end();
+    return absl::c_linear_search(in_progress_uses, buffer_id);
   }
 
   // Returns whether the given instruction is live at the current program
@@ -535,8 +542,7 @@ MemoryUsageTracker::MemoryUsageTracker(
         bool unused;
         for (Item* user_item : GetUsers(instruction_list_, logical_buffer,
                                         points_to_analysis, &unused)) {
-          if (std::find(buffer->users.begin(), buffer->users.end(),
-                        user_item) == buffer->users.end()) {
+          if (!absl::c_linear_search(buffer->users, user_item)) {
             buffer->users.push_back(user_item);
             buffer->unfinished_user_count++;
             user_item->buffers_used.push_back(buffer->id);
@@ -784,8 +790,7 @@ bool MemoryUsageTracker::Check() const {
 
     for (const Buffer& buffer : buffers_) {
       if (buffer.defining_instruction->instruction == instruction) {
-        CHECK(std::find(defined_buffers.begin(), defined_buffers.end(),
-                        buffer.id) != defined_buffers.end())
+        CHECK(absl::c_linear_search(defined_buffers, buffer.id))
             << "Instruction " << instruction->name()
             << " defined buffers is missing: " << buffer.ToString();
       }
@@ -808,8 +813,7 @@ bool MemoryUsageTracker::Check() const {
     int64 unfinished_uses = 0;
     for (Item* user : buffer.users) {
       const BufferIdList& used_buffers = user->buffers_used;
-      CHECK(std::find(used_buffers.begin(), used_buffers.end(), buffer.id) !=
-            used_buffers.end())
+      CHECK(absl::c_linear_search(used_buffers, buffer.id))
           << "Instruction " << user->instruction->name()
           << " used buffers is missing " << buffer.ToString();
       if (!IsFinished(user)) {
@@ -836,10 +840,10 @@ int64 RematerializationCost(const HloInstruction* instruction,
   // If none of the users of 'instruction' have been placed in the sequence (as
   // tracked by memory_tracker), then rematerialization of 'instruction' is a
   // zero-cost move of 'instruction' in the sequence.
-  if (!std::any_of(instruction->users().begin(), instruction->users().end(),
-                   [&memory_tracker](const HloInstruction* inst) {
-                     return memory_tracker.IsPlaced(inst);
-                   })) {
+  if (!absl::c_any_of(instruction->users(),
+                      [&memory_tracker](const HloInstruction* inst) {
+                        return memory_tracker.IsPlaced(inst);
+                      })) {
     return 0;
   }
 

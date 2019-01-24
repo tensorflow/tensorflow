@@ -130,7 +130,7 @@ allprojects {
 }
 
 dependencies {
-    compile 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
+    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
 }
 ```
 

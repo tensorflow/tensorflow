@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -92,6 +93,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -244,6 +246,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
+  pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CpuHloSupportChecker>();
 
   ReducePrecisionInsertion::AddPasses(
@@ -256,7 +259,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // pass.
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<BatchDotSimplification>();
-  pipeline.AddPass<DotDecomposer>();
+  pipeline.AddPass<DotDecomposer>(/*decompose_batch_dot=*/false);
   auto cost_model = [](HloInstruction* conv) {
     // We need a cost model for CPUs. Currently, do nothing.
     return false;
@@ -279,10 +282,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
-    AlgebraicSimplifierOptions options(
-        [](const Shape&, const Shape&) { return false; });
+    AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<AlgebraicSimplifier>(options);
+    pass.AddPass<SortSimplifier>();
     pass.AddPass<HloDCE>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
@@ -302,7 +305,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,
           const TransposeFolding::OperandIndices& candidate_operands) {
-        return PotentiallyImplementedAsEigenDot(dot, *target_machine_features)
+        return DotImplementationCanHandleTranspose(dot,
+                                                   *target_machine_features)
                    ? candidate_operands
                    : TransposeFolding::OperandIndices{};
       },
@@ -345,8 +349,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false);
-    AlgebraicSimplifierOptions options(
-        [](const Shape&, const Shape&) { return true; });
+    AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<HloPassFix<AlgebraicSimplifier>>(options);

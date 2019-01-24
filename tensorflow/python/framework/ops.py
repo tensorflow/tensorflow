@@ -41,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -101,6 +102,9 @@ class _UserDeviceSpec(object):
 
 
 class NullContextmanager(object):
+
+  def __init__(self, *args, **kwargs):
+    pass
 
   def __enter__(self):
     pass
@@ -1029,7 +1033,7 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
       `preferred_dtype` is not possible, this argument has no effect.
 
   Returns:
-    An `Tensor` based on `value`.
+    A `Tensor` based on `value`.
 
   Raises:
     TypeError: If no conversion function is registered for `value` to `dtype`.
@@ -1082,7 +1086,7 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
     name: Optional name to use if a new `Tensor` is created.
 
   Returns:
-    An `Tensor` based on `value`.
+    A `Tensor` based on `value`.
 
   Raises:
     TypeError: If no conversion function is registered for `value` to `dtype`.
@@ -1225,7 +1229,7 @@ def internal_convert_n_to_tensor(values,
       value.
   """
   if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a list.")
+    raise TypeError("values must be a sequence.")
   ret = []
   if ctx is None: ctx = context.context()
   for i, value in enumerate(values):
@@ -1289,7 +1293,7 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
     name: (Optional.) A name to use if a new `Tensor` is created.
 
   Returns:
-    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
+    A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
@@ -1302,7 +1306,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
                                                  dtype=None,
                                                  name=None,
                                                  as_ref=False):
-  """Converts the given object to an `Tensor` or an `IndexedSlices`.
+  """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
   If `value` is an `IndexedSlices` or `SparseTensor` it is returned
   unmodified. Otherwise, it is converted to a `Tensor` using
@@ -1317,7 +1321,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
+    A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
@@ -1348,7 +1352,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
   Args:
     values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
       can be consumed by `convert_to_tensor()`.
-    dtype: (Optional.) The required `DType` of the returned `Tensor`
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
     name: (Optional.) A name prefix to used when a new `Tensor` is
       created, in which case element `i` will be given the name `name
@@ -1356,7 +1360,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
+    A list of `Tensor`, `IndexedSlices`, `SparseTensor` and/or `None` objects.
 
   Raises:
     TypeError: If no conversion function is registered for an element in
@@ -1365,7 +1369,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
       value.
   """
   if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a list.")
+    raise TypeError("values must be a sequence.")
   ret = []
   for i, value in enumerate(values):
     if value is None:
@@ -1403,6 +1407,132 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
       value.
   """
   return internal_convert_n_to_tensor_or_indexed_slices(
+      values=values, dtype=dtype, name=name, as_ref=False)
+
+
+def convert_to_tensor_or_composite(value, dtype=None, name=None):
+  """Converts the given object to a `Tensor` or `CompositeTensor`.
+
+  If `value` is a `CompositeTensor` it is returned unmodified. Otherwise, it
+  is converted to a `Tensor` using `convert_to_tensor()`.
+
+  Args:
+    value: A `CompositeTensor` or an object that can be consumed
+      by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
+      `CompositeTensor`.
+    name: (Optional.) A name to use if a new `Tensor` is created.
+
+  Returns:
+    A `Tensor` or `CompositeTensor`, based on `value`.
+
+  Raises:
+    ValueError: If `dtype` does not match the element type of `value`.
+  """
+  return internal_convert_to_tensor_or_composite(
+      value=value, dtype=dtype, name=name, as_ref=False)
+
+
+def internal_convert_to_tensor_or_composite(value,
+                                            dtype=None,
+                                            name=None,
+                                            as_ref=False):
+  """Converts the given object to a `Tensor` or `CompositeTensor`.
+
+  If `value` is a `CompositeTensor` it is returned unmodified.  Otherwise, it
+  is converted to a `Tensor` using `convert_to_tensor()`.
+
+  Args:
+    value: A `CompositeTensor`, or an object that can be consumed
+      by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
+      `CompositeTensor`.
+    name: (Optional.) A name to use if a new `Tensor` is created.
+    as_ref: True if the caller wants the results as ref tensors.
+
+  Returns:
+    A `Tensor` or `CompositeTensor`, based on `value`.
+
+  Raises:
+    ValueError: If `dtype` does not match the element type of `value`.
+  """
+  if isinstance(value, composite_tensor.CompositeTensor):
+    value_dtype = getattr(value, "dtype", None)
+    if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value_dtype):
+      raise ValueError(
+          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
+          (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
+    return value
+  else:
+    return internal_convert_to_tensor(
+        value, dtype=dtype, name=name, as_ref=as_ref)
+
+
+def internal_convert_n_to_tensor_or_composite(values,
+                                              dtype=None,
+                                              name=None,
+                                              as_ref=False):
+  """Converts `values` to a list of `Tensor` or `CompositeTensor` objects.
+
+  Any `CompositeTensor` objects in `values` are returned unmodified.
+
+  Args:
+    values: A list of `None`, `CompositeTensor`, or objects that
+      can be consumed by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor`s or
+      `CompositeTensor`s.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+    as_ref: True if the caller wants the results as ref tensors.
+
+  Returns:
+    A list of `Tensor`, `CompositeTensor`, and/or `None` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  if not isinstance(values, collections.Sequence):
+    raise TypeError("values must be a sequence.")
+  ret = []
+  for i, value in enumerate(values):
+    if value is None:
+      ret.append(value)
+    else:
+      n = None if name is None else "%s_%d" % (name, i)
+      ret.append(
+          internal_convert_to_tensor_or_composite(
+              value, dtype=dtype, name=n, as_ref=as_ref))
+  return ret
+
+
+def convert_n_to_tensor_or_composite(values, dtype=None, name=None):
+  """Converts `values` to a list of `Output` or `CompositeTensor` objects.
+
+  Any `CompositeTensor` objects in `values` are returned unmodified.
+
+  Args:
+    values: A list of `None`, `CompositeTensor``, or objects that
+      can be consumed by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor`s or
+      `CompositeTensor`s.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+
+  Returns:
+    A list of `Tensor` and/or `CompositeTensor` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  return internal_convert_n_to_tensor_or_composite(
       values=values, dtype=dtype, name=name, as_ref=False)
 
 
@@ -1485,7 +1615,7 @@ def register_tensor_conversion_function(base_type,
 
 
 @tf_export("IndexedSlices")
-class IndexedSlices(_TensorLike):
+class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -1567,6 +1697,29 @@ class IndexedSlices(_TensorLike):
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
+  def _to_components(self):
+    if self._dense_shape is None:
+      return (self._values, self._indices)
+    else:
+      return (self._values, self._indices, self._dense_shape)
+
+  @classmethod
+  def _from_components(cls, components):
+    return cls(*components)
+
+  def _shape_invariant_to_components(self, shape=None):
+    if shape is None:
+      shape = self._values.shape
+    if self._dense_shape is None:
+      return [shape, shape[:1]]  # values, indices
+    else:
+      # values, indices, dense_shape
+      return [shape, shape[:1], tensor_shape.TensorShape([shape.ndims])]
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._values, 'graph')
 
 
 IndexedSlicesValue = collections.namedtuple(
@@ -4992,12 +5145,19 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
         op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
 
 
+# Internal interface to colocate_with. colocate_with has been deprecated from
+# public API. There are still a few internal uses of colocate_with. Add internal
+# only API for those uses to avoid deprecation warning.
+def colocate_with(op, ignore_existing=False):
+  return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
+
+
 @deprecation.deprecated(
     date=None,
     instructions="Colocations handled automatically by placer.")
 @tf_export(v1=["colocate_with"])
-def colocate_with(op, ignore_existing=False):
-  return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
+def _colocate_with(op, ignore_existing=False):
+  return colocate_with(op, ignore_existing)
 
 
 @tf_export("control_dependencies")
@@ -5474,6 +5634,9 @@ def disable_eager_execution():
   projects from TensorFlow 1.x to 2.x.
   """
   context.default_execution_mode = context.GRAPH_MODE
+  c = context.context_safe()
+  if c is not None:
+    c._eager_context.is_eager = False  # pylint: disable=protected-access
 
 
 def enable_eager_execution_internal(config=None,
@@ -6026,7 +6189,15 @@ class name_scope(object):  # pylint: disable=invalid-name
       name: The name argument that is passed to the op function.
       default_name: The default name to use if the `name` argument is `None`.
       values: The list of `Tensor` arguments that are passed to the op function.
+
+    Raises:
+      TypeError: if `default_name` is passed in but not a string.
     """
+    if not (default_name is None or isinstance(default_name, six.string_types)):
+      raise TypeError(
+          "`default_name` type (%s) is not a string type. You likely meant to "
+          "pass this into the `values` kwarg."
+          % type(default_name))
     self._name = default_name if name is None else name
     self._default_name = default_name
     self._values = values

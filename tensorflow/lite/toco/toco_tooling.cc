@@ -178,6 +178,23 @@ void SetFinalDataTypeOnInputs(const TocoFlags& toco_flags, Model* model) {
       // Ignore non-real data types.
       continue;
     }
+    // The enum value QUANTIZED_UINT8 for --inference_type and
+    // --inference_input_type has long meant just 'QUANTIZED', being used as
+    // well in mixed 8-bit / 16-bit quantized models. However,
+    // ConvertIODataTypeToArrayDataType still interpretes it as meaning 8bit,
+    // and people have run into issues in the situation where they have an
+    // already mixed 8-bit / 16-bit quantized model in TFLITE format and
+    // want to run it again through toco, without having to re-specify all the
+    // extra array info that was used in the (complicated) process of initially
+    // quantizing that model. In order to have --inference_type=QUANTIZED_UINT8
+    // just work in that case, we implement the logic that when an array is
+    // already quantized, if  --inference_type is quantized (so we're not
+    // asking to dequantize here), no change of quantized data type is to be
+    // recorded.
+    if (array->data_type != toco::ArrayDataType::kFloat &&
+        type != toco::ArrayDataType::kFloat) {
+      continue;
+    }
 
     array->final_data_type = type;
   }
@@ -305,6 +322,14 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
                                 new DropFakeQuant,
                             });
   }
+
+  // Try to merge bidirectional sequence lstm or rnn if present.
+  GraphTransformationsSet bidirectional_transformations;
+  bidirectional_transformations.Add(new RemoveUnusedOp);
+  bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceLstm);
+  bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceRnn);
+  RunGraphTransformations(model, "Group bidirectional sequence lstm/rnn",
+                          bidirectional_transformations);
 
   // Fix any issues with IO edges. This must happen after any transform that
   // may modify the structure of the edges.

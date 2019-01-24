@@ -66,7 +66,6 @@ cc_library(
         ":c_api_internal",
         "//tensorflow/lite:context",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
@@ -94,7 +93,6 @@ cc_test(
     deps = [
         ":c_api",
         "//tensorflow/lite:context",
-        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

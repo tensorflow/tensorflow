@@ -67,9 +67,9 @@ class ManualTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=gdef,
         input_names=params_map['input_names'],
-        input_dims=params_map['input_dims'],
+        input_dims=[params_map['input_dims']],
         output_names=params_map['output_names'],
-        expected_output_dims=params_map['expected_output_dims'])
+        expected_output_dims=[params_map['expected_output_dims']])
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""

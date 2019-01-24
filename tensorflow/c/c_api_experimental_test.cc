@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
@@ -292,6 +293,74 @@ TEST(CAPI_EXPERIMENTAL, TFE_ExecuteOpInNewThreadTest_Blocking) {
   TFE_DeleteTensorHandle(m);
 
   TFE_DeleteTensorHandle(recv_retvals[0]);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI_EXPERIMENTAL, SymbolicTensor) {
+  TF_Status* status = TF_NewStatus();
+  auto node = TF_Output{nullptr, 1};
+  auto* sym_handle = TFE_NewTensorHandleFromTFOutput(node, TF_FLOAT);
+  TFE_TensorHandlePrintDebugString(sym_handle);
+  CHECK_EQ(TFE_TensorHandleDataType(sym_handle), TF_FLOAT);
+  ASSERT_FALSE(TFE_TensorHandleIsConcrete(sym_handle));
+  auto same_node = TFE_GetTFOutputFromTensorHandle(sym_handle, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  ASSERT_EQ(same_node.oper, node.oper);
+  ASSERT_EQ(same_node.index, node.index);
+  TFE_DeleteTensorHandle(sym_handle);
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  ASSERT_TRUE(TFE_TensorHandleIsConcrete(m));
+  (void)TFE_GetTFOutputFromTensorHandle(m, status);
+  CHECK_EQ(TF_INTERNAL, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteTensorHandle(m);
+
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI_EXPERIMENTAL, DebugPrintAndSymbolicExecution) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TFE_Op* op = MatMulOp(ctx, m, m);
+
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpPrintDebugString(op);
+
+  auto* graph = TF_NewGraph();
+  auto* trace_ctx = TFE_NewTraceContext(graph);
+  TFE_TensorHandle* retvals[5];
+  int num_retvals = 5;
+  // Symbolically execute this op, which adds a graph node to `trace_ctx`.
+  TFE_AddEagerOpToGraph(op, trace_ctx, retvals, &num_retvals, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  int num_inputs = TFE_FinalizeInputTensorsFromTraceContext(trace_ctx);
+  CHECK_EQ(num_inputs, 1);
+  auto input_sym_tensor = TFE_GetInputGraphNodeFromTraceContext(trace_ctx,
+                                                                /*idx*/ 0);
+
+  LOG(INFO) << tensorflow::getTF_OutputDebugString(input_sym_tensor);
+  auto handle = TFE_ConsumeInputConcreteTensorFromTraceContext(trace_ctx,
+                                                               /*idx*/ 0);
+  TFE_TensorHandlePrintDebugString(handle);
+  TFE_DeleteTensorHandle(handle);
+
+  CHECK_EQ(num_retvals, 1);
+  CHECK_EQ(TFE_TensorHandleDataType(retvals[0]), TF_FLOAT);
+  TFE_DeleteTensorHandle(retvals[0]);
+
+  TFE_DeleteTraceContext(trace_ctx);
+  TF_DeleteGraph(graph);
+
+  TFE_DeleteTensorHandle(m);
+  TFE_DeleteOp(op);
   TFE_DeleteContext(ctx);
   TF_DeleteStatus(status);
 }

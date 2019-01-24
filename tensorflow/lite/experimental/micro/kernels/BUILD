@@ -22,7 +22,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -43,24 +42,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":micro_ops",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
-    ],
-)
-
-cc_library(
-    name = "test_utils",
-    srcs = [
-    ],
-    hdrs = [
-        "test_utils.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 
@@ -71,7 +53,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":test_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -85,7 +66,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":test_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -99,7 +79,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":test_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",

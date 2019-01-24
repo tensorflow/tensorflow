@@ -27,7 +27,6 @@ from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import test
 
@@ -485,58 +484,87 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class CosineProximityTest(test.TestCase):
 
+  def l2_norm(self, x, axis):
+    epsilon = 1e-12
+    square_sum = np.sum(np.square(x), axis=axis, keepdims=True)
+    x_inv_norm = 1 / np.sqrt(np.maximum(square_sum, epsilon))
+    return np.multiply(x, x_inv_norm)
+
+  def setup(self, axis=1):
+    self.np_y_true = np.asarray([[1, 9, 2], [-5, -2, 6]], dtype=np.float32)
+    self.np_y_pred = np.asarray([[4, 8, 12], [8, 1, 3]], dtype=np.float32)
+
+    y_true = self.l2_norm(self.np_y_true, axis)
+    y_pred = self.l2_norm(self.np_y_pred, axis)
+    self.expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(axis,))
+
+    self.y_true = constant_op.constant(self.np_y_true)
+    self.y_pred = constant_op.constant(self.np_y_pred)
+
   def test_config(self):
     cosine_obj = keras.losses.CosineProximity(
-        reduction=losses_impl.ReductionV2.SUM, name='cosine_loss')
+        axis=2, reduction=losses_impl.ReductionV2.SUM, name='cosine_loss')
     self.assertEqual(cosine_obj.name, 'cosine_loss')
     self.assertEqual(cosine_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(cosine_obj.axis, 2)
 
   def test_unweighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    loss = cosine_obj(y_true, y_pred)
-    self.assertAlmostEqual(self.evaluate(loss), -0.18722, 3)
+    loss = cosine_obj(self.y_true, self.y_pred)
+    expected_loss = np.mean(self.expected_loss)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_scalar_weighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    loss = cosine_obj(y_true, y_pred, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), -0.43060, 3)
+    sample_weight = 2.3
+    loss = cosine_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    expected_loss = np.mean(self.expected_loss * sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_sample_weighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
-    loss = cosine_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), 0.15599, 3)
+    sample_weight = np.asarray([1.2, 3.4])
+    loss = cosine_obj(
+        self.y_true,
+        self.y_pred,
+        sample_weight=constant_op.constant(sample_weight))
+    expected_loss = np.mean(self.expected_loss * sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_timestep_weighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3, 1),
-                                  dtype=dtypes.float32)
-    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2], shape=(2, 3))
-    loss = cosine_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), -2.0000, 3)
+    np_y_true = self.np_y_true.reshape((2, 3, 1))
+    np_y_pred = self.np_y_pred.reshape((2, 3, 1))
+    sample_weight = np.asarray([3, 6, 5, 0, 4, 2]).reshape((2, 3))
+
+    y_true = self.l2_norm(np_y_true, 2)
+    y_pred = self.l2_norm(np_y_pred, 2)
+    expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(2,))
+
+    y_true = constant_op.constant(np_y_true)
+    y_pred = constant_op.constant(np_y_pred)
+    loss = cosine_obj(
+        y_true, y_pred, sample_weight=constant_op.constant(sample_weight))
+
+    expected_loss = np.mean(expected_loss * sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_zero_weighted(self):
+    self.setup()
     cosine_obj = keras.losses.CosineProximity()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    loss = cosine_obj(y_true, y_pred, sample_weight=0)
+    loss = cosine_obj(self.y_true, self.y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+  def test_axis(self):
+    self.setup(axis=1)
+    cosine_obj = keras.losses.CosineProximity(axis=1)
+    loss = cosine_obj(self.y_true, self.y_pred)
+    expected_loss = np.mean(self.expected_loss)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -564,74 +592,132 @@ class BinaryCrossentropyTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
   def test_unweighted(self):
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
     bce_obj = keras.losses.BinaryCrossentropy()
-    y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
-    y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
     loss = bce_obj(y_true, y_pred)
-    self.assertAlmostEqual(self.evaluate(loss), 8.0004, 3)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Loss = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #      = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #         -log(Y_MAX + EPSILON), -log(1)]
+    #      = [0, 15.33, 0, 0]
+    # Reduced loss = 15.33 / 4
+
+    self.assertAlmostEqual(self.evaluate(loss), 3.833, 3)
 
     # Test with logits.
-    logits = constant_op.constant([10., 10., 10., -10., 10, -10],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    logits = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
     bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits)
-    self.assertAlmostEqual(self.evaluate(loss), 5., 3)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    #      = [((100 - 100 * 1 + log(1 + exp(-100))) +
+    #          (0 + 100 * 0 + log(1 + exp(-100))) +
+    #          (100 - 100 * 1 + log(1 + exp(-100))),
+    #         ((100 - 100 * 0 + log(1 + exp(-100))) +
+    #          (100 - 100 * 1 + log(1 + exp(-100))) +
+    #          (0 + 100 * 1 + log(1 + exp(-100))))]
+    #      = [(0 + 0 + 0) / 3, 200 / 3]
+    # Reduced loss = (0 + 66.666) / 2
+
+    self.assertAlmostEqual(self.evaluate(loss), 33.333, 3)
 
   def test_scalar_weighted(self):
     bce_obj = keras.losses.BinaryCrossentropy()
-    y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
-    y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
     loss = bce_obj(y_true, y_pred, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), 18.4010, 3)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Loss = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #      = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #         -log(Y_MAX + EPSILON), -log(1)]
+    #      = [0, 15.33, 0, 0]
+    # Weighted loss = [0, 15.33 * 2.3, 0, 0]
+    # Reduced loss = 15.33 * 2.3 / 4
+
+    self.assertAlmostEqual(self.evaluate(loss), 8.817, 3)
 
     # Test with logits.
-    y_true = array_ops.ones((32, 1))
-    logits = array_ops.ones((32, 1), dtype=dtypes.float32)
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    logits = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
     bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), 0.7205, 3)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [(0 + 0 + 0) / 3, 200 / 3]
+    # Weighted loss = [0 * 2.3, 66.666 * 2.3]
+    # Reduced loss = (0 + 66.666 * 2.3) / 2
+
+    self.assertAlmostEqual(self.evaluate(loss), 76.667, 3)
 
   def test_sample_weighted(self):
     bce_obj = keras.losses.BinaryCrossentropy()
-    y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
-    y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float64)
+    y_true = np.asarray([1, 0, 1, 0]).reshape([2, 2])
+    y_pred = np.asarray([1, 1, 1, 0], dtype=np.float32).reshape([2, 2])
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
     loss = bce_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), 21.4907, 3)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
+
+    # Loss = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
+    #      = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
+    #         -log(Y_MAX + EPSILON), -log(1)]
+    #      = [0, 15.33, 0, 0]
+    # Reduced loss = 15.33 * 1.2 / 4
+
+    self.assertAlmostEqual(self.evaluate(loss), 4.6, 3)
 
     # Test with logits.
-    y_true = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
-    logits = constant_op.constant(
-        [[100.0, -100.0, -100.0], [-100.0, 100.0, -100.0],
-         [-100.0, -100.0, 100.0]],
-        dtype=dtypes.float64)
-    weights = constant_op.constant([3, 2, 8])
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    logits = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
+    weights = constant_op.constant([4, 3])
     bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits, sample_weight=weights)
-    self.assertAlmostEqual(self.evaluate(loss), 288.8888, 3)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [(0 + 0 + 0)/3, 200 / 3]
+    # Weighted loss = [0 * 4, 66.666 * 3]
+    # Reduced loss = (0 + 66.666 * 3) / 2
+
+    self.assertAlmostEqual(self.evaluate(loss), 100, 3)
 
   def test_no_reduction(self):
-    y_true = constant_op.constant(((1, 0, 1), (1, 1, 0), (0, 1, 1)))
-    logits = constant_op.constant(((100.0, -100.0, 100.0),
-                                   (100.0, -100.0, 100.0),
-                                   (100.0, 100.0, -100.0)))
+    y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
+    logits = constant_op.constant([[100.0, -100.0, 100.0],
+                                   [100.0, 100.0, -100.0]])
     bce_obj = keras.losses.BinaryCrossentropy(
         from_logits=True, reduction=losses_impl.ReductionV2.NONE)
     loss = bce_obj(y_true, logits)
-    self.assertAllClose((0., 66.6666, 66.6666), self.evaluate(loss), 3)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [(0 + 0 + 0)/3, (200)/3]
+
+    self.assertAllClose((0., 66.6666), self.evaluate(loss), 3)
 
   def test_label_smoothing(self):
     logits = constant_op.constant([[100.0, -100.0, -100.0]])
     y_true = constant_op.constant([[1, 0, 1]])
     label_smoothing = 0.1
     # Loss: max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
     # Label smoothing: z' = z * (1 - L) + 0.5L
     #                  1  = 1 - 0.5L
     #                  0  = 0.5L
@@ -1001,6 +1087,440 @@ class CategoricalHingeTest(test.TestCase):
                                   dtype=dtypes.float32)
     loss = cat_hinge_obj(y_true, y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LogLossTest(test.TestCase):
+
+  def setup(self):
+    # TODO(psv): Change to setUp() after b/122319309 is fixed.
+    y_pred = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3))
+    y_true = np.asarray([1., 0., 1., 1., 0., 0.]).reshape((2, 3))
+    epsilon = 1e-7  # to avoid log 0
+
+    self.batch_size = 6
+    self.expected_losses = np.multiply(y_true, np.log(y_pred + epsilon))
+    self.expected_losses += np.multiply(1 - y_true,
+                                        np.log(1 - y_pred + epsilon))
+    self.expected_losses = -self.expected_losses
+
+    self.y_pred = constant_op.constant(y_pred)
+    self.y_true = constant_op.constant(y_true)
+
+  def test_config(self):
+    log_loss_obj = keras.losses.LogLoss(
+        reduction=losses_impl.ReductionV2.SUM, name='log')
+    self.assertEqual(log_loss_obj.name, 'log')
+    self.assertEqual(log_loss_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_all_correct(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    loss = log_loss_obj(self.y_true, self.y_true)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+  def test_unweighted(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    loss = log_loss_obj(self.y_true, self.y_pred)
+    actual_loss = np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_scalar_weighted(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    sample_weight = 2.3
+    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    sample_weight = constant_op.constant((1.2, 3.4), shape=(2, 1))
+
+    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = np.multiply(
+        self.expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
+    actual_loss = np.sum(actual_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_timestep_weighted(self):
+    log_loss_obj = keras.losses.LogLoss()
+
+    y_pred = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3, 1))
+    y_true = np.asarray([1., 0., 1., 1., 0., 0.]).reshape((2, 3, 1))
+    epsilon = 1e-7  # to avoid log 0
+    batch_size = 6
+
+    expected_losses = np.multiply(y_true, np.log(y_pred + epsilon))
+    expected_losses += np.multiply(1 - y_true, np.log(1 - y_pred + epsilon))
+
+    y_pred = constant_op.constant(y_pred)
+    y_true = constant_op.constant(y_true)
+    sample_weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3, 1))
+    loss = log_loss_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant(sample_weight, shape=(2, 3)))
+    actual_loss = np.multiply(-expected_losses, sample_weight)
+    actual_loss = np.sum(actual_loss) / batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_zero_weighted(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    sample_weight = 0
+    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LogcoshTest(test.TestCase):
+
+  def setup(self):
+    y_pred = np.asarray([1, 9, 2, -5, -2, 6]).reshape((2, 3))
+    y_true = np.asarray([4, 8, 12, 8, 1, 3]).reshape((2, 3))
+
+    self.batch_size = 6
+    error = y_pred - y_true
+    self.expected_losses = np.log((np.exp(error) + np.exp(-error)) / 2)
+
+    self.y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    self.y_true = constant_op.constant(y_true)
+
+  def test_config(self):
+    logcosh_obj = keras.losses.Logcosh(
+        reduction=losses_impl.ReductionV2.SUM, name='logcosh_loss')
+    self.assertEqual(logcosh_obj.name, 'logcosh_loss')
+    self.assertEqual(logcosh_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_unweighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+
+    loss = logcosh_obj(self.y_true, self.y_pred)
+    expected_loss = np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_scalar_weighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+    sample_weight = 2.3
+
+    loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    expected_loss = sample_weight * np.sum(
+        self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+
+    expected_loss = np.multiply(
+        self.expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
+    expected_loss = np.sum(expected_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_timestep_weighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+    y_true = np.asarray([1, 9, 2, -5, -2, 6]).reshape(2, 3, 1)
+    y_pred = np.asarray([4, 8, 12, 8, 1, 3]).reshape(2, 3, 1)
+    error = y_pred - y_true
+    expected_losses = np.log((np.exp(error) + np.exp(-error)) / 2)
+    sample_weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3, 1))
+
+    y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    y_true = constant_op.constant(y_true)
+    loss = logcosh_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant(sample_weight, shape=(2, 3)))
+    expected_loss = np.sum(expected_losses * sample_weight) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_zero_weighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+    sample_weight = 0
+    loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class PoissonTest(test.TestCase):
+
+  def setup(self):
+    self.np_y_pred = np.asarray([1, 9, 2, 5, 2, 6]).reshape((2, 3))
+    self.np_y_true = np.asarray([4, 8, 12, 8, 1, 3]).reshape((2, 3))
+
+    self.batch_size = 6
+    self.expected_losses = self.np_y_pred - np.multiply(self.np_y_true,
+                                                        np.log(self.np_y_pred))
+
+    self.y_pred = constant_op.constant(self.np_y_pred, dtype=dtypes.float32)
+    self.y_true = constant_op.constant(self.np_y_true)
+
+  def test_config(self):
+    poisson_obj = keras.losses.Poisson(
+        reduction=losses_impl.ReductionV2.SUM, name='poisson')
+    self.assertEqual(poisson_obj.name, 'poisson')
+    self.assertEqual(poisson_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_unweighted(self):
+    self.setup()
+    poisson_obj = keras.losses.Poisson()
+
+    loss = poisson_obj(self.y_true, self.y_pred)
+    expected_loss = np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_scalar_weighted(self):
+    self.setup()
+    poisson_obj = keras.losses.Poisson()
+    sample_weight = 2.3
+    loss = poisson_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+
+    expected_loss = sample_weight * np.sum(
+        self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = poisson_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    self.setup()
+    poisson_obj = keras.losses.Poisson()
+
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = poisson_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+
+    expected_loss = np.multiply(
+        self.expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
+    expected_loss = np.sum(expected_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_timestep_weighted(self):
+    self.setup()
+    poisson_obj = keras.losses.Poisson()
+    y_true = self.np_y_true.reshape(2, 3, 1)
+    y_pred = self.np_y_pred.reshape(2, 3, 1)
+    sample_weight = np.asarray([3, 6, 5, 0, 4, 2]).reshape(2, 3, 1)
+    expected_losses = y_pred - np.multiply(y_true, np.log(y_pred))
+
+    y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    y_true = constant_op.constant(y_true)
+
+    loss = poisson_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant(sample_weight, shape=(2, 3)))
+    expected_loss = np.sum(expected_losses * sample_weight) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_zero_weighted(self):
+    self.setup()
+    poisson_obj = keras.losses.Poisson()
+    loss = poisson_obj(self.y_true, self.y_pred, sample_weight=0)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class KullbackLeiblerDivergenceTest(test.TestCase):
+
+  def setup(self):
+    self.np_y_pred = np.asarray([.4, .9, .12, .36, .3, .4]).reshape((2, 3))
+    self.np_y_true = np.asarray([.5, .8, .12, .7, .43, .8]).reshape((2, 3))
+
+    self.batch_size = 2
+    self.expected_losses = np.multiply(self.np_y_true,
+                                       np.log(self.np_y_true / self.np_y_pred))
+
+    self.y_pred = constant_op.constant(self.np_y_pred, dtype=dtypes.float32)
+    self.y_true = constant_op.constant(self.np_y_true)
+
+  def test_config(self):
+    k_obj = keras.losses.KullbackLeiblerDivergence(
+        reduction=losses_impl.ReductionV2.SUM, name='kld')
+    self.assertEqual(k_obj.name, 'kld')
+    self.assertEqual(k_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_unweighted(self):
+    self.setup()
+    k_obj = keras.losses.KullbackLeiblerDivergence()
+
+    loss = k_obj(self.y_true, self.y_pred)
+    expected_loss = np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_scalar_weighted(self):
+    self.setup()
+    k_obj = keras.losses.KullbackLeiblerDivergence()
+    sample_weight = 2.3
+
+    loss = k_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    expected_loss = sample_weight * np.sum(
+        self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = k_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    self.setup()
+    k_obj = keras.losses.KullbackLeiblerDivergence()
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = k_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+
+    expected_loss = np.multiply(
+        self.expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape(2, 3))
+    expected_loss = np.sum(expected_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_timestep_weighted(self):
+    self.setup()
+    k_obj = keras.losses.KullbackLeiblerDivergence()
+    y_true = self.np_y_true.reshape(2, 3, 1)
+    y_pred = self.np_y_pred.reshape(2, 3, 1)
+    sample_weight = np.asarray([3, 6, 5, 0, 4, 2]).reshape(2, 3)
+    expected_losses = np.sum(
+        np.multiply(y_true, np.log(y_true / y_pred)), axis=-1)
+
+    y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    y_true = constant_op.constant(y_true)
+    loss = k_obj(
+        y_true, y_pred, sample_weight=constant_op.constant(sample_weight))
+
+    num_timesteps = 3
+    expected_loss = np.sum(expected_losses * sample_weight) / (
+        self.batch_size * num_timesteps)
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_zero_weighted(self):
+    self.setup()
+    k_obj = keras.losses.KullbackLeiblerDivergence()
+    loss = k_obj(self.y_true, self.y_pred, sample_weight=0)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class HuberLossTest(test.TestCase):
+
+  def huber_loss(self, y_true, y_pred, delta=1.0):
+    error = y_pred - y_true
+    abs_error = np.abs(error)
+
+    quadratic = np.minimum(abs_error, delta)
+    linear = np.subtract(abs_error, quadratic)
+    return np.add(
+        np.multiply(0.5, np.multiply(quadratic, quadratic)),
+        np.multiply(delta, linear))
+
+  def setup(self, delta=1.0):
+    self.np_y_pred = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3))
+    self.np_y_true = np.asarray([1., 0., 1., 1., 0., 0.]).reshape((2, 3))
+
+    self.batch_size = 6
+    self.expected_losses = self.huber_loss(self.np_y_true, self.np_y_pred,
+                                           delta)
+
+    self.y_pred = constant_op.constant(self.np_y_pred)
+    self.y_true = constant_op.constant(self.np_y_true)
+
+  def test_config(self):
+    h_obj = keras.losses.HuberLoss(
+        reduction=losses_impl.ReductionV2.SUM, name='huber')
+    self.assertEqual(h_obj.name, 'huber')
+    self.assertEqual(h_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_all_correct(self):
+    self.setup()
+    h_obj = keras.losses.HuberLoss()
+    loss = h_obj(self.y_true, self.y_true)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+  def test_unweighted(self):
+    self.setup()
+    h_obj = keras.losses.HuberLoss()
+    loss = h_obj(self.y_true, self.y_pred)
+    actual_loss = np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_scalar_weighted(self):
+    self.setup()
+    h_obj = keras.losses.HuberLoss()
+    sample_weight = 2.3
+    loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    self.setup()
+    h_obj = keras.losses.HuberLoss()
+    sample_weight = constant_op.constant((1.2, 3.4), shape=(2, 1))
+
+    loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = np.multiply(
+        self.expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
+    actual_loss = np.sum(actual_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_timestep_weighted(self):
+    self.setup()
+    h_obj = keras.losses.HuberLoss()
+    y_pred = self.np_y_pred.reshape((2, 3, 1))
+    y_true = self.np_y_true.reshape((2, 3, 1))
+    expected_losses = self.huber_loss(y_true, y_pred)
+
+    y_pred = constant_op.constant(y_pred)
+    y_true = constant_op.constant(y_true)
+    sample_weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3, 1))
+    loss = h_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant(sample_weight, shape=(2, 3)))
+    actual_loss = np.multiply(expected_losses, sample_weight)
+    actual_loss = np.sum(actual_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_zero_weighted(self):
+    self.setup()
+    h_obj = keras.losses.HuberLoss()
+    sample_weight = 0
+    loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+  def test_non_default_delta(self):
+    self.setup(delta=0.8)
+    h_obj = keras.losses.HuberLoss(delta=0.8)
+    sample_weight = 2.3
+    loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
 
 
 if __name__ == '__main__':

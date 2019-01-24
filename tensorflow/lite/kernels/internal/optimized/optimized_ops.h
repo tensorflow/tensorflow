@@ -5052,6 +5052,14 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   output_map.array() = Eigen::floor(input_map.array());
 }
 
+inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Ceil");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::ceil(input_map.array());
+}
+
 #ifdef USE_NEON
 inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
                                  float scale, float* output_ptr) {
@@ -5387,9 +5395,6 @@ inline void ResizeBilinearGenericSmallChannel(
     int32 output_height, int32 output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const T* input_data,
     const RuntimeShape& output_shape, T* output_data) {
-  memset(output_data, 0,
-         batches * output_height * output_width * depth * sizeof(T));
-
   T* output_ptr = &output_data[0];
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
@@ -5398,7 +5403,7 @@ inline void ResizeBilinearGenericSmallChannel(
       int32 y1 = std::min(y0 + 1, input_height - 1);
       for (int x = 0; x < output_width; ++x) {
         float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(input_x);
+        int32 x0 = static_cast<int32>(std::floor((input_x)));
         int32 x1 = std::min(x0 + 1, input_width - 1);
 
         int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
@@ -6082,7 +6087,27 @@ inline void TransposeConv(
     const float* filter_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
   gemmlowp::ScopedProfilingLabel label("TransposeConv");
-
+  // The complexity of the reference implementation is input.flat_size() *
+  // filter.flat_size() / in_channel.
+  //
+  // While the complexity of im2col->gemm
+  // implmentation is batch * output_height * output_width *
+  // (filter.flat_size() / out_channel)^2 * out_channel.
+  //
+  // so if input.flat_size() * out_channel^2 is much smaller than
+  // output.flat_size() * filter.size() * in_channel we should fall back to the
+  // reference implementation.
+  //
+  // TODO(b/122331966): optimize the intuitive implementation.
+  const int out_channel = output_shape.Dims(3);
+  const int in_channel = input_shape.Dims(3);
+  if ((input_shape.FlatSize() * out_channel * out_channel * 4) <
+      (filter_shape.FlatSize() * output_shape.FlatSize() * in_channel)) {
+    reference_ops::TransposeConv(params, input_shape, input_data, filter_shape,
+                                 filter_data, output_shape, output_data,
+                                 im2col_shape, im2col_data);
+    return;
+  }
   // Note we could use transposed weights with forward conv for unstrided
   // cases. But we are already getting good performance with this code as-is.
   TFLITE_DCHECK(im2col_data);

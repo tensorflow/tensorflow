@@ -171,6 +171,7 @@ cuda_py_test(
     main = "python/ops/fused_conv2d_bias_activation_benchmark.py",
     tags = [
         "manual",  # TODO(b/117128481): re-enable after fixing OSS build
+        "nogpu",
         "requires-gpu-sm70",
     ],
 )

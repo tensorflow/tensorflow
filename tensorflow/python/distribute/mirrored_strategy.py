@@ -20,14 +20,15 @@ from __future__ import print_function
 
 import contextlib
 import copy
-import functools
 import threading
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import shared_variable_creator
 from tensorflow.python.distribute import values
@@ -412,7 +413,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   This strategy uses one replica per device and sync replication for its
   multi-GPU version.
 
-  The multi-worker version will be added in the fture.
+  The multi-worker version will be added in the future.
 
   Args:
     devices: a list of device strings.
@@ -456,9 +457,10 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
         "No duplicates allowed in `devices` argument: %s" % devices)
     # TODO(josh11b): Require at least 2 devices?
     self._device_map = values.ReplicaDeviceMap(devices)
-    self._input_workers = values.InputWorkers(self._device_map)
+    self._input_workers = input_lib.InputWorkers(self._device_map)
     self._inferred_cross_device_ops = cross_device_ops_lib.choose_the_best(
         devices)
+    self._host_input_device = numpy_dataset.SingleDevice("/cpu:0")
 
   def _initialize_multi_worker(self, devices):
     """Initializes the object for multi-worker training."""
@@ -487,9 +489,11 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     # their ops will end up on the cpu device of its first worker, e.g.
     # "/job:worker/task:0/device:CPU:0". Note this is not used in replica mode.
     self._default_device = workers[0]
+    self._host_input_device = numpy_dataset.SingleDevice(workers[0])
 
     self._device_map = values.ReplicaDeviceMap(devices)
-    self._input_workers = values.InputWorkers(self._device_map, worker_devices)
+    self._input_workers = input_lib.InputWorkers(
+        self._device_map, worker_devices)
     self._inferred_cross_device_ops = cross_device_ops_lib.MultiWorkerAllReduce(
         workers, _infer_num_gpus_per_worker(devices))
 
@@ -499,6 +503,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     if colocate_with is None:
       device_map = self._device_map
       logical_device = 0  # TODO(josh11b): Get logical device from scope here.
+    elif isinstance(colocate_with, numpy_dataset.SingleDevice):
+      with ops.device(colocate_with.device):
+        return next_creator(*args, **kwargs)
     else:
       device_map = colocate_with.device_map
       logical_device = colocate_with.logical_device
@@ -540,19 +547,8 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_distributed_variable(colocate_with_variable, self)
 
-  def _distribute_dataset(self, dataset_fn):
-    if self._local_mode:
-      worker_index = 0
-      return values.PerReplicaDataset(
-          self._call_dataset_fn(dataset_fn), self._input_workers, worker_index)
-    else:
-      return values.MultiWorkerDataset(
-          functools.partial(self._call_dataset_fn, dataset_fn),
-          self._input_workers,
-          auto_shard=False)
-
   def _make_dataset_iterator(self, dataset):
-    return values.DatasetIterator(
+    return input_lib.DatasetIterator(
         dataset, self._input_workers, self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
@@ -566,8 +562,12 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
           num_input_pipelines=num_workers,
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
-    return values.InputFunctionIterator(
+    return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, input_contexts)
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    return numpy_dataset.one_host_numpy_dataset(
+        numpy_input, self._host_input_device, session)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
@@ -576,7 +576,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
 
-    ctx = values.MultiStepContext()
+    ctx = input_lib.MultiStepContext()
     def body(i, *args):
       """A wrapper around `fn` to create the while loop body."""
       del args
@@ -770,6 +770,13 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
+
+    `make_input_fn_iterator` assumes per-replica batching.
+
+    Returns:
+      Boolean.
+    """
     return True
 
 
@@ -860,13 +867,13 @@ class _MirroredReplicaThread(threading.Thread):
 
 
 class MirroredReplicaContext(distribute_lib.ReplicaContext):
-  """ReplicaContext used in MirroredStrategy.call_for_each_replica().
+  """ReplicaContext used in MirroredStrategy.extended.call_for_each_replica().
 
   Opened in `_MirroredReplicaThread`, to allow the user to invoke
   `MirroredStrategy`'s specific implementation of `merge_call()`,
   which works by delegating the function and its arguments to
   the main thread (the one that invoked
-  `MirroredStrategy.call_for_each_replica()`).
+  `MirroredStrategy.extended.call_for_each_replica()`).
   """
 
   def _merge_call(self, fn, args, kwargs):
