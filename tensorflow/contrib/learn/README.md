@@ -121,7 +121,7 @@ Switch to `tf.estimator.train_and_evaluate`. Some differences:
   replacement for `tf.contrib.learn.make_export_strategy`. If you want to export
   only at the end of training  use `tf.estimator.FinalExporter`.
 * If the `TF_CONFIG` environment variable is constructed manually, please read
-  the `train_and_evaluate` documentation for the new requirementds (in
+  the `train_and_evaluate` documentation for the new requirements (in
   particular, the chief node and evaluator node).
 
 ## Others Classes and Functions

@@ -117,7 +117,7 @@ Using this ability we can calculate gradients on the nodes the data is stored on
 
 Apache Ignite uses horizontal partitioning to store data in distributed cluster. When we create Apache Ignite cache (or table in terms of SQL), we can specify the number of partitions the data will be partitioned on. For example, if an Apache Ignite cluster consists of 10 machines and we create cache with 10 partitions, then every machine will maintain approximately one data partition.
 
-Ignite Dataset allows using these two aspects of distributed neural network training (using TensorFlow) and Apache Ignite partitioning. Ignite Dataset is a computation graph operation that can be performed on a remote worker. The remote worker can override Ignite Dataset parameters (such as `host`, `port` or `part`) by setting correstondent environment variables for worker process (such as `IGNITE_DATASET_HOST`, `IGNITE_DATASET_PORT` or `IGNITE_DATASET_PART`). Using this overriding approach, we can assign a specific partition to every worker so that one worker handles one partition and, at the same time, transparently work with single dataset.
+Ignite Dataset allows using these two aspects of distributed neural network training (using TensorFlow) and Apache Ignite partitioning. Ignite Dataset is a computation graph operation that can be performed on a remote worker. The remote worker can override Ignite Dataset parameters (such as `host`, `port` or `part`) by setting correspondent environment variables for worker process (such as `IGNITE_DATASET_HOST`, `IGNITE_DATASET_PORT` or `IGNITE_DATASET_PART`). Using this overriding approach, we can assign a specific partition to every worker so that one worker handles one partition and, at the same time, transparently work with single dataset.
 
 ```python
 >>> import tensorflow as tf
@@ -162,7 +162,7 @@ TensorBoard runs in a different process or machine.
 
 ### SSL Connection
 
-Apache Ignite allows to protect data transfer channels by [SSL](https://en.wikipedia.org/wiki/Transport_Layer_Security) and authentification. Ignite Dataset supports both SSL connection with and without authntication. For more information, please refer to the [Apache Ignite SSL/TLS](https://apacheignite.readme.io/docs/ssltls) documentation.
+Apache Ignite allows to protect data transfer channels by [SSL](https://en.wikipedia.org/wiki/Transport_Layer_Security) and authentication. Ignite Dataset supports both SSL connection with and without authentication. For more information, please refer to the [Apache Ignite SSL/TLS](https://apacheignite.readme.io/docs/ssltls) documentation.
 
 ```python
 >>> import tensorflow as tf
@@ -187,7 +187,7 @@ Following examples will help you to easily start working with this module.
 
 The simplest way to try Ignite Dataset is to run a
 [Docker](https://www.docker.com/) container with Apache Ignite and loaded
-[MNIST](http://yann.lecun.com/exdb/mnist/) data and after start interruct with
+[MNIST](http://yann.lecun.com/exdb/mnist/) data and after start interrupt with
 it using Ignite Dataset. Such container is available on Docker Hub:
 [dmitrievanthony/ignite-with-mnist](https://hub.docker.com/r/dmitrievanthony/ignite-with-mnist/).
 You need to start this container on your machine:
@@ -204,7 +204,7 @@ After that you will be able to work with it following way:
 
 The simplest way to try IGFS with TensorFlow is to run
 [Docker](https://www.docker.com/) container with Apache Ignite and enabled IGFS
-and then interruct with it using TensorFlow
+and then interrupt with it using TensorFlow
 [tf.gfile](https://www.tensorflow.org/api_docs/python/tf/gfile). Such container
 is available on Docker Hub:
 [dmitrievanthony/ignite-with-igfs](https://hub.docker.com/r/dmitrievanthony/ignite-with-igfs/).
