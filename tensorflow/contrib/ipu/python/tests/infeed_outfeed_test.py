@@ -26,12 +26,38 @@ from tensorflow.compiler.plugin.poplar.ops import gen_pop_datastream_ops
 from threading import Thread
 
 
-
 _N = 100
 _BATCH_SIZE = 5
 _N_ITER = _N//_BATCH_SIZE
 _features = np.reshape(np.repeat(np.arange(_N), 10), (_N,10))
 _labels = np.reshape(np.repeat(np.arange(_N), 2), (_N,2))/100.0
+
+def _get_ground_truth(with_tuple=False):
+  feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
+  label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
+  dataset_iter = InfeedOutfeedTest.create_dataset_iter(feature_placeholder, label_placeholder)
+
+  def cond(i, acc):
+    return math_ops.less(i, _N_ITER)
+
+  def body(i, acc):
+    batch_data, batch_label = dataset_iter.get_next()
+    with ops.control_dependencies([batch_data, batch_label]):
+      i = i + 1
+      acc = InfeedOutfeedTest._loop_computation(batch_data, acc)
+      if with_tuple:
+        acc = math_ops.add(acc, math_ops.reduce_sum(batch_label))
+      return (i, acc)
+
+  i = constant_op.constant(0)
+  acc = constant_op.constant(1.0, dtype=np.float32)
+  r = control_flow_ops.while_loop(cond, body, (i, acc), maximum_iterations=_N_ITER)
+
+  with session_lib.Session() as sess:
+    sess.run(dataset_iter.initializer,
+        feed_dict={feature_placeholder: _features, label_placeholder: _labels})
+    (_, acc) = sess.run(r)
+    return acc
 
 class InfeedOutfeedTest(test_util.TensorFlowTestCase):
   # non-commutative operation in loop to make sure tensors are
@@ -44,35 +70,6 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     x = math_ops.divide(13.2, x)
     acc = math_ops.divide(x, acc)
     return acc
-
-  @staticmethod
-  def _get_ground_truth(with_tuple=False):
-    feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
-    label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
-    dataset_iter = InfeedOutfeedTest.create_dataset_iter(feature_placeholder, label_placeholder)
-
-    def cond(i, acc):
-      return math_ops.less(i, _N_ITER)
-
-    def body(i, acc):
-      batch_data, batch_label = dataset_iter.get_next()
-      i = i + 1
-      acc = InfeedOutfeedTest._loop_computation(batch_data, acc)
-      if with_tuple:
-        acc = math_ops.add(acc, math_ops.reduce_sum(batch_label))
-      return (i, acc)
-
-    i = constant_op.constant(0)
-    acc = constant_op.constant(1.0, dtype=np.float32)
-    r = control_flow_ops.while_loop(cond, body, (i, acc), maximum_iterations=_N_ITER)
-
-    with session_lib.Session() as sess:
-      sess.run(dataset_iter.initializer,
-          feed_dict={feature_placeholder: _features, label_placeholder: _labels})
-      (_, acc) = sess.run(r)
-      InfeedOutfeedTest._ground_truth = acc
-
-    return InfeedOutfeedTest._ground_truth
 
 
   @staticmethod
@@ -159,7 +156,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     return r
 
   def testSequentialInfeedWhileLoop(self):
-    ground_truth = InfeedOutfeedTest._get_ground_truth()
+    ground_truth = _get_ground_truth()
     feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
     label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
     dataset_iter = InfeedOutfeedTest.create_dataset_iter(feature_placeholder, label_placeholder)
@@ -179,7 +176,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
 
   def testMultiThreadedWhileLoop(self):
-    ground_truth = InfeedOutfeedTest._get_ground_truth()
+    ground_truth = _get_ground_truth()
     feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
     label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
 
@@ -216,7 +213,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
 
   def testMultiThreadedWhileLoopWithTuples(self):
-    ground_truth = InfeedOutfeedTest._get_ground_truth(with_tuple=True)
+    ground_truth = _get_ground_truth(with_tuple=True)
     feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
     label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
     dataset_iter = InfeedOutfeedTest.create_dataset_iter(feature_placeholder, label_placeholder, sleep_in_pipeline=True)
