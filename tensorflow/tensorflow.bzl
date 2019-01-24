@@ -405,32 +405,44 @@ def tf_cc_shared_object(
         linkopts = [],
         framework_so = tf_binary_additional_srcs(),
         kernels = [],
-        use_name_pattern = False,
+        per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
+        visibility = ["//visibility:private"],
         **kwargs):
-    if use_name_pattern:
+    if per_os_targets:
         names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
     else:
         names = [name]
     [
         native.cc_binary(
-            name = name,
+            name = name_os,
             srcs = srcs + framework_so,
             deps = deps + tf_binary_dynamic_kernel_deps(kernels),
             linkshared = 1,
             data = data + tf_binary_dynamic_kernel_dsos(kernels),
-            linkopts = linkopts + _rpath_linkopts(name) + select({
+            linkopts = linkopts + _rpath_linkopts(name_os) + select({
                 clean_dep("//tensorflow:darwin"): [
-                    "-Wl,-install_name,@rpath/" + name.split("/")[-1],
+                    "-Wl,-install_name,@rpath/" + name_os.split("/")[-1],
                 ],
                 clean_dep("//tensorflow:windows"): [],
                 "//conditions:default": [
-                    "-Wl,-soname," + name.split("/")[-1],
+                    "-Wl,-soname," + name_os.split("/")[-1],
                 ],
             }),
+            visibility = visibility,
             **kwargs
         )
-        for name in names
+        for name_os in names
     ]
+    if name not in names:
+        native.filegroup(
+            name = name,
+            srcs = select({
+                "//tensorflow:windows": [":%s.dll" % name],
+                "//tensorflow:darwin": [":lib%s.dylib" % name],
+                "//conditions:default": [":lib%s.so" % name],
+            }),
+            visibility = visibility,
+        )
 
 register_extension_info(
     extension_name = "tf_cc_shared_object",
@@ -449,15 +461,16 @@ def tf_cc_binary(
         linkopts = [],
         copts = tf_copts(),
         kernels = [],
-        use_name_pattern = False,
+        per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
+        visibility = ["//visibility:private"],
         **kwargs):
-    if use_name_pattern:
+    if per_os_targets:
         names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
     else:
         names = [name]
     [
         native.cc_binary(
-            name = name,
+            name = name_os,
             copts = copts,
             srcs = srcs + tf_binary_additional_srcs(),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
@@ -466,11 +479,22 @@ def tf_cc_binary(
                 ],
             ),
             data = data + tf_binary_dynamic_kernel_dsos(kernels),
-            linkopts = linkopts + _rpath_linkopts(name),
+            linkopts = linkopts + _rpath_linkopts(name_os),
+            visibility = visibility,
             **kwargs
         )
-        for name in names
+        for name_os in names
     ]
+    if name not in names:
+        native.filegroup(
+            name = name,
+            srcs = select({
+                "//tensorflow:windows": [":%s.dll" % name],
+                "//tensorflow:darwin": [":lib%s.dylib" % name],
+                "//conditions:default": [":lib%s.so" % name],
+            }),
+            visibility = visibility,
+        )
 
 register_extension_info(
     extension_name = "tf_cc_binary",

@@ -504,7 +504,7 @@ tf_cc_shared_object(
             "$(location //tensorflow/c:version_script.lds)",
         ],
     }),
-    use_name_pattern = True,
+    per_os_targets = True,
     visibility = ["//visibility:public"],
     win_def_file = select({
         # We need this DEF file to properly export symbols on Windows
@@ -535,7 +535,7 @@ tf_cc_shared_object(
             "$(location //tensorflow:tf_version_script.lds)",
         ],
     }),
-    use_name_pattern = True,
+    per_os_targets = True,
     visibility = ["//visibility:public"],
     win_def_file = select({
         # We need this DEF file to properly export symbols on Windows
