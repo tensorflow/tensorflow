@@ -71,6 +71,41 @@ def tensor_list_from_tensor(tensor, element_shape, name=None):
       name=name)
 
 
+def tensor_list_get_item(input_handle, index, element_dtype, name=None):
+  return gen_list_ops.tensor_list_get_item(
+      input_handle=input_handle,
+      index=index,
+      element_shape=-1,
+      element_dtype=element_dtype,
+      name=name)
+
+
+def tensor_list_pop_back(input_handle, element_dtype, name=None):
+  return gen_list_ops.tensor_list_pop_back(
+      input_handle=input_handle,
+      element_shape=-1,
+      element_dtype=element_dtype,
+      name=name)
+
+
+def tensor_list_gather(input_handle, indices, element_dtype, name=None):
+  return gen_list_ops.tensor_list_gather(
+      input_handle=input_handle,
+      indices=indices,
+      element_shape=-1,
+      element_dtype=element_dtype,
+      name=name)
+
+
+def tensor_list_stack(input_handle, element_dtype, num_elements=-1, name=None):
+  return gen_list_ops.tensor_list_stack(
+      input_handle=input_handle,
+      element_shape=-1,
+      element_dtype=element_dtype,
+      num_elements=num_elements,
+      name=name)
+
+
 def tensor_list_concat(input_handle, element_dtype, element_shape=None,
                        name=None):
   # Ignore the lengths output of TensorListConcat. It is only used during
@@ -110,7 +145,9 @@ def tensor_list_set_item(input_handle,
 @ops.RegisterGradient("TensorListPushBack")
 def _PushBackGrad(op, dresult):
   return gen_list_ops.tensor_list_pop_back(
-      dresult, element_dtype=op.get_attr("element_dtype"))
+      dresult,
+      element_shape=array_ops.shape(op.inputs[1]),
+      element_dtype=op.get_attr("element_dtype"))
 
 
 @ops.RegisterGradient("TensorListPopBack")
@@ -120,12 +157,12 @@ def _PopBackGrad(op, dlist, delement):
         element_dtype=delement.dtype,
         element_shape=gen_list_ops.tensor_list_element_shape(
             op.outputs[0], shape_type=dtypes.int32))
-  return gen_list_ops.tensor_list_push_back(dlist, delement)
+  return gen_list_ops.tensor_list_push_back(dlist, delement), None
 
 
 @ops.RegisterGradient("TensorListStack")
 def _TensorListStackGrad(unused_op, dtensor):
-  return tensor_list_from_tensor(dtensor, element_shape=dtensor.shape[1:])
+  return tensor_list_from_tensor(dtensor, element_shape=dtensor.shape[1:]), None
 
 
 @ops.RegisterGradient("TensorListConcat")
@@ -150,17 +187,21 @@ def _TensorListSplitGrad(op, dlist):
 @ops.RegisterGradient("TensorListFromTensor")
 def _TensorListFromTensorGrad(op, dlist):
   """Gradient for TensorListFromTensor."""
-  if op.inputs[0].shape.dims and op.inputs[0].shape.dims[0].value is not None:
-    num_elements = op.inputs[0].shape.dims[0].value
+  t = op.inputs[0]
+  if t.shape.dims and t.shape.dims[0].value is not None:
+    num_elements = t.shape.dims[0].value
   else:
     num_elements = None
   if dlist is None:
     dlist = empty_tensor_list(
-        element_dtype=op.inputs[0].dtype,
+        element_dtype=t.dtype,
         element_shape=gen_list_ops.tensor_list_element_shape(
             op.outputs[0], shape_type=dtypes.int32))
   tensor_grad = gen_list_ops.tensor_list_stack(
-      dlist, element_dtype=op.inputs[0].dtype, num_elements=num_elements)
+      dlist,
+      element_shape=array_ops.slice(array_ops.shape(t), [1], [-1]),
+      element_dtype=t.dtype,
+      num_elements=num_elements)
   shape_grad = None
   return tensor_grad, shape_grad
 
@@ -177,17 +218,22 @@ def _TensorListGetItemGrad(op, ditem):
       index=op.inputs[1],
       item=ditem)
   index_grad = None
-  return list_grad, index_grad
+  element_shape_grad = None
+  return list_grad, index_grad, element_shape_grad
 
 
 @ops.RegisterGradient("TensorListSetItem")
 def _TensorListSetItemGrad(op, dlist):
+  """Gradient function for TensorListSetItem."""
   _, index, item = op.inputs
   list_grad = gen_list_ops.tensor_list_set_item(
       dlist, index=index, item=array_ops.zeros_like(item))
   index_grad = None
   element_grad = gen_list_ops.tensor_list_get_item(
-      dlist, index, element_dtype=item.dtype)
+      dlist,
+      index,
+      element_shape=array_ops.shape(item),
+      element_dtype=item.dtype)
   return list_grad, index_grad, element_grad
 
 
@@ -200,7 +246,8 @@ def _TensorListResizeGrad(op, dlist):
 
 @ops.RegisterGradient("TensorListGather")
 def _TensorListGatherGrad(op, dtensor):
-  input_list, indices = op.inputs
+  """Gradient function for TensorListGather."""
+  input_list, indices, _ = op.inputs
   dlist = gen_list_ops.tensor_list_scatter(
       tensor=dtensor,
       indices=indices,
@@ -209,14 +256,17 @@ def _TensorListGatherGrad(op, dtensor):
   # so we manually resize it to match the size of the input list.
   input_list_size = gen_list_ops.tensor_list_length(input_list)
   dlist = gen_list_ops.tensor_list_resize(dlist, input_list_size)
-  return dlist, None
+  return dlist, None, None
 
 
 @ops.RegisterGradient("TensorListScatter")
 def _TensorListScatterGrad(op, dlist):
   t, indices, _ = op.inputs
   return gen_list_ops.tensor_list_gather(
-      dlist, indices, element_dtype=t.dtype), None, None
+      dlist,
+      indices,
+      element_shape=array_ops.slice(array_ops.shape(t), [1], [-1]),
+      element_dtype=t.dtype), None, None
 
 
 def _build_element_shape(shape):
