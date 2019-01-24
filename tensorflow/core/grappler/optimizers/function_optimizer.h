@@ -48,6 +48,16 @@ class FunctionOptimizer : public GraphOptimizer {
     bool enable_trim_function_library = true;
   };
 
+  // Runs a single function optimizer pass over the `graph`. All nodes that are
+  // not function calls will be copied from the `graph` to the
+  // `optimized_graph`. Function call nodes inlined or specialized, and
+  // instantiated function body or specialized function call nodes will be added
+  // to the `optimized_graph`.
+  Status RunFunctionOptimizerPass(
+      const GrapplerItem& item, const GraphDef& graph, const int iteration,
+      std::unordered_set<string>* skip_nodes, GraphDef* optimized_graph,
+      bool* graph_has_unoptimized_function_calls) const;
+
   RewriterConfig::Toggle opt_level_;
   FunctionOptimizerOptions options_;
 };

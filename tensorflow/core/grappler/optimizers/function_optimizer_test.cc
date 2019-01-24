@@ -1194,6 +1194,81 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithMergedDeadTensors) {
   test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
 }
 
+TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithNestedFunctionCall) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "mul:z:0"}});
+
+  // `Square` implemented in terms of PartitionedCall to `MyMul`.
+  FunctionDef square_func = FunctionDefHelper::Create(
+      "MySquare", {"x:T"}, {"output:T"}, {"T: {float, double}"},
+      {{{"square"},
+        "PartitionedCall",
+        {"x", "x"},
+        {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+         {"Tout", DataTypeSlice{DT_FLOAT}},
+         {"f", FDH::FunctionRef("MyMul", {{"T", DT_FLOAT}})}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"output", "square:output:0"}});
+
+  // Build a graph to compute:
+  //   b = Square(a)
+  //   c = Identity(b)
+  //   return c
+  GrapplerItem item;
+  item.fetch = {"c"};
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "PartitionedCall", {"a"},
+            {{"Tin", DataTypeSlice{DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"f", FDH::FunctionRef("MySquare", {{"T", DT_FLOAT}})}},
+            kDevice),
+       NDef("c", "Identity", {"b"}, {{"T", DT_FLOAT}}, kDevice)},
+      /* Function library */
+      {mul_func, square_func});
+
+  GraphDef optimized_graph;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+  GraphDef expected = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+
+       // Inlined inputs of `c` node.
+       NDef("b/x", "Identity", {"a:0"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Inlined inputs of `square` node inside inlined `MySquare` function.
+       NDef("b/square/x", "Identity", {"b/x:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("b/square/y", "Identity", {"b/x:0"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Inlined mul node from the `MyMul` function.
+       NDef("b/square/mul", "Mul", {"b/square/x", "b/square/y"},
+            {{"T", DT_FLOAT}}, kDevice),
+
+       NDef("c", "Identity", {"b/square/mul:0"}, {{"T", DT_FLOAT}}, kDevice)},
+      // Function library.
+      {mul_func});
+
+  CompareGraphs(expected, optimized_graph);
+
+  Tensor three = test::AsScalar<float>(3.0f);
+  item.feed.emplace_back("a", three);
+
+  GrapplerItem optimized = item.WithGraph(std::move(optimized_graph));
+  auto tensors_expected = EvaluateFetchNodes(item);
+  auto tensors = EvaluateFetchNodes(optimized);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  ASSERT_EQ(tensors.size(), tensors_expected.size());
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 TEST_F(FunctionOptimizerTest, SpecializeFunctionXTimesTwo) {
   using test::function::NDef;
 
