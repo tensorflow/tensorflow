@@ -81,8 +81,8 @@ struct DmaGeneration : public FunctionPass {
   // Minimum DMA transfer size supported by the target in bytes.
   const int minDmaTransferSize;
 
-  // The loop level at which DMAs should be generated. '0' is an outermost loop.
-  unsigned dmaDepth;
+  // Constant zero index to avoid too many duplicates.
+  Value *zeroIndex = nullptr;
 
   static char passID;
 };
@@ -166,8 +166,6 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
   // Indices for the faster buffer being DMAed into/from.
   SmallVector<Value *, 4> bufIndices;
 
-  Value *zeroIndex = top.create<ConstantIndexOp>(loc, 0);
-
   unsigned rank = memRefType.getRank();
   SmallVector<int64_t, 4> fastBufferShape;
 
@@ -216,8 +214,13 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
     // Set DMA start location for this dimension in the lower memory space
     // memref.
     if (auto caf = offset.dyn_cast<AffineConstantExpr>()) {
-      memIndices.push_back(
-          top.create<ConstantIndexOp>(loc, caf.getValue())->getResult());
+      auto indexVal = caf.getValue();
+      if (indexVal == 0) {
+        memIndices.push_back(zeroIndex);
+      } else {
+        memIndices.push_back(
+            top.create<ConstantIndexOp>(loc, caf.getValue())->getResult());
+      }
     } else {
       // The coordinate for the start location is just the lower bound along the
       // corresponding dimension on the memory region (stored in 'offset').
@@ -349,7 +352,7 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
 
   // DMAs will be generated for this depth, i.e., for all data accessed by this
   // loop.
-  dmaDepth = getNestingDepth(*forInst);
+  unsigned dmaDepth = getNestingDepth(*forInst);
 
   regions.clear();
   fastBufferMap.clear();
@@ -375,7 +378,7 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
     // instead of O(num of load/store op's).
     auto region = std::make_unique<MemRefRegion>();
     if (!getMemRefRegion(opInst, dmaDepth, region.get())) {
-      LLVM_DEBUG(llvm::dbgs() << "Error obtaining memory region\n");
+      forInst->emitError("Error obtaining memory region: semi-affine maps?\n");
       return;
     }
 
@@ -393,14 +396,17 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
     ret = ret | iRet;
   }
   if (!ret) {
-    LLVM_DEBUG(llvm::dbgs()
-                   << "DMA generation failed for one or more memref's\n";);
+    forInst->emitError("DMA generation failed for one or more memref's\n");
+    return;
   }
   LLVM_DEBUG(llvm::dbgs() << Twine(llvm::divideCeil(totalSizeInBytes, 1024))
                           << " KiB of DMA buffers in fast memory space\n";);
 }
 
 PassResult DmaGeneration::runOnFunction(Function *f) {
+  FuncBuilder topBuilder(f);
+  zeroIndex = topBuilder.create<ConstantIndexOp>(f->getLoc(), 0);
+
   for (auto &block : *f) {
     for (auto &inst : block) {
       if (auto *forInst = dyn_cast<ForInst>(&inst)) {

@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -dma-generate | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -dma-generate -verify | FileCheck %s
 
 // Index of the buffer for the second DMA is remapped.
 // CHECK-DAG: [[MAP:#map[0-9]+]] = (d0) -> (d0 - 256)
@@ -20,8 +20,8 @@ func @loop_nest_1d() {
   // Tag for first DMA.
   // CHECK:  %4 = alloc() : memref<1xi32>
   // First DMA transfer.
-  // CHECK:  dma_start %0[%c0_2], %3[%c0_1], %c256_3, %4[%c0_1] : memref<256xf32>, memref<256xf32, 1>, memref<1xi32>
-  // CHECK:  dma_wait %4[%c0_1], %c256_3 : memref<1xi32>
+  // CHECK:  dma_start %0[%c0], %3[%c0], %c256_1, %4[%c0] : memref<256xf32>, memref<256xf32, 1>, memref<1xi32>
+  // CHECK:  dma_wait %4[%c0], %c256_1 : memref<1xi32>
   // Second DMA buffer.
   // CHECK:  %5 = alloc() : memref<256xf32, 1>
   // Tag for second DMA.
@@ -49,54 +49,54 @@ func @loop_nest_1d() {
 }
 
 // CHECK-LABEL: func @loop_nest_high_d
-// CHECK:       %c16384 = constant 16384 : index
-// CHECK:       %0 = alloc() : memref<512x32xf32, 1>
-// CHECK:       %1 = alloc() : memref<1xi32>
+// CHECK:      %c16384 = constant 16384 : index
+// CHECK-DAG:  [[BUFB:%[0-9]+]] = alloc() : memref<512x32xf32, 1>
+// CHECK-DAG:  [[BUFA:%[0-9]+]] = alloc() : memref<512x32xf32, 1>
+// CHECK-DAG:  [[BUFC:%[0-9]+]] = alloc() : memref<512x32xf32, 1>
+// CHECK-DAG:  [[TAGB:%[0-9]+]] = alloc() : memref<1xi32>
+// CHECK-DAG:  [[TAGA:%[0-9]+]] = alloc() : memref<1xi32>
+// CHECK-DAG:  [[TAGC:%[0-9]+]] = alloc() : memref<1xi32>
+// CHECK-DAG:  [[TAGC_W:%[0-9]+]] = alloc() : memref<1xi32>
 // INCOMING DMA for B
-// CHECK:       dma_start %arg1[%c0_11, %c0_12], %0[%c0_10, %c0_10], %c16384_13, %1[%c0_10] : memref<512x32xf32>, memref<512x32xf32, 1>, memref<1xi32>
-// CHECK-NEXT:  dma_wait %1[%c0_10], %c16384_13 : memref<1xi32>
-// CHECK-NEXT:  %2 = alloc() : memref<512x32xf32, 1>
-// CHECK-NEXT:  %3 = alloc() : memref<1xi32>
+// CHECK-DAG:  dma_start %arg1[%c0, %c0], [[BUFB]][%c0, %c0], %c16384_2, [[TAGB]][%c0] : memref<512x32xf32>, memref<512x32xf32, 1>, memref<1xi32>
+// CHECK-DAG:  dma_wait [[TAGB]][%c0], %c16384_2 : memref<1xi32>
 // INCOMING DMA for A.
-// CHECK-NEXT:  dma_start %arg0[%c0_7, %c0_8], %2[%c0_6, %c0_6], %c16384_9, %3[%c0_6] : memref<512x32xf32>, memref<512x32xf32, 1>, memref<1xi32>
-// CHECK-NEXT:  dma_wait %3[%c0_6], %c16384_9 : memref<1xi32>
-// CHECK-NEXT:  %4 = alloc() : memref<512x32xf32, 1>
-// CHECK-NEXT:  %5 = alloc() : memref<1xi32>
+// CHECK-DAG:  dma_start %arg0[%c0, %c0], [[BUFA]][%c0, %c0], %c16384_1, [[TAGA]][%c0] : memref<512x32xf32>, memref<512x32xf32, 1>, memref<1xi32>
+// CHECK-DAG:  dma_wait [[TAGA]][%c0], %c16384_1 : memref<1xi32>
 // INCOMING DMA for C.
-// CHECK-NEXT:  dma_start %arg2[%c0_3, %c0_4], %4[%c0_2, %c0_2], %c16384_5, %5[%c0_2] : memref<512x32xf32>, memref<512x32xf32, 1>, memref<1xi32>
-// CHECK-NEXT:  dma_wait %5[%c0_2], %c16384_5 : memref<1xi32>
-// CHECK-NEXT:  %6 = alloc() : memref<1xi32>
+// CHECK-DAG:  dma_start %arg2[%c0, %c0], [[BUFC]][%c0, %c0], %c16384_0, [[TAGC]][%c0] : memref<512x32xf32>, memref<512x32xf32, 1>, memref<1xi32>
+// CHECK-DAG:  dma_wait [[TAGC]][%c0], %c16384_0 : memref<1xi32>
 // CHECK-NEXT:  for %i0 = 0 to 32 {
 // CHECK-NEXT:    for %i1 = 0 to 32 {
 // CHECK-NEXT:      for %i2 = 0 to 32 {
 // CHECK-NEXT:        for %i3 = 0 to 16 {
 // CHECK-NEXT:          %7 = affine_apply #map{{[0-9]+}}(%i1, %i3)
 // CHECK-NEXT:          %8 = affine_apply #map{{[0-9]+}}(%7, %i0)
-// CHECK-NEXT:          %9 = load %0[%8#0, %8#1] : memref<512x32xf32, 1>
+// CHECK-NEXT:          %9 = load [[BUFB]][%8#0, %8#1] : memref<512x32xf32, 1>
 // CHECK-NEXT:          "foo"(%9) : (f32) -> ()
 // CHECK-NEXT:        }
 // CHECK-NEXT:        for %i4 = 0 to 16 {
 // CHECK-NEXT:          %10 = affine_apply #map{{[0-9]+}}(%i2, %i4)
 // CHECK-NEXT:          %11 = affine_apply #map{{[0-9]+}}(%10, %i1)
-// CHECK-NEXT:          %12 = load %2[%11#0, %11#1] : memref<512x32xf32, 1>
-// CHECK-NEXT:          "bar"(%12) {mxu_id: 0} : (f32) -> ()
+// CHECK-NEXT:          %12 = load [[BUFA]][%11#0, %11#1] : memref<512x32xf32, 1>
+// CHECK-NEXT:          "bar"(%12) : (f32) -> ()
 // CHECK-NEXT:        }
 // CHECK-NEXT:        for %i5 = 0 to 16 {
 // CHECK-NEXT:          %13 = "abc_compute"() : () -> f32
 // CHECK-NEXT:          %14 = affine_apply #map{{[0-9]+}}(%i2, %i5)
 // CHECK-NEXT:          %15 = affine_apply #map{{[0-9]+}}(%14, %i0)
-// CHECK-NEXT:          %16 = load %4[%15#0, %15#1] : memref<512x32xf32, 1>
+// CHECK-NEXT:          %16 = load [[BUFC]][%15#0, %15#1] : memref<512x32xf32, 1>
 // CHECK-NEXT:          %17 = "addf32"(%13, %16) : (f32, f32) -> f32
 // CHECK-NEXT:          %18 = affine_apply #map{{[0-9]+}}(%14, %i0)
-// CHECK-NEXT:          store %17, %4[%18#0, %18#1] : memref<512x32xf32, 1>
+// CHECK-NEXT:          store %17, [[BUFC]][%18#0, %18#1] : memref<512x32xf32, 1>
 // CHECK-NEXT:        }
 // CHECK-NEXT:        "foobar"() : () -> ()
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // OUTGOING DMA for C.
-// CHECK-NEXT:  dma_start %4[%c0, %c0], %arg2[%c0_0, %c0_1], %c16384, %6[%c0] : memref<512x32xf32, 1>, memref<512x32xf32>, memref<1xi32>
-// CHECK-NEXT:  dma_wait %6[%c0], %c16384 : memref<1xi32>
+// CHECK-NEXT:  dma_start [[BUFC]][%c0, %c0], %arg2[%c0, %c0], %c16384, [[TAGC_W]][%c0] : memref<512x32xf32, 1>, memref<512x32xf32>, memref<1xi32>
+// CHECK-NEXT:  dma_wait [[TAGC_W]][%c0], %c16384 : memref<1xi32>
 // CHECK-NEXT:  return
 // CHECK-NEXT:}
 func @loop_nest_high_d(%A: memref<512 x 32 x f32>,
@@ -115,7 +115,7 @@ func @loop_nest_high_d(%A: memref<512 x 32 x f32>,
         for %ii = 0 to 16 { // i intratile.
           %i = affine_apply (d0, d1) -> (16*d0 + d1)(%iT, %ii)
           %v1 = load %A[%i, %kT] : memref<512 x 32 x f32>
-          "bar"(%v1) {mxu_id: 0} : (f32) -> ()
+          "bar"(%v1) : (f32) -> ()
         }
         for %ii_ = 0 to 16 { // i intratile.
           %v2 = "abc_compute"() : () -> f32
@@ -140,7 +140,7 @@ func @loop_nest_high_d(%A: memref<512 x 32 x f32>,
 // CHECK-NEXT:      %1 = affine_apply #map{{[0-9]+}}(%i0)
 // CHECK-NEXT:      %2 = alloc() : memref<1x2xf32, 1>
 // CHECK-NEXT:      %3 = alloc() : memref<1xi32>
-// CHECK-NEXT:      dma_start %0[%1, %c0_0], %2[%c0, %c0], %c2, %3[%c0] : memref<256x8xf32>, memref<1x2xf32, 1>, memref<1xi32>
+// CHECK-NEXT:      dma_start %0[%1, %c0], %2[%c0, %c0], %c2, %3[%c0] : memref<256x8xf32>, memref<1x2xf32, 1>, memref<1xi32>
 // CHECK-NEXT:      dma_wait %3[%c0], %c2 : memref<1xi32>
 // CHECK-NEXT:      for %i1 = 0 to 8 {
 //                    ...
@@ -195,11 +195,11 @@ func @dma_constant_dim_access(%A : memref<100x100xf32>) {
   // CHECK:      %0 = alloc() : memref<1x100xf32, 1>
   // CHECK-NEXT: %1 = alloc() : memref<1xi32>
   // No strided DMA needed here.
-  // CHECK:      dma_start %arg0[%c1, %c0_0], %0[%c0, %c0], %c100, %1[%c0] : memref<100x100xf32>, memref<1x100xf32, 1>,
+  // CHECK:      dma_start %arg0[%c1, %c0], %0[%c0, %c0], %c100, %1[%c0] : memref<100x100xf32>, memref<1x100xf32, 1>,
   // CHECK-NEXT: dma_wait %1[%c0], %c100 : memref<1xi32>
   for %i = 0 to 100 {
     for %j = 0 to ()[s0] -> (s0) ()[%N] {
-      // CHECK:      %2 = affine_apply [[MAP_MINUS_ONE]](%c1_1, %i1)
+      // CHECK:      %2 = affine_apply [[MAP_MINUS_ONE]](%c1_0, %i1)
       // CHECK-NEXT: %3 = load %0[%2#0, %2#1] : memref<1x100xf32, 1>
       load %A[%one, %j] : memref<100 x 100 x f32>
     }
@@ -219,7 +219,7 @@ func @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
   return
 // CHECK:       %1 = alloc() : memref<100x100xf32, 1>
 // CHECK-NEXT:  %2 = alloc() : memref<1xi32>
-// CHECK-NEXT:  dma_start %arg0[%c0_0, %0], %1[%c0, %c0], %c10000, %2[%c0]
+// CHECK-NEXT:  dma_start %arg0[%c0, %0], %1[%c0, %c0], %c10000, %2[%c0]
 // CHECK-NEXT:  dma_wait %2[%c0], %c10000
 // CHECK-NEXT:  for %i0 = 0 to 100 {
 // CHECK-NEXT:    for %i1 = 0 to 100 {
@@ -238,7 +238,7 @@ func @dma_with_symbolic_loop_bounds(%A : memref<100x100xf32>, %M : index, %N: in
 // memref size; so the DMA buffer is the entire 100x100.
 // CHECK:       %0 = alloc() : memref<100x100xf32, 1>
 // CHECK-NEXT:  %1 = alloc() : memref<1xi32>
-// CHECK-NEXT:  dma_start %arg0[%c0_0, %c0_1], %0[%c0, %c0], %c10000, %1[%c0] : memref<100x100xf32>, memref<100x100xf32, 1>, memref<1xi32>
+// CHECK-NEXT:  dma_start %arg0[%c0, %c0], %0[%c0, %c0], %c10000, %1[%c0] : memref<100x100xf32>, memref<100x100xf32, 1>, memref<1xi32>
 // CHECK-NEXT:  dma_wait %1[%c0], %c10000 : memref<1xi32>
   for %i = 0 to 100 {
     for %j = %M to %N {
@@ -249,20 +249,25 @@ func @dma_with_symbolic_loop_bounds(%A : memref<100x100xf32>, %M : index, %N: in
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @dma_unknown_size
 func @dma_unknown_size(%arg0: memref<?x?xf32>) {
   %M = dim %arg0, 0 : memref<? x ? x f32>
   %N = dim %arg0, 0 : memref<? x ? x f32>
   for %i = 0 to %M {
     for %j = 0 to %N {
-      // If this loop nest isn't tiled, requires a non-constant size DMA -- not
-      // yet implemented.
+      // If this loop nest isn't tiled, the access requires a non-constant DMA
+      // size -- not yet implemented.
       // CHECK: %2 = load %arg0[%i0, %i1] : memref<?x?xf32>
       load %arg0[%i, %j] : memref<? x ? x f32>
+      // expected-error@-6 {{DMA generation failed for one or more memref's}}
     }
   }
   return
 }
+
+// -----
 
 // CHECK-LABEL: func @dma_memref_3d
 func @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
@@ -274,6 +279,7 @@ func @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
         // not yet implemented.
         // CHECK: %3 = load %arg0[%2#0, %2#1, %2#2] : memref<1024x1024x1024xf32>
         %v = load %arg0[%idx#0, %idx#1, %idx#2] : memref<1024 x 1024 x 1024 x f32>
+        // expected-error@-8 {{DMA generation failed for one or more memref's}}
       }
     }
   }
