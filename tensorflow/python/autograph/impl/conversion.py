@@ -55,7 +55,7 @@ from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -81,23 +81,27 @@ def is_whitelisted_for_graph(o):
   else:
     m = tf_inspect.getmodule(o)
   if not hasattr(m, '__name__'):
-    logging.vlog(1, '%s is NOT whitelisted for graph: unknown module name', o)
+    # Note: typically it's builtins that fall in this category. Builtins will
+    # be handled by specific code that follows this screening layer.
+    logging.log(2, '%s is NOT whitelisted: unknown module name', o)
     return False
 
   for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
     if m.__name__.startswith(prefix):
-      logging.vlog(1, '%s is whitelisted: name starts with "%s"', o, prefix)
+      logging.log(2, '%s is whitelisted: name starts with "%s"', o, prefix)
       return True
 
-  if hasattr(o, 'autograph_info__'):
+  if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
+    logging.log(2, '%s is whitelisted: already converted', o)
     return True
 
   if (not inspect_utils.isweakrefself(o) and not tf_inspect.isclass(o) and
       hasattr(o, '__call__') and hasattr(o, '__class__')):
     # Callable objects: whitelisted if their __call__ method is.
-    retval = is_whitelisted_for_graph(o.__call__)
-    logging.vlog(1, '%s is whitelisted: object __call__ whitelisted', o)
-    return retval
+    call_whitelisted = is_whitelisted_for_graph(o.__call__)
+    if call_whitelisted:
+      logging.log(2, '%s is whitelisted: object __call__ whitelisted', o)
+      return call_whitelisted
 
   if tf_inspect.ismethod(o):
     # Methods of whitelisted classes are also whitelisted, even if they are
@@ -119,8 +123,8 @@ def is_whitelisted_for_graph(o):
     if owner_class is not None:
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
       if is_whitelisted_for_graph(owner_class):
-        logging.vlog(1, '%s is whitelisted: owner is whitelisted %s', o,
-                     owner_class)
+        logging.log(2, '%s is whitelisted: owner is whitelisted %s', o,
+                    owner_class)
         return True
 
   if inspect_utils.isnamedtuple(o):
@@ -128,14 +132,13 @@ def is_whitelisted_for_graph(o):
     # because they don't expose source code. But we assume they are safe for
     # graph mode since they are just containers.
     if tf_inspect.isclass(o) and len(o.__bases__) > 1:
-      logging.log_first_n(
-          logging.level_warning(),
+      logging.warn_first_n(
           'Entity {} looks like a namedtuple subclass. If it has any custom'
           ' methods, they will not be converted by AutoGraph.'.format(o), 1)
-    logging.vlog(1, '%s is whitelisted: named tuple', o)
+    logging.log(2, '%s is whitelisted: named tuple', o)
     return True
 
-  logging.vlog(1, '%s is NOT whitelisted for graph', o)
+  logging.log(2, '%s is NOT whitelisted', o)
   return False
 
 
@@ -167,7 +170,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
-  logging.vlog(logging.DEBUG, 'Converting %s', o)
+  logging.log(1, 'Converting %s', o)
 
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, program_ctx)
@@ -201,9 +204,9 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if logging.get_verbosity() <= logging.DEBUG:
-    logging.vlog(logging.DEBUG, 'Compiled output of %s:\n\n%s\n', o,
-                 compiler.ast_to_source(node))
+  if logging.has_verbosity(2):
+    logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
+                compiler.ast_to_source(node))
 
   if program_ctx.options.recursive:
     while True:
@@ -315,6 +318,8 @@ def _add_self_references(namespace, autograph_module):
     # internal modules.
     ag_internal = imp.new_module('autograph')
     ag_internal.__dict__.update(autograph_module.__dict__)
+    ag_internal.ConversionOptions = converter.ConversionOptions
+    ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (
