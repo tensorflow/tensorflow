@@ -419,11 +419,8 @@ void ModulePrinter::printTrailingLocation(Location loc) {
   if (!shouldPrintDebugInfoOpt)
     return;
 
-  // If the location is not unknown then print it.
-  if (!loc.isa<UnknownLoc>()) {
-    os << " ";
-    printLocation(loc);
-  }
+  os << " ";
+  printLocation(loc);
 }
 
 void ModulePrinter::printLocationInternal(Location loc) {

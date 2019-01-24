@@ -20,7 +20,6 @@ func @inline_notation() -> i32 loc("mysource.cc":10:8) {
   if #set0(%2) loc(fused<"myPass">["foo", "foo2"]) {
   }
 
-  // Unknown locations are not printed.
-  // CHECK: return %0 : {{i32$}}
+  // CHECK: return %0 : i32 loc(unknown)
   return %1 : i32 loc(unknown)
 }
