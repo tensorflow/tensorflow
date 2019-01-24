@@ -383,6 +383,15 @@ HloInstructionProto HloAllReduceInstruction::ToProto() const {
   return proto;
 }
 
+bool HloAllReduceInstruction::IsNoop() const {
+  for (auto replica_group : replica_groups()) {
+    if (replica_group.replica_ids().size() != 1) {
+      return false;
+    }
+  }
+  return !all_reduce_id();
+}
+
 std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> result =
