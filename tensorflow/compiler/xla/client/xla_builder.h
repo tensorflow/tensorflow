@@ -277,6 +277,10 @@ class XlaBuilder {
   // and its real dynamic size is represented by `dynamic_param_index` in
   // parameter `dynamic_param_num`.
   //
+  // Note that this should be called before the dynamic parameters are used to
+  // create other operations, otherwise created operations won't have the
+  // dynamic dimensions information.
+  //
   // TODO(b/119520625): Remove this API once we have more dynamic shape infra
   // ready.
   Status SetDynamicBinding(int64 dynamic_size_param_num,
