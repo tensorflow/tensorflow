@@ -500,6 +500,8 @@ tf_cc_test(
     deps = [
         ":graph_utils",
         ":map_vectorization",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -507,6 +509,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels/data",
     ],
 )
