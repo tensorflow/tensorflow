@@ -48,6 +48,16 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
 
+void PortableSparseMatrixBatchVectorMultiplyAccumulate(
+    const float* matrix, const uint8_t* ledger, int m_rows, int m_cols,
+    const float* vector, int n_batch, float* result, int result_stride);
+
+void PortableSparseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
+    const int m_cols, const int8_t* __restrict__ vectors,
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    int result_stride);
+
 // Cwise product of two vectors.
 void PortableVectorVectorCwiseProduct(const float* vector1,
                                       const float* vector2, int v_size,
@@ -163,6 +173,23 @@ void MatrixBatchVectorMultiplyAccumulate(
   PortableMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vector,
                                               scaling_factors, n_batch, result,
                                               result_stride);
+}
+
+void SparseMatrixBatchVectorMultiplyAccumulate(
+    const float* matrix, const uint8_t* ledger, int m_rows, int m_cols,
+    const float* vector, int n_batch, float* result, int result_stride) {
+  PortableSparseMatrixBatchVectorMultiplyAccumulate(
+      matrix, ledger, m_rows, m_cols, vector, n_batch, result, result_stride);
+}
+
+void SparseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
+    const int m_cols, const int8_t* __restrict__ vectors,
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    int result_stride) {
+  PortableSparseMatrixBatchVectorMultiplyAccumulate(
+      matrix, ledger, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
+      result_stride);
 }
 
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
