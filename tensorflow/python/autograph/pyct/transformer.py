@@ -40,13 +40,13 @@ class Context(object):
   This object is mutable, and is updated during conversion. Not thread safe.
 
   Attributes:
-    entity_info: EntityInfo, immutable.
+    info: EntityInfo, immutable.
     current_origin: origin_info.OriginInfo, holds the OriginInfo of the last
       AST node to be processed successfully. Useful for error handling.
   """
 
-  def __init__(self, entity_info):
-    self.entity_info = entity_info
+  def __init__(self, info):
+    self.info = info
     self.current_origin = None
 
 
@@ -217,19 +217,17 @@ class Base(gast.NodeTransformer):
 
   # TODO(mdan): Document all extra features.
 
-  def __init__(self, entity_info):
+  def __init__(self, ctx):
     """Initialize the transformer.
 
     Subclasses should call this.
 
     Args:
-      entity_info: An EntityInfo object.
+      ctx: A Context object.
     """
     self._lineno = 0
     self._col_offset = 0
-    # TODO(znado): make the constructor take a Context instead of an EntityInfo.
-    # TODO(mdan): Rename to self.ctx.
-    self.transformer_ctx = Context(entity_info)
+    self.ctx = ctx
     self._enclosing_entities = []
 
     # A stack that allows keeping mutable, scope-local state where scopes may be
@@ -463,7 +461,7 @@ class Base(gast.NodeTransformer):
     local_scope_size_at_entry = len(self._local_scope_state)
     processing_expr_node = False
 
-    parent_origin = self.transformer_ctx.current_origin
+    parent_origin = self.ctx.current_origin
     try:
       if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
         did_enter_function = True
@@ -474,15 +472,14 @@ class Base(gast.NodeTransformer):
         self._enclosing_entities.append(node)
 
       if anno.hasanno(node, anno.Basic.ORIGIN):
-        self.transformer_ctx.current_origin = anno.getanno(node,
-                                                           anno.Basic.ORIGIN)
+        self.ctx.current_origin = anno.getanno(node, anno.Basic.ORIGIN)
 
       if processing_expr_node:
         entry_expr_value = node.value
 
       if not anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
         result = super(Base, self).visit(node)
-      self.transformer_ctx.current_origin = parent_origin
+      self.ctx.current_origin = parent_origin
 
       # Adjust for consistency: replacing the value of an Expr with
       # an Assign node removes the need for the Expr node.
@@ -509,13 +506,13 @@ class Base(gast.NodeTransformer):
       return result
 
     except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-      if not self.transformer_ctx.current_origin:
+      if not self.ctx.current_origin:
         raise e
-      original_file_path = self.transformer_ctx.current_origin.loc.filename
-      original_line_number = self.transformer_ctx.current_origin.loc.lineno
-      original_col_offset = self.transformer_ctx.current_origin.loc.col_offset
+      original_file_path = self.ctx.current_origin.loc.filename
+      original_line_number = self.ctx.current_origin.loc.lineno
+      original_col_offset = self.ctx.current_origin.loc.col_offset
       original_source_line = (
-          self.transformer_ctx.current_origin.source_code_line)
+          self.ctx.current_origin.source_code_line)
       msg = '%s: %s.' % (e.__class__.__name__, str(e))
 
       # TODO(mdan): Avoid the printing of the original exception.
