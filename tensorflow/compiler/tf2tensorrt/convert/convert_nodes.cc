@@ -2443,6 +2443,9 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
         node_def.name());
   }
   static const std::unordered_map<string, nvinfer1::ActivationType> ops{
+#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+      {"LeakyRelu", nvinfer1::ActivationType::kLEAKY_RELU},
+#endif
       {"Relu", nvinfer1::ActivationType::kRELU},
       {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
       {"Tanh", nvinfer1::ActivationType::kTANH},
@@ -2462,6 +2465,15 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
           *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  // Set alpha parameter for LeakyRelu
+  // TODO(tmorris): Support Elu, Selu, Softplus, Clip, HardSigmoid, ScaledTanh,
+  // ThresholdedRelu.
+#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+  if (node_def.op() == "LeakyRelu") {
+    TFAttrs attrs(node_def);
+    layer->setAlpha(attrs.get<float>("alpha"));
+  }
+#endif
   // Set quantization range for output of Sigmoid, Tanh.
   if (node_def.op() == "Sigmoid") {
     params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 1.0f);
@@ -3612,7 +3624,7 @@ static void RegisterValidatableOpConverters(
        {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
-  for (auto activation_op_type : {"Relu", "Sigmoid", "Tanh"}) {
+  for (auto activation_op_type : {"LeakyRelu", "Relu", "Sigmoid", "Tanh"}) {
     (*registration)[activation_op_type] = ConvertActivation;
   }
   for (auto pool_op_type : {"AvgPool", "MaxPool"}) {
