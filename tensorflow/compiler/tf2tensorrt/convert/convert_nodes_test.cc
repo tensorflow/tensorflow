@@ -2229,6 +2229,117 @@ TEST_F(OpConverterTest, ConvertSquare) {
   // TestConvertSquare<DT_HALF>(this);
 }
 
+#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+TEST_F(OpConverterTest, ConvertCombinedNMS) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_nms", "CombinedNonMaxSuppression", {});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Six inputs expected for CombinedNonMaxSuppression, at my_nms");
+  }
+  // Get the NodeDef for CombinedNMS.
+  auto get_nms_nodedef = [](
+    const int32 max_output_size_per_class,
+    const int32 max_total_size,
+    const float iou_threshold,
+    const float score_threshold) -> NodeDef {
+      Scope s = Scope::NewRootScope();
+      auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes_tensor"), DT_FLOAT);
+      auto scores_tensor = ops::Placeholder(s.WithOpName("scores_tensor"), DT_FLOAT);
+      auto nms_op =
+          ops::CombinedNonMaxSuppression(s.WithOpName("my_nms"),
+                                         boxes_tensor,
+                                         scores_tensor,
+                                         max_output_size_per_class,
+                                         max_total_size,
+                                         iou_threshold,
+                                         score_threshold);
+      return nms_op.operation.node()->def();
+  };
+//  {
+//    // Input list is of size one, should fail.
+//    NodeDef node_def = MakeNodeDef("my_nms", "CombinedNonMaxSuppression", {"boxes_tensor"});
+//    AddTestTensor("input", ok_params[i].input_dims);
+//    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+//                               "Six inputs expected for CombinedNonMaxSuppression, at my_nms");
+//  }
+
+  struct TestParams {
+    TestParams(const std::vector<int32>& boxes_tensor_dims,
+               const std::vector<int32>& scores_tensor_dims,
+               const std::vector<int32>& expected_nmsed_boxes_dims,
+               const std::vector<int32>& expected_nmsed_scores_dims,
+               const std::vector<int32>& expected_nmsed_classes_dims,
+               const std::vector<int32>& expected_valid_detections_dims)
+        : boxes_tensor_dims(boxes_tensor_dims),
+          scores_tensor_dims(scores_tensor_dims),
+          expected_nmsed_boxes_dims(expected_nmsed_boxes_dims),
+          expected_nmsed_scores_dims(expected_nmsed_scores_dims),
+          expected_nmsed_classes_dims(expected_nmsed_classes_dims),
+          expected_valid_detections_dims(expected_valid_detections_dims) {}
+    const std::vector<int32>& boxes_tensor_dims;
+    const std::vector<int32>& scores_tensor_dims;
+    const std::vector<int32>& expected_nmsed_boxes_dims;
+    const std::vector<int32>& expected_nmsed_scores_dims;
+    const std::vector<int32>& expected_nmsed_classes_dims;
+    const std::vector<int32>& expected_valid_detections_dims;
+  };
+
+  // Ok.
+  const int kCombinedNMSOKCases = 1;
+  TestParams ok_params[kCombinedNMSOKCases] = {
+      TestParams{{1, 1, 1, 4},
+                 {1, 1, 3},
+                 {1, 10, 4},
+                 {1, 10},
+                 {1, 10},
+                 {1}},
+  };
+  for (int i = 0; i < kCombinedNMSOKCases; ++i) {
+    Reset();
+
+    AddTestTensor("boxes_tensor", ok_params[i].boxes_tensor_dims);
+//    AddTestTensor("scores_tensor", ok_params[i].scores_tensor_dims);
+//
+//    RunValidationAndConversion(get_nms_nodedef(30, 10, 0.5f, 0.0f));
+//
+//    TRT_TensorOrWeights nmsed_boxes;
+//    TRT_TensorOrWeights nmsed_scores;
+//    TRT_TensorOrWeights nmsed_classes;
+//    TRT_TensorOrWeights valid_detections;
+//
+//    TF_EXPECT_OK(GetTensorOrWeights("nmsed_boxes", &nmsed_boxes));
+//    TF_EXPECT_OK(GetTensorOrWeights("nmsed_scores", &nmsed_scores));
+//    TF_EXPECT_OK(GetTensorOrWeights("nmsed_classes", &nmsed_classes));
+//    TF_EXPECT_OK(GetTensorOrWeights("valid_detections", &valid_detections));
+//
+//    EXPECT_TRUE(nmsed_boxes.is_tensor());
+//    EXPECT_TRUE(nmsed_scores.is_tensor());
+//    EXPECT_TRUE(nmsed_classes.is_tensor());
+//    EXPECT_TRUE(valid_detections.is_tensor());
+//
+//    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_boxes_dims,
+//                             nmsed_boxes.tensor()->getDimensions());
+//    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_scores_dims,
+//                             nmsed_scores.tensor()->getDimensions());
+//    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_classes_dims,
+//                             nmsed_classes.tensor()->getDimensions());
+//    ExpectTrtDimsEqualsArray(ok_params[i].expected_valid_detections_dims,
+//                             valid_detections.tensor()->getDimensions());
+//
+//    std::vector<float> output_data(40);
+//    BuildAndRun<float>({{"boxes_tensor", {0, 0, 0, 4}},
+//                        {"scores_tensor", {0, 0, 0}},
+//                        {"output_size_per_class", {30}},
+//                        {"total_size", {10}},
+//                        {"iou_threshold", {.5f}},
+//                        {"score_threshold", {0.0f}}},
+//                       "nmsed_boxees", &output_data);
+//    EXPECT_THAT(output_data, ElementsAre(0, 10, 4));
+  }
+}
+#endif // CombinedNonMaxSuppression
+
 TEST_F(OpConverterTest, ConvertActivation) {
   {
     // Input list is empty, should fail.

@@ -3634,100 +3634,109 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-#if NV_TENSORRT_VERSION >= 5100
-tensorflow::Status ConvertCombinedNMS(Converter& ctx,
-                                      const tensorflow::NodeDef& node_def,
-                                      const std::vector<TRT_TensorOrWeights>& inputs,
-                                      std::vector<TRT_TensorOrWeights>* outputs) {
+#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+tensorflow::Status ConvertCombinedNMS(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
 
-  auto creator = getPluginRegistry()->getPluginCreator("BatchedNMS_TRT", "1", "");
-  TFTRT_RETURN_ERROR_IF_NULLPTR(creator, node_def.name());
+  if (inputs.size() != 6) {
+    return tensorflow::errors::InvalidArgument(
+        "Six inputs expected for CombinedNonMaxSuppression, at ", node_def.name());
+  }
+  if (!(inputs.at(0).is_tensor())) {
+        "CombinedNonMaxSuppression expects tensor for boxes, at ", node_def.name();
+  }
+  if (!(inputs.at(1).is_tensor())) {
+        "CombinedNonMaxSuppression expects tensor for scores, at ", node_def.name();
+  }
+//  if (!(inputs.at(0).is_tensor()) || (inputs.at(1).is_tensor())) {
+//    return tensorflow::errors::Unimplemented(
+//        "CombinedNonMaxSuppression expects tensor for boxes and scores, at ", node_def.name());
+//  }
+  if (!(inputs.at(2).is_weights()) || !(inputs.at(3).is_weights()) ||
+     (!inputs.at(4).is_weights()) || !(inputs.at(5).is_weights())) {
+    return tensorflow::errors::InvalidArgument(
+        "CombinedNonMaxSuppression expects weights for "
+        "max_output_size_per_class, max_total_size, iou_threshold, score_threshold, at ",
+        node_def.name());
+  }
 
   nvinfer1::ITensor* boxes_tensor = const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
   nvinfer1::ITensor* scores_tensor = const_cast<nvinfer1::ITensor*>(inputs.at(1).tensor());
+  TRT_ShapedWeights output_size_per_class = inputs.at(2).weights();
+  TRT_ShapedWeights total_size = inputs.at(3).weights();
+  TRT_ShapedWeights iou_threshold = inputs.at(4).weights();
+  TRT_ShapedWeights score_threshold = inputs.at(5).weights();
 
+  // Validate tensors and weights (also set some of the needed plugin fields)
   const auto boxes_dims = boxes_tensor->getDimensions();
   const auto scores_dims = scores_tensor->getDimensions();
-
   if (boxes_dims.nbDims != 3) {
     return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin input boxes must be 3-D excluding batch " +
+        "TensorRT BatchedNMS Plugin input boxes must be 3-D excluding batch ",
          node_def.name());
   }
   const int num_classes = scores_dims.d[1];
   bool box_check = boxes_dims.d[1] == 1 || boxes_dims.d[1] == num_classes;
   if (!box_check) {
       return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin third dimension of boxes must be either 1 or num_classes " 
-        + node_def.name());
+        "TensorRT BatchedNMS Plugin third dimension of boxes must be either 1 or num_classes ",
+        node_def.name());
   }
-
-  bool share_location = (boxes_dims.d[1] == 1); 
-
-  TRT_ShapedWeights output_size_per_class = inputs.at(2).weights();
-
   if (output_size_per_class.shape_.nbDims != 1) {
     return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin max_output_size_per_class must be 0-D "
-         + node_def.name());
+        "TensorRT BatchedNMS Plugin max_output_size_per_class must be 0-D ",
+        node_def.name());
   }
   int max_size_per_class = *(static_cast<int*>(const_cast<void*>(
                                           output_size_per_class.GetValues())));
-
   if (max_size_per_class <=0) {
     return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin max_output_size_per_class should be > 0" +
+        "TensorRT BatchedNMS Plugin max_output_size_per_class should be > 0",
         node_def.name());
   }
-
-  TRT_ShapedWeights total_size = inputs.at(3).weights();
   if (total_size.shape_.nbDims != 1) {
     return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin max_total_size must be 0-D "
-         + node_def.name());
+        "TensorRT BatchedNMS Plugin max_total_size must be 0-D ",
+         node_def.name());
   }
   int max_total_size = *(static_cast<int*>(const_cast<void*>(
                                                       total_size.GetValues())));
   if (max_total_size <=0) {
     return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin max_total_size should be > 0" +
+        "TensorRT BatchedNMS Plugin max_total_size should be > 0",
         node_def.name());
   }
-
-  TRT_ShapedWeights iou = inputs.at(4).weights();
-  if (iou.shape_.nbDims != 1) {
+  if (iou_threshold.shape_.nbDims != 1) {
     return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin iou_threshold must be 0-D "
-        + node_def.name());
+        "TensorRT BatchedNMS Plugin iou_threshold must be 0-D ",
+        node_def.name());
   }
-  float iou_thresh = *(static_cast<float*>(const_cast<void*>(iou.GetValues())));
+  float iou_thresh = *(static_cast<float*>(const_cast<void*>(iou_threshold.GetValues())));
   if (iou_thresh < 0.0 || iou_thresh > 1.0) {
     return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin iou_threshold must be in [0, 1]" +
+        "TensorRT BatchedNMS Plugin iou_threshold must be in [0, 1]",
+        node_def.name());
+  }
+  if (score_threshold.shape_.nbDims != 1) {
+    return tensorflow::errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin score_threshold must be 0-D ",
         node_def.name());
   }
 
-  TRT_ShapedWeights score = inputs.at(5).weights();
-  if (score.shape_.nbDims != 1) {
-    return tensorflow::errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin score_threshold must be 0-D "
-        + node_def.name());
-  }
-  float score_thresh = *(static_cast<float*>(const_cast<void*>(score.GetValues())));
-
+  // Set plugin fields and the field collection
   TFAttrs attrs(node_def);
+  bool share_location = (boxes_dims.d[1] == 1); 
   const bool pad_per_class = attrs.get<bool>("pad_per_class");
   int topK;
-
   if (pad_per_class) {
     topK = std::min(max_size_per_class * num_classes, max_total_size);
   }
   else {
     topK = max_total_size;
   }
-
   const int keepTopK = topK;
-
+  float score_thresh = *(static_cast<float*>(const_cast<void*>(score_threshold.GetValues())));
   const int background_id = -1;
   nvinfer1::PluginField fields[7] = {
     nvinfer1::PluginField{"shareLocation", &share_location,
@@ -3745,38 +3754,45 @@ tensorflow::Status ConvertCombinedNMS(Converter& ctx,
     nvinfer1::PluginField{"iouThreshold", &iou_thresh,
                           nvinfer1::PluginFieldType::kFLOAT32, 1},
   };
-
   nvinfer1::PluginFieldCollection fc{7, fields};
 
-  nvinfer1::IPluginV2* plugin = creator->createPlugin(node_def.name().c_str(), &fc);
+  // Get plugin creator
+  auto creator = getPluginRegistry()->getPluginCreator("BatchedNMS_TRT", "1", "");
+  TFTRT_RETURN_ERROR_IF_NULLPTR(creator, node_def.name());
 
+  // Create plugin
+  nvinfer1::IPluginV2* plugin = creator->createPlugin(node_def.name().c_str(), &fc);
   TFTRT_RETURN_ERROR_IF_NULLPTR(plugin, node_def.name());
 
+  // Set plugin inputs
   std::vector<nvinfer1::ITensor*> plugin_inputs;
   plugin_inputs.push_back(boxes_tensor);
   plugin_inputs.push_back(scores_tensor);
 
-  nvinfer1::IPluginV2Layer* layer = ctx.network()->addPluginV2(&plugin_inputs[0],
-                                                               2, *plugin);
+  // Add plugin to network
+  nvinfer1::IPluginV2Layer* layer = params->converter->network()->addPluginV2(
+    &plugin_inputs[0], 2, *plugin);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
+  // Set plugin outputs
   nvinfer1::ITensor* output_num_detections = layer->getOutput(0);
   nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
   nvinfer1::ITensor* output_nmsed_scores = layer->getOutput(2);
   nvinfer1::ITensor* output_nmsed_classes = layer->getOutput(3);
-  outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
-  outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
-  outputs->push_back(TRT_TensorOrWeights(output_nmsed_classes));
-  outputs->push_back(TRT_TensorOrWeights(output_num_detections));
+  params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
+  params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
+  params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_classes));
+  params->outputs->push_back(TRT_TensorOrWeights(output_num_detections));
+
   return tensorflow::Status::OK();
 }
-#endif
+#endif // CombinedNonMaxSuppression
 
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
   // TODO(laigd): support all op types.
   (*registration)["BiasAdd"] = ConvertBiasAdd;
-#if NV_TENSORRT_VERSION >= 5100
+#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
   (*registration)["ConcatV2"] = ConvertConcat;
