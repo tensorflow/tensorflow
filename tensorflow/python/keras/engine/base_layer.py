@@ -524,13 +524,6 @@ class Layer(checkpointable.Checkpointable):
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
-    if build_graph:
-      # Only create Keras history if at least one tensor originates from a
-      # `keras.Input`. Otherwise this Layer may be being used outside the Keras
-      # framework.
-      if base_layer_utils.uses_keras_input_layers(inputs):
-        base_layer_utils.create_keras_history(inputs)
-
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
     if build_graph and (not hasattr(self, '_compute_previous_mask') or
