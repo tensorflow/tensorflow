@@ -36,6 +36,7 @@ limitations under the License.
 //  DotDimensionNumbers proto          <-  corresponding Python proto
 //  GatherDimensionNumbers proto       <-  corresponding Python proto
 //  ScatterDimensionNumbers proto      <-  corresponding Python proto
+//  Span<ReplicaGroup proto>           <-  sequence of ReplicaGroup Python proto
 //
 // Arrows indicate whether a conversion only ever occurs in one
 // direction, or whether it is maintained bidirectionally.
@@ -870,6 +871,31 @@ tensorflow::ImportNumpy();
 
   $1 = &dimension_numbers;
 }
+
+// Span<const ReplicaGroup>
+
+%typemap(in) absl::Span<const ReplicaGroup >
+    (std::vector<ReplicaGroup > temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    ReplicaGroup rgrp;
+    if (!HandleRepeatedInt64Attribute(
+            o, "replica_ids",
+            rgrp.mutable_replica_ids())) {
+        SWIG_fail;
+    }
+    temps.push_back(rgrp);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
 
 // ExecutableBuildOptions
 
