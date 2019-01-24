@@ -93,6 +93,16 @@ def test_combinations_for_embedding_model():
            eager_mode_test_configuration())))
 
 
+def test_combinations_with_tpu_strategies():
+  tpu_strategies = [combinations.tpu_strategy_loop_on_device,
+                    combinations.tpu_strategy_one_step_loop_on_device]
+
+  return (
+      combinations.times(
+          combinations.combine(distribution=tpu_strategies),
+          graph_mode_test_configuration()))
+
+
 class MaybeDistributionScope(object):
   """Provides a context allowing no distribution strategy."""
 
