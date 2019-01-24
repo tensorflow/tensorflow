@@ -96,7 +96,11 @@ class BufferAllocation {
   // Whether this allocation is readonly i.e. backed by memory we cannot write
   // to.
   bool is_readonly() const {
-    return is_entry_computation_parameter() || is_constant();
+    // Entry parameters are generally readonly, except when they are aliased
+    // with any output.
+    return (is_entry_computation_parameter() &&
+            !is_parameter_aliased_with_output_) ||
+           is_constant();
   }
 
   bool is_tuple() const { return is_tuple_; }
@@ -274,8 +278,10 @@ class BufferAllocation {
   void AddAssignment(const LogicalBuffer& buffer, int64 offset, int64 size);
 
   void set_entry_computation_parameter(int64 parameter_number,
-                                       ShapeIndex param_shape_index) {
+                                       ShapeIndex param_shape_index,
+                                       bool parameter_aliased_with_output) {
     is_entry_computation_parameter_ = true;
+    is_parameter_aliased_with_output_ = parameter_aliased_with_output;
     parameter_number_ = parameter_number;
     param_shape_index_ = std::move(param_shape_index);
   }
@@ -304,6 +310,9 @@ class BufferAllocation {
   // computation parameters are special be cause they have lifetimes which may
   // outlast the computation.
   bool is_entry_computation_parameter_ = false;
+
+  // Whether this entry computation parameter is aliased with output.
+  bool is_parameter_aliased_with_output_ = false;
 
   // If this allocation holds an entry computation parameter, this field
   // indicates the index (starting from 0) of the parameter.
