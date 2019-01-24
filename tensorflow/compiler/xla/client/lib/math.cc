@@ -184,8 +184,8 @@ XlaOp Lgamma(XlaOp input) {
 
   XlaOp base_lanczos_coeff = ScalarLike(input, kBaseLanczosCoeff);
 
-  // If the input is less than 0.5 use Gauss's reflection formula:
-  // gamma(x) = pi / sin(pi * x) * gamma(1 - x)
+  // If the input is less than 0.5 use Euler's reflection formula:
+  // gamma(x) = pi / (sin(pi * x) * gamma(1 - x))
   XlaOp need_to_reflect = Lt(Real(input), one_half);
   XlaOp z = Select(need_to_reflect, -input, input - one);
 
@@ -237,7 +237,7 @@ XlaOp Digamma(XlaOp input) {
 
   XlaOp base_lanczos_coeff = ScalarLike(input, kBaseLanczosCoeff);
 
-  // If the input is less than 0.5 use Gauss's reflection formula:
+  // If the input is less than 0.5 use Euler's reflection formula:
   // digamma(x) = digamma(1 - x) - pi * cot(pi * x)
   XlaOp need_to_reflect = Lt(Real(input), one_half);
   XlaOp z = Select(need_to_reflect, -input, input - one);
