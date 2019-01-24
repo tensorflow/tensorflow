@@ -110,6 +110,7 @@ ExecutionOptions CreateExecutionOptions(
     *execution_options.mutable_shape_with_output_layout() =
         result_shape.ToProto();
   }
+  execution_options.set_num_replicas(build_options.num_replicas());
   return execution_options;
 }
 

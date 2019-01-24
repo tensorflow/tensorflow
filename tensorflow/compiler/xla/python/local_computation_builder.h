@@ -180,6 +180,10 @@ class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
 
+  int num_replicas() const {
+    return executable_->build_options().num_replicas();
+  }
+
   StatusOr<LocalShapedBuffer*> Execute(
       absl::Span<LocalShapedBuffer* const> argument_handles);
 
