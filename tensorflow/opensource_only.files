@@ -37,6 +37,7 @@ tensorflow/third_party/toolchains/clang6/README.md
 tensorflow/third_party/toolchains/clang6/repo.bzl
 tensorflow/third_party/toolchains/clang6/CROSSTOOL.tpl
 tensorflow/third_party/toolchains/clang6/clang.BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc7-nvcc-cuda10.0/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/py3/BUILD
