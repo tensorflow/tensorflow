@@ -162,7 +162,8 @@ enum class OperatorType : uint8 {
   kUnique,
   kUnidirectionalSequenceRnn,
   kBidirectionalSequenceLstm,
-  kReverseV2
+  kReverseV2,
+  kBidirectionalSequenceRnn
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -655,6 +656,12 @@ struct UnidirectionalSequenceLstmOperator : Operator {
 struct BidirectionalSequenceLstmOperator : Operator {
   BidirectionalSequenceLstmOperator()
       : Operator(OperatorType::kBidirectionalSequenceLstm) {}
+  bool merge_outputs;
+};
+
+struct BidirectionalSequenceRnnOperator : Operator {
+  BidirectionalSequenceRnnOperator()
+      : Operator(OperatorType::kBidirectionalSequenceRnn) {}
   bool merge_outputs;
 };
 

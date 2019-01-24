@@ -414,6 +414,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
     HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceLstm)
     HANDLE_OPERATORTYPENAME_CASE(BidirectionalSequenceLstm)
+    HANDLE_OPERATORTYPENAME_CASE(BidirectionalSequenceRnn)
     HANDLE_OPERATORTYPENAME_CASE(ResizeNearestNeighbor)
     HANDLE_OPERATORTYPENAME_CASE(LeakyRelu)
     HANDLE_OPERATORTYPENAME_CASE(SquaredDifference)
