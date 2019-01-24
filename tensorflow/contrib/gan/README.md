@@ -59,7 +59,7 @@ These include the following main pieces (explained in detail below).
 *   [examples](https://github.com/tensorflow/models/tree/master/research/gan/)
     and [tutorial](http://https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb): See examples of how to use TF-GAN
     to make GAN training easier, or use the more complicated examples to
-    jumpstart your own project. These include unconditional and conditional
+    jump-start your own project. These include unconditional and conditional
     GANs, InfoGANs, adversarial losses on existing networks, and image-to-image
     translation.
 
