@@ -200,23 +200,6 @@ int64 RecursiveElementCount(const Shape& shape) {
   }
 }
 
-// Returns whether the actual and expected values are mismatched with respect to
-// nans. 'relaxed_nans' is interpreted as in xla::ErrorSpec.
-template <typename NativeT>
-bool NanMismatch(NativeT expected, NativeT actual, bool relaxed_nans) {
-  if (relaxed_nans) {
-    return !std::isnan(expected) && std::isnan(actual);
-  } else {
-    return std::isnan(expected) != std::isnan(actual);
-  }
-}
-
-template <>
-bool NanMismatch<half>(half expected, half actual, bool relaxed_nans) {
-  return NanMismatch<float>(static_cast<float>(expected),
-                            static_cast<float>(actual), relaxed_nans);
-}
-
 // Returns whether the given value is infinity.
 template <typename NativeT>
 bool IsInf(NativeT val) {
@@ -226,6 +209,17 @@ bool IsInf(NativeT val) {
 template <>
 bool IsInf<half>(half val) {
   return std::isinf(static_cast<float>(val));
+}
+
+// Returns whether the given value is nan.
+template <typename NativeT>
+float IsNan(NativeT value) {
+  return std::isnan(value);
+}
+
+template <>
+float IsNan(half value) {
+  return IsNan<float>(static_cast<float>(value));
 }
 
 // Converts the given floating-point value to a string.
@@ -376,21 +370,25 @@ class NearComparator {
   // the given literal_index and keeps track of various mismatch statistics.
   template <typename T>
   void CompareValues(T expected, T actual, int64 linear_index) {
-    const bool is_nan_mismatch =
-        NanMismatch(expected, actual, error_.relaxed_nans);
     float abs_error;
     float rel_error;
     if (CompareEqual<T>(expected, actual, {linear_index})) {
       abs_error = 0;
       rel_error = 0;
-    } else if (is_nan_mismatch) {
-      num_nan_mismatches_++;
-      // A nan mismatch is considered to have infinite error. rel_error is used
-      // for sorting a std::set of the top mismatchs, and a nan value here will
-      // result in undefined behavior because nan's do not satisfy the strict
-      // weak ordering requirement of std containers.
-      abs_error = std::numeric_limits<float>::infinity();
-      rel_error = std::numeric_limits<float>::infinity();
+    } else if (IsNan(expected) || IsNan(actual)) {
+      if ((!error_.relaxed_nans && IsNan(expected) != IsNan(actual)) ||
+          (error_.relaxed_nans && !IsNan(expected) && IsNan(actual))) {
+        num_nan_mismatches_++;
+        // A nan mismatch is considered to have infinite error. rel_error is
+        // used for sorting a std::set of the top mismatchs, and a nan value
+        // here will result in undefined behavior because nan's do not satisfy
+        // the strict weak ordering requirement of std containers.
+        abs_error = std::numeric_limits<float>::infinity();
+        rel_error = std::numeric_limits<float>::infinity();
+      } else {
+        abs_error = 0;
+        rel_error = 0;
+      }
     } else if (IsInf(expected) || IsInf(actual)) {
       // If either the expected or actual value is infinity but not both,
       // then both absolute and relative error are regarded as inifity.
@@ -410,8 +408,7 @@ class NearComparator {
     }
     const bool is_abs_mismatch = abs_error > error_.abs;
     const bool is_rel_mismatch = rel_error > error_.rel;
-    const bool is_mismatch =
-        is_nan_mismatch || (is_abs_mismatch && is_rel_mismatch);
+    const bool is_mismatch = is_abs_mismatch && is_rel_mismatch;
 
     // Update the error of the relative bucket only if the *absolute* error
     // bound is exceeded and vice versa.
