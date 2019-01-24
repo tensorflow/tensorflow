@@ -640,7 +640,6 @@ class TestWholeModelSaving(test.TestCase):
       os.remove(fname)
 
   def test_saving_model_with_long_weights_names(self):
-    self.skipTest('b/120921503')
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
