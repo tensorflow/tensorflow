@@ -329,6 +329,9 @@ public:
   bool constantFold(ArrayRef<Attribute> operands,
                     SmallVectorImpl<Attribute> &results) const;
 
+  /// Attempt to fold this operation using the Op's registered foldHook.
+  bool fold(SmallVectorImpl<Value *> &results);
+
   //===--------------------------------------------------------------------===//
   // Conversions to declared operations like DimOp
   //===--------------------------------------------------------------------===//

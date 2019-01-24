@@ -130,6 +130,7 @@ private:
 void GreedyPatternRewriteDriver::simplifyFunction() {
   // These are scratch vectors used in the constant folding loop below.
   SmallVector<Attribute, 8> operandConstants, resultConstants;
+  SmallVector<Value *, 8> originalOperands, resultValues;
 
   while (!worklist.empty()) {
     auto *op = popFromWorklist();
@@ -195,6 +196,14 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
       operandConstants.push_back(operandCst);
     }
 
+    // If this is a commutative binary operation with a constant on the left
+    // side move it to the right side.
+    if (operandConstants.size() == 2 && operandConstants[0] &&
+        !operandConstants[1] && op->isCommutative()) {
+      std::swap(op->getInstOperand(0), op->getInstOperand(1));
+      std::swap(operandConstants[0], operandConstants[1]);
+    }
+
     // If constant folding was successful, create the result constants, RAUW the
     // operation and remove it.
     resultConstants.clear();
@@ -233,13 +242,41 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
       continue;
     }
 
-    // If this is a commutative binary operation with a constant on the left
-    // side move it to the right side.
-    if (operandConstants.size() == 2 && operandConstants[0] &&
-        !operandConstants[1] && op->isCommutative()) {
-      auto *newLHS = op->getOperand(1);
-      op->setOperand(1, op->getOperand(0));
-      op->setOperand(0, newLHS);
+    // Otherwise see if we can use the generic folder API to simplify the
+    // operation.
+    originalOperands.assign(op->operand_begin(), op->operand_end());
+    resultValues.clear();
+    if (!op->fold(resultValues)) {
+      // If the result was an in-place simplification (e.g. max(x,x,y) ->
+      // max(x,y)) then add the original operands to the worklist so we can make
+      // sure to revisit them.
+      if (resultValues.empty()) {
+        // TODO: Walk the original operand list dropping them as we go.  If any
+        // of them drop to zero uses, then add them to the worklist to allow
+        // them to be deleted as dead.
+      } else {
+        // Otherwise, the operation is simplified away completely.
+        assert(resultValues.size() == op->getNumResults());
+
+        // Add all the users of the operation to the worklist so we make sure to
+        // revisit them.
+        //
+        // TODO: Add a result->getUsers() iterator.
+        for (unsigned i = 0, e = resultValues.size(); i != e; ++i) {
+          auto *res = op->getResult(i);
+          if (res->use_empty()) // ignore dead uses.
+            continue;
+
+          for (auto &operand : op->getResult(i)->getUses()) {
+            if (auto *op = dyn_cast<OperationInst>(operand.getOwner()))
+              addToWorklist(op);
+          }
+          res->replaceAllUsesWith(resultValues[i]);
+        }
+      }
+
+      op->erase();
+      continue;
     }
 
     // Check to see if we have any patterns that match this node.

@@ -214,15 +214,16 @@ private:
   OperationInst *state;
 };
 
-/// This template defines the constantFoldHook as used by AbstractOperation.
-/// The default implementation uses a general constantFold method that can be
-/// defined on custom ops which can return multiple results.
+/// This template defines the constantFoldHook and foldHook as used by
+/// AbstractOperation.
+///
+/// The default implementation uses a general constantFold/fold method that can
+/// be defined on custom ops which can return multiple results.
 template <typename ConcreteType, bool isSingleResult, typename = void>
-class ConstFoldingHook {
+class FoldingHook {
 public:
-  /// This hook implements a constant folder for this operation.  It returns
-  /// true if folding failed, or returns false and fills in `results` on
-  /// success.
+  /// This is an implementation detail of the constant folder hook for
+  /// AbstractOperation.
   static bool constantFoldHook(const OperationInst *op,
                                ArrayRef<Attribute> operands,
                                SmallVectorImpl<Attribute> &results) {
@@ -244,18 +245,47 @@ public:
                     MLIRContext *context) const {
     return true;
   }
+
+  /// This is an implementation detail of the folder hook for AbstractOperation.
+  static bool foldHook(OperationInst *op, SmallVectorImpl<Value *> &results) {
+    return op->cast<ConcreteType>()->fold(results);
+  }
+
+  /// This hook implements a generalized folder for this operation.  Operations
+  /// can implement this to provide simplifications rules that are applied by
+  /// the FuncBuilder::foldOrCreate API and the canonicalization pass.
+  ///
+  /// This is an intentionally limited interface - implementations of this hook
+  /// can only perform the following changes to the operation:
+  ///
+  ///  1. They can leave the operation alone and without changing the IR, and
+  ///     return true.
+  ///  2. They can mutate the operation in place, without changing anything else
+  ///     in the IR.  In this case, return false.
+  ///  3. They can return a list of existing values that can be used instead of
+  ///     the operation.  In this case, fill in the results list and return
+  ///     false.  The caller will remove the operation and use those results
+  ///     instead.
+  ///
+  /// This allows expression of some simple in-place canonicalizations (e.g.
+  /// "x+0 -> x", "min(x,y,x,z) -> min(x,y,z)", "x+y-x -> y", etc), but does
+  /// not allow for canonicalizations that need to introduce new operations, not
+  /// even constants (e.g. "x-x -> 0" cannot be expressed).
+  ///
+  /// If not overridden, this fallback implementation always fails to fold.
+  ///
+  bool fold(SmallVectorImpl<Value *> &results) { return true; }
 };
 
-/// This template specialization defines the constantFoldHook as used by
-/// AbstractOperation for single-result operations.  This gives the hook a nicer
-/// signature that is easier to implement.
+/// This template specialization defines the constantFoldHook and foldHook as
+/// used by AbstractOperation for single-result operations.  This gives the hook
+/// a nicer signature that is easier to implement.
 template <typename ConcreteType, bool isSingleResult>
-class ConstFoldingHook<ConcreteType, isSingleResult,
-                       typename std::enable_if<isSingleResult>::type> {
+class FoldingHook<ConcreteType, isSingleResult,
+                  typename std::enable_if<isSingleResult>::type> {
 public:
-  /// This hook implements a constant folder for this operation.  It returns
-  /// true if folding failed, or returns false and fills in `results` on
-  /// success.
+  /// This is an implementation detail of the constant folder hook for
+  /// AbstractOperation.
   static bool constantFoldHook(const OperationInst *op,
                                ArrayRef<Attribute> operands,
                                SmallVectorImpl<Attribute> &results) {
@@ -267,6 +297,54 @@ public:
     results.push_back(result);
     return false;
   }
+
+  /// Op implementations can implement this hook.  It should attempt to constant
+  /// fold this operation with the specified constant operand values - the
+  /// elements in "operands" will correspond directly to the operands of the
+  /// operation, but may be null if non-constant.  If constant folding is
+  /// successful, this returns a non-null attribute, otherwise it returns null
+  /// on failure.
+  ///
+  /// If not overridden, this fallback implementation always fails to fold.
+  ///
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const {
+    return nullptr;
+  }
+
+  /// This is an implementation detail of the folder hook for AbstractOperation.
+  static bool foldHook(OperationInst *op, SmallVectorImpl<Value *> &results) {
+    auto *result = op->cast<ConcreteType>()->fold();
+    if (!result)
+      return true;
+    if (result != op->getResult(0))
+      results.push_back(result);
+    return false;
+  }
+
+  /// This hook implements a generalized folder for this operation.  Operations
+  /// can implement this to provide simplifications rules that are applied by
+  /// the FuncBuilder::foldOrCreate API and the canonicalization pass.
+  ///
+  /// This is an intentionally limited interface - implementations of this hook
+  /// can only perform the following changes to the operation:
+  ///
+  ///  1. They can leave the operation alone and without changing the IR, and
+  ///     return nullptr.
+  ///  2. They can mutate the operation in place, without changing anything else
+  ///     in the IR.  In this case, return the operation itself.
+  ///  3. They can return an existing SSA value that can be used instead of
+  ///     the operation.  In this case, return that value.  The caller will
+  ///     remove the operation and use that result instead.
+  ///
+  /// This allows expression of some simple in-place canonicalizations (e.g.
+  /// "x+0 -> x", "min(x,y,x,z) -> min(x,y,z)", "x+y-x -> y", etc), but does
+  /// not allow for canonicalizations that need to introduce new operations, not
+  /// even constants (e.g. "x-x -> 0" cannot be expressed).
+  ///
+  /// If not overridden, this fallback implementation always fails to fold.
+  ///
+  Value *fold() { return nullptr; }
 };
 
 //===----------------------------------------------------------------------===//
@@ -521,20 +599,6 @@ public:
   static bool verifyTrait(const OperationInst *op) {
     return impl::verifyOneResult(op);
   }
-
-  /// Op implementations can implement this hook.  It should attempt to constant
-  /// fold this operation with the specified constant operand values - the
-  /// elements in "operands" will correspond directly to the operands of the
-  /// operation, but may be null if non-constant.  If constant folding is
-  /// successful, this returns a non-null attribute, otherwise it returns null
-  /// on failure.
-  ///
-  /// If not overridden, this fallback implementation always fails to fold.
-  ///
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const {
-    return nullptr;
-  }
 };
 
 /// This class provides the API for ops that are known to have a specified
@@ -783,7 +847,7 @@ public:
 template <typename ConcreteType, template <typename T> class... Traits>
 class Op : public OpState,
            public Traits<ConcreteType>...,
-           public ConstFoldingHook<
+           public FoldingHook<
                ConcreteType,
                typelist_contains<OpTrait::OneResult<ConcreteType>, OpState,
                                  Traits<ConcreteType>...>::value> {

@@ -89,7 +89,7 @@ def AddFOp : FloatArithmeticOp<"addf"> {
 
 def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
   let summary = "integer addition operation";
-  let hasCanonicalizer = 0b1;
+  let hasFolder = 1;
   let hasConstantFolder = 0b1;
 }
 

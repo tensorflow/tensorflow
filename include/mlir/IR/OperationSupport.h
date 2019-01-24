@@ -97,6 +97,28 @@ public:
                            ArrayRef<Attribute> operands,
                            SmallVectorImpl<Attribute> &results);
 
+  /// This hook implements a generalized folder for this operation.  Operations
+  /// can implement this to provide simplifications rules that are applied by
+  /// the FuncBuilder::foldOrCreate API and the canonicalization pass.
+  ///
+  /// This is an intentionally limited interface - implementations of this hook
+  /// can only perform the following changes to the operation:
+  ///
+  ///  1. They can leave the operation alone and without changing the IR, and
+  ///     return true.
+  ///  2. They can mutate the operation in place, without changing anything else
+  ///     in the IR.  In this case, return false.
+  ///  3. They can return a list of existing values that can be used instead of
+  ///     the operation.  In this case, fill in the results list and return
+  ///     false.  The caller will remove the operation and use those results
+  ///     instead.
+  ///
+  /// This allows expression of some simple in-place canonicalizations (e.g.
+  /// "x+0 -> x", "min(x,y,x,z) -> min(x,y,z)", "x+y-x -> y", etc), but does
+  /// not allow for canonicalizations that need to introduce new operations, not
+  /// even constants (e.g. "x-x -> 0" cannot be expressed).
+  bool (&foldHook)(OperationInst *op, SmallVectorImpl<Value *> &results);
+
   /// This hook returns any canonicalization pattern rewrites that the operation
   /// supports, for use by the canonicalization pass.
   void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
@@ -118,7 +140,7 @@ public:
     return AbstractOperation(
         T::getOperationName(), dialect, T::getOperationProperties(),
         T::isClassFor, T::parseAssembly, T::printAssembly, T::verifyInvariants,
-        T::constantFoldHook, T::getCanonicalizationPatterns);
+        T::constantFoldHook, T::foldHook, T::getCanonicalizationPatterns);
   }
 
 private:
@@ -131,11 +153,13 @@ private:
       bool (&constantFoldHook)(const OperationInst *op,
                                ArrayRef<Attribute> operands,
                                SmallVectorImpl<Attribute> &results),
+      bool (&foldHook)(OperationInst *op, SmallVectorImpl<Value *> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context))
       : name(name), dialect(dialect), isClassFor(isClassFor),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), constantFoldHook(constantFoldHook),
+        foldHook(foldHook),
         getCanonicalizationPatterns(getCanonicalizationPatterns),
         opProperties(opProperties) {}
 

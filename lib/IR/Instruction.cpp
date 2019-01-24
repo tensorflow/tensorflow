@@ -532,13 +532,11 @@ bool OperationInst::constantFold(ArrayRef<Attribute> operands,
   if (auto *abstractOp = getAbstractOperation()) {
     // If we have a registered operation definition matching this one, use it to
     // try to constant fold the operation.
-    if (!abstractOp->constantFoldHook(llvm::cast<OperationInst>(this), operands,
-                                      results))
+    if (!abstractOp->constantFoldHook(this, operands, results))
       return false;
 
     // Otherwise, fall back on the dialect hook to handle it.
-    return abstractOp->dialect.constantFoldHook(llvm::cast<OperationInst>(this),
-                                                operands, results);
+    return abstractOp->dialect.constantFoldHook(this, operands, results);
   }
 
   // If this operation hasn't been registered or doesn't have abstract
@@ -546,10 +544,20 @@ bool OperationInst::constantFold(ArrayRef<Attribute> operands,
   auto opName = getName().getStringRef();
   auto dialectPrefix = opName.split('.').first;
   if (auto *dialect = getContext()->getRegisteredDialect(dialectPrefix)) {
-    return dialect->constantFoldHook(llvm::cast<OperationInst>(this), operands,
-                                     results);
+    return dialect->constantFoldHook(this, operands, results);
   }
 
+  return true;
+}
+
+/// Attempt to fold this operation using the Op's registered foldHook.
+bool OperationInst::fold(SmallVectorImpl<Value *> &results) {
+  if (auto *abstractOp = getAbstractOperation()) {
+    // If we have a registered operation definition matching this one, use it to
+    // try to constant fold the operation.
+    if (!abstractOp->foldHook(this, results))
+      return false;
+  }
   return true;
 }
 

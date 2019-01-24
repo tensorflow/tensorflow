@@ -404,6 +404,9 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // Whether this op has a constant folder.
   bit hasConstantFolder = 0b0;
 
+  // Whether this op has a folder.
+  bit hasFolder = 0b0;
+
   // Op properties.
   list<OpProperty> properties = props;
 }

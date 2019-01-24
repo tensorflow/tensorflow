@@ -128,30 +128,12 @@ Attribute AddIOp::constantFold(ArrayRef<Attribute> operands,
                                         [](APInt a, APInt b) { return a + b; });
 }
 
-namespace {
-/// addi(x, 0) -> x
-///
-struct SimplifyAddX0 : public RewritePattern {
-  SimplifyAddX0(MLIRContext *context)
-      : RewritePattern(AddIOp::getOperationName(), 1, context) {}
+Value *AddIOp::fold() {
+  /// addi(x, 0) -> x
+  if (matchPattern(getOperand(1), m_Zero()))
+    return getOperand(0);
 
-  PatternMatchResult match(OperationInst *op) const override {
-    auto addi = op->cast<AddIOp>();
-
-    if (matchPattern(addi->getOperand(1), m_Zero()))
-      return matchSuccess();
-
-    return matchFailure();
-  }
-  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, op->getOperand(0));
-  }
-};
-} // end anonymous namespace.
-
-void AddIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.push_back(std::make_unique<SimplifyAddX0>(context));
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
