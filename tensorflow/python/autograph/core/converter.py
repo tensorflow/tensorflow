@@ -206,7 +206,7 @@ class ConversionOptions(object):
       ast.Node
     """
     template = """
-      constructor_name(
+      ag__.ConversionOptions(
           recursive=recursive_val,
           verbose=verbose_val,
           strip_decorators=strip_decorators_val,
@@ -235,17 +235,15 @@ class ConversionOptions(object):
 
     def list_of_features(values):
       return parser.parse_expression('({})'.format(', '.join(
-          'ag__.Feature.{}'.format(v)
-          for v in Feature.__members__
+          'ag__.{}'.format(v)
+          for v in Feature.__members__.values()
           if v in values)))
 
-    if internal_convert_user_code is not None:
+    if internal_convert_user_code is None:
       internal_convert_user_code = self.internal_convert_user_code
 
     expr_ast = templates.replace(
         template,
-        constructor_name=parser.parse_expression(
-            as_qualified_name(ConversionOptions)),
         recursive_val=parser.parse_expression(str(self.recursive)),
         verbose_val=parser.parse_expression(str(int(self.verbose))),
         strip_decorators_val=list_of_names(self._strip_decorators),
@@ -279,6 +277,11 @@ class ProgramContext(object):
     required_imports: str, containing an import statement on each line. These
       are all the imports necessary for the compiled code to run, in addition to
       the closures of each entity, which are attached dynamically.
+    partial_types: Tuple[Type], deprecated.
+    conversion_order: Tuple[Any], deprecated.
+    additional_symbols: Dict[str, Any], a map of new symbols that have been
+      created under this context, and need to be added to the namespace of the
+      generated code.
   """
 
   def __init__(
