@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -cse | FileCheck %s
 
-// CHECK-DAG: #map0 = (d0) -> (d0 mod 2, d0 mod 2)
-#map0 = (d0) -> (d0 mod 2, d0 mod 2)
+// CHECK-DAG: #map0 = (d0) -> (d0 mod 2)
+#map0 = (d0) -> (d0 mod 2)
 
 // CHECK-LABEL: @simple_constant_ml
 func @simple_constant_ml() -> (i32, i32) {
@@ -33,7 +33,7 @@ func @basic_ml() -> (index, index) {
   %0 = affine_apply #map0(%c0)
   %1 = affine_apply #map0(%c1)
 
-  // CHECK-NEXT: return %0#0, %0#0 : index, index
+  // CHECK-NEXT: return %0, %0 : index, index
   return %0, %1 : index, index
 }
 

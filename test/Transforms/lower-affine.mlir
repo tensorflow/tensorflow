@@ -557,17 +557,6 @@ func @affine_applies() {
   return
 }
 
-// CHECK-LABEL: func @multiresult_affine_apply()
-func @multiresult_affine_apply() {
-// CHECK-NEXT: %c1 = constant 1 : index
-// CHECK-NEXT: %0 = addi %c1, %c1 : index
-// CHECK-NEXT: %1 = addi %0, %c1 : index
-  %one = constant 1 : index
-  %tuple = affine_apply #map5 (%one, %one, %one)
-  %three = affine_apply #map6 (%tuple#0, %tuple#1, %tuple#2)
-  return
-}
-
 // CHECK-LABEL: func @args_ret_affine_apply(%arg0: index, %arg1: index)
 func @args_ret_affine_apply(index, index) -> (index, index) {
 ^bb0(%0 : index, %1 : index):

@@ -4,11 +4,7 @@
 
 // CHECK: #map0 = (d0) -> (d0 + 1)
 
-// CHECK: #map1 = (d0, d1) -> (d0 + 1, d1 + 2)
-#map5 = (d0, d1) -> (d0 + 1, d1 + 2)
-
-// CHECK: #map2 = (d0, d1)[s0, s1] -> (d0 + s1, d1 + s0)
-// CHECK: #map3 = ()[s0] -> (s0 + 1)
+// CHECK: #map1 = ()[s0] -> (s0 + 1)
 // CHECK-DAG: #[[map_proj_d0d1_d0:map[0-9]+]] = (d0, d1) -> (d0)
 // CHECK-DAG: #[[map_proj_d0d1_d1:map[0-9]+]] = (d0, d1) -> (d1)
 // CHECK-DAG: #[[map_proj_d0d1_d1d0:map[0-9]+]] = (d0, d1) -> (d1, d0)
@@ -213,15 +209,8 @@ func @affine_apply() {
   %a = "affine_apply" (%i) { map: (d0) -> (d0 + 1) } :
     (index) -> (index)
 
-  // CHECK: affine_apply #map1(%c0, %c1)
-  %b = "affine_apply" (%i, %j) { map: #map5 } :
-    (index, index) -> (index, index)
-
-  // CHECK: affine_apply #map2(%c0, %c1)[%c1, %c0]
-  %c = affine_apply (i,j)[m,n] -> (i+n, j+m)(%i, %j)[%j, %i]
-
-  // CHECK: affine_apply #map3()[%c0]
-  %d = affine_apply ()[x] -> (x+1)()[%i]
+  // CHECK: affine_apply #map1()[%c0]
+  %b = affine_apply ()[x] -> (x+1)()[%i]
 
   return
 }

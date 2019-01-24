@@ -7,8 +7,8 @@
 // CHECK: #map1 = (d0) -> (d0 + 2)
 // CHECK: #map2 = (d0) -> (d0 + 3)
 // CHECK: #map3 = (d0) -> (d0 + 4)
-// CHECK: #map4 = (d0, d1) -> (d0 + 1, d1 + 2)
-// CHECK: #map5 = (d0, d1) -> (d0 + 3, d1 + 4)
+// CHECK: #map4 = (d0, d1) -> (d0 + 1)
+// CHECK: #map5 = (d0, d1) -> (d0 + 3)
 // CHECK: #map6 = (d0)[s0] -> (d0 + s0 + 1)
 // CHECK: #map7 = (d0) -> (d0 + 5)
 // CHECK: #map8 = (d0) -> (d0 + 6)
@@ -25,16 +25,16 @@
 
 // SHORT: #map0 = (d0) -> (d0 + 1)
 // SHORT: #map1 = (d0) -> (d0 + 2)
-// SHORT: #map2 = (d0, d1) -> (d0 + 1, d1 + 2)
-// SHORT: #map3 = (d0, d1) -> (d0 + 3, d1 + 4)
+// SHORT: #map2 = (d0, d1) -> (d0 + 1)
+// SHORT: #map3 = (d0, d1) -> (d0 + 3)
 // SHORT: #map4 = (d0)[s0] -> (d0 + s0 + 1)
 // SHORT: #map5 = (d0, d1) -> (d0 * 16 + d1)
 
 // UNROLL-BY-4: #map0 = (d0) -> (d0 + 1)
 // UNROLL-BY-4: #map1 = (d0) -> (d0 + 2)
 // UNROLL-BY-4: #map2 = (d0) -> (d0 + 3)
-// UNROLL-BY-4: #map3 = (d0, d1) -> (d0 + 1, d1 + 2)
-// UNROLL-BY-4: #map4 = (d0, d1) -> (d0 + 3, d1 + 4)
+// UNROLL-BY-4: #map3 = (d0, d1) -> (d0 + 1)
+// UNROLL-BY-4: #map4 = (d0, d1) -> (d0 + 3)
 // UNROLL-BY-4: #map5 = (d0)[s0] -> (d0 + s0 + 1)
 // UNROLL-BY-4: #map6 = (d0, d1) -> (d0 * 16 + d1)
 // UNROLL-BY-4: #map7 = (d0) -> (d0 + 5)
@@ -142,21 +142,19 @@ func @loop_nest_multiple_results() {
   // CHECK-NEXT: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
     // CHECK: %0 = affine_apply #map4(%i0, %c0)
-    // CHECK-NEXT: %1 = "addi32"(%0#0, %0#1) : (index, index) -> index
-    // CHECK-NEXT: %2 = affine_apply #map5(%i0, %c0)
-    // CHECK-NEXT: %3 = "fma"(%2#0, %2#1, %0#0) : (index, index, index) -> (index, index)
-    // CHECK-NEXT: %4 = affine_apply #map0(%c0)
-    // CHECK-NEXT: %5 = affine_apply #map4(%i0, %4)
-    // CHECK-NEXT: %6 = "addi32"(%5#0, %5#1) : (index, index) -> index
-    // CHECK-NEXT: %7 = affine_apply #map5(%i0, %4)
-    // CHECK-NEXT: %8 = "fma"(%7#0, %7#1, %5#0) : (index, index, index) -> (index, index)
+    // CHECK-NEXT: %1 = "addi32"(%0, %0) : (index, index) -> index
+    // CHECK-NEXT: %2 = affine_apply #map{{.*}}(%i0, %c0)
+    // CHECK-NEXT: %3 = "fma"(%2, %0, %0) : (index, index, index) -> (index, index)
+    // CHECK-NEXT: %4 = affine_apply #map{{.*}}(%c0)
+    // CHECK-NEXT: %5 = affine_apply #map{{.*}}(%i0, %4)
+    // CHECK-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> index
+    // CHECK-NEXT: %7 = affine_apply #map{{.*}}(%i0, %4)
+    // CHECK-NEXT: %8 = "fma"(%7, %5, %5) : (index, index, index) -> (index, index)
     for %j = 0 to 2 step 1 {
-      %x = "affine_apply" (%i, %j) { map: (d0, d1) -> (d0 + 1, d1 + 2) } :
-        (index, index) -> (index, index)
-      %y = "addi32"(%x#0, %x#1) : (index, index) -> index
-      %z = "affine_apply" (%i, %j) { map: (d0, d1) -> (d0 + 3, d1 + 4) } :
-        (index, index) -> (index, index)
-      %w = "fma"(%z#0, %z#1, %x#0) : (index, index, index) -> (index, index)
+      %x = affine_apply (d0, d1) -> (d0 + 1) (%i, %j)
+      %y = "addi32"(%x, %x) : (index, index) -> index
+      %z = affine_apply (d0, d1) -> (d0 + 3) (%i, %j)
+      %w = "fma"(%z, %x, %x) : (index, index, index) -> (index, index)
     }
   }       // CHECK:  }
   return  // CHECK:  return
