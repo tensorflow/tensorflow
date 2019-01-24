@@ -334,37 +334,34 @@ CompiledLocalComputation::CompiledLocalComputation(
 
 StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
     absl::Span<LocalShapedBuffer* const> argument_handles) {
-  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
-  StatusOr<int> device_ordinal_status = client->ReplicaNumberToDeviceOrdinal(0);
-  StatusOr<ScopedShapedBuffer> result_buffer_status;
-  if (!device_ordinal_status.ok()) {
-    result_buffer_status = device_ordinal_status.status();
-  } else {
-    const int device_ordinal = device_ordinal_status.ValueOrDie();
-    VLOG(3) << "Replica 0 mapped to device ordinal for execution: "
-            << device_ordinal;
-
-    std::vector<const ShapedBuffer*> argument_buffers;
-    argument_buffers.reserve(argument_handles.size());
-    for (auto& handle : argument_handles) {
-      argument_buffers.push_back(handle->shaped_buffer());
-    }
-
-    DeviceAssignment device_assignment =
-        client->backend()
-            .computation_placer()
-            ->AssignDevices(1, /*computation_count=*/1)
-            .ConsumeValueOrDie();
-
-    ExecutableRunOptions options;
-    options.set_device_ordinal(device_ordinal);
-    options.set_allocator(client->backend().memory_allocator());
-    options.set_intra_op_thread_pool(
-        client->backend().eigen_intra_op_thread_pool_device());
-    options.set_device_assignment(&device_assignment);
-
-    result_buffer_status = executable_->Run(argument_buffers, options);
+  if (num_replicas() != 1) {
+    return InvalidArgument(
+        "Attempted to execute computation with %d replicas using Execute()",
+        num_replicas());
   }
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
+  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                      client->backend().computation_placer()->AssignDevices(
+                          1, /*computation_count=*/1));
+  StatusOr<ScopedShapedBuffer> result_buffer_status;
+  const int device_ordinal = device_assignment(0, 0);
+  VLOG(3) << "Replica 0 mapped to device ordinal for execution: "
+          << device_ordinal;
+
+  std::vector<const ShapedBuffer*> argument_buffers;
+  argument_buffers.reserve(argument_handles.size());
+  for (auto& handle : argument_handles) {
+    argument_buffers.push_back(handle->shaped_buffer());
+  }
+
+  ExecutableRunOptions options;
+  options.set_device_ordinal(device_ordinal);
+  options.set_allocator(client->backend().memory_allocator());
+  options.set_intra_op_thread_pool(
+      client->backend().eigen_intra_op_thread_pool_device());
+  options.set_device_assignment(&device_assignment);
+
+  result_buffer_status = executable_->Run(argument_buffers, options);
 
   if (!result_buffer_status.ok()) {
     return InternalError(
@@ -378,28 +375,29 @@ StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
 StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
     absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles) {
   TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
-  const int num_replicas = GetReplicaCount();
+  const int num_devices = client->device_count();
 
-  if (argument_handles.size() != num_replicas) {
+  if (argument_handles.size() != num_replicas()) {
     return InvalidArgument(
         "Attempted to execute with %d replicas when replica count is %d",
-        argument_handles.size(), num_replicas);
+        argument_handles.size(), num_devices);
+  }
+  if (argument_handles.size() > num_devices) {
+    return InvalidArgument(
+        "Attempted to execute with %d replicas when device count is %d",
+        argument_handles.size(), num_devices);
   }
 
-  VLOG(1) << "Executing with " << num_replicas << " replicas.";
+  VLOG(1) << "Executing with " << num_replicas() << " replicas.";
 
-  // Each replica populates a StatusOr result, but only the output value of
-  // replica zero is returned.
-  std::vector<StatusOr<ScopedShapedBuffer>> results(num_replicas);
-  auto execute = [this, client, num_replicas, &argument_handles,
+  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                      client->backend().computation_placer()->AssignDevices(
+                          num_replicas(), /*computation_count=*/1));
+
+  std::vector<StatusOr<ScopedShapedBuffer>> results(num_replicas());
+  auto execute = [this, client, &device_assignment, &argument_handles,
                   &results](int replica) {
-    StatusOr<int> device_ordinal_status =
-        client->ReplicaNumberToDeviceOrdinal(replica);
-    if (!device_ordinal_status.ok()) {
-      results[replica] = device_ordinal_status.status();
-      return;
-    }
-    const int device_ordinal = device_ordinal_status.ValueOrDie();
+    const int device_ordinal = device_assignment(replica, 0);
     VLOG(3) << "Replica " << replica
             << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -408,12 +406,6 @@ StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
     for (auto& handle : argument_handles[replica]) {
       argument_buffers.push_back(handle->shaped_buffer());
     }
-
-    DeviceAssignment device_assignment =
-        client->backend()
-            .computation_placer()
-            ->AssignDevices(num_replicas, /*computation_count=*/1)
-            .ConsumeValueOrDie();
 
     ExecutableRunOptions options;
     options.set_device_ordinal(device_ordinal);
@@ -427,23 +419,23 @@ StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
     results[replica] = std::move(result_buffer_status);
   };
 
-  if (num_replicas == 1) {
+  if (num_replicas() == 1) {
     // Fast-path if there is only one replica — run the computation on the
     // current thread.
     execute(0);
   } else {
     // TODO(phawkins): don't recreate the threadpool for each execution.
     tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "xlarun",
-                                        num_replicas - 1);
+                                        num_replicas() - 1);
 
-    for (int replica = 0; replica < num_replicas - 1; ++replica) {
+    for (int replica = 0; replica < num_replicas() - 1; ++replica) {
       pool.Schedule([&execute, replica] { execute(replica); });
     }
-    execute(num_replicas - 1);
+    execute(num_replicas() - 1);
   }
 
-  std::vector<LocalShapedBuffer*> wrapped_results(num_replicas);
-  for (int replica = 0; replica < num_replicas; ++replica) {
+  std::vector<LocalShapedBuffer*> wrapped_results(num_replicas());
+  for (int replica = 0; replica < num_replicas(); ++replica) {
     auto& statusor = results[replica];
     if (!statusor.ok()) {
       return InternalError(

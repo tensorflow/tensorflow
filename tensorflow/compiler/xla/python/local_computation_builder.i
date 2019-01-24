@@ -927,6 +927,12 @@ tensorflow::ImportNumpy();
     }
     Py_DECREF(o);
 
+    int64 num_replicas;
+    if (!GetIntAttr($input, "num_replicas", &num_replicas)) {
+      SWIG_fail;
+    }
+    build_options.set_num_replicas(num_replicas);
+
     $1 = &build_options;
   }
 }
