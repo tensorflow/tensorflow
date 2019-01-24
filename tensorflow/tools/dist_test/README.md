@@ -14,7 +14,7 @@ For example:
 
 By default, local_test.sh runs the MNIST-with-replicas model as a test.
 However, you can use the --model_name flag to run the tf-learn/wide&deep
-cesnsu model:
+census model:
 
     ./local_test.sh --model_name CENSUS_WIDENDEEP
 
