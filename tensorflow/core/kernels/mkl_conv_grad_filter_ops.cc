@@ -497,6 +497,16 @@ class MklConvCustomBackpropFilterOp
                                     diff_filter_mkl_shape);
         } else {
           // Depthwise Conv2d: bwd_output_dims is GOIHW format
+          //                  | TensorFlow       | MKLDNN
+          // ----------------------------------------------------------------
+          // filter_out_depth | depth_multiplier | depth_multiplier *
+          //                  |                  | group_count
+          // ----------------------------------------------------------------
+          // filter_in_depth  | in_depth         | in_depth / group_count
+          // For depthwise convolution, we have group_count == in_depth.
+          // So here G = original I, and I = 1.
+          // And the GOIHW is mkldnn format, here is try to extract the TF
+          // format, TF format is HWIO, as G = original I, so here is HWGO.
           TensorShape diff_filter_tf_shape(
               {bwd_output_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_H],
                bwd_output_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_W],
