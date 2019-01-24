@@ -744,14 +744,6 @@ Status XlaCompiler::BuildArguments(
     } else {
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
-    for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
-      auto it = arg_cores.find(i);
-      const int core = it == arg_cores.end() ? -1 : it->second;
-      xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? absl::optional<xla::OpSharding>()
-                              : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] = xla::GetTupleElement(tuple, i);
-    }
 
     for (int i = 0; i < input_to_args->size(); ++i) {
       const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
@@ -762,6 +754,15 @@ Status XlaCompiler::BuildArguments(
             /*target_param_num=*/0, /*target_param_index=*/{i},
             dim_and_arg_num.first));
       }
+    }
+
+    for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
+      auto it = arg_cores.find(i);
+      const int core = it == arg_cores.end() ? -1 : it->second;
+      xla::XlaScopedShardingAssignment assign_sharding(
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
+                              : xla::sharding_builder::AssignDevice(core));
+      arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
   } else {
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
