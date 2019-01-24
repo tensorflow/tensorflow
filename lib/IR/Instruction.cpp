@@ -1,5 +1,4 @@
-//===- Instruction.cpp - MLIR Instruction Classes
-//----------------------------===//
+//===- Instruction.cpp - MLIR Instruction Classes -------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -19,6 +18,7 @@
 #include "AttributeListStorage.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/InstVisitor.h"
@@ -786,15 +786,8 @@ MLIRContext *IfInst::getContext() const {
 /// them alone if no entry is present).  Replaces references to cloned
 /// sub-instructions to the corresponding instruction that is copied, and adds
 /// those mappings to the map.
-Instruction *Instruction::clone(DenseMap<const Value *, Value *> &operandMap,
+Instruction *Instruction::clone(BlockAndValueMapping &mapper,
                                 MLIRContext *context) const {
-  // If the specified value is in operandMap, return the remapped value.
-  // Otherwise return the value itself.
-  auto remapOperand = [&](const Value *value) -> Value * {
-    auto it = operandMap.find(value);
-    return it != operandMap.end() ? it->second : const_cast<Value *>(value);
-  };
-
   SmallVector<Value *, 8> operands;
   SmallVector<Block *, 2> successors;
   if (auto *opInst = dyn_cast<OperationInst>(this)) {
@@ -803,7 +796,8 @@ Instruction *Instruction::clone(DenseMap<const Value *, Value *> &operandMap,
     if (!opInst->isTerminator()) {
       // Non-terminators just add all the operands.
       for (auto *opValue : getOperands())
-        operands.push_back(remapOperand(opValue));
+        operands.push_back(
+            mapper.lookupOrDefault(const_cast<Value *>(opValue)));
     } else {
       // We add the operands separated by nullptr's for each successor.
       unsigned firstSuccOperand = opInst->getNumSuccessors()
@@ -813,19 +807,22 @@ Instruction *Instruction::clone(DenseMap<const Value *, Value *> &operandMap,
 
       unsigned i = 0;
       for (; i != firstSuccOperand; ++i)
-        operands.push_back(remapOperand(InstOperands[i].get()));
+        operands.push_back(
+            mapper.lookupOrDefault(const_cast<Value *>(InstOperands[i].get())));
 
       successors.reserve(opInst->getNumSuccessors());
       for (unsigned succ = 0, e = opInst->getNumSuccessors(); succ != e;
            ++succ) {
-        successors.push_back(const_cast<Block *>(opInst->getSuccessor(succ)));
+        successors.push_back(mapper.lookupOrDefault(
+            const_cast<Block *>(opInst->getSuccessor(succ))));
 
         // Add sentinel to delineate successor operands.
         operands.push_back(nullptr);
 
         // Remap the successors operands.
         for (auto *operand : opInst->getSuccessorOperands(succ))
-          operands.push_back(remapOperand(operand));
+          operands.push_back(
+              mapper.lookupOrDefault(const_cast<Value *>(operand)));
       }
     }
 
@@ -838,13 +835,13 @@ Instruction *Instruction::clone(DenseMap<const Value *, Value *> &operandMap,
                                         successors, context);
     // Remember the mapping of any results.
     for (unsigned i = 0, e = opInst->getNumResults(); i != e; ++i)
-      operandMap[opInst->getResult(i)] = newOp->getResult(i);
+      mapper.map(opInst->getResult(i), newOp->getResult(i));
     return newOp;
   }
 
   operands.reserve(getNumOperands());
   for (auto *opValue : getOperands())
-    operands.push_back(remapOperand(opValue));
+    operands.push_back(mapper.lookupOrDefault(const_cast<Value *>(opValue)));
 
   if (auto *forInst = dyn_cast<ForInst>(this)) {
     auto lbMap = forInst->getLowerBoundMap();
@@ -856,11 +853,11 @@ Instruction *Instruction::clone(DenseMap<const Value *, Value *> &operandMap,
         ubMap, forInst->getStep());
 
     // Remember the induction variable mapping.
-    operandMap[forInst] = newFor;
+    mapper.map(forInst, newFor);
 
     // Recursively clone the body of the for loop.
     for (auto &subInst : *forInst->getBody())
-      newFor->getBody()->push_back(subInst.clone(operandMap, context));
+      newFor->getBody()->push_back(subInst.clone(mapper, context));
 
     return newFor;
   }
@@ -871,18 +868,18 @@ Instruction *Instruction::clone(DenseMap<const Value *, Value *> &operandMap,
 
   auto *resultThen = newIf->getThen();
   for (auto &childInst : *ifInst->getThen())
-    resultThen->push_back(childInst.clone(operandMap, context));
+    resultThen->push_back(childInst.clone(mapper, context));
 
   if (ifInst->hasElse()) {
     auto *resultElse = newIf->createElse();
     for (auto &childInst : *ifInst->getElse())
-      resultElse->push_back(childInst.clone(operandMap, context));
+      resultElse->push_back(childInst.clone(mapper, context));
   }
 
   return newIf;
 }
 
 Instruction *Instruction::clone(MLIRContext *context) const {
-  DenseMap<const Value *, Value *> operandMap;
-  return clone(operandMap, context);
+  BlockAndValueMapping mapper;
+  return clone(mapper, context);
 }

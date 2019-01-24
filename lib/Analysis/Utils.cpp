@@ -457,8 +457,7 @@ ForInst *mlir::insertBackwardComputationSlice(
   // of the loop at 'dstLoopDepth' in 'dstLoopIVs'.
   auto *dstForInst = dstLoopIVs[dstLoopDepth - 1];
   FuncBuilder b(dstForInst->getBody(), dstForInst->getBody()->begin());
-  DenseMap<const Value *, Value *> operandMap;
-  auto *sliceLoopNest = cast<ForInst>(b.clone(*srcLoopIVs[0], operandMap));
+  auto *sliceLoopNest = cast<ForInst>(b.clone(*srcLoopIVs[0]));
 
   Instruction *sliceInst =
       getInstAtPosition(positions, /*level=*/0, sliceLoopNest->getBody());

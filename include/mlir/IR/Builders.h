@@ -24,6 +24,7 @@
 namespace mlir {
 
 class AffineExpr;
+class BlockAndValueMapping;
 class Module;
 class UnknownLoc;
 class UniquedFilename;
@@ -265,9 +266,13 @@ public:
   /// ( leaving them alone if no entry is present).  Replaces references to
   /// cloned sub-instructions to the corresponding instruction that is copied,
   /// and adds those mappings to the map.
-  Instruction *clone(const Instruction &inst,
-                     OperationInst::OperandMapTy &operandMapping) {
-    Instruction *cloneInst = inst.clone(operandMapping, getContext());
+  Instruction *clone(const Instruction &inst, BlockAndValueMapping &mapper) {
+    Instruction *cloneInst = inst.clone(mapper, getContext());
+    block->getInstructions().insert(insertPoint, cloneInst);
+    return cloneInst;
+  }
+  Instruction *clone(const Instruction &inst) {
+    Instruction *cloneInst = inst.clone(getContext());
     block->getInstructions().insert(insertPoint, cloneInst);
     return cloneInst;
   }

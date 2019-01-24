@@ -18,10 +18,12 @@
 #include "mlir/IR/Function.h"
 #include "AttributeListStorage.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 using namespace mlir;
@@ -30,7 +32,7 @@ Function::Function(Location location, StringRef name, FunctionType type,
                    ArrayRef<NamedAttribute> attrs)
     : name(Identifier::get(name, type.getContext())), location(location),
       type(type), blocks(this) {
-  this->attrs = AttributeListStorage::get(attrs, getContext());
+  setAttributes(attrs);
 }
 
 Function::~Function() {
@@ -141,6 +143,62 @@ void Function::emitWarning(const Twine &message) const {
 /// when the IR is in an inconsistent state.
 bool Function::emitError(const Twine &message) const {
   return getContext()->emitError(getLoc(), message);
+}
+
+/// Clone the internal blocks from this function into dest and all attributes
+/// from this function to dest.
+void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) const {
+  // Add the attributes of this function to dest.
+  llvm::MapVector<Identifier, Attribute> newAttrs;
+  for (auto &attr : dest->getAttrs())
+    newAttrs.insert(attr);
+  for (auto &attr : getAttrs()) {
+    auto insertPair = newAttrs.insert(attr);
+
+    // TODO(riverriddle) Verify that the two functions have compatible
+    // attributes.
+    (void)insertPair;
+    assert((insertPair.second || insertPair.first->second == attr.second) &&
+           "the two functions have incompatible attributes");
+  }
+  dest->setAttributes(newAttrs.takeVector());
+
+  // Clone the block list.
+  blocks.cloneInto(&dest->blocks, mapper, dest->getContext());
+}
+
+/// Create a deep copy of this function and all of its blocks, remapping
+/// any operands that use values outside of the function using the map that is
+/// provided (leaving them alone if no entry is present). Replaces references
+/// to cloned sub-values with the corresponding value that is copied, and adds
+/// those mappings to the mapper.
+Function *Function::clone(BlockAndValueMapping &mapper) const {
+  FunctionType newType = type;
+
+  // If the function has a body, then the user might be deleting arguments to
+  // the function by specifying them in the mapper. If so, we don't add the
+  // argument to the input type vector.
+  if (!empty()) {
+    SmallVector<Type, 4> inputTypes;
+    for (unsigned i = 0, e = getNumArguments(); i != e; ++i)
+      if (!mapper.contains(getArgument(i)))
+        inputTypes.push_back(type.getInput(i));
+    newType = FunctionType::get(inputTypes, type.getResults(), getContext());
+  }
+
+  // Create a new function and clone the current function into it.
+  Function *newFunc = new Function(getLoc(), getName(), newType);
+  cloneInto(newFunc, mapper);
+  return newFunc;
+}
+Function *Function::clone() const {
+  BlockAndValueMapping mapper;
+  return clone(mapper);
+}
+
+/// Set the attributes held by this function.
+void Function::setAttributes(ArrayRef<NamedAttribute> attrs) {
+  this->attrs = AttributeListStorage::get(attrs, getContext());
 }
 
 //===----------------------------------------------------------------------===//

@@ -34,6 +34,7 @@
 
 namespace mlir {
 class AttributeListStorage;
+class BlockAndValueMapping;
 class FunctionType;
 class MLIRContext;
 class Module;
@@ -185,7 +186,24 @@ public:
   /// target linked.
   void viewGraph() const;
 
+  /// Create a deep copy of this function and all of its blocks, remapping
+  /// any operands that use values outside of the function using the map that is
+  /// provided (leaving them alone if no entry is present). If the mapper
+  /// contains entries for function arguments, these arguments are not included
+  /// in the new function. Replaces references to cloned sub-values with the
+  /// corresponding value that is copied, and adds those mappings to the mapper.
+  Function *clone(BlockAndValueMapping &mapper) const;
+  Function *clone() const;
+
+  /// Clone the internal blocks and attributes from this function into dest. Any
+  /// cloned blocks are appended to the back of dest. This function asserts that
+  /// the attributes of the current function and dest are compatible.
+  void cloneInto(Function *dest, BlockAndValueMapping &mapper) const;
+
 private:
+  /// Set the attributes held by this function.
+  void setAttributes(ArrayRef<NamedAttribute> attrs = {});
+
   /// The name of the function.
   Identifier name;
 

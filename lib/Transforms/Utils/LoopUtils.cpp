@@ -24,6 +24,7 @@
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/InstVisitor.h"
@@ -161,7 +162,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
   auto *loopChunk = b->createFor(srcForInst->getLoc(), lbOperands, lbMap,
                                  ubOperands, ubMap, srcForInst->getStep());
 
-  OperationInst::OperandMapTy operandMap;
+  BlockAndValueMapping operandMap;
 
   for (auto it = instGroupQueue.begin() + offset, e = instGroupQueue.end();
        it != e; ++it) {
@@ -179,9 +180,9 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
                                srcForInst->getStep() * shift)),
                            loopChunk)
                           ->getResult(0);
-      operandMap[srcForInst] = ivRemap;
+      operandMap.map(srcForInst, ivRemap);
     } else {
-      operandMap[srcForInst] = loopChunk;
+      operandMap.map(srcForInst, loopChunk);
     }
     for (auto *inst : insts) {
       loopChunk->getBody()->push_back(inst->clone(operandMap, b->getContext()));
@@ -386,9 +387,8 @@ bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
 
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
   if (getLargestDivisorOfTripCount(*forInst) % unrollFactor != 0) {
-    DenseMap<const Value *, Value *> operandMap;
     FuncBuilder builder(forInst->getBlock(), ++Block::iterator(forInst));
-    auto *cleanupForInst = cast<ForInst>(builder.clone(*forInst, operandMap));
+    auto *cleanupForInst = cast<ForInst>(builder.clone(*forInst));
     auto clLbMap = getCleanupLoopLowerBound(*forInst, unrollFactor, &builder);
     assert(clLbMap &&
            "cleanup loop lower bound map for single result bound maps can "
@@ -420,7 +420,7 @@ bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
 
   // Unroll the contents of 'forInst' (append unrollFactor-1 additional copies).
   for (unsigned i = 1; i < unrollFactor; i++) {
-    DenseMap<const Value *, Value *> operandMap;
+    BlockAndValueMapping operandMap;
 
     // If the induction variable is used, create a remapping to the value for
     // this unrolled instance.
@@ -431,7 +431,7 @@ bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
       auto *ivUnroll =
           builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInst)
               ->getResult(0);
-      operandMap[forInst] = ivUnroll;
+      operandMap.map(forInst, ivUnroll);
     }
 
     // Clone the original body of 'forInst'.

@@ -1201,8 +1201,7 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
       continue;
     }
     FuncBuilder builder(loop); // builder to insert in place of loop
-    DenseMap<const Value *, Value *> nomap;
-    ForInst *clonedLoop = cast<ForInst>(builder.clone(*loop, nomap));
+    ForInst *clonedLoop = cast<ForInst>(builder.clone(*loop));
     auto fail = doVectorize(m, &state);
     /// Sets up error handling for this root loop. This is how the root match
     /// maintains a clone for handling failure and restores the proper state via

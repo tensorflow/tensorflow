@@ -30,6 +30,7 @@
 
 namespace mlir {
 class Block;
+class BlockAndValueMapping;
 class Location;
 class ForInst;
 class MLIRContext;
@@ -82,17 +83,12 @@ public:
   /// Remove this instruction from its parent block and delete it.
   void erase();
 
-  // This is a verbose type used by the clone method below.
-  using OperandMapTy =
-      DenseMap<const Value *, Value *, llvm::DenseMapInfo<const Value *>,
-               llvm::detail::DenseMapPair<const Value *, Value *>>;
-
   /// Create a deep copy of this instruction, remapping any operands that use
   /// values outside of the instruction using the map that is provided (leaving
   /// them alone if no entry is present).  Replaces references to cloned
   /// sub-instructions to the corresponding instruction that is copied, and adds
   /// those mappings to the map.
-  Instruction *clone(OperandMapTy &operandMap, MLIRContext *context) const;
+  Instruction *clone(BlockAndValueMapping &mapper, MLIRContext *context) const;
   Instruction *clone(MLIRContext *context) const;
 
   /// Returns the instruction block that contains this instruction.

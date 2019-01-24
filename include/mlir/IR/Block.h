@@ -28,6 +28,7 @@
 namespace mlir {
 class IfInst;
 class BlockList;
+class BlockAndValueMapping;
 
 template <typename BlockType> class PredecessorIterator;
 template <typename BlockType> class SuccessorIterator;
@@ -357,6 +358,13 @@ public:
   const Function *getContainingFunction() const {
     return const_cast<BlockList *>(this)->getContainingFunction();
   }
+
+  /// Clone the internal blocks from this block list into dest. Any
+  /// cloned blocks are appended to the back of dest. If the mapper
+  /// contains entries for block arguments, these arguments are not included
+  /// in the respective cloned block.
+  void cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
+                 MLIRContext *context) const;
 
 private:
   BlockListType blocks;

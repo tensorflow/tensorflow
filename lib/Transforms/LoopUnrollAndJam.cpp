@@ -46,6 +46,7 @@
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/InstVisitor.h"
@@ -190,11 +191,10 @@ bool mlir::loopUnrollJamByFactor(ForInst *forInst, uint64_t unrollJamFactor) {
   // unrollJamFactor.
   if (mayBeConstantTripCount.hasValue() &&
       mayBeConstantTripCount.getValue() % unrollJamFactor != 0) {
-    DenseMap<const Value *, Value *> operandMap;
     // Insert the cleanup loop right after 'forInst'.
     FuncBuilder builder(forInst->getBlock(),
                         std::next(Block::iterator(forInst)));
-    auto *cleanupForInst = cast<ForInst>(builder.clone(*forInst, operandMap));
+    auto *cleanupForInst = cast<ForInst>(builder.clone(*forInst));
     cleanupForInst->setLowerBoundMap(
         getCleanupLoopLowerBound(*forInst, unrollJamFactor, &builder));
 
@@ -217,7 +217,7 @@ bool mlir::loopUnrollJamByFactor(ForInst *forInst, uint64_t unrollJamFactor) {
 
     // Unroll and jam (appends unrollJamFactor-1 additional copies).
     for (unsigned i = 1; i < unrollJamFactor; i++) {
-      DenseMap<const Value *, Value *> operandMapping;
+      BlockAndValueMapping operandMapping;
 
       // If the induction variable is used, create a remapping to the value for
       // this unrolled instance.
@@ -228,7 +228,7 @@ bool mlir::loopUnrollJamByFactor(ForInst *forInst, uint64_t unrollJamFactor) {
         auto *ivUnroll =
             builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInst)
                 ->getResult(0);
-        operandMapping[forInst] = ivUnroll;
+        operandMapping.map(forInst, ivUnroll);
       }
       // Clone the sub-block being unroll-jammed.
       for (auto it = subBlock.first; it != std::next(subBlock.second); ++it) {

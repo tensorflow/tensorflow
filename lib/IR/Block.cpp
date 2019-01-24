@@ -16,7 +16,9 @@
 // =============================================================================
 
 #include "mlir/IR/Block.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/InstVisitor.h"
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
@@ -215,6 +217,63 @@ Instruction *BlockList::getContainingInst() {
 
 Function *BlockList::getContainingFunction() {
   return container.dyn_cast<Function *>();
+}
+
+/// Clone the internal blocks from this block list into dest. Any
+/// cloned blocks are appended to the back of dest.
+void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
+                          MLIRContext *context) const {
+  assert(dest && "expected valid block list to clone into");
+
+  // If the list is empty there is nothing to clone.
+  if (empty())
+    return;
+
+  Block *lastOldBlock = &dest->back();
+  for (const Block &block : *this) {
+    Block *newBlock = new Block();
+    mapper.map(&block, newBlock);
+
+    // Clone the block arguments. The user might be deleting arguments to the
+    // block by specifying them in the mapper. If so, we don't add the
+    // argument to the cloned block.
+    for (const auto *arg : block.getArguments())
+      if (!mapper.contains(arg))
+        mapper.map(arg, newBlock->addArgument(arg->getType()));
+
+    // Clone and remap the instructions within this block.
+    for (const auto &inst : block)
+      newBlock->push_back(inst.clone(mapper, context));
+
+    dest->push_back(newBlock);
+  }
+
+  // Now that each of the blocks have been cloned, go through and remap the
+  // operands of each of the instructions.
+  struct Walker : public InstWalker<Walker> {
+    BlockAndValueMapping &mapper;
+    Walker(BlockAndValueMapping &mapper) : mapper(mapper) {}
+
+    /// Remap the instruction operands.
+    void visitInstruction(Instruction *inst) {
+      for (auto &instOp : inst->getInstOperands())
+        if (auto *mappedOp = mapper.lookupOrNull(instOp.get()))
+          instOp.set(mappedOp);
+    }
+    // Remap the successor block operands.
+    void visitOperationInst(OperationInst *opInst) {
+      if (!opInst->isTerminator())
+        return;
+      for (auto &succOp : opInst->getBlockOperands())
+        if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
+          succOp.set(mappedOp);
+    }
+  };
+
+  Walker v(mapper);
+  for (auto it = std::next(lastOldBlock->getIterator()), e = dest->end();
+       it != e; ++it)
+    v.walk(it->begin(), it->end());
 }
 
 BlockList *llvm::ilist_traits<::mlir::Block>::getContainingBlockList() {
