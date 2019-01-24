@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
+#include "tensorflow/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
@@ -124,7 +126,7 @@ string MemorySpaceString(MemorySpace memory_space) {
 // HIP driver (e.g., this value is not our cached view of the current device).
 static int CurrentDeviceOrDie() {
   int current = -1;
-  hipError_t result = hipGetDevice(&current);
+  hipError_t result = tensorflow::wrap::hipGetDevice(&current);
   if (result != hipSuccess) {
     LOG(FATAL) << "failed to query current device: " << ToString(result);
   }
@@ -135,7 +137,7 @@ namespace {
 
 // Call hipDeviceSynchronize and crash if it doesn't succeed.
 void SynchronizeOrDie() {
-  auto res = hipDeviceSynchronize();
+  auto res = tensorflow::wrap::hipDeviceSynchronize();
   if (res != hipSuccess) {
     LOG(FATAL) << "Synchronize found " << ToString(res)
                << " :: " << port::CurrentStackTrace();
@@ -178,8 +180,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* context) {
           << tls->current_device_ordinal << " to " << context->device_ordinal();
 
   // Set the device and update thread local.
-  CHECK_EQ(hipSuccess,
-           hipSetDevice(context->device_ordinal()));
+  CHECK_EQ(hipSuccess, tensorflow::wrap::hipSetDevice(context->device_ordinal()));
   tls->current_device_ordinal = context->device_ordinal();
 }
 
@@ -207,7 +208,7 @@ ScopedActivateContext::~ScopedActivateContext() {
           << to_restore_->device_ordinal();
 
   // Set context and update thread local.
-  CHECK_EQ(hipSuccess, hipSetDevice(to_restore_->device_ordinal()));
+  CHECK_EQ(hipSuccess, tensorflow::wrap::hipSetDevice(to_restore_->device_ordinal()));
   tls->current_device_ordinal = to_restore_->device_ordinal();
 }
 
@@ -243,7 +244,7 @@ string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
 // in the process of querying.
 string ROCMPointersToCanAccessString(hipDeviceptr_t from, hipDeviceptr_t to) {
   hipPointerAttribute_t from_pointerAttributes;
-  hipError_t result = hipPointerGetAttributes(&from_pointerAttributes, from);
+  hipError_t result = tensorflow::wrap::hipPointerGetAttributes(&from_pointerAttributes, from);
   if (result != hipSuccess) {
     LOG(ERROR) << "could not retrieve source pointer's device: "
                << ToString(result);
@@ -251,7 +252,7 @@ string ROCMPointersToCanAccessString(hipDeviceptr_t from, hipDeviceptr_t to) {
   }
 
   hipPointerAttribute_t to_pointerAttributes;
-  result = hipPointerGetAttributes(&to_pointerAttributes, to);
+  result = tensorflow::wrap::hipPointerGetAttributes(&to_pointerAttributes, to);
   if (result != hipSuccess) {
     LOG(ERROR) << "could not retrieve destination pointer's device: "
                << ToString(result);
@@ -271,7 +272,7 @@ static port::Status InternalInit() {
   if (FLAGS_gpuexec_rocm_driver_inject_init_error) {
     LOG(ERROR) << "injecting ROCM init error; initialization will fail";
   } else {
-    res = hipInit(0 /* = flags */);
+    res = tensorflow::wrap::hipInit(0 /* = flags */);
   }
 
   if (res == hipSuccess) {
@@ -304,7 +305,7 @@ static port::Status InternalInit() {
 
 /* static */ port::Status GpuDriver::GetDevice(int device_ordinal,
                                                hipDevice_t* device) {
-  hipError_t res = hipDeviceGet(device, device_ordinal);
+  hipError_t res = tensorflow::wrap::hipDeviceGet(device, device_ordinal);
   if (res == hipSuccess) {
     return port::Status::OK();
   }
@@ -318,7 +319,7 @@ static port::Status InternalInit() {
                                            string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
-  hipError_t res = hipDeviceGetName(chars.begin(), kCharLimit - 1, device);
+  hipError_t res = tensorflow::wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to get device name for " << device << ": "
                << ToString(res);
@@ -364,7 +365,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 
 /* static */ bool GpuDriver::FuncSetCacheConfig(hipFunction_t function,
                                                 hipFuncCache_t cache_config) {
-  hipError_t res = hipFuncSetCacheConfig(function, cache_config);
+  hipError_t res = tensorflow::wrap::hipFuncSetCacheConfig(function, cache_config);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to set ROCM kernel cache config. kernel: " << function
                << ", config: " << cache_config << ", result: " << ToString(res);
@@ -378,7 +379,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   hipSharedMemConfig shared_mem_config;
   ScopedActivateContext activation{context};
-  hipError_t result = hipDeviceGetSharedMemConfig(&shared_mem_config);
+  hipError_t result = tensorflow::wrap::hipDeviceGetSharedMemConfig(&shared_mem_config);
   if (result != hipSuccess) {
     LOG(ERROR) << "failed to get ROCM device shared memory config. "
                << "Context device ID: " << context->device_ordinal()
@@ -393,7 +394,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ port::Status GpuDriver::ContextSetSharedMemConfig(
     GpuContext* context, hipSharedMemConfig shared_mem_config) {
   ScopedActivateContext activation{context};
-  hipError_t result = hipDeviceSetSharedMemConfig(shared_mem_config);
+  hipError_t result = tensorflow::wrap::hipDeviceSetSharedMemConfig(shared_mem_config);
   if (result != hipSuccess) {
     LOG(ERROR) << "failed to set ROCM device shared memory config. "
                << "Context device ID: " << context->device_ordinal()
@@ -417,7 +418,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z << " smem: " << shared_mem_bytes;
-  hipError_t res = hipModuleLaunchKernel(
+  hipError_t res = tensorflow::wrap::hipModuleLaunchKernel(
       function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
       block_dim_z, shared_mem_bytes, stream, kernel_params, extra);
   if (res != hipSuccess) {
@@ -453,7 +454,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
         ScopedActivateContext activation{context};
         void* hsaco_data = const_cast<char*>(hsaco_contents);
 
-        hipError_t res = hipModuleLoadData(module, hsaco_data);
+        hipError_t res = tensorflow::wrap::hipModuleLoadData(module, hsaco_data);
 
         if (res != hipSuccess) {
           LOG(ERROR) << "failed to load HSACO: " << ToString(res);
@@ -473,7 +474,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                     hipDeviceptr_t location,
                                                     uint8 value, size_t size) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemsetD8(location, value, size);
+  hipError_t res = tensorflow::wrap::hipMemsetD8(location, value, size);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -487,7 +488,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                      size_t uint32_count) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-  hipError_t res = hipMemsetD32(pointer, value, uint32_count);
+  hipError_t res = tensorflow::wrap::hipMemsetD32(pointer, value, uint32_count);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -501,7 +502,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                      size_t uint32_count,
                                                      GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemsetAsync(location, value, uint32_count, stream);
+  hipError_t res = tensorflow::wrap::hipMemsetAsync(location, value, uint32_count, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
     return false;
@@ -517,7 +518,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                       GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-  hipError_t res = hipMemsetD32Async(pointer, value, uint32_count, stream);
+  hipError_t res = tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
     return false;
@@ -530,7 +531,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                GpuStreamHandle stream,
                                                StreamCallback callback,
                                                void* data) {
-  hipError_t res = hipStreamAddCallback(stream, (hipStreamCallback_t)callback,
+  hipError_t res = tensorflow::wrap::hipStreamAddCallback(stream, (hipStreamCallback_t)callback,
                                         data, 0 /* = flags */);
   if (res != hipSuccess) {
     LOG(ERROR) << "unable to add host callback: " << ToString(res);
@@ -545,7 +546,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                hipFunction_t* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
-  hipError_t res = hipModuleGetFunction(function, module, kernel_name);
+  hipError_t res = tensorflow::wrap::hipModuleGetFunction(function, module, kernel_name);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to get kernel \"" << kernel_name
                << "\" from module: " << ToString(res);
@@ -563,7 +564,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && symbol_name != nullptr &&
         (dptr != nullptr || bytes != nullptr));
-  hipError_t res = hipModuleGetGlobal(dptr, bytes, module, symbol_name);
+  hipError_t res = tensorflow::wrap::hipModuleGetGlobal(dptr, bytes, module, symbol_name);
   if (res != hipSuccess) {
     // symbol may not be found in the current module, but it may reside in
     // another module.
@@ -578,7 +579,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ void GpuDriver::UnloadModule(GpuContext* context,
                                           hipModule_t module) {
   ScopedActivateContext activated{context};
-  hipError_t res = hipModuleUnload(module);
+  hipError_t res = tensorflow::wrap::hipModuleUnload(module);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to unload module " << module
                << "; leaking: " << ToString(res);
@@ -588,7 +589,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::CreateStream(GpuContext* context,
                                           GpuStreamHandle* stream) {
   ScopedActivateContext activated{context};
-  hipError_t res = hipStreamCreateWithFlags(
+  hipError_t res = tensorflow::wrap::hipStreamCreateWithFlags(
       stream, hipStreamDefault);  // switch to hipStreamNonBlocking?
   if (res != hipSuccess) {
     LOG(ERROR) << "could not allocate ROCM stream for device "
@@ -608,7 +609,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 
   ScopedActivateContext activated{context};
-  hipError_t res = hipStreamDestroy(*stream);
+  hipError_t res = tensorflow::wrap::hipStreamDestroy(*stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to destroy ROCM stream for device "
                << context->device_ordinal() << ": " << ToString(res);
@@ -623,7 +624,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                              uint64 bytes) {
   ScopedActivateContext activated{context};
   hipDeviceptr_t result = 0;
-  hipError_t res = hipMalloc(&result, bytes);
+  hipError_t res = tensorflow::wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to allocate "
                << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
@@ -640,7 +641,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                               void* location) {
   ScopedActivateContext activation{context};
   hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
-  hipError_t res = hipFree(pointer);
+  hipError_t res = tensorflow::wrap::hipFree(pointer);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to free device memory at " << location
                << "; result: " << ToString(res);
@@ -669,7 +670,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
+  hipError_t res = tensorflow::wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to alloc " << bytes
                << " bytes on host: " << ToString(res);
@@ -680,7 +681,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ void GpuDriver::HostDeallocate(GpuContext* context,
                                             void* location) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipHostFree(location);
+  hipError_t res = tensorflow::wrap::hipHostFree(location);
   if (res != hipSuccess) {
     LOG(ERROR) << "error deallocating host memory at " << location << ": "
                << ToString(res);
@@ -691,7 +692,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                           uint64 bytes) {
   ScopedActivateContext activation{context};
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = hipHostRegister(location, bytes, hipHostRegisterPortable);
+  hipError_t res =
+      tensorflow::wrap::hipHostRegister(location, bytes, hipHostRegisterPortable);
   if (res != hipSuccess) {
     LOG(ERROR) << "error registering host memory at " << location << ": "
                << ToString(res);
@@ -703,7 +705,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::HostUnregister(GpuContext* context,
                                             void* location) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipHostUnregister(location);
+  hipError_t res = tensorflow::wrap::hipHostUnregister(location);
   if (res != hipSuccess) {
     LOG(ERROR) << "error unregistering host memory at " << location << ": "
                << ToString(res);
@@ -720,7 +722,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 
   ScopedActivateContext activated{context};
-  hipError_t res = hipEventDestroy(*event);
+  hipError_t res = tensorflow::wrap::hipEventDestroy(*event);
   *event = nullptr;
 
   switch (res) {
@@ -744,7 +746,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                  GpuEventHandle event,
                                                  GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
-  hipError_t res = hipEventRecord(event, stream);
+  hipError_t res = tensorflow::wrap::hipEventRecord(event, stream);
   switch (res) {
     case hipSuccess:
       return port::Status::OK();
@@ -765,7 +767,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ port::StatusOr<hipError_t> GpuDriver::QueryEvent(
     GpuContext* context, GpuEventHandle event) {
   ScopedActivateContext activated{context};
-  hipError_t res = hipEventQuery(event);
+  hipError_t res = tensorflow::wrap::hipEventQuery(event);
   if (res != hipSuccess && res != hipErrorNotReady) {
     return port::Status{
         port::error::INTERNAL,
@@ -782,12 +784,12 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activated{context};
   // The stop event must have completed in order for hipEventElapsedTime to
   // work.
-  hipError_t res = hipEventSynchronize(stop);
+  hipError_t res = tensorflow::wrap::hipEventSynchronize(stop);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to synchronize the stop event: " << ToString(res);
     return false;
   }
-  res = hipEventElapsedTime(elapsed_milliseconds, start, stop);
+  res = tensorflow::wrap::hipEventElapsedTime(elapsed_milliseconds, start, stop);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to get elapsed time between events: "
                << ToString(res);
@@ -801,7 +803,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                GpuStreamHandle stream,
                                                GpuEventHandle event) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipStreamWaitEvent(stream, event, 0 /* = flags */);
+  hipError_t res = tensorflow::wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */);
   if (res != hipSuccess) {
     LOG(ERROR) << "could not wait stream on event: " << ToString(res);
     return false;
@@ -812,7 +814,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 /* static */ bool GpuDriver::SynchronizeContext(GpuContext* context) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipDeviceSynchronize();
+  hipError_t res = tensorflow::wrap::hipDeviceSynchronize();
   if (res != hipSuccess) {
     LOG(ERROR) << "could not synchronize on ROCM device: " << ToString(res)
                << " :: " << port::CurrentStackTrace();
@@ -826,7 +828,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                        GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
-  hipError_t res = hipStreamSynchronize(stream);
+  hipError_t res = tensorflow::wrap::hipStreamSynchronize(stream);
   if (res != hipSuccess) {
     port::Status status = port::InternalError(
         absl::StrCat("could not synchronize on ROCM stream: ", ToString(res)));
@@ -842,7 +844,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                           GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
-  hipError_t res = hipStreamQuery(stream);
+  hipError_t res = tensorflow::wrap::hipStreamQuery(stream);
   if (res == hipSuccess) {
     return true;
   }
@@ -856,7 +858,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ port::Status GpuDriver::SynchronousMemcpyD2H(
     GpuContext* context, void* host_dst, hipDeviceptr_t gpu_src, uint64 size) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemcpyDtoH(host_dst, gpu_src, size);
+  hipError_t res = tensorflow::wrap::hipMemcpyDtoH(host_dst, gpu_src, size);
   if (res != hipSuccess) {
     return port::InternalError(
         port::Printf("failed to synchronous memcpy from device to host: %s; "
@@ -873,7 +875,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     GpuContext* context, hipDeviceptr_t gpu_dst, const void* host_src,
     uint64 size) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemcpyHtoD(gpu_dst, const_cast<void*>(host_src), size);
+  hipError_t res = tensorflow::wrap::hipMemcpyHtoD(gpu_dst, const_cast<void*>(host_src), size);
   if (res != hipSuccess) {
     return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p;"
@@ -889,7 +891,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     GpuContext* context, hipDeviceptr_t gpu_dst, hipDeviceptr_t gpu_src,
     uint64 size) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemcpyDtoD(gpu_dst, gpu_src, size);
+  hipError_t res = tensorflow::wrap::hipMemcpyDtoD(gpu_dst, gpu_src, size);
   if (res != hipSuccess) {
     return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p; "
@@ -907,7 +909,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
+  hipError_t res = tensorflow::wrap::hipMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from device to host: %s; host dst: %p; "
@@ -928,7 +930,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   hipError_t res =
-      hipMemcpyHtoDAsync(gpu_dst, const_cast<void*>(host_src), size, stream);
+      tensorflow::wrap::hipMemcpyHtoDAsync(gpu_dst, const_cast<void*>(host_src), size, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from host to device: %s; GPU dst: %p; "
@@ -947,7 +949,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t result = hipMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  hipError_t result = tensorflow::wrap::hipMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   if (result != hipSuccess) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from device to device: %s"
@@ -983,7 +985,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 
   ScopedActivateContext activated{context};
-  hipError_t res = hipEventCreateWithFlags(event, hipflags);
+  hipError_t res = tensorflow::wrap::hipEventCreateWithFlags(event, hipflags);
 
   if (res == hipSuccess) {
     return port::Status::OK();
@@ -999,7 +1001,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 /* static */ int GpuDriver::GetDeviceCount() {
   int device_count = 0;
-  hipError_t res = hipGetDeviceCount(&device_count);
+  hipError_t res = tensorflow::wrap::hipGetDeviceCount(&device_count);
   if (res != hipSuccess) {
     LOG(ERROR) << "could not retrieve ROCM device count: " << ToString(res);
     return 0;
@@ -1022,7 +1024,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 /* static */ port::Status GpuDriver::GetPointerAddressRange(
     hipDeviceptr_t dptr, hipDeviceptr_t* base, size_t* size) {
-  hipError_t result = hipMemGetAddressRange(base, size, dptr);
+  hipError_t result = tensorflow::wrap::hipMemGetAddressRange(base, size, dptr);
   if (result == hipSuccess) {
     return port::Status::OK();
   } else if (result == hipErrorNotFound) {
@@ -1067,7 +1069,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ port::StatusOr<hipDevice_t> GpuDriver::GetPointerDevice(
     hipDeviceptr_t pointer) {
   hipPointerAttribute_t pointerAttributes;
-  hipError_t result = hipPointerGetAttributes(&pointerAttributes, pointer);
+  hipError_t result = tensorflow::wrap::hipPointerGetAttributes(&pointerAttributes, pointer);
   if (result != hipSuccess) {
     return port::Status{
         port::error::INTERNAL,
@@ -1075,7 +1077,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 
   hipDevice_t device;
-  result = hipDeviceGet(&device, pointerAttributes.device);
+  result = tensorflow::wrap::hipDeviceGet(&device, pointerAttributes.device);
   if (result != hipSuccess) {
     return port::Status{
         port::error::INTERNAL,
@@ -1088,7 +1090,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ port::Status GpuDriver::GetGpuISAVersion(int* version,
                                                       hipDevice_t device) {
   hipDeviceProp_t props;
-  hipError_t result = hipGetDeviceProperties(&props, device);
+  hipError_t result = tensorflow::wrap::hipGetDeviceProperties(&props, device);
   if (result == hipSuccess) {
     *version = props.gcnArch;
     return port::Status::OK();
@@ -1105,7 +1107,7 @@ template <typename T>
 static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
                                             hipDeviceAttribute_t attribute) {
   int value = -1;
-  hipError_t result = hipDeviceGetAttribute(&value, attribute, device);
+  hipError_t result = tensorflow::wrap::hipDeviceGetAttribute(&value, attribute, device);
   if (result != hipSuccess) {
     return port::Status{
         port::error::NOT_FOUND,
@@ -1160,21 +1162,23 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
                                            hipDevice_t device) {
   int value;
   hipError_t res =
-      hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimX, device);
+      tensorflow::wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimX, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query max grid dim x: " << ToString(res);
     return false;
   }
   *x = value;
 
-  res = hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimY, device);
+  res =
+      tensorflow::wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimY, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query max grid dim y: " << ToString(res);
     return false;
   }
   *y = value;
 
-  res = hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimZ, device);
+  res =
+      tensorflow::wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimZ, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query max grid dim z: " << ToString(res);
     return false;
@@ -1184,7 +1188,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 }
 
 /* static */ bool GpuDriver::GetDriverVersion(int* driver_version) {
-  hipError_t res = hipDriverGetVersion(driver_version);
+  hipError_t res = tensorflow::wrap::hipDriverGetVersion(driver_version);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query driver version: " << ToString(res);
     return false;
@@ -1195,7 +1199,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 
 /* static */ bool GpuDriver::GetDeviceProperties(
     hipDeviceProp_t* device_properties, int device_ordinal) {
-  hipError_t res = hipGetDeviceProperties(device_properties, device_ordinal);
+  hipError_t res = tensorflow::wrap::hipGetDeviceProperties(device_properties, device_ordinal);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query device properties: " << ToString(res);
     return false;
@@ -1228,7 +1232,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   ScopedActivateContext activation{context};
   size_t free = 0;
   size_t total = 0;
-  hipError_t res = hipMemGetInfo(&free, &total);
+  hipError_t res = tensorflow::wrap::hipMemGetInfo(&free, &total);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query device memory info: " << ToString(res);
     return false;
@@ -1242,7 +1246,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 /* static */ bool GpuDriver::GetDeviceTotalMemory(hipDevice_t device,
                                                   uint64* result) {
   size_t value = -1;
-  hipError_t res = hipDeviceTotalMem(&value, device);
+  hipError_t res = tensorflow::wrap::hipDeviceTotalMem(&value, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query total available memory: " << ToString(res);
     return false;
@@ -1257,7 +1261,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   static const int kBufferSize = 64;
   absl::InlinedVector<char, 4> chars(kBufferSize);
   chars[kBufferSize - 1] = '\0';
-  hipError_t res = hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
+  hipError_t res = tensorflow::wrap::hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query PCI bus id for device: " << ToString(res);
     return pci_bus_id;
@@ -1273,7 +1277,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   }
 
   int can_access_peer = -1;
-  hipError_t res = hipDeviceCanAccessPeer(
+  hipError_t res = tensorflow::wrap::hipDeviceCanAccessPeer(
       &can_access_peer, from->device_ordinal(), to->device_ordinal());
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to detect peer access capability: " << ToString(res);
@@ -1291,7 +1295,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 
   ScopedActivateContext activated{from};
   hipError_t result =
-      hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
+      tensorflow::wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
     return port::Status{
         port::error::INTERNAL,

@@ -73,6 +73,7 @@ cc_library(
     srcs = if_rocm_is_configured(["rocm_driver.cc"]),
     hdrs = if_rocm_is_configured([
         "rocm_driver.h",
+        "rocm_driver_wrapper.h",
     ]),
     deps = if_rocm_is_configured([
         ":rocm_diagnostics",
