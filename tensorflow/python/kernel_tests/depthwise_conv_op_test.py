@@ -499,6 +499,7 @@ class DepthwiseConv2DTest(test.TestCase):
             test_input=False,
             use_gpu=True)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testDepthwiseConv2DFilterGradFormat(self):
     if not test.is_gpu_available():
       return

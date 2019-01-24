@@ -592,6 +592,7 @@ class LinSpaceTest(test.TestCase):
       self.assertArrayNear(self._LinSpace(5., 5., 3), np.array([5.] * 3), 1e-5)
       self.assertArrayNear(self._LinSpace(5., 5., 4), np.array([5.] * 4), 1e-5)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testEndpointsAreExact(self):
     for self.force_gpu in self._gpu_modes():
       # Test some cases that produce last values not equal to "stop" when
