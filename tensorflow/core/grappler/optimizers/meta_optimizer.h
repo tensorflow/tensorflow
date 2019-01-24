@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
 
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -98,6 +101,30 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg);
 Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
                         GraphDef* optimized_graph);
+
+// Wrapper around RunMetaOptimizer convenient for optimizing
+// function graphs.
+//
+// Runs grappler optimizations on `g` based on `config_proto`.
+// `ret_node_names`: a vector of node names whose outputs are returned,
+//    aka fetches. when `g` represent a function, these are _Retval nodes.
+// `lib`: function library to use with `g`.
+// `device_set`: the set of devices that graph can refer to.
+// `cpu_device`: the CPU device.
+// `config_proto`: Grapper configuration.
+// `optimization_options`: Grappler optimization constraints that are known only
+//    at runtime.
+//
+// **g is a graph constructed based on the runtime library 'lib'.
+// OptimizeGraph mutates **g extensively and replaces '*g' with a
+// complete copy. Therefore, the caller should not keep any references
+// to nodes *g.
+Status OptimizeGraph(
+    std::vector<string> ret_node_names, FunctionLibraryDefinition* lib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto,
+    const GrapplerItem::OptimizationOptions& optimization_options,
+    std::unique_ptr<tensorflow::Graph>* g);
 
 }  // namespace grappler
 }  // namespace tensorflow

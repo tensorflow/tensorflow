@@ -50,7 +50,7 @@ def tfadd_with_ckpt(out_dir):
   y = variables.VariableV1(constant_op.constant([0]), name='y_saved')
   math_ops.add(x, y, name='x_y_sum')
 
-  init_op = variables.initialize_all_variables()
+  init_op = variables.global_variables_initializer()
   saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
   with session.Session() as sess:
     sess.run(init_op)
@@ -65,7 +65,7 @@ def tfadd_with_ckpt_saver(out_dir):
   y = variables.VariableV1(constant_op.constant([0]), name='y_saved')
   math_ops.add(x, y, name='x_y_sum')
 
-  init_op = variables.initialize_all_variables()
+  init_op = variables.global_variables_initializer()
   saver = saver_lib.Saver(name='abcprefix', write_version=saver_pb2.SaverDef.V1)
   with session.Session() as sess:
     sess.run(init_op)

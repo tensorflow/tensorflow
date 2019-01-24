@@ -153,10 +153,9 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
            dim_numbers.index_vector_dim() ==
                gather.operand(1)->shape().dimensions_size());
 
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * induction_var_as_vector,
+  HloInstruction* induction_var_as_vector =
       MakeBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
-                       /*result_shape_bounds=*/{1}));
+                       /*result_shape_bounds=*/{1});
 
   HloInstruction* index_vector;
 
@@ -222,7 +221,7 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
       {operand, start_indices, updated_accumulator}};
 }
 
-static StatusOr<HloInstruction*> CreateGatherLoopAccumulatorInitValue(
+static HloInstruction* CreateGatherLoopAccumulatorInitValue(
     HloComputation* computation, PrimitiveType element_type,
     absl::Span<const int64> slice_sizes, int64 gather_loop_trip_count,
     const GatherDimensionNumbers& dim_numbers) {
@@ -332,12 +331,10 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
   CHECK_EQ(gather_loop_trip_count,
            canonical_start_indices->shape().dimensions(0));
 
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * accumulator_init,
-      CreateGatherLoopAccumulatorInitValue(
-          computation, output_shape.element_type(),
-          gather_instr->gather_slice_sizes(), gather_loop_trip_count,
-          gather_instr->gather_dimension_numbers()));
+  HloInstruction* accumulator_init = CreateGatherLoopAccumulatorInitValue(
+      computation, output_shape.element_type(),
+      gather_instr->gather_slice_sizes(), gather_loop_trip_count,
+      gather_instr->gather_dimension_numbers());
 
   StatusOr<std::vector<HloInstruction*>> gather_loop_result_or_error =
       WhileUtil::MakeCountedLoop(

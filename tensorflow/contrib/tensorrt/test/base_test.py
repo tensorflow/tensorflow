@@ -68,9 +68,9 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[(100, 6, 6, 6)])
+        expected_output_dims=[[[100, 6, 6, 6]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -125,9 +125,9 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[(100, 12, 12, 6)])
+        expected_output_dims=[[[100, 12, 12, 6]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -183,9 +183,9 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[tuple(input_dims)])
+        expected_output_dims=[[input_dims]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -253,9 +253,9 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[tuple(input_dims)])
+        expected_output_dims=[[input_dims]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -286,9 +286,9 @@ class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[tuple(input_dims)])
+        expected_output_dims=[[input_dims]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -320,9 +320,9 @@ class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[tuple(input_dims)])
+        expected_output_dims=[[input_dims]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -369,9 +369,9 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[tuple(input_dims)])
+        expected_output_dims=[[input_dims]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

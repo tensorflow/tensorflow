@@ -349,6 +349,9 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
 Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
   auto* iota = Cast<HloIotaInstruction>(instruction);
+  if (!iota->shape().IsArray()) {
+    return InternalError("Iota does not support non-array result.");
+  }
   const int64 rank = iota->shape().rank();
   if (rank == 0) {
     return InternalError("Iota does not support scalars.");
@@ -387,6 +390,14 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
   TF_RETURN_IF_ERROR(CheckOperandCount(bitcast, 1));
+  // Bitcasts are not allowed to change the element type.
+  if (bitcast->operand(0)->shape().element_type() !=
+      bitcast->shape().element_type()) {
+    return InternalError(
+        "Bitcast can not change the element type from %s to %s",
+        PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
+        PrimitiveType_Name(bitcast->shape().element_type()));
+  }
   return Status::OK();
 }
 
@@ -496,21 +507,23 @@ Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
 }
 
 Status ShapeVerifier::HandleDynamicSlice(HloInstruction* dynamic_slice) {
-  TF_RETURN_IF_ERROR(CheckOperandCount(dynamic_slice, 2));
-  return CheckShape(dynamic_slice, ShapeInference::InferDynamicSliceShape(
-                                       dynamic_slice->operand(0)->shape(),
-                                       dynamic_slice->operand(1)->shape(),
-                                       dynamic_slice->dynamic_slice_sizes()));
+  return CheckShape(
+      dynamic_slice,
+      ShapeInference::InferDynamicSliceShape(
+          dynamic_slice->operand(0)->shape(),
+          Cast<HloDynamicSliceInstruction>(dynamic_slice)->index_shapes(),
+          dynamic_slice->dynamic_slice_sizes()));
 }
 
 Status ShapeVerifier::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
-  TF_RETURN_IF_ERROR(CheckOperandCount(dynamic_update_slice, 3));
-  return CheckShape(dynamic_update_slice,
-                    ShapeInference::InferDynamicUpdateSliceShape(
-                        dynamic_update_slice->operand(0)->shape(),
-                        dynamic_update_slice->operand(1)->shape(),
-                        dynamic_update_slice->operand(2)->shape()));
+  return CheckShape(
+      dynamic_update_slice,
+      ShapeInference::InferDynamicUpdateSliceShape(
+          dynamic_update_slice->operand(0)->shape(),
+          dynamic_update_slice->operand(1)->shape(),
+          Cast<HloDynamicUpdateSliceInstruction>(dynamic_update_slice)
+              ->index_shapes()));
 }
 
 Status ShapeVerifier::HandleTuple(HloInstruction* tuple) {
@@ -692,7 +705,6 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReducePrecision:
-    case HloOpcode::kSelect:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:

@@ -18,16 +18,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.Adam', v1=[])
+@keras_export('keras.optimizers.Adam')
 class Adam(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adam algorithm.
 
@@ -125,9 +125,15 @@ class Adam(optimizer_v2.OptimizerV2):
         a callable that takes no arguments and returns the actual value to use.
         This can be useful for changing these values across different
         invocations of optimizer functions. @end_compatibility
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
     """
 
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
     super(Adam, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
@@ -239,11 +245,6 @@ class Adam(optimizer_v2.OptimizerV2):
           lr * m_t / (v_hat_sqrt + epsilon_t),
           use_locking=self._use_locking)
       return control_flow_ops.group(*[var_update, m_t, v_t, v_hat_t])
-
-  def _resource_scatter_add(self, x, i, v):
-    with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
-      return x.value()
 
   def get_config(self):
     config = super(Adam, self).get_config()

@@ -147,10 +147,24 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
   if (final_output_mul->type != OperatorType::kMul) {
     return ::tensorflow::Status::OK();
   }
+  // final_output_mul->outputs[0] would be one of the two outputs of our
+  // LstmCell. Exit if it does not already have a data type.
+  // We won't be able to propagate data types through a fused LstmCell.
+  if (model->GetArray(final_output_mul->outputs[0]).data_type ==
+      ArrayDataType::kNone) {
+    return ::tensorflow::Status::OK();
+  }
   Operator *state_output_tanh, *fc_output_sig;
   if (!MatchOperatorInputs(*final_output_mul, *model, OperatorType::kTanh,
                            &state_output_tanh, OperatorType::kLogistic,
                            &fc_output_sig)) {
+    return ::tensorflow::Status::OK();
+  }
+  // state_output_tanh->inputs[0] would be one of the two outputs of our
+  // LstmCell. Exit if it does not already have a data type.
+  // We won't be able to propagate data types through a fused LstmCell.
+  if (model->GetArray(state_output_tanh->inputs[0]).data_type ==
+      ArrayDataType::kNone) {
     return ::tensorflow::Status::OK();
   }
 
@@ -262,11 +276,15 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
       lstm_cell_op->outputs[LstmCellOperator::ACTIV_OUTPUT]));
   const string& concat_temp_array_name =
       AvailableArrayName(*model, base_name + "concat_temp");
-  model->GetOrCreateArray(concat_temp_array_name);
+  auto& concat_temp_array = model->GetOrCreateArray(concat_temp_array_name);
+  concat_temp_array.data_type =
+      model->GetArray(concat_inputs->outputs[0]).data_type;
   lstm_cell_op->outputs[LstmCellOperator::CONCAT_TEMP] = concat_temp_array_name;
   const string& activ_temp_array_name =
       AvailableArrayName(*model, base_name + "activ_temp");
-  model->GetOrCreateArray(activ_temp_array_name);
+  auto& activ_temp_array = model->GetOrCreateArray(activ_temp_array_name);
+  activ_temp_array.data_type =
+      model->GetArray(fully_connected->outputs[0]).data_type;
   lstm_cell_op->outputs[LstmCellOperator::ACTIV_TEMP] = activ_temp_array_name;
   AddMessageF("Created temp outputs %s and %s on operator %s",
               concat_temp_array_name, activ_temp_array_name,

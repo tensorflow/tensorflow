@@ -250,14 +250,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::Value* EmitBufferPointer(const BufferAllocation::Slice& slice,
                                  const Shape& target_shape);
 
-  // Emits a function into the current module. This can be used for
-  // computations embedded inside other computations, such as the
-  // function that a map operation applies.
-  StatusOr<llvm::Function*> EmitFunction(
-      HloComputation* function,  // The function to emit.
-      absl::string_view
-          function_name_suffix);  // Used for LLVM IR register names.
-
   // Emits a call to a thread local function (e.g. to the computation nested
   // within a reduce or a map).  Thread local callees (by definition) only write
   // to and read from thread local allocations.
@@ -448,7 +440,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       computation_to_profile_idx_;
 
   // Maps HLOs to Values emitted for them.
-  std::unordered_map<const HloInstruction*, llvm::Value*> emitted_value_;
+  absl::flat_hash_map<const HloInstruction*, llvm::Value*> emitted_value_;
 
   llvm_ir::AliasAnalysis alias_analysis_;
 

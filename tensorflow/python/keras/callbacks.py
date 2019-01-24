@@ -123,14 +123,6 @@ def configure_callbacks(callbacks,
       'metrics': callback_metrics,
   }
   callback_list.set_params(callback_params)
-
-  if (do_validation and not model._distribution_strategy and
-      not model.run_eagerly):
-    # Need to create the eval_function before start of the first epoch
-    # because TensorBoard callback on_epoch_begin adds summary to the
-    # list of fetches of the eval_function
-    callback_model._make_eval_function()
-
   callback_list.model.stop_training = False
   return callback_list
 # pylint: enable=protected-access
@@ -696,15 +688,14 @@ class ProgbarLogger(Callback):
     if self.verbose:
       if self.epochs > 1:
         print('Epoch %d/%d' % (epoch + 1, self.epochs))
-      self.progbar = Progbar(
-          target=self.target,
-          verbose=self.verbose,
-          stateful_metrics=self.stateful_metrics,
-          unit_name='step' if self.use_steps else 'sample')
+    self.progbar = Progbar(
+        target=self.target,
+        verbose=self.verbose,
+        stateful_metrics=self.stateful_metrics,
+        unit_name='step' if self.use_steps else 'sample')
 
   def on_batch_begin(self, batch, logs=None):
-    if self.seen < self.target:
-      self.log_values = []
+    self.log_values = []
 
   def on_batch_end(self, batch, logs=None):
     logs = logs or {}
@@ -723,7 +714,7 @@ class ProgbarLogger(Callback):
 
     # Skip progbar update for the last batch;
     # will be handled by on_epoch_end.
-    if self.verbose and self.seen < self.target:
+    if self.verbose and (self.target is None or self.seen < self.target):
       self.progbar.update(self.seen, self.log_values)
 
   def on_epoch_end(self, epoch, logs=None):
@@ -1174,12 +1165,15 @@ class TensorBoard(Callback):
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
 
-  def _init_writer(self):
+  def _init_writer(self, model):
     """Sets file writer."""
     if context.executing_eagerly():
       self.writer = summary_ops_v2.create_file_writer(self.log_dir)
+      if not model.run_eagerly and self.write_graph:
+        with self.writer.as_default():
+          summary_ops_v2.graph(K.get_graph())
     elif self.write_graph:
-      self.writer = tf_summary.FileWriter(self.log_dir, K.get_session().graph)
+      self.writer = tf_summary.FileWriter(self.log_dir, K.get_graph())
     else:
       self.writer = tf_summary.FileWriter(self.log_dir)
 
@@ -1242,7 +1236,7 @@ class TensorBoard(Callback):
     """Sets Keras model and creates summary ops."""
 
     self.model = model
-    self._init_writer()
+    self._init_writer(model)
     # histogram summaries only enabled in graph mode
     if not context.executing_eagerly():
       self._make_histogram_ops(model)
@@ -1373,6 +1367,7 @@ class TensorBoard(Callback):
       self._epoch = epoch
       # pylint: disable=protected-access
       # add the histogram summary op if it should run this epoch
+      self.model._make_eval_function()
       if self.merged not in self.model._eval_function.fetches:
         self.model._eval_function.fetches.append(self.merged)
         self.model._eval_function.fetch_callbacks[

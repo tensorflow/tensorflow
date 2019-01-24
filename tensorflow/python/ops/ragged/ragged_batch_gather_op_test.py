@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged_array_ops.batch_gather."""
+"""Tests for ragged_batch_gather_ops.batch_gather."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_batch_gather_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_test_util
@@ -146,7 +146,7 @@ class RaggedBatchGatherOpTest(ragged_test_util.RaggedTensorTestCase,
               [[[[b'c', b'a'], [b'd', b'd']], [[b'f', b'e']]]], ragged_rank=2)),
   ])
   def testRaggedBatchGather(self, descr, params, indices, expected):
-    result = ragged_array_ops.batch_gather(params, indices)
+    result = ragged_batch_gather_ops.batch_gather(params, indices)
     self.assertRaggedEqual(result, expected)
 
   def testRaggedBatchGatherUnknownRankError(self):
@@ -159,11 +159,11 @@ class RaggedBatchGatherOpTest(ragged_test_util.RaggedTensorTestCase,
 
     with self.assertRaisesRegexp(
         ValueError, 'batch_gather does not allow indices with unknown shape.'):
-      ragged_array_ops.batch_gather(params, indices)
+      ragged_batch_gather_ops.batch_gather(params, indices)
 
     with self.assertRaisesRegexp(
         ValueError, 'batch_gather does not allow indices with unknown shape.'):
-      ragged_array_ops.batch_gather(params, ragged_indices)
+      ragged_batch_gather_ops.batch_gather(params, ragged_indices)
 
   @parameterized.parameters(
       [
@@ -208,7 +208,7 @@ class RaggedBatchGatherOpTest(ragged_test_util.RaggedTensorTestCase,
                                        message=None,
                                        error=ValueError):
     with self.assertRaisesRegexp(error, message):
-      ragged_array_ops.batch_gather(params, indices)
+      ragged_batch_gather_ops.batch_gather(params, indices)
 
 
 if __name__ == '__main__':

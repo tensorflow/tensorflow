@@ -23,6 +23,8 @@ import threading
 
 from tensorflow.python.distribute import all_reduce
 from tensorflow.python.distribute import values as value_lib
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -353,15 +355,25 @@ def build_collective_reduce(input_tensors,
   num_devices = len(devices)
   group_key = collective_keys.get_group_key(devices)
   instance_key = collective_keys.get_instance_key()
-  out_tensors = []
   subdiv_offsets = [0]  # TODO(tucker): maybe support non-default subdiv spec
-  for d in range(num_devices):
-    with ops.device(devices[d]):
-      reduce_op = collective_ops.all_reduce(
-          input_tensors[d], group_size, group_key, instance_key, reduction_op,
-          unary_op, subdiv_offsets)
-      out_tensors.append(reduce_op)
-  return out_tensors
+
+  def collective_all_reduce():
+    """Call collective allreduce."""
+    assert not context.executing_eagerly()
+    out_tensors = []
+    for d in range(num_devices):
+      with ops.device(devices[d]):
+        reduce_op = collective_ops.all_reduce(
+            input_tensors[d], group_size, group_key, instance_key, reduction_op,
+            unary_op, subdiv_offsets)
+        out_tensors.append(reduce_op)
+    return out_tensors
+
+  if context.executing_eagerly():
+    # Collective ops will block unless they are executed concurrently such as in
+    # a graph or a defun.
+    collective_all_reduce = def_function.function(collective_all_reduce)
+  return collective_all_reduce()
 
 
 def sum_grad_and_var_all_reduce(grad_and_vars,

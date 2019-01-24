@@ -28,6 +28,7 @@ from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.ops import gen_tpu_ops
 from tensorflow.contrib.tpu.proto import tpu_embedding_configuration_pb2 as elc
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -42,19 +43,6 @@ from tensorflow.python.ops import variables
 
 TRAINING = elc.TPUEmbeddingConfiguration.TRAINING
 INFERENCE = elc.TPUEmbeddingConfiguration.INFERENCE
-
-# TODO(shizhiw): A better interface is to make `num_hosts` and
-# `num_cores_per_host` optional parameters for `TPUEmbedding`
-# constructor. Usually they can be automatically detected, but
-# user can also specify them for debugging (b/112112496).
-# Auto-detection can be done with `tpu_system_metadata.py`.
-_MASTER_JOB = 'tpu_worker'
-_HOST_PATTERN = '/job:tpu_worker/task:{}/device:CPU:0'
-_NUM_CORES_PER_HOST = 8
-
-_TEST_MASTER_JOB = None
-_TEST_HOST = '/replica:0/task:0/device:CPU:0'
-_TEST_NUM_CORES_PER_HOST = 2
 
 
 class TableConfig(
@@ -301,10 +289,9 @@ class TPUEmbedding(object):
                table_to_config_dict,
                feature_to_table_dict,
                batch_size,
-               num_hosts,
                mode,
-               optimization_parameters=None,
-               tpu_embedding_test=False):
+               master,
+               optimization_parameters=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -315,12 +302,11 @@ class TPUEmbedding(object):
         to string of table name. Feature refers to ids to lookup in embedding
         table, e.g. `sp_ids` argument to `tf.nn.embedding_lookup_sparse()`.
       batch_size: An `int` representing the global batch size.
-      num_hosts: An `int` representing the number of TPU hosts.
       mode: `TRAINING` or `INFERENCE`.
+      master: A `string` representing the TensorFlow master to use.
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
         `Stochasticgradientdescentparameters`. Must be set in training and must
         be `None` in inference.
-      tpu_embedding_test: A `bool`. Only used for testing.
 
     Raises:
       ValueError: if any input is invalid.
@@ -337,15 +323,17 @@ class TPUEmbedding(object):
 
     self._batch_size = batch_size
 
-    if tpu_embedding_test:
-      self._num_hosts = 1
-      self._hosts = [_TEST_HOST]
-      self._num_cores_per_host = _TEST_NUM_CORES_PER_HOST
-    else:
-      self._num_hosts = num_hosts
-      self._hosts = [_HOST_PATTERN.format(i) for i in range(self._num_hosts)]
-      self._num_cores_per_host = _NUM_CORES_PER_HOST
-    self._num_cores = self._num_cores_per_host * self._num_hosts
+    self._master = master
+    self._tpu_system_metadata = (
+        tpu_system_metadata_lib._query_tpu_system_metadata(self._master))  # pylint: disable=protected-access
+    if self._tpu_system_metadata.num_cores == 0:
+      raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
+                       'TPUs.'.format(self._master))
+    self._num_hosts = self._tpu_system_metadata.num_hosts
+    self._hosts = [device.name for device in self._tpu_system_metadata.devices
+                   if 'device:CPU:' in device.name]
+    self._num_cores_per_host = self._tpu_system_metadata.num_of_cores_per_host
+    self._num_cores = self._tpu_system_metadata.num_cores
 
     _validate_batch_size(self._batch_size, self._num_cores)
     self._batch_size_per_core = self._batch_size // self._num_cores
@@ -389,7 +377,7 @@ class TPUEmbedding(object):
     Returns:
       A list of device names for CPU hosts.
     """
-    return self._hosts
+    return copy.copy(self._hosts)
 
   # TODO(shizhiw): change to num_tensor_cores_per_host to be more explicit and
   # to be consistent with `tpu_embedding_configuration.proto`.

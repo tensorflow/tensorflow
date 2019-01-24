@@ -725,11 +725,11 @@ TEST_P(QuantizedFullyConnectedOpTest,
               ElementsAre(175, 177, 179, 243, 245, 247));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     FloatFullyConnectedOpTest, FloatFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     QuantizedFullyConnectedOpTest, QuantizedFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
 

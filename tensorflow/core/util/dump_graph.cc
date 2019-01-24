@@ -84,6 +84,10 @@ string WriteTextProtoToUniqueFile(Env* env, const string& name,
     dir = getenv("TF_DUMP_GRAPH_PREFIX");
   }
   if (!dir) {
+    LOG(WARNING)
+        << "Failed to dump " << name << " because dump location is not "
+        << " specified through either TF_DUMP_GRAPH_PREFIX environment "
+        << "variable or function argument.";
     return "(TF_DUMP_GRAPH_PREFIX not specified)";
   }
   Status status = env->RecursivelyCreateDir(dir);

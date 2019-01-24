@@ -128,6 +128,9 @@ typedef enum {
   kTfLiteBuiltinMirrorPad = 100,
   kTfLiteBuiltinAbs = 101,
   kTfLiteBuiltinSplitV = 102,
+  kTfLiteBuiltinUnique = 103,
+  kTfLiteBuiltinCeil = 104,
+  kTfLiteBuiltinReverseV2 = 105,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

@@ -22,13 +22,14 @@ from __future__ import print_function
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
+from tensorflow.python.keras.saving import hdf5_format
+from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.util import nest
@@ -38,11 +39,11 @@ from tensorflow.python.util.tf_export import keras_export
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
 Sequential = sequential.Sequential  # pylint: disable=invalid-name
-save_model = saving.save_model
-load_model = saving.load_model
-model_from_config = saving.model_from_config
-model_from_yaml = saving.model_from_yaml
-model_from_json = saving.model_from_json
+save_model = hdf5_format.save_model
+load_model = hdf5_format.load_model
+model_from_config = model_config.model_from_config
+model_from_yaml = model_config.model_from_yaml
+model_from_json = model_config.model_from_json
 
 
 def _clone_layer(layer):
@@ -281,8 +282,6 @@ def clone_model(model, input_tensors=None):
 
 
 # "Clone" a subclassed model by reseting all of the attributes.
-
-
 def _in_place_subclassed_model_reset(model):
   """Substitute for model cloning that works for subclassed models.
 
@@ -382,11 +381,30 @@ def _in_place_subclassed_model_reset(model):
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)
   model._original_attributes_cache = attributes_cache
-  # Reset built state
+  _reset_build_compile_trackers(model)
+  model._setattr_tracking = setattr_tracking
+
+
+def _reset_build_compile_trackers(model):
+  """Reset state trackers for model.
+
+  Note that we do not actually zero out attributes such as optimizer,
+  but instead rely on the expectation that all of the attrs will be
+  over-written on calling build/compile/etc. This is somewhat fragile,
+  insofar as we check elsewhere for the presence of these attributes as
+  evidence of having been built/compiled/etc. Pending a better way to do this,
+  we reset key attributes here to allow building and compiling.
+
+  Args:
+    model: the model that is being reset
+  """
+  # Reset build state
   model.built = False
   model.inputs = None
   model.outputs = None
-  model._setattr_tracking = setattr_tracking
+  # Reset compile state
+  model._is_compiled = False  # pylint:disable=protected-access
+  model.optimizer = None
 
 
 def in_place_subclassed_model_state_restoration(model):
@@ -418,9 +436,7 @@ def in_place_subclassed_model_state_restoration(model):
     model._setattr_tracking = setattr_tracking
   else:
     # Restore to the state of a never-called model.
-    model.built = False
-    model.inputs = None
-    model.outputs = None
+    _reset_build_compile_trackers(model)
 
 
 def clone_and_build_model(
@@ -462,7 +478,10 @@ def clone_and_build_model(
       - cloning a subclassed model with `in_place_reset` set to False.
       - compiling the clone when the original model has not been compiled.
   """
-  if compile_clone and not model.optimizer:
+  # Grab optimizer now, as we reset-in-place for subclassed models, but
+  # want to maintain access to the original optimizer.
+  orig_optimizer = model.optimizer
+  if compile_clone and not orig_optimizer:
     raise ValueError(
         'Error when cloning model: compile_clone was set to True, but the '
         'original model has not been compiled.')
@@ -498,14 +517,14 @@ def clone_and_build_model(
         input_tensors = input_tensors[0]
       clone._set_inputs(input_tensors)
 
-  if compile_clone and model.optimizer:
-    if isinstance(model.optimizer, optimizers.TFOptimizer):
+  if compile_clone:
+    if isinstance(orig_optimizer, optimizers.TFOptimizer):
       optimizer = optimizers.TFOptimizer(
-          model.optimizer.optimizer, optimizer_iterations)
+          orig_optimizer.optimizer, optimizer_iterations)
       K.track_tf_optimizer(optimizer)
     else:
-      optimizer_config = model.optimizer.get_config()
-      optimizer = model.optimizer.__class__.from_config(optimizer_config)
+      optimizer_config = orig_optimizer.get_config()
+      optimizer = orig_optimizer.__class__.from_config(optimizer_config)
       if optimizer_iterations is not None:
         optimizer.iterations = optimizer_iterations
 

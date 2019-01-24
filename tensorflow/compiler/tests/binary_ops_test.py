@@ -400,7 +400,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
   def testComplexOps(self):
     for dtype in self.complex_types:
-      ctypes = {np.complex64: np.float32}
+      ctypes = {np.complex64: np.float32, np.complex128: np.float64}
       self._testBinary(
           math_ops.complex,
           np.array([[[[-1, 2], [2, 0]]]], dtype=ctypes[dtype]),

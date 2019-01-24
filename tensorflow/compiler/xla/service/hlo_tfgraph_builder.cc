@@ -61,8 +61,7 @@ void CleanNodeName(string* name) {
   name->erase(std::remove(name->begin(), name->end(), '%'), name->end());
   const string chars_to_replace = "<>[]";
   auto pred = [&](char c) {
-    return std::find(chars_to_replace.begin(), chars_to_replace.end(), c) !=
-           chars_to_replace.end();
+    return absl::c_linear_search(chars_to_replace, c);
   };
   std::replace_if(name->begin(), name->end(), pred, '_');
 }

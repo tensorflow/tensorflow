@@ -352,6 +352,16 @@ REGISTER_OP("ExperimentalStatsAggregatorSummary")
     .Output("summary: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ExperimentalTakeWhileDataset")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Output("handle: variant")
+    .Attr("predicate: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalUnbatchDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
@@ -451,6 +461,13 @@ REGISTER_OP("ExperimentalLMDBDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ExperimentalChooseFastestDataset")
+    .Input("input_datasets: N * variant")
+    .Output("handle: variant")
+    .Attr("N: int >= 2")
+    .Attr("num_experiments: int")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalIdentityIndexedDataset")

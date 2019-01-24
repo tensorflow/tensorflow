@@ -40,6 +40,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import backend_config
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -86,25 +87,13 @@ _GRAPH_LEARNING_PHASES = weakref.WeakKeyDictionary()
 
 # _DUMMY_EAGER_GRAPH is used as a key in _GRAPH_LEARNING_PHASES.
 # We keep a separate reference to it to make sure it does not get removed from
-# _GRAPH_LEARNING_PHASES. We use a dummy class instead of something like a
-# string because strings are not weakly-referencable.
-class _DummyEagerGraph(object):
-  pass
-_DUMMY_EAGER_GRAPH = _DummyEagerGraph()
+# _GRAPH_LEARNING_PHASES.
+_DUMMY_EAGER_GRAPH = threading.local()
 
 # This boolean flag can be set to True to leave variable initialization
 # up to the user.
 # Change its value via `manual_variable_initialization(value)`.
 _MANUAL_VAR_INIT = False
-
-# The type of float to use throughout a session.
-_FLOATX = 'float32'
-
-# Epsilon fuzz factor used throughout the codebase.
-_EPSILON = 1e-7
-
-# Default image data format, one of "channels_last", "channels_first".
-_IMAGE_DATA_FORMAT = 'channels_last'
 
 # This list holds the available devices.
 # It is populated when `_get_available_gpus()` is called for the first time.
@@ -119,6 +108,14 @@ _GRAPH_VARIABLES = weakref.WeakKeyDictionary()
 # the graph.
 _GRAPH_TF_OPTIMIZERS = weakref.WeakKeyDictionary()
 
+# The below functions are kept accessible from backend for compatibility.
+epsilon = backend_config.epsilon
+floatx = backend_config.floatx
+image_data_format = backend_config.image_data_format
+set_epsilon = backend_config.set_epsilon
+set_floatx = backend_config.set_floatx
+set_image_data_format = backend_config.set_image_data_format
+
 
 @keras_export('keras.backend.backend')
 def backend():
@@ -130,87 +127,6 @@ def backend():
       The string "tensorflow".
   """
   return 'tensorflow'
-
-
-@keras_export('keras.backend.epsilon')
-def epsilon():
-  """Returns the value of the fuzz factor used in numeric expressions.
-
-  Returns:
-      A float.
-
-  Example:
-  ```python
-      >>> keras.backend.epsilon()
-      1e-07
-  ```
-  """
-  return _EPSILON
-
-
-@keras_export('keras.backend.set_epsilon')
-def set_epsilon(value):
-  """Sets the value of the fuzz factor used in numeric expressions.
-
-  Arguments:
-      value: float. New value of epsilon.
-
-  Example:
-  ```python
-      >>> from keras import backend as K
-      >>> K.epsilon()
-      1e-07
-      >>> K.set_epsilon(1e-05)
-      >>> K.epsilon()
-      1e-05
-  ```
-  """
-  global _EPSILON
-  _EPSILON = value
-
-
-@keras_export('keras.backend.floatx')
-def floatx():
-  """Returns the default float type, as a string.
-
-  E.g. 'float16', 'float32', 'float64'.
-
-  Returns:
-      String, the current default float type.
-
-  Example:
-  ```python
-      >>> keras.backend.floatx()
-      'float32'
-  ```
-  """
-  return _FLOATX
-
-
-@keras_export('keras.backend.set_floatx')
-def set_floatx(value):
-  """Sets the default float type.
-
-  Arguments:
-      value: String; 'float16', 'float32', or 'float64'.
-
-  Example:
-  ```python
-      >>> from keras import backend as K
-      >>> K.floatx()
-      'float32'
-      >>> K.set_floatx('float16')
-      >>> K.floatx()
-      'float16'
-  ```
-
-  Raises:
-      ValueError: In case of invalid value.
-  """
-  global _FLOATX
-  if value not in {'float16', 'float32', 'float64'}:
-    raise ValueError('Unknown floatx type: ' + str(value))
-  _FLOATX = str(value)
 
 
 @keras_export('keras.backend.cast_to_floatx')
@@ -238,49 +154,7 @@ def cast_to_floatx(x):
       dtype('float32')
   ```
   """
-  return np.asarray(x, dtype=_FLOATX)
-
-
-@keras_export('keras.backend.image_data_format')
-def image_data_format():
-  """Returns the default image data format convention.
-
-  Returns:
-      A string, either `'channels_first'` or `'channels_last'`
-
-  Example:
-  ```python
-      >>> keras.backend.image_data_format()
-      'channels_first'
-  ```
-  """
-  return _IMAGE_DATA_FORMAT
-
-
-@keras_export('keras.backend.set_image_data_format')
-def set_image_data_format(data_format):
-  """Sets the value of the image data format convention.
-
-  Arguments:
-      data_format: string. `'channels_first'` or `'channels_last'`.
-
-  Example:
-  ```python
-      >>> from keras import backend as K
-      >>> K.image_data_format()
-      'channels_first'
-      >>> K.set_image_data_format('channels_last')
-      >>> K.image_data_format()
-      'channels_last'
-  ```
-
-  Raises:
-      ValueError: In case of invalid `data_format` value.
-  """
-  global _IMAGE_DATA_FORMAT
-  if data_format not in {'channels_last', 'channels_first'}:
-    raise ValueError('Unknown data_format: ' + str(data_format))
-  _IMAGE_DATA_FORMAT = str(data_format)
+  return np.asarray(x, dtype=floatx())
 
 
 # A global dictionary mapping graph objects to an index of counters used
@@ -410,11 +284,25 @@ def set_learning_phase(value):
     raise ValueError('Expected learning phase to be 0 or 1.')
   with ops.init_scope():
     if context.executing_eagerly():
+      # In an eager context, the learning phase values applies to both the eager
+      # context and the internal Keras graph.
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
-    else:
-      _GRAPH_LEARNING_PHASES[get_graph()] = value
+    _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
+def set_eager_learning_phase(value):
+  """Internal utility that sets the learning phase in eager execution only.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers).
+  """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  assert value in {0, 1}
+  assert context.executing_eagerly()
+  _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+
+
+@keras_export('keras.backend.learning_phase_scope')
 @tf_contextlib.contextmanager
 def learning_phase_scope(value):
   """Provides a scope within which the learning phase is equal to `value`.
@@ -425,24 +313,49 @@ def learning_phase_scope(value):
      value: Learning phase value, either 0 or 1 (integers).
 
   Yields:
-    The provided value.
+    None.
 
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
   previous_value = learning_phase()
   try:
     set_learning_phase(value)
-    yield value
+    yield
   finally:
     # Restore learning phase to initial value.
     with ops.init_scope():
       if context.executing_eagerly():
         _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
-      else:
-        _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
+      _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
+
+
+@tf_contextlib.contextmanager
+def eager_learning_phase_scope(value):
+  """Internal scope that sets the learning phase in eager execution only.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers).
+
+  Yields:
+    None.
+
+  Raises:
+     ValueError: if `value` is neither `0` nor `1`.
+  """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  assert value in {0, 1}
+  assert context.executing_eagerly()
+  previous_value = learning_phase()
+  try:
+    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+    yield
+  finally:
+    # Restore learning phase to initial value.
+    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
 
 
 def _get_session():
@@ -1681,6 +1594,7 @@ def prod(x, axis=None, keepdims=False):
   return math_ops.reduce_prod(x, axis, keepdims)
 
 
+@keras_export('keras.backend.cumsum')
 def cumsum(x, axis=0):
   """Cumulative sum of the values in a tensor, alongside the specified axis.
 
@@ -1694,6 +1608,7 @@ def cumsum(x, axis=0):
   return math_ops.cumsum(x, axis=axis)
 
 
+@keras_export('keras.backend.cumprod')
 def cumprod(x, axis=0):
   """Cumulative product of the values in a tensor, alongside the specified axis.
 
@@ -2794,6 +2709,11 @@ def get_value(x):
   """
   if context.executing_eagerly():
     return x.numpy()
+  elif not getattr(x, '_in_graph_mode', True):
+    # This is a variable which was created in an eager context, but is being
+    # evaluated from a Graph.
+    with context.eager_mode():
+      return x.numpy()
   elif ops.inside_function():
     raise RuntimeError('Cannot get value inside Tensorflow graph function.')
   return x.eval(session=get_session())
@@ -3133,7 +3053,7 @@ class EagerExecutionFunction(object):
     # the relevant subgraph?
     graph.inputs = self.inputs + list(graph.captures.values())
     graph.outputs = self.outputs
-    graph_fn = eager_function.Function(graph)
+    graph_fn = eager_function.ConcreteFunction(graph)
     graph_fn._num_positional_args = len(self.inputs)
     graph_fn._arg_keywords = []
     self._graph_fn = graph_fn
@@ -3861,7 +3781,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       axis = axis % len(output.shape)
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
-      # manual computation of crossentropy
+
+      # Compute cross entropy from probabilities.
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
       return -math_ops.reduce_sum(target * math_ops.log(output), axis)
@@ -3943,10 +3864,13 @@ def binary_crossentropy(target, output, from_logits=False):
   """
   if not from_logits:
     if context.executing_eagerly() or output.op.type != 'Sigmoid':
-      # transform back to logits
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
-      output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
-      output = math_ops.log(output / (1 - output))
+      output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
+
+      # Compute cross entropy from probabilities.
+      bce = target * math_ops.log(output + epsilon())
+      bce += (1 - target) * math_ops.log(1 - output + epsilon())
+      return -bce
     else:
       # When sigmoid activation function is used for output operation, we
       # use logits from the sigmoid function directly to compute loss in order

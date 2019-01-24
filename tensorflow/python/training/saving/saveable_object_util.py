@@ -165,7 +165,7 @@ def saveable_objects_for_op(op, name):
         yield ResourceVariableSaveable(
             variable, variable._save_slice_info.spec, name)
     # pylint: enable=protected-access
-  elif isinstance(op, checkpointable.CheckpointableBase) and not isinstance(
+  elif isinstance(op, checkpointable.Checkpointable) and not isinstance(
       op, variables.Variable):
     # pylint: disable=protected-access
     for attr, factory in op._gather_saveables_for_checkpoint().items():
@@ -250,7 +250,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
-    elif (isinstance(var, checkpointable.CheckpointableBase)
+    elif (isinstance(var, checkpointable.Checkpointable)
           and not isinstance(var, variables.Variable)):
       checkpointable_saveables = [
           (factory() if callable(factory) else factory)

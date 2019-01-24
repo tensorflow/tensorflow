@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -386,6 +388,55 @@ TEST_F(HloVerifierTest, AddWithLayoutChange) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, ScalarIndexDynamicSlice) {
+  const char* const kScalarIndexDynamicSlice = R"(
+    HloModule DynamicSlice_module
+
+    ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[]) -> s32[2,2,258] {
+      %original_parameter = s32[2,2,258] parameter(0)
+      %constant = s32[] constant(0)
+      %start_index = s32[] parameter(1)
+      ROOT %dynamic-slice = s32[2,2,258] dynamic-slice(s32[2,2,258] %original_parameter, s32[] %constant, s32[] %constant, s32[] %start_index), dynamic_slice_sizes={2,2,258}
+    }
+  )";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kScalarIndexDynamicSlice, config));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, ScalarIndexDynamicUpdateSlice) {
+  const char* const kScalarIndexDynamicSlice = R"(
+    HloModule DynamicUpdateSlice_module
+
+    ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_index.0: s32[], start_index.1: s32[], start_index.2: s32[], start_index.3: s32[]) -> s32[1,1,25,1] {
+      %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
+      %update = s32[1,1,2,1]{3,2,1,0} parameter(1)
+      %start_index.0 = s32[] parameter(2)
+      %start_index.1 = s32[] parameter(3)
+      %start_index.2 = s32[] parameter(4)
+      %start_index.3 = s32[] parameter(5)
+      ROOT %dynamic-update-slice = s32[1,1,25,1]{3,2,1,0} dynamic-update-slice(s32[1,1,25,1]{3,2,1,0} %input, s32[1,1,2,1]{3,2,1,0} %update, s32[] %start_index.0, s32[] %start_index.1, s32[] %start_index.2, s32[] %start_index.3)
+    }
+  )";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kScalarIndexDynamicSlice, config));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(HloVerifierTestLayoutSensitive, AddWithLayoutChangeNotAllowed) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kAddWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
@@ -399,8 +450,9 @@ TEST_F(HloVerifierTestLayoutSensitive, SliceWithLayoutChangeNotAllowed) {
    HloModule SliceWithLayoutChange
     ENTRY SliceWithLayoutChange {
       par0 = f32[4,5]{0,1} parameter(0)
-      par1 = s32[2] parameter(1)
-      ROOT dslice0 = f32[3,4]{1,0} dynamic-slice(par0, par1),
+      par1 = s32[] parameter(1)
+      par2 = s32[] parameter(2)
+      ROOT dslice0 = f32[3,4]{1,0} dynamic-slice(par0, par1, par2),
         dynamic_slice_sizes={3,4}
     }
   )";
@@ -429,5 +481,76 @@ TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
   EXPECT_THAT(status.error_message(),
               HasSubstr("Instruction shouldn't change layouts"));
 }
+
+TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY BitcastCanNotChangeElementType {
+   constant.0 = f32[2] constant({0.0, 0.0})
+   ROOT bitcast = s32[2] bitcast(constant.0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Bitcast can not change the element type"));
+}
+
+TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY SelectMixedPrecisionNotAllowed {
+   p0 = pred[] parameter(0)
+   p1 = f32[32] parameter(1)
+   p2 = bf16[32] parameter(2)
+   ROOT select = f32[32] select(p0, p1, p2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Seen floating point types of different precisions"));
+}
+
+TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY SelectMixedPrecisionAllowed {
+   p0 = pred[] parameter(0)
+   p1 = f32[32] parameter(1)
+   p2 = bf16[32] parameter(2)
+   ROOT select = f32[32] select(p0, p1, p2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, IotaNonArrayResult) {
+  const char* const hlo_string = R"(
+  HloModule IotaTupleResult
+
+  ENTRY  kernelEntry {
+    ROOT iota = () iota(), iota_dimension=24
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("does not support non-array result"));
+}
+
 }  // namespace
 }  // namespace xla

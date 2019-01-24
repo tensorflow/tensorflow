@@ -1757,7 +1757,7 @@ class WeightedSumTest(test.TestCase):
       logits_core = fc_core.linear_model(features, [movies])
 
       with self.cached_session() as sess:
-        variables_lib.initialize_all_variables().run()
+        variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[movies][0]

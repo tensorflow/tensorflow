@@ -64,6 +64,9 @@ def initialize_all_tables(name="init_all_tables"):
 @tf_export(v1=["initializers.tables_initializer", "tables_initializer"])
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
+  
+  See the [Low Level Intro](https://www.tensorflow.org/guide/low_level_intro#feature_columns)
+  guide, for an example of usage.
 
   Args:
     name: Optional name for the initialization op.
@@ -161,7 +164,7 @@ class InitializableLookupTableBase(LookupInterface):
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
     self._default_value.get_shape().merge_with(tensor_shape.scalar())
-    if isinstance(initializer, checkpointable_base.CheckpointableBase):
+    if isinstance(initializer, checkpointable_base.Checkpointable):
       self._initializer = self._track_checkpointable(
           initializer, "_initializer")
     self._resource_handle = self.create_resource()
@@ -312,7 +315,7 @@ class HashTable(InitializableLookupTableBase):
     return exported_keys, exported_values
 
 
-class TableInitializerBase(checkpointable_base.CheckpointableBase):
+class TableInitializerBase(checkpointable_base.Checkpointable):
   """Base class for lookup table initializers."""
 
   def __init__(self, key_dtype, value_dtype):
@@ -338,6 +341,16 @@ class TableInitializerBase(checkpointable_base.CheckpointableBase):
   def initialize(self, table):
     """Returns the table initialization op."""
     raise NotImplementedError
+
+  @property
+  def _shared_name(self):
+    """Returns a shared name to be used by the table."""
+    shared_name = ""
+    if context.executing_eagerly():
+      # Ensure a unique name when eager execution is enabled to avoid spurious
+      # sharing issues.
+      shared_name += str(ops.uid())
+    return shared_name
 
 
 class KeyValueTensorInitializer(TableInitializerBase):
@@ -498,6 +511,7 @@ class TextFileInitializer(TableInitializerBase):
     if not isinstance(filename, ops.Tensor) and not filename:
       raise ValueError("Filename required for %s." % name)
 
+    self._filename_arg = filename
     key_dtype = dtypes.as_dtype(key_dtype)
     value_dtype = dtypes.as_dtype(value_dtype)
 
@@ -568,6 +582,23 @@ class TextFileInitializer(TableInitializerBase):
     if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
+
+  @property
+  def _shared_name(self):
+    if self._vocab_size:
+      # Keep the shared_name:
+      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%d_%s_%s" % (self._filename_arg,
+                                                self._vocab_size,
+                                                self._key_index,
+                                                self._value_index)
+    else:
+      # Keep the shared_name
+      # <table_type>_<filename>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%s_%s" % (self._filename_arg,
+                                             self._key_index,
+                                             self._value_index)
+    return shared_name
 
 
 class TextFileStringTableInitializer(TextFileInitializer):

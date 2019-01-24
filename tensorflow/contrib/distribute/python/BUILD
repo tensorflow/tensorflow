@@ -1,8 +1,9 @@
 # Implementation of a prototype TF distributed computation library.
 
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
     default_visibility = [
@@ -23,22 +24,39 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         ":mirrored_strategy",
-        ":multi_worker_test_base",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
+    ],
+    tags = [
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
+    name = "input_lib_test",
+    srcs = ["input_lib_test.py"],
+    additional_deps = [
+        ":combinations",
+        ":mirrored_strategy",
+        ":multi_worker_test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
     ],
     tags = [
         "no_pip",
@@ -51,8 +69,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:values",
     ],
 )
 
@@ -61,18 +79,10 @@ py_library(
     srcs = ["parameter_server_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":mirrored_strategy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
-        "//tensorflow/python/distribute:cross_device_ops",
-        "//tensorflow/python/distribute:multi_worker_util",
-        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
     ],
 )
 
@@ -119,6 +129,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:numpy_dataset",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
@@ -139,7 +151,9 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:cross_device_ops",
         "//tensorflow/python/distribute:cross_device_utils",
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:numpy_dataset",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
     ],
@@ -165,6 +179,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -289,6 +304,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:numpy_dataset",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
     ],
@@ -325,10 +342,14 @@ cuda_py_test(
     ],
 )
 
-py_library(
-    name = "minimize_loss_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "minimize_loss_test",
     srcs = ["minimize_loss_test.py"],
+    main = "minimize_loss_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         ":mirrored_strategy",
@@ -345,18 +366,6 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "minimize_loss_test",
-    srcs = ["minimize_loss_test.py"],
-    additional_deps = [
-        ":minimize_loss_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -482,10 +491,14 @@ py_library(
     ],
 )
 
-py_library(
-    name = "step_fn_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "step_fn_test",
     srcs = ["step_fn_test.py"],
+    main = "step_fn_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         ":single_loss_example",
@@ -495,18 +508,6 @@ py_library(
         "//tensorflow/python/eager:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "step_fn_test",
-    srcs = ["step_fn_test.py"],
-    additional_deps = [
-        ":step_fn_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -603,12 +604,10 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "keras_test",
     srcs = ["keras_test.py"],
-    additional_deps = [
-        ":keras_test_lib",
-    ],
+    main = "keras_test.py",
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
@@ -616,16 +615,18 @@ cuda_py_test(
         "no_pip",
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":keras_test_lib",
     ],
 )
 
 # TODO(b/121200287): Remove this in 2.0
-cuda_py_test(
+distribute_py_test(
     name = "keras_backward_compat_test",
     srcs = ["keras_backward_compat_test.py"],
-    additional_deps = [
-        ":keras_test_lib",
-    ],
+    full_precision = True,
+    main = "keras_backward_compat_test.py",
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
@@ -633,13 +634,23 @@ cuda_py_test(
         "no_pip",
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":keras_test_lib",
     ],
 )
 
 py_library(
     name = "keras_correctness_test_lib",
     testonly = 1,
-    srcs = ["keras_correctness_test.py"],
+    srcs = [
+        "keras_correctness_test_base.py",
+        "keras_dnn_correctness_test.py",
+        "keras_embedding_model_correctness_test.py",
+        "keras_image_model_correctness_test.py",
+        "keras_lstm_model_correctness_test.py",
+        "keras_stateful_lstm_model_correctness_test.py",
+    ],
     deps = [
         ":combinations",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
@@ -654,13 +665,37 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "keras_correctness_test",
-    srcs = ["keras_correctness_test.py"],
-    additional_deps = [
+distribute_py_test(
+    name = "keras_dnn_correctness_test",
+    size = "medium",
+    srcs = ["keras_dnn_correctness_test.py"],
+    full_precision = True,
+    main = "keras_dnn_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 19,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notap",  # TODO(b/123097760): Fix and re-enable the test.
+        "notsan",
+    ],
+    deps = [
         ":keras_correctness_test_lib",
     ],
-    shard_count = 16,
+)
+
+distribute_py_test(
+    name = "keras_image_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_image_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_image_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
@@ -668,12 +703,82 @@ cuda_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
 )
 
-py_library(
-    name = "metrics_v1_test_lib",
-    testonly = 1,
+distribute_py_test(
+    name = "keras_embedding_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_embedding_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_embedding_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_lstm_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_lstm_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_lstm_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_stateful_lstm_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_stateful_lstm_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_stateful_lstm_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "metrics_v1_test",
     srcs = ["metrics_v1_test.py"],
+    main = "metrics_v1_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
     deps = [
         ":combinations",
         "//tensorflow/python:math_ops",
@@ -682,18 +787,6 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "metrics_v1_test",
-    srcs = ["metrics_v1_test.py"],
-    additional_deps = [
-        ":metrics_v1_test_lib",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 

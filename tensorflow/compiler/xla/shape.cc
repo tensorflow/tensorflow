@@ -27,7 +27,19 @@ Shape::Shape(const ShapeProto& shape_proto) {
   for (const int64 dimension : shape_proto.dimensions()) {
     add_dimensions(dimension);
   }
-  for (int i = 0; i < shape_proto.is_dynamic_dimension_size(); i++) {
+  // A malformed proto may have different is_dynamic_dimension_size and
+  // dimensions_size. Since C++ is evil, and we have no good way of bailing out
+  // in a constructor, conservatively trim the is_dynamic_dimension size.
+  // TODO(b/120111794): Make this a hard error when we have a factory method
+  // instead of a constructor.
+  if (shape_proto.dimensions_size() !=
+      shape_proto.is_dynamic_dimension_size()) {
+    LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
+                  "fields does not match number of dimension fields";
+  }
+  int64 num_dynamic_dimension_fields = std::min(
+      shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
+  for (int i = 0; i < num_dynamic_dimension_fields; i++) {
     dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
   }
   tuple_shapes_.reserve(shape_proto.tuple_shapes_size());
@@ -68,19 +80,18 @@ string Shape::ToString(bool print_layout) const {
 }
 
 bool Shape::is_static() const {
-  if (ShapeUtil::IsTuple(*this)) {
+  if (IsTuple()) {
     for (const Shape& subshape : tuple_shapes_) {
       if (!subshape.is_static()) {
         return false;
       }
     }
   }
-  return !std::any_of(dynamic_dimensions_.begin(), dynamic_dimensions_.end(),
-                      [](bool b) { return b; });
+  return !absl::c_any_of(dynamic_dimensions_, [](bool b) { return b; });
 }
 
 void Shape::DeleteDimension(int64 dim_to_delete) {
-  CHECK(ShapeUtil::IsArray(*this));
+  CHECK(IsArray());
   CHECK_GE(dim_to_delete, 0);
   CHECK_LT(dim_to_delete, dimensions_.size());
   dimensions_.erase(dimensions_.begin() + dim_to_delete);
@@ -99,6 +110,79 @@ void Shape::DeleteDimension(int64 dim_to_delete) {
       ++i;
     }
   }
+}
+
+bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
+  if (lhs.IsTuple()) {
+    return rhs.IsTuple() &&
+           absl::c_equal(
+               lhs.tuple_shapes(), rhs.tuple_shapes(),
+               [=](const Shape& l, const Shape& r) { return (*this)(l, r); });
+  } else if (!lhs.IsArray()) {
+    // Non-tuple, non-array tupes such as opaque and token types are trivially
+    // the same.
+    return lhs.element_type() == rhs.element_type();
+  }
+
+  if (!rhs.IsArray()) {
+    return false;
+  }
+
+  if (!ignore_element_type_) {
+    if ((ignore_fp_precision_ &&
+         !ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) ||
+        (!ignore_fp_precision_ && !ShapeUtil::SameElementType(lhs, rhs))) {
+      VLOG(3) << "CompareShapes: lhs element type != rhs element type";
+      return false;
+    }
+  }
+
+  if (!ignore_layout_) {
+    if (lhs.layout().format() != rhs.layout().format()) {
+      VLOG(3) << "CompareShapes: lhs layout format != rhs layout format";
+      return false;
+    }
+    if (LayoutUtil::IsDenseArray(lhs)) {
+      if (!absl::c_equal(LayoutUtil::MinorToMajor(lhs),
+                         LayoutUtil::MinorToMajor(rhs))) {
+        VLOG(3) << "CompareShapes: lhs layout != rhs layout";
+        return false;
+      }
+
+      const auto& lhs_tiles = lhs.layout().tiles();
+      const auto& rhs_tiles = rhs.layout().tiles();
+      if (lhs_tiles.size() != rhs_tiles.size()) {
+        return false;
+      }
+      for (int64 i = 0; i < lhs_tiles.size(); i++) {
+        if (!absl::c_equal(lhs_tiles[i].dimensions(),
+                           rhs_tiles[i].dimensions())) {
+          return false;
+        }
+      }
+
+      if (lhs.layout().element_size_in_bits() !=
+          rhs.layout().element_size_in_bits()) {
+        return false;
+      }
+    }
+  }
+
+  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+    return false;
+  }
+
+  if (!ignore_dynamic_dimension_) {
+    for (int i = 0; i < lhs.rank(); ++i) {
+      if (lhs.is_dynamic_dimension(i) != rhs.is_dynamic_dimension(i)) {
+        VLOG(3)
+            << "CompareShapes: lhs and rhs have different dynamic dimensions.";
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 std::ostream& operator<<(std::ostream& out, const Shape& shape) {
