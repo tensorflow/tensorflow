@@ -394,7 +394,7 @@ tf_cc_binary(
     }),
     linkshared = 1,
     linkstatic = 1,
-    use_name_pattern = True,
+    per_os_targets = True,
     deps = [
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/java/src/main/native",
