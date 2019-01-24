@@ -138,19 +138,15 @@ void InfoAboutUnusedCPUFeatures() {
 #endif  // __FMA__
 #endif  // else of if defined(_MSC_VER) && !defined(__clang__)
     if (!missing_instructions.empty()) {
-      LOG(INFO) << "Your CPU supports instructions that this TensorFlow "
 #ifndef INTEL_MKL
+      LOG(INFO) << "Your CPU supports instructions that this TensorFlow "
                 << "binary was not compiled to use:" << missing_instructions;
 #else
-                << "binary was not compiled to use:" << missing_instructions
-                << ". When TensorFlow is compiled with support for these "
-                << "instructions, performance can improve. However, because "
-                << "this version of TensorFlow has been compiled with support "
-                << "for Intel(R) MKL-DNN, which supports just-in-time "
-                << "compilation, many performance-critical codepaths will use "
-                << "these instructions, even though TensorFlow was compiled "
-                << "without explicit support them. See "
-                << "https://github.com/intel/mkl-dnn/issues/3";
+      LOG(INFO) << "This TensorFlow binary is optimized with Intel(R) MKL-DNN "
+                << "to use the following CPU instructions in performance "
+                << "critical operations: " << missing_instructions << std::endl
+                << "To enable them in non-MKL-DNN operations, rebuild "
+                << "TensorFlow with the appropriate compiler flags.";
 #endif
     }
   });
