@@ -20,6 +20,7 @@ from __future__ import print_function
 import collections
 import copy
 import operator
+import sys
 
 import six
 
@@ -260,8 +261,11 @@ class List(CheckpointableDataStructure, collections.Sequence):
       self._storage[index] = self._track_value(
           element, name=self._name_element(index))
 
-  def __copy__(self):
+  def copy(self):
     return type(self)(copy.copy(self._storage))
+
+  def __copy__(self):
+    return self.copy()
 
   def __deepcopy__(self, memo):
     return type(self)(copy.deepcopy(self._storage, memo))
@@ -285,18 +289,33 @@ class List(CheckpointableDataStructure, collections.Sequence):
   def extend(self, values):
     """Add a sequence of checkpointable values."""
     for value in values:
-      self._storage.append(self._track_value(
-          value, name=self._name_element(len(self._storage))))
+      self.append(value)
 
   def __iadd__(self, values):
     self.extend(values)
     return self
 
   def __add__(self, other):
-    if isinstance(other, List):
-      return self.__class__(self._storage + other._storage)  # pylint: disable=protected-access
-    else:
-      return self.__class__(self._storage + other)
+    return self.__class__(self._storage + getattr(other, "_storage", other))
+
+  def __imul__(self, y):
+    if y <= 0:
+      raise ValueError(
+          "List only supports append, multiplying in place by %d removes "
+          "elements." % y)
+
+    n = len(self._storage)
+    for _ in range(y - 1):
+      for i in range(n):
+        self.append(self._storage[i])
+
+    return self
+
+  def __mul__(self, n):
+    return self.__class__(self._storage * n)
+
+  def __rmul__(self, n):
+    return self * n
 
   def __radd__(self, other):
     return self + other
@@ -313,7 +332,11 @@ class List(CheckpointableDataStructure, collections.Sequence):
   def __repr__(self):
     return "List(%s)" % (repr(self._storage),)
 
+  def __sizeof__(self):
+    return super(List, self).__sizeof__() + sys.getsizeof(self._storage)
 
+
+# TODO(tomhennigan) Update to collections.UserList?
 class _ListWrapper(List, collections.MutableSequence,
                    # Shadowed, but there for isinstance checks.
                    list):
@@ -386,12 +409,12 @@ class _ListWrapper(List, collections.MutableSequence,
       raise ValueError(
           ("Unable to save the object %s (a list wrapper constructed to track "
            "checkpointable TensorFlow objects). A list element was replaced "
-           "(__setitem__), deleted, or inserted. In order to support "
-           "restoration on object creation, tracking is exclusively for "
-           "append-only data structures.\n\nIf you don't need this list "
-           "checkpointed, wrap it in a tf.contrib.checkpoint.NoDependency "
-           "object; it will be automatically un-wrapped and subsequently "
-           "ignored." % (self,)))
+           "(__setitem__, __setslice__), deleted (__delitem__, __delslice__), "
+           "or moved (sort). In order to support restoration on object "
+           "creation, tracking is exclusively for append-only data structures."
+           "\n\nIf you don't need this list checkpointed, wrap it in a "
+           "tf.contrib.checkpoint.NoDependency object; it will be "
+           "automatically un-wrapped and subsequently ignored." % (self,)))
     if self._external_modification:
       raise ValueError(
           ("Unable to save the object %s (a list wrapper constructed to track "
@@ -410,9 +433,32 @@ class _ListWrapper(List, collections.MutableSequence,
 
   def __setitem__(self, key, value):
     self._check_external_modification()
-    if isinstance(self._storage[key], base.Checkpointable):
-      self._non_append_mutation = True
-    self._storage[key] = self._track_value(value, self._name_element(key))
+
+    if isinstance(key, slice):
+      # Note: this is quite inefficient, but the list API supports a broad range
+      # of slice setters (e.g. truncate, extend, replace) and immitating this
+      # for a range of Python versions is non-trivial.
+      storage_copy = list(self._storage)
+      self._storage[key] = value
+
+      len_before = len(storage_copy)
+      len_now = len(self._storage)
+      for i in range(max(len_before, len_now)):
+        value_now = self._storage[i] if i < len_now else None
+        value_before = storage_copy[i] if i < len_before else None
+
+        if isinstance(value_before, base.Checkpointable):
+          self._non_append_mutation = True
+
+        if value_now is not None and value_now != value_before:
+          self._storage[i] = self._track_value(self._storage[i],
+                                               self._name_element(i))
+
+    else:
+      if isinstance(self._storage[key], base.Checkpointable):
+        self._non_append_mutation = True
+      self._storage[key] = self._track_value(value, self._name_element(key))
+
     self._update_snapshot()
 
   def append(self, value):
@@ -453,6 +499,17 @@ class _ListWrapper(List, collections.MutableSequence,
   def insert(self, index, obj):
     self._non_append_mutation = True
     self._storage.insert(index, obj)
+
+  def sort(self):
+    self._non_append_mutation = True
+    self._storage.sort()
+
+  def __setslice__(self, i, j, y):
+    self.__setitem__(slice(i, j), y)
+
+  def __delslice__(self, i, j):
+    self._non_append_mutation = True
+    del self._storage[slice(i, j)]
 
   def _track_value(self, value, name):
     """Allows storage of non-checkpointable objects."""
