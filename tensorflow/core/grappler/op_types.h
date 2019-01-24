@@ -115,6 +115,7 @@ bool IsPow(const NodeDef& node);
 bool IsQueue(const NodeDef& node);
 bool IsRandomShuffle(const NodeDef& node);
 bool IsRank(const NodeDef& node);
+bool IsReadVariableOp(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu(const NodeDef& node);

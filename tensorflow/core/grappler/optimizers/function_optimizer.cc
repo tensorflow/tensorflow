@@ -1429,7 +1429,13 @@ Status CheckThatSideEffectsWillExecute(
     const bool node_must_execute =
         IsDataset(func_body_node) ||
         IsStateful(func_body_node, &ctx.function_library());
-    if (!node_must_execute) continue;
+
+    // If op has DT_RESOURCE argument it will be marked as stateful, though if
+    // it only reads from that resource, it's allowed to prune it, because it
+    // can't produce any visible side-effects.
+    const bool read_only = IsReadVariableOp(func_body_node);
+
+    if (read_only || !node_must_execute) continue;
 
     VLOG(3) << "Check that node " << func_body_node.name()
             << " will execute after inlining.";
