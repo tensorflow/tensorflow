@@ -148,5 +148,40 @@ XLA_TEST_F(MathTest, RoundToEven) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+XLA_TEST_F(MathTest, ErfRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Erf(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, ErfcRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Erfc(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, LgammaRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Lgamma(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, DigammaRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Digamma(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, RoundToEvenRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  RoundToEven(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
 }  // namespace
 }  // namespace xla
