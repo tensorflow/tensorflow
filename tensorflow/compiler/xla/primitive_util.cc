@@ -97,6 +97,21 @@ int BitWidth(PrimitiveType type) {
   }
 }
 
+xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth) {
+  switch (src_bitwidth) {
+    case 8:
+      return xla::U8;
+    case 16:
+      return xla::U16;
+    case 32:
+      return xla::U32;
+    case 64:
+      return xla::U64;
+    default:
+      return xla::PRIMITIVE_TYPE_INVALID;
+  }
+}
+
 PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
   switch (complex_type) {
     case C64:

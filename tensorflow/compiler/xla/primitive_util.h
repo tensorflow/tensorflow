@@ -151,6 +151,8 @@ bool IsArrayType(PrimitiveType primitive_type);
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
 
+PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
+
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.
 PrimitiveType ComplexComponentType(PrimitiveType complex_type);
