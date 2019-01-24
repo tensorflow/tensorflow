@@ -1042,7 +1042,7 @@ class KerasCallbacksTest(test.TestCase):
       def close(self):
         pass
 
-    def _init_writer(obj):
+    def _init_writer(obj, _):
       obj.writer = FileWriterStub(obj.log_dir)
 
     np.random.seed(1337)
