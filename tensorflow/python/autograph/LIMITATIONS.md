@@ -38,7 +38,7 @@ List Comprehensions | Yes | | We desugar `ListComp` into the appropriate combina
 Custom context managers | No | Yes | Currently low priority. Left unconverted currently.
 Generators | No | Maybe | Could be achievable using queues; very low priority.
 Assertions | Yes | | As `tf.Assert`
-Deletion | Yes | Maybe | Currently unconverted. If new semanti cs are required for `del`, we are able to add it in.
+Deletion | Yes | Maybe | Currently unconverted. If new semantics are required for `del`, we are able to add it in.
 Inline imports | No | Yes | For example, `import numpy as np; np.eye(3)`. Currently low priority.
 Async | No | No |
 
