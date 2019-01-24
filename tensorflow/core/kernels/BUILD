@@ -2175,6 +2175,16 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "string_view_variant_wrapper",
+    hdrs = ["string_view_variant_wrapper.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "checkpoint_ops",
     deps = [
         ":generate_vocab_remapping_op",
