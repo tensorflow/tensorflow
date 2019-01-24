@@ -268,7 +268,9 @@ void BatchedNonMaxSuppressionOp(
     // Iterate through all classes
     for (int class_idx = 0; class_idx < num_classes; ++class_idx) {
       std::vector<float> class_scores_data;
+      class_scores_data.reserve(num_boxes);
       std::vector<float> class_boxes_data;
+      class_boxes_data.reserve(num_boxes * 4);
 
       for (int box = 0; box < num_boxes; ++box) {
         // Get the scores per class
