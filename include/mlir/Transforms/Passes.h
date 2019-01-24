@@ -100,6 +100,9 @@ FunctionPass *createLowerVectorTransfersPass();
 /// store to load forwarding, elimination of dead stores, and dead allocs.
 FunctionPass *createMemRefDataFlowOptPass();
 
+/// Creates a pass to strip debug information from a function.
+FunctionPass *createStripDebugInfoPass();
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H
