@@ -36,6 +36,8 @@ TEST(StringUtil, TestStringUtil) {
   char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'X', 'Y', 'Z'};
 
   TfLiteQuantization quant;
+  quant.type = kTfLiteNoQuantization;
+  quant.params = nullptr;
   interpreter.SetTensorParametersReadOnly(2, kTfLiteString, "", {1}, quant,
                                           data, 15);
   TfLiteTensor* t2 = interpreter.tensor(2);
