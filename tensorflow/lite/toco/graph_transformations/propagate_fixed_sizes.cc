@@ -1205,6 +1205,58 @@ void ProcessBidirectionalSequenceLstmOperator(
   }
 }
 
+void ProcessBidirectionalSequenceRnnOperator(
+    Model* model, BidirectionalSequenceRnnOperator* op) {
+  // We assume time major.
+  auto& fw_output_array = model->GetArray(op->outputs[0]);
+  auto& bw_output_array = model->GetArray(op->outputs[1]);
+  if (fw_output_array.has_shape()) {
+    // Shape already propagated
+    return;
+  }
+
+  if (fw_output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  // TODO(renjieliu): check the inputs, as well as all kinds of weights.
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const int batch_size = input_shape.dims(1);
+  const int timestamp = input_shape.dims(0);
+
+  constexpr int kFwWeightsTensor = 1;
+  const auto& forward_weights_array =
+      model->GetArray(op->inputs[kFwWeightsTensor]);
+  // Yield until input dims have been resolved.
+  if (!forward_weights_array.has_shape()) {
+    return;
+  }
+
+  constexpr int kFwHiddenStateTensor = 4;
+  constexpr int kBwHiddenStateTensor = 8;
+  // b(115961645): This is a hack to work around.
+  model->GetArray(op->inputs[kFwHiddenStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kBwHiddenStateTensor]).buffer.reset();
+
+  const auto& output_weights_shape = forward_weights_array.shape();
+  const int output_size = output_weights_shape.dims(0);
+
+  Shape* fw_output_shape = fw_output_array.mutable_shape();
+  if (op->merge_outputs) {
+    fw_output_shape->ReplaceDims({timestamp, batch_size, 2 * output_size});
+  } else {
+    fw_output_shape->ReplaceDims({timestamp, batch_size, output_size});
+    Shape* bw_output_shape = bw_output_array.mutable_shape();
+    bw_output_shape->ReplaceDims({timestamp, batch_size, output_size});
+  }
+}
+
 void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -2165,6 +2217,10 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kBidirectionalSequenceLstm:
       ProcessBidirectionalSequenceLstmOperator(
           model, static_cast<BidirectionalSequenceLstmOperator*>(op));
+      break;
+    case OperatorType::kBidirectionalSequenceRnn:
+      ProcessBidirectionalSequenceRnnOperator(
+          model, static_cast<BidirectionalSequenceRnnOperator*>(op));
       break;
     case OperatorType::kLstmCell:
       ProcessLstmCellOperator(model, static_cast<LstmCellOperator*>(op));
