@@ -1105,6 +1105,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
 )
 
 tf_py_test(
