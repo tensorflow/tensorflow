@@ -68,9 +68,8 @@ public:
   llvm::Error invoke(StringRef name, Args &... args);
 
 private:
-  // FIXME: we may want a `unique_ptr` here if impl::OrcJIT decides to provide
-  // a default constructor.
-  impl::OrcJIT *jit;
+  // Private implementation of the JIT (PIMPL)
+  std::unique_ptr<impl::OrcJIT> jit;
   llvm::LLVMContext llvmContext;
 };
 

@@ -257,10 +257,8 @@ void packFunctionArguments(llvm::Module *module) {
   }
 }
 
-ExecutionEngine::~ExecutionEngine() {
-  if (jit)
-    delete jit;
-}
+// Out of line for PIMPL unique_ptr.
+ExecutionEngine::~ExecutionEngine() = default;
 
 Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(Module *m) {
   auto engine = llvm::make_unique<ExecutionEngine>();
@@ -280,7 +278,7 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(Module *m) {
   setupTargetTriple(llvmModule.get());
   packFunctionArguments(llvmModule.get());
 
-  engine->jit = std::move(*expectedJIT).release();
+  engine->jit = std::move(*expectedJIT);
   if (auto err = engine->jit->addModule(std::move(llvmModule)))
     return std::move(err);
 
