@@ -95,9 +95,9 @@ cc_library(
 # TODO(leary) split up cuda_gpu_executor.cc so that this can stand alone.
 cc_library(
     name = "cuda_activation_header",
-    hdrs = if_cuda_is_configured(["cuda_activation.h"]),
+    hdrs = ["cuda_activation.h"],
     visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured(["//tensorflow/stream_executor/platform"]),
+    deps = ["//tensorflow/stream_executor/platform"],
 )
 
 cc_library(
