@@ -142,7 +142,10 @@ int main(int argc, char** argv) {
   };
 
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  CHECK(parse_result) << "Required test_model_file";
+  if (!parse_result) {
+    std::cerr << "Required test_model_file\n";
+    std::abort();
+  }
   g_test_model_dir =
       new tensorflow::string(tensorflow::io::Dirname(model_file));
   ::tensorflow::port::InitMain(argv[0], &argc, &argv);
