@@ -193,6 +193,8 @@ Status BuildComputation(
         output.shape = output.constant_value.shape();
         break;
 
+      case XlaExpression::Kind::kTensorList:
+        TF_FALLTHROUGH_INTENDED;
       case XlaExpression::Kind::kXlaOp: {
         output.is_constant = false;
         TF_ASSIGN_OR_RETURN(output.shape, retval.GetShape());

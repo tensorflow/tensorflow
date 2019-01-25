@@ -67,9 +67,10 @@ class TensorListReserveOp : public XlaOpKernel {
     tensor_shape.AppendShape(element_shape);
 
     xla::XlaBuilder* b = ctx->builder();
-    ctx->SetOutput(0, xla::Tuple(b, {xla::Broadcast(XlaHelpers::Zero(b, dtype_),
-                                                    tensor_shape.dim_sizes()),
-                                     xla::ConstantR0<int32>(b, 0)}));
+    ctx->SetTensorListOutput(
+        0, xla::Tuple(b, {xla::Broadcast(XlaHelpers::Zero(b, dtype_),
+                                         tensor_shape.dim_sizes()),
+                          xla::ConstantR0<int32>(b, 0)}));
   }
 
  private:
@@ -104,9 +105,10 @@ class EmptyTensorListOp : public XlaOpKernel {
     tensor_shape.AppendShape(element_shape);
 
     xla::XlaBuilder* b = ctx->builder();
-    ctx->SetOutput(0, xla::Tuple(b, {xla::Broadcast(XlaHelpers::Zero(b, dtype_),
-                                                    tensor_shape.dim_sizes()),
-                                     xla::ConstantR0<int32>(b, 0)}));
+    ctx->SetTensorListOutput(
+        0, xla::Tuple(b, {xla::Broadcast(XlaHelpers::Zero(b, dtype_),
+                                         tensor_shape.dim_sizes()),
+                          xla::ConstantR0<int32>(b, 0)}));
   }
 
  private:
@@ -168,11 +170,11 @@ class TensorListPushBackOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp list = ctx->Input(0);
+    xla::XlaOp tl = ctx->Input(0);
     TensorShape elem_shape = ctx->InputShape(1);
 
-    xla::XlaOp ta = xla::GetTupleElement(list, 0);
-    xla::XlaOp index = xla::GetTupleElement(list, 1);
+    xla::XlaOp ta = xla::GetTupleElement(tl, 0);
+    xla::XlaOp index = xla::GetTupleElement(tl, 1);
     xla::XlaOp value = ctx->Input(1);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
@@ -186,7 +188,7 @@ class TensorListPushBackOp : public XlaOpKernel {
 
     // TODO(phawkins): We don't check the index is in bounds --- there is no
     // error mechanism in XLA.
-    ctx->SetOutput(
+    ctx->SetTensorListOutput(
         0, xla::Tuple(b, {xla::DynamicUpdateSlice(ta, update, start_indices),
                           index + xla::ConstantR0<int32>(b, 1)}));
   }
@@ -230,7 +232,7 @@ class TensorListPopBackOp : public XlaOpKernel {
     // Remove the leading '1' dimension.
     std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
 
-    ctx->SetOutput(0, xla::Tuple(b, {ta, index}));
+    ctx->SetTensorListOutput(0, xla::Tuple(b, {ta, index}));
     ctx->SetOutput(1, xla::Reshape(read, value_shape));
   }
 
