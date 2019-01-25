@@ -2227,9 +2227,8 @@ TEST_F(AlgebraicSimplifierTest, TransposeIsReshape) {
       ROOT reshaped_again = f32[10] reshape(f32[10,1,1] transposed)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
