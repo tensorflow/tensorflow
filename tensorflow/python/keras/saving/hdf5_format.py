@@ -135,23 +135,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
             default=serialization.get_json_type).encode('utf8')
 
         # Save optimizer weights.
-        symbolic_weights = getattr(model.optimizer, 'weights')
-        if symbolic_weights:
-          optimizer_weights_group = f.create_group('optimizer_weights')
-          weight_values = K.batch_get_value(symbolic_weights)
-          weight_names = []
-          for w, val in zip(symbolic_weights, weight_values):
-            name = str(w.name)
-            weight_names.append(name.encode('utf8'))
-          optimizer_weights_group.attrs['weight_names'] = weight_names
-          for name, val in zip(weight_names, weight_values):
-            param_dset = optimizer_weights_group.create_dataset(
-                name, val.shape, dtype=val.dtype)
-            if not val.shape:
-              # scalar
-              param_dset[()] = val
-            else:
-              param_dset[:] = val
+        save_optimizer_weights_to_hdf5_group(f, model.optimizer)
     f.flush()
   finally:
     if opened_new_file:
@@ -271,14 +255,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
         # weights.
         if model._is_graph_network:  # pylint: disable=protected-access
           model._make_train_function()
-          optimizer_weights_group = f['optimizer_weights']
-          optimizer_weight_names = [
-              n.decode('utf8')
-              for n in optimizer_weights_group.attrs['weight_names']
-          ]
-          optimizer_weight_values = [
-              optimizer_weights_group[n] for n in optimizer_weight_names
-          ]
+          optimizer_weight_values = load_optimizer_weights_from_hdf5_group(f)
           try:
             model.optimizer.set_weights(optimizer_weight_values)
           except ValueError:
@@ -653,6 +630,45 @@ def _convert_rnn_weights(layer, weights):
         weights = convert_gru_weights(weights, from_cudnn=False)
 
   return weights
+
+
+def save_optimizer_weights_to_hdf5_group(hdf5_group, optimizer):
+  """Saves optimizer weights of a optimizer to a HDF5 group.
+
+  Arguments:
+      hdf5_group: HDF5 group.
+      optimizer: optimizer instance.
+  """
+
+  symbolic_weights = getattr(optimizer, 'weights')
+  if symbolic_weights:
+    weights_group = hdf5_group.create_group('optimizer_weights')
+    weight_names = [str(w.name).encode('utf8') for w in symbolic_weights]
+    save_attributes_to_hdf5_group(weights_group, 'weight_names', weight_names)
+    weight_values = K.batch_get_value(symbolic_weights)
+    for name, val in zip(weight_names, weight_values):
+      param_dset = weights_group.create_dataset(
+          name, val.shape, dtype=val.dtype)
+      if not val.shape:
+        # scalar
+        param_dset[()] = val
+      else:
+        param_dset[:] = val
+
+
+def load_optimizer_weights_from_hdf5_group(hdf5_group):
+  """Load optimizer weights from a HDF5 group.
+
+  Arguments:
+      hdf5_group: A pointer to a HDF5 group.
+
+  Returns:
+      data: List of optimizer weight names.
+  """
+  weights_group = hdf5_group['optimizer_weights']
+  optimizer_weight_names = load_attributes_from_hdf5_group(
+      weights_group, 'weight_names')
+  return [weights_group[weight_name] for weight_name in optimizer_weight_names]
 
 
 def save_weights_to_hdf5_group(f, layers):

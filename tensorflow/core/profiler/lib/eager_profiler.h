@@ -58,6 +58,7 @@ class EagerProfiler : RunMetadataListener {
   tensorflow::Status status_ GUARDED_BY(mutex_);
   std::unique_ptr<DeviceTracer> device_tracer_ GUARDED_BY(mutex_);
   EagerContext* context_ GUARDED_BY(mutex_);
+  const uint64 start_time_micros_;
   mutex mutex_;
 };
 

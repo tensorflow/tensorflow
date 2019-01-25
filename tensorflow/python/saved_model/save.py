@@ -39,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import signature_constants
@@ -71,9 +72,11 @@ class _SaveableView(object):
     self.node_ids = node_ids
     self.slot_variables = slot_variables
     self.functions = util.ObjectIdentityDictionary()
+    self.concrete_functions = []
 
     # Also add `Function`s as nodes.
     nodes_without_functions = list(self.nodes)
+    seen_function_names = set()
     for obj in nodes_without_functions:
       self.functions[obj] = self._list_functions(obj)
       for function in self.functions[obj].values():
@@ -90,7 +93,14 @@ class _SaveableView(object):
           #  and have not been called.
           #  - force side effects of creation of concrete functions, e.g. create
           #  variables on first run.
-          function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+          concrete_functions = (
+              function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
+        else:
+          concrete_functions = [function]
+        for concrete_function in concrete_functions:
+          if concrete_function.name not in seen_function_names:
+            seen_function_names.add(concrete_function.name)
+            self.concrete_functions.append(concrete_function)
 
   @property
   def root(self):
@@ -140,6 +150,11 @@ def _get_signature(function):
 
 def _valid_signature(concrete_function):
   """Returns whether concrete function can be converted to a signature."""
+  if not concrete_function.outputs:
+    # Functions without outputs don't make sense as signatures. We just don't
+    # have any way to run an Operation with no outputs as a SignatureDef in the
+    # 1.x style.
+    return False
   try:
     _normalize_outputs(concrete_function.structured_outputs, "unused", "unused")
   except ValueError:
@@ -552,21 +567,9 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   # the exported graph (thus the `to_graph` argument).
   saver = object_saver.freeze(object_map=object_map, to_graph=exported_graph)
 
-  # We must instantiate and list all concrete functions of `Function`s while in
-  # eager mode so they end up added to the graph and can later be used by the
-  # object based saved model.
-  concrete_functions = []
-  for obj in accessible_objects:
-    for function in saveable_view.functions[obj].values():
-      if isinstance(function, defun.ConcreteFunction):
-        concrete_functions.append(function)
-      else:
-        concrete_functions.extend(
-            function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
-
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
-    for concrete_function in concrete_functions:
+    for concrete_function in saveable_view.concrete_functions:
       concrete_function.add_to_graph()
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
@@ -599,8 +602,16 @@ def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
     elif isinstance(obj, tracking.TrackableAsset):
       node_ids[obj.asset_path.handle] = i
 
+  coder = nested_structure_coder.StructureCoder()
+  for concrete_function in saveable_view.concrete_functions:
+    serialized = function_serialization.serialize_concrete_function(
+        concrete_function, node_ids, coder)
+    if serialized is not None:
+      proto.concrete_functions[concrete_function.name].CopyFrom(
+          serialized)
+
   for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
-    _write_object_proto(obj, obj_proto, asset_file_def_index, node_ids)
+    _write_object_proto(obj, obj_proto, asset_file_def_index)
 
   extra_asset_dir = os.path.join(
       compat.as_bytes(export_dir),
@@ -611,7 +622,7 @@ def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
   file_io.write_string_to_file(object_graph_filename, proto.SerializeToString())
 
 
-def _write_object_proto(obj, proto, asset_file_def_index, node_ids):
+def _write_object_proto(obj, proto, asset_file_def_index):
   """Saves an object into SavedObject proto."""
   if isinstance(obj, tracking.TrackableAsset):
     proto.asset.SetInParent()
@@ -623,10 +634,10 @@ def _write_object_proto(obj, proto, asset_file_def_index, node_ids):
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(
-        function_serialization.serialize_function(obj, node_ids))
+        function_serialization.serialize_function(obj))
   elif isinstance(obj, defun.ConcreteFunction):
-    proto.concrete_function.CopyFrom(
-        function_serialization.serialize_concrete_function(obj, node_ids))
+    proto.bare_concrete_function.CopyFrom(
+        function_serialization.serialize_bare_concrete_function(obj))
   else:
     registered_type_proto = revived_types.serialize(obj)
     if registered_type_proto is None:

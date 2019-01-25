@@ -459,8 +459,7 @@ class TPUClusterResolverTest(test.TestCase):
   def testNoCallComputeMetadata(self):
     resolver = cluster_resolver.TPUClusterResolver(
         tpu='/bns/foo/bar')
-    self.assertEqual(
-        compat.as_bytes('/bns/foo/bar'), resolver.master())
+    self.assertEqual('/bns/foo/bar', resolver.master())
     self.assertEqual(None, resolver.cluster_spec())
 
   def testGkeEnvironmentForDonut(self):

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -29,7 +30,8 @@ namespace tensorflow {
 namespace {
 
 void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
-                                    tpu::Trace* trace) {
+                                    tpu::Trace* trace,
+                                    const uint64 profile_start_time_micros) {
   auto trace_devices = trace->mutable_devices();
   // TODO(fishx): use a lighter representation instead of GraphDef to insert
   // python information into trace event.
@@ -56,8 +58,11 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
       event->set_device_id(device_id);
       event->set_resource_id(0);
       event->set_name(node.node_name());
-      event->set_timestamp_ps(node.all_start_micros() * 1000000);
-      event->set_duration_ps(node.all_end_rel_micros() * 1000000);
+      event->set_timestamp_ps(
+          (node.all_start_micros() - profile_start_time_micros) *
+          EnvTime::kMicrosToPicos);
+      event->set_duration_ps(node.all_end_rel_micros() *
+                             EnvTime::kMicrosToPicos);
       (*args)["label"] = node.timeline_label();
     }
   }
@@ -102,13 +107,15 @@ Status EagerProfiler::SerializeToString(string* content) {
 
   tpu::Trace trace;
 
-  ConvertRunMetadataToTraceEvent(&run_metadata_, &trace);
+  ConvertRunMetadataToTraceEvent(&run_metadata_, &trace, start_time_micros_);
 
   trace.SerializeToString(content);
   return Status::OK();
 }
 
-EagerProfiler::EagerProfiler(EagerContext* const context) : context_(context) {
+EagerProfiler::EagerProfiler(EagerContext* const context)
+    : context_(context),
+      start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   LOG(INFO) << "Eager Profiler started.";
 
   status_ = context_->RegisterRunMetadataListener(this);

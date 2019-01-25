@@ -61,10 +61,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Reduction"
-    mtype: "<class \'enum.EnumMeta\'>"
-  }
-  member {
     name: "SensitivityAtSpecificity"
     mtype: "<type \'type\'>"
   }

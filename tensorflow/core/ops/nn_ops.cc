@@ -2899,5 +2899,4 @@ REGISTER_OP("QuantizedConv2DPerChannel")
       return Status::OK();
     });
 
-
 }  // namespace tensorflow

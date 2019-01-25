@@ -25,7 +25,6 @@ from tensorflow.python import autograph
 from tensorflow.python.autograph.converters import decorators
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.pyct import compiler
-from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.platform import test
 
 
@@ -121,7 +120,7 @@ class DecoratorsTest(converter_testing.TestCase):
       return inner_fn(a)
 
     # Expected to fail because simple_decorator could not be imported.
-    with self.assertRaises(transformer.AutoGraphParseError):
+    with self.assertRaises(ValueError):
       test_fn(1)
 
   def test_nested_decorators_imported(self):

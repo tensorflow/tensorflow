@@ -2334,7 +2334,7 @@ def leaky_relu(features, alpha=0.2, name=None):
       features = math_ops.to_float(features)
     if compat.forward_compatible(2018, 11, 1):
       if isinstance(alpha, np.ndarray):
-        alpha = np.asscalar(alpha)
+        alpha = alpha.item()
       return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
     alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
     return math_ops.maximum(alpha * features, features, name=name)

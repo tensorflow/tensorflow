@@ -93,7 +93,7 @@ TensorShape XlaOpKernelContext::InputShape(absl::string_view name) {
 }
 
 DataType XlaOpKernelContext::input_type(int index) const {
-  return context_->input(index).dtype();
+  return context_->input_dtype(index);
 }
 
 DataType XlaOpKernelContext::InputType(absl::string_view name) {
@@ -229,7 +229,8 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(int index, double* out) {
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                    std::vector<int64>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D");
+    return errors::InvalidArgument("value is not 1D, rank: ",
+                                   literal.shape().rank());
   }
   int64 size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
@@ -454,6 +455,11 @@ void XlaOpKernelContext::SetOutput(int index, const xla::XlaOp& handle) {
 
 void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
   SetOutputExpression(index, XlaExpression::Constant(constant));
+}
+
+void XlaOpKernelContext::SetTensorListOutput(int index,
+                                             const xla::XlaOp& handle) {
+  SetOutputExpression(index, XlaExpression::TensorList(handle));
 }
 
 void XlaOpKernelContext::SetResourceOutput(int index, XlaResource* resource) {

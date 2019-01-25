@@ -86,6 +86,34 @@ class PosixEnv : public Env {
     return new StdThread(thread_options, name, fn);
   }
 
+  int32 GetCurrentThreadId() {
+#ifdef __APPLE__
+    pthread_threadid_np(nullptr, &tid64);
+    return static_cast<int32>(tid64);
+#elif defined(__FreeBSD__)
+    // Has to be casted to long first, else this error appears:
+    // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
+    // is not allowed
+    return static_cast<int32>(static_cast<int64>(pthread_self()));
+#else
+    return static_cast<int32>(pthread_self());
+#endif
+  }
+
+  bool GetCurrentThreadName(string* name) {
+#ifdef __ANDROID__
+    return false;
+#else
+    char buf[100];
+    int res = pthread_getname_np(pthread_self(), buf, static_cast<size_t>(100));
+    if (res != 0) {
+      return false;
+    }
+    *name = buf;
+    return true;
+#endif
+  }
+
   void SchedClosure(std::function<void()> closure) override {
     // TODO(b/27290852): Spawning a new thread here is wasteful, but
     // needed to deal with the fact that many `closure` functions are

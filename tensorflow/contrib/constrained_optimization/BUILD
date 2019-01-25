@@ -46,6 +46,7 @@ py_test(
         # TODO(b/121223093): Re-enable this test after fixing "Distribution
         # should match known solution" errors.
         "no_mac",
+        "no_oss",
     ],
     deps = [
         ":constrained_optimization",

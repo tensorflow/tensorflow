@@ -580,13 +580,13 @@ def _create_local_rocm_repository(repository_ctx):
         ),
         make_copy_dir_rule(
             repository_ctx,
-            name = "rocm-blas",
+            name = "rocblas-include",
             src_dir = rocm_toolkit_path + "/rocblas/include",
             out_dir = "rocm/include/rocblas",
         ),
         make_copy_dir_rule(
             repository_ctx,
-            name = "rocm-miopen",
+            name = "miopen-include",
             src_dir = rocm_toolkit_path + "/miopen/include",
             out_dir = "rocm/include/miopen",
         ),
