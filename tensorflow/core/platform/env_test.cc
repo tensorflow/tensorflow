@@ -395,7 +395,7 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
 TEST_F(DefaultEnvTest, GetThreadInformation) {
   Env* env = Env::Default();
 
-  EXPECT_GT(env->GetCurrentThreadId(), 0);
+  EXPECT_NE(env->GetCurrentThreadId(), 0);
   string thread_name;
   bool res = env->GetCurrentThreadName(&thread_name);
 #if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
