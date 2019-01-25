@@ -2658,7 +2658,7 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
       llvm::Value* partial_result =
           Load(convert_pointer_for_shuffle(partial_result_addresses[i]),
                "partial_reduction_result");
-      Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_),
+      Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_,module_),
             convert_pointer_for_shuffle(result_from_other_lane));
       TF_CHECK_OK(EmitCallToNestedComputation(
           *reducers[i], {partial_result_addresses[i], result_from_other_lane},

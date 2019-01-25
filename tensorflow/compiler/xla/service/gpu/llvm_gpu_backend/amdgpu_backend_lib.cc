@@ -80,7 +80,6 @@ static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
     "opencl.amdgcn.bc",
     "ocml.amdgcn.bc",
     "ockl.amdgcn.bc",
-    "irif.amdgcn.bc",
     "oclc_finite_only_off.amdgcn.bc",
     "oclc_daz_opt_off.amdgcn.bc",
     "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
@@ -130,10 +129,6 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-  llvm_ir::SetTargetOptions(
-      /*fast_math_enabled=*/hlo_module_config.debug_options()
-          .xla_gpu_enable_fast_math(),
-      &target_options);
 
   // enable fma synthesis.
   target_options.AllowFPOpFusion = FPOpFusion::Fast;

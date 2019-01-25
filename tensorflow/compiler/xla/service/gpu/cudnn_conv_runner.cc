@@ -334,10 +334,15 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   params.window = &conv->window();
   params.dnums = &conv->convolution_dimension_numbers();
   params.feature_group_count = conv->feature_group_count();
-  params.algorithm = se::dnn::AlgorithmConfig(
+
+  #if TENSORFLOW_USE_ROCM
+    params.algorithm = se::dnn::AlgorithmConfig();
+  #elif 
+    params.algorithm = se::dnn::AlgorithmConfig(
       se::dnn::AlgorithmDesc(backend_config.algorithm(),
                              backend_config.tensor_ops_enabled()),
       backend_config.scratch_size());
+  #endif 
   params.conv_result_scale = backend_config.conv_result_scale();
 
   switch (kind) {

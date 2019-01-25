@@ -39,12 +39,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_convolution_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
@@ -53,9 +52,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/amdgpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/miopen_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/pad_for_tensor_cores.h"
-#include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -76,7 +76,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
-#include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -180,11 +179,12 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
-      pipeline.AddPass<ScatterExpander>();
-
-      pass.AddPass<AlgebraicSimplifier>(
-          /*is_layout_sensitive=*/false,
+      //pipeline.AddPass<ScatterExpander>();
+      AlgebraicSimplifierOptions options(
           [](const Shape&, const Shape&) { return false; });
+      options.set_enable_permutation_sort_replacement(true);
+      pass.AddPass<AlgebraicSimplifier>(options);
+
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
@@ -212,11 +212,17 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     HloPassPipeline pipeline("conv_canonicalization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
-    pipeline.AddPass<CudnnConvolutionRewriter>();
-    pipeline.AddPass<CudnnFusedConvolutionRewriter>();
-    pipeline.AddPass<PadInsertion>();
-    // CudnnConvolutionRewriter, PadInsertion and PadForTensorCores may add
-    // instructions which can be simplified by constant folding.
+    pipeline.AddPass<CudnnConvRewriter>();
+    pipeline.AddPass<CudnnFusedConvRewriter>();
+    pipeline.AddPass<CudnnConvPaddingLegalization>();
+    pipeline.AddPass<CudnnConvPadForTensorCores>();
+    // CudnnConvPadForTensorCores leaves behind unnecessary
+    // tuple/get-tuple-element pairs that TupleSimplifier fixes.
+    pipeline.AddPass<TupleSimplifier>();
+    // CudnnConvRewriter, CudnnConvPaddingLegalization and
+    // CudnnConvPadForTensorCores may add instructions which can be simplified
+    // by constant folding.
+
     pipeline.AddPass<HloConstantFolding>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -242,13 +248,17 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);
 
-    // The LayoutAssignment pass may leave behind kCopy instructions which are
+
+     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        /*is_layout_sensitive=*/true,
+    AlgebraicSimplifierOptions options(
         /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
           return true;
         });
+    options.set_is_layout_sensitive(true);
+    options.set_enable_permutation_sort_replacement(true);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+
 
     // Choose the fastest algorithm for each conv.
     //
@@ -275,7 +285,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // the gte(customcall, 0) would probably already be into a fusion node.  We
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
-    pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(
+    pipeline.AddPass<MiopenConvAlgorithmPicker>(
         stream_exec, device_allocator, compiler);
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
@@ -523,8 +533,8 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
         stream_exec->GetDeviceDescription().memory_bandwidth());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
-    profile_printer =
-        CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
+    profile_printer = CreateHloProfilePrinterData(
+        *profile_index_map, cost_analysis, entry_computation->name());
   }
  
   auto* amdgpu_executable = new AMDGPUExecutable(
@@ -539,9 +549,8 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-AMDGPUCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> module,
-    const AotCompilationOptions& options) {
+AMDGPUCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+                                   const AotCompilationOptions& options) {
   return Unimplemented(
       "not yet implemented: AMDGPUCompiler::CompileAheadOfTime");
 }
