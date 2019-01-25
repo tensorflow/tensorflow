@@ -61,15 +61,14 @@ class DrawBoundingBoxOpTest(test.TestCase):
     Args:
       img: 3-D numpy image on which to draw.
     """
-    # THIS TABLE MUST MATCH draw_bounding_box_op.cc
-    default_color_table = np.asarray([[1, 1, 0, 1], [0, 0, 1, 1],
-                                      [1, 0, 0, 1], [0, 1, 0, 1],
-                                      [0.5, 0, 0.5, 1], [0.5, 0.5, 0, 1],
-                                      [0.5, 0, 0, 1], [0, 0, 0.5, 1],
-                                      [0, 1, 1, 1], [1, 0, 1, 1]])
-    color_table = default_color_table
-    if colors is not None:
-      color_table = colors
+    color_table = colors
+    if colors is None:
+      # THIS TABLE MUST MATCH draw_bounding_box_op.cc
+      color_table = np.asarray([[1, 1, 0, 1], [0, 0, 1, 1],
+                                [1, 0, 0, 1], [0, 1, 0, 1],
+                                [0.5, 0, 0.5, 1], [0.5, 0.5, 0, 1],
+                                [0.5, 0, 0, 1], [0, 0, 0.5, 1],
+                                [0, 1, 1, 1], [1, 0, 1, 1]])
     assert len(img.shape) == 3
     depth = img.shape[2]
     assert depth <= color_table.shape[1]
@@ -90,10 +89,7 @@ class DrawBoundingBoxOpTest(test.TestCase):
       image = ops.convert_to_tensor(image)
       image = image_ops_impl.convert_image_dtype(image, dtypes.float32)
       image = array_ops.expand_dims(image, 0)
-      if colors is None:
-        image = image_ops.draw_bounding_boxes(image, bboxes)
-      else:
-        image = image_ops.draw_bounding_boxes_v2(image, bboxes, colors)
+      image = image_ops.draw_bounding_boxes(image, bboxes, colors=colors)
       with self.cached_session(use_gpu=False) as sess:
         op_drawn_image = np.squeeze(sess.run(image), 0)
         self.assertAllEqual(test_drawn_image, op_drawn_image)
