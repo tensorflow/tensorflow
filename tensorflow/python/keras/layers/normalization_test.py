@@ -438,7 +438,8 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     if test.is_gpu_available(cuda_only=True):
       with self.session(use_gpu=True):
         model = keras.models.Sequential()
-        norm = keras.layers.LayerNormalization(input_shape=(3, 4, 4))
+        norm = keras.layers.LayerNormalization(
+            input_shape=(3, 4, 4), params_axis=1)
         model.add(norm)
         model.compile(loss='mse',
                       optimizer=gradient_descent.GradientDescentOptimizer(0.01),
