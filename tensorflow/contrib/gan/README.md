@@ -9,7 +9,7 @@ explicitly model the distribution and without writing an explicit loss. For
 example, the generator could learn to draw samples from the distribution of
 natural images. For more details on this technique, see
 ['Generative Adversarial Networks'](https://arxiv.org/abs/1406.2661) by
-Goodfellow et al. See [tensorflow/models](https://github.com/tensorflow/models/tree/master/research/gan/) for examples, and [this tutorial](http://https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb) for an
+Goodfellow et al. See [tensorflow/models](https://github.com/tensorflow/models/tree/master/research/gan/) for examples, and [this tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb) for an
 introduction.
 
 #### Usage
