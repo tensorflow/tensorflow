@@ -36,6 +36,12 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
                                kwargs={'alpha': alpha},
                                input_shape=(2, 3, 4))
 
+  def test_softshrink(self):
+    for lambd in [5., .5, -1.]:
+      testing_utils.layer_test(keras.layers.SoftShrink,
+                               kwargs={'lambd': lambd},
+                               input_shape=(2, 3, 4))
+
   def test_prelu(self):
     testing_utils.layer_test(keras.layers.PReLU, kwargs={},
                              input_shape=(2, 3, 4))

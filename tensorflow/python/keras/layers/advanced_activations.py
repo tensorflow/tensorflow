@@ -68,6 +68,56 @@ class LeakyReLU(Layer):
     return input_shape
 
 
+@keras_export('keras.layers.SoftShrink')
+class SoftShrink(Layer):
+  """Applies the soft shrinkage function elementwise.
+
+  This is based on the following equation:
+  `f(x) = x - lambd for x > lambd`,
+  `f(x) = x + lambd for x < -lambd`,
+  `f(x) = 0 otherwise`.
+
+  Input shape:
+      Arbitrary. Use the keyword argument `input_shape`
+      (tuple of integers, does not include the samples axis)
+      when using this layer as the first layer in a model.
+
+  Output shape:
+      Same shape as the input.
+
+  Arguments:
+      lambd: The value of the HardShrink formulation..
+
+  """
+
+  def __init__(self, lambd=0.5, **kwargs):
+    super(SoftShrink, self).__init__(**kwargs)
+    self.supports_masking = True
+    self.lambd = K.cast_to_floatx(lambd)
+
+  def call(self, inputs):
+    def true_cond():
+      return inputs - self.lambd
+
+    def false_cond():
+      return inputs + self.lambd
+
+    def default_cond():
+      return inputs * 0
+
+    return K.switch(math_ops.greater(inputs, self.lambd), true_cond, \
+           K.switch(math_ops.less(inputs, -self.lambd), false_cond, default_cond))
+
+  def get_config(self):
+    config = {'lambd': float(self.lambd)}
+    base_config = super(SoftShrink, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @tf_utils.shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+
 @keras_export('keras.layers.PReLU')
 class PReLU(Layer):
   """Parametric Rectified Linear Unit.

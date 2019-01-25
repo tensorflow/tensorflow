@@ -27,6 +27,7 @@ from tensorflow.python.keras.engine.base_layer import Layer
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU
+from tensorflow.python.keras.layers.advanced_activations import SoftShrink
 from tensorflow.python.keras.layers.advanced_activations import PReLU
 from tensorflow.python.keras.layers.advanced_activations import ELU
 from tensorflow.python.keras.layers.advanced_activations import ReLU
