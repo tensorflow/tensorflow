@@ -84,18 +84,25 @@ class Version(object):
       identifier_string: extension string eg. (-rc0)
       version_type: version parameter ((REGULAR|NIGHTLY)_VERSION)
     """
-    self.string = "%s.%s.%s%s" % (major,
-                                  minor,
-                                  patch,
-                                  identifier_string)
     self.major = major
     self.minor = minor
     self.patch = patch
     self.identifier_string = identifier_string
     self.version_type = version_type
+    self._update_string()
+
+  def _update_string(self):
+    self.string = "%s.%s.%s%s" % (self.major,
+                                  self.minor,
+                                  self.patch,
+                                  self.identifier_string)
 
   def __str__(self):
     return self.string
+
+  def set_identifier_string(self, identifier_string):
+    self.identifier_string = identifier_string
+    self._update_string()
 
   @property
   def pep_440_str(self):
@@ -283,15 +290,14 @@ def main():
   """
 
   parser = argparse.ArgumentParser(description="Cherry picking automation.")
-  group = parser.add_mutually_exclusive_group(required=True)
 
   # Arg information
-  group.add_argument("--version",
-                     help="<new_major_ver>.<new_minor_ver>.<new_patch_ver>",
-                     default="")
-  group.add_argument("--nightly",
-                     help="disable the service provisioning step",
-                     action="store_true")
+  parser.add_argument("--version",
+                      help="<new_major_ver>.<new_minor_ver>.<new_patch_ver>",
+                      default="")
+  parser.add_argument("--nightly",
+                      help="disable the service provisioning step",
+                      action="store_true")
 
   args = parser.parse_args()
 
@@ -301,7 +307,7 @@ def main():
   if args.nightly:
     if args.version:
       new_version = Version.parse_from_string(args.version, NIGHTLY_VERSION)
-      new_version.identifier_string = "-dev" + time.strftime("%Y%m%d")
+      new_version.set_identifier_string("-dev" + time.strftime("%Y%m%d"))
     else:
       # Dev minor version is one ahead of official.
       nightly_minor_ver = int(old_version.minor) + 1
