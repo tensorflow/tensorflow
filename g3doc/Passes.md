@@ -50,3 +50,27 @@ present before the pass.
 -   Individual operations other than those mentioned above are not modified if
     they do not depend on the loop iterator value or on the result of
     `affine_apply`.
+
+## Standard+Builtin to LLVM IR dialect conversion (`-convert-to-llvmir`) {#convert-to-llvmir}
+
+Convert standard and builtin operations into the LLVM IR dialect operations.
+
+### Input invariant
+
+-   operations including: arithmetics on integers and floats, constants, direct
+    calls, returns and branches;
+-   no `tensor` types;
+-   all `vector` are one-dimensional;
+-   all blocks are reachable by following the successors of the first basic
+    block;
+
+If other operations are present and their results are required by the LLVM IR
+dialect operations, the pass will fail.
+
+### Output IR
+
+Functions converted to LLVM IR. Function arguments types are converted
+one-to-one. Function results are converted one-to-one and, in case more than 1
+value is returned, packed into an LLVM IR struct type. Function calls and
+returns are updated accordingly. Block argument types are updated to use LLVM IR
+types.

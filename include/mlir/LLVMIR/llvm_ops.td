@@ -169,6 +169,7 @@ def LLVM_BitcastOp : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
 
 // Call-related instructions.
 def LLVM_CallOp : LLVM_VariadicOneResultOp<"call">;
+def LLVM_Call0Op : LLVM_ZeroResultOp<"call0", [], ["VariadicOperands"]>;
 def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
                           Arguments<(ins LLVM_Type)>;
 def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
@@ -181,8 +182,8 @@ def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]>;
 
 // Pseudo-operations (do not appear in LLVM IR but necessary for the dialect to
 // work correctly).
-def LLVM_UndefPseudoOp : LLVM_OneResultOp<"pseudo.undef", [NoSideEffect]>;
-def LLVM_ConstantOp : LLVM_OneResultOp<"pseudo.constant", [NoSideEffect]>,
+def LLVM_UndefOp : LLVM_OneResultOp<"undef", [NoSideEffect]>;
+def LLVM_ConstantOp : LLVM_OneResultOp<"constant", [NoSideEffect]>,
                       Arguments<(ins)>;
 
 #endif // LLVMIR_OPS
