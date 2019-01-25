@@ -2192,13 +2192,14 @@ TEST_F(OpConverterTest, ConvertActivation) {
   const float ALPHA = 0.2f;
 
   // Get nodedef for activation layer.
-  auto get_act_nodedef = [](string op_name) -> NodeDef {
+  auto get_act_nodedef = [ALPHA](string op_name) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     if (op_name == "LeakyRelu") {
-      auto attrs = ops::LeakyRelu::Attrs().Alpha(ALPHA);
-      auto act = ops::LeakyRelu(s.WithOpName("my_act"), input, attrs);
-      return act.operation.node()->def();
+      // LeakyRelu does not have a C++ API
+      NodeDef node_def = MakeNodeDef("my_act", "LeakyRelu", {"input"});
+      (*node_def.mutable_attr())["alpha"].set_f(ALPHA);
+      return node_def;
     } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
       return act.operation.node()->def();
@@ -2213,7 +2214,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
     return NodeDef();
   };
   // Get expected output for activation layer.
-  auto get_act_output = [](string op_name, float input) -> float {
+  auto get_act_output = [ALPHA](string op_name, float input) -> float {
     if (op_name == "LeakyRelu") {
       return (input > 0.0f) ? input : input * ALPHA;
     } else if (op_name == "Relu") {
@@ -2227,8 +2228,17 @@ TEST_F(OpConverterTest, ConvertActivation) {
     return 0;
   };
 
+  const std::vector<string> ops_to_test = {
+#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+    "LeakyRelu",
+#endif
+    "Relu",
+    "Sigmoid",
+    "Tanh",
+  };
+
   // Ok.
-  for (string op_name : {"LeakyRelu", "Relu", "Sigmoid", "Tanh"}) {
+  for (const string& op_name : ops_to_test) {
     Reset();
     NodeDef node_def = get_act_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
