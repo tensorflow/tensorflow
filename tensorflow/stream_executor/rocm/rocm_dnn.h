@@ -40,8 +40,7 @@ extern const PluginId kMIOpenPlugin;
 // functions, see dnn.h.
 class MIOpenSupport : public dnn::DnnSupport {
  public:
-  explicit MIOpenSupport(GpuExecutor* parent);
-  ~MIOpenSupport() override;
+  explicit MIOpenSupport(ROCMExecutor* parent);
 
   port::Status Init() override;
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
@@ -626,14 +625,10 @@ class MIOpenSupport : public dnn::DnnSupport {
   GpuExecutor* GetParentExecutor() { return parent_; }
 
  private:
-  mutex dnn_handle_mutex_;
-
   GpuExecutor* parent_;  // Parent executor object. Not owned.
 
-  // miopen library handle. miopenHandle_t type is not present in this header to
-  // prevent third-party library header inclusions from leaking outside the
-  // single rocm_dnn translation unit.
-  void* dnn_handle_ GUARDED_BY(dnn_handle_mutex_);
+  // Provide access to the MIOpen handle.
+  std::unique_ptr<class MIOpenAccess> miopen_;
 
   template <class T, class U>
   bool DoBatchNormalizationForwardImpl(
