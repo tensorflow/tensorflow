@@ -249,8 +249,7 @@ void FlatAffineConstraints::reset(unsigned numReservedInequalities,
   numDims = newNumDims;
   numSymbols = newNumSymbols;
   numIds = numDims + numSymbols + newNumLocals;
-  equalities.clear();
-  inequalities.clear();
+  clearConstraints();
   if (numReservedEqualities >= 1)
     equalities.reserve(newNumReservedCols * numReservedEqualities);
   if (numReservedInequalities >= 1)
@@ -2045,5 +2044,119 @@ bool FlatAffineConstraints::isRangeOneToOne(unsigned start,
     if (!extent.hasValue() || extent.getValue() != 1)
       return false;
   }
+  return true;
+}
+
+void FlatAffineConstraints::clearConstraints() {
+  equalities.clear();
+  inequalities.clear();
+}
+
+namespace {
+
+enum BoundCmpResult { Greater, Less, Equal, Unknown };
+
+/// Compares two affine bounds whose coefficients are provided in 'first' and
+/// 'second'. The last coefficient is the constant term.
+static BoundCmpResult compareBounds(ArrayRef<int64_t> a, ArrayRef<int64_t> b) {
+  assert(a.size() == b.size());
+
+  // For the bounds to be comparable, their corresponding identifier
+  // coefficients should be equal; the constant terms are then compared to
+  // determine less/greater/equal.
+
+  if (!std::equal(a.begin(), a.end() - 1, b.begin()))
+    return Unknown;
+
+  if (a.back() == b.back())
+    return Equal;
+
+  return a.back() < b.back() ? Less : Greater;
+}
+}; // namespace
+
+// Compute the bounding box with respect to 'other' by finding the min of the
+// lower bounds and the max of the upper bounds along each of the dimensions.
+bool FlatAffineConstraints::unionBoundingBox(
+    const FlatAffineConstraints &other) {
+  std::vector<SmallVector<int64_t, 8>> boundingLbs;
+  std::vector<SmallVector<int64_t, 8>> boundingUbs;
+  boundingLbs.reserve(2 * getNumDimIds());
+  boundingUbs.reserve(2 * getNumDimIds());
+
+  SmallVector<int64_t, 4> lb, otherLb;
+  lb.reserve(getNumSymbolIds() + 1);
+  otherLb.reserve(getNumSymbolIds() + 1);
+  int64_t lbDivisor, otherLbDivisor;
+  for (unsigned d = 0, e = getNumDimIds(); d < e; ++d) {
+    lb.clear();
+    auto extent = getConstantBoundOnDimSize(d, &lb, &lbDivisor);
+    if (!extent.hasValue())
+      // TODO(bondhugula): symbolic extents when necessary.
+      return false;
+
+    otherLb.clear();
+    auto otherExtent =
+        other.getConstantBoundOnDimSize(d, &otherLb, &otherLbDivisor);
+    if (!otherExtent.hasValue() || lbDivisor != otherLbDivisor)
+      // TODO(bondhugula): symbolic extents when necessary.
+      return false;
+
+    assert(lbDivisor > 0 && "divisor always expected to be positive");
+
+    // Compute min of lower bounds and max of upper bounds.
+    ArrayRef<int64_t> minLb, maxUb;
+
+    auto res = compareBounds(lb, otherLb);
+    // Identify min.
+    if (res == BoundCmpResult::Less || res == BoundCmpResult::Equal) {
+      minLb = lb;
+    } else if (res == BoundCmpResult::Greater) {
+      minLb = otherLb;
+    } else {
+      // Uncomparable.
+      return false;
+    }
+
+    // Do the same for ub's but max of upper bounds.
+    SmallVector<int64_t, 4> ub(lb), otherUb(otherLb);
+    ub.back() += extent.getValue() - 1;
+    otherUb.back() += otherExtent.getValue() - 1;
+
+    // Identify max.
+    auto uRes = compareBounds(ub, otherUb);
+    if (uRes == BoundCmpResult::Greater || res == BoundCmpResult::Equal) {
+      maxUb = ub;
+    } else if (uRes == BoundCmpResult::Less) {
+      maxUb = otherUb;
+    } else {
+      // Uncomparable.
+      return false;
+    }
+
+    SmallVector<int64_t, 8> newLb(getNumCols(), 0);
+    SmallVector<int64_t, 8> newUb(getNumCols(), 0);
+
+    // The divisor for lb, ub, otherLb, otherUb at this point is lbDivisor,
+    // and so it's the divisor for newLb and newUb as well.
+    newLb[d] = lbDivisor;
+    newUb[d] = -lbDivisor;
+    // Copy over the symbolic part + constant term.
+    std::copy(minLb.begin(), minLb.end(), newLb.begin() + getNumDimIds());
+    std::transform(newLb.begin() + getNumDimIds(), newLb.end(),
+                   newLb.begin() + getNumDimIds(), std::negate<int64_t>());
+    std::copy(maxUb.begin(), maxUb.end(), newUb.begin() + getNumDimIds());
+
+    boundingLbs.push_back(newLb);
+    boundingUbs.push_back(newUb);
+  }
+
+  // Clear all constraints and add the lower/upper bounds for the bounding box.
+  clearConstraints();
+  for (unsigned d = 0, e = getNumDimIds(); d < e; ++d) {
+    addInequality(boundingLbs[d]);
+    addInequality(boundingUbs[d]);
+  }
+
   return true;
 }

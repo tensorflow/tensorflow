@@ -98,6 +98,11 @@ Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
   return numElements;
 }
 
+bool MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
+  assert(memref == other.memref);
+  return cst.unionBoundingBox(*other.getConstraints());
+}
+
 /// Computes the memory region accessed by this memref with the region
 /// represented as constraints symbolic/parameteric in 'loopDepth' loops
 /// surrounding opInst and any additional Function symbols. Returns false if

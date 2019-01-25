@@ -97,6 +97,8 @@ struct MemRefRegion {
     return cst.getConstantBoundOnDimSize(pos, lb);
   }
 
+  bool unionBoundingBox(const MemRefRegion &other);
+
   /// Returns the rank of the memref that this region corresponds to.
   unsigned getRank() const;
 

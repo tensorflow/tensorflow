@@ -53,6 +53,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank;
   if (indexRemap) {
+    assert(indexRemap.getNumSymbols() == 0 && "pure dimensional map expected");
     assert(indexRemap.getNumInputs() == extraOperands.size() + oldMemRefRank);
     assert(indexRemap.getNumResults() + extraIndices.size() == newMemRefRank);
   } else {
@@ -125,7 +126,8 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
     remapOperands.append(opInst->operand_begin() + memRefOperandPos + 1,
                          opInst->operand_begin() + memRefOperandPos + 1 +
                              oldMemRefRank);
-    if (indexRemap) {
+    if (indexRemap &&
+        indexRemap != builder.getMultiDimIdentityMap(indexRemap.getNumDims())) {
       auto remapOp = builder.create<AffineApplyOp>(opInst->getLoc(), indexRemap,
                                                    remapOperands);
       // Remapped indices.

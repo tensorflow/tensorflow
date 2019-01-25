@@ -492,6 +492,20 @@ public:
   /// exists a unique value for each of the dimensions in the specified range.
   bool isRangeOneToOne(unsigned start, unsigned limit) const;
 
+  /// Updates the constraints to be the smallest bounding (enclosing) box that
+  /// contains the points of 'this' set and that of 'other', with the symbols
+  /// being treated specially. For each of the dimensions, the min of the lower
+  /// bounds (symbolic) and the max of the upper bounds (symbolic) is computed
+  /// to determine such a bounding box.
+  ///
+  /// Eg: if 'this' is {0 <= d0 <= 127}, 'other' is {16 <= d0 <= 192}, the
+  ///      output is {0 <= d0 <= 192}.
+  /// 2) 'this' = {s0 + 5 <= d0 <= s0 + 20}, 'other' is {s0 + 1 <= d0 <= s0 +
+  ///     9}, output = {s0 + 1 <= d0 <= s0 + 20}.
+  /// 3) 'this' = {0 <= d0 <= 5, 1 <= d1 <= 9}, 'other' = {2 <= d0 <= 6, 5 <= d1
+  ///     <= 15}, output = {0 <= d0 <= 6, 1 <= d1 <= 15}.
+  bool unionBoundingBox(const FlatAffineConstraints &other);
+
   unsigned getNumConstraints() const {
     return getNumInequalities() + getNumEqualities();
   }
@@ -580,6 +594,9 @@ public:
   /// form <non-negative constant> >= 0 is considered a trivially true
   /// constraint.
   void removeTrivialRedundancy();
+
+  // Removes all equalities and inequalities.
+  void clearConstraints();
 
   void print(raw_ostream &os) const;
   void dump() const;

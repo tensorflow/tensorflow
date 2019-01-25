@@ -29,7 +29,7 @@
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include <algorithm>
@@ -37,10 +37,15 @@
 #define DEBUG_TYPE "dma-generate"
 
 using namespace mlir;
+using llvm::SmallMapVector;
 
 static llvm::cl::opt<unsigned> clFastMemorySpace(
-    "dma-fast-memory-space", llvm::cl::Hidden,
+    "dma-fast-mem-space", llvm::cl::Hidden,
     llvm::cl::desc("Set fast memory space id for DMA generation"));
+
+static llvm::cl::opt<uint64_t> clFastMemoryCapacity(
+    "dma-fast-mem-capacity", llvm::cl::Hidden,
+    llvm::cl::desc("Set fast memory space capacity in KiB"));
 
 namespace {
 
@@ -67,8 +72,11 @@ struct DmaGeneration : public FunctionPass {
   bool generateDma(const MemRefRegion &region, ForInst *forInst,
                    uint64_t *sizeInBytes);
 
-  // List of memory regions to DMA for.
-  std::vector<std::unique_ptr<MemRefRegion>> regions;
+  // List of memory regions to DMA for. We need a map vector to have a
+  // guaranteed iteration order to write test cases. CHECK-DAG doesn't help here
+  // since the alloc's for example are identical except for the SSA id.
+  SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4> readRegions;
+  SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4> writeRegions;
 
   // Map from original memref's to the DMA buffers that their accesses are
   // replaced with.
@@ -134,11 +142,50 @@ static void getMultiLevelStrides(const MemRefRegion &region,
   }
 }
 
+/// Construct the memref region to just include the entire memref. Returns false
+/// dynamic shaped memref's for now.
+static bool getFullMemRefAsRegion(OperationInst *opInst, unsigned numSymbols,
+                                  MemRefRegion *region) {
+  unsigned rank;
+  if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
+    rank = loadOp->getMemRefType().getRank();
+    region->memref = loadOp->getMemRef();
+    region->setWrite(false);
+  } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
+    rank = storeOp->getMemRefType().getRank();
+    region->memref = storeOp->getMemRef();
+    region->setWrite(true);
+  } else {
+    assert(false && "expected load or store op");
+    return false;
+  }
+  auto memRefType = region->memref->getType().cast<MemRefType>();
+  if (memRefType.getNumDynamicDims() > 0)
+    return false;
+
+  SmallVector<ForInst *, 4> ivs;
+  getLoopIVs(*opInst, &ivs);
+
+  auto *regionCst = region->getConstraints();
+  SmallVector<Value *, 4> symbols(ivs.begin(), ivs.end());
+  regionCst->reset(rank, numSymbols, 0, symbols);
+
+  // Memref dim sizes provide the bounds.
+  for (unsigned d = 0; d < rank; d++) {
+    auto dimSize = memRefType.getDimSize(d);
+    assert(dimSize > 0 && "filtered dynamic shapes above");
+    regionCst->addConstantLowerBound(d, 0);
+    regionCst->addConstantUpperBound(d, dimSize - 1);
+  }
+  return true;
+}
+
 // Creates a buffer in the faster memory space for the specified region;
 // generates a DMA from the lower memory space to this one, and replaces all
 // loads to load from that buffer. Returns true if DMAs are generated.
 bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
                                 uint64_t *sizeInBytes) {
+
   // DMAs for read regions are going to be inserted just before the for loop.
   FuncBuilder prologue(forInst);
   // DMAs for write regions are going to be inserted just after the for loop.
@@ -219,7 +266,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
         memIndices.push_back(zeroIndex);
       } else {
         memIndices.push_back(
-            top.create<ConstantIndexOp>(loc, caf.getValue())->getResult());
+            top.create<ConstantIndexOp>(loc, indexVal)->getResult());
       }
     } else {
       // The coordinate for the start location is just the lower bound along the
@@ -244,7 +291,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
   // TODO(bondhugula): union across all memory op's per buffer. For now assuming
   // that multiple memory op's on the same memref have the *same* memory
   // footprint.
-  if (fastBufferMap.find(memref) == fastBufferMap.end()) {
+  if (fastBufferMap.count(memref) == 0) {
     auto fastMemRefType = top.getMemRefType(
         fastBufferShape, memRefType.getElementType(), {}, fastMemorySpace);
 
@@ -354,7 +401,8 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
   // loop.
   unsigned dmaDepth = getNestingDepth(*forInst);
 
-  regions.clear();
+  readRegions.clear();
+  writeRegions.clear();
   fastBufferMap.clear();
 
   // Walk this 'for' instruction to gather all memory regions.
@@ -378,33 +426,95 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
     // instead of O(num of load/store op's).
     auto region = std::make_unique<MemRefRegion>();
     if (!getMemRefRegion(opInst, dmaDepth, region.get())) {
-      forInst->emitError("Error obtaining memory region: semi-affine maps?\n");
-      return;
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Error obtaining memory region: semi-affine maps?\n");
+      LLVM_DEBUG(llvm::dbgs() << "over-approximating to the entire memref\n");
+      if (!getFullMemRefAsRegion(opInst, dmaDepth, region.get())) {
+        LLVM_DEBUG(
+            forInst->emitError("Non-constant memref sizes not yet supported"));
+        return;
+      }
     }
 
-    regions.push_back(std::move(region));
+    // Each memref has a single buffer associated with it irrespective of how
+    // many load's and store's happen on it.
+    // TODO(bondhugula): in the future, when regions don't intersect and satisfy
+    // other properties (based on load/store regions), we could consider
+    // multiple buffers per memref.
+
+    // Add to the appropriate region if it's not already in it, or take a
+    // bounding box union with the existing one if it's already in there.
+    // Note that a memref may have both read and write regions - so update the
+    // region in the other list if one exists (write in case of read and vice
+    // versa) since there is a single bounding box for a memref across all reads
+    // and writes that happen on it.
+
+    // Attempts to update; returns true if 'region' exists in targetRegions.
+    auto updateRegion =
+        [&](const SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4>
+                &targetRegions) {
+          auto it = targetRegions.find(region->memref);
+          if (it == targetRegions.end())
+            return false;
+
+          // Perform a union with the existing region.
+          if (!(*it).second->unionBoundingBox(*region)) {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "Memory region bounding box failed"
+                          "over-approximating to the entire memref\n");
+            if (!getFullMemRefAsRegion(opInst, dmaDepth, region.get())) {
+              LLVM_DEBUG(forInst->emitError(
+                  "Non-constant memref sizes not yet supported"));
+            }
+          }
+          return true;
+        };
+
+    bool existsInRead = updateRegion(readRegions);
+    bool existsInWrite = updateRegion(writeRegions);
+
+    // Finally add it to the region.
+    if (region->isWrite() && !existsInWrite) {
+      writeRegions[region->memref] = std::move(region);
+    } else if (!region->isWrite() && !existsInRead) {
+      readRegions[region->memref] = std::move(region);
+    }
   });
 
   uint64_t totalSizeInBytes = 0;
 
   bool ret = false;
-  for (const auto &region : regions) {
-    uint64_t sizeInBytes;
-    bool iRet = generateDma(*region, forInst, &sizeInBytes);
-    if (iRet)
-      totalSizeInBytes += sizeInBytes;
-    ret = ret | iRet;
-  }
+  auto processRegions =
+      [&](const SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4>
+              &regions) {
+        for (const auto &regionEntry : regions) {
+          uint64_t sizeInBytes;
+          bool iRet = generateDma(*regionEntry.second, forInst, &sizeInBytes);
+          if (iRet)
+            totalSizeInBytes += sizeInBytes;
+          ret = ret | iRet;
+        }
+      };
+  processRegions(readRegions);
+  processRegions(writeRegions);
   if (!ret) {
     forInst->emitError("DMA generation failed for one or more memref's\n");
     return;
   }
   LLVM_DEBUG(llvm::dbgs() << Twine(llvm::divideCeil(totalSizeInBytes, 1024))
                           << " KiB of DMA buffers in fast memory space\n";);
+
+  if (clFastMemoryCapacity && totalSizeInBytes > clFastMemoryCapacity) {
+    // TODO(bondhugula): selecting the DMA depth so that the result DMA buffers
+    // fit in fast memory is a TODO - not complex.
+    forInst->emitError(
+        "Total size of all DMA buffers' exceeds memory capacity\n");
+  }
 }
 
 PassResult DmaGeneration::runOnFunction(Function *f) {
   FuncBuilder topBuilder(f);
+
   zeroIndex = topBuilder.create<ConstantIndexOp>(f->getLoc(), 0);
 
   for (auto &block : *f) {
