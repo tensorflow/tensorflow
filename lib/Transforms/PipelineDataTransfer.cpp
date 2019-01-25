@@ -325,8 +325,12 @@ PassResult PipelineDataTransfer::runOnForInst(ForInst *forInst) {
     assert(dmaStartInst->isa<DmaStartOp>());
     instShiftMap[dmaStartInst] = 0;
     // Set shifts for DMA start inst's affine operand computation slices to 0.
-    if (auto *slice = mlir::createAffineComputationSlice(dmaStartInst)) {
-      instShiftMap[slice] = 0;
+    SmallVector<OpPointer<AffineApplyOp>, 4> sliceOps;
+    mlir::createAffineComputationSlice(dmaStartInst, &sliceOps);
+    if (!sliceOps.empty()) {
+      for (auto sliceOp : sliceOps) {
+        instShiftMap[sliceOp->getInstruction()] = 0;
+      }
     } else {
       // If a slice wasn't created, the reachable affine_apply op's from its
       // operands are the ones that go with it.

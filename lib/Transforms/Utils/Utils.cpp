@@ -170,10 +170,10 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
   return true;
 }
 
-/// Given an operation instruction, inserts a new single affine apply operation,
-/// that is exclusively used by this operation instruction, and that provides
-/// all operands that are results of an affine_apply as a function of loop
-/// iterators and program parameters and whose results are.
+/// Given an operation instruction, inserts one or more single result affine
+/// apply operations, results of which are exclusively used by this operation
+/// instruction. The operands of these newly created affine apply ops are
+/// guaranteed to be loop iterators or terminal symbols of a function.
 ///
 /// Before
 ///
@@ -195,10 +195,12 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 ///
 /// Returns nullptr either if none of opInst's operands were the result of an
 /// affine_apply and thus there was no affine computation slice to create, or if
-/// all the affine_apply op's supplying operands to this opInst do not have any
-/// uses besides this opInst. Returns the new affine_apply operation instruction
-/// otherwise.
-OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
+/// all the affine_apply op's supplying operands to this opInst did not have any
+/// uses besides this opInst; otherwise returns the list of affine_apply
+/// operations created in output argument `sliceOps`.
+void mlir::createAffineComputationSlice(
+    OperationInst *opInst,
+    SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps) {
   // Collect all operands that are results of affine apply ops.
   SmallVector<Value *, 4> subOperands;
   subOperands.reserve(opInst->getNumOperands());
@@ -214,7 +216,7 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
   getReachableAffineApplyOps(subOperands, affineApplyOps);
   // Skip transforming if there are no affine maps to compose.
   if (affineApplyOps.empty())
-    return nullptr;
+    return;
 
   // Check if all uses of the affine apply op's lie only in this op inst, in
   // which case there would be nothing to do.
@@ -230,19 +232,26 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
     }
   }
   if (localized)
-    return nullptr;
+    return;
 
   FuncBuilder builder(opInst);
   SmallVector<Value *, 4> composedOpOperands(subOperands);
-  auto map = builder.getMultiDimIdentityMap(composedOpOperands.size());
-  fullyComposeAffineMapAndOperands(&map, &composedOpOperands);
-  auto affineApply =
-      builder.create<AffineApplyOp>(opInst->getLoc(), map, composedOpOperands);
+  auto composedMap = builder.getMultiDimIdentityMap(composedOpOperands.size());
+  fullyComposeAffineMapAndOperands(&composedMap, &composedOpOperands);
+
+  // Create an affine_apply for each of the map results.
+  sliceOps->reserve(composedMap.getNumResults());
+  for (auto resultExpr : composedMap.getResults()) {
+    auto singleResMap = builder.getAffineMap(
+        composedMap.getNumDims(), composedMap.getNumSymbols(), resultExpr, {});
+    sliceOps->push_back(builder.create<AffineApplyOp>(
+        opInst->getLoc(), singleResMap, composedOpOperands));
+  }
 
   // Construct the new operands that include the results from the composed
   // affine apply op above instead of existing ones (subOperands). So, they
   // differ from opInst's operands only for those operands in 'subOperands', for
-  // which they will be replaced by the corresponding one from 'results'.
+  // which they will be replaced by the corresponding one from 'sliceOps'.
   SmallVector<Value *, 4> newOperands(opInst->getOperands());
   for (unsigned i = 0, e = newOperands.size(); i < e; i++) {
     // Replace the subOperands from among the new operands.
@@ -252,15 +261,12 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
         break;
     }
     if (j < subOperands.size()) {
-      newOperands[i] = affineApply->getResult(j);
+      newOperands[i] = (*sliceOps)[j]->getResult(0);
     }
   }
-
   for (unsigned idx = 0, e = newOperands.size(); idx < e; idx++) {
     opInst->setOperand(idx, newOperands[idx]);
   }
-
-  return affineApply->getInstruction();
 }
 
 /// Folds the specified (lower or upper) bound to a constant if possible

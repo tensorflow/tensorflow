@@ -82,10 +82,10 @@ createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
                             ArrayRef<OperationInst *> affineApplyOps,
                             SmallVectorImpl<Value *> *results);
 
-/// Given an operation instruction, inserts a new single affine apply operation,
-/// that is exclusively used by this operation instruction, and that provides
-/// all operands that are results of an affine_apply as a function of loop
-/// iterators and program parameters and whose results are.
+/// Given an operation instruction, inserts one or more single result affine
+/// apply operations, results of which are exclusively used by this operation
+/// instruction. The operands of these newly created affine apply ops are
+/// guaranteed to be loop iterators or terminal symbols of a function.
 ///
 /// Before
 ///
@@ -105,10 +105,13 @@ createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 /// This allows the application of  different transformations on send and
 /// compute (for eg.  / different shifts/delays)
 ///
-/// Returns nullptr if none of the operands were the result of an affine_apply
-/// and thus there was no affine computation slice to create. Returns the newly
-/// affine_apply operation instruction otherwise.
-OperationInst *createAffineComputationSlice(OperationInst *opInst);
+/// Returns nullptr either if none of opInst's operands were the result of an
+/// affine_apply (i.e., there was no affine computation slice to create), or if
+/// all the affine_apply op's supplying operands to this opInst did not have any
+/// uses other than those in this opInst. The method otherwise returns the list
+/// of affine_apply operations created in output argument `sliceOps`.
+void createAffineComputationSlice(
+    OperationInst *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps);
 
 /// Folds the lower and upper bounds of a 'for' inst to constants if possible.
 /// Returns false if the folding happens for at least one bound, true otherwise.
