@@ -302,15 +302,33 @@ public:
     return outEdgeCount;
   }
 
-  // Returns the min node id across all outgoing edges from node 'id', skipping
-  // edges with 'memrefToSkip'.
-  unsigned getMinOutEdgeNodeId(unsigned id, Value *memrefToSkip) {
-    unsigned minId = std::numeric_limits<unsigned>::max();
-    if (outEdges.count(id) > 0)
-      for (auto &outEdge : outEdges[id])
-        if (outEdge.memref != memrefToSkip)
-          minId = std::min(minId, outEdge.id);
-    return minId;
+  // Check for a dependence in Block instruction list range (srcId, dstId) on
+  // memrefs other than 'memrefToSkip' (which will be privatized for the fused
+  // loop).
+  bool hasDependenceTargetInRange(unsigned srcId, unsigned dstId,
+                                  Value *memrefToSkip) {
+    if (outEdges.count(srcId) == 0)
+      return false;
+    // Check if any of the outgoing edge targets from srcId lie in
+    // (srcId, dstId).
+    SmallPtrSet<Instruction *, 2> depInsts;
+    for (auto &outEdge : outEdges[srcId]) {
+      if (outEdge.id != dstId && outEdge.memref != memrefToSkip) {
+        Node *node = getNode(outEdge.id);
+        depInsts.insert(node->inst);
+      }
+    }
+    // Do a linear walk from 'srcNode.inst' to 'dstNode.inst' and for each
+    // instruction 'inst' in range ('srcNode.inst', 'dstNode.inst') test
+    // if 'depInsts' contains 'inst', and return true if it does.
+    // TODO(andydavis) If this linear search becomes a compile time issue,
+    // create a data structure which allows a faster search through ForInsts
+    // in a Block.
+    Block::iterator it = std::next(Block::iterator(getNode(srcId)->inst));
+    Block::iterator itEnd = Block::iterator(getNode(dstId)->inst);
+    return std::any_of(it, itEnd, [&](Instruction &inst) {
+      return depInsts.count(&inst) > 0;
+    });
   }
 
   // Updates edge mappings from node 'srcId' to node 'dstId'.
@@ -1063,7 +1081,7 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
       100.0 * (minFusedLoopNestComputeCost /
                    (static_cast<double>(srcLoopNestCost) + dstLoopNestCost) -
                1);
-
+  (void)additionalComputeFraction;
   LLVM_DEBUG({
     std::stringstream msg;
     msg << " fusion is most profitable at depth " << *dstLoopDepth << " with "
@@ -1134,7 +1152,7 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
 // TODO(andydavis) Experiment with other fusion policies.
 // TODO(andydavis) Add support for fusing for input reuse (perhaps by
 // constructing a graph with edges which represent loads from the same memref
-// in two different loop nestst.
+// in two different loop nests.
 struct GreedyFusion {
 public:
   MemRefDependenceGraph *mdg;
@@ -1194,8 +1212,9 @@ public:
           if (mdg->getInEdgeCount(srcNode->id, memref) != 0)
             continue;
 
-          // Skip if 'srcNode' has out edges to other memrefs after 'dstId'.
-          if (mdg->getMinOutEdgeNodeId(srcNode->id, memref) < dstId)
+          // Skip if 'srcNode' has out edges on memrefs other than 'memref'
+          // for nodes in instruction list range (srcNode.inst, dstNode.inst).
+          if (mdg->hasDependenceTargetInRange(srcNode->id, dstNode->id, memref))
             continue;
 
           // Check if fusion would be profitable.
