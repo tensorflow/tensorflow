@@ -16,14 +16,14 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_GDR_GDR_COLLECTIVE_EXECUTOR_MGR_H_
 
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
+#include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
+#include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 
 namespace tensorflow {
-class CollectiveParamResolverDistributed;
 class ConfigProto;
 class DeviceMgr;
-class DeviceResolverDistributed;
 class WorkerCacheInterface;
 class StepSequenceRequest;
 class StepSequenceResponse;
