@@ -98,7 +98,7 @@ def _clone_functional_model(model, input_tensors=None, share_weights=False):
           name=layer.name)
       input_tensors.append(input_tensor)
       # Cache newly created input layer.
-      newly_created_input_layer = input_tensor._keras_history[0]
+      newly_created_input_layer = input_tensor._keras_history.layer
       layer_map[layer] = newly_created_input_layer
 
     for original_input_layer, cloned_input_layer in zip(model._input_layers,
@@ -119,7 +119,7 @@ def _clone_functional_model(model, input_tensors=None, share_weights=False):
 
         input_tensors_.append(input_tensor)
         # Cache newly created input layer.
-        newly_created_input_layer = input_tensor._keras_history[0]
+        newly_created_input_layer = input_tensor._keras_history.layer
         layer_map[original_input_layer] = newly_created_input_layer
       else:
         input_tensors_.append(input_tensor)
@@ -239,7 +239,7 @@ def _clone_sequential_model(model, input_tensors=None, share_weights=False):
       input_tensors = list(input_tensors)
     x = generic_utils.to_list(input_tensors)[0]
     if K.is_keras_tensor(x):
-      origin_layer = x._keras_history[0]
+      origin_layer = x._keras_history.layer
       if isinstance(origin_layer, InputLayer):
         return Sequential(layers=[origin_layer] + layers, name=model.name)
       else:
@@ -248,7 +248,7 @@ def _clone_sequential_model(model, input_tensors=None, share_weights=False):
                          'other than an `InputLayer`. '
                          'Use the functional API instead.')
     input_tensor = Input(tensor=x, name='input_wrapper_for_' + str(x.name))
-    input_layer = input_tensor._keras_history[0]
+    input_layer = input_tensor._keras_history.layer
     return Sequential(layers=[input_layer] + layers, name=model.name)
 
 
