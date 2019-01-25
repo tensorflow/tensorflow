@@ -102,24 +102,72 @@ Status MutationError(absl::string_view function_name, absl::string_view params,
       "MutableGraphView::$0($1) error: $2.", function_name, params, msg));
 }
 
+using ErrorHandler = std::function<Status(absl::string_view)>;
+
+ErrorHandler UpdateFanoutsError(absl::string_view from_node_name,
+                                absl::string_view to_node_name) {
+  return [from_node_name, to_node_name](absl::string_view msg) {
+    string params = absl::Substitute("from_node_name='$0', to_node_name='$1'",
+                                     from_node_name, to_node_name);
+    return MutationError("UpdateFanouts", params, msg);
+  };
+}
+
+Status CheckFaninIsRegular(const TensorId& fanin, ErrorHandler handler) {
+  if (!IsTensorIdRegular(fanin)) {
+    return handler(absl::Substitute("fanin '$0' must be a regular tensor id",
+                                    fanin.ToString()));
+  }
+  return Status::OK();
+}
+
+Status CheckFaninIsValid(const TensorId& fanin, ErrorHandler handler) {
+  if (!IsTensorIdPortValid(fanin)) {
+    return handler(absl::Substitute("fanin '$0' must be a valid tensor id",
+                                    fanin.ToString()));
+  }
+  return Status::OK();
+}
+
+Status CheckAddingFaninToSelf(absl::string_view node_name,
+                              const TensorId& fanin, ErrorHandler handler) {
+  if (node_name == fanin.node()) {
+    return handler(
+        absl::Substitute("can't add fanin '$0' to self", fanin.ToString()));
+  }
+  return Status::OK();
+}
+
+Status CheckRemovingFaninFromSelf(absl::string_view node_name,
+                                  const TensorId& fanin, ErrorHandler handler) {
+  if (node_name == fanin.node()) {
+    return handler(absl::Substitute("can't remove fanin '$0' from self",
+                                    fanin.ToString()));
+  }
+  return Status::OK();
+}
+
 string NodeMissingErrorMsg(absl::string_view node_name) {
   return absl::Substitute("node '$0' was not found", node_name);
 }
 
-string InvalidFaninErrorMsg(absl::string_view fanin) {
-  return absl::Substitute("fanin '$0' must be a valid tensor id", fanin);
+Status CheckNodeExists(absl::string_view node_name, NodeDef* node,
+                       ErrorHandler handler) {
+  if (node == nullptr) {
+    return handler(NodeMissingErrorMsg(node_name));
+  }
+  return Status::OK();
 }
 
-string RegularFaninErrorMsg(absl::string_view fanin) {
-  return absl::Substitute("fanin '$0' must be a regular tensor id", fanin);
-}
-
-Status UpdateFanoutsError(absl::string_view from_node_name,
-                          absl::string_view to_node_name,
-                          absl::string_view msg) {
-  string params = absl::Substitute("from_node_name='$0', to_node_name='$1'",
-                                   from_node_name, to_node_name);
-  return MutationError("UpdateFanouts", params, msg);
+Status CheckPortRange(int port, int min, int max, ErrorHandler handler) {
+  if (port < min || port > max) {
+    if (max < min) {
+      return handler("no available ports as node has no regular fanins");
+    }
+    return handler(
+        absl::Substitute("port must be in range [$0, $1]", min, max));
+  }
+  return Status::OK();
 }
 
 }  // namespace
@@ -192,6 +240,13 @@ void MutableGraphView::UpdateMaxRegularOutputPortForRemovedFanin(
   }
   if (!updated_max_port) {
     max_regular_output_port().erase(fanin.node);
+  }
+}
+
+void MutableGraphView::UpdateMaxRegularOutputPortForAddedFanin(
+    const OutputPort& fanin) {
+  if (max_regular_output_port()[fanin.node] < fanin.port_id) {
+    max_regular_output_port()[fanin.node] = fanin.port_id;
   }
 }
 
@@ -275,15 +330,12 @@ Status MutableGraphView::AddSubgraph(GraphDef&& subgraph) {
 Status MutableGraphView::UpdateFanouts(absl::string_view from_node_name,
                                        absl::string_view to_node_name) {
   NodeDef* from_node = GetNode(from_node_name);
-  if (from_node == nullptr) {
-    return UpdateFanoutsError(from_node_name, to_node_name,
-                              NodeMissingErrorMsg(from_node_name));
-  }
+  TF_RETURN_IF_ERROR(
+      CheckNodeExists(from_node_name, from_node,
+                      UpdateFanoutsError(from_node_name, to_node_name)));
   NodeDef* to_node = GetNode(to_node_name);
-  if (to_node == nullptr) {
-    return UpdateFanoutsError(from_node_name, to_node_name,
-                              NodeMissingErrorMsg(to_node_name));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(
+      to_node_name, to_node, UpdateFanoutsError(from_node_name, to_node_name)));
 
   return UpdateFanoutsInternal(from_node, to_node);
 }
@@ -323,8 +375,7 @@ Status MutableGraphView::UpdateFanoutsInternal(NodeDef* from_node,
     if (to_node_is_switch) {
       // Trying to add a Switch as a control dependency, which if allowed will
       // make the graph invalid.
-      return UpdateFanoutsError(
-          from_node->name(), to_node->name(),
+      return UpdateFanoutsError(from_node->name(), to_node->name())(
           absl::Substitute("can't update fanouts to node '$0' as it will "
                            "become a Switch control dependency",
                            to_node->name()));
@@ -410,7 +461,7 @@ bool MutableGraphView::AddFaninInternal(NodeDef* node,
 
   node->add_input(TensorIdToString({fanin.node->name(), fanin.port_id}));
   if (!input_is_control) {
-    int last_node_input = node->input_size() - 1;
+    const int last_node_input = node->input_size() - 1;
     // If there are control dependencies in node, move newly inserted fanin to
     // be before such control dependencies.
     if (num_regular_fanins < last_node_input) {
@@ -442,23 +493,58 @@ Status MutableGraphView::AddRegularFanin(absl::string_view node_name,
     return MutationError("AddRegularFanin", params, msg);
   };
 
-  if (!IsTensorIdRegular(fanin)) {
-    return error_status(RegularFaninErrorMsg(fanin.ToString()));
-  }
-  if (node_name == fanin.node()) {
-    return error_status(absl::Substitute("can't add regular fanin '$0' to self",
-                                         fanin.ToString()));
-  }
+  TF_RETURN_IF_ERROR(CheckFaninIsRegular(fanin, error_status));
+  TF_RETURN_IF_ERROR(CheckAddingFaninToSelf(node_name, fanin, error_status));
   NodeDef* node = GetNode(node_name);
-  if (node == nullptr) {
-    return error_status(NodeMissingErrorMsg(node_name));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
   NodeDef* fanin_node = GetNode(fanin.node());
-  if (fanin_node == nullptr) {
-    return error_status(NodeMissingErrorMsg(fanin.node()));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(fanin.node(), fanin_node, error_status));
 
   AddFaninInternal(node, {fanin_node, fanin.index()});
+  return Status::OK();
+}
+
+Status MutableGraphView::AddRegularFaninByPort(absl::string_view node_name,
+                                               int port,
+                                               const TensorId& fanin) {
+  auto error_status = [node_name, port, fanin](absl::string_view msg) {
+    string params = absl::Substitute("node_name='$0', port=$1, fanin='$2'",
+                                     node_name, port, fanin.ToString());
+    return MutationError("AddRegularFaninByPort", params, msg);
+  };
+
+  TF_RETURN_IF_ERROR(CheckFaninIsRegular(fanin, error_status));
+  TF_RETURN_IF_ERROR(CheckAddingFaninToSelf(node_name, fanin, error_status));
+  NodeDef* node = GetNode(node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
+  const int num_regular_fanins =
+      NumFanins(*node, /*include_controlling_nodes=*/false);
+  TF_RETURN_IF_ERROR(
+      CheckPortRange(port, /*min=*/0, num_regular_fanins, error_status));
+  NodeDef* fanin_node = GetNode(fanin.node());
+  TF_RETURN_IF_ERROR(CheckNodeExists(fanin.node(), fanin_node, error_status));
+
+  const int last_node_input = node->input_size();
+  node->add_input(TensorIdToString(fanin));
+  node->mutable_input()->SwapElements(num_regular_fanins, last_node_input);
+  for (int i = num_regular_fanins - 1; i >= port; --i) {
+    TensorId tensor_id = ParseTensorName(node->input(i));
+    OutputPort fanin_port(nodes()[tensor_id.node()], tensor_id.index());
+    absl::flat_hash_set<InputPort>* fanouts_set = &fanouts()[fanin_port];
+    fanouts_set->erase({node, i});
+    fanouts_set->insert({node, i + 1});
+    node->mutable_input()->SwapElements(i, i + 1);
+  }
+
+  OutputPort fanin_port(fanin_node, fanin.index());
+  fanouts()[fanin_port].insert({node, port});
+  UpdateMaxRegularOutputPortForAddedFanin(fanin_port);
+
+  max_regular_input_port()[node] = num_regular_fanins;
+  if (CanDedupControlWithRegularInput(*this, *fanin_node)) {
+    RemoveControllingFaninInternal(node, fanin_node);
+  }
+
   return Status::OK();
 }
 
@@ -470,31 +556,21 @@ Status MutableGraphView::AddControllingFanin(absl::string_view node_name,
     return MutationError("AddControllingFanin", params, msg);
   };
 
-  if (!IsTensorIdPortValid(fanin)) {
-    return error_status(InvalidFaninErrorMsg(fanin.ToString()));
-  }
-  if (node_name == fanin.node()) {
-    return error_status(absl::Substitute(
-        "can't add controlling fanin '$0' to self", fanin.ToString()));
-  }
+  TF_RETURN_IF_ERROR(CheckFaninIsValid(fanin, error_status));
+  TF_RETURN_IF_ERROR(CheckAddingFaninToSelf(node_name, fanin, error_status));
   NodeDef* node = GetNode(node_name);
-  if (node == nullptr) {
-    return error_status(NodeMissingErrorMsg(node_name));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
   NodeDef* fanin_node = GetNode(fanin.node());
-  if (fanin_node == nullptr) {
-    return error_status(NodeMissingErrorMsg(fanin.node()));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(fanin.node(), fanin_node, error_status));
 
   if (!IsSwitch(*fanin_node)) {
     AddFaninInternal(node, {fanin_node, Graph::kControlSlot});
   } else {
     if (IsTensorIdControlling(fanin)) {
       // Can't add a Switch node control dependency.
-      return error_status(
-          absl::Substitute("can't add controlling fanin '$0' as it will become "
-                           "a Switch control dependency",
-                           fanin.ToString()));
+      return error_status(absl::Substitute(
+          "can't add fanin '$0' as it will become a Switch control dependency",
+          fanin.ToString()));
     }
     // We can't anchor control dependencies directly on the switch node: unlike
     // other nodes only one of the outputs of the switch node will be generated
@@ -507,9 +583,9 @@ Status MutableGraphView::AddControllingFanin(absl::string_view node_name,
       if (IsIdentity(*fanout.node) || IsIdentityNSingleInput(*fanout.node)) {
         if (ParseTensorName(fanout.node->input(0)) == fanin) {
           if (fanout.node->name() == node_name) {
-            return error_status(absl::Substitute(
-                "can't add found controlling fanin '$0' to self",
-                AsControlDependency(fanout.node->name())));
+            return error_status(
+                absl::Substitute("can't add found fanin '$0' to self",
+                                 AsControlDependency(fanout.node->name())));
           }
           AddFaninInternal(node, {fanout.node, Graph::kControlSlot});
           return Status::OK();
@@ -522,7 +598,7 @@ Status MutableGraphView::AddControllingFanin(absl::string_view node_name,
         absl::StrCat(fanin.node(), "_", fanin.index()), kMutableGraphViewCtrl);
     if (node_name == ctrl_dep_name) {
       return error_status(
-          absl::Substitute("can't add generated controlling fanin '$0' to self",
+          absl::Substitute("can't add generated fanin '$0' to self",
                            AsControlDependency(ctrl_dep_name)));
     }
 
@@ -607,23 +683,58 @@ Status MutableGraphView::RemoveRegularFanin(absl::string_view node_name,
     return MutationError("RemoveRegularFanin", params, msg);
   };
 
-  if (!IsTensorIdRegular(fanin)) {
-    return error_status(RegularFaninErrorMsg(fanin.ToString()));
-  }
-  if (node_name == fanin.node()) {
-    return error_status(absl::Substitute(
-        "can't remove regular fanin '$0' from self", fanin.ToString()));
-  }
+  TF_RETURN_IF_ERROR(CheckFaninIsRegular(fanin, error_status));
+  TF_RETURN_IF_ERROR(
+      CheckRemovingFaninFromSelf(node_name, fanin, error_status));
   NodeDef* node = GetNode(node_name);
-  if (node == nullptr) {
-    return error_status(NodeMissingErrorMsg(node_name));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
   NodeDef* fanin_node = GetNode(fanin.node());
-  if (fanin_node == nullptr) {
-    return error_status(NodeMissingErrorMsg(fanin.node()));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(fanin.node(), fanin_node, error_status));
 
   RemoveRegularFaninInternal(node, {fanin_node, fanin.index()});
+  return Status::OK();
+}
+
+Status MutableGraphView::RemoveRegularFaninByPort(absl::string_view node_name,
+                                                  int port) {
+  auto error_status = [node_name, port](absl::string_view msg) {
+    string params =
+        absl::Substitute("node_name='$0', port=$1", node_name, port);
+    return MutationError("RemoveRegularFaninByPort", params, msg);
+  };
+
+  NodeDef* node = GetNode(node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
+  const int last_regular_fanin_port =
+      gtl::FindWithDefault(max_regular_input_port(), node, -1);
+  TF_RETURN_IF_ERROR(
+      CheckPortRange(port, /*min=*/0, last_regular_fanin_port, error_status));
+
+  TensorId tensor_id = ParseTensorName(node->input(port));
+  OutputPort fanin_port(nodes()[tensor_id.node()], tensor_id.index());
+  fanouts()[fanin_port].erase({node, port});
+  auto mutable_inputs = node->mutable_input();
+  for (int i = port + 1; i <= last_regular_fanin_port; ++i) {
+    TensorId tensor_id = ParseTensorName(node->input(i));
+    OutputPort fanin_port(nodes()[tensor_id.node()], tensor_id.index());
+    absl::flat_hash_set<InputPort>* fanouts_set = &fanouts()[fanin_port];
+    fanouts_set->erase({node, i});
+    fanouts_set->insert({node, i - 1});
+    mutable_inputs->SwapElements(i - 1, i);
+  }
+  const int last_node_input = node->input_size() - 1;
+  if (last_regular_fanin_port < last_node_input) {
+    mutable_inputs->SwapElements(last_regular_fanin_port, last_node_input);
+  }
+  mutable_inputs->RemoveLast();
+
+  const int updated_last_regular_input_port = last_regular_fanin_port - 1;
+  if (updated_last_regular_input_port < 0) {
+    max_regular_input_port().erase(node);
+  } else {
+    max_regular_input_port()[node] = updated_last_regular_input_port;
+  }
+
   return Status::OK();
 }
 
@@ -653,19 +764,13 @@ Status MutableGraphView::RemoveControllingFanin(
     return MutationError("RemoveControllingFanin", params, msg);
   };
 
-  if (node_name == fanin_node_name) {
-    return error_status(
-        absl::Substitute("can't remove controlling fanin '$0' from self",
-                         AsControlDependency(string(fanin_node_name))));
-  }
+  TF_RETURN_IF_ERROR(CheckRemovingFaninFromSelf(
+      node_name, {fanin_node_name, Graph::kControlSlot}, error_status));
   NodeDef* node = GetNode(node_name);
-  if (node == nullptr) {
-    return error_status(NodeMissingErrorMsg(node_name));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
   NodeDef* fanin_node = GetNode(fanin_node_name);
-  if (fanin_node == nullptr) {
-    return error_status(NodeMissingErrorMsg(fanin_node_name));
-  }
+  TF_RETURN_IF_ERROR(
+      CheckNodeExists(fanin_node_name, fanin_node, error_status));
 
   RemoveControllingFaninInternal(node, fanin_node);
   return Status::OK();
@@ -674,7 +779,6 @@ Status MutableGraphView::RemoveControllingFanin(
 Status MutableGraphView::RemoveAllFanins(absl::string_view node_name,
                                          bool keep_controlling_fanins) {
   NodeDef* node = GetNode(node_name);
-
   if (node == nullptr) {
     string params =
         absl::Substitute("node_name='$0', keep_controlling_fanins=$1",
@@ -714,24 +818,16 @@ Status MutableGraphView::UpdateFanin(absl::string_view node_name,
     return MutationError("UpdateFanin", params, msg);
   };
 
-  if (!IsTensorIdPortValid(from_fanin)) {
-    return error_status(InvalidFaninErrorMsg(from_fanin.ToString()));
-  }
-  if (!IsTensorIdPortValid(to_fanin)) {
-    return error_status(InvalidFaninErrorMsg(to_fanin.ToString()));
-  }
+  TF_RETURN_IF_ERROR(CheckFaninIsValid(from_fanin, error_status));
+  TF_RETURN_IF_ERROR(CheckFaninIsValid(to_fanin, error_status));
   NodeDef* node = GetNode(node_name);
-  if (node == nullptr) {
-    return error_status(NodeMissingErrorMsg(node_name));
-  }
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
   NodeDef* from_fanin_node = GetNode(from_fanin.node());
-  if (from_fanin_node == nullptr) {
-    return error_status(NodeMissingErrorMsg(from_fanin.node()));
-  }
+  TF_RETURN_IF_ERROR(
+      CheckNodeExists(from_fanin.node(), from_fanin_node, error_status));
   NodeDef* to_fanin_node = GetNode(to_fanin.node());
-  if (to_fanin_node == nullptr) {
-    return error_status(NodeMissingErrorMsg(from_fanin.node()));
-  }
+  TF_RETURN_IF_ERROR(
+      CheckNodeExists(to_fanin.node(), to_fanin_node, error_status));
 
   // When replacing a non control dependency fanin with a control dependency, or
   // vice versa, remove and add, so ports can be updated properly in fanout(s).
@@ -804,6 +900,94 @@ Status MutableGraphView::UpdateFanin(absl::string_view node_name,
       RemoveControllingFaninInternal(node, to_fanin_node);
     }
   }
+
+  return Status::OK();
+}
+
+Status MutableGraphView::UpdateRegularFaninByPort(absl::string_view node_name,
+                                                  int port,
+                                                  const TensorId& fanin) {
+  auto error_status = [node_name, port, fanin](absl::string_view msg) {
+    string params = absl::Substitute("node_name='$0', port=$1, fanin='$2'",
+                                     node_name, port, fanin.ToString());
+    return MutationError("UpdateRegularFaninByPort", params, msg);
+  };
+
+  TF_RETURN_IF_ERROR(CheckFaninIsRegular(fanin, error_status));
+  TF_RETURN_IF_ERROR(CheckAddingFaninToSelf(node_name, fanin, error_status));
+  NodeDef* node = GetNode(node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
+  const int last_regular_fanin_port =
+      gtl::FindWithDefault(max_regular_input_port(), node, -1);
+  TF_RETURN_IF_ERROR(
+      CheckPortRange(port, /*min=*/0, last_regular_fanin_port, error_status));
+  NodeDef* fanin_node = GetNode(fanin.node());
+  TF_RETURN_IF_ERROR(CheckNodeExists(fanin.node(), fanin_node, error_status));
+
+  TensorId tensor_id = ParseTensorName(node->input(port));
+  if (tensor_id == fanin) {
+    return Status::OK();
+  }
+
+  InputPort input(node, port);
+  OutputPort from_fanin_port(nodes()[tensor_id.node()], tensor_id.index());
+  absl::flat_hash_set<InputPort>* from_fanouts = &fanouts()[from_fanin_port];
+  from_fanouts->erase(input);
+  UpdateMaxRegularOutputPortForRemovedFanin(from_fanin_port, *from_fanouts);
+
+  OutputPort to_fanin_port(fanin_node, fanin.index());
+  fanouts()[to_fanin_port].insert(input);
+  UpdateMaxRegularOutputPortForAddedFanin(to_fanin_port);
+
+  node->set_input(port, TensorIdToString(fanin));
+
+  if (CanDedupControlWithRegularInput(*this, *fanin_node)) {
+    RemoveControllingFaninInternal(node, fanin_node);
+  }
+
+  return Status::OK();
+}
+
+Status MutableGraphView::SwapRegularFaninsByPorts(absl::string_view node_name,
+                                                  int from_port, int to_port) {
+  auto error_status = [node_name, from_port, to_port](absl::string_view msg) {
+    string params = absl::Substitute("node_name='$0', from_port=$1, to_port=$2",
+                                     node_name, from_port, to_port);
+    return MutationError("SwapRegularFaninsByPorts", params, msg);
+  };
+
+  NodeDef* node = GetNode(node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
+  const int last_regular_fanin_port =
+      gtl::FindWithDefault(max_regular_input_port(), node, -1);
+  TF_RETURN_IF_ERROR(CheckPortRange(from_port, /*min=*/0,
+                                    last_regular_fanin_port, error_status));
+  TF_RETURN_IF_ERROR(CheckPortRange(to_port, /*min=*/0, last_regular_fanin_port,
+                                    error_status));
+
+  if (from_port == to_port) {
+    return Status::OK();
+  }
+  TensorId from_fanin = ParseTensorName(node->input(from_port));
+  TensorId to_fanin = ParseTensorName(node->input(to_port));
+  if (from_fanin == to_fanin) {
+    return Status::OK();
+  }
+
+  InputPort from_input(node, from_port);
+  InputPort to_input(node, to_port);
+  NodeDef* from_fanin_node = GetNode(from_fanin.node());
+  absl::flat_hash_set<InputPort>* from_fanouts =
+      &fanouts()[{from_fanin_node, from_fanin.index()}];
+  from_fanouts->erase(from_input);
+  from_fanouts->insert(to_input);
+  NodeDef* to_fanin_node = GetNode(to_fanin.node());
+  absl::flat_hash_set<InputPort>* to_fanouts =
+      &fanouts()[{to_fanin_node, to_fanin.index()}];
+  to_fanouts->erase(to_input);
+  to_fanouts->insert(from_input);
+
+  node->mutable_input()->SwapElements(from_port, to_port);
 
   return Status::OK();
 }
