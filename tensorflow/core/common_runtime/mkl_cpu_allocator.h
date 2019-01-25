@@ -96,6 +96,7 @@ class MklSmallSizeAllocator : public Allocator {
   // Increment statistics for the allocator handling small allocations.
   inline void IncrementStats(size_t alloc_size)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    mutex_lock l(mutex_);
     ++stats_.num_allocs;
     stats_.bytes_in_use += alloc_size;
     stats_.max_bytes_in_use =
@@ -107,6 +108,7 @@ class MklSmallSizeAllocator : public Allocator {
   // Decrement statistics for the allocator handling small allocations.
   inline void DecrementStats(size_t dealloc_size)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    mutex_lock l(mutex_);
     stats_.bytes_in_use -= dealloc_size;
   }
 
@@ -194,18 +196,20 @@ class MklCPUAllocator : public Allocator {
   }
 
   inline string Name() override { return kName; }
-  inline bool IsSmallSizeAllocation(const void* ptr) const {
+  inline bool IsSmallSizeAllocation(const void* ptr) const
+      LOCKS_EXCLUDED(mutex_) {
     mutex_lock l(mutex_);
     return large_allocations_map_.find(ptr) == large_allocations_map_.end();
   }
   // AddLargeAllocMap and RemoveLargeAllocMap are always called with a lock held
-  inline void AddLargeAllocMap(void* ptr, size_t num_bytes) {
+  inline void AddLargeAllocMap(void* ptr, size_t num_bytes)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     if (ptr != nullptr) {
       std::pair<void*, size_t> map_val(ptr, num_bytes);
-      large_allocations_map_.insert(map_val).second;
+      large_allocations_map_.insert(map_val);
     }
   }
-  inline void RemoveLargeAllocMap(void* ptr) {
+  inline void RemoveLargeAllocMap(void* ptr) EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     auto map_iter = large_allocations_map_.find(ptr);
     if (map_iter != large_allocations_map_.end()) {
       large_allocations_map_.erase(map_iter);
