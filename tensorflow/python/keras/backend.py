@@ -251,12 +251,24 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if context.executing_eagerly():
-    if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
-      # Fallback to inference mode as default.
-      return 0
-    return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
-  return symbolic_learning_phase()
+  if ops.get_default_graph() is _GRAPH:
+    # Don't enter an init_scope for the learning phase if eager execution
+    # is enabled but we're inside the Keras workspace graph.
+    return symbolic_learning_phase()
+  with ops.init_scope():
+    # We always check & set the learning phase inside the init_scope,
+    # otherwise the wrong default_graph will be used to look up the learning
+    # phase inside of functions & defuns.
+    #
+    # This is because functions & defuns (both in graph & in eager mode)
+    # will always execute non-eagerly using a function-specific default
+    # subgraph.
+    if context.executing_eagerly():
+      if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
+        # Fallback to inference mode as default.
+        return 0
+      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+    return symbolic_learning_phase()
 
 
 def symbolic_learning_phase():
