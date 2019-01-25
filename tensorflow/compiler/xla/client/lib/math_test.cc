@@ -30,6 +30,45 @@ class MathTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.0001};
 };
 
+// Write TYPED_TESTs within the class definition so that we don't have to litter
+// "this->" everywhere.
+template <typename T>
+class MathTypedTest : public MathTest {
+ public:
+  void TestLogEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    Log(AddParam(LiteralUtil::CreateR1<T>({T{0.0}, T{-0.0}}), &b));
+    ComputeAndCompareR1<T>(&b,
+                           {-std::numeric_limits<T>::infinity(),
+                            -std::numeric_limits<T>::infinity()},
+                           {}, error_spec_);
+  }
+
+  void TestLog1pEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    Log1p(AddParam(LiteralUtil::CreateR1<T>({T{0.0}, T{-0.0}, T{-1.0}}), &b));
+    ComputeAndCompareR1<T>(
+        &b, {T{0.0}, T{-0.0}, -std::numeric_limits<T>::infinity()}, {},
+        error_spec_);
+  }
+};
+
+// TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
+using TestTypes = ::testing::Types<float>;
+#else
+using TestTypes = ::testing::Types<float, Eigen::half>;
+#endif
+
+TYPED_TEST_CASE(MathTypedTest, TestTypes);
+
+XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
+XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
+
 XLA_TEST_F(MathTest, SqrtF32) {
   XlaBuilder builder(TestName());
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
