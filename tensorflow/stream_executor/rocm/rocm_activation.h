@@ -44,6 +44,8 @@ class ScopedActivateExecutorContext {
   // fatal failure if it is not ROCM inside.
   explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
 
+  ScopedActivateExecutorContext(ScopedActivateExecutorContext&& other);
+
   ~ScopedActivateExecutorContext();
 
  private:
