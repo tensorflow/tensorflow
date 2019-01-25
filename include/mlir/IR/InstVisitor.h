@@ -140,8 +140,18 @@ public:
       static_cast<SubClass *>(this)->walkPostOrder(it->begin(), it->end());
   }
 
-  RetTy walkOpInst(OperationInst *opInst) {
-    return static_cast<SubClass *>(this)->visitOperationInst(opInst);
+  void walkOpInst(OperationInst *opInst) {
+    static_cast<SubClass *>(this)->visitOperationInst(opInst);
+    for (auto &blockList : opInst->getBlockLists())
+      for (auto &block : blockList)
+        static_cast<SubClass *>(this)->walk(block.begin(), block.end());
+  }
+
+  void walkOpInstPostOrder(OperationInst *opInst) {
+    for (auto &blockList : opInst->getBlockLists())
+      for (auto &block : blockList)
+        static_cast<SubClass *>(this)->walk(block.begin(), block.end());
+    static_cast<SubClass *>(this)->visitOperationInst(opInst);
   }
 
   void walkForInst(ForInst *forInst) {
@@ -204,7 +214,8 @@ public:
       return static_cast<SubClass *>(this)->walkIfInstPostOrder(
           cast<IfInst>(s));
     case Instruction::Kind::OperationInst:
-      return static_cast<SubClass *>(this)->walkOpInst(cast<OperationInst>(s));
+      return static_cast<SubClass *>(this)->walkOpInstPostOrder(
+          cast<OperationInst>(s));
     }
   }
 

@@ -48,13 +48,15 @@ class Function;
 class OperationInst final
     : public Instruction,
       private llvm::TrailingObjects<OperationInst, InstResult, BlockOperand,
-                                    unsigned, InstOperand> {
+                                    unsigned, InstOperand, BlockList> {
 public:
   /// Create a new OperationInst with the specific fields.
-  static OperationInst *
-  create(Location location, OperationName name, ArrayRef<Value *> operands,
-         ArrayRef<Type> resultTypes, ArrayRef<NamedAttribute> attributes,
-         ArrayRef<Block *> successors, MLIRContext *context);
+  static OperationInst *create(Location location, OperationName name,
+                               ArrayRef<Value *> operands,
+                               ArrayRef<Type> resultTypes,
+                               ArrayRef<NamedAttribute> attributes,
+                               ArrayRef<Block *> successors,
+                               unsigned numBlockLists, MLIRContext *context);
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
@@ -225,6 +227,30 @@ public:
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
   RemoveResult removeAttr(Identifier name);
+
+  //===--------------------------------------------------------------------===//
+  // Blocks
+  //===--------------------------------------------------------------------===//
+
+  /// Returns the number of block lists held by this operation.
+  unsigned getNumBlockLists() const { return numBlockLists; }
+
+  /// Returns the block lists held by this operation.
+  MutableArrayRef<BlockList> getBlockLists() {
+    return {getTrailingObjects<BlockList>(), numBlockLists};
+  }
+  ArrayRef<BlockList> getBlockLists() const {
+    return const_cast<OperationInst *>(this)->getBlockLists();
+  }
+
+  /// Returns the block list held by this operation at position 'index'.
+  BlockList &getBlockList(unsigned index) {
+    assert(index < numBlockLists && "invalid block list index");
+    return getBlockLists()[index];
+  }
+  const BlockList &getBlockList(unsigned index) const {
+    return const_cast<OperationInst *>(this)->getBlockList(index);
+  }
 
   //===--------------------------------------------------------------------===//
   // Terminators
@@ -404,7 +430,7 @@ public:
 
 private:
   unsigned numOperands;
-  const unsigned numResults, numSuccs;
+  const unsigned numResults, numSuccs, numBlockLists;
 
   /// This holds the name of the operation.
   OperationName name;
@@ -414,7 +440,8 @@ private:
 
   OperationInst(Location location, OperationName name, unsigned numOperands,
                 unsigned numResults, unsigned numSuccessors,
-                ArrayRef<NamedAttribute> attributes, MLIRContext *context);
+                unsigned numBlockLists, ArrayRef<NamedAttribute> attributes,
+                MLIRContext *context);
   ~OperationInst();
 
   /// Erase the operand at 'index'.
@@ -422,7 +449,7 @@ private:
 
   // This stuff is used by the TrailingObjects template.
   friend llvm::TrailingObjects<OperationInst, InstResult, BlockOperand,
-                               unsigned, InstOperand>;
+                               unsigned, InstOperand, BlockList>;
   size_t numTrailingObjects(OverloadToken<InstOperand>) const {
     return numOperands;
   }
@@ -431,6 +458,9 @@ private:
   }
   size_t numTrailingObjects(OverloadToken<BlockOperand>) const {
     return numSuccs;
+  }
+  size_t numTrailingObjects(OverloadToken<BlockList>) const {
+    return numBlockLists;
   }
   size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
 };

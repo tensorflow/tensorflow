@@ -165,11 +165,6 @@ bool FuncVerifier::verifyAttribute(Attribute attr, const OperationInst &op) {
 }
 
 bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
-  // Blocks under IfInst/ForInst don't have terminators, but blocks at the top
-  // level of a function do.
-  if (isTopLevel && !block.getTerminator())
-    return failure("block with no terminator", block);
-
   for (auto *arg : block.getArguments()) {
     if (arg->getOwner() != &block)
       return failure("block argument not owned by block", block);
@@ -191,6 +186,25 @@ bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
       break;
     }
   }
+
+  // If this block is at the function level, then verify that it has a
+  // terminator.
+  if (isTopLevel) {
+    if (!block.getTerminator())
+      return failure("block with no terminator", block);
+
+    // Verify that this block is not branching to a block of a different
+    // region.
+    for (const Block *successor : block.getSuccessors())
+      if (successor->getParent() != block.getParent())
+        return failure("branching to a block of a different region",
+                       *block.getTerminator());
+  } else if (block.getTerminator()) {
+    // TODO(riverriddle) Blocks in an IfInst/ForInst aren't allowed to have
+    // terminators.
+    return failure("non function block with terminator", block);
+  }
+
   return false;
 }
 
@@ -222,6 +236,12 @@ bool FuncVerifier::verifyOperation(const OperationInst &op) {
       return true;
   }
 
+  // Verify that all child blocks are ok.
+  for (auto &blockList : op.getBlockLists())
+    for (auto &b : blockList)
+      if (verifyBlock(b, /*isTopLevel=*/false))
+        return true;
+
   return false;
 }
 
@@ -249,10 +269,16 @@ bool FuncVerifier::verifyDominance(const Block &block) {
       return true;
 
     switch (inst.getKind()) {
-    case Instruction::Kind::OperationInst:
-      if (verifyOperation(cast<OperationInst>(inst)))
+    case Instruction::Kind::OperationInst: {
+      auto &opInst = cast<OperationInst>(inst);
+      if (verifyOperation(opInst))
         return true;
+      for (auto &blockList : opInst.getBlockLists())
+        for (auto &block : blockList)
+          if (verifyDominance(block))
+            return true;
       break;
+    }
     case Instruction::Kind::For:
       if (verifyDominance(*cast<ForInst>(inst).getBody()))
         return true;

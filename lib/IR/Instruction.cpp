@@ -296,11 +296,16 @@ void Instruction::dropAllReferences() {
       elseBlock->dropAllReferences();
     break;
   }
-  case Kind::OperationInst:
+  case Kind::OperationInst: {
+    auto *opInst = cast<OperationInst>(this);
     if (isTerminator())
-      for (auto &dest : cast<OperationInst>(this)->getBlockOperands())
+      for (auto &dest : opInst->getBlockOperands())
         dest.drop();
+    for (auto &blockList : opInst->getBlockLists())
+      for (Block &block : blockList)
+        block.dropAllReferences();
     break;
+  }
   }
 }
 
@@ -314,6 +319,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
                                      ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
                                      ArrayRef<Block *> successors,
+                                     unsigned numBlockLists,
                                      MLIRContext *context) {
   unsigned numSuccessors = successors.size();
 
@@ -322,17 +328,22 @@ OperationInst *OperationInst::create(Location location, OperationName name,
   unsigned numOperands = operands.size() - numSuccessors;
 
   auto byteSize =
-      totalSizeToAlloc<InstResult, BlockOperand, unsigned, InstOperand>(
-          resultTypes.size(), numSuccessors, numSuccessors, numOperands);
+      totalSizeToAlloc<InstResult, BlockOperand, unsigned, InstOperand,
+                       BlockList>(resultTypes.size(), numSuccessors,
+                                  numSuccessors, numOperands, numBlockLists);
   void *rawMem = malloc(byteSize);
 
   // Initialize the OperationInst part of the instruction.
   auto inst = ::new (rawMem)
       OperationInst(location, name, numOperands, resultTypes.size(),
-                    numSuccessors, attributes, context);
+                    numSuccessors, numBlockLists, attributes, context);
 
   assert((numSuccessors == 0 || inst->isTerminator()) &&
          "unexpected successors in a non-terminator operation");
+
+  // Initialize the block lists.
+  for (unsigned i = 0; i != numBlockLists; ++i)
+    new (&inst->getBlockList(i)) BlockList(inst);
 
   // Initialize the results and operands.
   auto instResults = inst->getInstResults();
@@ -401,11 +412,12 @@ OperationInst *OperationInst::create(Location location, OperationName name,
 
 OperationInst::OperationInst(Location location, OperationName name,
                              unsigned numOperands, unsigned numResults,
-                             unsigned numSuccessors,
+                             unsigned numSuccessors, unsigned numBlockLists,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
     : Instruction(Kind::OperationInst, location), numOperands(numOperands),
-      numResults(numResults), numSuccs(numSuccessors), name(name) {
+      numResults(numResults), numSuccs(numSuccessors),
+      numBlockLists(numBlockLists), name(name) {
 #ifndef NDEBUG
   for (auto elt : attributes)
     assert(elt.second != nullptr && "Attributes cannot have null entries");
@@ -426,6 +438,10 @@ OperationInst::~OperationInst() {
   if (isTerminator())
     for (auto &successor : getBlockOperands())
       successor.~BlockOperand();
+
+  // Explicitly destroy the block list.
+  for (auto &blockList : getBlockLists())
+    blockList.~BlockList();
 }
 
 /// Return true if there are no users of any results of this operation.
@@ -860,9 +876,17 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
     resultTypes.reserve(opInst->getNumResults());
     for (auto *result : opInst->getResults())
       resultTypes.push_back(result->getType());
+
+    unsigned numBlockLists = opInst->getNumBlockLists();
     auto *newOp = OperationInst::create(getLoc(), opInst->getName(), operands,
                                         resultTypes, opInst->getAttrs(),
-                                        successors, context);
+                                        successors, numBlockLists, context);
+
+    // Clone the block lists.
+    for (unsigned i = 0; i != numBlockLists; ++i)
+      opInst->getBlockList(i).cloneInto(&newOp->getBlockList(i), mapper,
+                                        context);
+
     // Remember the mapping of any results.
     for (unsigned i = 0, e = opInst->getNumResults(); i != e; ++i)
       mapper.map(opInst->getResult(i), newOp->getResult(i));

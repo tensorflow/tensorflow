@@ -365,6 +365,14 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
       if (auto *elseClause = ifInst->getElse())
         return getInstAtPosition(positions, level + 1, elseClause);
     }
+    if (auto *opInst = dyn_cast<OperationInst>(&inst)) {
+      for (auto &blockList : opInst->getBlockLists()) {
+        for (auto &b : blockList)
+          if (auto *ret = getInstAtPosition(positions, level + 1, &b))
+            return ret;
+      }
+      return nullptr;
+    }
   }
   return nullptr;
 }

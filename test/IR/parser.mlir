@@ -747,3 +747,39 @@ func @type_alias() -> !i32_type_alias {
   %0 = "foo"() : () -> i32
   return %0 : i32
 }
+
+// CHECK-LABEL: func @verbose_if(
+func @verbose_if(%N: index) {
+  %c = constant 200 : index
+
+  // CHECK: "if"(%c200, %arg0, %c200) {cond: #set0} : (index, index, index) -> () {
+  "if"(%c, %N, %c) { cond: #set0 } : (index, index, index) -> () {
+    // CHECK-NEXT: "add"
+    %y = "add"(%c, %N) : (index, index) -> index
+    // CHECK-NEXT: } {
+  } { // The else block list.
+    // CHECK-NEXT: "add"
+    %z = "add"(%c, %c) : (index, index) -> index
+  }
+  return
+}
+
+// CHECK-LABEL: func @verbose_for
+func @verbose_for(%arg0 : index, %arg1 : index) {
+  // CHECK-NEXT: %0 = "for"() {lb: 1, ub: 10} : () -> index {
+  %a = "for"() {lb: 1, ub: 10 } : () -> index {
+
+    // CHECK-NEXT: %1 = "for"() {lb: 1, step: 2, ub: 100} : () -> index {
+    %b = "for"() {lb: 1, ub: 100, step: 2 } : () -> index {
+
+      // CHECK-NEXT: %2 = "for"(%arg0, %arg1) : (index, index) -> index {
+      %c = "for"(%arg0, %arg1) : (index, index) -> index {
+
+        // CHECK-NEXT: %3 = "for"(%arg0) {ub: 100} : (index) -> index {
+        %d = "for"(%arg0) {ub: 100 } : (index) -> index {
+        }
+      }
+    }
+  }
+  return
+}

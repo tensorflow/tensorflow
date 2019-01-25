@@ -109,8 +109,9 @@ struct CSE : public FunctionPass {
     bool processed;
   };
 
-  /// Attempt to eliminate a redundant operation.
-  void simplifyOperation(OperationInst *op);
+  /// Attempt to eliminate a redundant operation. Returns true if the operation
+  /// was marked for removal, false otherwise.
+  bool simplifyOperation(OperationInst *op);
 
   void simplifyBlock(Block *bb);
 
@@ -128,16 +129,16 @@ private:
 char CSE::passID = 0;
 
 /// Attempt to eliminate a redundant operation.
-void CSE::simplifyOperation(OperationInst *op) {
+bool CSE::simplifyOperation(OperationInst *op) {
   // TODO(riverriddle) We currently only eliminate non side-effecting
   // operations.
   if (!op->hasNoSideEffect())
-    return;
+    return false;
 
   // If the operation is already trivially dead just add it to the erase list.
   if (op->use_empty()) {
     opsToErase.push_back(op);
-    return;
+    return true;
   }
 
   // Look for an existing definition for the operation.
@@ -155,18 +156,33 @@ void CSE::simplifyOperation(OperationInst *op) {
         !op->getLoc().isa<UnknownLoc>()) {
       existing->setLoc(op->getLoc());
     }
-  } else {
-    // Otherwise, we add this operation to the known values map.
-    knownValues.insert(op, op);
+    return true;
   }
+
+  // Otherwise, we add this operation to the known values map.
+  knownValues.insert(op, op);
+  return false;
 }
 
 void CSE::simplifyBlock(Block *bb) {
   for (auto &i : *bb) {
     switch (i.getKind()) {
-    case Instruction::Kind::OperationInst:
-      simplifyOperation(&cast<OperationInst>(i));
+    case Instruction::Kind::OperationInst: {
+      auto *opInst = cast<OperationInst>(&i);
+
+      // If the operation is simplified, we don't process any held block lists.
+      if (simplifyOperation(opInst))
+        continue;
+
+      // Simplify any held blocks.
+      for (auto &blockList : opInst->getBlockLists()) {
+        for (auto &b : blockList) {
+          ScopedMapTy::ScopeTy scope(knownValues);
+          simplifyBlock(&b);
+        }
+      }
       break;
+    }
     case Instruction::Kind::For: {
       ScopedMapTy::ScopeTy scope(knownValues);
       simplifyBlock(cast<ForInst>(i).getBody());

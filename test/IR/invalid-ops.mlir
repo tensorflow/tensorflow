@@ -186,7 +186,7 @@ func @func_with_ops(i32) {
 func @func_with_ops(i32) {
 ^bb0(%a : i32):
   // expected-error@+1 {{'predicate' attribute value out of range}}
-  %r = "cmpi"(%a, %b) {predicate: 42} : (i32, i32) -> i1
+  %r = "cmpi"(%a, %a) {predicate: 42} : (i32, i32) -> i1
 }
 
 // -----

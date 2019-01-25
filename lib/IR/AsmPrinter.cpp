@@ -1095,6 +1095,14 @@ public:
   void printSuccessorAndUseList(const OperationInst *term,
                                 unsigned index) override;
 
+  /// Print a block list.
+  void printBlockList(const BlockList &blocks) {
+    os << " {\n";
+    for (auto &b : blocks)
+      print(&b);
+    os.indent(currentIndent) << "}";
+  }
+
   // Print if and loop bounds.
   void printDimAndSymbolList(ArrayRef<InstOperand> ops, unsigned numDims);
   void printBound(AffineBound bound, const char *prefix);
@@ -1163,6 +1171,9 @@ void FunctionPrinter::numberValuesInBlock(const Block &block) {
       auto *opInst = cast<OperationInst>(&inst);
       if (opInst->getNumResults() != 0)
         numberValueID(opInst->getResult(0));
+      for (auto &blockList : opInst->getBlockLists())
+        for (const auto &block : blockList)
+          numberValuesInBlock(block);
       break;
     }
     case Instruction::Kind::For: {
@@ -1540,6 +1551,10 @@ void FunctionPrinter::printGenericOp(const OperationInst *op) {
                     [&](const Value *result) { printType(result->getType()); });
     os << ')';
   }
+
+  // Print any trailing block lists.
+  for (auto &blockList : op->getBlockLists())
+    printBlockList(blockList);
 }
 
 void FunctionPrinter::printSuccessorAndUseList(const OperationInst *term,

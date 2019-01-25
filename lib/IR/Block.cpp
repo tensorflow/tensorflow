@@ -264,7 +264,7 @@ void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
   if (empty())
     return;
 
-  Block *lastOldBlock = &dest->back();
+  iterator lastOldBlock = --dest->end();
   for (const Block &block : *this) {
     Block *newBlock = new Block();
     mapper.map(&block, newBlock);
@@ -306,8 +306,7 @@ void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
   };
 
   Walker v(mapper);
-  for (auto it = std::next(lastOldBlock->getIterator()), e = dest->end();
-       it != e; ++it)
+  for (auto it = std::next(lastOldBlock), e = dest->end(); it != e; ++it)
     v.walk(it->begin(), it->end());
 }
 

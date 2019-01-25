@@ -416,6 +416,9 @@ instantiate(FuncBuilder *b, OperationInst *opInst, VectorType hwVectorType,
          "Should call the function specialized for VectorTransferReadOp");
   assert(!opInst->isa<VectorTransferWriteOp>() &&
          "Should call the function specialized for VectorTransferWriteOp");
+  if (opInst->getNumBlockLists() != 0)
+    return nullptr;
+
   bool fail = false;
   auto operands = map(
       [hwVectorType, substitutionsMap, &fail](Value *v) -> Value * {

@@ -488,6 +488,7 @@ func @return_inside_loop() -> i8 {
     return %a : i8
     // expected-error@-1 {{'return' op may only be at the top level of a function}}
   }
+  return
 }
 
 // -----

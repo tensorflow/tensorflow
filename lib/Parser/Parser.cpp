@@ -2130,8 +2130,18 @@ public:
   parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
                             Block *owner);
 
-  ParseResult parseBlock(Block *blockToUse);
+  ParseResult parseOperationBlockList(SmallVectorImpl<Block *> &results);
+  ParseResult parseBlockListBody(SmallVectorImpl<Block *> &results);
+  ParseResult parseBlock(Block *&block);
   ParseResult parseBlockBody(Block *block);
+
+  /// Cleans up the memory for allocated blocks when a parser error occurs.
+  void cleanupInvalidBlocks(ArrayRef<Block *> invalidBlocks) {
+    // Add the referenced blocks to the function so that they can be properly
+    // cleaned up when the function is destroyed.
+    for (auto *block : invalidBlocks)
+      function->push_back(block);
+  }
 
   /// After the function is finished parsing, this function checks to see if
   /// there are any remaining issues.
@@ -2243,21 +2253,24 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
   // The first block is already created and should be filled in.
   auto firstBlock = &function->front();
 
-  // Parse the remaining list of blocks.
-  while (!consumeIf(Token::r_brace)) {
-    if (parseBlock(firstBlock))
-      return ParseFailure;
+  // Parse the first block.
+  if (parseBlock(firstBlock))
+    return ParseFailure;
 
-    // Create the second and subsequent block.
-    firstBlock = nullptr;
-  }
+  // Parse the remaining list of blocks.
+  SmallVector<Block *, 16> blocks;
+  if (parseBlockListBody(blocks))
+    return ParseFailure;
+  function->getBlocks().insert(function->end(), blocks.begin(), blocks.end());
 
   // Verify that all referenced blocks were defined.
   if (!forwardRef.empty()) {
     SmallVector<std::pair<const char *, Block *>, 4> errors;
     // Iteration over the map isn't deterministic, so sort by source location.
-    for (auto entry : forwardRef)
+    for (auto entry : forwardRef) {
       errors.push_back({entry.second.getPointer(), entry.first});
+      cleanupInvalidBlocks(entry.first);
+    }
     llvm::array_pod_sort(errors.begin(), errors.end());
 
     for (auto entry : errors) {
@@ -2270,6 +2283,55 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
   return finalizeFunction(braceLoc);
 }
 
+/// Block list.
+///
+///   block-list ::= '{' block-list-body
+///
+ParseResult
+FunctionParser::parseOperationBlockList(SmallVectorImpl<Block *> &results) {
+  // Parse the '{'.
+  if (parseToken(Token::l_brace, "expected '{' to begin block list"))
+    return ParseFailure;
+  // Check for an empty block list.
+  if (consumeIf(Token::r_brace))
+    return ParseSuccess;
+  Block *currentBlock = builder.getInsertionBlock();
+
+  // Parse the first block directly to allow for it to be unnamed.
+  Block *block = new Block();
+  if (parseBlock(block)) {
+    cleanupInvalidBlocks(block);
+    return ParseFailure;
+  }
+  results.push_back(block);
+
+  // Parse the rest of the block list.
+  if (parseBlockListBody(results))
+    return ParseFailure;
+
+  // Reset insertion point to the current block.
+  builder.setInsertionPointToEnd(currentBlock);
+  return ParseSuccess;
+}
+
+/// Block list.
+///
+///   block-list-body ::= block* '}'
+///
+ParseResult
+FunctionParser::parseBlockListBody(SmallVectorImpl<Block *> &results) {
+  // Parse the block list.
+  while (!consumeIf(Token::r_brace)) {
+    Block *newBlock = nullptr;
+    if (parseBlock(newBlock)) {
+      cleanupInvalidBlocks(results);
+      return ParseFailure;
+    }
+    results.push_back(newBlock);
+  }
+  return ParseSuccess;
+}
+
 /// Block declaration.
 ///
 ///   block ::= block-label? instruction* terminator-inst
@@ -2277,9 +2339,7 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
 ///   block-id       ::= caret-id
 ///   block-arg-list ::= `(` ssa-id-and-type-list? `)`
 ///
-ParseResult FunctionParser::parseBlock(Block *blockToUse) {
-  Block *block = blockToUse;
-
+ParseResult FunctionParser::parseBlock(Block *&block) {
   // The first block for a function is already created.
   if (block) {
     // The name for a first block is optional.
@@ -2348,10 +2408,9 @@ Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
   // cannot be created through normal user input, allowing us to distinguish
   // them.
   auto name = OperationName("placeholder", getContext());
-  auto *inst = OperationInst::create(getEncodedSourceLocation(loc), name,
-                                     /*operands=*/{}, type,
-                                     /*attributes=*/{},
-                                     /*successors=*/{}, getContext());
+  auto *inst = OperationInst::create(
+      getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
+      /*attributes=*/{}, /*successors=*/{}, /*numBlockLists=*/0, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);
 }
@@ -2559,7 +2618,6 @@ Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
   if (!blockAndLoc.first) {
     blockAndLoc.first = new Block();
     forwardRef[blockAndLoc.first] = loc;
-    function->push_back(blockAndLoc.first);
     blockAndLoc.second = loc;
   }
 
@@ -2574,7 +2632,7 @@ Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc,
   if (!blockAndLoc.first) {
     // If the caller provided a block, use it.  Otherwise create a new one.
     if (!existing)
-      existing = builder.createBlock();
+      existing = new Block();
     blockAndLoc.first = existing;
     blockAndLoc.second = loc;
     return blockAndLoc.first;
@@ -2585,11 +2643,6 @@ Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc,
   // redeclaration.
   if (!forwardRef.erase(blockAndLoc.first))
     return nullptr;
-
-  // Move the block to the end of the function.  Forward ref'd blocks are
-  // inserted wherever they happen to be referenced.
-  function->getBlocks().splice(function->end(), function->getBlocks(),
-                               blockAndLoc.first);
   return blockAndLoc.first;
 }
 
@@ -2706,17 +2759,6 @@ ParseResult FunctionParser::parseOperation() {
   if (!op)
     return ParseFailure;
 
-  // We just parsed an operation.  If it is a recognized one, verify that it
-  // is structurally as we expect.  If not, produce an error with a reasonable
-  // source location.
-  if (auto *opInfo = op->getAbstractOperation()) {
-    // We don't wan't to verify branching terminators at this time because
-    // the successors may not have been fully parsed yet.
-    if (!(op->isTerminator() && op->getNumSuccessors() != 0) &&
-        opInfo->verifyInvariants(op))
-      return ParseFailure;
-  }
-
   // If the instruction had a name, register it.
   if (!resultID.empty()) {
     if (op->getNumResults() == 0)
@@ -2813,7 +2855,27 @@ OperationInst *FunctionParser::parseGenericOperation() {
     result.addSuccessor(successor, operands);
   }
 
-  return builder.createOperation(result);
+  // Parse the optional block lists for this operation.
+  std::vector<SmallVector<Block *, 2>> blocks;
+  while (getToken().is(Token::l_brace)) {
+    SmallVector<Block *, 2> newBlocks;
+    if (parseOperationBlockList(newBlocks)) {
+      for (auto &blockList : blocks)
+        cleanupInvalidBlocks(blockList);
+      return nullptr;
+    }
+    blocks.emplace_back(newBlocks);
+  }
+  result.reserveBlockLists(blocks.size());
+
+  auto *opInst = builder.createOperation(result);
+
+  // Initialize the parsed block lists.
+  for (unsigned i = 0, e = blocks.size(); i != e; ++i) {
+    auto &blockList = opInst->getBlockList(i).getBlocks();
+    blockList.insert(blockList.end(), blocks[i].begin(), blocks[i].end());
+  }
+  return opInst;
 }
 
 namespace {
@@ -3146,8 +3208,9 @@ ParseResult FunctionParser::parseForInst() {
   // If parsing of the for instruction body fails,
   // MLIR contains for instruction with those nested instructions that have been
   // successfully parsed.
+  auto *forBody = forInst->getBody();
   if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
-      parseBlock(forInst->getBody()) ||
+      parseBlock(forBody) ||
       parseToken(Token::r_brace, "expected '}' after instruction list"))
     return ParseFailure;
 

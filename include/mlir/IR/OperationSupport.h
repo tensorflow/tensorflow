@@ -233,6 +233,7 @@ struct OperationState {
   SmallVector<NamedAttribute, 4> attributes;
   /// Successors of this operation and their respective operands.
   SmallVector<Block *, 1> successors;
+  unsigned numBlockLists = 0;
 
 public:
   OperationState(MLIRContext *context, Location location, StringRef name)
@@ -244,12 +245,13 @@ public:
   OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<Value *> operands, ArrayRef<Type> types,
                  ArrayRef<NamedAttribute> attributes,
-                 ArrayRef<Block *> successors = {})
+                 ArrayRef<Block *> successors = {}, unsigned numBlockLists = 0)
       : context(context), location(location), name(name, context),
         operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),
         attributes(attributes.begin(), attributes.end()),
-        successors(successors.begin(), successors.end()) {}
+        successors(successors.begin(), successors.end()),
+        numBlockLists(numBlockLists) {}
 
   void addOperands(ArrayRef<Value *> newOperands) {
     assert(successors.empty() &&
@@ -277,6 +279,9 @@ public:
     operands.push_back(nullptr);
     operands.append(succOperands.begin(), succOperands.end());
   }
+
+  /// Add a new block list with the specified blocks.
+  void reserveBlockLists(unsigned numReserved) { numBlockLists += numReserved; }
 };
 
 } // end namespace mlir

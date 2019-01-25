@@ -120,7 +120,13 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
       return hasInnerLoops;
     }
 
-    bool visitOperationInst(OperationInst *opInst) { return false; }
+    bool walkOpInstPostOrder(OperationInst *opInst) {
+      for (auto &blockList : opInst->getBlockLists())
+        for (auto &block : blockList)
+          if (walkPostOrder(block.begin(), block.end()))
+            return true;
+      return false;
+    }
 
     // FIXME: can't use base class method for this because that in turn would
     // need to use the derived class method above. CRTP doesn't allow it, and

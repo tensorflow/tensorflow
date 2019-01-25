@@ -1097,6 +1097,8 @@ static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
     opInst->erase();
     return res;
   }
+  if (opInst->getNumBlockLists() != 0)
+    return nullptr;
 
   auto types = map([state](Value *v) { return getVectorType(v, *state); },
                    opInst->getResults());
