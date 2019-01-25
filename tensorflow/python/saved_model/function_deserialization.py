@@ -73,25 +73,22 @@ def _deserialize_function_spec(function_spec_proto, coder):
                                    kwargs_to_include, input_signature)
 
 
-def recreate_concrete_function(saved_concrete_function, concrete_functions):
-  """Recreates a user-facing concrete function."""
-  coder = nested_structure_coder.StructureCoder()
-
-  concrete_function = concrete_functions[saved_concrete_function.name]
-  input_signature = coder.decode_proto(
-      saved_concrete_function.canonicalized_input_signature)
-  input_signature_args, input_signature_kwargs = input_signature
-  if input_signature_kwargs:
-    raise ValueError("Restoring concrete function with non-empty kwargs (%s)." %
-                     input_signature_kwargs)
-
+# TODO(allenl): The fact that we can't derive ConcreteFunction calling
+# conventions from the serialized input spec right now is unfortunate. Merging
+# these would be good, maybe by adding TensorSpec names to cache keys so renamed
+# keyword arguments would yield different ConcreteFunctions.
+def setup_bare_concrete_function(saved_bare_concrete_function,
+                                 concrete_functions):
+  """Makes a restored bare concrete function callable."""
+  # Bare concrete functions accept only flat lists of Tensors with unique
+  # names.
+  concrete_function = concrete_functions[
+      saved_bare_concrete_function.concrete_function_name]
   # pylint: disable=protected-access
-  # Set metadata required for the concrete function to accept keyword and
-  # positional arguments in __call__. Normally this is set in
-  # get_concrete_function.
-  concrete_function._arg_keywords = [spec.name for spec in input_signature_args]
-  # TODO(allenl): Should we preserve the number of allowed positional arguments?
-  concrete_function._num_positional_args = len(input_signature_args)
+  concrete_function._arg_keywords = (
+      saved_bare_concrete_function.argument_keywords)
+  concrete_function._num_positional_args = (
+      saved_bare_concrete_function.allowed_positional_arguments)
   # pylint: enable=protected-access
   concrete_function.add_to_graph()
   return concrete_function
@@ -153,10 +150,10 @@ def recreate_function(saved_function, concrete_functions):
           (args, kwargs, e))
 
     debug_considered_signatures = []
-    for concrete_function in saved_function.concrete_function:
-      function_obj = concrete_functions[concrete_function.name]
-      canonicalized_original_inputs = coder.decode_proto(
-          concrete_function.canonicalized_input_signature)
+    for concrete_function_name in saved_function.concrete_functions:
+      function_obj = concrete_functions[concrete_function_name]
+      canonicalized_original_inputs = (
+          function_obj.graph.structured_input_signature)
       debug_considered_signatures.append(canonicalized_original_inputs)
 
       if _inputs_compatible(canonicalized_inputs,
@@ -170,10 +167,14 @@ def recreate_function(saved_function, concrete_functions):
         "Only existing signatures are %r."
         % (canonicalized_inputs, debug_considered_signatures))
 
-  cfs = [concrete_functions[f.name] for f in saved_function.concrete_function]
+  concrete_function_objects = []
+  for concrete_function_name in saved_function.concrete_functions:
+    concrete_function_objects.append(concrete_functions[concrete_function_name])
 
   return RestoredFunction(restored_function_body,
-                          restored_function_body.__name__, function_spec, cfs)
+                          restored_function_body.__name__,
+                          function_spec,
+                          concrete_function_objects)
 
 
 def load_function_def_library(library):
