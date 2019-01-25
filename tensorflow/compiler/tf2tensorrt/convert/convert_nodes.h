@@ -415,7 +415,19 @@ class Converter {
   Status AddInputTensor(const string& name, nvinfer1::DataType dtype,
                         const nvinfer1::Dims& dims, int batch_size);
 
-  struct EngineOutputInfo;
+  // Used for Converter::RenameAndMarkOutputTensors()
+  struct EngineOutputInfo {
+    // The TRT tensor name which produces the output.
+    string source_tensor_name;
+    // The TensorFlow node name which is receiving the output from the TRT engine.
+    // This should always be the Identity node created in
+    // ConvertSegmentToGraphDef.
+    string dest_node_name;
+    // Output type. TensorRT requires this to be explicitly set for engine
+    // outputs.
+    nvinfer1::DataType trt_dtype;
+  };
+
   // Mark the tensors with names specified by source_tensor_name as output of
   // the TRT network, and set their names in the TRT network as dest_node_name.
   Status RenameAndMarkOutputTensors(
@@ -544,19 +556,6 @@ class Converter {
 
   friend class ConverterTest;
   friend class OpConverterTest;
-};
-
-// Used for Converter::RenameAndMarkOutputTensors()
-struct EngineOutputInfo {
-  // The TRT tensor name which produces the output.
-  string source_tensor_name;
-  // The TensorFlow node name which is receiving the output from the TRT engine.
-  // This should always be the Identity node created in
-  // ConvertSegmentToGraphDef.
-  string dest_node_name;
-  // Output type. TensorRT requires this to be explicitly set for engine
-  // outputs.
-  nvinfer1::DataType trt_dtype;
 };
 
 }  // namespace convert
