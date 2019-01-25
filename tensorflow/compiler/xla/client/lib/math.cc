@@ -242,12 +242,46 @@ XlaOp Lgamma(XlaOp input) {
 
     XlaOp log_y = log_sqrt_two_pi + (z + one_half) * log_t - t + Log(x);
 
-    // If z = a + 0j, the analytic continuation of log reduces to taking the
-    // absolute value of the real part.
-    // Re(log(z)) = Re(log|z| + arg(z)j)
-    //            = log|a|
-    XlaOp reflection = log_pi - Log(Abs(Sin(pi * input))) - log_y;
-    return Select(need_to_reflect, reflection, log_y);
+    // Compute the reflected value, used when x < 0.5:
+    //
+    //   lgamma(x) = log(pi) - lgamma(1-x) - log(abs(sin(pi * x))).
+    //
+    // (The abs is because lgamma is the log of the absolute value of the gamma
+    // function.)
+    //
+    // We have to be careful when computing the final term above. gamma(x) goes
+    // to +/-inf at every integer x < 0, and this is controlled by the
+    // sin(pi * x) term.  The slope is large, so precision is particularly
+    // important.
+    //
+    // Because abs(sin(pi * x)) has period 1, we can equivalently use
+    // abs(sin(pi * frac(x))) = sin(pi * frac(x)), where frac(x) is the
+    // fractional part of x.  This is more numerically accurate: It doesn't
+    // overflow to inf like pi * x can, and if x is an integer, it evaluates to
+    // 0 exactly, which is significant because we then take the log of this
+    // value, and log(0) is inf.
+    //
+    // We don't have a frac(x) primitive in XLA and computing it is tricky, but
+    // because abs(sin(pi * x)) = abs(sin(pi * abs(x))), it's good enough for
+    // our purposes to use abs(frac(x)) = abs(x) - floor(abs(x)).
+    //
+    XlaOp abs_input = Abs(input);
+    XlaOp reflection_denom = Log(Sin(pi * (abs_input - Floor(abs_input))));
+
+    // Avoid computing -inf - inf, which is nan.  If reflection_denom is +/-inf,
+    // then it "wins" and the result is +/-inf.
+    XlaOp reflection =
+        Select(IsFinite(reflection_denom), log_pi - reflection_denom - log_y,
+               -reflection_denom);
+    XlaOp result = Select(need_to_reflect, reflection, log_y);
+
+    // lgamma(+/-inf) = +inf.
+    XlaOp inf_bcast =
+        Broadcast(ScalarLike(input, std::numeric_limits<float>::infinity()),
+                  AsInt64Slice(shape.dimensions()));
+    return Select(Or(IsFinite(input),                           // is finite, or
+                     Not(Or(Lt(input, one), Ge(input, one)))),  // is nan
+                  result, inf_bcast);
   });
 }
 

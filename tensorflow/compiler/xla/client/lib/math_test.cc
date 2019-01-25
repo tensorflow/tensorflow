@@ -145,6 +145,28 @@ XLA_TEST_F(MathTest, Lgamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+// TODO(jlebar): Fails on interpreter due to unimplemented operation.
+XLA_TEST_F(MathTest, DISABLED_ON_INTERPRETER(LgammaF16)) {
+  SetFastMathDisabled(true);
+
+  XlaBuilder b(TestName());
+
+  // These seemingly arbitrary inputs came from debugging the lgamma
+  // implementation against a test which tried all possible f16 values.
+  auto x = ConstantR1<half>(&b, {
+                                    half(-7360.0),
+                                    half(-4066.0),
+                                    half(-5.9605e-08),
+                                });
+  Lgamma(x);
+  std::vector<half> expected = {
+      std::numeric_limits<half>::infinity(),
+      std::numeric_limits<half>::infinity(),
+      half(16.64),
+  };
+  ComputeAndCompareR1<half>(&b, expected, {}, ErrorSpec{0.1});
+}
+
 XLA_TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 0.5, 1 / 3.0, 0.25, 1 / 6.0, 0.125,
