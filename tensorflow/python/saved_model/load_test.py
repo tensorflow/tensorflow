@@ -625,6 +625,67 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(8., imported.f(y=constant_op.constant(3.),
                                     x=constant_op.constant(2.)).numpy())
 
+  def test_revived_concrete_function_tensorspec_kwargs(self, cycles):
+
+    @def_function.function
+    def func(*args):
+      x, y = args
+      return x * (y + 1.)
+    root = tracking.AutoCheckpointable()
+    root.f = func.get_concrete_function(
+        tensor_spec.TensorSpec([], dtypes.float32, name="x"),
+        tensor_spec.TensorSpec([], dtypes.float32, name="y"))
+    self.assertEqual(8., root.f(y=constant_op.constant(3.),
+                                x=constant_op.constant(2.)).numpy())
+    imported = self.cycle(root, cycles, signatures={})
+    self.assertEqual(8., imported.f(y=constant_op.constant(3.),
+                                    x=constant_op.constant(2.)).numpy())
+
+  def test_concrete_function_variable_argument(self, cycles):
+    # TODO(allenl): Fix variables in input signatures.
+    self.skipTest("Need to fix encoding of variables in inputs signatures")
+    capture = variables.Variable(0)
+
+    @def_function.function
+    def func(v):
+      v.assign_add(1)
+      capture.assign_sub(1)
+
+    vsave = variables.Variable(1)
+    root = tracking.AutoCheckpointable()
+    root.f = func.get_concrete_function(vsave)
+    root.capture = capture
+    self.assertEqual(1, vsave.numpy())
+    root.f(vsave)
+    self.assertEqual(2, vsave.numpy())
+    self.assertEqual(-1, capture.numpy())
+    imported = self.cycle(root, cycles)
+
+    vload = variables.Variable(1)
+    imported.f(vload)
+    self.assertEqual(2, vload.numpy())
+    imported.f(v=vload)
+    self.assertEqual(3, vload.numpy())
+    self.assertEqual(-3, imported.capture.numpy())
+    self.assertEqual(-1, capture.numpy())
+
+  def test_function_and_component(self, cycles):
+
+    @def_function.function
+    def func(v):
+      return v + 1
+
+    root = tracking.AutoCheckpointable()
+    root.func = func
+    root.concrete_func = func.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.int32))
+    one = constant_op.constant(1)
+    self.assertEqual(2, root.func(one).numpy())
+    self.assertEqual(2, root.concrete_func(one).numpy())
+    imported = self.cycle(root, cycles)
+    self.assertEqual(2, imported.func(one).numpy())
+    self.assertEqual(2, imported.concrete_func(one).numpy())
+
   def test_dict(self, cycles):
     root = tracking.AutoCheckpointable()
     root.variables = dict(a=variables.Variable(1.))
