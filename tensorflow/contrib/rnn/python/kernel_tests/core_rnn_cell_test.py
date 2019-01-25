@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib import rnn as contrib_rnn
@@ -31,6 +32,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import layers as keras_layers
+from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -206,6 +209,35 @@ class RNNCellTest(test.TestCase):
         })
         # Smoke test
         self.assertAllClose(res[0], [[0.509682, 0.509682]])
+
+  def testSRUCellKerasRNN(self):
+    """Tests that SRUCell works with keras RNN layer."""
+    cell = contrib_rnn_cell.SRUCell(10)
+    seq_input = ops.convert_to_tensor(
+        np.random.rand(2, 3, 5), name="seq_input", dtype=dtypes.float32)
+    rnn_layer = keras_layers.RNN(cell=cell)
+    rnn_outputs_keras = rnn_layer(seq_input)
+    with self.cached_session() as sess:
+      sess.run([variables_lib.global_variables_initializer()])
+      self.assertEqual(sess.run(rnn_outputs_keras).shape, (2, 10))
+
+  def testSRUCellBiasType(self):
+    """Tests that the bias' dtype is properly set."""
+    cell = contrib_rnn_cell.SRUCell(10)
+    cell.build((2, 3, 5))
+    self.assertEqual(cell._bias.dtype, dtypes.float32_ref)
+
+    cell = contrib_rnn_cell.SRUCell(10, dtype=dtypes.int32)
+    cell.build((2, 3, 5))
+    self.assertEqual(cell._bias.dtype, dtypes.int32_ref)
+
+    cell_input = ops.convert_to_tensor(
+        np.random.rand(2, 5), name="cell_input", dtype=dtypes.float16)
+    cell_state = ops.convert_to_tensor(
+        np.random.rand(2, 10), name="cell_state", dtype=dtypes.float16)
+    cell = contrib_rnn_cell.SRUCell(10)
+    cell(cell_input, [cell_state])
+    self.assertEqual(cell._bias.dtype, dtypes.float16_ref)
 
   def testSRUCellWithDiffSize(self):
     with self.cached_session() as sess:
@@ -805,12 +837,13 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[1], [[0.13248, 0.13248]])
 
 
-class DropoutWrapperTest(test.TestCase):
+class DropoutWrapperTest(test.TestCase, parameterized.TestCase):
 
   def _testDropoutWrapper(self,
                           batch_size=None,
                           time_steps=None,
                           parallel_iterations=None,
+                          wrapper_type=None,
                           **kwargs):
     with self.cached_session() as sess:
       with variable_scope.variable_scope(
@@ -832,7 +865,7 @@ class DropoutWrapperTest(test.TestCase):
               constant([[0.1, 0.1, 0.1]] * batch_size, dtype=dtypes.float32)
           ] * 2)
         outputs, final_state = rnn.dynamic_rnn(
-            cell=rnn_cell_impl.DropoutWrapper(
+            cell=wrapper_type(
                 rnn_cell_impl.LSTMCell(3), dtype=x.dtype, **kwargs),
             time_major=True,
             parallel_iterations=parallel_iterations,
@@ -845,16 +878,34 @@ class DropoutWrapperTest(test.TestCase):
         self.assertEqual(res[1].h.shape, (batch_size, 3))
         return res
 
-  def testWrappedCellProperty(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperProperties(self, wrapper_type):
     cell = rnn_cell_impl.BasicRNNCell(10)
-    wrapper = rnn_cell_impl.DropoutWrapper(cell)
+    wrapper = wrapper_type(cell)
     # Github issue 15810
     self.assertEqual(wrapper.wrapped_cell, cell)
+    self.assertEqual(wrapper.state_size, 10)
+    self.assertEqual(wrapper.output_size, 10)
 
-  def testDropoutWrapperKeepAllConstantInput(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperZeroState(self, wrapper_type):
+    class _Cell(rnn_cell_impl.BasicRNNCell):
+
+      def zero_state(self, batch_size=None, dtype=None):
+        return "wrapped_cell_zero_state"
+    wrapper = wrapper_type(_Cell(10))
+    self.assertEqual(wrapper.zero_state(10, dtypes.float32),
+                     "wrapped_cell_zero_state")
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepAllConstantInput(self, wrapper_type):
     keep = array_ops.ones([])
     res = self._testDropoutWrapper(
-        input_keep_prob=keep, output_keep_prob=keep, state_keep_prob=keep)
+        input_keep_prob=keep, output_keep_prob=keep, state_keep_prob=keep,
+        wrapper_type=wrapper_type)
     true_full_output = np.array(
         [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
         dtype=np.float32)
@@ -864,10 +915,13 @@ class DropoutWrapperTest(test.TestCase):
     self.assertAllClose(true_full_output[1], res[1].h)
     self.assertAllClose(true_full_final_c, res[1].c)
 
-  def testDropoutWrapperKeepAll(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepAll(self, wrapper_type):
     keep = variable_scope.get_variable("all", initializer=1.0)
     res = self._testDropoutWrapper(
-        input_keep_prob=keep, output_keep_prob=keep, state_keep_prob=keep)
+        input_keep_prob=keep, output_keep_prob=keep, state_keep_prob=keep,
+        wrapper_type=wrapper_type)
     true_full_output = np.array(
         [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
         dtype=np.float32)
@@ -877,7 +931,9 @@ class DropoutWrapperTest(test.TestCase):
     self.assertAllClose(true_full_output[1], res[1].h)
     self.assertAllClose(true_full_final_c, res[1].c)
 
-  def testDropoutWrapperWithSeed(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperWithSeed(self, wrapper_type):
     keep_some = 0.5
     random_seed.set_random_seed(2)
     ## Use parallel_iterations = 1 in both calls to
@@ -889,7 +945,8 @@ class DropoutWrapperTest(test.TestCase):
         output_keep_prob=keep_some,
         state_keep_prob=keep_some,
         seed=10,
-        parallel_iterations=1)
+        parallel_iterations=1,
+        wrapper_type=wrapper_type)
     # Clear away the graph and the test session (which keeps variables around)
     ops.reset_default_graph()
     self._ClearCachedSession()
@@ -899,18 +956,22 @@ class DropoutWrapperTest(test.TestCase):
         output_keep_prob=keep_some,
         state_keep_prob=keep_some,
         seed=10,
-        parallel_iterations=1)
+        parallel_iterations=1,
+        wrapper_type=wrapper_type)
     self.assertAllClose(res_standard_1[0], res_standard_2[0])
     self.assertAllClose(res_standard_1[1].c, res_standard_2[1].c)
     self.assertAllClose(res_standard_1[1].h, res_standard_2[1].h)
 
-  def testDropoutWrapperKeepNoOutput(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepNoOutput(self, wrapper_type):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     res = self._testDropoutWrapper(
         input_keep_prob=keep_all,
         output_keep_prob=keep_none,
-        state_keep_prob=keep_all)
+        state_keep_prob=keep_all,
+        wrapper_type=wrapper_type)
     true_full_output = np.array(
         [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
         dtype=np.float32)
@@ -920,15 +981,18 @@ class DropoutWrapperTest(test.TestCase):
     self.assertAllClose(true_full_output[1], res[1].h)
     self.assertAllClose(true_full_final_c, res[1].c)
 
-  def testDropoutWrapperKeepNoStateExceptLSTMCellMemory(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepNoStateExceptLSTMCellMemory(self, wrapper_type):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     # Even though we dropout state, by default DropoutWrapper never
     # drops out the memory ("c") term of an LSTMStateTuple.
     res = self._testDropoutWrapper(
         input_keep_prob=keep_all,
         output_keep_prob=keep_all,
-        state_keep_prob=keep_none)
+        state_keep_prob=keep_none,
+        wrapper_type=wrapper_type)
     true_c_state = np.array([[1.713925, 1.713925, 1.713925]], dtype=np.float32)
     true_full_output = np.array(
         [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
@@ -941,9 +1005,11 @@ class DropoutWrapperTest(test.TestCase):
     # c state of an LSTMStateTuple is NEVER modified.
     self.assertAllClose(true_c_state, res[1].c)
 
-  def testDropoutWrapperKeepNoInput(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepNoInput(self, wrapper_type):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     true_full_output = np.array(
         [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
         dtype=np.float32)
@@ -953,12 +1019,15 @@ class DropoutWrapperTest(test.TestCase):
     res = self._testDropoutWrapper(
         input_keep_prob=keep_none,
         output_keep_prob=keep_all,
-        state_keep_prob=keep_all)
+        state_keep_prob=keep_all,
+        wrapper_type=wrapper_type)
     self.assertGreater(np.linalg.norm(res[0] - true_full_output), 1e-4)
     self.assertGreater(np.linalg.norm(res[1].h - true_full_output[1]), 1e-4)
     self.assertGreater(np.linalg.norm(res[1].c - true_full_final_c), 1e-4)
 
-  def testDropoutWrapperRecurrentOutput(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperRecurrentOutput(self, wrapper_type):
     keep_some = 0.8
     keep_all = variable_scope.get_variable("all", initializer=1.0)
     res = self._testDropoutWrapper(
@@ -966,6 +1035,7 @@ class DropoutWrapperTest(test.TestCase):
         output_keep_prob=keep_some,
         state_keep_prob=keep_all,
         variational_recurrent=True,
+        wrapper_type=wrapper_type,
         input_size=3,
         batch_size=5,
         time_steps=7)
@@ -974,13 +1044,16 @@ class DropoutWrapperTest(test.TestCase):
     for m in output_mask[1:]:
       self.assertAllClose(output_mask[0], m)
 
-  def testDropoutWrapperRecurrentStateInputAndOutput(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperRecurrentStateInputAndOutput(self, wrapper_type):
     keep_some = 0.9
     res = self._testDropoutWrapper(
         input_keep_prob=keep_some,
         output_keep_prob=keep_some,
         state_keep_prob=keep_some,
         variational_recurrent=True,
+        wrapper_type=wrapper_type,
         input_size=3,
         batch_size=5,
         time_steps=7)
@@ -1002,7 +1075,10 @@ class DropoutWrapperTest(test.TestCase):
     for batch_entry in state_h_mask:
       self.assertAllClose(batch_entry, state_h_mask[0])
 
-  def testDropoutWrapperRecurrentStateInputAndOutputWithSeed(self):
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperRecurrentStateInputAndOutputWithSeed(
+      self, wrapper_type):
     keep_some = 0.9
     random_seed.set_random_seed(2347)
     np.random.seed(23487)
@@ -1011,6 +1087,7 @@ class DropoutWrapperTest(test.TestCase):
         output_keep_prob=keep_some,
         state_keep_prob=keep_some,
         variational_recurrent=True,
+        wrapper_type=wrapper_type,
         input_size=3,
         batch_size=5,
         time_steps=7,
@@ -1024,6 +1101,7 @@ class DropoutWrapperTest(test.TestCase):
         output_keep_prob=keep_some,
         state_keep_prob=keep_some,
         variational_recurrent=True,
+        wrapper_type=wrapper_type,
         input_size=3,
         batch_size=5,
         time_steps=7,
@@ -1049,6 +1127,60 @@ class DropoutWrapperTest(test.TestCase):
     self.assertAllClose(res0[0], res1[0])
     self.assertAllClose(res0[1].c, res1[1].c)
     self.assertAllClose(res0[1].h, res1[1].h)
+
+  def testDropoutWrapperKerasStyle(self):
+    """Tests if DropoutWrapperV2 cell is instantiated in keras style scope."""
+    wrapped_cell_v2 = rnn_cell_impl.DropoutWrapperV2(
+        rnn_cell_impl.BasicRNNCell(1))
+    self.assertTrue(wrapped_cell_v2._keras_style)
+
+    wrapped_cell = rnn_cell_impl.DropoutWrapper(rnn_cell_impl.BasicRNNCell(1))
+    self.assertFalse(wrapped_cell._keras_style)
+
+  def testDropoutWrapperV2VariableNames(self):
+    """Tests that variables names do not depend on wrapper in RNN layer."""
+
+    def _rnn_input(apply_wrapper):
+      """Creates a RNN layer with/without wrapper and returns built rnn cell."""
+      with base_layer.keras_style_scope():
+        base_cell = rnn_cell_impl.MultiRNNCell(
+            [rnn_cell_impl.BasicRNNCell(1) for _ in range(2)])
+      if apply_wrapper:
+        rnn_cell = rnn_cell_impl.DropoutWrapperV2(base_cell)
+      else:
+        rnn_cell = base_cell
+      rnn_layer = keras_layers.RNN(rnn_cell)
+      inputs = ops.convert_to_tensor([[[1]]], dtype=dtypes.float32)
+      _ = rnn_layer(inputs)
+      return base_cell._cells[0]
+
+    rnn_1 = _rnn_input(True)
+    ops.reset_default_graph()
+    rnn_2 = _rnn_input(False)
+
+    self.assertLen(rnn_1.weights, expected_len=2)
+    self.assertCountEqual([v.name for v in rnn_1.weights],
+                          [v.name for v in rnn_2.weights])
+
+  def testDropoutWrapperV2Caller(self):
+    """Tests that DropoutWrapperV2 is using the LayerRNNCell's caller."""
+
+    with base_layer.keras_style_scope():
+      base_cell = rnn_cell_impl.MultiRNNCell(
+          [rnn_cell_impl.BasicRNNCell(1) for _ in range(2)])
+    rnn_cell = rnn_cell_impl.DropoutWrapperV2(base_cell)
+    inputs = ops.convert_to_tensor([[1]], dtype=dtypes.float32)
+    state = ops.convert_to_tensor([[1]], dtype=dtypes.float32)
+    _ = rnn_cell(inputs, [state, state])
+    weights = base_cell._cells[0].weights
+    self.assertLen(weights, expected_len=2)
+    self.assertTrue(all(["dropout_wrapper" in v.name for v in weights]))
+
+  def testDropoutWrapperV2Build(self):
+    cell = rnn_cell_impl.LSTMCell(10)
+    wrapper = rnn_cell_impl.DropoutWrapperV2(cell)
+    wrapper.build((1,))
+    self.assertTrue(cell.built)
 
 
 def basic_rnn_cell(inputs, state, num_units, scope=None):

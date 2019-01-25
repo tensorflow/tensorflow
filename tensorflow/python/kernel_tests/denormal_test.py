@@ -22,6 +22,7 @@ import numpy as np
 import platform
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -35,8 +36,9 @@ class DenormalTest(test.TestCase):
       self.assertEqual(tiny, tiny / 16 * 16)
 
   def _flushDenormalsTest(self, use_gpu, dtypes):
-    if platform.machine() == "ppc64le" or platform.machine() == "s390x":
-      # Disabled denormal_test on power/s390x platform
+    if platform.machine() == "ppc64le" or platform.machine(
+    ) == "s390x" or platform.machine() == "aarch64":
+      # Disabled denormal_test on power/s390x/aarch64 platform
       # Check relevant discussion - https://github.com/tensorflow/tensorflow/issues/11902
       return
     with self.cached_session(use_gpu=use_gpu):
@@ -50,10 +52,12 @@ class DenormalTest(test.TestCase):
           # Make sure the flags don't leak out
           self.testPythonHasDenormals()
 
+  @test_util.run_deprecated_v1
   def testFlushDenormalsCPU(self):
     # On CPUs, the processor flags flush for both single and double precision.
     self._flushDenormalsTest(use_gpu=False, dtypes=(np.float32, np.float64))
 
+  @test_util.run_deprecated_v1
   def testFlushDenormalsGPU(self):
     # On GPUs, only single precision can flush to zero.
     self._flushDenormalsTest(use_gpu=True, dtypes=(np.float32,))

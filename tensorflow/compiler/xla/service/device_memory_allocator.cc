@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 
 namespace xla {
 
@@ -39,6 +40,10 @@ StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
         "Failed to allocate request for %s (%uB) on device ordinal %d",
         tensorflow::strings::HumanReadableNumBytes(size), size, device_ordinal);
   }
+  VLOG(3) << absl::StreamFormat(
+      "Allocated %s (%uB) on device ordinal %d: %p",
+      tensorflow::strings::HumanReadableNumBytes(size), size, device_ordinal,
+      result.opaque());
   return OwningDeviceMemory(result, device_ordinal, this);
 }
 
@@ -47,6 +52,8 @@ Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
   if (!mem.is_null()) {
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                         GetStreamExecutor(device_ordinal));
+    VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
+                                  mem.opaque(), device_ordinal);
     stream_executor->Deallocate(&mem);
   }
   return Status::OK();

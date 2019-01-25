@@ -38,10 +38,9 @@ namespace gpu {
 
 namespace {
 
-// Return whether the given shape is a matrix with no padding.
-bool IsRank2WithNoPadding(const Shape& shape, int64 batch_dimensions_size) {
-  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2 &&
-         !LayoutUtil::IsPadded(shape);
+// Return whether the given shape is rank 2 excluding the batch dimensions.
+bool IsRank2(const Shape& shape, int64 batch_dimensions_size) {
+  return shape.rank() == batch_dimensions_size + 2;
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
@@ -55,11 +54,11 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   PrimitiveType output_primitive_type = output_shape.element_type();
   bool type_is_allowed =
       (output_primitive_type == F16 || output_primitive_type == F32 ||
-       output_primitive_type == F64 || output_primitive_type == C64);
-  return type_is_allowed &&
-         IsRank2WithNoPadding(lhs_shape, batch_dimensions_size) &&
-         IsRank2WithNoPadding(rhs_shape, batch_dimensions_size) &&
-         IsRank2WithNoPadding(output_shape, batch_dimensions_size) &&
+       output_primitive_type == F64 || output_primitive_type == C64 ||
+       output_primitive_type == C128);
+  return type_is_allowed && IsRank2(lhs_shape, batch_dimensions_size) &&
+         IsRank2(rhs_shape, batch_dimensions_size) &&
+         IsRank2(output_shape, batch_dimensions_size) &&
          !ShapeUtil::IsZeroElementArray(lhs_shape) &&
          !ShapeUtil::IsZeroElementArray(rhs_shape);
 }
@@ -93,7 +92,8 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 
   if (hlo.opcode() == HloOpcode::kFusion &&
       hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {
+      (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
+       hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
     // Try to find the dot inside the output fusion node.
     const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
     if (dot->opcode() != HloOpcode::kDot) {
@@ -155,20 +155,17 @@ bool IsReductionToVector(const HloInstruction& reduce) {
   const HloInstruction* input = reduce.operand(0);
   std::vector<int64> dims_to_keep;
   for (int64 dim = 0; dim < input->shape().dimensions().size(); ++dim) {
-    if (!std::count(reduce.dimensions().begin(), reduce.dimensions().end(),
-                    dim)) {
+    if (!absl::c_linear_search(reduce.dimensions(), dim)) {
       dims_to_keep.push_back(dim);
     }
   }
   return LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
                                               dims_to_keep) &&
-         ShapeUtil::Equal(reduce.shape(), ShapeUtil::FilterDimensions(
-                                              [&dims_to_keep](int64 dim) {
-                                                return std::count(
-                                                    dims_to_keep.begin(),
-                                                    dims_to_keep.end(), dim);
-                                              },
-                                              input->shape()));
+         ShapeUtil::Equal(
+             reduce.shape(),
+             ShapeUtil::FilterDimensions(
+                 [&](int64 dim) { return absl::c_count(dims_to_keep, dim); },
+                 input->shape()));
 }
 
 // This emits a device-side call to
@@ -267,6 +264,18 @@ string CudnnConvKindToString(CudnnConvKind kind) {
     case CudnnConvKind::kForwardActivation:
       return "forward with activation";
   }
+}
+
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
+  return b->CreateAnd(
+      b->CreateICmpEQ(
+          b->getInt32(0),
+          llvm_ir::EmitCallToIntrinsic(
+              llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b)),
+      b->CreateICmpEQ(
+          b->getInt32(0),
+          llvm_ir::EmitCallToIntrinsic(
+              llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b)));
 }
 
 }  // namespace gpu

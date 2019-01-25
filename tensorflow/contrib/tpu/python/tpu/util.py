@@ -19,8 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import six
 
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import training
 
 def check_positive_integer(value, name):
   """Checks whether `value` is a positive integer."""
@@ -29,3 +32,20 @@ def check_positive_integer(value, name):
 
   if value <= 0:
     raise ValueError('{} must be positive, got {}'.format(name, value))
+
+
+# TODO(b/118302029) Remove this copy of MultiHostDatasetInitializerHook after we
+# release a tensorflow_estimator with MultiHostDatasetInitializerHook in
+# python/estimator/util.py.
+class MultiHostDatasetInitializerHook(training.SessionRunHook):
+  """Creates a SessionRunHook that initializes all passed iterators."""
+
+  def __init__(self, dataset_initializers):
+    self._initializers = dataset_initializers
+
+  def after_create_session(self, session, coord):
+    del coord
+    start = time.time()
+    session.run(self._initializers)
+    logging.info('Initialized dataset iterators in %d seconds',
+                 time.time() - start)

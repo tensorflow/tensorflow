@@ -35,6 +35,10 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
 using stream_executor::dnn::DimIndex;
@@ -1070,6 +1074,7 @@ namespace functor {
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -1147,11 +1152,11 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     }
 
     ConvBackpropDimensions dims;
-    OP_REQUIRES_OK(context,
-                   ConvBackpropComputeDimensionsV2(
-                       "Conv3DBackpropInputOp", /*num_spatial_dims=*/3,
-                       input_shape, filter_shape, out_backprop_shape, dilation_,
-                       stride_, padding_, data_format_, &dims));
+    OP_REQUIRES_OK(context, ConvBackpropComputeDimensionsV2(
+                                "Conv3DBackpropInputOp", /*num_spatial_dims=*/3,
+                                input_shape, filter_shape, out_backprop_shape,
+                                dilation_, stride_, padding_,
+                                /*explicit_paddings=*/{}, data_format_, &dims));
 
     Tensor* in_backprop;
     OP_REQUIRES_OK(context,
@@ -1328,7 +1333,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         AsDeviceMemory(pre_transformed_in_backprop.template flat<T>().data(),
                        pre_transformed_in_backprop.template flat<T>().size());
 
-    static int64 ConvolveBackwardDataScratchSize = GetCudnnWorkspaceLimit(
+    static int64 ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     const int device_id = stream->parent()->device_ordinal();
@@ -1363,8 +1368,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
-        CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
-                                                context);
+        DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                              context);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
@@ -1400,8 +1405,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
                                                    algorithm_config);
     }
-    CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
-                                            context);
+    DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                          context);
     bool cudnn_launch_status =
         stream
             ->ThenConvolveBackwardDataWithAlgorithm(
@@ -1532,11 +1537,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     }
 
     ConvBackpropDimensions dims;
-    OP_REQUIRES_OK(context,
-                   ConvBackpropComputeDimensionsV2(
-                       "Conv3DBackpropFilterOp", /*num_spatial_dims=*/3,
-                       input_shape, filter_shape, out_backprop_shape, dilation_,
-                       stride_, padding_, data_format_, &dims));
+    OP_REQUIRES_OK(
+        context,
+        ConvBackpropComputeDimensionsV2(
+            "Conv3DBackpropFilterOp", /*num_spatial_dims=*/3, input_shape,
+            filter_shape, out_backprop_shape, dilation_, stride_, padding_,
+            /*explicit_paddings=*/{}, data_format_, &dims));
 
     Tensor* filter_backprop;
     OP_REQUIRES_OK(context,
@@ -1734,7 +1740,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         AsDeviceMemory(transformed_input.template flat<T>().data(),
                        transformed_input.template flat<T>().size());
 
-    static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
+    static int64 ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     const int device_id = stream->parent()->device_ordinal();
@@ -1769,8 +1775,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
-        CudnnScratchAllocator scratch_allocator(
-            ConvolveBackwardFilterScratchSize, context);
+        DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                              context);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
@@ -1807,8 +1813,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
     }
-    CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
-                                            context);
+    DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                          context);
     bool cudnn_launch_status =
         stream
             ->ThenConvolveBackwardFilterWithAlgorithm(
@@ -1859,6 +1865,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                           Conv3DBackpropFilterOp<GPUDevice, T>);
 TF_CALL_half(REGISTER_GPU_KERNEL);
 TF_CALL_float(REGISTER_GPU_KERNEL);
+TF_CALL_double(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA

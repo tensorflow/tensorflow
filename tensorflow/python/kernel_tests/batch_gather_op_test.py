@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -52,7 +53,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         gather_t = array_ops.batch_gather(params, indices_tf)
         expected_result = np.array([3, 7])
         np_val = self._buildParams(expected_result, dtype)
-        gather_val = gather_t.eval()
+        gather_val = self.evaluate(gather_t)
         self.assertAllEqual(np_val, gather_val)
         self.assertEqual(np_val.shape, gather_t.get_shape())
 
@@ -68,7 +69,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         gather_t = array_ops.batch_gather(params, indices_tf)
         expected_result = np.array([[3], [15]])
         np_val = self._buildParams(expected_result, dtype)
-        gather_val = gather_t.eval()
+        gather_val = self.evaluate(gather_t)
         self.assertAllEqual(np_val, gather_val)
         self.assertEqual(np_val.shape, gather_t.get_shape())
 
@@ -81,12 +82,13 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         params = constant_op.constant(params_np)
         indices_tf = constant_op.constant(indices)
         gather_t = array_ops.batch_gather(params, indices_tf)
-        gather_val = gather_t.eval()
+        gather_val = self.evaluate(gather_t)
         expected_result = np.array([[[2, 0], [7, 5]], [[10, 8], [11, 15]]])
         np_val = self._buildParams(expected_result, dtype)
         self.assertAllEqual(np_val, gather_val)
         self.assertEqual(np_val.shape, gather_t.get_shape())
 
+  @test_util.run_deprecated_v1
   def testString(self):
     params = np.array([[b"asdf", b"zxcv"], [b"qwer", b"uiop"]])
     with self.cached_session():
@@ -94,6 +96,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual([[b"qwer", b"uiop"]],
                           array_ops.batch_gather(params, indices_tf).eval())
 
+  @test_util.run_deprecated_v1
   def testUnknownIndices(self):
     params = constant_op.constant([[0, 1, 2]])
     indices = array_ops.placeholder(dtypes.int32, shape=[None, None])
@@ -106,6 +109,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesOpError(r"indices\[0\] = 7 is not in \[0, 2\)"):
         array_ops.batch_gather(params, [7]).eval()
 
+  @test_util.run_deprecated_v1
   def testEmptySlices(self):
     with self.session(use_gpu=True):
       for dtype in _TEST_TYPES:

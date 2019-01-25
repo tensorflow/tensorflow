@@ -24,7 +24,9 @@ limitations under the License.
 
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
+#include <set>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -108,20 +110,26 @@ class XlaDevice : public LocalDevice {
     // The name of the compilation device (e.g., "XLA_CPU_JIT");
     string compilation_device_name;
 
-    // 'transfer_as_literal' is true if device<->host transfers must be done
-    // using XLA's TransferLiteral{To,From}Device interface. If false, we can
-    // use ThenMemcpy instead.
-    bool transfer_as_literal = false;
-
     // If 'use_multiple_streams' is true, we create separate streams for
     // compute, host-to-device, and device-to-host communication.
     bool use_multiple_streams = false;
 
+    // A function that describes how the on-host shapes of
+    // a) argument and return value, for entry computations
+    // b) variables, for all computations,
+    // should be represented in XLA. Parameters/return values will be shaped
+    // according to this function, and reshaped back to/from their declared
+    // shapes for computations. Must be non-null.
     XlaCompiler::ShapeRepresentationFn shape_representation_fn;
 
     // If padded_shape_fn is empty, a default implementation that returns
     // the logical on-device shape without padding is used.
     PaddedShapeFn padded_shape_fn;
+
+    // Set of devices to use. This controls which of the devices on the given
+    // platform will have resources allocated. For GPUs this will be
+    // filled from visible_gpu_devices list from session configuration.
+    absl::optional<std::set<int>> allowed_devices;
   };
 
   // Creates a new XLA Device.
@@ -134,6 +142,7 @@ class XlaDevice : public LocalDevice {
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
   Status Sync() override;
+  void Sync(const DoneCallback& done) override;
 
   Status FillContextMap(const Graph* graph,
                         DeviceContextMap* device_context_map) override
@@ -158,10 +167,12 @@ class XlaDevice : public LocalDevice {
   Status UseGpuDeviceInfo() LOCKS_EXCLUDED(mu_);
 
   // Instructs this XlaDevice to return 'sync_on_completion' for
-  // RequiresSyncOnCompletion().
-  void SetRequiresSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
+  // AllowsSyncOnCompletion().
+  void SetAllowsSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
 
-  bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
+  bool AllowsSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
+
+  Status CurrentStatus() override LOCKS_EXCLUDED(mu_);
 
  private:
   xla::LocalClient* client() const;
@@ -188,6 +199,7 @@ class XlaDevice : public LocalDevice {
   se::Platform* const platform_;  // Not owned.
   // Memory allocator associated with this device.
   Allocator* xla_allocator_ GUARDED_BY(mu_) = nullptr;  // Not owned.
+
   // Stream associated with this device. Operations enqueued on this
   // stream are executed on the device. Operations include data
   // copying back and forth between CPU and the device, and
@@ -203,9 +215,11 @@ class XlaDevice : public LocalDevice {
   // If use_multiple_streams_, device to host transfers are performed using this
   // stream.
   std::shared_ptr<se::Stream> device_to_host_stream_ GUARDED_BY(mu_);
-  // Must we use XLA's transfer manager for correct host<->device transfers? if
-  // false, we can use ThenMemcpy() instead.
-  const bool transfer_as_literal_;
+  // If use_multiple_streams_, transfers between different devices are performed
+  // using these streams.
+  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_
+      GUARDED_BY(mu_);
+
   const XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 
   // The device context accessed by all users of the XlaDevice, set by calls to
@@ -220,9 +234,14 @@ class XlaDevice : public LocalDevice {
   // Thread pool used for running closures
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
-  // True if the device requires XlaDevice::Sync to be called on completion
+  // True if the device allows XlaDevice::Sync to be called on completion
   // regardless of status.
-  bool sync_on_completion_ GUARDED_BY(mu_) = false;
+  bool sync_on_completion_ GUARDED_BY(mu_) = true;
+
+  // Set of devices to use. This controls which of the devices on the given
+  // platform will have resources allocated. For GPUs this will be
+  // filled from visible_gpu_devices list from session configuration.
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

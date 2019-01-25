@@ -59,15 +59,15 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[(2, 4, 5, 4)])
+        expected_output_dims=[[[2, 4, 5, 4]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": ["bias", "mul", "sub"],
-        "my_trt_op_1": ["weights", "conv"]
+        "TRTEngineOp_0": ["bias", "mul", "sub"],
+        "TRTEngineOp_1": ["weights", "conv"]
     }
 
 

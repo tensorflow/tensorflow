@@ -52,8 +52,9 @@ Status GrpcSession::Create(const SessionOptions& options,
   }
   if (!master) {
     SharedGrpcChannelPtr master_channel;
-    TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
-        options.target.substr(kSchemePrefixLength), &master_channel));
+    TF_RETURN_IF_ERROR(
+        NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
+                               &options.config.rpc_options(), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
   }
   session->SetRemoteMaster(std::move(master));
@@ -91,6 +92,12 @@ void ReEncodeConsts(GraphDef* gdef) {
 }
 }  // namespace
 
+void GrpcSession::SetHandleAndGraphVersion(string handle, int64 graph_version) {
+  mutex_lock l(mu_);
+  handle_ = std::move(handle);
+  current_graph_version_ = graph_version;
+}
+
 Status GrpcSession::Handle(string* out_handle) {
   mutex_lock l(mu_);
   if (handle_.empty()) {
@@ -116,9 +123,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   CreateSessionResponse resp;
   Status s = master_->CreateSession(call_options, &req, &resp);
   if (s.ok()) {
-    mutex_lock l(mu_);
-    swap(handle_, *(resp.mutable_session_handle()));
-    current_graph_version_ = resp.graph_version();
+    SetHandleAndGraphVersion(resp.session_handle(), resp.graph_version());
   }
   return s;
 }
@@ -384,8 +389,9 @@ void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
 Status GrpcSession::Reset(const SessionOptions& options,
                           const std::vector<string>& containers) {
   SharedGrpcChannelPtr master_channel;
-  TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
-      options.target.substr(kSchemePrefixLength), &master_channel));
+  TF_RETURN_IF_ERROR(
+      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
+                             /*rpc_options=*/nullptr, &master_channel));
   auto master = NewGrpcMaster(master_channel);
   ResetRequest req;
   for (const auto& c : containers) req.add_container(c);

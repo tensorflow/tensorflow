@@ -22,75 +22,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
-const char kOptionalVariantTypeName[] = "tensorflow::data::Optional";
-
-// An `OptionalVariant` can represent either an "actual value" (a tuple of
-// tensors) or "none", and may be stored in a DT_VARIANT tensor.
-class OptionalVariant {
- public:
-  // Create an `OptionalVariant` with no actual value.
-  OptionalVariant() : values_(nullptr) {}
-
-  // Create an `OptionalVariant` with the actual value given by the tuple of
-  // tensors in `values`.
-  explicit OptionalVariant(std::vector<Tensor> values)
-      : values_(new std::vector<Tensor>(std::move(values))) {}
-
-  OptionalVariant(const OptionalVariant& other) : values_(other.values_) {}
-
-  // Returns true if `this` represents an actual value.
-  bool has_value() const { return values_ != nullptr; }
-
-  // REQUIRES: `this->has_value()` must be true.
-  const std::vector<Tensor>& get_values() const {
-    CHECK(values_) << "Tried to get values from an empty OptionalVariant";
-    return *values_;
-  }
-
-  // Implementations of the necessary methods for using `OptionalVariant`
-  // objects in DT_VARIANT tensors.
-  string TypeName() const { return kOptionalVariantTypeName; }
-  void Encode(VariantTensorData* data) const {
-    data->set_metadata(values_ != nullptr);
-    if (values_ != nullptr) {
-      for (const auto& t : *values_) {
-        *(data->add_tensors()) = t;
-      }
-    }
-  }
-
-  bool Decode(const VariantTensorData& data) {
-    if (data.type_name() != TypeName()) {
-      return false;
-    }
-    bool has_value = false;
-    if (!data.get_metadata(&has_value)) {
-      return false;
-    }
-    if (has_value) {
-      values_.reset(new std::vector<Tensor>(data.tensors()));
-    } else {
-      values_.reset();
-    }
-    return true;
-  }
-
-  string DebugString() const {
-    if (values_) {
-      return strings::StrCat("OptionalVariant<", "values: (",
-                             str_util::Join(*values_, ", ",
-                                            [](string* s, const Tensor& elem) {
-                                              *s = elem.DebugString();
-                                            }),
-                             ")>");
-    } else {
-      return strings::StrCat("OptionalVariant<None>");
-    }
-  }
-
- private:
-  std::shared_ptr<const std::vector<Tensor>> values_;
-};
 
 class OptionalNoneOp : public OpKernel {
  public:
@@ -143,6 +74,12 @@ class OptionalGetValueOp : public OpKernel {
   explicit OptionalGetValueOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES(
+        ctx, output_shapes_.size() == output_types_.size(),
+        errors::InvalidArgument(
+            "output_types and output_shapes must be same length, got:\n",
+            "output_types: ", output_types_.size(), "\n",
+            "output_shapes: ", output_shapes_.size()));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -162,6 +99,10 @@ class OptionalGetValueOp : public OpKernel {
         ctx, optional->has_value(),
         errors::InvalidArgument("The given optional does not have a value."));
     const auto& components = optional->get_values();
+    OP_REQUIRES(ctx, components.size() == output_types_.size(),
+                errors::InvalidArgument(
+                    "The given optional has ", components.size(),
+                    " components, expected ", output_types_.size()));
     for (int i = 0; i < components.size(); ++i) {
       OP_REQUIRES(
           ctx, components[i].dtype() == output_types_[i],
@@ -186,23 +127,27 @@ class OptionalGetValueOp : public OpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_CPU).Priority(2),
                         OptionalNoneOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_GPU).Priority(1),
                         OptionalNoneOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalFromValue").Device(DEVICE_CPU),
-                        OptionalFromValueOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalFromValue").Device(DEVICE_GPU),
-                        OptionalFromValueOp);
-
-REGISTER_KERNEL_BUILDER(Name("OptionalHasValue").Device(DEVICE_CPU),
-                        OptionalHasValueOp);
 REGISTER_KERNEL_BUILDER(
-    Name("OptionalHasValue").Device(DEVICE_GPU).HostMemory("has_value"),
-    OptionalHasValueOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_CPU),
+    Name("OptionalFromValue").Device(DEVICE_CPU).Priority(2),
+    OptionalFromValueOp);
+REGISTER_KERNEL_BUILDER(
+    Name("OptionalFromValue").Device(DEVICE_GPU).Priority(1),
+    OptionalFromValueOp);
+
+REGISTER_KERNEL_BUILDER(Name("OptionalHasValue").Device(DEVICE_CPU).Priority(2),
+                        OptionalHasValueOp);
+REGISTER_KERNEL_BUILDER(Name("OptionalHasValue")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("has_value")
+                            .Priority(1),
+                        OptionalHasValueOp);
+REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_CPU).Priority(2),
                         OptionalGetValueOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_GPU).Priority(1),
                         OptionalGetValueOp);
 
 static Status OptionalDeviceCopy(
@@ -213,18 +158,14 @@ static Status OptionalDeviceCopy(
     std::vector<Tensor> to_values;
     to_values.reserve(from_values.size());
     for (const Tensor& t : from_values) {
-      if (t.dtype() == DT_VARIANT) {
-        // TODO(b/116349787): Implement support for nested variants.
-        return errors::Unimplemented(
-            "Support for copying nested variants to device has not yet been "
-            "implemented.");
-      }
-    }
-    for (const Tensor& t : from_values) {
-      if (DMAHelper::CanUseDMA(&t)) {
-        Tensor tmp(t.dtype());
-        TF_RETURN_IF_ERROR(copy(t, &tmp));
-        to_values.push_back(std::move(tmp));
+      if (DMAHelper::CanUseDMA(&t) || t.dtype() == DT_VARIANT) {
+        // NOTE(skyewm): we're careful to make sure the lifetime of the 'to'
+        // Tensor passed to `copy` (i.e. to_values.back()) is the same as the
+        // returned 'to' OptionalVariant. This is because `copy` may spawn async
+        // callbacks that don't run until after this function returns and access
+        // the 'to' Tensor (e.g. BaseGPUDevice::MaybeCopyTensorToGPU).
+        to_values.emplace_back(t.dtype());
+        TF_RETURN_IF_ERROR(copy(t, &to_values.back()));
       } else {
         to_values.push_back(t);
       }
@@ -271,6 +212,21 @@ Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index) {
   variant_t->scalar<Variant>()() = v;
   return Status::OK();
 }
+
+REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
+                                         DEVICE_CPU, OptionalVariant,
+                                         OptionalZerosLike<CPUDevice>);
+
+REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
+                                          OptionalVariant,
+                                          OptionalBinaryAdd<CPUDevice>);
+
+Status OptionalShape(const OptionalVariant& x, TensorShape* s) {
+  *s = TensorShape({});
+  return Status::OK();
+}
+
+REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(OptionalVariant, OptionalShape);
 
 }  // namespace data
 }  // namespace tensorflow

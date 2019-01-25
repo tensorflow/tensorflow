@@ -170,6 +170,7 @@ REGISTER_OP("While")
     .Attr("cond: func")
     .Attr("body: func")
     .Attr("output_shapes: list(shape) = []")
+    .Attr("parallel_iterations: int = 10")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
@@ -226,6 +227,8 @@ REGISTER_OP("PartitionedCall")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
     .Attr("config: string = ''")
+    .Attr("config_proto: string = ''")
+    .Attr("executor_type: string = ''")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("StatefulPartitionedCall")
@@ -234,7 +237,9 @@ REGISTER_OP("StatefulPartitionedCall")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
-    .Attr("config: string = ''")
+    .Attr("config: string = ''")  // Deprecated in favor of config_proto
+    .Attr("config_proto: string = ''")
+    .Attr("executor_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 

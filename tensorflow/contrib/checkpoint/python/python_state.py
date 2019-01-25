@@ -34,7 +34,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-class NumpyState(base.CheckpointableBase):
+class NumpyState(base.Checkpointable):
   """A checkpointable object whose NumPy array attributes are saved/restored.
 
   Example usage:
@@ -130,7 +130,7 @@ class NumpyState(base.CheckpointableBase):
 
 
 @six.add_metaclass(abc.ABCMeta)
-class PythonStateWrapper(base.CheckpointableBase):
+class PythonStateWrapper(base.Checkpointable):
   """Wraps a Python object for storage in an object-based checkpoint."""
 
   @abc.abstractmethod

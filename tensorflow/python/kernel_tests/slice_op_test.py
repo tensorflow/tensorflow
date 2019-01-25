@@ -24,6 +24,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -38,7 +39,7 @@ class SliceTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.float32)
         slice_t = a[2, k:k]
-        slice_val = slice_t.eval()
+        slice_val = self.evaluate(slice_t)
       self.assertAllEqual(slice_val, inp[2, k:k])
 
   def testInt32(self):
@@ -47,30 +48,70 @@ class SliceTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.int32)
         slice_t = a[2, k:k]
-        slice_val = slice_t.eval()
+        slice_val = self.evaluate(slice_t)
       self.assertAllEqual(slice_val, inp[2, k:k])
 
-  def testInt64Slicing(self):
-    with self.cached_session(use_gpu=True):
-      a = constant_op.constant([0, 1, 2], dtype=dtypes.int64)
+  def testSlicingWithInt64Index(self):
+    with self.cached_session(force_gpu=test.is_gpu_available()):
+      a = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
 
       # Slice using int64 Tensor.
       i = constant_op.constant(1, dtype=dtypes.int64)
       slice_t = a[i]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual(1, slice_val)
       slice_t = a[i:i+1]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1], slice_val)
 
       # Slice using int64 integer.
       i = np.asarray(1).astype(np.int64)
       slice_t = a[i]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual(1, slice_val)
       slice_t = a[i:i+1]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1], slice_val)
+
+      a_int32 = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
+      slice_t = array_ops.slice(a_int32,
+                                np.asarray([1]).astype(np.int64),
+                                np.asarray([2]).astype(np.int64))
+      slice_val = self.evaluate(slice_t)
+      self.assertAllEqual([1, 2], slice_val)
+
+      a_float32 = constant_op.constant([0, 1, 2], dtype=dtypes.float32)
+      slice_t = array_ops.slice(a_float32,
+                                np.asarray([1]).astype(np.int64),
+                                np.asarray([2]).astype(np.int64))
+      slice_val = self.evaluate(slice_t)
+      self.assertAllEqual([1, 2], slice_val)
+
+  def testSlicingInt64Tensor(self):
+    with self.cached_session(force_gpu=test.is_gpu_available()):
+      a = constant_op.constant([0, 1, 2], dtype=dtypes.int64)
+
+      # Slice using int32 Tensor.
+      i = constant_op.constant(1, dtype=dtypes.int32)
+      slice_t = a[i]
+      slice_val = self.evaluate(slice_t)
+      self.assertAllEqual(1, slice_val)
+      slice_t = a[i:i + 1]
+      slice_val = self.evaluate(slice_t)
+      self.assertAllEqual([1], slice_val)
+
+      # Slice using int32 integer.
+      i = np.asarray(1).astype(np.int32)
+      slice_t = a[i]
+      slice_val = self.evaluate(slice_t)
+      self.assertAllEqual(1, slice_val)
+      slice_t = a[i:i + 1]
+      slice_val = self.evaluate(slice_t)
+      self.assertAllEqual([1], slice_val)
+
+      slice_t = array_ops.slice(a, [1], [2])
+      slice_val = self.evaluate(slice_t)
+      self.assertAllEqual([1, 2], slice_val)
 
   def testSelectAll(self):
     for _ in range(10):
@@ -81,8 +122,8 @@ class SliceTest(test.TestCase):
         slice_explicit_t = array_ops.slice(a, [0, 0, 0, 0], [-1, -1, -1, -1])
         slice_implicit_t = a[:, :, :, :]
 
-        self.assertAllEqual(inp, slice_explicit_t.eval())
-        self.assertAllEqual(inp, slice_implicit_t.eval())
+        self.assertAllEqual(inp, self.evaluate(slice_explicit_t))
+        self.assertAllEqual(inp, self.evaluate(slice_implicit_t))
         self.assertEqual(inp.shape, slice_explicit_t.get_shape())
         self.assertEqual(inp.shape, slice_implicit_t.get_shape())
 
@@ -94,7 +135,7 @@ class SliceTest(test.TestCase):
 
         hi = np.random.randint(0, 9)
         scalar_t = a[hi]
-        scalar_val = scalar_t.eval()
+        scalar_val = self.evaluate(scalar_t)
         self.assertAllEqual(scalar_val, inp[hi])
 
         if hi > 0:
@@ -102,9 +143,10 @@ class SliceTest(test.TestCase):
         else:
           lo = 0
         slice_t = a[lo:hi]
-        slice_val = slice_t.eval()
+        slice_val = self.evaluate(slice_t)
         self.assertAllEqual(slice_val, inp[lo:hi])
 
+  @test_util.run_deprecated_v1
   def testScalarInput(self):
     input_val = 0
     with self.cached_session() as sess:
@@ -119,6 +161,7 @@ class SliceTest(test.TestCase):
                                                "out of range"):
         sess.run([slice_t], feed_dict={input_t: input_val})
 
+  @test_util.run_deprecated_v1
   def testInvalidIndex(self):
     input_val = [1, 2]
     with self.cached_session() as sess:
@@ -139,6 +182,7 @@ class SliceTest(test.TestCase):
     np_ans = x[begin:begin + size, :]
     self.assertAllEqual(tf_ans, np_ans)
 
+  @test_util.run_deprecated_v1
   def testSliceMatrixDim0(self):
     x = np.random.rand(8, 4).astype("f")
     self._testSliceMatrixDim0(x, 1, 2)
@@ -155,7 +199,7 @@ class SliceTest(test.TestCase):
 
         x, y = np.random.randint(0, 3, size=2).tolist()
         slice_t = a[x, 0:y]
-        slice_val = slice_t.eval()
+        slice_val = self.evaluate(slice_t)
       self.assertAllEqual(slice_val, inp[x, 0:y])
 
   def testSimple(self):
@@ -167,12 +211,13 @@ class SliceTest(test.TestCase):
           dtype=dtypes.float32)
       slice_t = array_ops.slice(a, [0, 0], [2, 2])
       slice2_t = a[:2, :2]
-      slice_val, slice2_val = sess.run([slice_t, slice2_t])
+      slice_val, slice2_val = self.evaluate([slice_t, slice2_t])
     self.assertAllEqual(slice_val, inp[:2, :2])
     self.assertAllEqual(slice2_val, inp[:2, :2])
     self.assertEqual(slice_val.shape, slice_t.get_shape())
     self.assertEqual(slice2_val.shape, slice2_t.get_shape())
 
+  @test_util.run_deprecated_v1
   def testComplex(self):
     with self.session(use_gpu=True):
       inp = np.random.rand(4, 10, 10, 4).astype("f")
@@ -207,7 +252,7 @@ class SliceTest(test.TestCase):
                    + sizes[3], indices[4]:indices[4] + sizes[4], indices[5]:
                    indices[5] + sizes[5]]
 
-      slice_val, slice2_val = sess.run([slice_t, slice2_t])
+      slice_val, slice2_val = self.evaluate([slice_t, slice2_t])
 
     expected_val = inp[indices[0]:indices[0] + sizes[0], indices[1]:indices[
         1] + sizes[1], indices[2]:indices[2] + sizes[2], indices[3]:indices[
@@ -242,7 +287,7 @@ class SliceTest(test.TestCase):
       grads = np.random.rand(num_grads).astype("f").reshape(slice_size)
       grad_tensor = constant_op.constant(grads)
       grad = gradients_impl.gradients(slice_t, [a], grad_tensor)[0]
-      result = grad.eval()
+      result = self.evaluate(grad)
 
     # Create a zero tensor of the input shape ane place
     # the grads into the right location to compare against TensorFlow.
@@ -273,9 +318,10 @@ class SliceTest(test.TestCase):
       g1 = gradients_impl.gradients(loss1, x)[0]
       g2 = gradients_impl.gradients(loss2, x)[0]
 
-      g1_val, g2_val = sess.run([g1, g2])
+      g1_val, g2_val = self.evaluate([g1, g2])
     self.assertAllEqual(g1_val, g2_val)
 
+  @test_util.run_deprecated_v1
   def testGradientsAll(self):
     # Slice the middle square out of a 4x4 input
     self._testGradientSlice([4, 4], [1, 1], [2, 2])
@@ -295,6 +341,7 @@ class SliceTest(test.TestCase):
     # Use -1 as a slice dimension on a 2D tensor.
     self._testGradientVariableSize2D()
 
+  @test_util.run_deprecated_v1
   def testNotIterable(self):
     # NOTE(mrry): If we register __getitem__ as an overloaded
     # operator, Python will valiantly attempt to iterate over the
@@ -306,6 +353,7 @@ class SliceTest(test.TestCase):
       for _ in c:
         pass
 
+  @test_util.run_deprecated_v1
   def testComputedShape(self):
     # NOTE(mrry): We cannot currently handle partially-known values,
     # because `tf.slice()` uses -1 to specify a wildcard size, and
@@ -328,7 +376,7 @@ class SliceTest(test.TestCase):
       c = b[:-1, :]
       d = c[1, :]
       res = 2 * d - c[1, :] + a[2, :] - 2 * b[-2, :]
-      self.assertAllEqual([0, 0, 0], res.eval())
+      self.assertAllEqual([0, 0, 0], self.evaluate(res))
 
 
 if __name__ == "__main__":

@@ -183,6 +183,20 @@ xla::StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
                                        DataType dtype, const Node* input,
                                        absl::optional<string> requested_device);
 
+// For "If"/"While" nodes, if some of their inputs are Const nodes, rewrite
+// body functions to use the Const nodes instead of original _Arg nodes.
+//
+// For example, say we have the following computation:
+//     shape = constant_op.constant([1])
+//     return tf.cond(pred, lambda: tf.ones(shape), lambda: tf.zeros(shape))
+// If we do not rewrite then/else function, they will use _Arg node as shape
+// input for tf.ones/tf.zeros. But XLA requires that shape input to be compile
+// time constant, so XLA compilation will fail. This rewriting process will
+// change the shape input to Const node.
+Status PropagateConstIntoFunctionalNodes(
+    Graph* g, const FunctionLibraryDefinition* lookup_fld,
+    FunctionLibraryDefinition* fld);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_TF2XLA_UTIL_H_

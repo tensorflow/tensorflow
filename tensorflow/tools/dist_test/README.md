@@ -1,6 +1,7 @@
 # Testing Distributed Runtime in TensorFlow
-This folder containers tools and test suites for the GRPC-based distributed
-runtime in TensorFlow.
+
+This folder contains tools and test suites for GRPC-based and Allreduce-based
+distributed runtimes in TensorFlow.
 
 There are three general modes of testing:
 
@@ -11,9 +12,8 @@ For example:
 
     ./local_test.sh
 
-By default, local_test.sh runs the MNIST-with-replicas model as a test.
-However, you can use the --model_name flag to run the tf-learn/wide&deep
-cesnsu model:
+By default, local_test.sh runs the MNIST-with-replicas model as a test. However,
+you can use the --model_name flag to run the tf-learn/wide&deep census model:
 
     ./local_test.sh --model_name CENSUS_WIDENDEEP
 
@@ -122,3 +122,37 @@ servers. For example:
 
 See [Kubernetes kubectl documentation](http://kubernetes.io/docs/user-guide/kubectl-overview/)
 for more details.
+
+**Create allreduce-based Tensorflow k8s deployment**
+
+The allreduce-based Tensorflow, Horovod, is an open source distributed deep
+learning framework for TensorFlow, detailed information can be found in
+https://arxiv.org/pdf/1802.05799.pdf.
+
+The script "scripts_allreduce/k8s_deploy_tensorflow.sh" can be used to create or
+delete an allreduce-based Tensorflow k8s deployment with specified number of
+containers.
+
+Create a deployment containing a number of containers and enable passwordless
+ssh between the containers (optional: enable host network mode with --hostnet
+and --port <container_ssh_port>):
+
+    scripts_allreduce/k8s_deploy_tensorflow.sh \
+        --num_containers <num_of_containers> \
+        --image <docker_image> \
+        --deployment <deployment_name> \
+        --config_map <config_map>
+
+Delete a deployment and config_map in k8s cluster:
+
+    scripts_allreduce/k8s_deploy_tensorflow.sh \
+        --deployment <deployment_name> \
+        --config_map <config_map> \
+        --delete
+
+Upload file or directory to all the containers of a deployment:
+
+    scripts_allreduce/k8s_deploy_tensorflow.sh \
+        --cp --src <path_to_local_directory> \
+        --dest <path_to_directory_on_containers> \
+        --deployment <deployment_name>

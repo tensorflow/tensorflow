@@ -19,10 +19,13 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.contrib.rnn.ops import gen_lstm_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -113,7 +116,7 @@ def _lstm_block_cell(x,
     ValueError: If cell_size is None.
   """
   if wci is None:
-    cell_size = cs_prev.get_shape().with_rank(2)[1].value
+    cell_size = cs_prev.get_shape().with_rank(2).dims[1].value
     if cell_size is None:
       raise ValueError("cell_size from `cs_prev` should not be None.")
     wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
@@ -154,7 +157,7 @@ def _block_lstm(seq_len_max,
 
   Args:
     seq_len_max: A `Tensor` of type `int64`.
-    x: A list of at least 1 `Tensor` objects of the same type in: `float32`.
+    x: A list of at least 1 `Tensor` objects of the same type.
     w: A `Tensor`. Must have the same type as `x`.
     b: A `Tensor`. Must have the same type as `x`.
     cs_prev: A `Tensor`. Must have the same type as `x`.
@@ -187,21 +190,22 @@ def _block_lstm(seq_len_max,
   Raises:
     ValueError: If `b` does not have a valid shape.
   """
-  batch_size = x[0].get_shape().with_rank(2)[0].value
-  cell_size4 = b.get_shape().with_rank(1)[0].value
+  dtype = x[0].dtype
+  batch_size = x[0].get_shape().with_rank(2).dims[0].value
+  cell_size4 = b.get_shape().with_rank(1).dims[0].value
   if cell_size4 is None:
     raise ValueError("`b` shape must not be None.")
   cell_size = cell_size4 / 4
   zero_state = None
   if cs_prev is None or h_prev is None:
     zero_state = array_ops.constant(
-        0, dtype=dtypes.float32, shape=[batch_size, cell_size])
+        0, dtype=dtype, shape=[batch_size, cell_size])
   if cs_prev is None:
     cs_prev = zero_state
   if h_prev is None:
     h_prev = zero_state
   if wci is None:
-    wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
+    wci = array_ops.constant(0, dtype=dtype, shape=[cell_size])
     wcf = wci
     wco = wci
 
@@ -238,13 +242,13 @@ def _LSTMBlockCellGrad(op, *grad):
   (i, cs, f, o, ci, co, _) = op.outputs
   (_, cs_grad, _, _, _, _, h_grad) = grad
 
-  batch_size = x.get_shape().with_rank(2)[0].value
+  batch_size = x.get_shape().with_rank(2).dims[0].value
   if batch_size is None:
     batch_size = -1
-  input_size = x.get_shape().with_rank(2)[1].value
+  input_size = x.get_shape().with_rank(2).dims[1].value
   if input_size is None:
     raise ValueError("input_size from `x` should not be None.")
-  cell_size = cs_prev.get_shape().with_rank(2)[1].value
+  cell_size = cs_prev.get_shape().with_rank(2).dims[1].value
   if cell_size is None:
     raise ValueError("cell_size from `cs_prev` should not be None.")
 
@@ -382,7 +386,7 @@ class LSTMBlockCell(LayerRNNCell):
         "scope": "lstm_cell"
     }
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
   @property
   def state_size(self):
@@ -393,10 +397,10 @@ class LSTMBlockCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if not inputs_shape[1].value:
+    if not inputs_shape.dims[1].value:
       raise ValueError(
           "Expecting inputs_shape[1] to be set: %s" % str(inputs_shape))
-    input_size = inputs_shape[1].value
+    input_size = inputs_shape.dims[1].value
     self._kernel = self.add_variable(
         self._names["W"], [input_size + self._num_units, self._num_units * 4])
     self._bias = self.add_variable(
@@ -439,6 +443,7 @@ class LSTMBlockCell(LayerRNNCell):
     return h, new_state
 
 
+@six.add_metaclass(abc.ABCMeta)
 class LSTMBlockWrapper(base_layer.Layer):
   """This is a helper class that provides housekeeping for LSTM cells.
 
@@ -511,10 +516,10 @@ class LSTMBlockWrapper(base_layer.Layer):
     inputs_shape = inputs.get_shape().with_rank(3)
     if not inputs_shape[2]:
       raise ValueError("Expecting inputs_shape[2] to be set: %s" % inputs_shape)
-    batch_size = inputs_shape[1].value
+    batch_size = inputs_shape.dims[1].value
     if batch_size is None:
       batch_size = array_ops.shape(inputs)[1]
-    time_len = inputs_shape[0].value
+    time_len = inputs_shape.dims[0].value
     if time_len is None:
       time_len = array_ops.shape(inputs)[0]
 
@@ -624,7 +629,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     self._use_peephole = use_peephole
 
     # Inputs must be 3-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=3)
+    self.input_spec = input_spec.InputSpec(ndim=3)
 
   @property
   def num_units(self):
@@ -632,7 +637,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     return self._num_units
 
   def build(self, input_shape):
-    input_size = input_shape[2].value
+    input_size = input_shape.dims[2].value
     self._kernel = self.add_variable(
         "kernel", [input_size + self._num_units, self._num_units * 4])
     self._bias = self.add_variable(
@@ -674,7 +679,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     """
 
     inputs_shape = inputs.get_shape().with_rank(3)
-    time_len = inputs_shape[0].value
+    time_len = inputs_shape.dims[0].value
     if time_len is None:
       time_len = array_ops.shape(inputs)[0]
 

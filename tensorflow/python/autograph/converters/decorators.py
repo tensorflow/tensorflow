@@ -53,6 +53,10 @@ class DecoratorsTransformer(converter.Base):
         # This is currently verified by tests.
         continue
 
+      if not anno.hasanno(dec_func, 'live_val'):
+        raise ValueError('could not resolve the decorator "@%s"' %
+                         (anno.getanno(dec_func, anno.Basic.QN)))
+
       original_dec = anno.getanno(dec_func, anno.Basic.QN)
       dec_value = anno.getanno(dec_func, 'live_val')
 

@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 namespace data {
@@ -50,11 +50,11 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (count_ < 0) {
-        return std::unique_ptr<IteratorBase>(
-            new EmptyIterator({this, strings::StrCat(prefix, "::EmptySkip")}));
+        return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+            this, strings::StrCat(prefix, "::EmptySkip")});
       } else {
-        return std::unique_ptr<IteratorBase>(new FiniteIterator(
-            {this, strings::StrCat(prefix, "::FiniteSkip")}));
+        return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+            this, strings::StrCat(prefix, "::FiniteSkip")});
       }
     }
 
@@ -66,6 +66,14 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override { return "SkipDatasetOp::Dataset"; }
+
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return std::max(0LL, n - count_);
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -93,6 +101,12 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         return Status::OK();
       }
@@ -149,6 +163,12 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));

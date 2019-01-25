@@ -250,6 +250,7 @@ linux_cmake_vars = {
 # CMake variables specific to the Darwin (Mac OS X) platform.
 darwin_cmake_vars = {
     "HAVE_MALLOC_MALLOC_H": 1,
+    "HAVE_MALLOC_ZONE_STATISTICS": 1,
 }
 
 # CMake variables specific to the Windows platform.

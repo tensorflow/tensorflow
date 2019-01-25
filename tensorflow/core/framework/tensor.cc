@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -68,7 +69,8 @@ namespace {
 // An un-templated base class for Buffer.
 class BufferBase : public TensorBuffer {
  public:
-  explicit BufferBase(Allocator* alloc) : alloc_(alloc) {}
+  explicit BufferBase(Allocator* alloc, void* data_ptr)
+      : TensorBuffer(data_ptr), alloc_(alloc) {}
 
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(AllocationDescription* proto) const override {
@@ -106,7 +108,6 @@ class Buffer : public BufferBase {
   Buffer(Allocator* a, int64 n);
   Buffer(Allocator* a, int64 n, const AllocationAttributes& allocation_attr);
 
-  void* data() const override { return data_; }
   size_t size() const override { return sizeof(T) * elem_; }
 
  private:
@@ -442,20 +443,20 @@ struct ProtoHelper<Eigen::half> {
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n)
-    : BufferBase(a), data_(a->Allocate<T>(n)), elem_(n) {}
+    : BufferBase(a, a->Allocate<T>(n)), elem_(n) {}
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n,
                   const AllocationAttributes& allocation_attr)
-    : BufferBase(a), data_(a->Allocate<T>(n, allocation_attr)), elem_(n) {}
+    : BufferBase(a, a->Allocate<T>(n, allocation_attr)), elem_(n) {}
 
 template <typename T>
 Buffer<T>::~Buffer() {
-  if (data_) {
+  if (data()) {
     if (LogMemory::IsEnabled()) {
       RecordDeallocation();
     }
-    alloc_->Deallocate<T>(data_, elem_);
+    alloc_->Deallocate<T>(static_cast<T*>(data()), elem_);
   }
 }
 
@@ -650,14 +651,21 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 }
 
-void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
-                                    const TensorShape& shape) {
+Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
+                           const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
   int out_size = DataTypeSize(dtype);
-  CHECK_NE(in_size, 0);
-  CHECK_NE(out_size, 0);
-  CHECK_EQ(shape.num_elements() * out_size,
-           other.shape().num_elements() * in_size);
+  if (in_size == 0) {
+    return errors::InvalidArgument("other tensor has zero-sized data type");
+  }
+  if (out_size == 0) {
+    return errors::InvalidArgument("specified output type is zero-sized");
+  }
+  if (shape.num_elements() * out_size !=
+      other.shape().num_elements() * in_size) {
+    return errors::InvalidArgument(
+        "input and output shapes/data type sizes are not compatible");
+  }
   shape_ = shape;
   shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
@@ -665,6 +673,7 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
     buf_ = other.buf_;
     RefIfNonNull(buf_);
   }
+  return Status::OK();
 }
 
 // Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
@@ -752,12 +761,21 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
 Tensor::Tensor(DataType type, const TensorShape& shape)
     : Tensor(cpu_allocator(), type, shape) {}
 
+void Tensor::HostScalarTensorBufferBase::FillAllocationDescription(
+    AllocationDescription* proto) const {
+  proto->set_requested_bytes(size());
+  proto->set_allocator_name("HostScalarTensorBuffer");
+  proto->set_ptr(reinterpret_cast<uintptr_t>(data()));
+}
+
 template <typename T>
 class SubBuffer : public TensorBuffer {
  public:
   // This buffer is an alias to buf[delta, delta + n).
   SubBuffer(TensorBuffer* buf, int64 delta, int64 n)
-      : root_(buf->root_buffer()), data_(buf->base<T>() + delta), elem_(n) {
+      : TensorBuffer(buf->base<T>() + delta),
+        root_(buf->root_buffer()),
+        elem_(n) {
     // Sanity check. The caller should ensure the sub buffer is valid.
     CHECK_LE(root_->base<T>(), this->base<T>());
     T* root_limit = root_->base<T>() + root_->size() / sizeof(T);
@@ -768,7 +786,6 @@ class SubBuffer : public TensorBuffer {
     root_->Ref();
   }
 
-  void* data() const override { return data_; }
   size_t size() const override { return sizeof(T) * elem_; }
   TensorBuffer* root_buffer() override { return root_; }
   void FillAllocationDescription(AllocationDescription* proto) const override {
@@ -924,10 +941,18 @@ namespace {
 // logic is so simple we can just replicate it here, where it is close to its
 // usage and easy to change later. And there's the extra benefit of not
 // accessing an 'internal' namespace.
-inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a) {
+inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
+                                                bool print_v2) {
   return a;
 }
-inline float PrintOneElement(const Eigen::half& h) {
+inline string PrintOneElement(const string& a, bool print_v2) {
+  if (print_v2) {
+    return "\"" + str_util::CEscape(a) + "\"";
+  } else {
+    return str_util::CEscape(a);
+  }
+}
+inline float PrintOneElement(const Eigen::half& h, bool print_v2) {
   return static_cast<float>(h);
 }
 
@@ -949,7 +974,7 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
         return;
       }
       if (i > 0) strings::StrAppend(result, " ");
-      strings::StrAppend(result, PrintOneElement(data[(*data_index)++]));
+      strings::StrAppend(result, PrintOneElement(data[(*data_index)++], false));
     }
     return;
   }
@@ -992,7 +1017,7 @@ void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
   // We have recursed beyond all the dimensions into a single element
   // of the tensor.
   if (dim_index == num_dims) {
-    strings::StrAppend(result, PrintOneElement(data[data_index]));
+    strings::StrAppend(result, PrintOneElement(data[data_index], true));
     return;
   }
 
@@ -1040,7 +1065,7 @@ string SummarizeArray(int64 limit, int64 num_elts,
   if (shape.empty()) {
     for (int64 i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
-      strings::StrAppend(&ret, PrintOneElement(array[i]));
+      strings::StrAppend(&ret, PrintOneElement(array[i], print_v2));
     }
     if (num_elts > limit) strings::StrAppend(&ret, "...");
     return ret;
@@ -1115,6 +1140,9 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
       // will emit "1 0..." which is more compact.
       return SummarizeArray<bool>(limit, num_elts, shape_, data, print_v2);
       break;
+    case DT_STRING:
+      return SummarizeArray<string>(limit, num_elts, shape_, data, print_v2);
+      break;
     default: {
       // All irregular cases
       string ret;
@@ -1126,9 +1154,6 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
       for (size_t i = 0; i < limit; ++i) {
         if (i > 0) strings::StrAppend(&ret, " ");
         switch (dtype()) {
-          case DT_STRING:
-            strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
-            break;
           case DT_VARIANT: {
             const Variant& v = flat<Variant>()(i);
             strings::StrAppend(&ret, v.DebugString());
@@ -1158,10 +1183,15 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
          buf_->root_buffer() == b.buf_->root_buffer();
 }
 
-string Tensor::DebugString() const {
+string Tensor::DebugString(int num_values) const {
   return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
                          " shape: ", shape().DebugString(),
-                         " values: ", SummarizeValue(3), ">");
+                         " values: ", SummarizeValue(num_values), ">");
+}
+
+string Tensor::DeviceSafeDebugString() const {
+  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
+                         " shape: ", shape().DebugString(), ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

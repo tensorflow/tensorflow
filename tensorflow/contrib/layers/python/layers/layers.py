@@ -35,6 +35,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base
 from tensorflow.python.layers import convolutional as convolutional_layers
 from tensorflow.python.layers import core as core_layers
@@ -274,7 +275,7 @@ def _fused_batch_norm(inputs,
                        ' Expected 2 or 4 but got %d' % (inputs.name,
                                                         original_rank))
     if original_rank == 2:
-      channels = inputs.get_shape()[-1].value
+      channels = inputs.get_shape().dims[-1].value
       if channels is None:
         raise ValueError('`C` dimension must be known but is None')
       new_shape = [-1, 1, 1, channels]
@@ -692,7 +693,7 @@ def batch_norm(inputs,
       # explicitly reshape the params to params_shape_broadcast when computing
       # the moments and the batch normalization.
       params_shape_broadcast = list(
-          [1, inputs_shape[1].value] + [1 for _ in range(2, inputs_rank)])
+          [1, inputs_shape.dims[1].value] + [1 for _ in range(2, inputs_rank)])
     else:
       moments_axes = list(range(inputs_rank - 1))
       params_shape = inputs_shape[-1:]
@@ -890,7 +891,7 @@ def bias_add(inputs,
     elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
       raise ValueError('Data format NCHW only supports 4D Tensor')
     axis = 1 if data_format == DATA_FORMAT_NCHW else -1
-    num_features = inputs_shape[axis].value
+    num_features = inputs_shape.dims[axis].value
     if num_features is None:
       raise ValueError('`C` dimension must be known but is None')
     biases_collections = utils.get_variable_collections(variables_collections,
@@ -1823,8 +1824,8 @@ def fully_connected(inputs,
     ValueError: If x has rank less than 2 or if its last dimension is not set.
   """
   if not isinstance(num_outputs, six.integer_types):
-    raise ValueError('num_outputs should be int or long, got %s.' %
-                     (num_outputs,))
+    raise ValueError('num_outputs type should be one of %s, got %s.' % (
+        list(six.integer_types), type(num_outputs)))
 
   layer_variable_getter = _build_variable_getter({
       'bias': 'biases',
@@ -1958,7 +1959,7 @@ class GDN(base.Layer):
     self._reparam_offset = reparam_offset
     self.data_format = data_format
     self._channel_axis()  # trigger ValueError early
-    self.input_spec = base.InputSpec(min_ndim=3, max_ndim=5)
+    self.input_spec = input_spec.InputSpec(min_ndim=3, max_ndim=5)
 
   def _channel_axis(self):
     try:
@@ -2010,12 +2011,12 @@ class GDN(base.Layer):
   def build(self, input_shape):
     channel_axis = self._channel_axis()
     input_shape = tensor_shape.TensorShape(input_shape)
-    num_channels = input_shape[channel_axis].value
+    num_channels = input_shape.dims[channel_axis].value
     if num_channels is None:
       raise ValueError('The channel dimension of the inputs to `GDN` '
                        'must be defined.')
     self._input_rank = input_shape.ndims
-    self.input_spec = base.InputSpec(
+    self.input_spec = input_spec.InputSpec(
         ndim=input_shape.ndims, axes={
             channel_axis: num_channels
         })
@@ -2100,7 +2101,7 @@ class GDN(base.Layer):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not 3 <= input_shape.ndim <= 5:
       raise ValueError('`input_shape` must be of rank 3 to 5, inclusive.')
-    if input_shape[channel_axis].value is None:
+    if input_shape.dims[channel_axis].value is None:
       raise ValueError(
           'The channel dimension of `input_shape` must be defined.')
     return input_shape
@@ -2951,7 +2952,7 @@ def spatial_softmax(features,
       num_channels, height, width = static_shape[1], shape[2], shape[3]
     else:
       raise ValueError('data_format has to be either NCHW or NHWC.')
-    if num_channels.value is None:
+    if tensor_shape.dimension_value(num_channels) is None:
       raise ValueError('The num_channels dimension of the inputs to '
                        '`spatial_softmax` should be defined. Found `None`.')
 
@@ -2994,9 +2995,11 @@ def spatial_softmax(features,
       expected_y = math_ops.reduce_sum(
           pos_y * softmax_attention, [1], keepdims=True)
       expected_xy = array_ops.concat([expected_x, expected_y], 1)
-      feature_keypoints = array_ops.reshape(expected_xy,
-                                            [-1, num_channels.value * 2])
-      feature_keypoints.set_shape([None, num_channels.value * 2])
+      feature_keypoints = array_ops.reshape(
+          expected_xy,
+          [-1, tensor_shape.dimension_value(num_channels) * 2])
+      feature_keypoints.set_shape(
+          [None, tensor_shape.dimension_value(num_channels) * 2])
   return feature_keypoints
 
 

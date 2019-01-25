@@ -1,22 +1,6 @@
 path: "tensorflow.train"
 tf_module {
   member {
-    name: "AdadeltaOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdagradDAOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdagradOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdamOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "BytesList"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -25,15 +9,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CheckpointSaverHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "CheckpointSaverListener"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ChiefSessionCreator"
+    name: "CheckpointManager"
     mtype: "<type \'type\'>"
   }
   member {
@@ -73,28 +49,8 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "FeedFnHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "FinalOpsHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "FloatList"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "FtrlOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "GlobalStepWaiterHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "GradientDescentOptimizer"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "Int64List"
@@ -105,156 +61,12 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "LoggingTensorHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "LooperThread"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "MomentumOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "MonitoredSession"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "NanLossDuringTrainingError"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "NanTensorHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Optimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ProfilerHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ProximalAdagradOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ProximalGradientDescentOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "RMSPropOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Saver"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SaverDef"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "Scaffold"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SecondOrStepTimer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SequenceExample"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "Server"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ServerDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "SessionCreator"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionManager"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunArgs"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunContext"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunValues"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SingularMonitoredSession"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "StepCounterHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "StopAtStepHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SummarySaverHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Supervisor"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SyncReplicasOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "VocabInfo"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "WorkerSessionCreator"
-    mtype: "<type \'type\'>"
-  }
-  member_method {
-    name: "MonitoredTrainingSession"
-    argspec: "args=[\'master\', \'is_chief\', \'checkpoint_dir\', \'scaffold\', \'hooks\', \'chief_only_hooks\', \'save_checkpoint_secs\', \'save_summaries_steps\', \'save_summaries_secs\', \'config\', \'stop_grace_period_secs\', \'log_step_count_steps\', \'max_wait_secs\', \'save_checkpoint_steps\', \'summary_dir\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\', \'None\', \'None\', \'None\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'None\', \'120\', \'100\', \'7200\', \'<object object instance>\', \'None\'], "
-  }
-  member_method {
-    name: "NewCheckpointReader"
-    argspec: "args=[\'filepattern\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "assert_global_step"
-    argspec: "args=[\'global_step_tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "basic_train_loop"
-    argspec: "args=[\'supervisor\', \'train_step_fn\', \'args\', \'kwargs\', \'master\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\'], "
-  }
-  member_method {
-    name: "checkpoint_exists"
-    argspec: "args=[\'checkpoint_prefix\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "confusion_matrix"
-    argspec: "args=[\'labels\', \'predictions\', \'num_classes\', \'dtype\', \'name\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int32\'>\", \'None\', \'None\'], "
   }
   member_method {
     name: "cosine_decay"
@@ -265,48 +77,12 @@ tf_module {
     argspec: "args=[\'learning_rate\', \'global_step\', \'first_decay_steps\', \'t_mul\', \'m_mul\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'2.0\', \'1.0\', \'0.0\', \'None\'], "
   }
   member_method {
-    name: "create_global_step"
-    argspec: "args=[\'graph\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "exponential_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
-    name: "export_meta_graph"
-    argspec: "args=[\'filename\', \'meta_info_def\', \'graph_def\', \'saver_def\', \'collection_list\', \'as_text\', \'graph\', \'export_scope\', \'clear_devices\', \'clear_extraneous_savers\', \'strip_default_attrs\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\', \'False\', \'False\', \'False\'], "
-  }
-  member_method {
-    name: "generate_checkpoint_state_proto"
-    argspec: "args=[\'save_dir\', \'model_checkpoint_path\', \'all_model_checkpoint_paths\', \'all_model_checkpoint_timestamps\', \'last_preserved_timestamp\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "get_checkpoint_mtimes"
-    argspec: "args=[\'checkpoint_prefixes\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "get_checkpoint_state"
     argspec: "args=[\'checkpoint_dir\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "get_global_step"
-    argspec: "args=[\'graph\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "get_or_create_global_step"
-    argspec: "args=[\'graph\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "global_step"
-    argspec: "args=[\'sess\', \'global_step_tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "import_meta_graph"
-    argspec: "args=[\'meta_graph_or_file\', \'clear_devices\', \'import_scope\'], varargs=None, keywords=kwargs, defaults=[\'False\', \'None\'], "
-  }
-  member_method {
-    name: "init_from_checkpoint"
-    argspec: "args=[\'ckpt_dir_or_file\', \'assignment_map\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "inverse_time_decay"
@@ -341,20 +117,12 @@ tf_module {
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'initial_variance\', \'variance_decay\', \'num_periods\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'1.0\', \'0.55\', \'0.5\', \'0.0\', \'0.001\', \'None\'], "
   }
   member_method {
-    name: "piecewise_constant"
+    name: "piecewise_constant_decay"
     argspec: "args=[\'x\', \'boundaries\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "polynomial_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'end_learning_rate\', \'power\', \'cycle\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1.0\', \'False\', \'None\'], "
-  }
-  member_method {
-    name: "remove_checkpoint"
-    argspec: "args=[\'checkpoint_prefix\', \'checkpoint_format_version\', \'meta_graph_suffix\'], varargs=None, keywords=None, defaults=[\'2\', \'meta\'], "
-  }
-  member_method {
-    name: "replica_device_setter"
-    argspec: "args=[\'ps_tasks\', \'ps_device\', \'worker_device\', \'merge_devices\', \'cluster\', \'ps_ops\', \'ps_strategy\'], varargs=None, keywords=None, defaults=[\'0\', \'/job:ps\', \'/job:worker\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "sdca_fprint"
@@ -367,21 +135,5 @@ tf_module {
   member_method {
     name: "sdca_shrink_l1"
     argspec: "args=[\'weights\', \'l1\', \'l2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "summary_iterator"
-    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "update_checkpoint_state"
-    argspec: "args=[\'save_dir\', \'model_checkpoint_path\', \'all_model_checkpoint_paths\', \'latest_filename\', \'all_model_checkpoint_timestamps\', \'last_preserved_timestamp\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "warm_start"
-    argspec: "args=[\'ckpt_to_initialize_from\', \'vars_to_warm_start\', \'var_name_to_vocab_info\', \'var_name_to_prev_var_name\'], varargs=None, keywords=None, defaults=[\'.*\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "write_graph"
-    argspec: "args=[\'graph_or_graph_def\', \'logdir\', \'name\', \'as_text\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
 }

@@ -14,15 +14,45 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/memory/memory.h"
+#include "tensorflow/cc/client/client_session.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/xla/client/lib/cholesky.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
+#include "tensorflow/compiler/xla/client/lib/qr.h"
+#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/compiler/xrt/cc/ops/xrt_compile_ops.h"
+#include "tensorflow/compiler/xrt/cc/ops/xrt_execute_op.h"
+#include "tensorflow/compiler/xrt/cc/ops/xrt_state_ops.h"
+#include "tensorflow/compiler/xrt/xrt.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace swig {
+
+// TODO(b/118641336): Factor out XRT parts into a small c++ library of their
+// own.
 
 // TODO(b/34473877) Ideally XLA would support AllReduce among arbitrary sets of
 // device handles instead of needing to set the number of replicas at XLA
@@ -30,6 +60,12 @@ namespace swig {
 tensorflow::mutex g_local_client_mutex(tensorflow::LINKER_INITIALIZED);
 int g_replica_count GUARDED_BY(g_local_client_mutex) = 1;
 LocalClient* g_local_client GUARDED_BY(g_local_client_mutex) = nullptr;
+
+string* GetPlatformNameString() {
+  static string* platform_name_string PT_GUARDED_BY(g_local_client_mutex) =
+      new string("Host");
+  return platform_name_string;
+}
 
 Status InitializeReplicaCount(int replica_count) {
   if (replica_count < 1) {
@@ -47,27 +83,58 @@ Status InitializeReplicaCount(int replica_count) {
   return Status::OK();
 }
 
+Status InitializePlatformName(const string& platform_name) {
+  string* g_platform_name = GetPlatformNameString();
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  if (g_local_client != nullptr) {
+    return FailedPrecondition(
+        "Attempted to set the platform name to %s, but a local XLA service was "
+        "previously created with a platform name of %s.",
+        platform_name, *g_platform_name);
+  }
+  TF_RETURN_IF_ERROR(PlatformUtil::GetPlatform(platform_name).status());
+  *g_platform_name = platform_name;
+  return Status::OK();
+}
+
 int GetReplicaCount() {
   tensorflow::mutex_lock lock(g_local_client_mutex);
   return g_replica_count;
 }
 
-LocalClient* GetOrCreateLocalClient() {
+StatusOr<LocalClient*> GetOrCreateLocalClient() {
+  string* platform_name = GetPlatformNameString();
   tensorflow::mutex_lock lock(g_local_client_mutex);
   if (g_local_client != nullptr) {
     return g_local_client;
   }
   LocalClientOptions options;
+  options.set_platform(PlatformUtil::GetPlatform(*platform_name).ValueOrDie());
   options.set_number_of_replicas(g_replica_count);
-  g_local_client = ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  TF_ASSIGN_OR_RETURN(g_local_client,
+                      ClientLibrary::GetOrCreateLocalClient(options));
   CHECK(g_local_client != nullptr);
   return g_local_client;
+}
+
+Status RegisterCpuCustomCallTarget(const string& fn_name, PyObject* capsule) {
+  const char* name = "xla._CPU_CUSTOM_CALL_TARGET";
+  if (!PyCapsule_IsValid(capsule, name)) {
+    return InvalidArgument(
+        "Argument to RegisterCpuCustomCallTargetRegistry was not a "
+        "xla._CPU_CUSTOM_CALL_TARGET capsule.");
+  }
+  void* fn_ptr = PyCapsule_GetPointer(capsule, name);
+  CHECK(fn_ptr != nullptr);
+  cpu::CustomCallTargetRegistry::Global()->Register(
+      std::string(fn_name.begin(), fn_name.end()), fn_ptr);
+  return Status::OK();
 }
 
 Status TransferToInfeedLocal(const Literal& literal) {
   VLOG(1) << "Infeeding literal without replica number; shape: "
           << literal.shape();
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   return client->TransferToInfeedLocal(literal, /*device_ordinal=*/0);
 }
 
@@ -75,7 +142,7 @@ Status TransferToInfeedLocalReplica(const Literal& literal,
                                     int replica_number) {
   VLOG(1) << "Infeeding shape " << literal.shape()
           << " to replica number: " << replica_number;
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   TF_ASSIGN_OR_RETURN(int device_ordinal,
                       client->ReplicaNumberToDeviceOrdinal(replica_number));
   return client->TransferToInfeedLocal(literal, device_ordinal);
@@ -85,10 +152,37 @@ StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
                                                   int replica_number) {
   VLOG(1) << "Outfeeding literal from replica number: " << replica_number
           << " shape: " << shape;
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   TF_ASSIGN_OR_RETURN(int device_ordinal,
                       client->ReplicaNumberToDeviceOrdinal(replica_number));
   return client->TransferFromOutfeedLocal(shape, device_ordinal);
+}
+
+static StatusOr<ScopedShapedBuffer> ToBuffer(LocalClient* client,
+                                             int device_ordinal,
+                                             const Literal& arg) {
+  return client->LiteralToShapedBuffer(arg, device_ordinal,
+                                       client->backend().memory_allocator());
+}
+
+/* static */
+StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
+    const Literal& argument, const absl::optional<Shape>& shape_with_layout,
+    int replica_number) {
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
+  TF_ASSIGN_OR_RETURN(int device_ordinal,
+                      client->ReplicaNumberToDeviceOrdinal(replica_number));
+  VLOG(1) << "Creating shaped buffer from literal on replica/ordinal: "
+          << replica_number << "/" << device_ordinal;
+  StatusOr<ScopedShapedBuffer> buf = [&] {
+    if (shape_with_layout) {
+      Literal relaid = argument.Relayout(shape_with_layout.value());
+      return ToBuffer(client, device_ordinal, relaid);
+    }
+    return ToBuffer(client, device_ordinal, argument);
+  }();
+  TF_RETURN_IF_ERROR(buf.status());
+  return new LocalShapedBuffer(std::move(buf).ValueOrDie());
 }
 
 LocalShapedBuffer::LocalShapedBuffer(ScopedShapedBuffer shaped_buffer)
@@ -100,11 +194,20 @@ const ScopedShapedBuffer* LocalShapedBuffer::shaped_buffer() const {
 
 ShapedBuffer LocalShapedBuffer::Release() { return shaped_buffer_.release(); }
 
+const Shape& LocalShapedBuffer::shape() const {
+  return shaped_buffer()->on_device_shape();
+}
+
+StatusOr<Literal> LocalShapedBuffer::ToLiteral() const {
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
+  return client->ShapedBufferToLiteral(*shaped_buffer());
+}
+
 LocalShapedBufferTuple::LocalShapedBufferTuple(
     std::vector<LocalShapedBuffer*> elements)
     : elements_(std::move(elements)) {
   for (auto* element : elements_) {
-    DCHECK(element != nullptr);
+    CHECK(element != nullptr);
   }
 }
 
@@ -126,139 +229,124 @@ StatusOr<LocalShapedBuffer*> LocalShapedBufferTuple::Release(int i) {
   return element;
 }
 
-int LocalShapedBufferTuple::size() const { return elements_.size(); }
+int64 LocalShapedBufferTuple::size() const { return elements_.size(); }
 
-static StatusOr<ScopedShapedBuffer> ToBuffer(LocalClient* client,
-                                             int device_ordinal,
-                                             const Literal& arg) {
-  return client->LiteralToShapedBuffer(arg, device_ordinal,
-                                       client->backend().memory_allocator());
+XrtAllocation::XrtAllocation(int64 handle, Shape shape,
+                             const string& session_target)
+    : handle_(handle), shape_(shape), session_target_(session_target) {}
+
+XrtAllocation::~XrtAllocation() {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto allocation_handle =
+      tensorflow::ops::Placeholder(root, tensorflow::DT_INT64);
+  auto release =
+      tensorflow::ops::XRTReleaseAllocationHandle(root, allocation_handle);
+  if (!root.status().ok()) {
+    LOG(ERROR) << root.status();
+    return;
+  }
+
+  tensorflow::ClientSession session(root, session_target_);
+  tensorflow::ClientSession::FeedType inputs;
+  inputs.insert({allocation_handle, handle()});
+  std::vector<tensorflow::Tensor> outputs;
+  auto status = session.Run(inputs, {}, {release}, &outputs);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+    return;
+  }
 }
 
 /* static */
-StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
-    const Literal& argument, const absl::optional<Shape>& shape_with_layout) {
-  LocalClient* client = GetOrCreateLocalClient();
-  StatusOr<ScopedShapedBuffer> buf = [&] {
-    if (shape_with_layout) {
-      Literal relaid = argument.Relayout(shape_with_layout.value());
-      return ToBuffer(client, /*device_ordinal=*/0, relaid);
-    }
-    return ToBuffer(client, /*device_ordinal=*/0, argument);
-  }();
-  TF_RETURN_IF_ERROR(buf.status());
-  return new LocalShapedBuffer(std::move(buf).ValueOrDie());
+StatusOr<XrtAllocation*> XrtAllocation::FromLiteral(
+    const Literal& argument, const string& session_target) {
+  xrt::XLAAllocation alloc;
+  *alloc.mutable_value() = argument.ToProto();
+
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto literal_string =
+      tensorflow::ops::Placeholder(root, tensorflow::DT_STRING);
+  auto literal_handle = tensorflow::ops::XRTAllocate(root, literal_string);
+  TF_RETURN_IF_ERROR(root.status());
+
+  tensorflow::ClientSession session(root, session_target);
+  tensorflow::ClientSession::FeedType inputs;
+  inputs.insert({literal_string, alloc.SerializeAsString()});
+  std::vector<tensorflow::Tensor> outputs;
+  TF_RETURN_IF_ERROR(session.Run(inputs, {literal_handle}, &outputs));
+
+  int64 handle = outputs[0].scalar<int64>()();
+  return new XrtAllocation(handle, argument.shape(), session_target);
 }
 
-StatusOr<Literal> LocalShapedBuffer::ToLiteral() const {
-  LocalClient* client = GetOrCreateLocalClient();
-  return client->ShapedBufferToLiteral(*shaped_buffer());
+const int64 XrtAllocation::handle() const { return handle_; }
+
+const Shape& XrtAllocation::shape() const { return shape_; }
+
+StatusOr<Literal> XrtAllocation::ToLiteral() const {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto allocation_handle =
+      tensorflow::ops::Placeholder(root, tensorflow::DT_INT64);
+  auto read_literal = tensorflow::ops::XRTReadLiteral(root, allocation_handle);
+  TF_RETURN_IF_ERROR(root.status());
+
+  tensorflow::ClientSession session(root, session_target_);
+  tensorflow::ClientSession::FeedType inputs;
+  inputs.insert({allocation_handle, handle()});
+  std::vector<tensorflow::Tensor> outputs;
+  TF_RETURN_IF_ERROR(session.Run(inputs, {read_literal}, &outputs));
+
+  xla::LiteralProto response;
+  TF_RET_CHECK(response.ParseFromString(outputs[0].scalar<string>()()));
+  return Literal::CreateFromProto(response);
 }
+
+XrtAllocationTuple::XrtAllocationTuple(std::vector<XrtAllocation*> elements)
+    : elements_(std::move(elements)) {
+  for (auto* element : elements_) {
+    CHECK(element != nullptr);
+  }
+}
+
+XrtAllocationTuple::~XrtAllocationTuple() {
+  for (XrtAllocation* element : elements_) {
+    if (element != nullptr) {
+      delete element;
+    }
+  }
+}
+
+StatusOr<XrtAllocation*> XrtAllocationTuple::Release(int i) {
+  XrtAllocation* element = elements_[i];
+  if (element == nullptr) {
+    return InvalidArgument("Attempted to release already-released element %d.",
+                           i);
+  }
+  elements_[i] = nullptr;
+  return element;
+}
+
+int64 XrtAllocationTuple::size() const { return elements_.size(); }
 
 CompiledLocalComputation::CompiledLocalComputation(
     std::unique_ptr<LocalExecutable> executable)
     : executable_(std::move(executable)) {}
 
-StatusOr<Literal> CompiledLocalComputation::Execute(
-    const std::vector<Literal>& arguments,
-    const std::vector<absl::optional<Shape>>& shapes_with_layout) {
-  LocalClient* client = GetOrCreateLocalClient();
-
-  VLOG(1) << "Execution requested with " << GetReplicaCount() << " replicas.";
-
-  // Each replica populates a StatusOr result, but only replica zero actually
-  // retrieves its literal value.
-  std::vector<StatusOr<Literal>> results(GetReplicaCount());
-  {
-    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "xlarun",
-                                        GetReplicaCount());
-
-    for (int replica = 0; replica < GetReplicaCount(); ++replica) {
-      pool.Schedule(
-          [this, client, replica, &arguments, &shapes_with_layout, &results] {
-            StatusOr<int> device_ordinal_status =
-                client->ReplicaNumberToDeviceOrdinal(replica);
-            if (!device_ordinal_status.ok()) {
-              results[replica] = device_ordinal_status.status();
-              return;
-            }
-            const int device_ordinal = device_ordinal_status.ValueOrDie();
-            VLOG(3) << "Replica " << replica
-                    << " mapped to device ordinal for execution: "
-                    << device_ordinal;
-
-            // Transfer arguments in
-            std::vector<ScopedShapedBuffer> scoped_buffers;
-            scoped_buffers.reserve(arguments.size());
-            for (int i = 0; i < arguments.size(); ++i) {
-              const Literal& argument = arguments[i];
-              const absl::optional<Shape>& shape_with_layout =
-                  shapes_with_layout[i];
-
-              StatusOr<ScopedShapedBuffer> pushed;
-              if (shape_with_layout) {
-                Literal relaid = argument.Relayout(shape_with_layout.value());
-                pushed = ToBuffer(client, device_ordinal, relaid);
-              } else {
-                pushed = ToBuffer(client, device_ordinal, argument);
-              }
-              if (!pushed.ok()) {
-                results[replica] = pushed.status();
-                return;
-              }
-
-              scoped_buffers.push_back(std::move(pushed).ValueOrDie());
-            }
-
-            // Execute
-            std::vector<const ShapedBuffer*> argument_buffers;
-            argument_buffers.reserve(scoped_buffers.size());
-            for (auto& buffer : scoped_buffers) {
-              argument_buffers.push_back(&buffer);
-            }
-
-            DeviceAssignment device_assignment =
-                client->backend()
-                    .computation_placer()
-                    ->AssignDevices(GetReplicaCount(), /*computation_count=*/1)
-                    .ConsumeValueOrDie();
-
-            ExecutableRunOptions options;
-            options.set_device_ordinal(device_ordinal);
-            options.set_allocator(client->backend().memory_allocator());
-            options.set_intra_op_thread_pool(
-                client->backend().eigen_intra_op_thread_pool_device());
-            options.set_device_assignment(&device_assignment);
-            StatusOr<ScopedShapedBuffer> result_buffer_status =
-                executable_->Run(argument_buffers, options);
-            if (!result_buffer_status.ok()) {
-              results[replica] = result_buffer_status.status();
-              return;
-            }
-
-            // Transfer result out
-            results[replica] = client->ShapedBufferToLiteral(
-                std::move(result_buffer_status).ValueOrDie());
-          });
-    }
-  }
-
-  for (int replica = 0; replica < GetReplicaCount(); ++replica) {
-    const auto& statusor = results[replica];
-    if (!statusor.ok()) {
-      return InternalError(
-          "Failed running replica %d (other replicas may have failed as well): "
-          "%s.",
-          replica, statusor.status().ToString());
-    }
-  }
-
-  return std::move(results[0]);
-}
-
-LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
+StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
     absl::Span<LocalShapedBuffer* const> argument_handles) {
-  LocalClient* client = GetOrCreateLocalClient();
+  if (num_replicas() != 1) {
+    return InvalidArgument(
+        "Attempted to execute computation with %d replicas using Execute()",
+        num_replicas());
+  }
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
+  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                      client->backend().computation_placer()->AssignDevices(
+                          1, /*computation_count=*/1));
+  StatusOr<ScopedShapedBuffer> result_buffer_status;
+  const int device_ordinal = device_assignment(0, 0);
+  VLOG(3) << "Replica 0 mapped to device ordinal for execution: "
+          << device_ordinal;
 
   std::vector<const ShapedBuffer*> argument_buffers;
   argument_buffers.reserve(argument_handles.size());
@@ -266,16 +354,181 @@ LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
     argument_buffers.push_back(handle->shaped_buffer());
   }
 
-  // Execute
   ExecutableRunOptions options;
+  options.set_device_ordinal(device_ordinal);
   options.set_allocator(client->backend().memory_allocator());
   options.set_intra_op_thread_pool(
       client->backend().eigen_intra_op_thread_pool_device());
-  ScopedShapedBuffer result_buffer =
-      executable_->Run(argument_buffers, options).ConsumeValueOrDie();
+  options.set_device_assignment(&device_assignment);
 
-  return new LocalShapedBuffer(std::move(result_buffer));
+  result_buffer_status = executable_->Run(argument_buffers, options);
+
+  if (!result_buffer_status.ok()) {
+    return InternalError(
+        "Failed running replica 0 (other replicas may have failed as well): "
+        "%s.",
+        result_buffer_status.status().ToString());
+  }
+  return new LocalShapedBuffer(std::move(result_buffer_status).ValueOrDie());
 }
+
+StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
+    absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles) {
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
+  const int num_devices = client->device_count();
+
+  if (argument_handles.size() != num_replicas()) {
+    return InvalidArgument(
+        "Attempted to execute with %d replicas when replica count is %d",
+        argument_handles.size(), num_devices);
+  }
+  if (argument_handles.size() > num_devices) {
+    return InvalidArgument(
+        "Attempted to execute with %d replicas when device count is %d",
+        argument_handles.size(), num_devices);
+  }
+
+  VLOG(1) << "Executing with " << num_replicas() << " replicas.";
+
+  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                      client->backend().computation_placer()->AssignDevices(
+                          num_replicas(), /*computation_count=*/1));
+
+  std::vector<StatusOr<ScopedShapedBuffer>> results(num_replicas());
+  auto execute = [this, client, &device_assignment, &argument_handles,
+                  &results](int replica) {
+    const int device_ordinal = device_assignment(replica, 0);
+    VLOG(3) << "Replica " << replica
+            << " mapped to device ordinal for execution: " << device_ordinal;
+
+    std::vector<const ShapedBuffer*> argument_buffers;
+    argument_buffers.reserve(argument_handles[replica].size());
+    for (auto& handle : argument_handles[replica]) {
+      argument_buffers.push_back(handle->shaped_buffer());
+    }
+
+    ExecutableRunOptions options;
+    options.set_device_ordinal(device_ordinal);
+    options.set_allocator(client->backend().memory_allocator());
+    options.set_intra_op_thread_pool(
+        client->backend().eigen_intra_op_thread_pool_device());
+    options.set_device_assignment(&device_assignment);
+    StatusOr<ScopedShapedBuffer> result_buffer_status =
+        executable_->Run(argument_buffers, options);
+
+    results[replica] = std::move(result_buffer_status);
+  };
+
+  if (num_replicas() == 1) {
+    // Fast-path if there is only one replica — run the computation on the
+    // current thread.
+    execute(0);
+  } else {
+    // TODO(phawkins): don't recreate the threadpool for each execution.
+    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "xlarun",
+                                        num_replicas() - 1);
+
+    for (int replica = 0; replica < num_replicas() - 1; ++replica) {
+      pool.Schedule([&execute, replica] { execute(replica); });
+    }
+    execute(num_replicas() - 1);
+  }
+
+  std::vector<LocalShapedBuffer*> wrapped_results(num_replicas());
+  for (int replica = 0; replica < num_replicas(); ++replica) {
+    auto& statusor = results[replica];
+    if (!statusor.ok()) {
+      return InternalError(
+          "Failed running replica %d (other replicas may have failed as well): "
+          "%s.",
+          replica, statusor.status().ToString());
+    }
+    wrapped_results[replica] =
+        new LocalShapedBuffer(std::move(statusor).ValueOrDie());
+  }
+
+  return new LocalShapedBufferTuple(std::move(wrapped_results));
+}
+
+static StatusOr<Shape> GetReturnValueShape(const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  return std::move(*program_shape.mutable_result());
+}
+
+CompiledXrtComputation::CompiledXrtComputation(
+    const ProgramShape& program_shape, int64 handle,
+    const string& session_target)
+    : program_shape_(program_shape),
+      handle_(handle),
+      session_target_(session_target) {}
+
+CompiledXrtComputation::~CompiledXrtComputation() {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto computation_handle =
+      tensorflow::ops::Placeholder(root, tensorflow::DT_INT64);
+  auto release =
+      tensorflow::ops::XRTReleaseCompilationHandle(root, computation_handle);
+  if (!root.status().ok()) {
+    LOG(ERROR) << root.status();
+    return;
+  }
+
+  tensorflow::ClientSession session(root, session_target_);
+  tensorflow::ClientSession::FeedType inputs;
+  inputs.insert({computation_handle, handle()});
+  std::vector<tensorflow::Tensor> outputs;
+  auto status = session.Run(inputs, {}, {release}, &outputs);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+    return;
+  }
+}
+
+StatusOr<XrtAllocation*> CompiledXrtComputation::Execute(
+    absl::Span<XrtAllocation* const> argument_handles) {
+  const int num_expected_arguments = program_shape().parameters().size();
+
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  std::vector<tensorflow::Output> arguments;
+  arguments.reserve(num_expected_arguments);
+  for (int i = 0; i < num_expected_arguments; ++i) {
+    arguments.push_back(
+        tensorflow::ops::Placeholder(root, tensorflow::DT_INT64));
+  }
+  auto computation_handle =
+      tensorflow::ops::Placeholder(root, tensorflow::DT_INT64);
+  auto execution_config =
+      tensorflow::ops::Placeholder(root, tensorflow::DT_STRING);
+  auto execute = tensorflow::ops::XRTExecute(root, computation_handle,
+                                             execution_config, arguments);
+  TF_RETURN_IF_ERROR(root.status());
+
+  TF_RET_CHECK(argument_handles.size() == arguments.size());
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(false);
+  e.set_release_compilation_handle(false);
+
+  tensorflow::ClientSession session(root, session_target_);
+  tensorflow::ClientSession::FeedType inputs;
+  for (int i = 0; i < arguments.size(); ++i) {
+    inputs.insert({arguments[i], argument_handles[i]->handle()});
+  }
+  inputs.insert({computation_handle, handle()});
+  inputs.insert({execution_config, e.SerializeAsString()});
+  std::vector<tensorflow::Tensor> outputs;
+  TF_RETURN_IF_ERROR(session.Run(inputs, {execute}, &outputs));
+
+  int64 output = outputs[0].scalar<int64>()();
+  return new XrtAllocation(output, program_shape().result(), session_target_);
+}
+
+const ProgramShape& CompiledXrtComputation::program_shape() const {
+  return program_shape_;
+}
+
+int64 CompiledXrtComputation::handle() const { return handle_; }
 
 LocalComputation::LocalComputation(XlaComputation computation)
     : computation_(std::move(computation)) {}
@@ -289,7 +542,7 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
     argument_shape_pointers.push_back(&argument_shape);
   }
 
-  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   ExecutableBuildOptions options;
   if (build_options != nullptr) {
     options = *build_options;
@@ -298,6 +551,37 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
       auto local_executable,
       client->Compile(computation_, argument_shape_pointers, options));
   return new CompiledLocalComputation(std::move(local_executable));
+}
+
+StatusOr<CompiledXrtComputation*> LocalComputation::CompileForXrt(
+    const std::vector<Shape>& argument_shapes, const string& session_target) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto program = tensorflow::ops::Placeholder(root, tensorflow::DT_STRING);
+  auto compile = tensorflow::ops::XRTCompile(root, program);
+  TF_RETURN_IF_ERROR(root.status());
+
+  xrt::XLAComputation c;
+  auto config = c.mutable_config();
+  ProgramShape shapes;
+  for (auto& shape : argument_shapes) {
+    *shapes.add_parameters() = shape;
+  }
+  TF_ASSIGN_OR_RETURN(*shapes.mutable_result(), GetReturnValueShape());
+  LayoutUtil::SetToDefaultLayout(&shapes);
+  *config->mutable_program_shape() = shapes.ToProto();
+  auto snapshot = computation().Snapshot().ValueOrDie();
+  *c.mutable_hlo_snapshot() = *snapshot;
+
+  tensorflow::ClientSession session(root, session_target);
+  tensorflow::ClientSession::FeedType inputs;
+  inputs.insert({program, c.SerializeAsString()});
+  std::vector<tensorflow::Tensor> outputs;
+  TF_RETURN_IF_ERROR(session.Run(inputs, {compile.handle}, &outputs));
+
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation().GetProgramShape());
+  int64 handle = outputs[0].scalar<int64>()();
+  return new CompiledXrtComputation(program_shape, handle, session_target);
 }
 
 const XlaComputation& LocalComputation::computation() const {
@@ -314,9 +598,7 @@ string LocalComputation::GetSerializedProto() const {
 }
 
 StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      computation_.GetProgramShape());
-  return std::move(*program_shape.mutable_result());
+  return swig::GetReturnValueShape(computation_);
 }
 
 LocalOp::LocalOp(const XlaOp& op) : op_(op) {}
@@ -343,6 +625,12 @@ LocalOp LocalComputationBuilder::Parameter(int64 parameter_number,
   return xla::Parameter(&builder_, parameter_number, shape, name);
 }
 
+StatusOr<LocalComputation*> LocalComputationBuilder::BuildWithRoot(
+    const LocalOp& root) {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder_.Build(root.op()));
+  return new LocalComputation(std::move(computation));
+}
+
 StatusOr<Shape> LocalComputationBuilder::GetShape(const LocalOp& operand) {
   return builder_.GetShape(operand.op());
 }
@@ -366,9 +654,24 @@ LocalOp LocalComputationBuilder::ConstantLiteral(const Literal& literal) {
   return xla::ConstantLiteral(&builder_, literal);
 }
 
+LocalOp LocalComputationBuilder::Iota(PrimitiveType element_type, int64 size) {
+  return xla::Iota(&builder_, element_type, size);
+}
+
+LocalOp LocalComputationBuilder::BroadcastedIota(const Shape& shape,
+                                                 int64 dimension) {
+  return xla::Iota(&builder_, shape, dimension);
+}
+
 LocalOp LocalComputationBuilder::Broadcast(
     const LocalOp& operand, absl::Span<const int64> broadcast_sizes) {
   return xla::Broadcast(operand.op(), broadcast_sizes);
+}
+
+LocalOp LocalComputationBuilder::BroadcastInDim(
+    const LocalOp& operand, absl::Span<const int64> out_dim_sizes,
+    absl::Span<const int64> broadcast_dimensions) {
+  return xla::BroadcastInDim(operand.op(), out_dim_sizes, broadcast_dimensions);
 }
 
 LocalOp LocalComputationBuilder::Pad(const LocalOp& operand,
@@ -388,8 +691,9 @@ LocalOp LocalComputationBuilder::Collapse(const LocalOp& operand,
   return xla::Collapse(operand.op(), dimensions);
 }
 
-LocalOp LocalComputationBuilder::CrossReplicaSum(const LocalOp& operand) {
-  return xla::CrossReplicaSum(operand.op());
+LocalOp LocalComputationBuilder::CrossReplicaSum(
+    const LocalOp& operand, absl::Span<const ReplicaGroup> replica_groups) {
+  return xla::CrossReplicaSum(operand.op(), replica_groups);
 }
 
 LocalOp LocalComputationBuilder::Slice(const LocalOp& operand,
@@ -496,6 +800,21 @@ LocalOp LocalComputationBuilder::Call(const LocalComputation& local_computation,
   return xla::Call(&builder_, local_computation.computation(), xla_ops);
 }
 
+LocalOp LocalComputationBuilder::CustomCall(
+    const string& call_target_name, absl::Span<const LocalOp> operands,
+    const Shape& shape_with_layout,
+    const std::vector<Shape>& operand_shapes_with_layout,
+    const string& opaque) {
+  std::vector<XlaOp> xla_ops;
+  xla_ops.reserve(operands.size());
+  for (const auto& op : operands) {
+    xla_ops.push_back(op.op());
+  }
+  return xla::CustomCallWithLayout(&builder_, call_target_name, xla_ops,
+                                   shape_with_layout,
+                                   operand_shapes_with_layout, opaque);
+}
+
 LocalOp LocalComputationBuilder::Transpose(
     const LocalOp& operand, absl::Span<const int64> permutation) {
   return xla::Transpose(operand.op(), permutation);
@@ -579,6 +898,43 @@ LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
                                             const LocalOp& values,
                                             int64 dimension) {
   return xla::Sort(keys.op(), {values.op()}, dimension);
+}
+
+LocalOp LocalComputationBuilder::Cholesky(const LocalOp& a) {
+  return xla::Cholesky(a.op());
+}
+
+LocalOp LocalComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
+  XlaBuilder* builder = a.op().builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto qr, xla::QRDecomposition(a.op(), full_matrices));
+    return xla::Tuple(builder, {qr.q, qr.r});
+  });
+}
+
+LocalOp LocalComputationBuilder::TriangularSolve(const LocalOp& a,
+                                                 const LocalOp& b,
+                                                 bool left_side, bool lower,
+                                                 bool transpose_a,
+                                                 bool conjugate_a) {
+  return xla::TriangularSolve(a.op(), b.op(), left_side, lower, transpose_a,
+                              conjugate_a);
+}
+
+LocalOp LocalComputationBuilder::Gather(
+    const LocalOp& input, const LocalOp& start_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    absl::Span<const int64> slice_sizes) {
+  return xla::Gather(input.op(), start_indices.op(), dimension_numbers,
+                     slice_sizes);
+}
+
+LocalOp LocalComputationBuilder::Scatter(
+    const LocalOp& input, const LocalOp& scatter_indices,
+    const LocalOp& updates, const LocalComputation& update_computation,
+    const ScatterDimensionNumbers& dimension_numbers) {
+  return xla::Scatter(input.op(), scatter_indices.op(), updates.op(),
+                      update_computation.computation(), dimension_numbers);
 }
 
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
@@ -677,7 +1033,13 @@ void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer) {
   delete local_shaped_buffer;
 }
 
+void DeleteXrtAllocation(XrtAllocation* allocation) { delete allocation; }
+
 void DeleteCompiledLocalComputation(CompiledLocalComputation* computation) {
+  delete computation;
+}
+
+void DeleteCompiledXrtComputation(CompiledXrtComputation* computation) {
   delete computation;
 }
 
@@ -687,13 +1049,13 @@ void DeleteLocalComputation(LocalComputation* computation) {
 
 StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
     LocalShapedBuffer* local_shaped_buffer) {
-  if (!ShapeUtil::IsTuple(
-          local_shaped_buffer->shaped_buffer()->on_device_shape())) {
+  const Shape tuple_shape = local_shaped_buffer->shape();
+
+  if (!tuple_shape.IsTuple()) {
     return InvalidArgument(
         "Attemped to destructure a LocalShapedBuffer that did not have a tuple "
         "shape; shape: %s",
-        ShapeUtil::HumanString(
-            local_shaped_buffer->shaped_buffer()->on_device_shape()));
+        ShapeUtil::HumanString(tuple_shape));
   }
 
   DeviceMemoryAllocator* allocator =
@@ -705,7 +1067,6 @@ StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
   int device_ordinal = tuple_buffer.device_ordinal();
 
   ShapeTree<se::DeviceMemoryBase>& shape_tree = tuple_buffer.buffers();
-  const Shape& tuple_shape = tuple_buffer.on_device_shape();
   std::vector<LocalShapedBuffer*> results;
   for (int64 i = 0; i < ShapeUtil::TupleElementCount(tuple_shape); ++i) {
     // Create a shaped buffer for this destructured tuple element.
@@ -731,6 +1092,48 @@ StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
   se::DeviceMemoryBase root_buffer = tuple_buffer.root_buffer();
   TF_RETURN_IF_ERROR(allocator->Deallocate(device_ordinal, root_buffer));
   return new LocalShapedBufferTuple(std::move(results));
+}
+
+StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
+    XrtAllocation* allocation, const string& session_target) {
+  const Shape& tuple_shape = allocation->shape();
+
+  if (!tuple_shape.IsTuple()) {
+    return InvalidArgument(
+        "Attemped to destructure a LocalShapedBuffer that did not have a tuple "
+        "shape; shape: %s",
+        ShapeUtil::HumanString(tuple_shape));
+  }
+
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto base_handle = tensorflow::ops::Placeholder(root, tensorflow::DT_INT64);
+  auto shape_index = tensorflow::ops::Placeholder(root, tensorflow::DT_INT32);
+  auto subtuple = tensorflow::ops::XRTSubTuple(root, base_handle, shape_index);
+  TF_RETURN_IF_ERROR(root.status());
+
+  tensorflow::ClientSession session(root, session_target);
+  tensorflow::ClientSession::FeedType inputs;
+  std::vector<XrtAllocation*> results;
+  for (int32 i = 0; i < ShapeUtil::TupleElementCount(tuple_shape); ++i) {
+    inputs.clear();
+    inputs.insert({base_handle, allocation->handle()});
+    inputs.insert({shape_index, {i}});
+    std::vector<tensorflow::Tensor> outputs;
+    auto status = session.Run(inputs, {subtuple}, &outputs);
+    if (!status.ok()) {
+      // Clean up before returning non-ok status.
+      for (int j = 0; j < results.size(); ++j) {
+        delete results[j];
+      }
+      return status;
+    }
+    const int64 subtuple_handle = outputs[0].scalar<int64>()();
+    const Shape& subtuple_shape =
+        ShapeUtil::GetTupleElementShape(tuple_shape, i);
+    results.push_back(
+        new XrtAllocation(subtuple_handle, subtuple_shape, session_target));
+  }
+  return new XrtAllocationTuple(std::move(results));
 }
 
 }  // namespace swig

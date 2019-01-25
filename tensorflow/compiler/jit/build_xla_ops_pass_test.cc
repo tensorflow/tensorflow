@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/node_matchers.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -42,14 +41,8 @@ class BuildXlaOpsTest : public ::testing::Test {
               .ok());
   }
 
-  void TearDown() override {
-    for (Device* device : devices_) {
-      delete device;
-    }
-  }
-
  private:
-  std::vector<Device*> devices_;
+  std::vector<std::unique_ptr<Device>> devices_;
 };
 
 using ::tensorflow::testing::FindNodeByName;

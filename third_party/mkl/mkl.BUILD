@@ -12,7 +12,7 @@ filegroup(
 
 cc_library(
     name = "mkl_headers",
-    srcs = glob(["include/*"]),
+    srcs = glob(["include/*(.cc|.cpp|.cxx|.c++|.C|.c|.h|.hh|.hpp|.ipp|.hxx|.inc|.S|.s|.asm|.a|.lib|.pic.a|.lo|.lo.lib|.pic.lo|.so|.dylib|.dll|.o|.obj|.pic.o)"]),
     includes = ["include"],
     visibility = ["//visibility:public"],
 )

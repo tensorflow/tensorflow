@@ -21,14 +21,15 @@ from __future__ import print_function
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
-from tensorflow.python.eager import function
+from tensorflow.python.eager import context
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
+from tensorflow.python.framework.func_graph import FuncGraph
 
 
 def function_def_to_graph(fdef, input_shapes=None):
-  """Converts a FunctionDef to a function.FuncGraph (sub-class Graph).
+  """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
   The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
   The input tensors are represented as placeholders.
@@ -46,7 +47,7 @@ def function_def_to_graph(fdef, input_shapes=None):
   Returns:
     A FuncGraph.
   """
-  func_graph = function.FuncGraph(fdef.signature.name)
+  func_graph = FuncGraph(fdef.signature.name)
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
       fdef, input_shapes)
 
@@ -74,6 +75,14 @@ def function_def_to_graph(fdef, input_shapes=None):
     ]
 
   return func_graph
+
+
+def _is_function(fname):
+  """Checks for a function definition with `fname` in the current context."""
+  if context.executing_eagerly():
+    return context.context().has_function(fname)
+  else:
+    return ops.get_default_graph()._is_function(fname)  # pylint: disable=protected-access
 
 
 def function_def_to_graph_def(fdef, input_shapes=None):
@@ -147,12 +156,12 @@ def function_def_to_graph_def(fdef, input_shapes=None):
     for attr in op_def.attr:
       if attr.type == "func":
         fname = node_def.attr[attr.name].func.name
-        if not ops.get_default_graph()._is_function(fname):  # pylint: disable=protected-access
+        if not _is_function(fname):
           raise ValueError("%s function not found." % fname)
       elif attr.type == "list(func)":
         for fn in node_def.attr[attr.name].list.func:
           fname = fn.name
-          if not ops.get_default_graph()._is_function(fname):  # pylint: disable=protected-access
+          if not _is_function(fname):
             raise ValueError("%s function not found." % fname)
 
     # Iterate over output_args in op_def to build the map.
@@ -168,8 +177,8 @@ def function_def_to_graph_def(fdef, input_shapes=None):
         flat_name = "{}:{}".format(node_def.name, flattened_index)
         nested_to_flat_tensor_name[nested_name] = flat_name
         flattened_index += 1
-      control_name = "^" + node_def.name
-      nested_to_flat_tensor_name[control_name] = control_name
+    control_name = "^" + node_def.name
+    nested_to_flat_tensor_name[control_name] = control_name
 
   # Update inputs of all nodes in graph.
   for node_def in graph_def.node:

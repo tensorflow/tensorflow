@@ -35,10 +35,10 @@ from tensorflow.python.util import nest
 class InterfaceTests(test.TestCase):
 
   def testMultipleAssignment(self):
-    root = tracking.Checkpointable()
-    root.leaf = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
+    root.leaf = tracking.AutoCheckpointable()
     root.leaf = root.leaf
-    duplicate_name_dep = tracking.Checkpointable()
+    duplicate_name_dep = tracking.AutoCheckpointable()
     with self.assertRaisesRegexp(ValueError, "already declared"):
       root._track_checkpointable(duplicate_name_dep, name="leaf")
     # No error; we're overriding __setattr__, so we can't really stop people
@@ -50,10 +50,10 @@ class InterfaceTests(test.TestCase):
     self.assertIs(duplicate_name_dep, dep_object)
 
   def testNoDependency(self):
-    root = tracking.Checkpointable()
-    hasdep = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
+    hasdep = tracking.AutoCheckpointable()
     root.hasdep = hasdep
-    nodep = tracking.Checkpointable()
+    nodep = tracking.AutoCheckpointable()
     root.nodep = data_structures.NoDependency(nodep)
     self.assertEqual(1, len(root._checkpoint_dependencies))
     self.assertIs(root._checkpoint_dependencies[0].ref, root.hasdep)
@@ -66,16 +66,16 @@ class InterfaceTests(test.TestCase):
       def __init__(self):
         super(NoDependencyModel, self).__init__()
         self.a = []
-        self.b = tracking.Checkpointable()
+        self.b = tracking.AutoCheckpointable()
 
     nodeps = NoDependencyModel()
     self.assertEqual([nodeps], util.list_objects(nodeps))
 
   def testListBasic(self):
-    a = tracking.Checkpointable()
-    b = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
+    b = tracking.AutoCheckpointable()
     a.l = [b]
-    c = tracking.Checkpointable()
+    c = tracking.AutoCheckpointable()
     a.l.append(c)
     a_deps = util.list_objects(a)
     self.assertIn(b, a_deps)
@@ -87,10 +87,10 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testMutationDirtiesList(self):
-    a = tracking.Checkpointable()
-    b = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
+    b = tracking.AutoCheckpointable()
     a.l = [b]
-    c = tracking.Checkpointable()
+    c = tracking.AutoCheckpointable()
     a.l.insert(0, c)
     checkpoint = util.Checkpoint(a=a)
     with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
@@ -98,11 +98,11 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testOutOfBandEditDirtiesList(self):
-    a = tracking.Checkpointable()
-    b = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
+    b = tracking.AutoCheckpointable()
     held_reference = [b]
     a.l = held_reference
-    c = tracking.Checkpointable()
+    c = tracking.AutoCheckpointable()
     held_reference.append(c)
     checkpoint = util.Checkpoint(a=a)
     with self.assertRaisesRegexp(ValueError, "The wrapped list was modified"):
@@ -110,25 +110,25 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNestedLists(self):
-    a = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
     a.l = []
-    b = tracking.Checkpointable()
+    b = tracking.AutoCheckpointable()
     a.l.append([b])
-    c = tracking.Checkpointable()
+    c = tracking.AutoCheckpointable()
     a.l[0].append(c)
     a_deps = util.list_objects(a)
     self.assertIn(b, a_deps)
     self.assertIn(c, a_deps)
     a.l[0].append(1)
-    d = tracking.Checkpointable()
+    d = tracking.AutoCheckpointable()
     a.l[0].append(d)
     a_deps = util.list_objects(a)
     self.assertIn(d, a_deps)
     self.assertIn(b, a_deps)
     self.assertIn(c, a_deps)
     self.assertNotIn(1, a_deps)
-    e = tracking.Checkpointable()
-    f = tracking.Checkpointable()
+    e = tracking.AutoCheckpointable()
+    f = tracking.AutoCheckpointable()
     a.l1 = [[], [e]]
     a.l1[0].append(f)
     a_deps = util.list_objects(a)
@@ -183,7 +183,7 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertions(self):
-    a = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
     a.l = {"k": [numpy.zeros([2, 2])]}
     self.assertAllEqual(nest.flatten({"k": [numpy.zeros([2, 2])]}),
                         nest.flatten(a.l))
@@ -192,6 +192,63 @@ class InterfaceTests(test.TestCase):
     a.tensors = {"k": [array_ops.ones([2, 2]), array_ops.zeros([3, 3])]}
     self.assertAllClose({"k": [numpy.ones([2, 2]), numpy.zeros([3, 3])]},
                         self.evaluate(a.tensors))
+
+
+class _DummyResource(tracking.TrackableResource):
+
+  def __init__(self, handle_name):
+    self._handle_name = handle_name
+    super(_DummyResource, self).__init__()
+
+  def create_resource(self):
+    return self._handle_name
+
+
+class ResourceTrackerTest(test.TestCase):
+
+  def testBasic(self):
+    resource_tracker = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker):
+      dummy_resource1 = _DummyResource("test1")
+      dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(2, len(resource_tracker.resources))
+    self.assertEqual("test1", resource_tracker.resources[0].resource_handle)
+    self.assertEqual("test2", resource_tracker.resources[1].resource_handle)
+
+  def testTwoScopes(self):
+    resource_tracker1 = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker1):
+      dummy_resource1 = _DummyResource("test1")
+
+    resource_tracker2 = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker2):
+      dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test1", resource_tracker1.resources[0].resource_handle)
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test2", resource_tracker2.resources[0].resource_handle)
+
+  def testNestedScopesScopes(self):
+    resource_tracker = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker):
+      resource_tracker1 = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker1):
+        dummy_resource1 = _DummyResource("test1")
+
+      resource_tracker2 = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker2):
+        dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test1", resource_tracker1.resources[0].resource_handle)
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test2", resource_tracker2.resources[0].resource_handle)
+    self.assertEqual(2, len(resource_tracker.resources))
+    self.assertEqual("test1", resource_tracker.resources[0].resource_handle)
+    self.assertEqual("test2", resource_tracker.resources[1].resource_handle)
+
 
 if __name__ == "__main__":
   test.main()

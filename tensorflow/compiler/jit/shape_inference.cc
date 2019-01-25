@@ -53,7 +53,15 @@ Status PropagateShapes(const Graph& graph,
     // shapes, even if no shape function is registered for a node.
     Status status = shape_refiner->AddNode(n);
     if (!status.ok()) {
-      VLOG(1) << "Shape inference failed for node: " << status;
+      VLOG(1) << "Shape inference failed for node " << n->name() << ": "
+              << status;
+    } else {
+      shape_inference::InferenceContext* context = shape_refiner->GetContext(n);
+      for (int i = 0; i < n->num_outputs(); i++) {
+        shape_inference::ShapeHandle handle = context->output(i);
+        VLOG(4) << "Output " << i << " for node " << n->name() << ": "
+                << context->DebugString(handle);
+      }
     }
 
     if (n->type_string() == "_Arg") {

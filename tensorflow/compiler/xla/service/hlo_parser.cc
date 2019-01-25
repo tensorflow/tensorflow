@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -47,11 +48,11 @@ const double kF16max = 65504;
 
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
-HloSchedule ScheduleFromInstructionOrder(const HloModule* module) {
+HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
   HloSchedule schedule(module);
-  for (const HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations()) {
     if (!computation->IsFusionComputation()) {
-      for (const HloInstruction* instruction : computation->instructions()) {
+      for (HloInstruction* instruction : computation->instructions()) {
         schedule.GetOrCreateSequence(computation).push_back(instruction);
       }
     }
@@ -74,6 +75,7 @@ class HloParser {
   string GetError() const { return StrJoin(error_, "\n"); }
 
   // Stand alone parsing utils for various aggregate data types.
+  StatusOr<Shape> ParseShapeOnly();
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
@@ -108,7 +110,7 @@ class HloParser {
   bool ParseInstructionList(HloComputation** computation,
                             const string& computation_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
-  bool ParseInstruciontRhs(HloComputation::Builder* builder, const string& name,
+  bool ParseInstructionRhs(HloComputation::Builder* builder, const string& name,
                            LocTy name_loc);
   bool ParseControlPredecessors(HloInstruction* instruction);
   bool ParseLiteral(Literal* literal, const Shape& shape);
@@ -255,7 +257,10 @@ class HloParser {
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
   bool ParseString(string* result);
+  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                           std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
+  bool ParseLayout(Layout* layout);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
@@ -279,9 +284,6 @@ class HloParser {
   // If the current token is 'kind', eats it (i.e. lexes the next token) and
   // returns true.
   bool EatIfPresent(TokKind kind);
-  // Parses a shape, and returns true if the result is compatible with the given
-  // shape.
-  bool EatShapeAndCheckCompatible(const Shape& shape);
 
   // Adds the instruction to the pool. Returns false and emits an error if the
   // instruction already exists.
@@ -418,6 +420,18 @@ std::pair<HloInstruction*, HloParser::LocTy>* HloParser::FindInstruction(
     }
     return create_missing_instruction_(name, *shape);
   }
+
+  if (instr != nullptr && shape.has_value() &&
+      !ShapeUtil::Compatible(instr->first->shape(), shape.value())) {
+    Error(
+        lexer_.GetLoc(),
+        StrCat("The declared operand shape ",
+               ShapeUtil::HumanStringWithLayout(shape.value()),
+               " is not compatible with the shape of the operand instruction ",
+               ShapeUtil::HumanStringWithLayout(instr->first->shape()), "."));
+    return nullptr;
+  }
+
   return instr;
 }
 
@@ -596,10 +610,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     *root_name = name;
   }
 
-  return ParseInstruciontRhs(builder, name, name_loc);
+  return ParseInstructionRhs(builder, name, name_loc);
 }
 
-bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
+bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                                     const string& name, LocTy name_loc) {
   Shape shape;
   HloOpcode opcode;
@@ -754,7 +768,7 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
           HloInstruction::CreateBitcastConvert(shape, operands[0]));
       break;
     }
-    case HloOpcode::kCrossReplicaSum: {
+    case HloOpcode::kAllReduce: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
@@ -774,10 +788,9 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
-              shape, operands, *to_apply, replica_groups,
-              barrier ? *barrier : "", all_reduce_id));
+      instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
+          shape, operands, *to_apply, replica_groups, barrier ? *barrier : "",
+          all_reduce_id));
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -836,6 +849,15 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
         instruction =
             builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
       }
+      break;
+    }
+    case HloOpcode::kAddDependency: {
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateAddDependency(operands[0], operands[1]));
       break;
     }
     case HloOpcode::kSort: {
@@ -985,11 +1007,14 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
+      optional<int64> batch_group_count;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                       &feature_group_count};
+      attrs["batch_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                    &batch_group_count};
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
@@ -1003,6 +1028,9 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
       if (!feature_group_count) {
         feature_group_count = 1;
       }
+      if (!batch_group_count) {
+        batch_group_count = 1;
+      }
       PrecisionConfig precision_config;
       if (operand_precision) {
         *precision_config.mutable_operand_precision() = {
@@ -1013,7 +1041,8 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
           shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
-          feature_group_count.value(), *window, *dnums, precision_config));
+          feature_group_count.value(), batch_group_count.value(), *window,
+          *dnums, precision_config));
       break;
     }
     case HloOpcode::kFft: {
@@ -1089,8 +1118,8 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
           absl::Span<HloInstruction* const>(operands).subspan(
               0, operands.size() / 2),
           /*init_values=*/
-          absl::Span<HloInstruction* const>(operands).subspan(
-              operands.size() / 2, operands.size()),
+          absl::Span<HloInstruction* const>(operands).subspan(operands.size() /
+                                                              2),
           *dimensions_to_reduce, *reduce_computation));
       break;
     }
@@ -1142,24 +1171,39 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
       optional<std::vector<tensorflow::int64>> dynamic_slice_sizes;
       attrs["dynamic_slice_sizes"] = {
           /*required=*/true, AttrTy::kBracedInt64List, &dynamic_slice_sizes};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      LocTy loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
+      if (operands.empty()) {
+        return Error(loc, "Expected at least one operand.");
+      }
+      if (!(operands.size() == 2 && operands[1]->shape().rank() == 1) &&
+          operands.size() != 1 + operands[0]->shape().rank()) {
+        return Error(loc, "Wrong number of operands.");
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateDynamicSlice(
-          shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
+          shape, /*operand=*/operands[0],
+          /*start_indices=*/absl::MakeSpan(operands).subspan(1),
           *dynamic_slice_sizes));
       break;
     }
     case HloOpcode::kDynamicUpdateSlice: {
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      LocTy loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
+      }
+      if (operands.size() < 2) {
+        return Error(loc, "Expected at least two operands.");
+      }
+      if (!(operands.size() == 3 && operands[2]->shape().rank() == 1) &&
+          operands.size() != 2 + operands[0]->shape().rank()) {
+        return Error(loc, "Wrong number of operands.");
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
               shape, /*operand=*/operands[0], /*update=*/operands[1],
-              /*start_indices=*/operands[2]));
+              /*start_indices=*/absl::MakeSpan(operands).subspan(2)));
       break;
     }
     case HloOpcode::kTranspose: {
@@ -1259,7 +1303,7 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
       // the infeed instruction. ShapeUtil::GetTupleElementShape will check fail
       // if the shape is not a non-empty tuple, so add guard so an error message
       // can be emitted instead of a check fail
-      if (!ShapeUtil::IsTuple(shape) && !ShapeUtil::IsEmptyTuple(shape)) {
+      if (!shape.IsTuple() && !ShapeUtil::IsEmptyTuple(shape)) {
         return Error(lexer_.GetLoc(),
                      "infeed must have a non-empty tuple shape");
       }
@@ -1535,6 +1579,18 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
+    case HloOpcode::kGetDimensionSize:
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateGetDimensionSize(
+              shape, operands[0], (*dimensions)[0]));
+      break;
   }
 
   instruction->SetAndSanitizeName(name);
@@ -1664,11 +1720,6 @@ bool HloParser::ParseSingleSharding(OpSharding* sharding,
         }
         break;
       }
-      case TokKind::kShape:
-        // TODO(b/112302613): Left here for backward compatibility to ignore the
-        // removed tile shape data.
-        lexer_.Lex();
-        break;
       case TokKind::kRbrace:
         break;
       default:
@@ -1794,6 +1845,10 @@ bool HloParser::SetValueInLiteral(tensorflow::int64 value,
     case U64:
       return SetValueInLiteralHelper<tensorflow::uint64>(value, linear_index,
                                                          literal);
+    case PRED:
+      // Bool type literals with rank >= 1 are printed in 0s and 1s.
+      return SetValueInLiteralHelper<bool>(static_cast<bool>(value),
+                                           linear_index, literal);
     default:
       LOG(FATAL) << "unknown integral primitive type "
                  << PrimitiveType_Name(shape.element_type());
@@ -1888,25 +1943,12 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
   return true;
 }
 
-bool HloParser::EatShapeAndCheckCompatible(const Shape& shape) {
-  Shape new_shape;
-  if (!ParseShape(&new_shape)) {
-    return TokenError(StrCat("expects shape ", ShapeUtil::HumanString(shape)));
-  }
-  if (!ShapeUtil::Compatible(shape, new_shape)) {
-    return TokenError(StrCat(
-        "expects shape ", ShapeUtil::HumanString(shape),
-        ", but sees a different shape: ", ShapeUtil::HumanString(new_shape)));
-  }
-  return true;
-}
-
 // literal
 //  ::= tuple
 //  ::= non_tuple
 bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
-  return ShapeUtil::IsTuple(shape) ? ParseTupleLiteral(literal, shape)
-                                   : ParseNonTupleLiteral(literal, shape);
+  return shape.IsTuple() ? ParseTupleLiteral(literal, shape)
+                         : ParseNonTupleLiteral(literal, shape);
 }
 
 // tuple
@@ -1915,10 +1957,6 @@ bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
 //  ::= /*empty*/
 //  ::= literal (',' literal)*
 bool HloParser::ParseTupleLiteral(Literal* literal, const Shape& shape) {
-  if (!EatShapeAndCheckCompatible(shape)) {
-    return TokenError(StrCat("expects tuple constant in shape ",
-                             ShapeUtil::HumanString(shape)));
-  }
   if (!ParseToken(TokKind::kLparen, "expects '(' in front of tuple elements")) {
     return false;
   }
@@ -1953,16 +1991,12 @@ bool HloParser::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
     return ParseSparseLiteral(literal, shape);
   }
 
-  CHECK(LayoutUtil::IsDenseArray(shape));
+  CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ToString(true);
   return ParseDenseLiteral(literal, shape);
 }
 
 bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
-  const tensorflow::int64 rank = ShapeUtil::Rank(shape);
-  if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
-    return false;
-  }
-
+  const tensorflow::int64 rank = shape.rank();
   // Create a literal with the given shape in default layout.
   *literal = LiteralUtil::CreateFromDimensions(
       shape.element_type(), AsInt64Slice(shape.dimensions()));
@@ -2048,14 +2082,13 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         }
         if (lexer_.GetKind() == TokKind::kw_true ||
             lexer_.GetKind() == TokKind::kw_false) {
-          // TODO(congliu): bool type literals with rank >= 1 are actually
-          // printed in a compact form instead of "true" or "false". Fix that.
           if (!SetValueInLiteral(lexer_.GetKind() == TokKind::kw_true,
                                  linear_index++, literal)) {
             return false;
           }
           lexer_.Lex();
-        } else if (primitive_util::IsIntegralType(shape.element_type())) {
+        } else if (primitive_util::IsIntegralType(shape.element_type()) ||
+                   shape.element_type() == PRED) {
           LocTy loc = lexer_.GetLoc();
           tensorflow::int64 value;
           if (!ParseInt64(&value)) {
@@ -2090,10 +2123,6 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
 }
 
 bool HloParser::ParseSparseLiteral(Literal* literal, const Shape& shape) {
-  if (!EatShapeAndCheckCompatible(shape)) {
-    return false;
-  }
-
   switch (shape.element_type()) {
     case PRED:
       return ParseSparseLiteralHelper<tensorflow::uint8>(literal, shape);
@@ -2132,7 +2161,7 @@ template <typename LiteralNativeT>
 bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
   std::vector<tensorflow::int64> index;
 
-  tensorflow::int64 rank = ShapeUtil::Rank(shape);
+  tensorflow::int64 rank = shape.rank();
 
   *literal = Literal(shape);
 
@@ -2693,7 +2722,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
 
   // The str is expected to have 3 items, lhs, rhs, out, and it must look like
   // lhs_rhs->out, that is, the first separator is "_" and the second is "->".
-  std::vector<string> split1 = absl::StrSplit(str, "_");
+  std::vector<string> split1 = absl::StrSplit(str, '_');
   if (split1.size() != 2) {
     LOG(FATAL) << "expects 3 items: lhs, rhs, and output dims, but sees "
                << str;
@@ -2717,7 +2746,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
   }
 
   auto is_unique = [](string str) -> bool {
-    std::sort(str.begin(), str.end());
+    absl::c_sort(str);
     return std::unique(str.begin(), str.end()) == str.end();
   };
 
@@ -2958,6 +2987,50 @@ bool HloParser::ParseParamList() {
   return ParseToken(TokKind::kRparen, "expects ')' at the end of param list");
 }
 
+// dimension_sizes ::= '[' dimension_list ']'
+// dimension_list
+//   ::= /*empty*/
+//   ::= <=? int64 (',' param)*
+// param ::= name shape
+bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                                    std::vector<bool>* dynamic_dimensions) {
+  auto parse_and_add_item = [&]() {
+    tensorflow::int64 i;
+    bool is_dynamic = false;
+    if (lexer_.GetKind() == TokKind::kLeq) {
+      is_dynamic = true;
+      lexer_.Lex();
+    }
+    if (!ParseInt64(&i)) {
+      return false;
+    }
+    dimension_sizes->push_back(i);
+    dynamic_dimensions->push_back(is_dynamic);
+    return true;
+  };
+  return ParseList(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
+                   parse_and_add_item);
+}
+
+// layout ::= '{' int64_list '}'
+bool HloParser::ParseLayout(Layout* layout) {
+  std::vector<int64> minor_to_major;
+  auto parse_and_add_item = [&]() {
+    tensorflow::int64 i;
+    if (!ParseInt64(&i)) {
+      return false;
+    }
+    minor_to_major.push_back(i);
+    return true;
+  };
+  if (!ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                 parse_and_add_item)) {
+    return false;
+  }
+  *layout = LayoutUtil::MakeLayout(minor_to_major);
+  return true;
+}
+
 // shape ::= shape_val_
 // shape ::= '(' tuple_elements ')'
 // tuple_elements
@@ -2981,19 +3054,67 @@ bool HloParser::ParseShape(Shape* result) {
     return ParseToken(TokKind::kRparen, "expects ')' at the end of tuple.");
   }
 
-  if (lexer_.GetKind() != TokKind::kShape) {
-    return TokenError(absl::StrCat("expected shape, saw ",
+  if (lexer_.GetKind() != TokKind::kPrimitiveType) {
+    return TokenError(absl::StrCat("expected primitive type, saw ",
                                    TokKindToString(lexer_.GetKind())));
   }
-  *result = lexer_.GetShapeVal();
+  PrimitiveType primitive_type = lexer_.GetPrimitiveTypeVal();
   lexer_.Lex();
+
+  // Each element contains a dimension size and a bool indicating whether this
+  // is a dynamic dimension.
+  std::vector<int64> dimension_sizes;
+  std::vector<bool> dynamic_dimensions;
+  if (!ParseDimensionSizes(&dimension_sizes, &dynamic_dimensions)) {
+    return false;
+  }
+  result->set_element_type(primitive_type);
+  for (int i = 0; i < dimension_sizes.size(); ++i) {
+    result->add_dimensions(dimension_sizes[i]);
+    result->set_dynamic_dimension(i, dynamic_dimensions[i]);
+  }
+  LayoutUtil::SetToDefaultLayout(result);
+
+  if (lexer_.GetKind() == TokKind::kw_sparse) {
+    lexer_.Lex();
+    const string message =
+        "expects a brace-bracketed integer for sparse layout";
+    tensorflow::int64 max_sparse_elements;
+    if (!ParseToken(TokKind::kLbrace, message) ||
+        !ParseInt64(&max_sparse_elements) ||
+        !ParseToken(TokKind::kRbrace, message)) {
+      return false;
+    }
+    *result->mutable_layout() =
+        LayoutUtil::MakeSparseLayout(max_sparse_elements);
+    return true;
+  }
+
+  // We need to lookahead to see if a following open brace is the start of a
+  // layout. The specific problematic case is:
+  //
+  // ENTRY %foo (x: f32[42]) -> f32[123] {
+  //  ...
+  // }
+  //
+  // The open brace could either be the start of a computation or the start of a
+  // layout for the f32[123] shape. We consider it the start of a layout if the
+  // next token after the open brace is a integer
+  if (lexer_.GetKind() == TokKind::kLbrace &&
+      lexer_.LookAhead() == TokKind::kInt) {
+    Layout layout;
+    if (!ParseLayout(&layout)) {
+      return false;
+    }
+    *result->mutable_layout() = layout;
+  }
   return true;
 }
 
 bool HloParser::CanBeShape() {
-  // A non-tuple shape starts with a kShape token; a tuple shape starts with
-  // '('.
-  return lexer_.GetKind() == TokKind::kShape ||
+  // A non-tuple shape starts with a kPrimitiveType token; a tuple shape starts
+  // with '('.
+  return lexer_.GetKind() == TokKind::kPrimitiveType ||
          lexer_.GetKind() == TokKind::kLparen;
 }
 
@@ -3296,6 +3417,18 @@ bool HloParser::AddComputation(const string& name, HloComputation* computation,
   return true;
 }
 
+StatusOr<Shape> HloParser::ParseShapeOnly() {
+  lexer_.Lex();
+  Shape shape;
+  if (!ParseShape(&shape)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after shape");
+  }
+  return shape;
+}
+
 StatusOr<HloSharding> HloParser::ParseShardingOnly() {
   lexer_.Lex();
   OpSharding op_sharding;
@@ -3374,7 +3507,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     // e.g.
     //
     //  f32[10] fusion(...), calls={...}
-    if (!ParseInstruciontRhs(&builder, module->name(), lexer_.GetLoc())) {
+    if (!ParseInstructionRhs(&builder, module->name(), lexer_.GetLoc())) {
       return false;
     }
   } else {
@@ -3437,6 +3570,11 @@ StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
 StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
   HloParser parser(str);
   return parser.ParsePaddingConfigOnly();
+}
+
+StatusOr<Shape> ParseShape(absl::string_view str) {
+  HloParser parser(str);
+  return parser.ParseShapeOnly();
 }
 
 }  // namespace xla

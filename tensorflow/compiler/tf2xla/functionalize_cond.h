@@ -166,6 +166,9 @@ class FunctionalizeCond {
   // Dump graph with the CondState annotated.
   void DumpGraphWithCondState(const string& name);
 
+  // Adds `switch_id` to the list of Switch node ids.
+  void AddSwitchId(int switch_id);
+
  private:
   FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library);
 
@@ -219,8 +222,7 @@ class FunctionalizeCond {
 
   // Deletes all nodes in/consumers reachable from switch/merge nodes that were
   // extracted.
-  void DeleteReachableAndDeadNodes(const std::vector<int>& switch_ids,
-                                   const std::vector<Node*>& merge_order);
+  void DeleteReachableAndDeadNodes(const std::vector<Node*>& merge_order);
 
   // Member used to unique the CondState to a unique CondId (AncestorState to a
   // unique AncestorId) and keep track of CondState/CondId
@@ -234,6 +236,8 @@ class FunctionalizeCond {
   Graph* graph_;
 
   friend class FunctionalizeCondTest;
+
+  std::vector<int> switch_ids_;
 };
 
 }  // namespace functionalize_cond

@@ -26,7 +26,8 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 // this is for v2
-template struct functor::AdjustContrastv2<GPUDevice>;
+template struct functor::AdjustContrastv2<GPUDevice, float>;
+template struct functor::AdjustContrastv2<GPUDevice, Eigen::half>;
 
 // these are for v1
 template struct functor::AdjustContrast<GPUDevice, uint8>;

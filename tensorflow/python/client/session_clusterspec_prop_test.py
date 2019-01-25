@@ -62,7 +62,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
 
     const = constant_op.constant(17)
     sess = session.Session(server1.target, config=config)
-    output = sess.run(const)
+    output = self.evaluate(const)
     self.assertEqual(17, output)
 
   def testClusterSpecPropagationWorker2Placement(self):
@@ -106,7 +106,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g, ops.device('/job:worker/task:0'):
       const = constant_op.constant(17)
     sess = session.Session(server1.target, config=config, graph=g)
-    output = sess.run(const)
+    output = self.evaluate(const)
     self.assertEqual(17, output)
 
   def testCanonicalDeviceNames(self):
@@ -208,7 +208,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
       with ops.device('/job:worker/task:0/cpu:0'):
         sum3 = sum1 + sum2
     sess = session.Session(server1.target, config=config, graph=g)
-    output = sess.run(sum3)
+    output = self.evaluate(sum3)
     self.assertEqual(40, output)
 
   def testLegacyDeviceNames(self):

@@ -21,7 +21,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -29,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-namespace op = ::xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 using absl::string_view;
 
 struct TestData {
@@ -75,6 +76,18 @@ ENTRY %constant_pred () -> pred[] {
 
 )"
 },
+// pred array constant
+{
+"ConstantPredArray",
+R"(HloModule module
+
+ENTRY %constant_pred_array () -> pred[2,3] {
+  ROOT %constant = pred[2,3]{1,0} constant({ { 0, 1, 0 }, { 1, 0, 1 } })
+}
+
+)"
+},
+
 // s32 constant
 {
 "ConstantS32",
@@ -115,7 +128,7 @@ ENTRY %ConstantF32Empty.v4 () -> f32[0] {
 R"(HloModule ConstantF32R4Empty_module
 
 ENTRY %ConstantF32R4Empty.v4 () -> f32[2,0,4,3] {
-  ROOT %constant = f32[2,0,4,3]{3,2,1,0} constant(f32[2,0,4,3] { { /*i0=0*/ }, { /*i0=1*/ } })
+  ROOT %constant = f32[2,0,4,3]{3,2,1,0} constant({ { /*i0=0*/ }, { /*i0=1*/ } })
 }
 
 )"
@@ -126,7 +139,7 @@ ENTRY %ConstantF32R4Empty.v4 () -> f32[2,0,4,3] {
 R"(HloModule Small_3x2x1x1_module
 
 ENTRY %Small_3x2x1x1.v1 () -> f32[3,2,1,1] {
-  ROOT %constant = f32[3,2,1,1]{3,2,1,0} constant(f32[3,2,1,1] { { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
+  ROOT %constant = f32[3,2,1,1]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
 }
 
 )"
@@ -183,7 +196,7 @@ ENTRY %add_constants () -> f32[] {
 R"(HloModule TupleConstant_module
 
 ENTRY %TupleConstant.v1 () -> (f32[2,1], f32[2]) {
-  ROOT %constant = (f32[2,1]{1,0}, f32[2]{0}) constant((f32[2,1], f32[2]) ( f32[2,1] { { 1 }, { 2 } }, {2, 42} ))
+  ROOT %constant = (f32[2,1]{1,0}, f32[2]{0}) constant(( { {1}, {2} }, {2, 42} ))
 }
 
 )"
@@ -282,11 +295,11 @@ ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
 R"(HloModule TwoSendRecvBothWayRecvFist_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
-  %token = token[] after-all()
-  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15, sharding={maximal device=1}
+  %token0 = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
   ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
   %constant = f32[] constant(2.1), sharding={maximal device=0}
-  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
   %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
 }
 
@@ -297,11 +310,11 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
 R"(HloModule HostTransferSendRecv_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
-  %token = token[] after-all()
-  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15, is_host_transfer=true
+  %token0 = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, is_host_transfer=true
   ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true
   %constant = f32[] constant(2.1), sharding={maximal device=0}
-  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, is_host_transfer=true
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, is_host_transfer=true
   %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true
 }
 
@@ -314,7 +327,7 @@ R"(HloModule GetTupleElement_module
 
 ENTRY %GetTupleElement.v4 () -> s32[2,3] {
   %constant = f32[3]{0} constant({1, 2, 3})
-  %constant.1 = s32[2,3]{1,0} constant(s32[2,3] { { 1, 2, 3 }, { 4, 5, 6 } })
+  %constant.1 = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } })
   %tuple = (f32[3]{0}, s32[2,3]{1,0}) tuple(f32[3]{0} %constant, s32[2,3]{1,0} %constant.1)
   ROOT %get-tuple-element = s32[2,3]{1,0} get-tuple-element((f32[3]{0}, s32[2,3]{1,0}) %tuple), index=1, sharding={maximal device=0}
 }
@@ -421,7 +434,7 @@ ENTRY %ConvolveBackward (input: f32[128,7,7,512], filter: f32[3,3,512,512]) -> f
 R"(HloModule Reverse4DFloatArrayOnDim01_module
 
 ENTRY %Reverse4DFloatArrayOnDim01.v2 () -> f32[4,3,2,1] {
-  %constant = f32[4,3,2,1]{0,1,2,3} constant(f32[4,3,2,1] { { /*i0=0*/ { /*i1=0*/ {1}, {2} }, { /*i1=1*/ {3}, {4} }, { /*i1=2*/ {5}, {6} } }, { /*i0=1*/ { /*i1=0*/ {7}, {8} }, { /*i1=1*/ {9}, {10} }, { /*i1=2*/ {11}, {12} } }, { /*i0=2*/ { /*i1=0*/ {13}, {14} }, { /*i1=1*/ {15}, {16} }, { /*i1=2*/ {17}, {18} } }, { /*i0=3*/ { /*i1=0*/ {19}, {20} }, { /*i1=1*/ {21}, {22} }, { /*i1=2*/ {23}, {24} } } })
+  %constant = f32[4,3,2,1]{0,1,2,3} constant({ { /*i0=0*/ { /*i1=0*/ {1}, {2} }, { /*i1=1*/ {3}, {4} }, { /*i1=2*/ {5}, {6} } }, { /*i0=1*/ { /*i1=0*/ {7}, {8} }, { /*i1=1*/ {9}, {10} }, { /*i1=2*/ {11}, {12} } }, { /*i0=2*/ { /*i1=0*/ {13}, {14} }, { /*i1=1*/ {15}, {16} }, { /*i1=2*/ {17}, {18} } }, { /*i0=3*/ { /*i1=0*/ {19}, {20} }, { /*i1=1*/ {21}, {22} }, { /*i1=2*/ {23}, {24} } } })
   ROOT %reverse = f32[4,3,2,1]{0,1,2,3} reverse(f32[4,3,2,1]{0,1,2,3} %constant), dimensions={0,1}
 }
 
@@ -433,8 +446,8 @@ ENTRY %Reverse4DFloatArrayOnDim01.v2 () -> f32[4,3,2,1] {
 R"(HloModule Concat2x3With2x5_module
 
 ENTRY %Concat2x3With2x5.v3 () -> f32[2,8] {
-  %constant = f32[2,3]{1,0} constant(f32[2,3] { { 0, 1, 2 }, { 1000, 1001, 1002 } })
-  %constant.1 = f32[2,5]{1,0} constant(f32[2,5] { { 64, 65, 66, 67, 68 }, { 1064, 1065, 1066, 1067, 1068 } })
+  %constant = f32[2,3]{1,0} constant({ { 0, 1, 2 }, { 1000, 1001, 1002 } })
+  %constant.1 = f32[2,5]{1,0} constant({ { 64, 65, 66, 67, 68 }, { 1064, 1065, 1066, 1067, 1068 } })
   ROOT %concatenate = f32[2,8]{1,0} concatenate(f32[2,3]{1,0} %constant, f32[2,5]{1,0} %constant.1), dimensions={1}
 }
 
@@ -458,8 +471,8 @@ R"(HloModule R4F32OverlapSmall_module
 }
 
 ENTRY %R4F32OverlapSmall.v4 () -> f32[4,5,1,1] {
-  %constant = f32[4,5,1,1]{3,2,1,0} constant(f32[4,5,1,1] { { /*i0=0*/ { /*i1=0*/ {7} }, { /*i1=1*/ {2} }, { /*i1=2*/ {5} }, { /*i1=3*/ {3} }, { /*i1=4*/ {8} } }, { /*i0=1*/ { /*i1=0*/ {3} }, { /*i1=1*/ {8} }, { /*i1=2*/ {9} }, { /*i1=3*/ {3} }, { /*i1=4*/ {4} } }, { /*i0=2*/ { /*i1=0*/ {1} }, { /*i1=1*/ {5} }, { /*i1=2*/ {7} }, { /*i1=3*/ {5} }, { /*i1=4*/ {6} } }, { /*i0=3*/ { /*i1=0*/ {0} }, { /*i1=1*/ {6} }, { /*i1=2*/ {2} }, { /*i1=3*/ {10} }, { /*i1=4*/ {2} } } })
-  %constant.1 = f32[2,2,1,1]{3,2,1,0} constant(f32[2,2,1,1] { { /*i0=0*/ { /*i1=0*/ {2} }, { /*i1=1*/ {6} } }, { /*i0=1*/ { /*i1=0*/ {3} }, { /*i1=1*/ {1} } } })
+  %constant = f32[4,5,1,1]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ {7} }, { /*i1=1*/ {2} }, { /*i1=2*/ {5} }, { /*i1=3*/ {3} }, { /*i1=4*/ {8} } }, { /*i0=1*/ { /*i1=0*/ {3} }, { /*i1=1*/ {8} }, { /*i1=2*/ {9} }, { /*i1=3*/ {3} }, { /*i1=4*/ {4} } }, { /*i0=2*/ { /*i1=0*/ {1} }, { /*i1=1*/ {5} }, { /*i1=2*/ {7} }, { /*i1=3*/ {5} }, { /*i1=4*/ {6} } }, { /*i0=3*/ { /*i1=0*/ {0} }, { /*i1=1*/ {6} }, { /*i1=2*/ {2} }, { /*i1=3*/ {10} }, { /*i1=4*/ {2} } } })
+  %constant.1 = f32[2,2,1,1]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ {2} }, { /*i1=1*/ {6} } }, { /*i0=1*/ { /*i1=0*/ {3} }, { /*i1=1*/ {1} } } })
   %constant.2 = f32[] constant(0)
   ROOT %select-and-scatter = f32[4,5,1,1]{3,2,1,0} select-and-scatter(f32[4,5,1,1]{3,2,1,0} %constant, f32[2,2,1,1]{3,2,1,0} %constant.1, f32[] %constant.2), window={size=2x3x1x1 stride=2x2x1x1}, select=%ge_F32.v3, scatter=%add_F32.v3
 }
@@ -510,7 +523,7 @@ ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
 R"(HloModule Slice3x3x3_To_1x3x3_F32_module
 
 ENTRY %Slice3x3x3_To_1x3x3_F32.v2 () -> f32[1,3,3] {
-  %constant = f32[3,3,3]{2,1,0} constant(f32[3,3,3] { { { 0, 1, 2 }, { 3, 4, 5 }, { 6, 7, 8 } }, { { 9, 10, 11 }, { 12, 13, 14 }, { 15, 16, 17 } }, { { 18, 19, 20 }, { 21, 22, 23 }, { 24, 25, 26 } } })
+  %constant = f32[3,3,3]{2,1,0} constant({ { { 0, 1, 2 }, { 3, 4, 5 }, { 6, 7, 8 } }, { { 9, 10, 11 }, { 12, 13, 14 }, { 15, 16, 17 } }, { { 18, 19, 20 }, { 21, 22, 23 }, { 24, 25, 26 } } })
   ROOT %slice = f32[1,3,3]{2,1,0} slice(f32[3,3,3]{2,1,0} %constant), slice={[0:1], [0:3], [0:3]}
 }
 
@@ -534,8 +547,19 @@ ENTRY %SliceR0.v2 () -> s32[] {
 R"(HloModule Transpose_module
 
 ENTRY %Transpose.v2 () -> s32[1,2,3] {
-  %constant = s32[1,2,3]{2,1,0} constant(s32[1,2,3] { { { 1, 2, 3 }, { 4, 5, 6 } } })
+  %constant = s32[1,2,3]{2,1,0} constant({ { { 1, 2, 3 }, { 4, 5, 6 } } })
   ROOT %transpose = s32[1,2,3]{2,1,0} transpose(s32[1,2,3]{2,1,0} %constant), dimensions={0,1,2}
+}
+
+)"
+},
+{
+"TransposeC128",
+R"(HloModule TransposeC128_module
+
+ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
+  %input = c128[1,2,3]{2,1,0} parameter(0)
+  ROOT %transpose = c128[1,2,3]{2,1,0} transpose(c128[1,2,3]{2,1,0} %input), dimensions={0,1,2}
 }
 
 )"
@@ -555,10 +579,24 @@ ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[1]) -
 
 )"
 },
+// Dynamic slice with scalar indices
+{
+"DynamicSliceScalarIndices",
+R"(HloModule DynamicSlice_module
+
+ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[]) -> s32[2,2,258] {
+  %original_parameter = s32[2,2,258]{2,1,0} parameter(0)
+  %constant = s32[] constant(0)
+  %start_index = s32[] parameter(1)
+  ROOT %dynamic-slice = s32[2,2,258]{2,1,0} dynamic-slice(s32[2,2,258]{2,1,0} %original_parameter, s32[] %constant, s32[] %constant, s32[] %start_index), dynamic_slice_sizes={2,2,258}
+}
+
+)"
+},
 // Dynamic update slice
 {
 "DynamicUpdateSlice",
-R"(HloModule DynamicUpdateSlice_module
+R"(HloModule DynamicSlice_module
 
 ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_indices: s32[4]) -> s32[1,1,25,1] {
   %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
@@ -569,13 +607,30 @@ ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_
 
 )"
 },
+// Dynamic update slice with scalar indices
+{
+"DynamicUpdateSliceScalarIndex",
+R"(HloModule DynamicUpdateSlice_module
+
+ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_index.0: s32[], start_index.1: s32[], start_index.2: s32[], start_index.3: s32[]) -> s32[1,1,25,1] {
+  %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
+  %update = s32[1,1,2,1]{3,2,1,0} parameter(1)
+  %start_index.0 = s32[] parameter(2)
+  %start_index.1 = s32[] parameter(3)
+  %start_index.2 = s32[] parameter(4)
+  %start_index.3 = s32[] parameter(5)
+  ROOT %dynamic-update-slice = s32[1,1,25,1]{3,2,1,0} dynamic-update-slice(s32[1,1,25,1]{3,2,1,0} %input, s32[1,1,2,1]{3,2,1,0} %update, s32[] %start_index.0, s32[] %start_index.1, s32[] %start_index.2, s32[] %start_index.3)
+}
+
+)"
+},
 // batch norm training
 {
 "BatchNormTraining",
 R"(HloModule BasicTraining_module
 
 ENTRY %BasicTraining.v4 () -> (f32[2,2,1,2], f32[2], f32[2]) {
-  %constant = f32[2,2,1,2]{3,2,1,0} constant(f32[2,2,1,2] { { /*i0=0*/ { /*i1=0*/ {1, 2} }, { /*i1=1*/ {3, 4} } }, { /*i0=1*/ { /*i1=0*/ {5, 6} }, { /*i1=1*/ {7, 8} } } })
+  %constant = f32[2,2,1,2]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ { 1, 2 } }, { /*i1=1*/ { 3, 4 } } }, { /*i0=1*/ { /*i1=0*/ { 5, 6 } }, { /*i1=1*/ { 7, 8 } } } })
   %constant.1 = f32[2]{0} constant({2, 3})
   %constant.2 = f32[2]{0} constant({1, 2})
   ROOT %batch-norm-training = (f32[2,2,1,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}) batch-norm-training(f32[2,2,1,2]{3,2,1,0} %constant, f32[2]{0} %constant.1, f32[2]{0} %constant.2), epsilon=0.001, feature_index=3
@@ -715,7 +770,7 @@ R"(HloModule fusion_module
 }
 
 ENTRY %fusion.v3 () -> f32[3,2,1,1] {
-  %constant = f32[3,2,1,1]{3,2,1,0} constant(f32[3,2,1,1] { { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
+  %constant = f32[3,2,1,1]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
   %constant.1 = f32[2]{0} constant({3.14, 4.25})
   ROOT %fusion = f32[3,2,1,1]{3,2,1,0} fusion(f32[3,2,1,1]{3,2,1,0} %constant, f32[2]{0} %constant.1), kind=kLoop, calls=%fused_computation
 }
@@ -727,7 +782,7 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 R"(HloModule sparse_f32
 
 ENTRY %sparse () -> f32[2,3,4] {
-  ROOT %foo = f32[2,3,4]sparse{10} constant(f32[2,3,4]{[0, 1, 2]: 1, [1, 2, 3]: 2, [2, 3, 4]: 3})
+  ROOT %foo = f32[2,3,4]sparse{10} constant({[0, 1, 2]: 1, [1, 2, 3]: 2, [2, 3, 4]: 3})
 }
 
 )"
@@ -737,7 +792,7 @@ ENTRY %sparse () -> f32[2,3,4] {
 R"(HloModule sparse_f32_empty
 
 ENTRY %sparse_f32_empty () -> f32[2,3,4] {
-  ROOT %foo = f32[2,3,4]sparse{10} constant(f32[2,3,4]{})
+  ROOT %foo = f32[2,3,4]sparse{10} constant({})
 }
 
 )"
@@ -747,7 +802,7 @@ ENTRY %sparse_f32_empty () -> f32[2,3,4] {
 R"(HloModule sparse_f32_r1
 
 ENTRY %sparse_f32_r1 () -> f32[9] {
-  ROOT %foo = f32[9]sparse{10} constant(f32[9]{1: 2, 3: 4, 5: 6})
+  ROOT %foo = f32[9]sparse{10} constant({1: 2, 3: 4, 5: 6})
 }
 
 )"
@@ -918,11 +973,11 @@ ENTRY reduce_entry {
 R"(HloModule outfeed_module
 
 ENTRY InfeedToOutfeed {
-  token = token[] after-all()
-  infeed = ((u32[3]{0}, pred[]), token[]) infeed(token)
+  token0 = token[] after-all()
+  infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
   infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
-  outfeed = token[] outfeed(infeed.data, token)
-  ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token)
+  outfeed = token[] outfeed(infeed.data, token0)
+  ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token0)
   infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
   infeed.1.token = token[] get-tuple-element(infeed.1), index=1
   outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
@@ -1104,9 +1159,9 @@ ENTRY Gather {
 
 )"
 },
-// cross-replica-sum
+// all-reduce
 {
-"CrossReplicaSum",
+"AllReduce",
 R"(HloModule CRS
 
 add {
@@ -1117,14 +1172,14 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_groups={}, to_apply=add
+  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, to_apply=add
 }
 
 )"
 },
-// cross-replica-sum with subgroups
+// all-reduce with subgroups
 {
-"CrossReplicaSumWithSubgroups",
+"AllReduceWithSubgroups",
 R"(HloModule CRS_Subgroups
 
 add {
@@ -1133,9 +1188,28 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
-ENTRY CrossReplicaSumWithSubgroups {
+ENTRY AllReduceWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_groups={{0,1},{2,3}}, barrier="abc", to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, barrier="abc", to_apply=add
+}
+
+)"
+},
+// all-reduce with all-reduce-id
+{
+"AllReduceAllReduce",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  crs.1 = f32[8]{0} all-reduce(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
+  ROOT crs.0 = f32[8]{0} all-reduce(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
 }
 
 )"
@@ -1210,7 +1284,38 @@ ENTRY Sort {
 }
 
 )"
+    },
+// AfterAll with multiple operands
+{
+"AfterAllWithMultipleOperands",
+R"(HloModule AfterAllWithMultipleOperands
+
+ENTRY AfterAllWithMultipleOperands {
+  p0 = f32[] parameter(0)
+  token0 = token[] after-all()
+  token1 = token[] after-all()
+  ROOT after-all = token[] after-all(p0, token0, token1)
 }
+
+)"
+},
+// AddDependency
+// A dependency chain is created from 'neg' to 'exp' using tokens.
+{
+"AddDependency",
+R"(HloModule AddDependency
+
+ENTRY AddDependency {
+  p = f32[] parameter(0)
+  neg = f32[] negate(p)
+  token0 = token[] after-all(neg)
+  p_after_token = f32[] add-dependency(p, token0)
+  exp = f32[] exponential(p_after_token)
+  ROOT sum = f32[] add(neg, exp)
+}
+
+)"
+},
 });
   // clang-format on
 }
@@ -1266,20 +1371,20 @@ TEST_P(HloParserTestLongProto, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShort, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShortProto, Run) { ExpectEqual(); }
 
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestLongProto,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestShortProto,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestLongProto,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestShortProto,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
 
 class HloParserTest : public ::testing::Test {
  protected:
@@ -1356,7 +1461,7 @@ TEST_F(HloParserTest, MoreConstants) {
 
 ENTRY %SelectScalarS32True.v4 () -> s32[] {
   %constant.2 = pred[] constant(true)
-  %constant.1 = s32[] constant(-42), sharding={s32[5,6] devices=[2,2]1,2,3,4}
+  %constant.1 = s32[] constant(-42), sharding={devices=[2,2]1,2,3,4}
   %constant = s32[] constant(42)
   %select = s32[] select(pred[] %constant.2, s32[] %constant.1, s32[] %constant)
 }
@@ -1399,7 +1504,7 @@ TEST_F(HloParserTest, LiteralDimensionsMismatch_2) {
   const string original = R"(HloModule some_2x3_module
 
 ENTRY %some_2x3 () -> f32[2,3] {
-  ROOT %constant = f32[2,3]{1,0} constant(f32[2,3] {1, 2, 3, 4, 5, 6})
+  ROOT %constant = f32[2,3]{1,0} constant({1, 2, 3, 4, 5, 6})
 }
 
 )";
@@ -1413,7 +1518,7 @@ TEST_F(HloParserTest, LiteralDimensionsMismatch_3) {
   const string original = R"(HloModule some_2x3x2_module
 
 ENTRY %some_2x3x2 () -> f32[2,3,2] {
-  ROOT %constant = f32[2,3,2]{2,1,0} constant(f32[2,3,2] {{{1, 2}, {3, 4}, {5, 6}, {7, 8}, {9, 10}, {11, 12}}})
+  ROOT %constant = f32[2,3,2]{2,1,0} constant({{{1, 2}, {3, 4}, {5, 6}, {7, 8}, {9, 10}, {11, 12}}})
 }
 
 )";
@@ -1531,11 +1636,11 @@ TEST_F(HloParserTest, UnexpectedAttribute) {
   const string original = R"(HloModule unexpected_attr_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %token = token[] after-all()
-  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %token0 = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
   %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(2.1)
-  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, calls=%recv
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, calls=%recv
   %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
@@ -1548,11 +1653,11 @@ TEST_F(HloParserTest, MissingAttribute) {
   const string original = R"(HloModule missing_attr_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %token = token[] after-all()
-  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %token0 = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
   %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(-2.1)
-  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token)
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0)
   %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
@@ -1565,11 +1670,11 @@ TEST_F(HloParserTest, PredecessorUndefined) {
   const string original = R"(HloModule pre_not_found_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %token = token[] after-all()
-  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %token0 = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
   %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(2.1)
-  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, control-predecessors={%done}
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%done}
   %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
@@ -1831,7 +1936,8 @@ ENTRY ReduceR3ToR2 {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(original));
   ASSERT_NE(module->entry_computation(), nullptr);
-  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Reduce());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reduce()));
 }
 
 TEST_F(HloParserTest, ParseSharding) {
@@ -1876,8 +1982,8 @@ TEST_F(HloParserTest, ParsePaddingConfigInteriorPaddingImplicitZeroDim) {
 TEST_F(HloParserTest, NontupleInfeed) {
   const string original = R"(HloModule nontuple_infeed:
 ENTRY nontuple_infeed {
-  token = token[] after-all()
-  ROOT infeed = pred[] infeed(token)
+  token0 = token[] after-all()
+  ROOT infeed = pred[] infeed(token0)
 })";
   ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "infeed must have a non-empty tuple shape");
@@ -1891,7 +1997,7 @@ TEST(HloParserSingleOpTest, SingleOp) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
 }
 
 TEST(HloParserSingleOpTest, SingleOpNoShapeProducesError) {
@@ -1919,7 +2025,7 @@ TEST(HloParserSingleOpTest, SingleOpNoNames) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
 }
 
 TEST(HloParserSingleOpTest, CanonicalOp) {
@@ -1928,7 +2034,7 @@ TEST(HloParserSingleOpTest, CanonicalOp) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
   EXPECT_EQ(
       computation->root_instruction()->ToString(HloPrintOptions::Canonical()),
       text);
@@ -1982,7 +2088,11 @@ TEST(HloParserSingleOpTest, SingleOpWithNested) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Fusion(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Op()
+                             .WithOpcode(HloOpcode::kFusion)
+                             .WithNumOperands(2)
+                             .WithOperand(0, m::Parameter(0))
+                             .WithOperand(1, m::Parameter(1))));
 }
 
 TEST(HloParserSingleOpTest, SingleOpWithNested_DoesNotExist) {
@@ -2026,7 +2136,7 @@ TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Convolution(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Convolution(m::Parameter(0), m::Parameter(1))));
   auto* convolution =
       Cast<HloConvolutionInstruction>(computation->root_instruction());
   EXPECT_EQ(convolution->feature_group_count(), 1);
@@ -2090,8 +2200,10 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
       module->schedule().is_computation_scheduled(module->entry_computation()));
   EXPECT_THAT(
       module->schedule().sequence(module->entry_computation()).instructions(),
-      ::testing::ElementsAre(op::Parameter(), op::Broadcast(), op::Parameter(),
-                             op::Multiply(), op::Parameter(), op::Add()));
+      ::testing::ElementsAre(
+          GmockMatch(m::Parameter()), GmockMatch(m::Broadcast()),
+          GmockMatch(m::Parameter()), GmockMatch(m::Multiply()),
+          GmockMatch(m::Parameter()), GmockMatch(m::Add())));
 }
 
 TEST_F(HloParserTest, IsScheduledIsTrueDifferentOrder) {
@@ -2117,8 +2229,10 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
       module->schedule().is_computation_scheduled(module->entry_computation()));
   EXPECT_THAT(
       module->schedule().sequence(module->entry_computation()).instructions(),
-      ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Parameter(),
-                             op::Broadcast(), op::Multiply(), op::Add()));
+      ::testing::ElementsAre(
+          GmockMatch(m::Parameter()), GmockMatch(m::Parameter()),
+          GmockMatch(m::Parameter()), GmockMatch(m::Broadcast()),
+          GmockMatch(m::Multiply()), GmockMatch(m::Add())));
 }
 
 TEST_F(HloParserTest, CustomCallWrongNumberofOperandConstraints) {
@@ -2161,7 +2275,121 @@ ENTRY entry {
                           ParseHloString(text));
 }
 
-// custom call incompatible shape.
+TEST_F(HloParserTest, ShapeMismatchInOperand) {
+  const string text = R"(
+HloModule foobar
+
+ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
+  %p = f32[2,2] parameter(0)
+  %constant.1 = f32[2,2] constant({{1, 2}, {3, 4}})
+  ROOT %add.1 = f32[2,2] add(f32[2,2] %p, f32[2,5] %constant.1)
+}
+)";
+
+  ExpectHasSubstr(ParseHloString(text).status().error_message(),
+                  "The declared operand shape f32[2,5]{1,0} is not compatible"
+                  " with the shape of the operand instruction f32[2,2]{1,0}.");
+}
+
+TEST_F(HloParserTest, ParseShapeStringR2F32) {
+  string shape_string = "f32[123,456]";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShape(F32, {123, 456});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringTupleOfArrays) {
+  string shape_string = "(f32[1572864],s8[5120,1024])";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1572864}),
+                                 ShapeUtil::MakeShape(S8, {5120, 1024})});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringNestedTuple) {
+  string shape_string = "(f32[1],(f32[2], token[]), opaque[], f32[3])";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeTupleShape({
+      ShapeUtil::MakeShape(F32, {1}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeTokenShape()}),
+      ShapeUtil::MakeOpaqueShape(),
+      ShapeUtil::MakeShape(F32, {3}),
+  });
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringWithLayout) {
+  string shape_string = "f32[123,456]{0,1}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
+  string shape_string = "f32[123,456]sparse{10}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithSparseLayout(F32, {123, 456}, 10);
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual: " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseOpaqueType) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape("opaque[]"));
+  Shape expected = ShapeUtil::MakeOpaqueShape();
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseTokenType) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape("token[]"));
+  Shape expected = ShapeUtil::MakeTokenShape();
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseInvalidShapeString) {
+  string shape_strings[] = {
+      "f32[123,456]foobar{0,1}", "f32[123,456]sparse{0,1}", "f32[123,456]{foo}",
+      "f32[123,456]dense{foo}",  "f32[123,456]sparse{foo}",
+  };
+  for (const string& shape_string : shape_strings) {
+    StatusOr<Shape> result = ParseShape(shape_string);
+    ASSERT_FALSE(result.ok()) << "shape: " << shape_string;
+  }
+}
+
+TEST_F(HloParserTest, ParseDynamicArray) {
+  string shape_string = "f32[123,<=456]";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShape(F32, {123, 456}, {false, true});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseDynamicTuple) {
+  string shape_string = "(f32[42], u32[<=123,<=456])";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {42}),
+       ShapeUtil::MakeShape(U32, {123, 456}, {true, true})});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
 
 }  // namespace
 }  // namespace xla

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -95,7 +97,7 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
 WhileUtil::MakeInstructionsLiveIn(
     HloInstruction* while_instr,
     absl::Span<HloInstruction* const> instructions) {
-  CHECK(ShapeUtil::IsTuple(while_instr->shape()));
+  CHECK(while_instr->shape().IsTuple());
 
   int64 elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
   Shape new_while_shape = while_instr->shape();
@@ -225,7 +227,8 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
 /*static*/ StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
     HloComputation* computation, int32 trip_count,
     const WhileUtil::LoopStateTy& init_values,
-    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator) {
+    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+    const OpMetadata& metadata) {
   CHECK_GE(trip_count, 0);
 
   Shape loop_state_shape = MakeLoopStateShape(init_values);
@@ -242,6 +245,7 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
       computation->AddInstruction(HloInstruction::CreateWhile(
           loop_state_shape, module->AddEmbeddedComputation(std::move(cond)),
           module->AddEmbeddedComputation(std::move(body)), init_tuple));
+  while_instr->set_metadata(metadata);
 
   std::vector<HloInstruction*> result;
   for (int64 i = 0, e = init_values.size(); i < e; i++) {
@@ -263,6 +267,19 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
         instr->tuple_index() == i &&
         instr->operand(0) == while_body.parameter_instruction(0)) {
       result.push_back(instr);
+    }
+  }
+  return result;
+}
+
+/*static*/ absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+WhileUtil::GetGTEsMapForWhileConditional(
+    const HloComputation& while_conditional) {
+  absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>> result;
+  for (HloInstruction* user :
+       while_conditional.parameter_instruction(0)->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement) {
+      result[user->tuple_index()].push_back(user);
     }
   }
   return result;

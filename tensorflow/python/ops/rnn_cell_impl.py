@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
@@ -62,6 +63,15 @@ _WEIGHTS_VARIABLE_NAME = "kernel"
 ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
 
 
+def _hasattr(obj, attr_name):
+  try:
+    getattr(obj, attr_name)
+  except AttributeError:
+    return False
+  else:
+    return True
+
+
 def assert_like_rnncell(cell_name, cell):
   """Raises a TypeError if cell is not like an RNNCell.
 
@@ -78,9 +88,9 @@ def assert_like_rnncell(cell_name, cell):
     TypeError: A human-friendly exception.
   """
   conditions = [
-      hasattr(cell, "output_size"),
-      hasattr(cell, "state_size"),
-      hasattr(cell, "get_initial_state") or hasattr(cell, "zero_state"),
+      _hasattr(cell, "output_size"),
+      _hasattr(cell, "state_size"),
+      _hasattr(cell, "get_initial_state") or _hasattr(cell, "zero_state"),
       callable(cell),
   ]
   errors = [
@@ -276,11 +286,11 @@ class RNNCell(base_layer.Layer):
               batch_size, partial=True)
         else:
           static_batch_size = batch_size
-        if inputs.shape[0].value != static_batch_size:
+        if inputs.shape.dims[0].value != static_batch_size:
           raise ValueError(
               "batch size from input tensor is different from the "
               "input param. Input tensor batch: {}, batch_size: {}".format(
-                  inputs.shape[0].value, batch_size))
+                  inputs.shape.dims[0].value, batch_size))
 
       if dtype is not None and inputs.dtype != dtype:
         raise ValueError(
@@ -288,7 +298,7 @@ class RNNCell(base_layer.Layer):
             "input param. Input tensor dtype: {}, dtype: {}".format(
                 inputs.dtype, dtype))
 
-      batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+      batch_size = inputs.shape.dims[0].value or array_ops.shape(inputs)[0]
       dtype = inputs.dtype
     if None in [batch_size, dtype]:
       raise ValueError(
@@ -315,7 +325,7 @@ class RNNCell(base_layer.Layer):
     # zeros, especially when eager execution is enabled.
     state_size = self.state_size
     is_eager = context.executing_eagerly()
-    if is_eager and hasattr(self, "_last_zero_state"):
+    if is_eager and _hasattr(self, "_last_zero_state"):
       (last_state_size, last_batch_size, last_dtype,
        last_output) = getattr(self, "_last_zero_state")
       if (last_batch_size == batch_size and
@@ -404,13 +414,14 @@ class BasicRNNCell(LayerRNNCell):
                **kwargs):
     super(BasicRNNCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    _check_supported_dtypes(self.dtype)
     if context.executing_eagerly() and context.num_gpus() > 0:
       logging.warn("%s: Note that this cell is not optimized for performance. "
                    "Please use tf.contrib.cudnn_rnn.CudnnRNNTanh for better "
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     if activation:
@@ -431,6 +442,7 @@ class BasicRNNCell(LayerRNNCell):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % str(inputs_shape))
+    _check_supported_dtypes(self.dtype)
 
     input_depth = inputs_shape[-1]
     self._kernel = self.add_variable(
@@ -445,7 +457,7 @@ class BasicRNNCell(LayerRNNCell):
 
   def call(self, inputs, state):
     """Most basic RNN: output = new_state = act(W * input + U * state + B)."""
-
+    _check_rnn_cell_input_dtypes([inputs, state])
     gate_inputs = math_ops.matmul(
         array_ops.concat([inputs, state], 1), self._kernel)
     gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
@@ -462,7 +474,7 @@ class BasicRNNCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export("nn.rnn_cell.GRUCell")
+@tf_export(v1=["nn.rnn_cell.GRUCell"])
 class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
@@ -488,6 +500,8 @@ class GRUCell(LayerRNNCell):
       `trainable` etc when constructing the cell from configs of get_config().
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.GRUCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                activation=None,
@@ -499,13 +513,14 @@ class GRUCell(LayerRNNCell):
                **kwargs):
     super(GRUCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    _check_supported_dtypes(self.dtype)
 
     if context.executing_eagerly() and context.num_gpus() > 0:
       logging.warn("%s: Note that this cell is not optimized for performance. "
                    "Please use tf.contrib.cudnn_rnn.CudnnGRU for better "
                    "performance on GPU.", self)
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     if activation:
@@ -528,7 +543,7 @@ class GRUCell(LayerRNNCell):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % str(inputs_shape))
-
+    _check_supported_dtypes(self.dtype)
     input_depth = inputs_shape[-1]
     self._gate_kernel = self.add_variable(
         "gates/%s" % _WEIGHTS_VARIABLE_NAME,
@@ -557,6 +572,7 @@ class GRUCell(LayerRNNCell):
 
   def call(self, inputs, state):
     """Gated recurrent unit (GRU) with nunits cells."""
+    _check_rnn_cell_input_dtypes([inputs, state])
 
     gate_inputs = math_ops.matmul(
         array_ops.concat([inputs, state], 1), self._gate_kernel)
@@ -610,8 +626,7 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
-# TODO(scottzhu): Stop exporting this class in TF 2.0.
-@tf_export("nn.rnn_cell.BasicLSTMCell")
+@tf_export(v1=["nn.rnn_cell.BasicLSTMCell"])
 class BasicLSTMCell(LayerRNNCell):
   """DEPRECATED: Please use `tf.nn.rnn_cell.LSTMCell` instead.
 
@@ -634,10 +649,8 @@ class BasicLSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
-  @deprecated(None, "This class is deprecated, please use "
-                    "tf.nn.rnn_cell.LSTMCell, which supports all the feature "
-                    "this cell currently has. Please replace the existing code "
-                    "with tf.nn.rnn_cell.LSTMCell(name='basic_lstm_cell').")
+  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                forget_bias=1.0,
@@ -675,6 +688,7 @@ class BasicLSTMCell(LayerRNNCell):
     """
     super(BasicLSTMCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    _check_supported_dtypes(self.dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -684,7 +698,7 @@ class BasicLSTMCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._forget_bias = forget_bias
@@ -708,7 +722,7 @@ class BasicLSTMCell(LayerRNNCell):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % str(inputs_shape))
-
+    _check_supported_dtypes(self.dtype)
     input_depth = inputs_shape[-1]
     h_depth = self._num_units
     self._kernel = self.add_variable(
@@ -736,6 +750,8 @@ class BasicLSTMCell(LayerRNNCell):
         `LSTMStateTuple` or a concatenated state, depending on
         `state_is_tuple`).
     """
+    _check_rnn_cell_input_dtypes([inputs, state])
+
     sigmoid = math_ops.sigmoid
     one = constant_op.constant(1, dtype=dtypes.int32)
     # Parameters of gates are concatenated into one multiply for efficiency.
@@ -779,7 +795,7 @@ class BasicLSTMCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export("nn.rnn_cell.LSTMCell")
+@tf_export(v1=["nn.rnn_cell.LSTMCell"])
 class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -807,6 +823,8 @@ class LSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self, num_units,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None, proj_clip=None,
@@ -856,6 +874,7 @@ class LSTMCell(LayerRNNCell):
     """
     super(LSTMCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    _check_supported_dtypes(self.dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -870,7 +889,7 @@ class LSTMCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes
@@ -911,7 +930,7 @@ class LSTMCell(LayerRNNCell):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % str(inputs_shape))
-
+    _check_supported_dtypes(self.dtype)
     input_depth = inputs_shape[-1]
     h_depth = self._num_units if self._num_proj is None else self._num_proj
     maybe_partitioner = (
@@ -977,6 +996,8 @@ class LSTMCell(LayerRNNCell):
       ValueError: If input size cannot be inferred from inputs via
         static shape inference.
     """
+    _check_rnn_cell_input_dtypes([inputs, state])
+
     num_proj = self._num_units if self._num_proj is None else self._num_proj
     sigmoid = math_ops.sigmoid
 
@@ -986,8 +1007,8 @@ class LSTMCell(LayerRNNCell):
       c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
       m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
-    input_size = inputs.get_shape().with_rank(2)[1]
-    if input_size.value is None:
+    input_size = inputs.get_shape().with_rank(2).dims[1].value
+    if input_size is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
@@ -1064,7 +1085,7 @@ def _default_dropout_state_filter_visitor(substate):
   return True
 
 
-@tf_export("nn.rnn_cell.DropoutWrapper")
+@tf_export(v1=["nn.rnn_cell.DropoutWrapper"])
 class DropoutWrapper(RNNCell):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
@@ -1162,7 +1183,7 @@ class DropoutWrapper(RNNCell):
 
     # Set cell, variational_recurrent, seed before running the code below
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._variational_recurrent = variational_recurrent
     self._seed = seed
@@ -1270,8 +1291,25 @@ class DropoutWrapper(RNNCell):
           shallow_filtered_substructure, dropout,
           *[shallow_filtered_substructure, values, recurrent_noise])
 
-  def __call__(self, inputs, state, scope=None):
-    """Run the cell with the declared dropouts."""
+  def _call(self, inputs, state, call_fn, **kwargs):
+    """Defines a helper method that runs the wrapped cell and applies dropout.
+
+    This helper is called from the DropoutWrapper's `call` or `__call__`
+    methods.
+
+    Args:
+      inputs: A tensor with wrapped cell's input.
+      state: A tensor or tuple of tensors with wrapped cell's state.
+      call_fn: Wrapped cell's method to use for step computation (cell's
+        `__call__` or 'call' method).
+      **kwargs: Additional arguments.
+
+    Returns:
+      A pair containing:
+
+      - Output: A tensor with cell's output.
+      - New state: A tensor or tuple of tensors with new wrapped cell's state.
+    """
     def _should_dropout(p):
       return (not isinstance(p, float)) or p < 1
 
@@ -1279,7 +1317,7 @@ class DropoutWrapper(RNNCell):
       inputs = self._dropout(inputs, "input",
                              self._recurrent_input_noise,
                              self._input_keep_prob)
-    output, new_state = self._cell(inputs, state, scope=scope)
+    output, new_state = call_fn(inputs, state, **kwargs)
     if _should_dropout(self._state_keep_prob):
       # Identify which subsets of the state to perform dropout on and
       # which ones to keep.
@@ -1294,6 +1332,80 @@ class DropoutWrapper(RNNCell):
                              self._recurrent_output_noise,
                              self._output_keep_prob)
     return output, new_state
+
+  def __call__(self, inputs, state, scope=None):
+    """Runs the cell with the declared dropouts.
+
+    We assume that the wrapped RNNCell is being built within its `__call__`
+    method. We directly use the wrapped cell's `__call__` in the overridden
+    DropoutWrapper `__call__` method.
+
+    This should allow to use the wrapped cell and the non-wrapped cell
+    equivalently when using `__call__`.
+
+    Args:
+      inputs: A tensor with wrapped cell's input.
+      state: A tensor or tuple of tensors with wrapped cell's state.
+      scope: VariableScope for the subgraph created in the wrapped cells'
+        `__call__`.
+
+    Returns:
+      A pair containing:
+
+      - Output: A tensor with cell's output.
+      - New state: A tensor or tuple of tensors with new wrapped cell's state.
+    """
+    return self._call(inputs, state, call_fn=self._cell.__call__, scope=scope)
+
+
+@tf_export("rnn.DropoutWrapper", v1=[])
+class DropoutWrapperV2(LayerRNNCell, DropoutWrapper):
+  """Operator adding dropout to inputs and outputs of the given cell."""
+
+  def __init__(self, cell, input_keep_prob=1.0, output_keep_prob=1.0,
+               state_keep_prob=1.0, variational_recurrent=False,
+               input_size=None, dtype=None, seed=None,
+               dropout_state_filter_visitor=None):
+    """Runs init in Keras style scope to use Keras-style variable management."""
+
+    with base_layer.keras_style_scope():
+      super(DropoutWrapperV2, self).__init__(
+          cell=cell,
+          input_keep_prob=input_keep_prob,
+          output_keep_prob=output_keep_prob,
+          state_keep_prob=state_keep_prob,
+          variational_recurrent=variational_recurrent,
+          input_size=input_size,
+          dtype=dtype,
+          seed=seed,
+          dropout_state_filter_visitor=dropout_state_filter_visitor)
+
+  def build(self, inputs_shape):
+    self._cell.build(inputs_shape)
+    self.built = True
+
+  def call(self, inputs, state, **kwargs):
+    """Runs the cell with the declared dropouts.
+
+    When `call` is being used, we assume that the DropoutWrapper object has
+    been built and therefore the wrapped cells has been built via its `build`
+    method and its `call` method can be used directly.
+
+    This should allow to use the wrapped cell and the non-wrapped cell
+    equivalently when using `call` and `build`.
+
+    Args:
+      inputs: A tensor with wrapped cell's input.
+      state: A tensor or tuple of tensors with wrapped cell's state.
+      **kwargs: Additional arguments passed to the wrapped cell's `call`.
+
+    Returns:
+      A pair containing:
+
+      - Output: A tensor with cell's output.
+      - New state: A tensor or tuple of tensors with new wrapped cell's state.
+    """
+    return self._call(inputs, state, call_fn=self._cell.call, **kwargs)
 
 
 @tf_export("nn.rnn_cell.ResidualWrapper")
@@ -1312,7 +1424,7 @@ class ResidualWrapper(RNNCell):
     """
     super(ResidualWrapper, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._residual_fn = residual_fn
 
@@ -1370,7 +1482,7 @@ class DeviceWrapper(RNNCell):
     """
     super(DeviceWrapper, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._device = device
 
@@ -1393,7 +1505,7 @@ class DeviceWrapper(RNNCell):
       return self._cell(inputs, state, scope=scope)
 
 
-@tf_export("nn.rnn_cell.MultiRNNCell")
+@tf_export(v1=["nn.rnn_cell.MultiRNNCell"])
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells.
 
@@ -1406,6 +1518,9 @@ class MultiRNNCell(RNNCell):
   ```
   """
 
+  @deprecated(None, "This class is equivalent as "
+                    "tf.keras.layers.StackedRNNCells, and will be replaced by "
+                    "that in Tensorflow 2.0.")
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.
 
@@ -1436,7 +1551,7 @@ class MultiRNNCell(RNNCell):
     for cell_number, cell in enumerate(self._cells):
       # Add Checkpointable dependencies on these cells so their variables get
       # saved with this object when using object-based saving.
-      if isinstance(cell, checkpointable.CheckpointableBase):
+      if isinstance(cell, checkpointable.Checkpointable):
         # TODO(allenl): Track down non-Checkpointable callers.
         self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
@@ -1451,7 +1566,7 @@ class MultiRNNCell(RNNCell):
     if self._state_is_tuple:
       return tuple(cell.state_size for cell in self._cells)
     else:
-      return sum([cell.state_size for cell in self._cells])
+      return sum(cell.state_size for cell in self._cells)
 
   @property
   def output_size(self):
@@ -1514,3 +1629,31 @@ class MultiRNNCell(RNNCell):
                   array_ops.concat(new_states, 1))
 
     return cur_inp, new_states
+
+
+def _check_rnn_cell_input_dtypes(inputs):
+  """Check whether the input tensors are with supported dtypes.
+
+  Default RNN cells only support floats and complex as its dtypes since the
+  activation function (tanh and sigmoid) only allow those types. This function
+  will throw a proper error message if the inputs is not in a supported type.
+
+  Args:
+    inputs: tensor or nested structure of tensors that are feed to RNN cell as
+      input or state.
+
+  Raises:
+    ValueError: if any of the input tensor are not having dtypes of float or
+      complex.
+  """
+  for t in nest.flatten(inputs):
+    _check_supported_dtypes(t.dtype)
+
+
+def _check_supported_dtypes(dtype):
+  if dtype is None:
+    return
+  dtype = dtypes.as_dtype(dtype)
+  if not (dtype.is_floating or dtype.is_complex):
+    raise ValueError("RNN cell only supports floating point inputs, "
+                     "but saw dtype: %s" % dtype)

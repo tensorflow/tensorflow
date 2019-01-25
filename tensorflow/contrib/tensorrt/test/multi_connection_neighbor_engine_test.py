@@ -25,8 +25,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
@@ -60,14 +58,14 @@ class MultiConnectionNeighborEngineTest(trt_test.TfTrtIntegrationTestBase):
       b = constant_op.constant(
           np.random.normal(5.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       q = conv - b
-      edge = math_ops.sigmoid(q)
+      edge = self.trt_incompatible_op(q)
 
       b = constant_op.constant(
           np.random.normal(5.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       d = b + conv
-      edge3 = math_ops.sigmoid(d)
+      edge3 = self.trt_incompatible_op(d)
 
-      edge1 = gen_math_ops.tan(conv)
+      edge1 = self.trt_incompatible_op(conv)
       t = t - edge1
       q = q + edge
       t = t + q
@@ -77,13 +75,13 @@ class MultiConnectionNeighborEngineTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[(2, 4, 5, 4)])
+        expected_output_dims=[[[2, 4, 5, 4]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["my_trt_op_0", "my_trt_op_1"]
+    return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
 
 if __name__ == "__main__":

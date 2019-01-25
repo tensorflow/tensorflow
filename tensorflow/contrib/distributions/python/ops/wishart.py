@@ -136,13 +136,13 @@ class _WishartLinearOperator(distribution.Distribution):
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._scale_operator))
         if (self._scale_operator.shape.ndims is None or
-            self._scale_operator.shape[-1].value is None):
+            self._scale_operator.shape.dims[-1].value is None):
           self._dimension = math_ops.cast(
               self._scale_operator.domain_dimension_tensor(),
               dtype=self._scale_operator.dtype, name="dimension")
         else:
           self._dimension = ops.convert_to_tensor(
-              self._scale_operator.shape[-1].value,
+              self._scale_operator.shape.dims[-1].value,
               dtype=self._scale_operator.dtype, name="dimension")
         df_val = tensor_util.constant_value(self._df)
         dim_val = tensor_util.constant_value(self._dimension)

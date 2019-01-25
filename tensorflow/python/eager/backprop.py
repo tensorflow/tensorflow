@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import operator
+import sys
 
 import six
 
@@ -33,16 +34,29 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+
+# Note that we need to lazy load the following two modules to avoid creating
+# circular dependencies.
+# TODO(b/119775953): fix the circular dependencies.
+pfor_ops = LazyLoader(
+    "pfor_ops", globals(),
+    "tensorflow.python.ops.parallel_for.control_flow_ops")
+
+function = LazyLoader("function", globals(),
+                      "tensorflow.python.eager.function")
 
 _op_attr_type_cache = {}
 
@@ -451,14 +465,16 @@ def val_and_grad_function(f, params=None):
 
 
 def make_vjp(f, params=None, persistent=True):
-  """Returns a function that computes f and is vjp w.r.t. params.
+  """Returns a function that computes f and its vjp w.r.t.
+
+  params.
 
   The term "vjp" here is an abbreviation for vector-jacobian product.
 
   Args:
     f: the function to be differentiated.
     params: the parameters (numbers or names) to differentiate with respect to.
-       A value of None will differentiate with respect to all parameters.
+      A value of None will differentiate with respect to all parameters.
     persistent: Boolean controlling whether the VJP function can be re-used.
       Must be True or False.
 
@@ -535,11 +551,11 @@ def _aggregate_grads(gradients):
 
   if len(gradients) == 1:
     return gradients[0]
-  if all([isinstance(g, ops.Tensor) for g in gradients]):
+  if all(isinstance(g, ops.Tensor) for g in gradients):
     return gen_math_ops.add_n(gradients)
   else:
-    assert all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
-                for g in gradients])
+    assert all(isinstance(g, (ops.Tensor, ops.IndexedSlices))
+               for g in gradients)
     indexed_slices_list = []
     for grad in gradients:
       # TODO(xpan): Support nested IndexedSlices and core IndexedSlices
@@ -581,7 +597,9 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Helper to return (possibly cached) zero tensors in eager mode."""
-  if dtype == dtypes.variant:
+  if (dtype == dtypes.variant
+      or dtype == dtypes.string
+      or dtype == dtypes.resource):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
@@ -594,18 +612,30 @@ def _zeros(shape, dtype):
   cache_key = shape, dtype, device
   cached = ctx.zeros_cache().get(cache_key)
   if cached is None:
-    cached = _fast_fill(0, shape, dtype)
+    if dtypes.as_dtype(dtype).is_bool:
+      value = False
+    else:
+      value = 0
+    cached = _fast_fill(value, shape, dtype)
     ctx.zeros_cache().put(cache_key, cached)
   return cached
 
 
 def _ones(shape, dtype):
+  if dtypes.as_dtype(dtype) == dtypes.string:
+    return None
+
   if not context.context().executing_eagerly():
     return array_ops.ones(shape, dtype)
 
+  if dtypes.as_dtype(dtype).is_bool:
+    value = True
+  else:
+    value = 1
+
   if shape == ():  # pylint: disable=g-explicit-bool-comparison
-    return constant_op.constant(1, dtype=dtype)
-  return _fast_fill(1, shape, dtype)
+    return constant_op.constant(value, dtype=dtype)
+  return _fast_fill(value, shape, dtype)
 
 
 _default_vspace = imperative_grad.VSpace(
@@ -762,7 +792,12 @@ class GradientTape(object):
 
   def __del__(self):
     if self._created_eagerly:
-      context.context().end_step()
+      try:
+        context.context().end_step()
+      except AttributeError:
+        pass
+      except TypeError:
+        pass
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
@@ -850,7 +885,11 @@ class GradientTape(object):
     """Returns variables watched by this tape in order of construction."""
     return self._tape.watched_variables()
 
-  def gradient(self, target, sources, output_gradients=None):
+  def gradient(self,
+               target,
+               sources,
+               output_gradients=None,
+               unconnected_gradients=UnconnectedGradients.NONE):
     """Computes the gradient using operations recorded in context of this tape.
 
     Args:
@@ -859,6 +898,10 @@ class GradientTape(object):
         will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
         target. Defaults to None.
+      unconnected_gradients: a value which can either hold 'none' or 'zero' and
+        alters the value which will be returned if the target and sources are
+        unconnected. The possible values and effects are detailed in
+        'UnconnectedGradients' and it defaults to 'none'.
 
     Returns:
       a list or nested structure of Tensors (or IndexedSlices, or None),
@@ -868,7 +911,8 @@ class GradientTape(object):
     Raises:
       RuntimeError: if called inside the context of the tape, or if called more
        than once on a non-persistent tape.
-      ValueError: if called on variable target.
+      ValueError: if the target is a variable or if unconnected gradients is
+       called with an unknown value.
     """
     if self._tape is None:
       raise RuntimeError("GradientTape.gradient can only be called once on "
@@ -888,11 +932,12 @@ class GradientTape(object):
                             "gradient in order to compute higher order "
                             "derrivatives.", 1)
 
-    flat_targets = nest.flatten(target)
-    for t in flat_targets:
+    flat_targets = []
+    for t in nest.flatten(target):
       if resource_variable_ops.is_resource_variable(t):
-        raise ValueError("GradientTape.gradient is not supported for variable "
-                         "targets.")
+        with self:
+          t = ops.convert_to_tensor(t)
+      flat_targets.append(t)
 
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]
@@ -905,10 +950,226 @@ class GradientTape(object):
         self._tape,
         flat_targets,
         flat_sources,
-        output_gradients=output_gradients)
+        output_gradients=output_gradients,
+        unconnected_gradients=unconnected_gradients)
 
     if not self._persistent:
       self._tape = None
 
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
+
+  def jacobian(self,
+               target,
+               sources,
+               unconnected_gradients=UnconnectedGradients.NONE,
+               parallel_iterations=None,
+               experimental_use_pfor=True):
+    """Computes the jacobian using operations recorded in context of this tape.
+
+    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
+    definition of a Jacobian.
+
+    Example usage:
+
+    with tf.GradientTape() as g:
+      x  = tf.constant([1.0, 2.0])
+      g.watch(x)
+      y = x * x
+    jacobian = g.jacobian(y, x)
+    # jacobian value is [[2., 0.], [0., 4.]]
+
+    Args:
+      target: Tensor to be differentiated.
+      sources: a list or nested structure of Tensors or Variables. `target`
+        will be differentiated against elements in `sources`.
+      unconnected_gradients: a value which can either hold 'none' or 'zero' and
+        alters the value which will be returned if the target and sources are
+        unconnected. The possible values and effects are detailed in
+        'UnconnectedGradients' and it defaults to 'none'.
+      parallel_iterations: A knob to control how many iterations are dispatched
+        in parallel. This knob can be used to control the total memory usage.
+      experimental_use_pfor: If true, vectorizes the jacobian computation. Else
+        falls back to a sequential while_loop. Vectorization can sometimes fail
+        or lead to excessive memory usage. This option can be used to disable
+        vectorization in such cases.
+
+    Returns:
+      a list or nested structure of Tensors (or IndexedSlices, or None),
+      one for each element in `sources`. Returned structure is the same as
+      the structure of `sources`.
+
+    Raises:
+      RuntimeError: If called on a non-persistent tape with eager execution
+        enabled and without enabling experimental_use_pfor.
+      ValueError: If vectorization of jacobian computation fails.
+    """
+    flat_sources = nest.flatten(sources)
+    target_static_shape = target.shape
+    target_shape = array_ops.shape(target)
+    # Note that we push and pop the tape here and below. This is needed since we
+    # need gradients through the enclosed operations.
+    self._push_tape()
+    target = array_ops.reshape(target, [-1])
+    self._pop_tape()
+
+    def loop_fn(i):
+      self._push_tape()
+      y = array_ops.gather(target, i)
+      self._pop_tape()
+      return self.gradient(y, flat_sources,
+                           unconnected_gradients=unconnected_gradients)
+
+    try:
+      target_size = int(target.shape[0])
+    except TypeError:
+      target_size = array_ops.shape(target)[0]
+
+    if experimental_use_pfor:
+      try:
+        output = pfor_ops.pfor(loop_fn, target_size,
+                               parallel_iterations=parallel_iterations)
+      except ValueError as err:
+        six.reraise(
+            ValueError,
+            ValueError(
+                str(err) + "\nEncountered an exception while vectorizing the "
+                "jacobian computation. Vectorization can be disabled by setting"
+                " experimental_use_pfor to False."),
+            sys.exc_info()[2])
+    else:
+      if context.executing_eagerly() and not self._persistent:
+        raise RuntimeError(
+            "GradientTape must be created with persistent=True"
+            " to compute the jacobian with eager execution enabled and with "
+            " experimental_use_pfor set to False.")
+      output = pfor_ops.for_loop(
+          loop_fn, [target.dtype] * len(flat_sources), target_size,
+          parallel_iterations=parallel_iterations)
+
+    for i, out in enumerate(output):
+      if out is not None:
+        new_shape = array_ops.concat(
+            [target_shape, array_ops.shape(out)[1:]], axis=0)
+        out = array_ops.reshape(out, new_shape)
+        if context.executing_eagerly():
+          out.set_shape(target_static_shape.concatenate(flat_sources[i].shape))
+      output[i] = out
+
+    return nest.pack_sequence_as(sources, output)
+
+  def batch_jacobian(self,
+                     target,
+                     source,
+                     unconnected_gradients=UnconnectedGradients.NONE,
+                     parallel_iterations=None,
+                     experimental_use_pfor=True):
+    """Computes and stacks per-example jacobians.
+
+    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
+    definition of a Jacobian.  This function is essentially an efficient
+    implementation of the following:
+    `tf.stack([self.jacobian(y[i], x[i]) for i in range(x.shape[0])])`.
+
+    Note that compared to `GradientTape.jacobian` which computes gradient of
+    each output value w.r.t each input value, this function is useful when
+    `target[i,...] is independent of `source[j,...]` for `j != i`. This
+    independence assumption allows more efficient computation as compared to
+    `GradientTape.jacobian`. The output, as well as intermediate activations,
+    are lower dimensional and avoid a bunch of redundant zeros which would
+    result in the jacobian computation given the independence assumption.
+
+    Example usage:
+    with tf.GradientTape() as g:
+      x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
+      g.watch(x)
+      y = x * x
+    batch_jacobian = g.batch_jacobian(y, x)
+    # batch_jacobian is [[[2,  0], [0,  4]], [[6,  0], [0,  8]]]
+
+    Args:
+      target: A tensor with rank 2 or higher and with shape [b, y1, ..., y_n].
+        `target[i,...]` should only depend on `source[i,...]`.
+      source: A tensor with rank 2 or higher and with shape [b, x1, ..., x_m].
+      unconnected_gradients: a value which can either hold 'none' or 'zero' and
+        alters the value which will be returned if the target and sources are
+        unconnected. The possible values and effects are detailed in
+        'UnconnectedGradients' and it defaults to 'none'.
+      parallel_iterations: A knob to control how many iterations are dispatched
+        in parallel. This knob can be used to control the total memory usage.
+      experimental_use_pfor: If true, uses pfor for computing the Jacobian. Else
+        uses a tf.while_loop.
+
+    Returns:
+      A tensor `t` with shape [b, y_1, ..., y_n, x1, ..., x_m] where `t[i, ...]`
+      is the jacobian of `target[i, ...]` w.r.t. `source[i, ...]`, i.e. stacked
+      per-example jacobians.
+
+    Raises:
+      RuntimeError: If called on a non-persistent tape with eager execution
+        enabled and without enabling experimental_use_pfor.
+      ValueError: If vectorization of jacobian computation fails or if first
+        dimension of `target` and `source` do not match.
+    """
+    target_shape = target.shape
+    if target_shape.rank is None:
+      dim = Dimension(None)
+    else:
+      dim = target_shape.dims[0]
+    if not (target_shape.with_rank_at_least(2) and
+            source.shape.with_rank_at_least(2) and
+            dim.is_compatible_with(source.shape[0])):
+      raise ValueError(
+          "Need first dimension of target shape (%s) and "
+          "source shape (%s) to match." % (target.shape, source.shape))
+    if target_shape.is_fully_defined():
+      batch_size = int(target_shape[0])
+      target_row_size = target_shape.num_elements() // batch_size
+    else:
+      target_shape = array_ops.shape(target)
+      batch_size = target_shape[0]
+      target_row_size = array_ops.size(target) // batch_size
+    source_shape = array_ops.shape(source)
+    # Flatten target to 2-D.
+    # Note that we push and pop the tape here and below. This is needed since we
+    # need gradients through the enclosed operations.
+    self._push_tape()
+    with ops.control_dependencies(
+        [check_ops.assert_equal(batch_size, source_shape[0])]):
+      target = array_ops.reshape(target, [batch_size, target_row_size])
+    self._pop_tape()
+
+    def loop_fn(i):
+      self._push_tape()
+      y = array_ops.gather(target, i, axis=1)
+      self._pop_tape()
+      return self.gradient(y, source,
+                           unconnected_gradients=unconnected_gradients)
+
+    if experimental_use_pfor:
+      try:
+        output = pfor_ops.pfor(loop_fn, target_row_size,
+                               parallel_iterations=parallel_iterations)
+      except ValueError as err:
+        six.reraise(
+            ValueError,
+            ValueError(
+                str(err) + "\nEncountered an exception while vectorizing the "
+                "batch_jacobian computation. Vectorization can be disabled by "
+                "setting experimental_use_pfor to False."),
+            sys.exc_info()[2])
+    else:
+      if context.executing_eagerly() and not self._persistent:
+        raise RuntimeError(
+            "GradientTape must be created with persistent=True"
+            " to compute the batch_jacobian with eager execution enabled and "
+            " with experimental_use_pfor set to False.")
+      output = pfor_ops.for_loop(loop_fn, target.dtype, target_row_size,
+                                 parallel_iterations=parallel_iterations)
+    if output is None:
+      return None
+    output = array_ops.reshape(output,
+                               [target_row_size, batch_size, -1])
+    output = array_ops.transpose(output, [1, 0, 2])
+    new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
+    return array_ops.reshape(output, new_shape)

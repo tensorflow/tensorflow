@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import abc
 
-from tensorflow.contrib import distributions
+import six
 
 from tensorflow.contrib.timeseries.python.timeseries import math_utils
 
@@ -32,10 +32,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
 
+@six.add_metaclass(abc.ABCMeta)
 class FilteringStepPostprocessor(object):
   """Base class for processors that are applied after each filter step."""
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def process_filtering_step(self, current_times, current_values,
@@ -90,10 +89,10 @@ def cauchy_alternative_to_gaussian(current_times, current_values, outputs):
   """
   del current_times  # unused
   cauchy_scale = math_utils.entropy_matched_cauchy_scale(outputs["covariance"])
-  individual_log_pdfs = distributions.StudentT(
-      df=array_ops.ones([], dtype=current_values.dtype),
+  individual_log_pdfs = math_utils.cauchy_log_prob(
       loc=outputs["mean"],
-      scale=cauchy_scale).log_prob(current_values)
+      scale=cauchy_scale,
+      x=current_values)
   return math_ops.reduce_sum(individual_log_pdfs, axis=1)
 
 

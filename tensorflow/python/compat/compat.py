@@ -23,10 +23,11 @@ from __future__ import division
 from __future__ import print_function
 
 import datetime
+
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 10, 18)
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2019, 1, 25)
 
 
 @tf_export("compat.forward_compatible")

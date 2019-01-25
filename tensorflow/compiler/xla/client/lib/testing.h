@@ -29,14 +29,19 @@ namespace xla {
 // Generates fake data of the given shape on the device or dies. The fake data
 // is created by performing a computation on the device rather than transferring
 // data from the host to the device.
-std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
-                                              Client* client);
+//
+// The optional DebugOptions are used when generating fake data on the device.
+std::unique_ptr<GlobalData> MakeFakeDataOrDie(
+    const Shape& shape, Client* client, DebugOptions* debug_opts = nullptr);
 
 // Returns vector of GlobalData handles of fake data (created using
 // MakeFakeDataOrDie) that are correctly shaped arguments for the given
 // xla computation.
+//
+// The optional DebugOptions are used when generating fake data on the device.
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const XlaComputation& computation, Client* client);
+    const XlaComputation& computation, Client* client,
+    DebugOptions* debug_opts = nullptr);
 
 }  // namespace xla
 

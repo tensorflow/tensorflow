@@ -207,7 +207,7 @@ def tf_library(
         #
         # Note that setting the local=1 attribute on a *test target* causes the
         # test infrastructure to skip that test.  However this is a genrule, not
-        # a test target, and runs with --genrule_strategy=forced_forge, meaning
+        # a test target, and runs with --strategy=Genrule=forced_forge, meaning
         # the local=1 attribute is ignored, and the genrule is still run.
         #
         # https://www.bazel.io/versions/master/docs/be/general.html#genrule
@@ -283,7 +283,7 @@ def tf_library(
     )
 
     # Variables used for gen_test and gen_benchmark.
-    cpp_class_split = cpp_class.rsplit("::", maxsplit = 2)
+    cpp_class_split = cpp_class.rsplit("::", 2)
     if len(cpp_class_split) == 1:
         no_ns_name = cpp_class_split[0]
     else:

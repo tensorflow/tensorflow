@@ -37,7 +37,7 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 
 
-UNDEFINED = object()
+UNSPECIFIED = object()
 
 
 def overload_of(f):
@@ -77,14 +77,14 @@ def _py_float(x):
   return float(x)
 
 
-def int_(x=0, base=UNDEFINED):
+def int_(x=0, base=UNSPECIFIED):
   if tensor_util.is_tensor(x):
     return _tf_int(x, base)
   return _py_int(x, base)
 
 
 def _tf_int(x, base):
-  if base not in (10, UNDEFINED):
+  if base not in (10, UNSPECIFIED):
     raise NotImplementedError('base {} not supported for int'.format(base))
 
   # TODO(mdan): We shouldn't assume int32.
@@ -94,7 +94,7 @@ def _tf_int(x, base):
 
 
 def _py_int(x, base):
-  if base is UNDEFINED:
+  if base is UNSPECIFIED:
     return int(x)
   return int(x, base)
 
@@ -120,8 +120,8 @@ def _tf_tensor_list_len(s):
 def _tf_tensor_len(s):
   """Overload of len_ for Tensor arguments."""
   # Statically shaped tensors: length is known ahead of time.
-  if s.shape.ndims and s.shape[0].value is not None:
-    return s.shape[0].value
+  if s.shape.ndims and s.shape.dims[0].value is not None:
+    return s.shape.dims[0].value
 
   # Static shape of unknown dimensions: use dynamic shape but statically
   # chech that it's a scalar.
@@ -133,7 +133,7 @@ def _tf_tensor_len(s):
     raise ValueError(
         'len requires a non-scalar tensor, got one of shape {}'.format(shape))
 
-  if shape.shape[0].value is not None:
+  if shape.shape.dims[0].value is not None:
     return array_ops.shape(s)[0]
 
   # Fully dynamic shape: use ops.
@@ -167,13 +167,14 @@ def print_(*objects, **kwargs):
 
 def _tf_py_func_print(objects, kwargs):
   """Overload of print_ as a py_func implementation."""
-  override_kwargs = {k: v for k, v in kwargs.items() if v is not UNDEFINED}
+  override_kwargs = {k: v for k, v in kwargs.items() if v is not UNSPECIFIED}
   if 'flush' not in override_kwargs:
     # Defaulting to flushing the console in graph mode, which helps reduce
     # garbled output in IPython.
     override_kwargs['flush'] = True
 
   def print_wrapper(*vals):
+    vals = tuple(v.numpy() if tensor_util.is_tensor(v) else v for v in vals)
     if six.PY3:
       # TensorFlow doesn't seem to generate Unicode when passing strings to
       # py_func. This causes the print to add a "b'" wrapper to the output,
@@ -186,22 +187,23 @@ def _tf_py_func_print(objects, kwargs):
       print_wrapper, None, objects, use_dummy_return=True)
 
 
-def range_(start_or_stop, stop=UNDEFINED, step=UNDEFINED):
+def range_(start_or_stop, stop=UNSPECIFIED, step=UNSPECIFIED):
   if any(tensor_util.is_tensor(s) for s in (start_or_stop, stop, step)):
     return _tf_range(start_or_stop, stop, step)
   return _py_range(start_or_stop, stop, step)
 
 
 def _tf_range(start_or_stop, stop, step):
+  """Overload of range_ that generates a TF range tensor."""
   # Note: for static inputs (e.g. constants), tf.range errors out at graph
   # construction time, instead of returning an empty tensor. Preventing the
   # graph construction error aligns the semantics with Python.
 
   # TODO(mdan): We should optimize this when a full tensor is not required.
-  if step is not UNDEFINED:
+  if step is not UNSPECIFIED:
     # TODO(mdan): Add argument coercion similar to other cases.
     return math_ops.range(start_or_stop, stop, step)
-  if stop is not UNDEFINED:
+  if stop is not UNSPECIFIED:
     stop = math_ops.maximum(start_or_stop, stop)
     return math_ops.range(start_or_stop, stop)
   start_or_stop = math_ops.maximum(start_or_stop, 0)
@@ -209,17 +211,17 @@ def _tf_range(start_or_stop, stop, step):
 
 
 def _py_range(start_or_stop, stop, step):
-  if step is not UNDEFINED:
+  if step is not UNSPECIFIED:
     return range(start_or_stop, stop, step)
-  if stop is not UNDEFINED:
+  if stop is not UNSPECIFIED:
     return range(start_or_stop, stop)
   return range(start_or_stop)
 
 
-SUPPORTED_BUILTINS = set((abs, float, int, len, print, range))
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range)
 
 if six.PY2:
-  SUPPORTED_BUILTINS.add(xrange)
+  SUPPORTED_BUILTINS += (xrange,)
 
 BUILTIN_FUINCTIONS_MAP = {
     'abs': abs_,

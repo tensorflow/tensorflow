@@ -401,7 +401,7 @@ REGISTER_OP("SparseReduceMax")
     .Attr("keep_dims: bool = False")
     .Output("output: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::UnknownShape);
+    .SetShapeFn(shape_inference::SparseReduceShapeFn);
 
 REGISTER_OP("SparseReduceMaxSparse")
     .Input("input_indices: int64")
@@ -423,7 +423,7 @@ REGISTER_OP("SparseReduceSum")
     .Attr("keep_dims: bool = False")
     .Output("output: T")
     .Attr("T: numbertype")
-    .SetShapeFn(shape_inference::UnknownShape);
+    .SetShapeFn(shape_inference::SparseReduceShapeFn);
 
 REGISTER_OP("SparseReduceSumSparse")
     .Input("input_indices: int64")

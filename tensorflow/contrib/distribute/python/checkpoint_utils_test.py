@@ -43,10 +43,12 @@ class CheckpointUtilsWithDistributionStrategyTest(
       distribution=[combinations.default_strategy,
                     combinations.one_device_strategy,
                     combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus],
-      in_tower_mode=[True, False],
+                    combinations.mirrored_strategy_with_two_gpus,
+                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
+                    combinations.core_mirrored_strategy_with_two_gpus],
+      in_replica_mode=[True, False],
       mode=["graph"]))
-  def testInitFromCheckpoint(self, distribution, in_tower_mode):
+  def testInitFromCheckpoint(self, distribution, in_replica_mode):
     checkpoint_dir = self.get_temp_dir()
     with self.cached_session() as session:
       v1_value, v2_value, _, _ = checkpoint_utils_test._create_checkpoints(
@@ -68,8 +70,8 @@ class CheckpointUtilsWithDistributionStrategyTest(
         self.assertAllEqual(v2_value, self.evaluate(v2))
 
     with ops.Graph().as_default() as g, distribution.scope():
-      if in_tower_mode:
-        distribution.call_for_each_tower(init_and_verify, g)
+      if in_replica_mode:
+        distribution.extended.call_for_each_replica(init_and_verify, args=[g])
       else:
         init_and_verify(g)
 

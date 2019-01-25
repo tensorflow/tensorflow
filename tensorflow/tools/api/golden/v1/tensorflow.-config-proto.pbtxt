@@ -137,6 +137,24 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_STRING
       }
+      field {
+        name: "recv_buf_max_chunk"
+        number: 4
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "use_numa_affinity"
+        number: 5
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "collective_deterministic_sequential_execution"
+        number: 6
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       reserved_range {
         start: 2
         end: 3

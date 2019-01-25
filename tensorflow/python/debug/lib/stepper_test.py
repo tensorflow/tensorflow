@@ -33,6 +33,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent
 
 
+@test_util.run_v1_only("b/120545219")
 class StepperTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -443,6 +444,7 @@ class StepperTest(test_util.TensorFlowTestCase):
           self.assertAllClose(-4.0, result["fz"]["z"])
 
 
+@test_util.run_v1_only("b/120545219")
 class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -577,6 +579,7 @@ class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
       self.assertAllClose([[-1.0], [6.0]], stepper.finalize())
 
 
+@test_util.run_v1_only("b/120545219")
 class StepperAssignAddTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -692,6 +695,7 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
       self.assertAllClose(12.0, stepper.cont(self.v))
 
 
+@test_util.run_v1_only("b/120545219")
 class StepperBackwardRunTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

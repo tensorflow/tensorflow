@@ -223,7 +223,7 @@ class FractionalAvgPoolGradOp : public OpKernel {
     // Once we figure out the original contributors, we just need to evenly
     // divide the value of this element among these contributors.
     //
-    // Internally, we divide the out_backprop tensor and store it in a temparary
+    // Internally, we divide the out_backprop tensor and store it in a temporary
     // tensor of double type. And cast it to the corresponding type.
     typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
         ConstEigenMatrixMap;

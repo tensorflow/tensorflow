@@ -22,7 +22,6 @@ limitations under the License.
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/math_ops.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {

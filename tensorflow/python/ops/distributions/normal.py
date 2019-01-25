@@ -42,7 +42,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Normal")
+@tf_export(v1=["distributions.Normal"])
 class Normal(distribution.Distribution):
   """The Normal distribution with location `loc` and `scale` parameters.
 

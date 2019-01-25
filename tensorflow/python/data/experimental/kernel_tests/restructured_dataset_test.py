@@ -22,12 +22,15 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
+# TODO(b/117581999): Add eager specific test.
 class RestructuredDatasetTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testRestructureDataset(self):
     components = (array_ops.placeholder(dtypes.int32),
                   (array_ops.placeholder(dtypes.int32, shape=[None]),

@@ -25,11 +25,27 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CheckpointSaverHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CheckpointSaverListener"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DNNClassifier"
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DNNEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DNNLinearCombinedClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DNNLinearCombinedEstimator"
     mtype: "<type \'type\'>"
   }
   member {
@@ -57,7 +73,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FeedFnHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FinalExporter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FinalOpsHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GlobalStepWaiterHook"
     mtype: "<type \'type\'>"
   }
   member {
@@ -69,7 +97,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearRegressor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LoggingTensorHook"
     mtype: "<type \'type\'>"
   }
   member {
@@ -77,7 +113,51 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "NanLossDuringTrainingError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "NanTensorHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ProfilerHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RunConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SecondOrStepTimer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunArgs"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunValues"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StepCounterHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StopAtStepHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SummarySaverHook"
     mtype: "<type \'type\'>"
   }
   member {
@@ -100,9 +180,9 @@ tf_module {
     name: "export"
     mtype: "<type \'module\'>"
   }
-  member {
-    name: "inputs"
-    mtype: "<type \'module\'>"
+  member_method {
+    name: "add_metrics"
+    argspec: "args=[\'estimator\', \'metric_fn\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "classifier_parse_example_spec"

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental API for TensorFlow's "Eager" mode of execution."""
+"""State management for eager execution."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,8 +25,8 @@ import random
 import threading
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
@@ -37,8 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 GRAPH_MODE = 0
 EAGER_MODE = 1
 
-# Default execution mode.
-default_execution_mode = GRAPH_MODE
+default_execution_mode = EAGER_MODE if tf2.enabled() else GRAPH_MODE
 
 # Cache from (old_device_name, partial_new_device_name) -> (new_device_name,
 # new_device_spec).
@@ -81,6 +80,55 @@ class _EagerTensorCache(object):
     self._data = {}
 
 
+class FunctionCallOptions(object):
+  """Options applied at call sites of eager functions.
+  Eager functions are functions decorated with tf.contrib.eager.defun.
+  """
+
+  def __init__(self, executor_type=None, config_proto=None):
+    """Constructor.
+
+    Args:
+      executor_type: (optional) name of the executor to be used to execute the
+        eager function. If None or an empty string, the default Tensorflow
+        executor will be used.
+      config_proto: (optional) a `config_pb2.ConfigProto` proto or
+        a serialized string of that proto.
+        The config used by Grappler when optimizing the function graph.
+        Each concrete function is optimized the first time is called. Changing
+        config_proto after the first call has no effect.
+        If config_proto is None, an empty RewriterConfig will be used.
+    """
+    self.config_proto_serialized = config_proto
+    self.executor_type = executor_type
+
+  @property
+  def executor_type(self):
+    return self._executor_type
+
+  @executor_type.setter
+  def executor_type(self, executor_type):
+    self._executor_type = executor_type
+
+  @property
+  def config_proto_serialized(self):
+    return self._config_proto_serialized
+
+  @config_proto_serialized.setter
+  def config_proto_serialized(self, config):
+    if isinstance(config, config_pb2.ConfigProto):
+      self._config_proto_serialized = config.SerializeToString()
+    elif isinstance(config, str):
+      self._config_proto_serialized = config
+    elif config is None:
+      self._config_proto_serialized = (
+          config_pb2.ConfigProto().SerializeToString())
+    else:
+      raise ValueError("the rewriter config must be either a "
+                       "config_pb2.ConfigProto, or a serialized string of that "
+                       "proto or None. got: {}".format(type(config)))
+
+
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
   """Thread local eager context."""
@@ -98,12 +146,15 @@ class _EagerContext(threading.local):
     self.ones_rank_cache = _EagerTensorCache()
     self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
-    self.rewriter_config = None
-    if config is not None and config.HasField(
-        "graph_options") and config.graph_options.HasField("rewrite_options"):
-      self.rewriter_config = (
-          config.graph_options.rewrite_options.SerializeToString())
 
+    # Default rewriter config corresponds to turning all default grappler
+    # optimizations on.
+    base_config = config_pb2.ConfigProto()
+
+    if config is not None:
+      base_config.MergeFrom(config)
+
+    self.function_call_options = FunctionCallOptions(config_proto=base_config)
 
 
 ContextSwitch = collections.namedtuple(
@@ -129,8 +180,8 @@ class _ContextSwitchStack(threading.local):
   def push(self, is_building_function, enter_context_fn):
     """Push metadata about a context switch onto the stack.
 
-    A context switch can take one of two forms: installing a graph as the
-    default graph, or entering the eager context. For each context switch,
+    A context switch can take any one of the two forms: installing a graph as
+    the default graph, or entering the eager context. For each context switch,
     we record whether or not the entered context is building a function.
 
     Args:
@@ -214,6 +265,7 @@ class Context(object):
       execution_mode = SYNC
     self._execution_mode = execution_mode
     self._server_def = server_def
+    self._collective_ops_server_def = None
 
   # pylint: enable=redefined-outer-name
 
@@ -274,9 +326,16 @@ class Context(object):
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
+      assert not (self._server_def and self._collective_ops_server_def), (
+          "Cannot enable remote execution as well as collective ops at the "
+          "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
         pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
+                                                  server_def_str)
+      elif self._collective_ops_server_def is not None:
+        server_def_str = self._collective_ops_server_def.SerializeToString()
+        pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
                                                   server_def_str)
 
       self._initialize_devices()
@@ -317,6 +376,30 @@ class Context(object):
       # Clear all the caches in case there are remote tensors in them.
       self._clear_caches()
 
+      self._initialize_devices()
+
+  def enable_collective_ops(self, server_def):
+    """Enable collective ops with an appropriate server_def.
+
+    If previously enabled, this cannot be re-enabled.
+
+    Args:
+      server_def: A tensorflow::ServerDef proto. Enables execution on remote
+        devices.
+
+    Raises:
+      ValueError: if server_def is None.
+    """
+    if not server_def:
+      raise ValueError("server_def is None.")
+    if not self._context_handle:
+      self._collective_ops_server_def = server_def
+    else:
+      server_def_str = server_def.SerializeToString()
+      pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
+                                                server_def_str)
+
+      self._clear_caches()
       self._initialize_devices()
 
   @property
@@ -367,36 +450,6 @@ class Context(object):
       ctx.mode = old_mode
       if mode == EAGER_MODE:
         self.context_switches.pop()
-
-  @tf_contextlib.contextmanager
-  def rewriter_config(self, rewriter_config_=None):
-    """A context manager to allow setting the grappler rewrite options.
-
-    Args:
-      rewriter_config_: A tensorflow.RewriterConfig proto object.
-
-    Yields:
-      Nothing.
-
-    Raises:
-      ValueError: if rewriter_config is not a tensorflow.RewriterConfig proto.
-    """
-    if rewriter_config_ is None or not isinstance(
-        rewriter_config_, rewriter_config_pb2.RewriterConfig):
-      raise ValueError("Must pass a rewriter_config proto")
-
-    ctx = self._eager_context
-    old_rewriter_config = ctx.rewriter_config
-    ctx.rewriter_config = rewriter_config_.SerializeToString()
-    try:
-      yield
-    finally:
-      ctx.rewriter_config = old_rewriter_config
-
-  @property
-  def rewriter_config_string(self):
-    """Returns the serialized rewriter_config for the current thread."""
-    return self._eager_context.rewriter_config
 
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
@@ -457,10 +510,6 @@ class Context(object):
     Raises:
       ValueError: If name is not a string or is an invalid device name.
     """
-    devices = self._context_devices
-    if devices is None:
-      self._initialize_handle_and_devices()
-      devices = self._context_devices
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
@@ -481,7 +530,9 @@ class Context(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          new_device_spec = pydev.DeviceSpec.from_string(devices[0])
+          self._initialize_handle_and_devices()
+          new_device_spec = pydev.DeviceSpec.from_string(
+              self._context_devices[0])
         new_device_spec.merge_from(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
@@ -526,6 +577,35 @@ class Context(object):
     finally:
       self.set_execution_mode(old_mode)
 
+  def get_function_call_options(self):
+    """Returns function call options for current thread.
+
+    Note that the returned object is still referenced by the eager context.
+
+    Returns: the FunctionCallOptions for current thread.
+    """
+    return self._eager_context.function_call_options
+
+  @tf_contextlib.contextmanager
+  def function_call_options(self, set_options_func):
+    """Context manager for setting function call options of current thread.
+
+    Args:
+      set_options_func: A callable that takes one argument of type
+        FunctionCallOptions. It should set the properties of that
+        FunctionCallOptions.
+
+    Yields:
+      Nothing.
+    """
+    current_options = self.get_function_call_options()
+    old_options = copy.copy(current_options)
+    try:
+      set_options_func(current_options)
+      yield
+    finally:
+      self._eager_context.function_call_options = old_options
+
   def async_wait(self):
     """Waits for ops dispatched in ASYNC mode to finish."""
     pywrap_tensorflow.TFE_ContextAsyncWait(self._handle)
@@ -562,6 +642,10 @@ class Context(object):
     fdef_string = fdef.SerializeToString()
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
+
+  def has_function(self, name):
+    """Check if a function `name` is registered."""
+    return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
@@ -708,6 +792,27 @@ def in_eager_mode():
   return executing_eagerly()
 
 
+def shared_name(name=None):
+  """Returns the anonymous shared name GUID if no shared name is specified.
+
+  In eager mode we need to use a unique shared name to avoid spurious sharing
+  issues. The runtime generates a unique name on our behalf when the reserved
+  GUID is used as a shared name.
+
+  Args:
+    name: Optional shared name
+
+  Returns:
+    Eager compatible shared name.
+  """
+  if name or not executing_eagerly():
+    return name
+
+  # Ensure a unique name when eager execution is enabled to avoid spurious
+  # sharing issues.
+  return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
+
+
 def graph_mode():
   """Context-manager to disable eager execution for the current thread."""
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
@@ -778,6 +883,25 @@ def execution_mode(mode):
   return context().execution_mode(mode)
 
 
+@tf_export("experimental.function_executor_type")
+def function_executor_type(executor_type):
+  """Context manager for setting the executor of eagar defined functions.
+
+  Eager defined functions are functions decorated by tf.contrib.eager.defun.
+
+  Args:
+    executor_type: a string for the name of the executor to be used
+    to execute functions defined by tf.contrib.eager.defun.
+
+  Returns:
+    Context manager for setting the executor of eager defined functions.
+  """
+  def _set_options_func(options):
+    options.executor_type = executor_type
+
+  return context().function_call_options(_set_options_func)
+
+
 def async_wait():
   """Waits for ops dispatched in ASYNC mode to finish."""
   return context().async_wait()
@@ -823,13 +947,32 @@ def export_run_metadata():
   return context().export_run_metadata()
 
 
-def rewriter_config(rewriter_config_):
-  """Context manager for setting the grappler rewrite config."""
-  return context().rewriter_config(rewriter_config_)
+def function_config_proto(config_proto):
+  """Context manager for setting the grappler rewrite config.
+
+  This config is used by Grappler when optimizing the function graph.
+
+  Args:
+    config_proto: a `config_pb2.ConfigProto` proto or
+      a serialized string of that proto or None. If None, the default instance
+      of `config_pb2.ConfigProto` will be used.
+
+  Returns:
+    A context manager.
+  """
+  def _set_options_func(options):
+    options.config_proto_serialized = config_proto
+
+  return context().function_call_options(_set_options_func)
 
 
 def set_server_def(server_def):
   context().set_server_def(server_def)
+
+
+def add_function(fdef):
+  """Add a function definition to the context."""
+  context().add_function(fdef)
 
 
 # Not every user creates a Context via context.context()
@@ -837,6 +980,10 @@ def set_server_def(server_def):
 # but they do all import this file.  Note that IS_IN_GRAPH_MODE and
 # in_graph_mode are both parameterless functions.
 def _tmp_in_graph_mode():
+  if context_safe() is None:
+    # Context not yet initialized. Assume graph mode following the
+    # default implementation in `is_in_graph_mode`.
+    return True
   return not executing_eagerly()
 
 

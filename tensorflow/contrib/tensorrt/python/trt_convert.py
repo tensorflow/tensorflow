@@ -45,12 +45,19 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 
-if _six.PY2:
-  _to_bytes = lambda s: s
-  _to_string = lambda s: s
-else:
-  _to_bytes = lambda s: s.encode("utf-8", errors="surrogateescape")
-  _to_string = lambda s: s.decode("utf-8")
+
+def _to_bytes(s):
+  """Encode s if it is a sequence of chars."""
+  if isinstance(s, _six.text_type):
+    return s.encode("utf-8", errors="surrogateescape")
+  return s
+
+
+def _to_string(s):
+  """Decode s if it is a sequence of bytes."""
+  if isinstance(s, _six.binary_type):
+    return s.decode("utf-8")
+  return s
 
 
 class TrtPrecisionMode(object):
@@ -63,19 +70,20 @@ class TrtPrecisionMode(object):
     return [TrtPrecisionMode.FP32, TrtPrecisionMode.FP16, TrtPrecisionMode.INT8]
 
 
-def tensorrt_rewriter_config(rewriter_config=None,
-                             max_batch_size=1,
-                             max_workspace_size_bytes=2 << 20,
-                             precision_mode=TrtPrecisionMode.FP32,
-                             minimum_segment_size=3,
-                             is_dynamic_op=False,
-                             maximum_cached_engines=1,
-                             cached_engine_batch_sizes=None):
+def get_tensorrt_rewriter_config(rewriter_config=None,
+                                 max_batch_size=1,
+                                 max_workspace_size_bytes=2 << 20,
+                                 precision_mode=TrtPrecisionMode.FP32,
+                                 minimum_segment_size=3,
+                                 is_dynamic_op=False,
+                                 maximum_cached_engines=1,
+                                 cached_engine_batches=None,
+                                 use_calibration=True):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
-    rewriter_config: a RewriterConfig proto to append the TensorRTOptimizer to.
-      If None, it will create one with default settings.
+    rewriter_config: a template RewriterConfig proto used to create a
+      TRT-enabled RewriterConfig. If None, it will use a default one.
     max_batch_size: max size for the input batch
     max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
       engine can use at execution time. This corresponds to the 'workspaceSize'
@@ -89,12 +97,21 @@ def tensorrt_rewriter_config(rewriter_config=None,
       If the number of cached engines is already at max but none of them can
       serve the input, the TRTEngineOp will fall back to run the TF function
       based on which the TRTEngineOp is created.
-    cached_engine_batch_sizes: a list of batch sizes used to create cached
+    cached_engine_batches: a list of batch sizes used to create cached
       engines, only used when is_dynamic_op is True. The length of the list
-      should be smaller than maximum_cached_engines, and the dynamic TRT op will
+      should be <= maximum_cached_engines, and the dynamic TRT op will
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
+    use_calibration: this argument is ignored if precision_mode is not INT8. If
+      set to True, a calibration graph will be created to calibrate the missing
+      ranges. The calibration graph must be converted to an inference graph
+      using calib_graph_to_infer_graph() after running calibration. if set to
+      False, quantization nodes will be expected for every tensor in the graph
+      (exlcuding those which will be fused). If a range is missing, an error
+      will occur. Please note that accuracy may be negatively affected if there
+      is a mismatch between which tensors TRT quantizes and which tensors were
+      trained with fake quantization.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -107,9 +124,16 @@ def tensorrt_rewriter_config(rewriter_config=None,
       rewriter_config, rewriter_config_pb2.RewriterConfig):
     raise TypeError("rewriter_config should be a RewriterConfig proto.")
 
+  rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
   if rewriter_config is None:
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
-    rewriter_config.optimizers.extend(["constfold", "layout"])
+    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
+    # need to run constant folding again.
+    rewriter_config_with_trt.optimizers.extend(
+        ["constfold", "layout", "constfold"])
+    rewriter_config_with_trt.meta_optimizer_iterations = (
+        rewriter_config_pb2.RewriterConfig.ONE)
+  else:
+    rewriter_config_with_trt.CopyFrom(rewriter_config)
 
   if precision_mode.upper() not in TrtPrecisionMode.supported_precision_modes():
     raise ValueError(("precision mode '{}' is not supported."
@@ -117,7 +141,7 @@ def tensorrt_rewriter_config(rewriter_config=None,
                           precision_mode,
                           TrtPrecisionMode.supported_precision_modes))
 
-  optimizer = rewriter_config.custom_optimizers.add()
+  optimizer = rewriter_config_with_trt.custom_optimizers.add()
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map["minimum_segment_size"].i = minimum_segment_size
   optimizer.parameter_map["max_batch_size"].i = max_batch_size
@@ -126,15 +150,16 @@ def tensorrt_rewriter_config(rewriter_config=None,
       "max_workspace_size_bytes"].i = max_workspace_size_bytes
   optimizer.parameter_map["precision_mode"].s = _to_bytes(precision_mode)
   optimizer.parameter_map["maximum_cached_engines"].i = maximum_cached_engines
-  if cached_engine_batch_sizes:
-    if not isinstance(cached_engine_batch_sizes, list):
-      raise TypeError("cached_engine_batch_sizes should be a list.")
-    if len(cached_engine_batch_sizes) > maximum_cached_engines:
-      raise ValueError("cached_engine_batch_sizes should not contain more than "
+  if cached_engine_batches:
+    if not isinstance(cached_engine_batches, list):
+      raise TypeError("cached_engine_batches should be a list.")
+    if len(cached_engine_batches) > maximum_cached_engines:
+      raise ValueError("cached_engine_batches should not contain more than "
                        "maximum_cached_engines items.")
     optimizer.parameter_map["cached_engine_batches"].list.i.extend(
-        cached_engine_batch_sizes)
-  return rewriter_config
+        cached_engine_batches)
+  optimizer.parameter_map["use_calibration"].b = use_calibration
+  return rewriter_config_with_trt
 
 
 def create_inference_graph(input_graph_def,
@@ -145,8 +170,8 @@ def create_inference_graph(input_graph_def,
                            minimum_segment_size=3,
                            is_dynamic_op=False,
                            maximum_cached_engines=1,
-                           cached_engine_batch_sizes=None,
-                           rewriter_config=None,
+                           cached_engine_batches=None,
+                           use_calibration=True,
                            input_saved_model_dir=None,
                            input_saved_model_tags=None,
                            output_saved_model_dir=None,
@@ -172,14 +197,21 @@ def create_inference_graph(input_graph_def,
       If the number of cached engines is already at max but none of them can
       serve the input, the TRTEngineOp will fall back to run the TF function
       based on which the TRTEngineOp is created.
-    cached_engine_batch_sizes: a list of batch sizes used to create cached
+    cached_engine_batches: a list of batch sizes used to create cached
       engines, only used when is_dynamic_op is True. The length of the list
-      should be smaller than maximum_cached_engines, and the dynamic TRT op will
+      should be <= maximum_cached_engines, and the dynamic TRT op will
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
-    rewriter_config: a RewriterConfig proto to append the TensorRTOptimizer to.
-      If None, it will create one with default settings.
+    use_calibration: this argument is ignored if precision_mode is not INT8. If
+      set to True, a calibration graph will be created to calibrate the missing
+      ranges. The calibration graph must be converted to an inference graph
+      using calib_graph_to_infer_graph() after running calibration. if set to
+      False, quantization nodes will be expected for every tensor in the graph
+      (exlcuding those which will be fused). If a range is missing, an error
+      will occur. Please note that accuracy may be negatively affected if there
+      is a mismatch between which tensors TRT quantizes and which tensors were
+      trained with fake quantization.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
@@ -187,8 +219,9 @@ def create_inference_graph(input_graph_def,
       returned GraphDef and save it to the specified directory. This option only
       works when the input graph is loaded from a SavedModel, i.e. when
       input_saved_model_dir is specified and input_graph_def is None.
-    session_config: the ConfigProto used to create a Session. If not specified,
-      a default ConfigProto will be used.
+    session_config: the ConfigProto used to create a Session. It's also used as
+      a template to create a TRT-enabled ConfigProto for conversion. If not
+      specified, a default ConfigProto will be used.
 
   Returns:
     A GraphDef transformed from input_graph_def (or the SavedModel graph def
@@ -318,21 +351,30 @@ def create_inference_graph(input_graph_def,
       grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
           output_collection)
 
-  # Create RewriterConfig.
-  rewriter_config = tensorrt_rewriter_config(
+  # Create TRT-enabled ConfigProto.
+  session_config_with_trt = config_pb2.ConfigProto()
+  session_config_with_trt.CopyFrom(session_config)
+  rewriter_config = None
+  if (session_config_with_trt.HasField("graph_options") and
+      session_config_with_trt.graph_options.HasField("rewrite_options")):
+    rewriter_config = session_config_with_trt.graph_options.rewrite_options
+  rewriter_config_with_trt = get_tensorrt_rewriter_config(
       rewriter_config, max_batch_size, max_workspace_size_bytes, precision_mode,
       minimum_segment_size, is_dynamic_op, maximum_cached_engines,
-      cached_engine_batch_sizes)
+      cached_engine_batches, use_calibration)
+  session_config_with_trt.graph_options.rewrite_options.CopyFrom(
+      rewriter_config_with_trt)
 
   # Run Grappler.
   transformed_graph_def = tf_optimizer.OptimizeGraph(
-      rewriter_config, grappler_meta_graph_def, graph_id=b"tf_graph")
+      session_config_with_trt, grappler_meta_graph_def, graph_id=b"tf_graph")
 
   # Optionally write the transformed graphdef as SavedModel.
   if output_saved_model_dir is not None:
     saved_model_builder = builder.SavedModelBuilder(output_saved_model_dir)
     with ops.Graph().as_default():
       importer.import_graph_def(transformed_graph_def, name="")
+      # We don't use TRT here.
       with session.Session(config=session_config) as sess:
         saved_model_builder.add_meta_graph_and_variables(
             sess,

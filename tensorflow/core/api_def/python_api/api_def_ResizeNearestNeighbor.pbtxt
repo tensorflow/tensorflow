@@ -1,6 +1,4 @@
 op {
   graph_op_name: "ResizeNearestNeighbor"
-  endpoint {
-    name: "image.resize_nearest_neighbor"
-  }
+  visibility: HIDDEN
 }

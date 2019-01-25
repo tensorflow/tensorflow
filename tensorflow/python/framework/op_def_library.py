@@ -570,7 +570,7 @@ class OpDefLibrary(object):
                   "than minimum length %d." %
                   (input_name, op_type_name, len(values), num_attr.minimum))
           # All tensors must have the same base type.
-          if any([bt != base_types[0] for bt in base_types]):
+          if any(bt != base_types[0] for bt in base_types):
             raise TypeError(
                 "All tensors passed to '%s' of '%s' Op "
                 "must have the same type." %

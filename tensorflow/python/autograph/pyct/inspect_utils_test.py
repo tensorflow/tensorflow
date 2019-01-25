@@ -18,12 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import wraps
+import collections
+import functools
 import imp
+import types
+import weakref
 
 import six
 
+from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
@@ -42,7 +47,7 @@ def wrapping_decorator():
     def replacement(*_):
       return None
 
-    @wraps(f)
+    @functools.wraps(f)
     def wrapper(*args, **kwargs):
       return replacement(*args, **kwargs)
     return wrapper
@@ -90,6 +95,38 @@ def free_factory():
 
 
 class InspectUtilsTest(test.TestCase):
+
+  def test_islambda(self):
+    def test_fn():
+      pass
+
+    self.assertTrue(inspect_utils.islambda(lambda x: x))
+    self.assertFalse(inspect_utils.islambda(test_fn))
+
+  def test_isnamedtuple(self):
+    nt = collections.namedtuple('TestNamedTuple', ['a', 'b'])
+
+    class NotANamedTuple(tuple):
+      pass
+
+    self.assertTrue(inspect_utils.isnamedtuple(nt))
+    self.assertFalse(inspect_utils.isnamedtuple(NotANamedTuple))
+
+  def test_isnamedtuple_confounder(self):
+    """This test highlights false positives when detecting named tuples."""
+
+    class NamedTupleLike(tuple):
+      _fields = ('a', 'b')
+
+    self.assertTrue(inspect_utils.isnamedtuple(NamedTupleLike))
+
+  def test_isnamedtuple_subclass(self):
+    """This test highlights false positives when detecting named tuples."""
+
+    class NamedTupleSubclass(collections.namedtuple('Test', ['a', 'b'])):
+      pass
+
+    self.assertTrue(inspect_utils.isnamedtuple(NamedTupleSubclass))
 
   def test_getnamespace_globals(self):
     ns = inspect_utils.getnamespace(factory)
@@ -145,6 +182,71 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(inspect_utils.getqualifiedname(ns, foo), 'foo')
     self.assertEqual(inspect_utils.getqualifiedname(ns, bar), 'bar')
     self.assertEqual(inspect_utils.getqualifiedname(ns, baz), 'bar.baz')
+
+  def test_getqualifiedname_efficiency(self):
+    foo = object()
+
+    # We create a densely connected graph consisting of a relatively small
+    # number of modules and hide our symbol in one of them. The path to the
+    # symbol is at least 10, and each node has about 10 neighbors. However,
+    # by skipping visited modules, the search should take much less.
+    ns = {}
+    prev_level = []
+    for i in range(10):
+      current_level = []
+      for j in range(10):
+        mod_name = 'mod_{}_{}'.format(i, j)
+        mod = imp.new_module(mod_name)
+        current_level.append(mod)
+        if i == 9 and j == 9:
+          mod.foo = foo
+      if prev_level:
+        # All modules at level i refer to all modules at level i+1
+        for prev in prev_level:
+          for mod in current_level:
+            prev.__dict__[mod.__name__] = mod
+      else:
+        for mod in current_level:
+          ns[mod.__name__] = mod
+      prev_level = current_level
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertIsNotNone(
+        inspect_utils.getqualifiedname(ns, foo, max_depth=10000000000))
+
+  def test_getqualifiedname_cycles(self):
+    foo = object()
+
+    # We create a graph of modules that contains circular references. The
+    # search process should avoid them. The searched object is hidden at the
+    # bottom of a path of length roughly 10.
+    ns = {}
+    mods = []
+    for i in range(10):
+      mod = imp.new_module('mod_{}'.format(i))
+      if i == 9:
+        mod.foo = foo
+      # Module i refers to module i+1
+      if mods:
+        mods[-1].__dict__[mod.__name__] = mod
+      else:
+        ns[mod.__name__] = mod
+      # Module i refers to all modules j < i.
+      for prev in mods:
+        mod.__dict__[prev.__name__] = prev
+      mods.append(mod)
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertIsNotNone(
+        inspect_utils.getqualifiedname(ns, foo, max_depth=10000000000))
+
+  def test_getqualifiedname_finds_via_parent_module(self):
+    # TODO(mdan): This test is vulnerable to change in the lib module.
+    # A better way to forge modules should be found.
+    self.assertEqual(
+        inspect_utils.getqualifiedname(
+            lib.__dict__, lib.io.file_io.FileIO, max_depth=1),
+        'io.file_io.FileIO')
 
   def test_getmethodclass(self):
 
@@ -253,6 +355,26 @@ class InspectUtilsTest(test.TestCase):
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
 
+  def test_getmethodclass_weakref_mechanism(self):
+    test_obj = TestClass()
+
+    class WeakrefWrapper(object):
+
+      def __init__(self):
+        self.ag_self_weakref__ = weakref.ref(test_obj)
+
+    def test_fn(self):
+      return self
+
+    bound_method = types.MethodType(test_fn, WeakrefWrapper())
+    self.assertEqual(inspect_utils.getmethodclass(bound_method), TestClass)
+
+  def test_getmethodclass_no_bool_conversion(self):
+
+    tensor = constant_op.constant([1])
+    self.assertEqual(
+        inspect_utils.getmethodclass(tensor.get_shape), type(tensor))
+
   def test_getdefiningclass(self):
     class Superclass(object):
 
@@ -285,10 +407,12 @@ class InspectUtilsTest(test.TestCase):
         Superclass)
 
   def test_isbuiltin(self):
-    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(enumerate))
     self.assertTrue(inspect_utils.isbuiltin(float))
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
+    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(zip))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
 
   def test_super_wrapper_for_dynamic_attrs(self):

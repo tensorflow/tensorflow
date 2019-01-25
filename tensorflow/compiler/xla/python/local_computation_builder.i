@@ -34,6 +34,9 @@ limitations under the License.
 //  PaddingConfig proto                <-  corresponding Python proto
 //  ConvolutionDimensionNumbers proto  <-  corresponding Python proto
 //  DotDimensionNumbers proto          <-  corresponding Python proto
+//  GatherDimensionNumbers proto       <-  corresponding Python proto
+//  ScatterDimensionNumbers proto      <-  corresponding Python proto
+//  Span<ReplicaGroup proto>           <-  sequence of ReplicaGroup Python proto
 //
 // Arrows indicate whether a conversion only ever occurs in one
 // direction, or whether it is maintained bidirectionally.
@@ -167,8 +170,41 @@ bool HandleStringAttribute(PyObject* o,
   return true;  // Handled string attribute, ok!
 }
 
+bool HandleRepeatedInt64Attribute(
+    PyObject* o, const char* attr_name,
+    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* field) {
+  PyObject* seq = PyObject_GetAttrString(o, attr_name);
+  if (!seq) {
+    return false;
+  }
+
+  int length = PySequence_Size(seq);
+  if (length == -1) {
+    Py_DECREF(seq);
+    return false;
+  }
+
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(seq, i);
+    if (!item) {
+      Py_DECREF(seq);
+      return false;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(seq);
+      return false;
+    }
+    *field->Add() = dimension;
+    Py_DECREF(item);
+  }
+  Py_DECREF(seq);
+  return true;
 }
-}
+
+}  // namespace swig
+}  // namespace xla
 %}
 
 // Required to use PyArray_* functions.
@@ -176,12 +212,100 @@ bool HandleStringAttribute(PyObject* o,
 tensorflow::ImportNumpy();
 %}
 
+// Basic types
+
+%typemap(out) StatusOr<bool> {
+  if ($1.ok()) {
+    $result = PyBool_FromLong($1.ConsumeValueOrDie());
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
+%typemap(out) Status {
+  if (!$1.ok()) {
+    PyErr_SetString(
+        PyExc_RuntimeError, $1.ToString().c_str());
+    SWIG_fail;
+  }
+  Py_INCREF(Py_None);
+  $result = Py_None;
+}
+
+%typemap(in) absl::Span<const int64>
+    (std::vector<int64> temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  temps.resize(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    PyObject* py_int = numpy::PyNumberToPyInt(o);
+    if (!py_int) {
+      PyErr_SetString(
+          PyExc_TypeError,
+          "Argument sequence element cannot be converted to int");
+      Py_DECREF(o);
+      SWIG_fail;
+    }
+    temps[i] = numpy::PyIntOrPyLongToLong(py_int);
+    if (temps[i] == -1 && PyErr_Occurred()) {
+      Py_DECREF(py_int);
+      Py_DECREF(o);
+      SWIG_fail;
+    }
+    Py_DECREF(py_int);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
+// Computation builder types
+
+%typemap(in) absl::Span<const xla::swig::LocalOp>(
+      std::vector<LocalOp> temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    LocalOp* op;
+    if ((SWIG_ConvertPtr(o, (void**)&op, $descriptor(xla::swig::LocalOp*),
+                         SWIG_POINTER_EXCEPTION)) == -1) {
+      SWIG_fail;
+    }
+    temps.push_back(*op);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
+// Computation and buffer/allocation types
+
 %typemap(out) StatusOr<xla::swig::CompiledLocalComputation*> {
   if ($1.ok()) {
     auto* value = $1.ValueOrDie();
     {
       auto* $1 = value;
       $typemap(out, xla::swig::CompiledLocalComputation*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
+%typemap(out) StatusOr<xla::swig::CompiledXrtComputation*> {
+  if ($1.ok()) {
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::CompiledXrtComputation*)
     }
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
@@ -215,11 +339,26 @@ tensorflow::ImportNumpy();
   }
 }
 
-
-%typemap(out) StatusOr<Literal> {
+%typemap(out) StatusOr<xla::swig::XrtAllocation*> {
   if ($1.ok()) {
-    Literal value = $1.ConsumeValueOrDie();
-    $result = numpy::PyObjectFromXlaLiteral(*value);
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::XrtAllocation*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
+%typemap(out) StatusOr<xla::swig::XrtAllocationTuple*> {
+  if ($1.ok()) {
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::XrtAllocationTuple*)
+    }
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
     SWIG_fail;
@@ -238,90 +377,6 @@ tensorflow::ImportNumpy();
     SWIG_fail;
   }
 }
-
-%typemap(out) StatusOr<Shape> {
-  if ($1.ok()) {
-    $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie());
-  } else {
-    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
-    SWIG_fail;
-  }
-}
-
-%typemap(out) StatusOr<bool> {
-  if ($1.ok()) {
-    $result = PyBool_FromLong($1.ConsumeValueOrDie());
-  } else {
-    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
-    SWIG_fail;
-  }
-}
-
-%typemap(out) Status {
-  if (!$1.ok()) {
-    PyErr_SetString(
-        PyExc_RuntimeError, $1.ToString().c_str());
-    SWIG_fail;
-  }
-  Py_INCREF(Py_None);
-  $result = Py_None;
-}
-
-// Span<int64>
-
-%typemap(in) absl::Span<const int64>
-    (std::vector<int64> temps) {
-  if (!PySequence_Check($input)) {
-    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
-    SWIG_fail;
-  }
-  const int size = PySequence_Size($input);
-  temps.resize(size);
-  for (int i = 0; i < size; ++i) {
-    PyObject* o = PySequence_GetItem($input, i);
-    PyObject* py_int = numpy::PyNumberToPyInt(o);
-    if (!py_int) {
-      PyErr_SetString(
-          PyExc_TypeError,
-          "Argument sequence element cannot be converted to int");
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    temps[i] = numpy::PyIntOrPyLongToLong(py_int);
-    if (temps[i] == -1 && PyErr_Occurred()) {
-      Py_DECREF(py_int);
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    Py_DECREF(py_int);
-    Py_DECREF(o);
-  }
-  $1 = temps;
-}
-
-// Span<LocalOp>
-
-%typemap(in) absl::Span<const xla::swig::LocalOp>(
-      std::vector<LocalOp> temps) {
-  if (!PySequence_Check($input)) {
-    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
-    SWIG_fail;
-  }
-  const int size = PySequence_Size($input);
-  for (int i = 0; i < size; ++i) {
-    PyObject* o = PySequence_GetItem($input, i);
-    LocalOp* op;
-    if ((SWIG_ConvertPtr(o, (void**)&op, $descriptor(xla::swig::LocalOp*),
-                         SWIG_POINTER_EXCEPTION)) == -1) {
-      SWIG_fail;
-    }
-    temps.push_back(*op);
-    Py_DECREF(o);
-  }
-  $1 = temps;
-}
-
-// LocalShapedBuffer*
 
 %typemap(in) absl::Span<xla::swig::LocalShapedBuffer* const>
     (std::vector<LocalShapedBuffer*> temps) {
@@ -344,7 +399,69 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
+%typemap(in) absl::Span<const std::vector<xla::swig::LocalShapedBuffer*> >
+    (std::vector<std::vector<LocalShapedBuffer*> > temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    std::vector<LocalShapedBuffer*> vec;
+    const int vec_size = PySequence_Size(o);
+    vec.reserve(vec_size);
+    for (int j = 0; j < vec_size; ++j) {
+      PyObject* vec_elt = PySequence_GetItem(o, j);
+      LocalShapedBuffer* lsbp;
+      if ((SWIG_ConvertPtr(vec_elt, (void**) &lsbp, $descriptor(xla::swig::LocalShapedBuffer*),
+                           SWIG_POINTER_EXCEPTION)) == -1) {
+        Py_DECREF(vec_elt);
+        Py_DECREF(o);
+        SWIG_fail;
+      }
+      vec.push_back(lsbp);
+      Py_DECREF(vec_elt);
+    }
+    temps.push_back(vec);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
+%typemap(in) absl::Span<xla::swig::XrtAllocation* const>
+    (std::vector<XrtAllocation*> temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    XrtAllocation* xrta;
+    if ((SWIG_ConvertPtr(o, (void**) &xrta, $descriptor(xla::swig::XrtAllocation*),
+                         SWIG_POINTER_EXCEPTION)) == -1) {
+      SWIG_fail;
+    }
+    temps.push_back(xrta);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
 // Literal
+
+%typemap(out) StatusOr<Literal> {
+  if ($1.ok()) {
+    Literal value = $1.ConsumeValueOrDie();
+    $result = numpy::PyObjectFromXlaLiteral(*value);
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
 
 %typemap(in) const Literal& (StatusOr<Literal> literal_status) {
   literal_status = numpy::XlaLiteralFromPyObject($input);
@@ -400,6 +517,19 @@ tensorflow::ImportNumpy();
 }
 
 // Shape
+
+%typemap(out) const Shape& {
+  $result = numpy::PyShapeInfoFromXlaShape(*$1);
+}
+
+%typemap(out) StatusOr<Shape> {
+  if ($1.ok()) {
+    $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie());
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
 
 %typemap(in) const Shape& (Shape temp) {
   StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape($input);
@@ -563,127 +693,26 @@ tensorflow::ImportNumpy();
 
 %typemap(in) const DotDimensionNumbers&
     (DotDimensionNumbers dimension_numbers) {
-  int length;
-
-  /* lhs_contracting_dimensions */
-  PyObject* lhs_contracting_dimensions = PyObject_GetAttrString(
-      $input, "lhs_contracting_dimensions");
-  if (!lhs_contracting_dimensions) {
+  if (!HandleRepeatedInt64Attribute(
+        $input, "lhs_contracting_dimensions",
+        dimension_numbers.mutable_lhs_contracting_dimensions())) {
     SWIG_fail;
   }
-
-  length = PySequence_Size(lhs_contracting_dimensions);
-  if (length == -1) {
-    Py_DECREF(lhs_contracting_dimensions);
+  if (!HandleRepeatedInt64Attribute(
+        $input, "rhs_contracting_dimensions",
+        dimension_numbers.mutable_rhs_contracting_dimensions())) {
     SWIG_fail;
   }
-
-  for (int i = 0; i < length; ++i) {
-    PyObject* item = PySequence_GetItem(lhs_contracting_dimensions, i);
-    if (!item) {
-      Py_DECREF(lhs_contracting_dimensions);
-      SWIG_fail;
-    }
-    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
-    if (dimension == -1 && PyErr_Occurred()) {
-      Py_DECREF(item);
-      Py_DECREF(lhs_contracting_dimensions);
-      SWIG_fail;
-    }
-    dimension_numbers.add_lhs_contracting_dimensions(dimension);
-    Py_DECREF(item);
-  }
-  Py_DECREF(lhs_contracting_dimensions);
-
-  /* rhs_contracting_dimensions */
-  PyObject* rhs_contracting_dimensions = PyObject_GetAttrString(
-      $input, "rhs_contracting_dimensions");
-  if (!lhs_contracting_dimensions) {
+  if (!HandleRepeatedInt64Attribute(
+        $input, "lhs_batch_dimensions",
+        dimension_numbers.mutable_lhs_batch_dimensions())) {
     SWIG_fail;
   }
-
-  length = PySequence_Size(rhs_contracting_dimensions);
-  if (length == -1) {
-    Py_DECREF(rhs_contracting_dimensions);
+  if (!HandleRepeatedInt64Attribute(
+        $input, "rhs_batch_dimensions",
+        dimension_numbers.mutable_rhs_batch_dimensions())) {
     SWIG_fail;
   }
-
-  for (int i = 0; i < length; ++i) {
-    PyObject* item = PySequence_GetItem(rhs_contracting_dimensions, i);
-    if (!item) {
-      Py_DECREF(rhs_contracting_dimensions);
-      SWIG_fail;
-    }
-    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
-    if (dimension == -1 && PyErr_Occurred()) {
-      Py_DECREF(item);
-      Py_DECREF(rhs_contracting_dimensions);
-      SWIG_fail;
-    }
-    dimension_numbers.add_rhs_contracting_dimensions(dimension);
-    Py_DECREF(item);
-  }
-  Py_DECREF(rhs_contracting_dimensions);
-
-  /* lhs_batch_dimensions */
-  PyObject* lhs_batch_dimensions = PyObject_GetAttrString(
-      $input, "lhs_batch_dimensions");
-  if (!lhs_batch_dimensions) {
-    SWIG_fail;
-  }
-
-  length = PySequence_Size(lhs_batch_dimensions);
-  if (length == -1) {
-    Py_DECREF(lhs_batch_dimensions);
-    SWIG_fail;
-  }
-
-  for (int i = 0; i < length; ++i) {
-    PyObject* item = PySequence_GetItem(lhs_batch_dimensions, i);
-    if (!item) {
-      Py_DECREF(lhs_batch_dimensions);
-      SWIG_fail;
-    }
-    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
-    if (dimension == -1 && PyErr_Occurred()) {
-      Py_DECREF(item);
-      Py_DECREF(lhs_batch_dimensions);
-      SWIG_fail;
-    }
-    dimension_numbers.add_lhs_batch_dimensions(dimension);
-    Py_DECREF(item);
-  }
-  Py_DECREF(lhs_batch_dimensions);
-
-  /* rhs_batch_dimensions */
-  PyObject* rhs_batch_dimensions = PyObject_GetAttrString(
-      $input, "rhs_batch_dimensions");
-  if (!rhs_batch_dimensions) {
-    SWIG_fail;
-  }
-
-  length = PySequence_Size(rhs_batch_dimensions);
-  if (length == -1) {
-    Py_DECREF(rhs_batch_dimensions);
-    SWIG_fail;
-  }
-
-  for (int i = 0; i < length; ++i) {
-    PyObject* item = PySequence_GetItem(rhs_batch_dimensions, i);
-    if (!item) {
-      Py_DECREF(rhs_batch_dimensions);
-      SWIG_fail;
-    }
-    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
-    if (dimension == -1 && PyErr_Occurred()) {
-      Py_DECREF(item);
-      Py_DECREF(rhs_batch_dimensions);
-      SWIG_fail;
-    }
-    dimension_numbers.add_rhs_batch_dimensions(dimension);
-    Py_DECREF(item);
-  }
-  Py_DECREF(rhs_batch_dimensions);
 
   $1 = &dimension_numbers;
 }
@@ -766,89 +795,107 @@ tensorflow::ImportNumpy();
   }
   dimension_numbers.set_kernel_input_feature_dimension(value);
 
-  PyObject* o;
-  int length;
-
-  o = PyObject_GetAttrString($input, "input_spatial_dimensions");
-  if (!o) {
+  if (!HandleRepeatedInt64Attribute(
+        $input, "input_spatial_dimensions",
+        dimension_numbers.mutable_input_spatial_dimensions())) {
     SWIG_fail;
   }
-  length = PySequence_Size(o);
-  if (length == -1) {
-    Py_DECREF(o);
+  if (!HandleRepeatedInt64Attribute(
+        $input, "kernel_spatial_dimensions",
+        dimension_numbers.mutable_kernel_spatial_dimensions())) {
     SWIG_fail;
   }
-  for (int i = 0; i < length; ++i) {
-    PyObject* item = PySequence_GetItem(o, i);
-    if (!item) {
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
-    if (dimension == -1 && PyErr_Occurred()) {
-      Py_DECREF(item);
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    dimension_numbers.add_input_spatial_dimensions(dimension);
-    Py_DECREF(item);
-  }
-  Py_DECREF(o);
-
-  o = PyObject_GetAttrString($input, "kernel_spatial_dimensions");
-  if (!o) {
+  if (!HandleRepeatedInt64Attribute(
+        $input, "output_spatial_dimensions",
+        dimension_numbers.mutable_output_spatial_dimensions())) {
     SWIG_fail;
   }
-  length = PySequence_Size(o);
-  if (length == -1) {
-    Py_DECREF(o);
-    SWIG_fail;
-  }
-  for (int i = 0; i < length; ++i) {
-    PyObject* item = PySequence_GetItem(o, i);
-    if (!item) {
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
-    if (dimension == -1 && PyErr_Occurred()) {
-      Py_DECREF(item);
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    dimension_numbers.add_kernel_spatial_dimensions(dimension);
-    Py_DECREF(item);
-  }
-  Py_DECREF(o);
-
-  o = PyObject_GetAttrString($input, "output_spatial_dimensions");
-  if (!o) {
-    SWIG_fail;
-  }
-  length = PySequence_Size(o);
-  if (length == -1) {
-    Py_DECREF(o);
-    SWIG_fail;
-  }
-  for (int i = 0; i < length; ++i) {
-    PyObject* item = PySequence_GetItem(o, i);
-    if (!item) {
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
-    if (dimension == -1 && PyErr_Occurred()) {
-      Py_DECREF(item);
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    dimension_numbers.add_output_spatial_dimensions(dimension);
-    Py_DECREF(item);
-  }
-  Py_DECREF(o);
 
   $1 = &dimension_numbers;
 }
+
+// GatherDimensionNumbers
+
+%typemap(in) const GatherDimensionNumbers&
+    (GatherDimensionNumbers dimension_numbers) {
+  if (!HandleRepeatedInt64Attribute(
+        $input, "offset_dims",
+        dimension_numbers.mutable_offset_dims())) {
+    SWIG_fail;
+  }
+  if (!HandleRepeatedInt64Attribute(
+        $input, "collapsed_slice_dims",
+        dimension_numbers.mutable_collapsed_slice_dims())) {
+    SWIG_fail;
+  }
+  if (!HandleRepeatedInt64Attribute(
+        $input, "start_index_map",
+        dimension_numbers.mutable_start_index_map())) {
+    SWIG_fail;
+  }
+
+  int64 value;
+  if (!GetIntAttr($input, "index_vector_dim", &value)) {
+    SWIG_fail;
+  }
+  dimension_numbers.set_index_vector_dim(value);
+
+  $1 = &dimension_numbers;
+}
+
+// ScatterDimensionNumbers
+
+%typemap(in) const ScatterDimensionNumbers&
+    (ScatterDimensionNumbers dimension_numbers) {
+  if (!HandleRepeatedInt64Attribute(
+        $input, "update_window_dims",
+        dimension_numbers.mutable_update_window_dims())) {
+    SWIG_fail;
+  }
+  if (!HandleRepeatedInt64Attribute(
+        $input, "inserted_window_dims",
+        dimension_numbers.mutable_inserted_window_dims())) {
+    SWIG_fail;
+  }
+  if (!HandleRepeatedInt64Attribute(
+        $input, "scatter_dims_to_operand_dims",
+        dimension_numbers.mutable_scatter_dims_to_operand_dims())) {
+    SWIG_fail;
+  }
+
+  int64 value;
+  if (!GetIntAttr($input, "index_vector_dim", &value)) {
+    SWIG_fail;
+  }
+  dimension_numbers.set_index_vector_dim(value);
+
+  $1 = &dimension_numbers;
+}
+
+// Span<const ReplicaGroup>
+
+%typemap(in) absl::Span<const ReplicaGroup >
+    (std::vector<ReplicaGroup > temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    ReplicaGroup rgrp;
+    if (!HandleRepeatedInt64Attribute(
+            o, "replica_ids",
+            rgrp.mutable_replica_ids())) {
+        SWIG_fail;
+    }
+    temps.push_back(rgrp);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
 
 // ExecutableBuildOptions
 
@@ -858,22 +905,22 @@ tensorflow::ImportNumpy();
     $1 = NULL;
   } else {
     if (!HandleStringAttribute($input, "generate_hlo_graph", [&](string s) {
-      build_options.set_generate_hlo_graph(std::move(s));
+      build_options.mutable_debug_options()->set_xla_generate_hlo_graph(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_optimized_hlo_proto_to", [&](string s) {
-      build_options.set_dump_optimized_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_optimized_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_unoptimized_hlo_proto_to", [&](string s) {
-      build_options.set_dump_unoptimized_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_unoptimized_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_per_pass_hlo_proto_to", [&](string s) {
-      build_options.set_dump_per_pass_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_per_pass_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
@@ -887,7 +934,7 @@ tensorflow::ImportNumpy();
         PyErr_SetString(PyExc_TypeError, "ExecutableBuildOptions.hlo_profile must be a bool or None.");
         SWIG_fail;
       }
-      build_options.set_hlo_profile(o == Py_True);
+      build_options.mutable_debug_options()->set_xla_hlo_profile(o == Py_True);
     }
     Py_DECREF(o);
 
@@ -906,6 +953,12 @@ tensorflow::ImportNumpy();
     }
     Py_DECREF(o);
 
+    int64 num_replicas;
+    if (!GetIntAttr($input, "num_replicas", &num_replicas)) {
+      SWIG_fail;
+    }
+    build_options.set_num_replicas(num_replicas);
+
     $1 = &build_options;
   }
 }
@@ -914,27 +967,41 @@ tensorflow::ImportNumpy();
 %unignore xla;
 %unignore xla::swig;
 %unignore xla::swig::InitializeReplicaCount;
+%unignore xla::swig::InitializePlatformName;
 %unignore xla::swig::GetReplicaCount;
+%unignore xla::swig::RegisterCpuCustomCallTarget;
 %unignore xla::swig::TransferToInfeedLocal;
 %unignore xla::swig::TransferToInfeedLocalReplica;
 %unignore xla::swig::TransferFromOutfeedLocalReplica;
 %unignore xla::swig::LocalShapedBuffer;
 %unignore xla::swig::LocalShapedBuffer::FromLiteral;
 %unignore xla::swig::LocalShapedBuffer::ToLiteral;
+%unignore xla::swig::LocalShapedBuffer::shape;
 %unignore xla::swig::LocalShapedBufferTuple;
 %unignore xla::swig::LocalShapedBufferTuple::Release;
 %unignore xla::swig::LocalShapedBufferTuple::size;
+%unignore xla::swig::XrtAllocation;
+%unignore xla::swig::XrtAllocation::FromLiteral;
+%unignore xla::swig::XrtAllocation::ToLiteral;
+%unignore xla::swig::XrtAllocation::shape;
+%unignore xla::swig::XrtAllocationTuple;
+%unignore xla::swig::XrtAllocationTuple::Release;
+%unignore xla::swig::XrtAllocationTuple::size;
 %unignore xla::swig::CompiledLocalComputation;
 %unignore xla::swig::CompiledLocalComputation::Execute;
-%unignore xla::swig::CompiledLocalComputation::ExecuteWithShapedBuffers;
+%unignore xla::swig::CompiledLocalComputation::ExecutePerReplica;
+%unignore xla::swig::CompiledXrtComputation;
+%unignore xla::swig::CompiledXrtComputation::Execute;
 %unignore xla::swig::LocalComputation;
 %unignore xla::swig::LocalComputation::Compile;
+%unignore xla::swig::LocalComputation::CompileForXrt;
 %unignore xla::swig::LocalComputation::GetReturnValueShape;
 %unignore xla::swig::LocalComputation::GetSerializedProto;
 %unignore xla::swig::LocalOp;
 %unignore xla::swig::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::Build;
+%unignore xla::swig::LocalComputationBuilder::BuildWithRoot;
 %unignore xla::swig::LocalComputationBuilder::SetOpMetadata;
 %unignore xla::swig::LocalComputationBuilder::ClearOpMetadata;
 %unignore xla::swig::LocalComputationBuilder::Parameter;
@@ -944,7 +1011,10 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Outfeed;
 %unignore xla::swig::LocalComputationBuilder::ConstantLiteral;
 %unignore xla::swig::LocalComputationBuilder::ConstantR0;
+%unignore xla::swig::LocalComputationBuilder::Iota;
+%unignore xla::swig::LocalComputationBuilder::BroadcastedIota;
 %unignore xla::swig::LocalComputationBuilder::Broadcast;
+%unignore xla::swig::LocalComputationBuilder::BroadcastInDim;
 %unignore xla::swig::LocalComputationBuilder::Pad;
 %unignore xla::swig::LocalComputationBuilder::Reshape;
 %unignore xla::swig::LocalComputationBuilder::Collapse;
@@ -1036,10 +1106,19 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Imag;
 %unignore xla::swig::LocalComputationBuilder::Conj;
 %unignore xla::swig::LocalComputationBuilder::Complex;
-%unignore xla::swig::DestructureLocalShapedBufferTuple;
-%unignore xla::swig::DeleteLocalShapedBuffer;
+%unignore xla::swig::LocalComputationBuilder::Cholesky;
+%unignore xla::swig::LocalComputationBuilder::QR;
+%unignore xla::swig::LocalComputationBuilder::TriangularSolve;
+%unignore xla::swig::LocalComputationBuilder::CustomCall;
+%unignore xla::swig::LocalComputationBuilder::Gather;
+%unignore xla::swig::LocalComputationBuilder::Scatter;
 %unignore xla::swig::DeleteLocalComputation;
+%unignore xla::swig::DestructureLocalShapedBufferTuple;
+%unignore xla::swig::DestructureXrtAllocationTuple;
+%unignore xla::swig::DeleteLocalShapedBuffer;
+%unignore xla::swig::DeleteXrtAllocation;
 %unignore xla::swig::DeleteCompiledLocalComputation;
+%unignore xla::swig::DeleteCompiledXrtComputation;
 
 %thread;
 %include "tensorflow/compiler/xla/python/local_computation_builder.h"

@@ -1688,4 +1688,11 @@ inputs: Must all be the same size and shape.
 
 #endif  // INTEL_MKL
 
+REGISTER_OP("NextAfter")
+    .Attr("T: {float64, float32} = DT_FLOAT")
+    .Input("x1: T")
+    .Input("x2: T")
+    .Output("output: T")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
 }  // namespace tensorflow

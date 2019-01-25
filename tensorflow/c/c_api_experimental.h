@@ -67,9 +67,10 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 // a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
 // `enable_xla_compilation` is non-zero, and OFF otherwise.
 // b) ConfigProto.gpu_options.allow_growth is set to `gpu_memory_allow_growth`.
+// c) ConfigProto.device_count is set to `num_cpu_devices`.
 TF_CAPI_EXPORT extern TF_Buffer* TF_CreateConfig(
-    unsigned char enable_xla_compilation,
-    unsigned char gpu_memory_allow_growth);
+    unsigned char enable_xla_compilation, unsigned char gpu_memory_allow_growth,
+    unsigned int num_cpu_devices);
 
 // Create a serialized tensorflow.RunOptions proto, where RunOptions.trace_level
 // is set to FULL_TRACE if `enable_full_trace` is non-zero, and NO_TRACE
@@ -82,6 +83,15 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_CreateRunOptions(
 // The returned string is heap-allocated, and caller should call free() on it.
 TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
                                                       size_t* len);
+
+// Returns the function content in a human-readable format, with length set in
+// `len`. The format is subject to change in the future.
+// The returned string is heap-allocated, and caller should call free() on it.
+//
+// Do not return const char*, because some foreign language binding
+// (e.g. swift) cannot then call free() on the returned pointer.
+TF_CAPI_EXPORT extern char* TF_FunctionDebugString(TF_Function* func,
+                                                   size_t* len);
 
 // Creates a stack of data set + iterator nodes, currently hard-coded to return
 // a sequence of 3 float values <42.0, 43.0, 44.0> over 3 calls. On success,
@@ -180,8 +190,130 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
 TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
     TFE_TensorHandle* handle);
 
+TF_CAPI_EXPORT extern void TFE_OpPrintDebugString(TFE_Op* op);
+
+typedef struct TFE_ExecuteOpNotification TFE_ExecuteOpNotification;
+
+// Allows invoking a kernel asynchronously, and explicitly returns a
+// notification that can be waited upon. This always executes the kernel in a
+// new thread.
+// 1. `retvals` and `num_retvals` can only be consumed after
+// `TFE_ExecuteOp` returns successfully. They shouldn't be used
+// if the return is unsuccessful
+// 2. These new APIs cannot be used together with the TFE context level async
+// support.
+TF_CAPI_EXPORT extern TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(
+    TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
+    TF_Status* status);
+
+// Waits to complete the op execution, and cleans up the notification.
+// Errors reported by op execution are set in `status`.
+TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
+    TFE_ExecuteOpNotification* notification, TF_Status* status);
+
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
+
+// TF_NewAttrBuilder() returns an object that you can set attributes on as
+// though it were an op. This allows querying properties of that op for
+// type-checking purposes like if the op will run on a particular device type.
+typedef struct TF_AttrBuilder TF_AttrBuilder;
+TF_CAPI_EXPORT extern TF_AttrBuilder* TF_NewAttrBuilder(const char* op_name);
+TF_CAPI_EXPORT extern void TF_DeleteAttrBuilder(TF_AttrBuilder* builder);
+TF_CAPI_EXPORT extern void TF_AttrBuilderSetType(TF_AttrBuilder* builder,
+                                                 const char* attr_name,
+                                                 TF_DataType value);
+TF_CAPI_EXPORT extern void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder,
+                                                     const char* attr_name,
+                                                     const TF_DataType* values,
+                                                     int num_values);
+
+// Checks the tensorflow::NodeDef built via the methods above to see if it can
+// run on device_type.
+TF_CAPI_EXPORT extern void TF_AttrBuilderCheckCanRunOnDevice(
+    TF_AttrBuilder* builder, const char* device_type, TF_Status* status);
+
+// For argument number input_index, fetch the corresponding number_attr that
+// needs to be updated with the argument length of the input list.
+// Returns nullptr if there is any problem like op_name is not found, or the
+// argument does not support this attribute type.
+TF_CAPI_EXPORT extern const char* TF_GetNumberAttrForOpListInput(
+    const char* op_name, int input_index, TF_Status* status);
+
+// Returns 1 if the op is stateful, 0 otherwise. The return value is undefined
+// if the status is not ok.
+TF_CAPI_EXPORT extern int TF_OpIsStateful(const char* op_type,
+                                          TF_Status* status);
+
+// Platform specific initialization routine. Very few platforms actually require
+// this to be called.
+TF_CAPI_EXPORT void TF_InitMain(const char* usage, int* argc, char*** argv);
+
+// Platform-specific implementation to return an unused port. (This should used
+// in tests only.)
+TF_CAPI_EXPORT int TF_PickUnusedPortOrDie(void);
+
+// Fast path method that makes constructing a single scalar tensor require less
+// overhead and copies.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromScalar(
+    TF_DataType dtype, void* scalar, size_t len);
+
+// Specify the server_def that enables collective ops.
+// This is different to the above function in that it doesn't create remote
+// contexts, and remotely executing ops is not possible. It just enables
+// communication for collective ops.
+TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
+
+// Create a symbolic tensor from the input graph node.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromTFOutput(
+    TF_Output t, TF_DataType data_type);
+
+// Returns 0 if the input tensor handle represents a symbolic tensor (i.e., a
+// graph node). Otherwise returns non-0.
+TF_CAPI_EXPORT extern unsigned char TFE_TensorHandleIsConcrete(
+    TFE_TensorHandle* handle);
+
+// If `handle` is a symbolic tensor, return the corresponding graph node
+// represented by TF_Output. Otherwise, return an error status.
+TF_CAPI_EXPORT extern TF_Output TFE_GetTFOutputFromTensorHandle(
+    TFE_TensorHandle* handle, TF_Status* status);
+
+typedef struct TFE_TraceContext TFE_TraceContext;
+
+// A trace context contains a trace graph, to which TFE_AddEagerOpToGraph()
+// calls add graph nodes as a way to symbolically execute the eager ops.
+//
+// It also contains a hash map from concrete input tensors to symbolic
+// tensors. That map will be used to create input tensors to the trace graph.
+TF_CAPI_EXPORT extern TFE_TraceContext* TFE_NewTraceContext(TF_Graph* graph);
+
+TF_CAPI_EXPORT extern void TFE_DeleteTraceContext(TFE_TraceContext* trace_ctx);
+
+// Symbolically executes `op`, by adding a corresponding node to the graph
+// associated with `trace_ctx`. This graph node outputs a set of symbolic
+// tensors in `retvals` and `num_retvals`.
+TF_CAPI_EXPORT extern void TFE_AddEagerOpToGraph(TFE_Op* op,
+                                                 TFE_TraceContext* trace_ctx,
+                                                 TFE_TensorHandle** retvals,
+                                                 int* num_retvals,
+                                                 TF_Status* status);
+
+// Finalizes the trace graph and its inputs, and returns the number of inputs.
+// After this call, the next two APIs can be called to iterate over the input
+// tensors.
+TF_CAPI_EXPORT extern int TFE_FinalizeInputTensorsFromTraceContext(
+    TFE_TraceContext* trace_ctx);
+
+TF_CAPI_EXPORT extern TF_Output TFE_GetInputGraphNodeFromTraceContext(
+    TFE_TraceContext* trace_ctx, unsigned int idx);
+
+// Each input tensor should be consumed at most once.
+TF_CAPI_EXPORT extern TFE_TensorHandle*
+TFE_ConsumeInputConcreteTensorFromTraceContext(TFE_TraceContext* trace_ctx,
+                                               unsigned int idx);
 
 #ifdef __cplusplus
 } /* end extern "C" */

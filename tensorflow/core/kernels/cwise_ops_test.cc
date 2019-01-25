@@ -45,6 +45,7 @@ int ColsFromArg(int arg) { return (arg % kRows); }
 #define BM_UNARY(DEVICE, FUNC, T, TYPE)                              \
   void BM_##DEVICE##_##FUNC##_##TYPE(int iters, int num) {           \
     const int64 tot = static_cast<int64>(iters) * num;               \
+    testing::UseRealTime();                                          \
     testing::ItemsProcessed(tot);                                    \
     testing::BytesProcessed(tot * sizeof(T));                        \
     test::Benchmark(#DEVICE, Unary<T>(#FUNC, num, TYPE)).Run(iters); \
@@ -100,6 +101,7 @@ Graph* BinaryScalar(int num, const string& func) {
 #define BM_BINARY_SCALAR(DEVICE, FUNC)                             \
   void BM_##DEVICE##_##FUNC##_scalar(int iters, int num) {         \
     const int64 tot = static_cast<int64>(iters) * num;             \
+    testing::UseRealTime();                                        \
     testing::ItemsProcessed(tot);                                  \
     testing::BytesProcessed(tot * sizeof(float));                  \
     test::Benchmark(#DEVICE, BinaryScalar(num, #FUNC)).Run(iters); \
@@ -125,6 +127,15 @@ BM_BINARY_SCALAR(gpu, Add);
 #ifdef TENSORFLOW_USE_SYCL
 BM_BINARY_SCALAR(sycl, Add);
 #endif  // TENSORFLOW_USE_SYCL
+
+BM_BINARY_SCALAR(cpu, DivNoNan);
+#if GOOGLE_CUDA
+BM_BINARY_SCALAR(gpu, DivNoNan);
+#endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+BM_BINARY_SCALAR(sycl, DivNoNan);
+#endif  // TENSORFLOW_USE_SYCL
+
 #undef BM_BINARY_SCALAR
 
 template <class T>
@@ -146,6 +157,7 @@ Graph* BiasAdd(int rows, int cols, DataType type) {
     const int rows = RowsFromArg(arg);                                         \
     const int cols = ColsFromArg(arg);                                         \
     const int64 tot = static_cast<int64>(iters) * rows * cols;                 \
+    testing::UseRealTime();                                                    \
     testing::ItemsProcessed(tot);                                              \
     testing::BytesProcessed(tot * sizeof(C_TYPE));                             \
     test::Benchmark(#DEVICE, BiasAdd<C_TYPE>(rows, cols, TF_TYPE)).Run(iters); \
@@ -197,6 +209,7 @@ Graph* BiasAddGrad(int rows, int cols, int channels, DataType type,
     const int rows = RowsFromArg(arg);                                         \
     const int cols = ColsFromArg(arg);                                         \
     const int64 tot = static_cast<int64>(iters) * rows * cols * channels;      \
+    testing::UseRealTime();                                                    \
     testing::ItemsProcessed(tot);                                              \
     testing::BytesProcessed(tot * sizeof(C_TYPE));                             \
     test::Benchmark(#DEVICE, BiasAddGrad<C_TYPE>(rows, cols, channels,         \
@@ -259,6 +272,7 @@ Graph* BcastAdd(int rows, int cols, int dim) {
     const int rows = RowsFromArg(arg);                             \
     const int cols = ColsFromArg(arg);                             \
     const int64 tot = static_cast<int64>(iters) * rows * cols;     \
+    testing::UseRealTime();                                        \
     testing::ItemsProcessed(tot);                                  \
     testing::BytesProcessed(tot * sizeof(float));                  \
     test::Benchmark(#DEVICE, BcastAdd(rows, cols, 0)).Run(iters);  \
@@ -285,6 +299,7 @@ BM_BCAST_ADD_ROW_ALL(sycl);
     const int rows = RowsFromArg(arg);                             \
     const int cols = ColsFromArg(arg);                             \
     const int64 tot = static_cast<int64>(iters) * rows * cols;     \
+    testing::UseRealTime();                                        \
     testing::ItemsProcessed(tot);                                  \
     testing::BytesProcessed(tot * sizeof(float));                  \
     test::Benchmark(#DEVICE, BcastAdd(rows, cols, 1)).Run(iters);  \
@@ -311,6 +326,7 @@ BM_BCAST_ADD_COL_ALL(sycl);
     const int rows = RowsFromArg(arg);                                 \
     const int cols = ColsFromArg(arg);                                 \
     const int64 tot = static_cast<int64>(iters) * rows * cols;         \
+    testing::UseRealTime();                                            \
     testing::ItemsProcessed(tot);                                      \
     testing::BytesProcessed(tot * sizeof(float));                      \
     test::Benchmark(#DEVICE, BcastAdd(rows, cols, 2)).Run(iters);      \
@@ -338,6 +354,7 @@ BM_BCAST_ADD_CROSS_RC_ALL(sycl);
     const int rows = RowsFromArg(arg);                                 \
     const int cols = ColsFromArg(arg);                                 \
     const int64 tot = static_cast<int64>(iters) * rows * cols;         \
+    testing::UseRealTime();                                            \
     testing::ItemsProcessed(tot);                                      \
     testing::BytesProcessed(tot * sizeof(float));                      \
     test::Benchmark(#DEVICE, BcastAdd(rows, cols, 3)).Run(iters);      \

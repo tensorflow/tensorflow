@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import builtins
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -346,7 +347,7 @@ tf_export("dtypes.uint32", "uint32").export_constant(__name__, "uint32")
 uint64 = DType(types_pb2.DT_UINT64)
 tf_export("dtypes.uint64", "uint64").export_constant(__name__, "uint64")
 int16 = DType(types_pb2.DT_INT16)
-tf_export("dtypes.uint16", "int16").export_constant(__name__, "int16")
+tf_export("dtypes.int16", "int16").export_constant(__name__, "int16")
 int8 = DType(types_pb2.DT_INT8)
 tf_export("dtypes.int8", "int8").export_constant(__name__, "int8")
 string = DType(types_pb2.DT_STRING)
@@ -534,29 +535,47 @@ _np_qint32 = np.dtype([("qint32", np.int32, 1)])
 np_resource = np.dtype([("resource", np.ubyte, 1)])
 
 # Standard mappings between types_pb2.DataType values and numpy.dtypes.
-_NP_TO_TF = frozenset([
-    (np.float16, float16),
-    (np.float32, float32),
-    (np.float64, float64),
-    (np.int32, int32),
-    (np.int64, int64),
-    (np.uint8, uint8),
-    (np.uint16, uint16),
-    (np.uint32, uint32),
-    (np.uint64, uint64),
-    (np.int16, int16),
-    (np.int8, int8),
-    (np.complex64, complex64),
-    (np.complex128, complex128),
-    (np.object, string),
-    (np.bool, bool),
-    (_np_qint8, qint8),
-    (_np_quint8, quint8),
-    (_np_qint16, qint16),
-    (_np_quint16, quint16),
-    (_np_qint32, qint32),
-    (_np_bfloat16, bfloat16),
-])
+_NP_TO_TF = {
+    np.float16: float16,
+    np.float32: float32,
+    np.float64: float64,
+    np.int32: int32,
+    np.int64: int64,
+    np.uint8: uint8,
+    np.uint16: uint16,
+    np.uint32: uint32,
+    np.uint64: uint64,
+    np.int16: int16,
+    np.int8: int8,
+    np.complex64: complex64,
+    np.complex128: complex128,
+    np.object_: string,
+    np.string_: string,
+    np.unicode_: string,
+    np.bool_: bool,
+    _np_qint8: qint8,
+    _np_quint8: quint8,
+    _np_qint16: qint16,
+    _np_quint16: quint16,
+    _np_qint32: qint32,
+    _np_bfloat16: bfloat16,
+}
+
+# Map (some) NumPy platform dtypes to TF ones using their fixed-width
+# synonyms. Note that platform dtypes are not always simples aliases,
+# i.e. reference equality is not guaranteed. See e.g. numpy/numpy#9799.
+for pdt in [
+    np.intc,
+    np.uintc,
+    np.int_,
+    np.uint,
+    np.longlong,
+    np.ulonglong,
+]:
+  if pdt not in _NP_TO_TF:
+    _NP_TO_TF[pdt] = next(
+        _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)
+
 _TF_TO_NP = {
     types_pb2.DT_HALF:
         np.float16,
@@ -652,13 +671,30 @@ _QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])
 _QUANTIZED_DTYPES_REF = frozenset(
     [qint8_ref, quint8_ref, qint16_ref, quint16_ref, qint32_ref])
 QUANTIZED_DTYPES = _QUANTIZED_DTYPES_REF.union(_QUANTIZED_DTYPES_NO_REF)
-tf_export("dtypes.QUANTIZED_DTYPES", "QUANTIZED_DTYPES").export_constant(
-    __name__, "QUANTIZED_DTYPES")
+tf_export(
+    "dtypes.QUANTIZED_DTYPES",
+    v1=["dtypes.QUANTIZED_DTYPES", "QUANTIZED_DTYPES"]).export_constant(
+        __name__, "QUANTIZED_DTYPES")
 
 _PYTHON_TO_TF = {
-    float: float32,
-    bool: bool,
+    builtins.float: float32,
+    builtins.bool: bool,
+    builtins.object: string
 }
+
+_ANY_TO_TF = {}
+_ANY_TO_TF.update(_INTERN_TABLE)
+_ANY_TO_TF.update(_STRING_TO_TF)
+_ANY_TO_TF.update(_PYTHON_TO_TF)
+_ANY_TO_TF.update(_NP_TO_TF)
+
+# Ensure no collisions.
+assert len(_ANY_TO_TF) == sum(len(d) for d in [
+    _INTERN_TABLE,
+    _STRING_TO_TF,
+    _PYTHON_TO_TF,
+    _NP_TO_TF
+])
 
 
 @tf_export("dtypes.as_dtype", "as_dtype")
@@ -680,36 +716,16 @@ def as_dtype(type_value):
   if isinstance(type_value, DType):
     return type_value
 
-  try:
-    return _INTERN_TABLE[type_value]
-  except KeyError:
-    pass
-
-  try:
-    return _STRING_TO_TF[type_value]
-  except KeyError:
-    pass
-
-  try:
-    return _PYTHON_TO_TF[type_value]
-  except KeyError:
-    pass
-
   if isinstance(type_value, np.dtype):
-    # The numpy dtype for strings is variable length. We can not compare
-    # dtype with a single constant (np.string does not exist) to decide
-    # dtype is a "string" type. We need to compare the dtype.type to be
-    # sure it's a string type.
-    if type_value.type == np.string_ or type_value.type == np.unicode_:
-      return string
+    try:
+      return _NP_TO_TF[type_value.type]
+    except KeyError:
+      pass
 
-  if isinstance(type_value, (type, np.dtype)):
-    for key, val in _NP_TO_TF:
-      try:
-        if key == type_value:
-          return val
-      except TypeError as e:
-        raise TypeError("Cannot convert {} to a dtype. {}".format(
-            type_value, e))
+  try:
+    return _ANY_TO_TF[type_value]
+  except KeyError:
+    pass
 
-  raise TypeError("Cannot convert value %r to a TensorFlow DType." % type_value)
+  raise TypeError(
+      "Cannot convert value %r to a TensorFlow DType." % type_value)

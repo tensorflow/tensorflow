@@ -50,7 +50,7 @@ class TransposeTest(test.TestCase):
     with self.cached_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
       y = array_ops.transpose(inx, p, conjugate=conjugate)
-      tf_ans = y.eval()
+      tf_ans = self.evaluate(y)
       self.assertShapeEqual(np_ans, y)
       self.assertAllEqual(np_ans, tf_ans)
 
@@ -81,7 +81,7 @@ class TransposeTest(test.TestCase):
     with self.cached_session(use_gpu=True):
       inx = ops.convert_to_tensor(x)
       y = array_ops.transpose(inx, p, conjugate=conjugate)
-      tf_ans = y.eval()
+      tf_ans = self.evaluate(y)
 
       self.assertAllEqual(np_ans, tf_ans)
       self.assertShapeEqual(np_ans, y)
@@ -168,7 +168,7 @@ class TransposeTest(test.TestCase):
         with self.cached_session(use_gpu=True):
           inx = ops.convert_to_tensor(inp)
           y = array_ops.transpose(inx, perm)
-          tf_ans = y.eval()
+          tf_ans = self.evaluate(y)
         self.assertAllEqual(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, y)
 
@@ -189,7 +189,7 @@ class TransposeTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         inx = ops.convert_to_tensor(inp)
         y = array_ops.transpose(inx, perm)
-        tf_ans = y.eval()
+        tf_ans = self.evaluate(y)
       self.assertAllEqual(np_ans, tf_ans)
       self.assertShapeEqual(np_ans, y)
 
@@ -224,7 +224,7 @@ class TransposeTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         inx = ops.convert_to_tensor(inp)
         y = array_ops.transpose(inx, perm)
-        tf_ans = y.eval()
+        tf_ans = self.evaluate(y)
       self.assertAllEqual(np_ans, tf_ans)
       self.assertShapeEqual(np_ans, y)
 
@@ -246,7 +246,7 @@ class TransposeTest(test.TestCase):
         with self.cached_session(use_gpu=True):
           inx = ops.convert_to_tensor(inp)
           y = array_ops.transpose(inx, perm)
-          tf_ans = y.eval()
+          tf_ans = self.evaluate(y)
         self.assertAllEqual(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, y)
 
@@ -267,7 +267,7 @@ class TransposeTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         inx = ops.convert_to_tensor(inp)
         y = array_ops.transpose(inx, perm)
-        tf_ans = y.eval()
+        tf_ans = self.evaluate(y)
       self.assertAllEqual(np_ans, tf_ans)
       self.assertShapeEqual(np_ans, y)
 
@@ -319,7 +319,7 @@ class TransposeTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         inx = ops.convert_to_tensor(inp)
         y = array_ops.transpose(inx, perm)
-        tf_ans = y.eval()
+        tf_ans = self.evaluate(y)
       self.assertAllEqual(np_ans, tf_ans)
       self.assertShapeEqual(np_ans, y)
       self._ClearCachedSession()
@@ -341,7 +341,7 @@ class TransposeTest(test.TestCase):
         inx = ops.convert_to_tensor(x)
         inp = constant_op.constant(p)
         y = array_ops.transpose(inx, inp)
-        tf_ans = y.eval()
+        tf_ans = self.evaluate(y)
         self.assertShapeEqual(np_ans, y)
         self.assertAllEqual(np_ans, tf_ans)
 

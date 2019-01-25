@@ -607,7 +607,10 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
 
     Array4D<float> input(param.base_bounds[0], param.base_bounds[1],
                          param.base_bounds[2], param.base_bounds[3]);
-    input.FillRandom(0.1f, 0.1f);
+    // Choose a prime iota length so that each window sees a unique set of
+    // values. (Technically, the requirement is that the iota length is
+    // relatively prime to all of the dimensions involved in the reduce-window.)
+    input.FillRepeatedIota(0, 137);
     Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
         input, LayoutUtil::MakeLayout(param.layout));
     XlaOp parameter;
@@ -623,9 +626,9 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
         CreateConstantFromLiteral(LiteralUtil::CreateR0(kInitValue), &b);
     CHECK(param.reducer == kAdd || param.reducer == kMax);
     auto reducer = param.reducer;
-    if (use_bfloat16() && Product(param.window_bounds) > 128) {
-      // To avoid numerical issues, force the reducer to be kMax for large bf16
-      // windows.
+    if (use_bfloat16()) {
+      // To avoid numerical issues, force the reducer to be kMax for bf16
+      // inputs.
       reducer = kMax;
     }
 
@@ -949,16 +952,16 @@ struct R3ReduceWindowTestData {
      /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{95, 202, 251}, /*window_bounds=*/{95, 202, 251},
      /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kMax},
     {/*base_bounds=*/{999, 57, 3}, /*window_bounds=*/{999, 57, 3},
      /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
      /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{178, 302, 64}, /*window_bounds=*/{178, 302, 64},
      /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kMax},
     {/*base_bounds=*/{63, 261, 257}, /*window_bounds=*/{63, 261, 257},
      /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kMax},
     {/*base_bounds=*/{10003, 10, 5}, /*window_bounds=*/{9999, 7, 3},
      /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
      /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
@@ -1001,17 +1004,19 @@ TEST_P(R3ReduceWindowTest, DoIt) {
   const float kInitValue = 0.0f;
   Array3D<float> input(param.base_bounds[0], param.base_bounds[1],
                        param.base_bounds[2]);
-  input.FillRandom(0.1f, 0.1f);
+  // Choose a prime iota length so that each window sees a unique set of values.
+  // (Technically, the requirement is that the iota length is relatively prime
+  // to all of the dimensions involved in the reduce-window.)
+  input.FillRepeatedIota(0, 137);
   Literal input_literal = LiteralUtil::CreateR3FromArray3DWithLayout(
       input, LayoutUtil::MakeLayout(param.layout));
   auto reducer = param.reducer;
   if (use_bfloat16()) {
     input_literal = LiteralUtil::ConvertF32ToBF16(input_literal);
-    if (Product(param.window_bounds) > 128) {
-      // To avoid numerical issues, force the reducer to be kMax for large bf16
-      // windows.
-      reducer = kMax;
-    }
+
+    // To avoid numerical issues, force the reducer to be kMax for bf16
+    // inputs.
+    reducer = kMax;
   }
 
   XlaOp parameter = Parameter(&b, 0, input_literal.shape(), "input");

@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -237,15 +237,6 @@ class SparseTensor {
   template <typename T>
   static Status Split(const SparseTensor& tensor, const int split_dim,
                       const int num_split, std::vector<SparseTensor>* result);
-
-  template <typename T>
-  ABSL_DEPRECATED(
-      "Use the form of Split() that takes an output pointer and returns a "
-      "status instead.")
-  static std::vector<SparseTensor> Split(const SparseTensor& tensor,
-                                         const int split_dim,
-                                         const int num_split,
-                                         Status* status = nullptr);
 
   // Slice() will slice the input SparseTensor into a SparseTensor based on
   // specified start and size. Both start and size are 1-D array with each
@@ -578,10 +569,9 @@ SparseTensor SparseTensor::Concat(
 }
 
 template <typename T>
-std::vector<SparseTensor> SparseTensor::Split(const SparseTensor& input_tensor,
-                                              const int split_dim,
-                                              const int num_split,
-                                              Status* status /* = nullptr */) {
+Status SparseTensor::Split(const SparseTensor& input_tensor,
+                           const int split_dim, const int num_split,
+                           std::vector<SparseTensor>* result) {
   std::vector<Tensor> output_indices;
   std::vector<Tensor> output_values;
   std::vector<TensorShape> output_shapes;
@@ -601,17 +591,15 @@ std::vector<SparseTensor> SparseTensor::Split(const SparseTensor& input_tensor,
   const int split_dim_size = input_tensor.shape()[split_dim];
   const int split_size = split_dim_size / num_split;
 
-  if (!(num_split > 0 && num_split <= split_dim_size) && status != nullptr) {
-    *status = Status(error::INVALID_ARGUMENT,
-                     strings::StrCat("num_split must be in the interval (0, ",
-                                     split_dim_size, "]"));
-    return {};
+  if (!(num_split > 0 && num_split <= split_dim_size)) {
+    return Status(error::INVALID_ARGUMENT,
+                  strings::StrCat("num_split must be in the interval (0, ",
+                                  split_dim_size, "]"));
   }
   if (!(split_dim >= 0 && split_dim < num_dim)) {
-    *status = Status(
+    return Status(
         error::INVALID_ARGUMENT,
         strings::StrCat("num_dim must be in the interval [0, ", num_dim, ")"));
-    return {};
   }
 
   const int residual = split_dim_size % num_split;
@@ -649,28 +637,18 @@ std::vector<SparseTensor> SparseTensor::Split(const SparseTensor& input_tensor,
     }
   }
 
-  std::vector<SparseTensor> output_tensors;
-  output_tensors.reserve(num_split);
+  result->clear();
+  result->reserve(num_split);
   for (int i = 0; i < num_split; ++i) {
     SparseTensor tensor;
     Status create_status =
         Create(output_indices[i], output_values[i], output_shapes[i], &tensor);
-    if (!create_status.ok() && status != nullptr) {
-      *status = create_status;
-      return {};
+    if (!create_status.ok()) {
+      return create_status;
     }
-    output_tensors.push_back(std::move(tensor));
+    result->push_back(std::move(tensor));
   }
-  return output_tensors;
-}
-
-template <typename T>
-Status SparseTensor::Split(const SparseTensor& input_tensor,
-                           const int split_dim, const int num_split,
-                           std::vector<SparseTensor>* result) {
-  Status status;
-  *result = Split<T>(input_tensor, split_dim, num_split, &status);
-  return status;
+  return Status::OK();
 }
 
 template <typename T>

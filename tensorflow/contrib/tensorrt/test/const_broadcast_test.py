@@ -58,13 +58,13 @@ class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[(5, 12, 12, 1)])
+        expected_output_dims=[[[5, 12, 12, 1]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ['my_trt_op_0']
+    return ['TRTEngineOp_0']
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""

@@ -33,6 +33,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import keras
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
@@ -48,6 +49,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training import gradient_descent
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
@@ -76,18 +78,18 @@ def c_tfe_py_fastpath_execute(a,
 
 class SubclassedKerasModel(keras.Model):
 
-  def __init__(self):
+  def __init__(self, initializer="ones"):
     super(SubclassedKerasModel, self).__init__()
     self.layer_a = keras.layers.Dense(
-        64, kernel_initializer="ones", bias_initializer="zeros")
+        64, kernel_initializer=initializer, bias_initializer="zeros")
     self.layer_b = keras.layers.Dense(
-        128, kernel_initializer="ones", bias_initializer="zeros")
+        128, kernel_initializer=initializer, bias_initializer="zeros")
     self.layer_c = keras.layers.Dense(
-        256, kernel_initializer="ones", bias_initializer="zeros")
+        256, kernel_initializer=initializer, bias_initializer="zeros")
     self.layer_d = keras.layers.Dense(
-        256, kernel_initializer="ones", bias_initializer="zeros")
+        256, kernel_initializer=initializer, bias_initializer="zeros")
     self.layer_e = keras.layers.Dense(
-        10, kernel_initializer="ones", bias_initializer="zeros")
+        10, kernel_initializer=initializer, bias_initializer="zeros")
 
   def call(self, x):
     x = self.layer_a(x)
@@ -97,34 +99,34 @@ class SubclassedKerasModel(keras.Model):
     return self.layer_e(x)
 
 
-def make_keras_model():
+def make_keras_model(initializer="ones"):
   model_input = keras.Input(shape=(10,))
   x = keras.layers.Dense(
-      64, kernel_initializer="ones", bias_initializer="zeros")(model_input)
+      64, kernel_initializer=initializer, bias_initializer="zeros")(model_input)
   x = keras.layers.Dense(
-      128, kernel_initializer="ones", bias_initializer="zeros")(x)
+      128, kernel_initializer=initializer, bias_initializer="zeros")(x)
   x = keras.layers.Dense(
-      256, kernel_initializer="ones", bias_initializer="zeros")(x)
+      256, kernel_initializer=initializer, bias_initializer="zeros")(x)
   x = keras.layers.Dense(
-      256, kernel_initializer="ones", bias_initializer="zeros")(x)
+      256, kernel_initializer=initializer, bias_initializer="zeros")(x)
   x = keras.layers.Dense(
-      10, kernel_initializer="ones", bias_initializer="zeros")(x)
+      10, kernel_initializer=initializer, bias_initializer="zeros")(x)
   return keras.Model(inputs=model_input, outputs=x)
 
 
-def make_sequential_keras_model():
+def make_sequential_keras_model(initializer="ones"):
   model = keras.models.Sequential()
   model.add(keras.layers.Dense(
-      64, kernel_initializer="ones", bias_initializer="zeros",
+      64, kernel_initializer=initializer, bias_initializer="zeros",
       input_shape=(10,)))
   model.add(keras.layers.Dense(
-      128, kernel_initializer="ones", bias_initializer="zeros"))
+      128, kernel_initializer=initializer, bias_initializer="zeros"))
   model.add(keras.layers.Dense(
-      256, kernel_initializer="ones", bias_initializer="zeros"))
+      256, kernel_initializer=initializer, bias_initializer="zeros"))
   model.add(keras.layers.Dense(
-      256, kernel_initializer="ones", bias_initializer="zeros"))
+      256, kernel_initializer=initializer, bias_initializer="zeros"))
   model.add(keras.layers.Dense(
-      10, kernel_initializer="ones", bias_initializer="zeros"))
+      10, kernel_initializer=initializer, bias_initializer="zeros"))
   return model
 
 
@@ -138,7 +140,7 @@ class MicroBenchmarks(test.Benchmark):
     self._m_2_by_2 = random_ops.random_uniform((2, 2))
     self._m_100_by_784 = random_ops.random_uniform((100, 784))
     self._num_iters_2_by_2 = 30000
-    self._num_iters_100_by_784 = 1000
+    self._num_iters_100_by_784 = 30000
 
   def _run(self, func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
@@ -220,6 +222,18 @@ class MicroBenchmarks(test.Benchmark):
       return
     self._benchmark_create_tensor(
         np.array([[3]], dtype=np.int32), dtypes.int32.as_datatype_enum, GPU)
+
+  def benchmark_index_tensor_with_literal(self):
+    func = lambda: constant_op.constant([3.0])[0]
+    self._run(func, 30000)
+
+  def benchmark_index_tensor_with_tensor(self):
+    func = lambda idx=constant_op.constant(0): constant_op.constant([3.0])[idx]
+    self._run(func, 30000)
+
+  def benchmark_index_tensor_with_np_array(self):
+    func = lambda idx=np.array(0): constant_op.constant([3.0])[idx]
+    self._run(func, 30000)
 
   def _benchmark_np_multiply(self, m, num_iters):
     a = m.cpu().numpy()
@@ -355,6 +369,19 @@ class MicroBenchmarks(test.Benchmark):
     f = function.defun(math_ops.matmul)
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
+
+  def _benchmark_nested_defun_matmul(self, m, transpose_b, num_iters):
+    inner = function.defun(math_ops.matmul)
+
+    @function.defun
+    def outer(a, b, c, transpose_b):
+      return math_ops.matmul(inner(a, b, transpose_b=transpose_b), c)
+
+    func = lambda: outer(m, m, m, transpose_b=transpose_b)
+    # Warmup before benchmark
+    for _ in range(1000):
+      func()
+    self._run(func, num_iters)
 
   def _benchmark_defun_matmul_forward_backward(self,
                                                m,
@@ -511,6 +538,11 @@ class MicroBenchmarks(test.Benchmark):
           num_iters=self._num_iters_2_by_2,
           execution_mode=context.ASYNC)
 
+  def benchmark_nested_defun_matmul_2_by_2(self):
+    m = self._m_2_by_2.cpu()
+    self._benchmark_nested_defun_matmul(
+        m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
   # Benchmarks for AA.T, A of dimension 100 by 784.
   def benchmark_np_matmul_100_by_784(self):
     self._benchmark_np_matmul(
@@ -599,6 +631,11 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_100_by_784.gpu()
       self._benchmark_defun_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_nested_defun_matmul_100_by_784(self):
+    m = self._m_100_by_784.gpu()
+    self._benchmark_nested_defun_matmul(
+        m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
   def benchmark_defun_without_signature(self):
 
@@ -717,6 +754,131 @@ class MicroBenchmarks(test.Benchmark):
     func()
     assert np.equal(func(), make_keras_model()(data)).all()
     self._run(func, 30000)
+
+  def _benchmark_keras_model_fit(self, model, run_eagerly=False):
+    data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
+    labels = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
+    dataset = dataset_ops.Dataset.from_tensors((data, labels)).repeat()
+    model.compile(
+        gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
+        loss="mse", run_eagerly=run_eagerly)
+    func = lambda: model.fit(dataset, epochs=1, steps_per_epoch=1000, verbose=0)
+    # First call is more expensive (creates variables etc.), discount that.
+    model.fit(dataset, epochs=1, steps_per_epoch=1, verbose=0)
+
+    self._run(func, 1)
+
+  def _benchmark_keras_model_evaluate(self, model, run_eagerly=False):
+    data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
+    labels = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
+    dataset = dataset_ops.Dataset.from_tensors((data, labels)).repeat()
+    model.compile(
+        gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
+        loss="mse", run_eagerly=run_eagerly)
+    func = lambda: model.evaluate(dataset, steps=1000, verbose=0)
+    # First call is more expensive (creates variables etc.), discount that.
+    model.evaluate(dataset, steps=1, verbose=0)
+
+    self._run(func, 1)
+
+  def _benchmark_keras_model_predict(self, model, run_eagerly=False):
+    data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
+    dataset = dataset_ops.Dataset.from_tensors(tuple([data])).repeat()
+    model.compile(
+        gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
+        loss="mse", run_eagerly=run_eagerly)
+    func = lambda: model.predict(dataset, steps=1000, verbose=0)
+    # First call is more expensive (creates variables etc.), discount that.
+    model.predict(dataset, steps=1, verbose=0)
+
+    self._run(func, 1)
+
+  def benchmark_keras_model_subclassed_fit(self):
+    model = SubclassedKerasModel(initializer="glorot_uniform")
+    self._benchmark_keras_model_fit(model)
+
+  def benchmark_keras_model_subclassed_fit_graph_mode(self):
+    with context.graph_mode():
+      model = SubclassedKerasModel(initializer="glorot_uniform")
+      self._benchmark_keras_model_fit(model)
+
+  def benchmark_keras_model_subclassed_fit_run_model_eagerly(self):
+    model = SubclassedKerasModel(initializer="glorot_uniform")
+    self._benchmark_keras_model_fit(model, run_eagerly=True)
+
+  def benchmark_keras_model_functional_fit(self):
+    model = make_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_fit(model)
+
+  def benchmark_keras_model_functional_fit_graph_mode(self):
+    with context.graph_mode():
+      model = make_keras_model(initializer="glorot_uniform")
+      self._benchmark_keras_model_fit(model)
+
+  def benchmark_keras_model_functional_fit_run_model_eagerly(self):
+    model = make_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_fit(model, run_eagerly=True)
+
+  def benchmark_keras_model_sequential_fit(self):
+    model = make_sequential_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_fit(model)
+
+  def benchmark_keras_model_sequential_fit_graph_mode(self):
+    with context.graph_mode():
+      model = make_sequential_keras_model(initializer="glorot_uniform")
+      self._benchmark_keras_model_fit(model)
+
+  def benchmark_keras_model_sequential_fit_run_model_eagerly(self):
+    model = make_sequential_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_fit(model, run_eagerly=True)
+
+  def benchmark_keras_model_subclassed_evaluate(self):
+    model = SubclassedKerasModel(initializer="glorot_uniform")
+    self._benchmark_keras_model_evaluate(model)
+
+  def benchmark_keras_model_subclassed_evaluate_run_model_eagerly(self):
+    model = SubclassedKerasModel(initializer="glorot_uniform")
+    self._benchmark_keras_model_evaluate(model, run_eagerly=True)
+
+  def benchmark_keras_model_functional_evaluate(self):
+    model = make_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_evaluate(model)
+
+  def benchmark_keras_model_functional_evaluate_run_model_eagerly(self):
+    model = make_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_evaluate(model, run_eagerly=True)
+
+  def benchmark_keras_model_sequential_evaluate(self):
+    model = make_sequential_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_evaluate(model)
+
+  def benchmark_keras_model_sequential_evaluate_run_model_eagerly(self):
+    model = make_sequential_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_evaluate(model, run_eagerly=True)
+
+  def benchmark_keras_model_subclassed_predict(self):
+    model = SubclassedKerasModel(initializer="glorot_uniform")
+    self._benchmark_keras_model_predict(model)
+
+  def benchmark_keras_model_subclassed_predict_run_model_eagerly(self):
+    model = SubclassedKerasModel(initializer="glorot_uniform")
+    self._benchmark_keras_model_predict(model, run_eagerly=True)
+
+  def benchmark_keras_model_functional_predict(self):
+    model = make_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_predict(model)
+
+  def benchmark_keras_model_functional_predict_run_model_eagerly(self):
+    model = make_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_predict(model, run_eagerly=True)
+
+  def benchmark_keras_model_sequential_predict(self):
+    model = make_sequential_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_predict(model)
+
+  def benchmark_keras_model_sequential_predict_run_model_eagerly(self):
+    model = make_sequential_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_predict(model, run_eagerly=True)
 
   def benchmarkScan(self):
     elems = math_ops.range(1600)

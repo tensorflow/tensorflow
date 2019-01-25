@@ -81,7 +81,7 @@ class AdjustSaturationOpBase : public OpKernel {
   }
 };
 
-template <class Device>
+template <class Device, typename T>
 class AdjustSaturationOp;
 
 namespace internal {
@@ -173,7 +173,7 @@ static void hsv_to_rgb(float h, float s, float v, float* r, float* g,
 }  // namespace internal
 
 template <>
-class AdjustSaturationOp<CPUDevice> : public AdjustSaturationOpBase {
+class AdjustSaturationOp<CPUDevice, float> : public AdjustSaturationOpBase {
  public:
   explicit AdjustSaturationOp(OpKernelConstruction* context)
       : AdjustSaturationOpBase(context) {}
@@ -211,12 +211,13 @@ class AdjustSaturationOp<CPUDevice> : public AdjustSaturationOpBase {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("AdjustSaturation").Device(DEVICE_CPU),
-                        AdjustSaturationOp<CPUDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("AdjustSaturation").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    AdjustSaturationOp<CPUDevice, float>);
 
 #if GOOGLE_CUDA
-template <>
-class AdjustSaturationOp<GPUDevice> : public AdjustSaturationOpBase {
+template <typename T>
+class AdjustSaturationOp<GPUDevice, T> : public AdjustSaturationOpBase {
  public:
   explicit AdjustSaturationOp(OpKernelConstruction* context)
       : AdjustSaturationOpBase(context) {}
@@ -231,17 +232,24 @@ class AdjustSaturationOp<GPUDevice> : public AdjustSaturationOpBase {
     const auto stream = device.stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
     if (number_of_elements > 0) {
-      const float* input_data = input->flat<float>().data();
+      const T* input_data = input->flat<T>().data();
       const float* scale_data = scale->flat<float>().data();
-      float* const output_data = output->flat<float>().data();
-      functor::AdjustSaturationGPU()(&device, number_of_elements, input_data,
-                                     scale_data, output_data);
+      T* const output_data = output->flat<T>().data();
+      functor::AdjustSaturationGPU<T>()(&device, number_of_elements, input_data,
+                                        scale_data, output_data);
     }
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("AdjustSaturation").Device(DEVICE_GPU),
-                        AdjustSaturationOp<GPUDevice>);
+#define REGISTER_GPU(T)                                                   \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("AdjustSaturation").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      AdjustSaturationOp<GPUDevice, T>);
+
+REGISTER_GPU(float)
+REGISTER_GPU(Eigen::half)
+
+#undef REGISTER_GPU
 
 #endif
 

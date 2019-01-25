@@ -254,8 +254,8 @@ def train_and_predict(
   if export_directory is None:
     export_directory = tempfile.mkdtemp()
   input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
-  export_location = estimator.export_savedmodel(
-      export_directory, input_receiver_fn)
+  export_location = estimator.export_saved_model(export_directory,
+                                                 input_receiver_fn)
   # Warm up and predict using the SavedModel
   with tf.Graph().as_default():
     with tf.Session() as session:

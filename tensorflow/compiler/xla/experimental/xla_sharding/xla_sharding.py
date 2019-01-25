@@ -18,12 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
 import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
 from tensorflow.compiler.xla import xla_data_pb2
-from tensorflow.compiler.xla.python_api import xla_shape
 from tensorflow.core.framework import attr_value_pb2
 
 
@@ -64,22 +61,18 @@ class Sharding(object):
             tile_assignment_devices=[core]))
 
   @classmethod
-  def tile(cls, tile_shape, tile_assignment):
+  def tile(cls, tile_assignment):
     """Returns a Tiled sharding attribute.
 
     This causes an op to be partially computed on multiple cores in the
     XLA device.
 
     Args:
-      tile_shape: A xla_shape.Shape describing the tile shape that each core
-        will compute.
-        The tile shape does not need to be divisible by the tile assignment.
       tile_assignment: An np.ndarray describing the topology of the tiling and
         which device will compute which part of the topology.
 
     Raises:
-      TypeError: tile_assignment was not of np.array type or tile_shape was
-         not of xla_shape.Shape type.
+      TypeError: tile_assignment was not of np.array type.
 
     TODO(jmolloy): This concept is nefarious and is not
     something we really want to expose to users (especially as the
@@ -87,14 +80,11 @@ class Sharding(object):
     """
     if not isinstance(tile_assignment, _np.ndarray):
       raise TypeError('Tile assignment must be of type np.ndarray')
-    if not isinstance(tile_shape, xla_shape.Shape):
-      raise TypeError('Tile shape must be of type xla_shape.Shape')
     dims = list(tile_assignment.shape)
     flattened_devices = tile_assignment.reshape(-1, order='C')
     return Sharding(
         proto=xla_data_pb2.OpSharding(
             type=xla_data_pb2.OpSharding.OTHER,
-            tile_shape=tile_shape.message,
             tile_assignment_dimensions=dims,
             tile_assignment_devices=list(flattened_devices)))
 
@@ -114,18 +104,12 @@ class Sharding(object):
       ValueError: The tensor to split was smaller in the split dimension than
         the number of devices to split over.
     """
-    tensor.shape.assert_is_fully_defined()
     shape = tensor.shape.as_list()
-    if shape[split_dimension] < num_devices:
+    if (shape[split_dimension] is not None and
+        shape[split_dimension] < num_devices):
       raise ValueError('Split dimension was smaller than the required number '
-                       'of splits: shape=%r, dimension=%r, num_devices=%r',
-                       shape, split_dimension, num_devices)
-
-    tile_shape = shape
-    tile_shape[split_dimension] = int(
-        math.ceil(tile_shape[split_dimension] / num_devices))
-    tile_shape_proto = xla_data_pb2.Shape(
-        element_type=xla_data_pb2.F32, dimensions=tile_shape)
+                       'of splits: shape=%r, dimension=%r, num_devices=%r' %
+                       (shape, split_dimension, num_devices))
 
     tile_assignment_dims = [1] * len(shape)
     tile_assignment_dims[split_dimension] = num_devices
@@ -133,7 +117,6 @@ class Sharding(object):
     return Sharding(
         proto=xla_data_pb2.OpSharding(
             type=xla_data_pb2.OpSharding.OTHER,
-            tile_shape=tile_shape_proto,
             tile_assignment_dimensions=tile_assignment_dims,
             tile_assignment_devices=range(num_devices)))
 
@@ -149,7 +132,6 @@ class Sharding(object):
           type=xla_data_pb2.OpSharding.TUPLE, tuple_shardings=tuple_shardings)
     else:
       proto = self._proto
-
     attr_value = attr_value_pb2.AttrValue(s=proto.SerializeToString())
     # TODO(jmolloy): This need to be seriously revisited before declaring this
     # API available for public use.
@@ -194,8 +176,8 @@ def assign_device(tensor, device):
   return tensor
 
 
-def tile(tensor, tile_shape, tile_assignment):
-  Sharding.tile(tile_shape, tile_assignment).apply_to_tensor(tensor)
+def tile(tensor, tile_assignment):
+  Sharding.tile(tile_assignment).apply_to_tensor(tensor)
   return tensor
 
 

@@ -24,6 +24,7 @@ from proto import profile_pb2
 from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -135,6 +136,7 @@ comment: 9
       profile.ParseFromString(profile_contents)
       self.assertEquals(expected_proto, str(profile))
 
+  @test_util.run_v1_only('b/120545219')
   def testProfileWithWhileLoop(self):
     options = config_pb2.RunOptions()
     options.trace_level = config_pb2.RunOptions.FULL_TRACE

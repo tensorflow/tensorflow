@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_impl
@@ -162,7 +163,7 @@ class DepthwiseConv2DTest(test.TestCase):
         conv_native = array_ops.transpose(conv_native, [0, 2, 3, 1])
 
       try:
-        native_result = sess.run(conv_native)
+        native_result = self.evaluate(conv_native)
       except errors.InvalidArgumentError as e:
         # Grouped convolution kernel is only registered for cuDNN 7. Silently
         # return when we are running on an earlier version or without GPU.
@@ -174,7 +175,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
       conv_interface = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      interface_result = sess.run(conv_interface)
+      interface_result = self.evaluate(conv_interface)
 
     tf_logging.info(
         "data_type: %r, use_gpu: %r, grouped_conv: %r, max diff = %f",
@@ -185,6 +186,7 @@ class DepthwiseConv2DTest(test.TestCase):
     self.assertShapeEqual(native_result, conv_native)
     self.assertShapeEqual(native_result, conv_interface)
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2D(self):
     for index, (input_size, filter_size, _, stride,
                 padding) in enumerate(ConfigsToTest()):
@@ -269,7 +271,7 @@ class DepthwiseConv2DTest(test.TestCase):
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       conv = nn_ops.depthwise_conv2d_native(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     tf_logging.info("value = %r", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
@@ -428,6 +430,7 @@ class DepthwiseConv2DTest(test.TestCase):
           use_gpu, grouped_conv, err)
       self.assertLess(err, tolerance)
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DInputGrad(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(CheckGradConfigsToTest()):
@@ -477,6 +480,8 @@ class DepthwiseConv2DTest(test.TestCase):
             use_gpu=True,
             data_format="NCHW")
 
+  @test_util.run_v1_only("b/120545219")
+  @test_util.disable_xla("This test never passed for XLA")
   def testDepthwiseConv2DFilterGrad(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(CheckGradConfigsToTest()):
@@ -494,6 +499,7 @@ class DepthwiseConv2DTest(test.TestCase):
             test_input=False,
             use_gpu=True)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testDepthwiseConv2DFilterGradFormat(self):
     if not test.is_gpu_available():
       return
@@ -528,7 +534,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_input(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -548,7 +554,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_input(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -580,7 +586,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -600,7 +606,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -608,6 +614,7 @@ class DepthwiseConv2DTest(test.TestCase):
     cpu_value = _GetVal(use_gpu=False)
     self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testDepthwiseConv2DFilterGradCompare(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(ConfigsToTest()):

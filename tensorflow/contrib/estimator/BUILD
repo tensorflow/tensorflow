@@ -15,10 +15,7 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":baseline",
         ":boosted_trees",
-        ":dnn",
-        ":dnn_linear_combined",
         ":dnn_with_layer_annotations",
         ":early_stopping",
         ":expect_tensorflow_estimator_installed",
@@ -27,7 +24,6 @@ py_library(
         ":extenders",
         ":head",
         ":hooks",
-        ":linear",
         ":logit_fns",
         ":multi_head",
         ":replicate_model_fn",
@@ -35,17 +31,6 @@ py_library(
         ":saved_model_estimator",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",
-    ],
-)
-
-py_library(
-    name = "baseline",
-    srcs = ["python/estimator/baseline.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":expect_tensorflow_estimator_installed",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:baseline",
     ],
 )
 
@@ -61,18 +46,6 @@ py_library(
 )
 
 py_library(
-    name = "dnn",
-    srcs = ["python/estimator/dnn.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":expect_tensorflow_estimator_installed",
-        "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:dnn",
-    ],
-)
-
-py_library(
     name = "dnn_with_layer_annotations",
     srcs = ["python/estimator/dnn_with_layer_annotations.py"],
     srcs_version = "PY2AND3",
@@ -83,18 +56,6 @@ py_library(
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:optimizers",
-    ],
-)
-
-py_library(
-    name = "dnn_linear_combined",
-    srcs = ["python/estimator/dnn_linear_combined.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":expect_tensorflow_estimator_installed",
-        "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:dnn_linear_combined",
     ],
 )
 
@@ -166,17 +127,6 @@ py_library(
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",
-    ],
-)
-
-py_library(
-    name = "linear",
-    srcs = ["python/estimator/linear.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":expect_tensorflow_estimator_installed",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:linear",
     ],
 )
 

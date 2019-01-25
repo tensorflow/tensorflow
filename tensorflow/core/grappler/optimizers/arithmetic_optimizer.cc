@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -124,37 +128,6 @@ bool MaybeAddControlInput(const string& new_input, NodeDef* node,
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
   (*node->mutable_attr())[attr_name].set_type(dtype);
-}
-
-string SourceDataTypeAttrName(const NodeDef& node) {
-  if (node.op() == "Cast") {
-    return "SrcT";
-  } else {
-    return "T";
-  }
-}
-
-string DestinationDataTypeAttrName(const NodeDef& node) {
-  if (node.op() == "Bitcast") {
-    return "type";
-  } else if (node.op() == "Cast") {
-    return "DstT";
-  } else {
-    LOG(FATAL) << "DestinationDataTypeAttrName not implemented for op "
-               << node.op();
-  }
-}
-
-DataType GetSourceDataType(const NodeDef& node) {
-  return GetDataTypeFromAttr(node, SourceDataTypeAttrName(node));
-}
-
-DataType GetDestinationDataType(const NodeDef& node) {
-  return GetDataTypeFromAttr(node, DestinationDataTypeAttrName(node));
-}
-
-void SetSourceDataType(DataType dtype, NodeDef* node) {
-  SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
 }
 
 NodeDef* GetTailOfValuePreservingChain(
@@ -266,18 +239,17 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
 
   // TODO(ezhulenev): move to GraphOptimizerStage?
   bool IsDrivenByControlDependency(const NodeDef& node) const {
-    return std::any_of(node.input().begin(), node.input().end(),
-                       IsControlInput);
+    return std::any_of(
+        node.input().begin(), node.input().end(),
+        [](const string& input) { return IsControlInput(input); });
   }
 
   // TODO(ezhulenev): move to GraphOptimizerStage?
   bool DrivesControlDependency(const NodeDef& node) const {
-    int position;
     for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
       for (int i = 0; i < output->input_size(); ++i) {
-        auto input = output->input(i);
-        StringPiece name = ParseNodeNameAsStringPiece(input, &position);
-        if (name == node.name() && /*control input*/ position < 0) {
+        const TensorId tensor = ParseTensorName(output->input(i));
+        if (tensor.node() == node.name() && tensor.index() < 0) {
           return true;
         }
       }
@@ -1268,7 +1240,12 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
 
     // Bypass Bitcast whose source type and destination type are equal.
-    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
+    AttrSlice attrs(*node);
+    DataType input_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &input_type));
+    DataType output_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "type", &output_type));
+    if (input_type == output_type) {
       *simplified_node_name = node->input(0);
       return Status::OK();
     }
@@ -1279,9 +1256,12 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &operand));
 
     if (IsBitcast(*operand)) {
+      AttrSlice operand_attrs(*operand);
+      DataType operand_input_type;
+      TF_RETURN_IF_ERROR(GetNodeAttr(operand_attrs, "T", &operand_input_type));
       // Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
       bitcast->set_input(0, operand->input(0));
-      SetSourceDataType(GetSourceDataType(*operand), bitcast);
+      SetDataTypeToAttr(operand_input_type, "T", bitcast);
       ctx().node_map->UpdateInput(bitcast->name(), bitcast->input(0),
                                   operand->input(0));
       AddToOptimizationQueue(bitcast);
@@ -1306,7 +1286,12 @@ class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
 
     // Bypass Cast whose source type and destination type are equal.
-    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
+    AttrSlice attrs(*node);
+    DataType input_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "SrcT", &input_type));
+    DataType output_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "DstT", &output_type));
+    if (input_type == output_type) {
       *simplified_node_name = node->input(0);
     }
     return Status::OK();
@@ -1569,11 +1554,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       const auto& outputs = ctx().node_map->GetOutputs(node.name());
       for (NodeDef* output : outputs) {
         if (IsControlInput(output->input(0))) continue;
-        int port;
-        const StringPiece node_name =
-            ParseNodeNameAsStringPiece(output->input(0), &port);
-        if (node_name == node.name()) {
-          tails->insert(ChainLink(output, port));
+        TensorId tensor_id = ParseTensorName(output->input(0));
+        if (tensor_id.node() == node.name()) {
+          tails->insert(ChainLink(output, tensor_id.index()));
         } else {
           // This output node has a non-control input other than the split node,
           // abort.
@@ -1620,14 +1603,12 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         new_tails->insert(ChainLink(new_tail, link.port_origin));
       } else {
         for (NodeDef* new_tail : ctx().node_map->GetOutputs(tail->name())) {
-          int port;
-          const StringPiece node_name =
-              ParseNodeNameAsStringPiece(new_tail->input(0), &port);
-          if (node_name != tail->name()) {
+          const TensorId tensor = ParseTensorName(new_tail->input(0));
+          if (tensor.node() != tail->name()) {
             return Status::OK();
           }
           // Skip control outputs.
-          if (port >= 0) {
+          if (tensor.index() >= 0) {
             // Remember original port.
             new_tails->insert(ChainLink(new_tail, link.port_origin));
           }
@@ -1781,7 +1762,8 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
     // Optimize only if divisor is a Sqrt whose output is not being consumed
     // elsewhere.
-    if (IsSqrt(*y) && (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
+    if (IsSqrt(*y) && !IsInPreserveSet(*y) &&
+        (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
       // a / sqrt(b) = a * rsqrt(b)
       node->set_op("Mul");
       y->set_op("Rsqrt");
@@ -1861,8 +1843,8 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
 // to
 //   Cast(Op(tensor), dst_type)
 // when sizeof(tensor.type) < sizeof(dst_type), and Op is any value-preserving
-// Op, i.e. an op that only reorders the order of the elements in its first
-// input. Similarly, this optimization converts
+// Op, i.e. an op that only reorders the elements in its first input. Similarly,
+// this optimization converts
 //   Cast(Op(tensor), dst_type)
 // to
 //   Op(Cast(tensor, dst_type))
@@ -1879,8 +1861,8 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
 
   bool IsSupported(const NodeDef* node) const override {
     return (IsValuePreserving(*node) || IsCastLike(*node)) &&
-           NodeIsOnCpuOrGpu(node) && !IsControlFlow(*node) &&
-           !IsInPreserveSet(*node);
+           !IsCheckNumerics(*node) && NodeIsOnCpuOrGpu(node) &&
+           !IsControlFlow(*node) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* consumer, string* simplified_node_name) override {
@@ -1888,6 +1870,7 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(consumer->input(0), &producer));
     const bool producer_is_cast = IsCastLike(*producer);
     const bool can_optimize =
+        !IsCheckNumerics(*producer) &&
         ((producer_is_cast && IsValuePreserving(*consumer)) ||
          (IsValuePreserving(*producer) && IsCastLike(*consumer)));
     if (!can_optimize || IsControlFlow(*producer) ||
@@ -1896,29 +1879,30 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
     }
 
     const NodeDef* cast_like_node = producer_is_cast ? producer : consumer;
-    const string src_attr_name = SourceDataTypeAttrName(*cast_like_node);
-    const string dst_attr_name = DestinationDataTypeAttrName(*cast_like_node);
-    const DataType src_type =
-        GetDataTypeFromAttr(*cast_like_node, src_attr_name);
-    const DataType dst_type =
-        GetDataTypeFromAttr(*cast_like_node, dst_attr_name);
-    const string src_type_name = DataTypeString(src_type);
-    const string dst_type_name = DataTypeString(dst_type);
-    if (!IsFixedSizeType(src_type) || !IsFixedSizeType(dst_type)) {
+    const OpDef* cast_like_op_def = nullptr;
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(cast_like_node->op(),
+                                                         &cast_like_op_def));
+    DataType cast_src_type;
+    TF_RETURN_IF_ERROR(InputTypeForNode(*cast_like_node, *cast_like_op_def, 0,
+                                        &cast_src_type));
+    DataType cast_dst_type;
+    TF_RETURN_IF_ERROR(OutputTypeForNode(*cast_like_node, *cast_like_op_def, 0,
+                                         &cast_dst_type));
+    if (!IsFixedSizeType(cast_src_type) || !IsFixedSizeType(cast_dst_type)) {
       return Status::OK();
     } else if (producer_is_cast &&
-               DataTypeSize(dst_type) <= DataTypeSize(src_type)) {
+               DataTypeSize(cast_dst_type) <= DataTypeSize(cast_src_type)) {
       return Status::OK();
     } else if (!producer_is_cast &&
-               DataTypeSize(dst_type) >= DataTypeSize(src_type)) {
+               DataTypeSize(cast_dst_type) >= DataTypeSize(cast_src_type)) {
       return Status::OK();
     }
 
     // Check that nodes were not already optimized.
     const string optimized_producer_name = OptimizedNodeName(
-        ParseNodeScopeAndName(producer->name()), dst_type_name);
+        ParseNodeScopeAndName(producer->name()), DataTypeString(cast_dst_type));
     const string optimized_consumer_name = OptimizedNodeName(
-        ParseNodeScopeAndName(consumer->name()), src_type_name);
+        ParseNodeScopeAndName(consumer->name()), DataTypeString(cast_src_type));
     const bool is_already_optimized =
         ctx().node_map->NodeExists(optimized_consumer_name) ||
         ctx().node_map->NodeExists(optimized_producer_name);
@@ -1927,34 +1911,27 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
     }
 
     // Add copies of consumer and producer in reverse order.
-    const string new_producer_type_attr_name =
-        SourceDataTypeAttrName(*consumer);
-    TF_RETURN_IF_ERROR(CheckAttrExists(*consumer, new_producer_type_attr_name));
-    const string new_consumer_type_attr_name =
-        SourceDataTypeAttrName(*producer);
-    TF_RETURN_IF_ERROR(CheckAttrExists(*producer, new_consumer_type_attr_name));
     NodeDef* input;
     TF_RETURN_IF_ERROR(GetInputNode(producer->input(0), &input));
     // Create new producer node.
     NodeDef* new_producer = AddCopyNode(optimized_consumer_name, consumer);
-    if (IsCheckNumerics(*new_producer) && !IsFloatingType(src_type)) {
-      new_producer->set_op("Identity");
-      new_producer->clear_attr();
-    }
     new_producer->set_input(0, producer->input(0));
-    (*new_producer->mutable_attr())[new_producer_type_attr_name].set_type(
-        src_type);
     ctx().node_map->AddOutput(input->name(), new_producer->name());
+
     // Create new consumer node.
     NodeDef* new_consumer = AddCopyNode(optimized_producer_name, producer);
     new_consumer->set_input(0, new_producer->name());
-    const DataType new_consumer_type = producer_is_cast ? src_type : dst_type;
-    if (IsCheckNumerics(*new_producer) && !IsFloatingType(new_consumer_type)) {
-      new_consumer->set_op("Identity");
-      new_consumer->clear_attr();
-    }
-    (*new_consumer->mutable_attr())[new_consumer_type_attr_name].set_type(
-        new_consumer_type);
+
+    NodeDef* new_value_preserving =
+        producer_is_cast ? new_producer : new_consumer;
+    const DataType new_input_type =
+        producer_is_cast ? cast_src_type : cast_dst_type;
+    // Update the input type of the value-preserving node. The input and
+    // output types of the cast-like nodes remain the same.
+    TF_RETURN_IF_ERROR(SetInputType(new_input_type, new_value_preserving));
+    // Make sure there is a kernel registered for the value preserving op
+    // with the new input type.
+    TF_RETURN_IF_ERROR(IsKernelRegisteredForNode(*new_value_preserving));
     ctx().node_map->AddOutput(new_producer->name(), new_consumer->name());
 
     AddToOptimizationQueue(new_producer);
@@ -1964,9 +1941,28 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
   }
 
  private:
+  // Sets the type of the first input to dtype.
+  Status SetInputType(DataType dtype, NodeDef* node) {
+    const OpDef* op_def = nullptr;
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node->op(), &op_def));
+    const OpDef::ArgDef& input_arg = op_def->input_arg(0);
+    const string& type_attr_name = input_arg.type_attr();
+    if (type_attr_name.empty()) {
+      if (input_arg.type() == DT_INVALID || input_arg.type() != dtype) {
+        return errors::InvalidArgument("Could not set input type of ",
+                                       node->op(), " op to ",
+                                       DataTypeString(dtype));
+      } else {
+        // Op has fixed input type that already matches dtype.
+        return Status::OK();
+      }
+    }
+    SetDataTypeToAttr(dtype, type_attr_name, node);
+    return Status::OK();
+  }
   // This optimization can be dangerous on devices other than CPU and
   // GPU. The transpose might not be implemented for image.type, or
-  // might be slower with image.type than with dst_type.
+  // might be slower with image.type than with cast_dst_type.
   bool NodeIsOnCpuOrGpu(const NodeDef* node) const {
     using str_util::StrContains;
 
@@ -1978,11 +1974,8 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
   }
 
   bool IsFixedSizeType(DataType dtype) {
-    return dtype != DT_STRING && dtype != DT_VARIANT && dtype != DT_RESOURCE;
-  }
-
-  bool IsFloatingType(DataType dtype) {
-    return kDataTypeIsFloating.Contains(dtype);
+    return dtype != DT_STRING && dtype != DT_VARIANT && dtype != DT_RESOURCE &&
+           !kQuantizedTypes.Contains(dtype);
   }
 };
 
@@ -2320,7 +2313,9 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
   ~SimplifyAggregation() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAggregate(*node) && NumNonControlInputs(*node) > 0;
+    return IsAggregate(*node) && NumNonControlInputs(*node) > 0 &&
+           GetDataTypeFromAttr(*node, "T") !=
+               DT_VARIANT;  // TODO(b/119787146): Enable for variants.
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -2416,11 +2411,10 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     const auto& pow_props =
         ctx().graph_properties->GetInputProperties(node->name())[1];
-    for (int i = 0; i < pow_props.shape().dim_size(); ++i) {
-      if (pow_props.shape().dim(i).size() < 0) {
-        // skip if p is is not fully defined.
-        return Status::OK();
-      }
+    PartialTensorShape shape(pow_props.shape());
+    if (!shape.IsFullyDefined()) {
+      // skip if p is not fully defined.
+      return Status::OK();
     }
     if (TensorShape::IsValid(pow_props.shape()) && pow_props.has_value()) {
       Tensor pow(pow_props.dtype(), pow_props.shape());
@@ -2468,11 +2462,10 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
         AddToOptimizationQueue(y);
       } else if (curr == complex128(0, 0) &&
                  ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
-        for (int i = 0; i < value_props.shape().dim_size(); ++i) {
-          if (value_props.shape().dim(i).size() < 0) {
-            // skip if b is is not fully defined.
-            return Status::OK();
-          }
+        PartialTensorShape shape(value_props.shape());
+        if (!shape.IsFullyDefined()) {
+          // skip if b is not fully defined.
+          return Status::OK();
         }
         if (TensorShape::IsValid(value_props.shape()) &&
             value_props.has_value()) {
@@ -2733,6 +2726,9 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
 
   Status TrySimplify(NodeDef* reduction_node,
                      string* simplified_node_name) override {
+    if (IsInPreserveSet(*reduction_node)) {
+      return Status::OK();
+    }
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
     // Optimize only if:
@@ -3254,10 +3250,10 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
   h = Hash64Combine(Hash64(node.device()), h);
 
   for (const auto& input : node.input()) {
-    int pos;
-    const StringPiece node_name = ParseNodeNameAsStringPiece(input, &pos);
-    h = Hash64CombineUnordered(Hash64(node_name.data(), node_name.size()), h);
-    h = Hash64CombineUnordered(std::hash<int>()(pos), h);
+    const TensorId input_tensor = ParseTensorName(input);
+    h = Hash64CombineUnordered(
+        Hash64(input_tensor.node().data(), input_tensor.node().size()), h);
+    h = Hash64CombineUnordered(std::hash<int>()(input_tensor.index()), h);
   }
   for (const auto& attr : node.attr()) {
     h = Hash64CombineUnordered(Hash64(attr.first), h);
@@ -3324,25 +3320,6 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   return true;
 }
 
-namespace {
-
-bool FeedsInPlaceOp(const SimpleGraphView& graph_view, const NodeDef& node) {
-  const std::unordered_set<string> op_types_to_traverse = {
-      node.op(),    "Identity", "IdentityN", "Reshape",
-      "ExpandDims", "Enter",    "Switch",    "Merge"};
-  int node_idx = graph_view.index(node.name());
-  std::set<int> node_fanout;
-  graph_view.DepthFirstSearch(op_types_to_traverse, node_idx, &node_fanout);
-  for (int fanout : node_fanout) {
-    if (ModifiesInputsInPlace(graph_view.graph()->node(fanout))) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
-
 bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -3361,20 +3338,37 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
 }
 
 void ArithmeticOptimizer::DedupComputations() {
-  bool stop = true;
-  SimpleGraphView graph_view;
-  if (!graph_view.Initialize(*optimized_graph_).ok()) {
-    LOG(WARNING) << "Failed to build SimpleGraphView.";
+  GraphTopologyView graph_view;
+  if (!graph_view.InitializeFromGraph(*optimized_graph_).ok()) {
+    LOG(WARNING) << "Failed to initialize GraphTopologyView.";
     return;
   }
-  std::set<int> duplicates;
+
+  const absl::flat_hash_set<string> ops_to_traverse = {
+      "Identity", "IdentityN", "Reshape", "ExpandDims",
+      "Enter",    "Switch",    "Merge"};
+
   // Populate feed_inplace_op;
-  std::unordered_set<NodeDef*> feeds_inplace_op;
-  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    if (FeedsInPlaceOp(graph_view, optimized_graph_->node(i))) {
-      feeds_inplace_op.insert(optimized_graph_->mutable_node(i));
+  absl::flat_hash_set<const NodeDef*> feeds_inplace_op;
+
+  for (const NodeDef& root : optimized_graph_->node()) {
+    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) continue;
+
+    if (ModifiesInputsInPlace(root)) {
+      const auto is_continue_traversal = [&](const NodeDef* node) -> bool {
+        return node->op() == root.op() || ops_to_traverse.count(node->op()) > 0;
+      };
+
+      DfsTraversal(graph_view, {&root}, TraversalDirection::kFollowInputs,
+                   DfsPredicates::Advance(is_continue_traversal),
+                   DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                     feeds_inplace_op.insert(node);
+                   }));
     }
   }
+
+  bool stop = true;
+  std::set<int> duplicates;
   do {
     stop = true;
     UniqueNodes nodes;
@@ -3572,8 +3566,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
-  *optimized_graph = item.graph;
-  GrapplerItem optimized_item(item, optimized_graph);
+  GrapplerItem optimized_item(item);
   optimized_graph_ = &optimized_item.graph;
   node_map_.reset(new NodeMap(optimized_graph_));
 
@@ -3583,7 +3576,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
 
   // Disable restricted graph rewrites.
   options_.unary_ops_composition &=
-      item.allowed_optimizations.non_differentiable_rewrites;
+      item.optimization_options().allow_non_differentiable_rewrites;
 
   if (options_.dedup_computations) {
     DedupComputations();

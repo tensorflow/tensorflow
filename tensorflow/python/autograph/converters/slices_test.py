@@ -49,7 +49,7 @@ class SliceTest(converter_testing.TestCase):
         tl = list_ops.tensor_list_from_tensor(
             [1, 2], element_shape=constant_op.constant([], dtype=dtypes.int32))
         y = result.test_fn(tl)
-        self.assertEqual(2, sess.run(y))
+        self.assertEqual(2, self.evaluate(y))
 
   def test_index_access_multiple_definitions(self):
 
@@ -68,7 +68,7 @@ class SliceTest(converter_testing.TestCase):
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.float32')
     }
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(transformer.AutoGraphParseError):
       slices.transform(node, ctx)
 
 

@@ -148,7 +148,6 @@ class TestMultiGPUModel(test.TestCase):
       input_shape = (num_samples,) + shape
       x_train = np.random.randint(0, 255, input_shape)
       y_train = np.random.randint(0, num_classes, (input_shape[0],))
-      keras.backend.set_learning_phase(True)
 
       y_train = keras.utils.to_categorical(y_train, num_classes)
 
@@ -158,7 +157,7 @@ class TestMultiGPUModel(test.TestCase):
       dataset = data.Dataset.from_tensor_slices((x_train, y_train))
       dataset = dataset.repeat()
       dataset = dataset.batch(4)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = data.make_one_shot_iterator(dataset)
 
       inputs, targets = iterator.get_next()
 

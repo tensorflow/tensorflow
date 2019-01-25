@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -1028,7 +1027,10 @@ Status RdmaTensorResponse::PrepareRecvTensor(
     return errors::Aborted(
         "RecvTensor expects a different device incarnation: ",
         parsed.src_incarnation, " vs. ", (*src_dev)->attributes().incarnation(),
-        ". Your worker job was probably restarted. Check your "
+        ". Your worker job (\"",
+        channel_->adapter_->worker_env_->session_mgr->LegacySession()
+            ->worker_name,
+        "\") was probably restarted. Check your "
         "worker job for the reason why it was restarted.");
   }
 

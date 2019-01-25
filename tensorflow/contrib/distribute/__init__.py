@@ -25,44 +25,50 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.distribute.python.collective_all_reduce_strategy import CollectiveAllReduceStrategy
-from tensorflow.contrib.distribute.python.cross_tower_ops import *
 from tensorflow.contrib.distribute.python.mirrored_strategy import MirroredStrategy
 from tensorflow.contrib.distribute.python.monitor import Monitor
 from tensorflow.contrib.distribute.python.one_device_strategy import OneDeviceStrategy
 from tensorflow.contrib.distribute.python.parameter_server_strategy import ParameterServerStrategy
 from tensorflow.contrib.distribute.python.step_fn import *
+from tensorflow.contrib.distribute.python.tpu_strategy import initialize_tpu_system
 from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
+from tensorflow.python.distribute.cross_device_ops import *
 from tensorflow.python.distribute.distribute_config import DistributeConfig
 from tensorflow.python.distribute.distribute_coordinator import run_standard_tensorflow_server
-from tensorflow.python.training.distribute import *
-from tensorflow.python.training.distribution_strategy_context import *
+from tensorflow.python.distribute.distribute_lib import *
+from tensorflow.python.distribute.distribution_strategy_context import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = [
-    'AllReduceCrossTowerOps',
+    'AllReduceCrossDeviceOps',
     'CollectiveAllReduceStrategy',
-    'CrossTowerOps',
+    'CrossDeviceOps',
     'DistributeConfig',
     'DistributionStrategy',
+    'DistributionStrategyExtended',
     'MirroredStrategy',
     'Monitor',
     'MultiWorkerAllReduce',
     'OneDeviceStrategy',
     'ParameterServerStrategy',
-    'ReductionToOneDeviceCrossTowerOps',
+    'ReductionToOneDeviceCrossDeviceOps',
     'Step',
     'StandardInputStep',
     'StandardSingleLossStep',
-    'TowerContext',
+    'ReplicaContext',
     'TPUStrategy',
-    'get_cross_tower_context',
+    'initialize_tpu_system',
+    'get_cross_replica_context',
     'get_distribution_strategy',
     'get_loss_reduction',
-    'get_tower_context',
+    'get_replica_context',
+    'get_strategy',
     'has_distribution_strategy',
-    'require_tower_context',
+    'has_strategy',
+    'in_cross_replica_context',
+    'require_replica_context',
     'run_standard_tensorflow_server',
     'UpdateContext',
 ]

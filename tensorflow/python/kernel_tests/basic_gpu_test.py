@@ -44,13 +44,13 @@ class GPUBinaryOpsTest(test.TestCase):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
-      tf_gpu = sess.run(out)
+      tf_gpu = self.evaluate(out)
 
     with self.cached_session(use_gpu=False) as sess:
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
-      tf_cpu = sess.run(out)
+      tf_cpu = self.evaluate(out)
 
     self.assertAllClose(tf_cpu, tf_gpu)
 
@@ -96,7 +96,7 @@ class MathBuiltinUnaryTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu) as sess:
       inx = ops.convert_to_tensor(x)
       ofunc = tf_func(inx)
-      tf_out = sess.run(ofunc)
+      tf_out = self.evaluate(ofunc)
     self.assertAllClose(np_out, tf_out)
 
   def _inv(self, x):
@@ -148,7 +148,7 @@ class MathBuiltinUnaryTest(test.TestCase):
       iny = ops.convert_to_tensor(y + 0.1)
       ofunc = inx / iny
       out_func2 = math_ops.floor(ofunc)
-      tf_out = sess.run(out_func2)
+      tf_out = self.evaluate(out_func2)
 
     self.assertAllClose(np_out, tf_out)
 
@@ -159,6 +159,7 @@ class BroadcastSimpleTest(test.TestCase):
     with self.cached_session(use_gpu=True) as sess:
       return sess.run(broadcast_gradient_args(xs, ys))
 
+  @test_util.run_deprecated_v1
   def testBroadcast(self):
     r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
     self.assertAllEqual(r0, [])
@@ -214,11 +215,12 @@ class BroadcastSimpleTest(test.TestCase):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
-      tf_gpu = out.eval()
+      tf_gpu = self.evaluate(out)
     self.assertAllClose(np_ans, tf_gpu)
     self.assertShapeEqual(np_ans, out)
     # TODO(zhifengc/ke): make gradient checker work on GPU.
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
         [1, 3, 2])
@@ -255,6 +257,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
           if len(results) != 1:
             break
 
+  @test_util.run_deprecated_v1
   def testConcurrentSessions(self):
     n_threads = 4
     threads = []

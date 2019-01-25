@@ -1,4 +1,6 @@
 op {
   graph_op_name: "FloorDiv"
-  visibility: HIDDEN
+  endpoint {
+    name: "floor_div"
+  }
 }
