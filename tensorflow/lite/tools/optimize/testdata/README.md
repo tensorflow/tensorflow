@@ -21,3 +21,5 @@ This directory contains test models for testing quantization.
 * `single_avg_pool_input_min_minus_5_max_5.tflite` \
    A floating point model with a single average pool. The input tensor has min
    and max in range [-5, 5], not necessarily -5 or +5.
+* `weight_shared_between_convs.tflite` \
+   A floating point model with two convs that have a use the same weight tensor.
