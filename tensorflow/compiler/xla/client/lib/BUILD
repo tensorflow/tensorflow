@@ -206,6 +206,22 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "math_exhaustive_test",
+    srcs = ["math_exhaustive_test.cc"],
+    shard_count = 16,
+    deps = [
+        ":math",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "matrix",
     srcs = ["matrix.cc"],
