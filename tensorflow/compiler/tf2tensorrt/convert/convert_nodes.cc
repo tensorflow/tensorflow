@@ -977,12 +977,12 @@ Status Converter::RenameAndMarkOutputTensors(
       tensor = layer->getOutput(0);
     }
     tensor->setName(output.dest_node_name.c_str());
+    network()->markOutput(*tensor);
     // Set type after marking as output. TRT only supports setType for engine
     // outputs and inputs (type is inferred otherwise).
     tensor->setType(output.trt_dtype);
     VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
             << ", which feeds TF node " << output.dest_node_name;
-    network()->markOutput(*tensor);
   }
   return Status::OK();
 }
