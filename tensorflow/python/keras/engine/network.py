@@ -1650,7 +1650,7 @@ class Network(base_layer.Layer):
                          ' (missing previous layer metadata).')
       # Check that x is an input tensor.
       # pylint: disable=protected-access
-      layer, _, _ = x._keras_history
+      layer = x._keras_history.layer
       if len(layer._inbound_nodes) > 1 or (
           layer._inbound_nodes and layer._inbound_nodes[0].inbound_layers):
         cls_name = self.__class__.__name__
@@ -1667,7 +1667,7 @@ class Network(base_layer.Layer):
 
     # Check compatibility of batch sizes of Input Layers.
     input_batch_sizes = [
-        training_utils.get_static_batch_size(x._keras_history[0])
+        training_utils.get_static_batch_size(x._keras_history.layer)
         for x in self.inputs
     ]
     consistent_batch_size = None
