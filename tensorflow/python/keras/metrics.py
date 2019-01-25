@@ -65,6 +65,7 @@ from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
+@keras_export('keras.metrics.Metric')
 @six.add_metaclass(abc.ABCMeta)
 class Metric(Layer):
   """Encapsulates metric logic and state.
@@ -221,7 +222,6 @@ class Metric(Layer):
          All update ops added to the graph by this function will be executed.
       As a result, code should generally work the same way with graph or
       eager execution.
-    and adds the update op to the metric layer.
 
     Args:
       *args:
@@ -435,6 +435,7 @@ class Mean(Reduce):
         reduction=metrics_utils.Reduction.WEIGHTED_MEAN, name=name, dtype=dtype)
 
 
+@keras_export('keras.metrics.MeanRelativeError')
 class MeanRelativeError(Mean):
   """Computes the mean relative error by normalizing with the given values.
 
@@ -736,6 +737,7 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
         sparse_categorical_accuracy, name, dtype=dtype)
 
 
+@keras_export('keras.metrics.TopKCategoricalAccuracy')
 class TopKCategoricalAccuracy(MeanMetricWrapper):
   """Computes how often targets are in the top `K` predictions.
 
@@ -768,6 +770,7 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
         top_k_categorical_accuracy, name, dtype=dtype, k=k)
 
 
+@keras_export('keras.metrics.SparseTopKCategoricalAccuracy')
 class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
   """Computes how often integer targets are in the top `K` predictions.
 
@@ -1554,6 +1557,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.metrics.AUC')
 class AUC(Metric):
   """Computes the approximate AUC (Area under the curve) via a Riemann sum.
 
@@ -2039,6 +2043,7 @@ class CategoricalHinge(MeanMetricWrapper):
     super(CategoricalHinge, self).__init__(categorical_hinge, name, dtype=dtype)
 
 
+@keras_export('keras.metrics.RootMeanSquaredError')
 class RootMeanSquaredError(Mean):
   """Computes root mean squared error metric between `y_true` and `y_pred`.
 
@@ -2086,15 +2091,16 @@ class RootMeanSquaredError(Mean):
     return math_ops.sqrt(math_ops.div_no_nan(self.total, self.count))
 
 
-class Logcosh(MeanMetricWrapper):
+@keras_export('keras.metrics.LogCoshError')
+class LogCoshError(MeanMetricWrapper):
   """Computes the logarithm of the hyperbolic cosine of the prediction error.
 
-  logcosh = log((exp(x) + exp(-x))/2) where x is the error `y_pred` - `y_true`.
+  `logcosh = log((exp(x) + exp(-x))/2)`, where x is the error (y_pred - y_true)
 
   Usage:
 
   ```python
-  m = tf.keras.metrics.Logcosh()
+  m = tf.keras.metrics.LogCoshError()
   m.update_state([0., 1., 1.], [1., 0., 1.])
   print('Final result: ', m.result().numpy())  # Final result: 0.289
   ```
@@ -2103,18 +2109,19 @@ class Logcosh(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.Logcosh()])
+  model.compile('sgd', metrics=[tf.keras.metrics.LogCoshError()])
   ```
   """
 
   def __init__(self, name='logcosh', dtype=None):
-    super(Logcosh, self).__init__(logcosh, name, dtype=dtype)
+    super(LogCoshError, self).__init__(logcosh, name, dtype=dtype)
 
 
+@keras_export('keras.metrics.Poisson')
 class Poisson(MeanMetricWrapper):
-  """Computes the poisson metric between `y_true` and `y_pred`.
+  """Computes the Poisson metric between `y_true` and `y_pred`.
 
-  metric = y_pred - y_true * log(y_pred)
+  `metric = y_pred - y_true * log(y_pred)`
 
   Usage:
 
@@ -2136,15 +2143,16 @@ class Poisson(MeanMetricWrapper):
     super(Poisson, self).__init__(poisson, name, dtype=dtype)
 
 
-class KullbackLeiblerDivergence(MeanMetricWrapper):
-  """Computes kullback leibler divergence metric between `y_true` and `y_pred`.
+@keras_export('keras.metrics.KLDivergence')
+class KLDivergence(MeanMetricWrapper):
+  """Computes Kullback Leibler divergence metric between `y_true` and `y_pred`.
 
-  metric = y_true * log(y_true / y_pred)
+  `metric = y_true * log(y_true / y_pred)`
 
   Usage:
 
   ```python
-  m = tf.keras.metrics.KullbackLeiblerDivergence()
+  m = tf.keras.metrics.KLDivergence()
   m.update_state([.4, .9, .2], [.5, .8, .12])
   print('Final result: ', m.result().numpy())  # Final result: -0.043
   ```
@@ -2153,15 +2161,16 @@ class KullbackLeiblerDivergence(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.KullbackLeiblerDivergence()])
+  model.compile('sgd', metrics=[tf.keras.metrics.KLDivergence()])
   ```
   """
 
   def __init__(self, name='kullback_leibler_divergence', dtype=None):
-    super(KullbackLeiblerDivergence, self).__init__(
+    super(KLDivergence, self).__init__(
         kullback_leibler_divergence, name, dtype=dtype)
 
 
+@keras_export('keras.metrics.MeanIoU')
 class MeanIoU(Metric):
   """Computes the mean Intersection-Over-Union metric.
 
@@ -2286,6 +2295,7 @@ class MeanIoU(Metric):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.metrics.MeanTensor')
 class MeanTensor(Metric):
   """Computes the element-wise (weighted) mean of the given tensors.
 
@@ -2396,6 +2406,7 @@ class MeanTensor(Metric):
         K.set_value(v, np.zeros(self._shape.as_list()))
 
 
+@keras_export('keras.metrics.BinaryCrossentropy')
 class BinaryCrossentropy(MeanMetricWrapper):
   """Computes the crossentropy metric between the labels and predictions.
 

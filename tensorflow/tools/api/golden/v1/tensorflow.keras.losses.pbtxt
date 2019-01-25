@@ -21,6 +21,26 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Huber"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "KLDivergence"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LogCosh"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LogLoss"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Loss"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MeanAbsoluteError"
     mtype: "<type \'type\'>"
   }
@@ -34,6 +54,14 @@ tf_module {
   }
   member {
     name: "MeanSquaredLogarithmicError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Poisson"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCategoricalCrossentropy"
     mtype: "<type \'type\'>"
   }
   member {
