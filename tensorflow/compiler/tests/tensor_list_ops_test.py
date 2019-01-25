@@ -23,14 +23,9 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.platform import test
-
-
-def scalar_shape():
-  return ops.convert_to_tensor([], dtype=dtypes.int32)
 
 
 class ListOpsTest(xla_test.XLATestCase):
@@ -38,9 +33,10 @@ class ListOpsTest(xla_test.XLATestCase):
   def testElementShape(self):
     with self.cached_session() as sess, self.test_scope():
       dim = array_ops.placeholder(dtypes.int32)
-      l = list_ops.tensor_list_reserve(
-          element_shape=(dim, 15), num_elements=20,
-          element_dtype=dtypes.float32)
+      l = list_ops.empty_tensor_list(
+          element_shape=(dim, 15),
+          element_dtype=dtypes.float32,
+          max_num_elements=20)
       e32 = list_ops.tensor_list_element_shape(l, shape_type=dtypes.int32)
       e64 = list_ops.tensor_list_element_shape(l, shape_type=dtypes.int64)
       self.assertAllEqual(sess.run(e32, {dim: 10}), (10, 15))
@@ -48,8 +44,10 @@ class ListOpsTest(xla_test.XLATestCase):
 
   def testPushPop(self):
     with self.cached_session() as sess, self.test_scope():
-      l = list_ops.tensor_list_reserve(
-          element_shape=(7, 15), num_elements=10, element_dtype=dtypes.float32)
+      l = list_ops.empty_tensor_list(
+          element_shape=(7, 15),
+          element_dtype=dtypes.float32,
+          max_num_elements=10)
       l = list_ops.tensor_list_push_back(
           l, constant_op.constant(1.0, shape=(7, 15)))
       l = list_ops.tensor_list_push_back(
@@ -62,8 +60,10 @@ class ListOpsTest(xla_test.XLATestCase):
   def testDoNotConstantFoldVariants(self):
     with self.cached_session() as sess, self.test_scope():
       val = array_ops.placeholder(dtype=dtypes.float32)
-      l = list_ops.tensor_list_reserve(
-          element_shape=(7, 15), num_elements=10, element_dtype=dtypes.float32)
+      l = list_ops.empty_tensor_list(
+          element_shape=(7, 15),
+          element_dtype=dtypes.float32,
+          max_num_elements=10)
       # Note: Pushing a Placeholder will force the constant folding code
       # to build a Const node with a DT_VARIANT output. This tests that XLA
       # passes a cf_consider_fn which prevent folding such nodes.
@@ -78,10 +78,10 @@ class ListOpsTest(xla_test.XLATestCase):
 
   def testPushPopSeparateLists(self):
     with self.cached_session() as sess, self.test_scope():
-      l = list_ops.tensor_list_reserve(
-          element_shape=scalar_shape(),
-          num_elements=20,
-          element_dtype=dtypes.float32)
+      l = list_ops.empty_tensor_list(
+          element_shape=[],
+          element_dtype=dtypes.float32,
+          max_num_elements=20)
       l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
       l2 = list_ops.tensor_list_push_back(l, constant_op.constant(2.0))
       l3 = list_ops.tensor_list_push_back(l, constant_op.constant(3.0))
