@@ -19,6 +19,7 @@
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/InstVisitor.h"
+#include "mlir/IR/Instruction.h"
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
@@ -37,6 +38,7 @@ unsigned BlockArgument::getArgNumber() const {
 //===----------------------------------------------------------------------===//
 
 Block::~Block() {
+  assert(!verifyInstOrder() && "Expected valid instruction ordering.");
   clear();
 
   llvm::DeleteContainerPointers(arguments);
@@ -45,7 +47,7 @@ Block::~Block() {
 /// Returns the closest surrounding instruction that contains this block or
 /// nullptr if this is a top-level instruction block.
 Instruction *Block::getContainingInst() {
-  return parent ? parent->getContainingInst() : nullptr;
+  return getParent() ? getParent()->getContainingInst() : nullptr;
 }
 
 Function *Block::getFunction() {
@@ -95,6 +97,39 @@ Instruction *Block::findAncestorInstInBlock(Instruction *inst) {
 void Block::dropAllReferences() {
   for (Instruction &i : *this)
     i.dropAllReferences();
+}
+
+/// Verifies the current ordering of child instructions. Returns false if the
+/// order is valid, true otherwise.
+bool Block::verifyInstOrder() const {
+  // The order is already known to be invalid.
+  if (!isInstOrderValid())
+    return false;
+  // The order is valid if there are less than 2 instructions.
+  if (instructions.empty() ||
+      std::next(instructions.begin()) == instructions.end())
+    return false;
+
+  const Instruction *prev = nullptr;
+  for (auto &i : *this) {
+    // The previous instruction must have a smaller order index than the next as
+    // it appears earlier in the list.
+    if (prev && prev->orderIndex >= i.orderIndex)
+      return true;
+    prev = &i;
+  }
+  return false;
+}
+
+/// Recomputes the ordering of child instructions within the block.
+void Block::recomputeInstOrder() {
+  parentValidInstOrderPair.setInt(true);
+
+  // TODO(riverriddle) Have non-congruent indices to reduce the number of times
+  // an insert invalidates the list.
+  unsigned orderIndex = 0;
+  for (auto &inst : *this)
+    inst.orderIndex = orderIndex++;
 }
 
 //===----------------------------------------------------------------------===//
@@ -287,15 +322,15 @@ BlockList *llvm::ilist_traits<::mlir::Block>::getContainingBlockList() {
 /// This is a trait method invoked when a basic block is added to a function.
 /// We keep the function pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::addNodeToList(Block *block) {
-  assert(!block->parent && "already in a function!");
-  block->parent = getContainingBlockList();
+  assert(!block->getParent() && "already in a function!");
+  block->parentValidInstOrderPair.setPointer(getContainingBlockList());
 }
 
 /// This is a trait method invoked when an instruction is removed from a
 /// function.  We keep the function pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::removeNodeFromList(Block *block) {
-  assert(block->parent && "not already in a function!");
-  block->parent = nullptr;
+  assert(block->getParent() && "not already in a function!");
+  block->parentValidInstOrderPair.setPointer(nullptr);
 }
 
 /// This is a trait method invoked when an instruction is moved from one block
@@ -310,5 +345,5 @@ void llvm::ilist_traits<::mlir::Block>::transferNodesFromList(
 
   // Update the 'parent' member of each Block.
   for (; first != last; ++first)
-    first->parent = curParent;
+    first->parentValidInstOrderPair.setPointer(curParent);
 }

@@ -179,7 +179,22 @@ bool Instruction::emitError(const Twine &message) const {
   return getContext()->emitError(getLoc(), message);
 }
 
-// Returns whether the Instruction is a terminator.
+/// Given an instruction 'other' that is within the same parent block, return
+/// whether the current instruction is before 'other' in the instruction list
+/// of the parent block.
+/// Note: This function has an average complexity of O(1), but worst case may
+/// take O(N) where N is the number of instructions within the parent block.
+bool Instruction::isBeforeInBlock(const Instruction *other) const {
+  assert(block && "Instructions without parent blocks have no order.");
+  assert(other && other->block == block &&
+         "Expected other instruction to have the same parent block.");
+  // Recompute the parent ordering if necessary.
+  if (!block->isInstOrderValid())
+    block->recomputeInstOrder();
+  return orderIndex < other->orderIndex;
+}
+
+/// Returns whether the Instruction is a terminator.
 bool Instruction::isTerminator() const {
   if (auto *op = dyn_cast<OperationInst>(this))
     return op->isTerminator();
@@ -205,6 +220,9 @@ Block *llvm::ilist_traits<::mlir::Instruction>::getContainingBlock() {
 void llvm::ilist_traits<::mlir::Instruction>::addNodeToList(Instruction *inst) {
   assert(!inst->getBlock() && "already in a instruction block!");
   inst->block = getContainingBlock();
+
+  // Invalidate the block ordering.
+  inst->block->invalidateInstOrder();
 }
 
 /// This is a trait method invoked when a instruction is removed from a block.
@@ -220,9 +238,13 @@ void llvm::ilist_traits<::mlir::Instruction>::removeNodeFromList(
 void llvm::ilist_traits<::mlir::Instruction>::transferNodesFromList(
     ilist_traits<Instruction> &otherList, inst_iterator first,
     inst_iterator last) {
+  Block *curParent = getContainingBlock();
+
+  // Invalidate the ordering of the parent block.
+  curParent->invalidateInstOrder();
+
   // If we are transferring instructions within the same block, the block
   // pointer doesn't need to be updated.
-  Block *curParent = getContainingBlock();
   if (curParent == otherList.getContainingBlock())
     return;
 

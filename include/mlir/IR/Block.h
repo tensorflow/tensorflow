@@ -51,7 +51,7 @@ public:
   }
 
   /// Blocks are maintained in a list of BlockList type.
-  BlockList *getParent() const { return parent; }
+  BlockList *getParent() const { return parentValidInstOrderPair.getPointer(); }
 
   /// Returns the closest surrounding instruction that contains this block or
   /// nullptr if this is a top-level block.
@@ -171,6 +171,24 @@ public:
   /// they are to be deleted.
   void dropAllReferences();
 
+  /// Returns true if the ordering of the child instructions is valid, false
+  /// otherwise.
+  bool isInstOrderValid() const { return parentValidInstOrderPair.getInt(); }
+
+  /// Invalidates the current ordering of instructions.
+  void invalidateInstOrder() {
+    // Validate the current ordering.
+    assert(!verifyInstOrder());
+    parentValidInstOrderPair.setInt(false);
+  }
+
+  /// Verifies the current ordering of child instructions matches the
+  /// validInstOrder flag. Returns false if the order is valid, true otherwise.
+  bool verifyInstOrder() const;
+
+  /// Recomputes the ordering of child instructions within the block.
+  void recomputeInstOrder();
+
   //===--------------------------------------------------------------------===//
   // Terminator management
   //===--------------------------------------------------------------------===//
@@ -264,8 +282,10 @@ public:
   void printAsOperand(raw_ostream &os, bool printType = true);
 
 private:
-  /// This is the parent object that owns this block.
-  BlockList *parent = nullptr;
+  /// Pair of the parent object that owns this block and a bit that signifies if
+  /// the instructions within this block have a valid ordering.
+  llvm::PointerIntPair<BlockList *, /*IntBits=*/1, bool>
+      parentValidInstOrderPair;
 
   /// This is the list of instructions in the block.
   InstListType instructions;

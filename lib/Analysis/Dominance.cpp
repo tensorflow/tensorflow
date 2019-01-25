@@ -79,31 +79,9 @@ bool DominanceInfo::properlyDominates(const Instruction *a,
   auto *aBlock = a->getBlock();
   auto *bBlock = b->getBlock();
 
-  // If the blocks are the same, then we do a linear scan.
-  if (aBlock == bBlock) {
-    // If a/b are the same, then they don't properly dominate each other.
-    if (a == b)
-      return false;
-
-    // If one is a terminator, then the other dominates it.
-    if (a->isTerminator())
-      return false;
-
-    if (b->isTerminator())
-      return true;
-
-    // Otherwise, do a linear scan to determine whether B comes after A.
-    // TODO: This is an O(n) scan that can be bad for very large blocks.
-    auto aIter = Block::const_iterator(a);
-    auto bIter = Block::const_iterator(b);
-    auto fIter = aBlock->begin();
-    while (bIter != fIter) {
-      --bIter;
-      if (aIter == bIter)
-        return true;
-    }
-    return false;
-  }
+  // If the blocks are the same, then check if b is before a in the block.
+  if (aBlock == bBlock)
+    return a->isBeforeInBlock(b);
 
   // If the blocks are different, but in the same function-level block list,
   // then a standard block dominance query is sufficient.
@@ -141,34 +119,12 @@ bool DominanceInfo::properlyDominates(const Value *a, const Instruction *b) {
 /// Returns true if statement 'a' properly postdominates statement b.
 bool PostDominanceInfo::properlyPostDominates(const Instruction *a,
                                               const Instruction *b) {
-  // If a/b are the same, then they don't properly dominate each other.
-  if (a == b)
-    return false;
-
   auto *aBlock = a->getBlock();
   auto *bBlock = b->getBlock();
 
-  // If the blocks are the same, then we do a linear scan.
-  if (aBlock == bBlock) {
-    // If one is a terminator, it postdominates the other.
-    if (a->isTerminator())
-      return true;
-
-    if (b->isTerminator())
-      return false;
-
-    // Otherwise, do a linear scan to determine whether A comes after B.
-    // TODO: This is an O(n) scan that can be bad for very large blocks.
-    auto aIter = Block::const_iterator(a);
-    auto bIter = Block::const_iterator(b);
-    auto fIter = bBlock->begin();
-    while (aIter != fIter) {
-      --aIter;
-      if (aIter == bIter)
-        return true;
-    }
-    return false;
-  }
+  // If the blocks are the same, check if b is before a in the block.
+  if (aBlock == bBlock)
+    return b->isBeforeInBlock(a);
 
   // If the blocks are different, but in the same function-level block list,
   // then a standard block dominance query is sufficient.

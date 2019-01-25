@@ -121,7 +121,14 @@ public:
   /// right before `iterator` in the specified block.
   void moveBefore(Block *block, llvm::iplist<Instruction>::iterator iterator);
 
-  // Returns whether the Instruction is a terminator.
+  /// Given an instruction 'other' that is within the same parent block, return
+  /// whether the current instruction is before 'other' in the instruction list
+  /// of the parent block.
+  /// Note: This function has an average complexity of O(1), but worst case may
+  /// take O(N) where N is the number of instructions within the parent block.
+  bool isBeforeInBlock(const Instruction *other) const;
+
+  /// Returns whether the instruction is a terminator.
   bool isTerminator() const;
 
   void print(raw_ostream &os) const;
@@ -199,8 +206,21 @@ private:
   /// The instruction block that containts this instruction.
   Block *block = nullptr;
 
+  /// Relative order of this instruction in its parent block. Used for
+  /// O(1) local dominance checks between instructions.
+  mutable unsigned orderIndex = 0;
+
+  // Provide a 'getParent' method for ilist_node_with_parent methods.
+  const Block *getParent() const { return getBlock(); }
+
   // allow ilist_traits access to 'block' field.
   friend struct llvm::ilist_traits<Instruction>;
+
+  // allow block to access the 'orderIndex' field.
+  friend class Block;
+
+  // allow ilist_node_with_parent to access the 'getParent' method.
+  friend class llvm::ilist_node_with_parent<Instruction, Block>;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const Instruction &inst) {
