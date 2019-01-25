@@ -20,13 +20,13 @@
 Releases built from release branches are available on Maven Central.
 Additionally, every day binaries are built from the `master` branch on GitHub:
 
-- [JAR](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow.jar)
-- [Sourc JAR](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow-src.jar)
-- JNI:
-  - [Linux CPU-only](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-cpu-linux-x86_64.tar.gz)
-  - [Linux GPU](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-gpu-linux-x86_64.tar.gz)
-  - [MacOS](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-cpu-darwin-x86_64.tar.gz)
-  - Windows: (No nightly builds available yet)
+-   [JAR](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow.jar)
+-   [Source JAR](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow-src.jar)
+-   JNI:
+    -   [Linux CPU-only](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-cpu-linux-x86_64.tar.gz)
+    -   [Linux GPU](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-gpu-linux-x86_64.tar.gz)
+    -   [MacOS](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-cpu-darwin-x86_64.tar.gz)
+    -   Windows: (No nightly builds available yet)
 
 ## Building from source
 

@@ -423,7 +423,7 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
       out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
       if large_tolerance:
         self.assertAllClose(
-            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.03, atol=0.1)
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=2e-4, atol=2e-4)
       else:
         self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
 
@@ -452,7 +452,7 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
         np.array([[1, 2], [3, 4]], dtype=np.float32), [4, 4],
         expected=np.array(
             [[1, 1, 2, 2], [1, 1, 2, 2], [3, 3, 4, 4], [3, 3, 4, 4]],
-            dtype=np.float32))
+            dtype=np.float32), large_tolerance=True)
 
   def testAlignCorners3x3To2x2(self):
     self._assertForwardOpMatchesExpected(

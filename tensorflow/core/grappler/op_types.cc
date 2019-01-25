@@ -355,6 +355,10 @@ bool IsRandomShuffle(const NodeDef& node) {
 
 bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
 
+bool IsReadVariableOp(const NodeDef& node) {
+  return node.op() == "ReadVariableOp";
+}
+
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }

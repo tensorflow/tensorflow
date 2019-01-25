@@ -85,9 +85,12 @@ absl::optional<HloInstruction*> MatchesArCrsPattern(
       return absl::nullopt;
     }
   }
-  return computation_is_addition(next->called_computations()[0])
-             ? absl::optional<HloInstruction*>(next)
-             : absl::nullopt;
+  if (!Cast<HloAllReduceInstruction>(next)->IsNoop() &&
+      computation_is_addition(next->called_computations()[0])) {
+    return absl::optional<HloInstruction*>(next);
+  } else {
+    return absl::nullopt;
+  }
 }
 
 }  // namespace

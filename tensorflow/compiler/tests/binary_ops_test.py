@@ -311,6 +311,30 @@ class BinaryOpsTest(xla_test.XLATestCase):
           dtype(7),
           expected=np.array([[-6], [-5]], dtype=dtype))
 
+      if dtype in [np.float32, np.float64]:
+        x = np.array([
+            -0.0, 0.0, -0.0, +0.0, np.inf, np.inf, -np.inf, -np.inf, 2.0, 2.0,
+            1.0
+        ],
+                     dtype=dtype)
+        y = np.array(
+            [-0.0, 0.0, +0.0, -0.0, 1.0, -1.0, 1.0, -1.0, 2.0, 1.0, 2.0],
+            dtype=dtype)
+        expected = np.nextafter(x, y)
+
+        # We use assertAllEqual to expose any bugs hidden by relative or
+        # absolute error tolerances.
+        def NextAfterEqualityTest(result, expected, rtol):
+          del rtol
+          return self.assertAllEqual(result, expected)
+
+        self._testBinary(
+            math_ops.nextafter,
+            x,
+            y,
+            expected=expected,
+            equality_test=NextAfterEqualityTest)
+
       # min/max not supported for complex
       if dtype not in self.complex_types | {np.uint8, np.int8}:
         self._testBinary(

@@ -259,19 +259,20 @@ def compare_results(results_with_ds, results_without_ds, distribution,
   """Compares results of model compiled with/without distribution strategy."""
 
   default_tolerance = 1e-5
-  tol_table = {}
+  relaxed_tolerance = 1e-4
 
-  if isinstance(distribution, (
-      mirrored_strategy.MirroredStrategy,
-      mirrored_strategy.CoreMirroredStrategy,
-      distribute_lib._DefaultDistributionStrategy)):  # pylint: disable=protected-access
-    # TODO(b/119257215): Weights are not exactly the same, so use larger
-    # tolerance for now. Predict should be related to weights.
-    tol_table = {
-        'weights_1': 1e-4,
-        'weights_2': 1e-4,
-        'predict_result_1': 1e-4,
-    }
+  def _get_compare_result_tolerance(key):
+    """Returns tolerance to compare results."""
+    # TODO(b/119257215): For MirroredStrategy, weights are not exactly the same,
+    # so use larger tolerance for now. Predict should be related to weights.
+    if (isinstance(distribution, (
+        mirrored_strategy.MirroredStrategy,
+        mirrored_strategy.CoreMirroredStrategy,
+        distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
+        key.startswith(('weights_1', 'weights_2', 'predict_result'))):
+      return relaxed_tolerance
+
+    return default_tolerance
 
   for key in results_with_ds:
     if (key.startswith('training_history') and
@@ -281,8 +282,7 @@ def compare_results(results_with_ds, results_without_ds, distribution,
       # underlying bug is fixed.
       continue
 
-    tolerance = tol_table.get(key, default_tolerance)
-
+    tolerance = _get_compare_result_tolerance(key)
     testcase.assertAllClose(
         results_with_ds[key],
         results_without_ds[key],

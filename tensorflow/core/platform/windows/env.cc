@@ -84,6 +84,12 @@ class WindowsEnv : public Env {
     return new StdThread(thread_options, name, fn);
   }
 
+  int32 GetCurrentThreadId() override {
+    return static_cast<int32>(::GetCurrentThreadId());
+  }
+
+  bool GetCurrentThreadName(string* name) override { return false; }
+
   static VOID CALLBACK SchedClosureCallback(PTP_CALLBACK_INSTANCE Instance,
                                             PVOID Context, PTP_WORK Work) {
     CloseThreadpoolWork(Work);

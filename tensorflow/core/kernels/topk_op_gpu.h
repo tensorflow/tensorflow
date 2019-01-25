@@ -412,7 +412,7 @@ struct SegmentOffsetCreator {
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int operator()(int idx) const {
     return idx * num_cols_;
-  };
+  }
 
   int num_cols_;
 };

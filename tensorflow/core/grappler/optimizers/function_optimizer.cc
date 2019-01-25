@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_if_while.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -256,28 +258,26 @@ struct FunctionSpecialization {
   std::vector<std::pair<int, int>> output_mapping;
 };
 
+// Function optimizer context initialized once for each optimization pass, and
+// it uses the latest available graph (for the first iteration it will be the
+// GrapplerItem.graph, for next iterations it will be the output of previous
+// function optimizer pass).
 class FunctionOptimizerContext {
  public:
-  explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
-                                    const GrapplerItem& item)
-      : grappler_item_id_(item.id),
-        graph_version_(item.graph.versions().producer()),
+  explicit FunctionOptimizerContext(const GrapplerItem& item,
+                                    RewriterConfig::Toggle opt_level,
+                                    const GraphDef& graph)
+      : item_(&item),
         opt_level_(opt_level),
-        optimization_options_(item.optimization_options()),
-        function_library_(OpRegistry::Global(), item.graph.library()),
-        available_device_names_(item.devices().begin(), item.devices().end()),
-        graph_view_(&item.graph) {
-    InitializeTrulyConstNodes(item);
-    InitializeFetchNodes(item);
-  }
+        function_library_(OpRegistry::Global(), graph.library()),
+        truly_const_nodes_(InferTrulyConstNodes(item, graph)),
+        graph_view_(&graph) {}
 
-  int graph_version() const { return graph_version_; }
+  const GrapplerItem& item() const { return *item_; }
 
-  const RewriterConfig::Toggle opt_level() const { return opt_level_; }
+  const int graph_version() const { return item_->graph.versions().producer(); }
 
-  const GrapplerItem::OptimizationOptions& optimization_options() const {
-    return optimization_options_;
-  }
+  RewriterConfig::Toggle opt_level() const { return opt_level_; }
 
   const FunctionLibraryDefinition& function_library() const {
     return function_library_;
@@ -304,16 +304,10 @@ class FunctionOptimizerContext {
 
   const GraphView& graph_view() const { return graph_view_; }
 
-  const string& grappler_item_id() const { return grappler_item_id_; }
-
-  const absl::flat_hash_set<string>& fetch_tensors() const {
-    return fetch_tensors_;
-  }
-
   const DeviceSet* devices() const {
     // Create fake devices lazily only if we need a DeviceSet.
-    if (available_devices_.empty() && !available_device_names_.empty()) {
-      for (const string& name : available_device_names_) {
+    if (available_devices_.empty() && !item_->devices().empty()) {
+      for (const string& name : item_->devices()) {
         auto device = absl::make_unique<FakeDevice>(name);
         available_device_set_.AddDevice(device.get());
         available_devices_.push_back(std::move(device));
@@ -323,7 +317,9 @@ class FunctionOptimizerContext {
   }
 
   bool IsFetchNode(const string& node_name) const {
-    return fetch_nodes_.find(node_name) != fetch_nodes_.end();
+    return absl::c_any_of(item_->fetch, [&](const string& fetch) {
+      return ParseTensorName(fetch).node() == node_name;
+    });
   }
 
   bool IsTrulyConst(const string& name) const {
@@ -345,6 +341,11 @@ class FunctionOptimizerContext {
   }
 
   void AddTensorMapping(const SafeTensorId& from, const SafeTensorId& to) {
+    DCHECK(from.index() != Graph::kControlSlot)
+        << "Tensor mapping must be from regular tensor";
+    DCHECK(to.index() != Graph::kControlSlot)
+        << "Tensor mapping must be to regular tensor";
+
     auto inserted = tensor_mapping_.insert({from, to});
     DCHECK(inserted.second)
         << "Failed to insert duplicated tensor mapping: "
@@ -359,8 +360,7 @@ class FunctionOptimizerContext {
       if (from_idx != to_idx) {
         SafeTensorId from_tensor(func_node, from_idx);
         SafeTensorId to_tensor(func_node, to_idx);
-        auto inserted = tensor_mapping_.insert({from_tensor, to_tensor});
-        DCHECK(inserted.second);
+        AddTensorMapping(from_tensor, to_tensor);
       }
     }
   }
@@ -374,24 +374,21 @@ class FunctionOptimizerContext {
   }
 
  private:
-  void InitializeTrulyConstNodes(const GrapplerItem& item) {
-    absl::flat_hash_set<string> feed_nodes;
+  static absl::flat_hash_map<string, const NodeDef*> InferTrulyConstNodes(
+      const GrapplerItem& item, const GraphDef& graph) {
+    absl::flat_hash_set<absl::string_view> feed_nodes;
     for (const auto& feed : item.feed) {
-      feed_nodes.insert(NodeName(feed.first));
+      feed_nodes.insert(feed.first);
     }
 
-    for (const NodeDef& node : item.graph.node()) {
-      if (IsConstant(node) && feed_nodes.count(node.name()) == 0) {
-        truly_const_nodes_[node.name()] = &node;
+    absl::flat_hash_map<string, const NodeDef*> const_nodes;
+    for (const NodeDef& node : graph.node()) {
+      if (IsConstant(node) && !feed_nodes.contains(node.name())) {
+        const_nodes[node.name()] = &node;
       }
     }
-  }
 
-  void InitializeFetchNodes(const GrapplerItem& item) {
-    for (const string& fetch : item.fetch) {
-      fetch_tensors_.insert(fetch);
-      fetch_nodes_.insert(NodeName(fetch));
-    }
+    return const_nodes;
   }
 
   void InitializeFunctionLibraryRuntime() {
@@ -403,16 +400,16 @@ class FunctionOptimizerContext {
       OptimizerOptions optimizer_opts;
       optimizer_opts.set_do_function_inlining(true);
       process_flr_.reset(new ProcessFunctionLibraryRuntime(
-          device_mgr_.get(), env, graph_version_, &function_library_,
-          optimizer_opts));
+          device_mgr_.get(), env, item_->graph.versions().producer(),
+          &function_library_, optimizer_opts));
       flr_ = process_flr_->GetFLR(device_mgr_->ListDevices()[0]->name());
     }
   }
 
-  const string grappler_item_id_;
-  const int graph_version_;
-  const RewriterConfig::Toggle opt_level_;
-  const GrapplerItem::OptimizationOptions optimization_options_;
+  const GrapplerItem* item_;  // must outlive this object
+  RewriterConfig::Toggle opt_level_;
+
+  // Function library constructed from current graph.
   FunctionLibraryDefinition function_library_;
 
   // These fields initialized lazily only if needed.
@@ -420,14 +417,11 @@ class FunctionOptimizerContext {
   std::unique_ptr<ProcessFunctionLibraryRuntime> process_flr_;
   FunctionLibraryRuntime* flr_ = nullptr;
 
-  // Fully defined names of the devices available to the GrapplerItem.
-  const absl::flat_hash_set<string> available_device_names_;
-
   // List of available `FakedDevices` (lazily initialized, see devices()).
   mutable std::vector<std::unique_ptr<Device>> available_devices_;
 
   // DeviceSet of fake devices (`FakeDevice`) constructed from
-  // available_devices_ (lazily initialized).
+  // item_.devices() (lazily initialized).
   mutable DeviceSet available_device_set_;
 
   // Nodes that are Const and not in feed.
@@ -436,10 +430,6 @@ class FunctionOptimizerContext {
   absl::flat_hash_map<FunctionSpecializationSignature,
                       const FunctionSpecialization>
       specialized_functions_;
-
-  // GrapplerItem.fetch is a vector of tensors.
-  absl::flat_hash_set<string> fetch_tensors_;  // format: node_name:port
-  absl::flat_hash_set<string> fetch_nodes_;    // format: node_name
 
   // After function inlining and specialization, the optimized graph might be in
   // invalid state, nodes can read from non-existing function call nodes that
@@ -495,9 +485,11 @@ absl::flat_hash_set<int> GetActiveOutputs(const NodeDef& node,
   }
 
   // 2. Or it can be in a fetch set.
-  for (const string& fetch_tensor : ctx.fetch_tensors()) {
-    int port = NodePositionIfSameNode(fetch_tensor, node.name());
-    if (port >= 0) active_outputs.insert(port);
+  for (const string& fetch : ctx.item().fetch) {
+    TensorId fetch_tensor = ParseTensorName(fetch);
+    if (fetch_tensor.node() == node.name()) {
+      active_outputs.insert(fetch_tensor.index());
+    }
   }
 
   return active_outputs;
@@ -755,14 +747,12 @@ Status InitializeFunctionSpecializationSignature(
 string SpecializedFunctionName(const FunctionOptimizerContext& ctx,
                                const FunctionDef& func,
                                const NodeDef& func_node) {
-  return absl::Substitute("$0_specialized_for_$1_at_$2",
-                          func.signature().name(),
-                          absl::StrReplaceAll(func_node.name(), {{"/", "_"}}),
-                          ctx.grappler_item_id());
+  return absl::Substitute(
+      "$0_specialized_for_$1_at_$2", func.signature().name(),
+      absl::StrReplaceAll(func_node.name(), {{"/", "_"}}), ctx.item().id);
 }
 
 Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
-                          const int graph_def_version,
                           FunctionOptimizerContext* ctx,
                           GraphDef* optimized_graph) {
   VLOG(2) << "Specialize function call: " << SummarizeNodeDef(func_node);
@@ -801,8 +791,8 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   // Make a GrapplerFunctionItem and convert it back to FunctionDef after
   // pushing all constant inputs into the function body.
   GrapplerFunctionItem item;
-  TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, func_instantiation_attr,
-                                              flib, graph_def_version, &item));
+  TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
+      func, func_instantiation_attr, flib, ctx->graph_version(), &item));
 
   // Push const inputs into the function body, and keep track of their control
   // dependencies.
@@ -1004,7 +994,6 @@ NodeDef InlinedFunctionOutputsNode(
 
 Status InlineDirectFunctionCall(const NodeDef& func_node,
                                 const FunctionDef& func,
-                                const int graph_def_version,
                                 const FunctionOptimizerContext& ctx,
                                 GraphDef* optimized_graph) {
   VLOG(2) << "Inline direct function call: " << SummarizeNodeDef(func_node);
@@ -1016,7 +1005,7 @@ Status InlineDirectFunctionCall(const NodeDef& func_node,
   GrapplerFunctionItem item;
   Status item_status = MakeGrapplerFunctionItem(func, func_instantiation_attr,
                                                 ctx.function_library(),
-                                                graph_def_version, &item);
+                                                ctx.graph_version(), &item);
 
   if (!item_status.ok()) {
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
@@ -1093,36 +1082,8 @@ Status InlineDirectFunctionCall(const NodeDef& func_node,
     // Make sure the node is placed.
     func_body_node.set_device(func_node.device());
 
-    // Move the function body node to the optimized graph.
-    const auto move_node_to_optimized_graph = [&]() {
-      // Annotate the node with the function attributes.
-      for (const auto& attr : func.attr()) {
-        func_body_node.mutable_attr()->insert(attr);
-      }
-      // Move the node to the main graph.
-      optimized_graph->add_node()->Swap(&func_body_node);
-    };
-
-    // Check if a body node is itself a function call and can be inlined.
-    const FunctionDef* func_body_node_func =
-        FindFunctionCall(ctx, func_body_node);
-
-    if (func_body_node_func != nullptr) {
-      Status inlinable = IsInlinableDirectFunctionCall(
-          ctx, *func_body_node_func, func_body_node);
-      if (inlinable.ok()) {
-        TF_RETURN_IF_ERROR(
-            InlineDirectFunctionCall(func_body_node, *func_body_node_func,
-                                     graph_def_version, ctx, optimized_graph));
-      } else {
-        VLOG(2) << "Can't inline nested direct function call: "
-                << inlinable.error_message();
-        move_node_to_optimized_graph();
-      }
-
-    } else {
-      move_node_to_optimized_graph();
-    }
+    // Move the node to the main graph.
+    optimized_graph->add_node()->Swap(&func_body_node);
   }
 
   DCHECK(output_tensors.size() == item.output_size())
@@ -1180,12 +1141,35 @@ Status InlineSymbolicGradient(const NodeDef& node,
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(graph_ctor_opts, graph_def, &graph));
 
-  // Recursively inline the functions until there is nothing more to inline. We
-  // should at least expand one function.
-  int counter = 0;
-  while (counter < 50 && ExpandInlineFunctions(
-                             ctx->mutable_function_library_runtime(), &graph)) {
-    ++counter;
+  FunctionLibraryRuntime* flr = ctx->mutable_function_library_runtime();
+
+  // 1. Inline symbolic gradient node.
+  const bool expanded = ExpandInlineFunctions(flr, &graph);
+  DCHECK(expanded) << "Didn't expand SymbolicGradient op";
+
+  // TODO(ezhulenev): InlineFunctionBody in common_runtime/function silently
+  // fails to inline function into the graph, and leaves the graph unmodified.
+  // We check that graph has our symbolic gradient inlined, otherwise we return
+  // a error.
+  const auto is_symbolic_gradient_op = [&](const Node* node) {
+    return node->name() == inlined->name() &&
+           node->type_string() == "SymbolicGradient";
+  };
+  for (Node* node : graph.nodes()) {
+    if (is_symbolic_gradient_op(node)) {
+      return errors::Internal("Failed to inline symbolic gradient node: ",
+                              SummarizeNode(*node));
+    }
+  }
+
+  // 2. Recursively inline nested function calls.
+  int iteration = 0;
+  while (ExpandInlineFunctions(flr, &graph)) {
+    if (++iteration >= 50) {
+      VLOG(2) << "Break symbolic gradient inlining loop at iteration #"
+              << iteration;
+      break;
+    }
   }
 
   GraphDef inlined_graph_def;
@@ -1398,20 +1382,6 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
         SummarizeNodeDef(func_node));
   }
 
-  // TODO(b/120991525, b/120986912): We need to lower `If` and `While` nodes to
-  // `Switch` nodes after function inlining (one more PRE_PLACEMENT pass?), but
-  // because of the reason described above we are not sure that it's safe, for
-  // now just disable inlining functions with functional control flow.
-  const auto is_functional_ctrl_flow_op = [](const NodeDef& node) {
-    return IsIf(node) || IsWhile(node);
-  };
-  if (absl::c_any_of(func.node_def(), is_functional_ctrl_flow_op)) {
-    return errors::FailedPrecondition(
-        "Can't inline function with `If` or `While` nodes in the function "
-        "body: ",
-        SummarizeNodeDef(func_node));
-  }
-
   return Status::OK();
 }
 
@@ -1422,14 +1392,21 @@ Status CheckThatSideEffectsWillExecute(
     const FunctionOptimizerContext& ctx,
     const GraphTopologyView& graph_topo_view,
     const absl::flat_hash_set<string> output_nodes) {
-  // We ignore side-effects safety check in aggressive mode.
+  // In aggressive mode we just print a warning for side-effectful nodes that
+  // might not be executed after inlining.
   const bool aggressive = ctx.opt_level() == RewriterConfig::AGGRESSIVE;
 
   for (const NodeDef& func_body_node : graph_topo_view.graph()->node()) {
     const bool node_must_execute =
         IsDataset(func_body_node) ||
         IsStateful(func_body_node, &ctx.function_library());
-    if (!node_must_execute) continue;
+
+    // If op has DT_RESOURCE argument it will be marked as stateful, though if
+    // it only reads from that resource, it's allowed to prune it, because it
+    // can't produce any visible side-effects.
+    const bool read_only = IsReadVariableOp(func_body_node);
+
+    if (read_only || !node_must_execute) continue;
 
     VLOG(3) << "Check that node " << func_body_node.name()
             << " will execute after inlining.";
@@ -1447,18 +1424,17 @@ Status CheckThatSideEffectsWillExecute(
     DfsTraversal(graph_topo_view, {&func_body_node},
                  TraversalDirection::kFollowOutputs, predicates, callbacks);
 
-    if (!will_execute && !aggressive) {
-      return errors::Internal(
+    if (!will_execute) {
+      const string error_message = absl::StrCat(
           "Can't guarantee execution of a side-effectful node, that is not "
           "reachable from function outputs. Function body node: ",
           SummarizeNodeDef(func_body_node));
-    }
 
-    if (!will_execute && aggressive) {
-      LOG(WARNING)
-          << "Can't guarantee execution of a side-effectful node, that is not "
-             "reachable from function outputs. Function body node: "
-          << SummarizeNodeDef(func_body_node);
+      if (aggressive) {
+        LOG(WARNING) << error_message;
+      } else {
+        return errors::Internal(error_message);
+      }
     }
   }
 
@@ -1466,19 +1442,33 @@ Status CheckThatSideEffectsWillExecute(
 }
 
 Status PlaceInlinedFunctionBody(
-    const FunctionOptimizerContext& ctx, const NodeDef& func_node,
-    const GrapplerFunctionItem& item,
+    const NodeDef& func_node, const GrapplerFunctionItem& item,
     const absl::flat_hash_map<absl::string_view, int>& input_placeholders_idx,
-    GraphDef* placed_graph_def) {
+    FunctionOptimizerContext* ctx, GraphDef* placed_graph_def) {
   // Control flow lowering and Placer works with a Graph object.
   std::unique_ptr<Graph> func_body_graph =
-      absl::make_unique<Graph>(ctx.function_library());
+      absl::make_unique<Graph>(ctx->function_library());
 
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(opts, item.graph, func_body_graph.get()));
 
-  // TODO(ezhulenev): Lower If/While ops.
+  // ------------------------------------------------------------------------ //
+  // Grappler receives the graph after PRE_PLACEMENT, Placer, and POST_PLACEMENT
+  // passes, so each node has a valid device assignment. Also V2 control
+  // flow ops (functional If and While) should have been lowered to V1 control
+  // flow (Switch and Merge nodes). To keep the graph valid for execution we
+  // must assign device to every inlined graph node, and also lower the control
+  // flow.
+
+  GraphOptimizationPassOptions opt_options;
+  opt_options.graph = &func_body_graph;
+  opt_options.flib_def = ctx->mutable_function_library();
+
+  // TODO(ezhulenev): Should we run full PRE_PLACEMENT pass here? And
+  // POST_PLACEMENT after placer?
+  LowerIfWhilePass pass;
+  TF_RETURN_IF_ERROR(pass.Run(opt_options));
 
   // ------------------------------------------------------------------------ //
   // Before placing the function body nodes we pin input placeholders to the
@@ -1491,7 +1481,7 @@ Status PlaceInlinedFunctionBody(
     if (input_placeholder_idx != input_placeholders_idx.end()) {
       const int input_idx = input_placeholder_idx->second;
       const GraphView::OutputPort output_port =
-          ctx.graph_view().GetRegularFanin({&func_node, input_idx});
+          ctx->graph_view().GetRegularFanin({&func_node, input_idx});
 
       VLOG(3) << "Pin inlined function input node '" << func_body_node->name()
               << "' to the '" << output_port.node->device() << "' device.";
@@ -1503,7 +1493,7 @@ Status PlaceInlinedFunctionBody(
   // After placing nodes corresponding to the function inputs, we need to assign
   // device placements to all other function body nodes.
 
-  const DeviceSet* devices = ctx.devices();
+  const DeviceSet* devices = ctx->devices();
 
   if (devices->devices().empty()) {
     // If there are no devices available for placer, we just put all nodes to
@@ -1542,10 +1532,10 @@ Status PlaceInlinedFunctionBody(
 
 Status InlineIndirectFunctionCall(const NodeDef& func_node,
                                   const FunctionDef& func,
-                                  const int graph_def_version,
                                   FunctionOptimizerContext* ctx,
                                   GraphDef* optimized_graph) {
   VLOG(2) << "Inline indirect function call: " << SummarizeNodeDef(func_node);
+  VLOG(4) << "Inlined function definition: " << DebugString(func);
   TF_RETURN_IF_ERROR(IsInlinableIndirectFunctionCall(*ctx, func, func_node));
 
   const AttrSlice func_instantiation_attr =
@@ -1554,7 +1544,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   GrapplerFunctionItem item;
   Status item_status = MakeGrapplerFunctionItem(func, func_instantiation_attr,
                                                 ctx->function_library(),
-                                                graph_def_version, &item);
+                                                ctx->graph_version(), &item);
 
   if (!item_status.ok()) {
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
@@ -1708,7 +1698,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
 
   GraphDef placed_graph_def;
   TF_RETURN_IF_ERROR(PlaceInlinedFunctionBody(
-      *ctx, func_node, item, input_placeholders_idx, &placed_graph_def));
+      func_node, item, input_placeholders_idx, ctx, &placed_graph_def));
 
   // ------------------------------------------------------------------------ //
   // After all nodes placed we need to prepare them for inlining into the
@@ -1848,129 +1838,10 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   return Status::OK();
 }
 
-}  // namespace
-
-Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
-                                   GraphDef* optimized_graph) {
-  // Nothing to do here.
-  if (item.graph.library().function_size() == 0) {
-    *optimized_graph = item.graph;
-    return Status::OK();
-  }
-
-  FunctionOptimizerContext ctx(opt_level_, item);
-
-  bool inline_gradients = options_.enable_symbolic_gradient_inlining;
-  bool inline_func = options_.enable_function_inlining;
-  bool specialize_func = options_.enable_function_specialization;
-
-  for (const NodeDef& node : item.graph.node()) {
-    // Each node optimization can modify optimized graph only by adding new
-    // nodes, we can check node size to make sure that graph was not modified.
-    const int num_nodes_before = optimized_graph->node_size();
-    const auto is_graph_modified = [&]() {
-      int num_nodes = optimized_graph->node_size();
-      CHECK_GE(num_nodes, num_nodes_before) << "Nodes should not be removed";
-      return num_nodes > num_nodes_before;
-    };
-
-    // Add a copy of an input graph node to the optimized graph.
-    const auto add_node_copy = [&]() { *optimized_graph->add_node() = node; };
-
-// Skip errors if optimized graph was not modified before error happened.
-#define TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(...)                     \
-  do {                                                             \
-    const Status _status = (__VA_ARGS__);                          \
-    if (TF_PREDICT_FALSE(!_status.ok() && is_graph_modified()))    \
-      return _status;                                              \
-    if (TF_PREDICT_FALSE(!_status.ok() && !is_graph_modified())) { \
-      VLOG(3) << "Skip error: " << _status.error_message();        \
-      add_node_copy();                                             \
-    }                                                              \
-  } while (0)
-
-    // ---------------------------------------------------------------------- //
-    // 1. Inline symbolic gradients into the optimized graph.                 //
-    // ---------------------------------------------------------------------- //
-
-    if (IsSymbolicGradient(node) && inline_gradients) {
-      // Inline symbolic gradients only if the corresponding function is not
-      // marked as `_noinline`.
-      const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
-      const string f_name = f_attr != nullptr ? f_attr->func().name() : "";
-      const FunctionDef* func = ctx.function_library().Find(f_name);
-      if (func && !MarkedNoInline(*func)) {
-        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
-            InlineSymbolicGradient(node, &ctx, optimized_graph));
-        continue;
-      }
-    }
-
-    // ---------------------------------------------------------------------- //
-    // 2. Inline or specialize function calls.                                //
-    // ---------------------------------------------------------------------- //
-
-    // Find if a node is a function call (direct or indirect).
-    const FunctionDef* func = FindFunctionCall(ctx, node);
-
-    if (func != nullptr) {
-      const string& func_name = func->signature().name();
-      const int graph_def_version = item.graph.versions().producer();
-
-      const bool is_direct_func = IsDirectFunctionCall(*func, node);
-      const bool is_indirect_func = IsIndirectFunctionCall(*func, node);
-
-      // 2a. Inline direct function call if it's inlinable.
-      if (inline_func && is_direct_func) {
-        Status inlinable = IsInlinableDirectFunctionCall(ctx, *func, node);
-        if (inlinable.ok()) {
-          TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(InlineDirectFunctionCall(
-              node, *func, graph_def_version, ctx, optimized_graph));
-          continue;
-        } else {
-          VLOG(2) << inlinable.error_message();
-        }
-      }
-
-      // 2b. Inline indirect function call if it's inlinable.
-      if (inline_func && is_indirect_func) {
-        Status inlinable = IsInlinableIndirectFunctionCall(ctx, *func, node);
-        if (inlinable.ok()) {
-          TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(InlineIndirectFunctionCall(
-              node, *func, graph_def_version, &ctx, optimized_graph));
-          continue;
-        } else {
-          VLOG(2) << inlinable.error_message();
-        }
-      }
-
-      // 2c. Specialize it to its instantiation context if can't be inlined,
-      // and it has something worth specializing.
-      bool specialization_worthy = IsParametrized(*func) ||
-                                   HasTrulyConstInputs(node, ctx) ||
-                                   HasUnusedOutputs(node, *func, ctx);
-
-      // Do not specialize if function has custom gradient.
-      const string grad_func = ctx.function_library().FindGradient(func_name);
-
-      if (specialize_func && grad_func.empty() && specialization_worthy) {
-        // TODO(ezhulenev): Specialize function call if input has a known shape.
-        // Specialize function body for its instantiation attributes and inputs.
-        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
-            SpecializeFunction(node, *func, item.graph.versions().producer(),
-                               &ctx, optimized_graph));
-        continue;
-      }
-    }
-
-    // ---------------------------------------------------------------------- //
-    // If we reached this point, node was not handled by any of the stages
-    // (inline, specialize), simply add a copy to the graph.
-    add_node_copy();
-
-#undef TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED
-  }
-
+// Restores graph invariants after function specialization and inlining: all
+// inputs must be connected to valid nodes.
+Status RestoreGraphInvariants(const FunctionOptimizerContext& ctx,
+                              GraphDef* optimized_graph) {
   // After function specialization and inlining graph might be in invalid
   // state, and some nodes can read tensors that do not exists anymore in the
   // optimized graph: function call node was fully inlined into the graph, or
@@ -1993,13 +1864,9 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
   // Function inlining instantiates function body directly into the optimized
   // graph, and we might end up with control dependencies to the nodes that no
   // longer exist in a graph. We need to apply control overrides to all
-  // invalidated nodes, and rewire control dependencies to the inlined
-  // side-effectful function body nodes.
-
-  // TODO(ezhulenev): With nested function call inlining, single pass over
-  // `control_overrides` might not bring the graph into a valid state,
-  // continue until it converges and all invalidated control dependencies
-  // removed.
+  // invalidated nodes, and rewire control dependencies to the control outputs
+  // node (it's also possible to rewrite singe control edge into multiple edges
+  // to inlined side-effectful nodes).
 
   if (!ctx.control_overrides().empty()) {
     for (NodeDef& node : *optimized_graph->mutable_node()) {
@@ -2041,11 +1908,220 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
     }
   }
 
-  *optimized_graph->mutable_versions() = item.graph.versions();
-  *optimized_graph->mutable_library() =
-      options_.enable_trim_function_library
-          ? PruneFunctionLibrary(ctx.function_library(), *optimized_graph)
-          : ctx.function_library().ToProto();
+  return Status::OK();
+}
+
+}  // namespace
+
+Status FunctionOptimizer::RunFunctionOptimizerPass(
+    const GrapplerItem& item, const GraphDef& graph, const int iteration,
+    std::unordered_set<string>* skip_nodes, GraphDef* optimized_graph,
+    bool* graph_has_unoptimized_function_calls) const {
+  VLOG(3) << absl::Substitute(
+      "Run function optimizer pass (iteration = $0): grappler_item_id = $1",
+      iteration, item.id);
+
+  FunctionOptimizerContext ctx(item, opt_level_, graph);
+
+  bool inline_gradients = options_.enable_symbolic_gradient_inlining;
+  bool inline_func = options_.enable_function_inlining;
+  bool specialize_func = options_.enable_function_specialization;
+
+  for (const NodeDef& node : graph.node()) {
+    // Each node optimization can modify optimized graph only by adding new
+    // nodes, we can check node size to make sure that graph was not modified.
+    const int num_nodes_before = optimized_graph->node_size();
+    const auto is_graph_modified = [&]() {
+      int num_nodes = optimized_graph->node_size();
+      DCHECK_GE(num_nodes, num_nodes_before) << "Nodes should not be removed";
+      return num_nodes > num_nodes_before;
+    };
+
+    // Copy node from the `graph` to the `optimized_graph`.
+    const auto copy_node = [&]() { *optimized_graph->add_node() = node; };
+
+    // If we already failed to optimize this node during one of the previous
+    // passes, we just give up, and do not try on more time.
+    if (skip_nodes->find(node.name()) != skip_nodes->end()) {
+      VLOG(3) << "Skip optimization for node: " << node.name();
+      copy_node();
+      continue;
+    }
+
+// Skip errors if optimized graph was not modified before error happened.
+#define TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(...)                     \
+  do {                                                             \
+    const Status _status = (__VA_ARGS__);                          \
+    if (TF_PREDICT_FALSE(!_status.ok() && is_graph_modified()))    \
+      return _status;                                              \
+    if (TF_PREDICT_FALSE(!_status.ok() && !is_graph_modified())) { \
+      VLOG(3) << "Skip error: " << _status.error_message();        \
+      skip_nodes->insert(node.name());                             \
+      copy_node();                                                 \
+    }                                                              \
+  } while (0)
+
+    // ---------------------------------------------------------------------- //
+    // 1. Inline symbolic gradients into the optimized graph.                 //
+    // ---------------------------------------------------------------------- //
+
+    if (IsSymbolicGradient(node) && inline_gradients) {
+      // Inline symbolic gradients only if the corresponding function is not
+      // marked as `_noinline`.
+      const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
+      const string f_name = f_attr != nullptr ? f_attr->func().name() : "";
+      const FunctionDef* func = ctx.function_library().Find(f_name);
+      if (func && !MarkedNoInline(*func)) {
+        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
+            InlineSymbolicGradient(node, &ctx, optimized_graph));
+        continue;
+      } else {
+        VLOG(2) << "Skip SymbolicGradient inlining: function=" << f_name;
+        skip_nodes->insert(node.name());
+      }
+    }
+
+    // ---------------------------------------------------------------------- //
+    // 2. Inline or specialize function calls.                                //
+    // ---------------------------------------------------------------------- //
+
+    // Find if a node is a function call (direct or indirect).
+    const FunctionDef* func = FindFunctionCall(ctx, node);
+
+    if (func != nullptr) {
+      const string& func_name = func->signature().name();
+
+      const bool is_direct_func = IsDirectFunctionCall(*func, node);
+      const bool is_indirect_func = IsIndirectFunctionCall(*func, node);
+
+      // 2a. Inline direct function call if it's inlinable.
+      if (inline_func && is_direct_func) {
+        Status inlinable = IsInlinableDirectFunctionCall(ctx, *func, node);
+        if (inlinable.ok()) {
+          TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
+              InlineDirectFunctionCall(node, *func, ctx, optimized_graph));
+          continue;
+        } else {
+          VLOG(2) << inlinable.error_message();
+          skip_nodes->insert(node.name());
+        }
+      }
+
+      // 2b. Inline indirect function call if it's inlinable.
+      if (inline_func && is_indirect_func) {
+        Status inlinable = IsInlinableIndirectFunctionCall(ctx, *func, node);
+        if (inlinable.ok()) {
+          TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
+              InlineIndirectFunctionCall(node, *func, &ctx, optimized_graph));
+          continue;
+        } else {
+          VLOG(2) << inlinable.error_message();
+          skip_nodes->insert(node.name());
+        }
+      }
+
+      // 2c. Specialize it to its instantiation context if can't be inlined,
+      // and it has something worth specializing.
+      bool specialization_worthy = IsParametrized(*func) ||
+                                   HasTrulyConstInputs(node, ctx) ||
+                                   HasUnusedOutputs(node, *func, ctx);
+
+      // Do not specialize if function has custom gradient.
+      const string grad_func = ctx.function_library().FindGradient(func_name);
+
+      if (specialize_func && grad_func.empty() && specialization_worthy) {
+        // TODO(ezhulenev): Specialize function call if input has a known shape.
+        // Specialize function body for its instantiation attributes and inputs.
+        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
+            SpecializeFunction(node, *func, &ctx, optimized_graph));
+        continue;
+      } else {
+        VLOG(2) << "Skip function specialization: " << func->signature().name();
+        skip_nodes->insert(node.name());
+      }
+    }
+
+    // ---------------------------------------------------------------------- //
+    // If we reached this point, node was not handled by any of the stages
+    // (inline, specialize), simply copy the node to the optimized graph.
+    copy_node();
+
+#undef TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED
+  }
+
+  TF_RETURN_IF_ERROR(RestoreGraphInvariants(ctx, optimized_graph));
+
+  // Preserve the graph version.
+  *optimized_graph->mutable_versions() = graph.versions();
+
+  // Prune unreachable function from the library.
+  if (options_.enable_trim_function_library) {
+    *optimized_graph->mutable_library() =
+        PruneFunctionLibrary(ctx.function_library(), *optimized_graph);
+  } else {
+    *optimized_graph->mutable_library() = ctx.function_library().ToProto();
+  }
+
+  // Before returning we check if after single optimization pass we have more
+  // unoptimized function calls.
+  *graph_has_unoptimized_function_calls = false;
+  for (const NodeDef& node : optimized_graph->node()) {
+    // Check if we can inline symbolic gradient.
+    if (IsSymbolicGradient(node) && inline_gradients &&
+        skip_nodes->count(node.name()) == 0) {
+      *graph_has_unoptimized_function_calls = true;
+      break;
+    }
+
+    // Check if after inlining we have unoptimized function calls.
+    const FunctionDef* func = FindFunctionCall(ctx, node);
+    if (func != nullptr && !MarkedSpecialized(*func) &&
+        skip_nodes->count(node.name()) == 0) {
+      *graph_has_unoptimized_function_calls = true;
+      break;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
+                                   GraphDef* optimized_graph) {
+  // Nothing to do here.
+  if (item.graph.library().function_size() == 0) {
+    *optimized_graph = item.graph;
+    return Status::OK();
+  }
+
+  // Do not retry failed function inlining or specialization.
+  std::unordered_set<string> skip_nodes;
+  bool graph_has_unoptimized_function_calls = false;
+
+  // We'll keep running function optimizer pass until we inlined and optimized
+  // all function call nodes.
+  int iteration = 0;
+  constexpr int kMaxIterations = 50;
+
+  // 1. Run first optimizer pass with GrapplerItem.graph.
+  TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(
+      item, item.graph, 0, &skip_nodes, optimized_graph,
+      &graph_has_unoptimized_function_calls));
+
+  // 2. If after function inlining we have unoptimized function calls, we have
+  // to run function optimization pass one more time.
+  while (graph_has_unoptimized_function_calls) {
+    if (iteration++ > kMaxIterations) {
+      VLOG(1) << "Break function optimizer loop at iteration #" << iteration;
+      break;
+    }
+
+    GraphDef workspace_graph;
+    workspace_graph.Swap(optimized_graph);
+
+    TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(
+        item, workspace_graph, iteration, &skip_nodes, optimized_graph,
+        &graph_has_unoptimized_function_calls));
+  }
 
   return Status::OK();
 }

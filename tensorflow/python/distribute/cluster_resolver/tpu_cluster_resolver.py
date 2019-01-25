@@ -285,7 +285,7 @@ class TPUClusterResolver(ClusterResolver):
     # in later in self.master().
     if self.rpc_layer is not None and tpu.startswith(self.rpc_layer + '://'):
       tpu = tpu[len(self.rpc_layer + '://'):]
-      self._tpu = tpu
+      self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
       self._should_resolve_override = False
 
     # Whether we should actually attempt to contact Cloud APIs
@@ -369,7 +369,7 @@ class TPUClusterResolver(ClusterResolver):
         master = job_tasks[0]
     else:
       if isinstance(self._tpu, (bytes, bytearray)):
-        master = self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))[0]
+        master = compat.as_text(self._tpu).split(_ENDPOINTS_SEPARATOR)[0]
       else:
         master = self._tpu.split(_ENDPOINTS_SEPARATOR)[0]
     return format_master_url(master, rpc_layer or self.rpc_layer)
@@ -439,7 +439,7 @@ class TPUClusterResolver(ClusterResolver):
         return None
       # Case 2.
       tpus = []
-      for tpu in self._tpu.split(_ENDPOINTS_SEPARATOR):
+      for tpu in compat.as_text(self._tpu).split(_ENDPOINTS_SEPARATOR):
         # We are working around the fact that GKE environment variable that is
         # supplied to us has the protocol string embedded in it, but we want
         # to strip it out for the ClusterSpec.

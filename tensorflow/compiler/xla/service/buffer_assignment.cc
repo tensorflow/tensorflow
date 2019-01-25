@@ -752,7 +752,8 @@ namespace {
 bool MayInterfereAcrossSubcomputations(BufferAssignment* assignment,
                                        const LogicalBuffer& a_buffer,
                                        const LogicalBuffer& b_buffer) {
-  auto call_graph = assignment->liveness().hlo_ordering().call_graph();
+  const CallGraph& call_graph =
+      assignment->liveness().hlo_ordering().call_graph();
   const HloInstruction* a_ancestor;
   const HloInstruction* b_ancestor;
   std::tie(a_ancestor, b_ancestor) =

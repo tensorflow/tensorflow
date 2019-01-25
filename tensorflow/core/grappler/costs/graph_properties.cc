@@ -460,6 +460,34 @@ class TopoQueue {
   std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
+bool IsNumericType(const DataType dtype) {
+  static const gtl::FlatSet<DataType>* const kRealNumberTypes =
+      CHECK_NOTNULL((new gtl::FlatSet<DataType>{
+          // Floating point.
+          DT_BFLOAT16,
+          DT_HALF,
+          DT_FLOAT,
+          DT_DOUBLE,
+          // Int / UInt.
+          DT_INT8,
+          DT_INT16,
+          DT_INT32,
+          DT_INT64,
+          DT_UINT8,
+          DT_UINT16,
+          DT_UINT32,
+          DT_UINT64,
+          // Quantized Int.
+          DT_QINT8,
+          DT_QUINT8,
+          DT_QINT16,
+          DT_QINT32,
+          // Bool.
+          DT_BOOL,
+      }));
+  return kRealNumberTypes->find(dtype) != kRealNumberTypes->end();
+}
+
 bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
   static const gtl::FlatSet<string>* const kOpTpeWhitelist =
       CHECK_NOTNULL((new gtl::FlatSet<string>{
@@ -504,6 +532,7 @@ bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
           "Split",
           "Range",
           "Fill",
+          "Cast",
       }));
   return kOpTpeWhitelist->find(op_type) != kOpTpeWhitelist->end();
 }
@@ -1120,16 +1149,16 @@ class SymbolicShapeRefiner {
       return false;
     }
 
-    // Check input dtypes are integer.
+    // Check input dtypes are number types.
     for (const auto& input_type : c->input_types) {
-      if (input_type != DT_INT32 && input_type != DT_INT64) {
+      if (!IsNumericType(input_type)) {
         return false;
       }
     }
 
-    // Check output dtypes are integer.
+    // Check output dtypes are number types.
     for (const auto& output_type : c->output_types) {
-      if (output_type != DT_INT32 && output_type != DT_INT64) {
+      if (!IsNumericType(output_type)) {
         return false;
       }
     }
