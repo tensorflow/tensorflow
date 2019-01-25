@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_if_while.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -1380,20 +1382,6 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
         SummarizeNodeDef(func_node));
   }
 
-  // TODO(b/120991525, b/120986912): We need to lower `If` and `While` nodes to
-  // `Switch` nodes after function inlining (one more PRE_PLACEMENT pass?), but
-  // because of the reason described above we are not sure that it's safe, for
-  // now just disable inlining functions with functional control flow.
-  const auto is_functional_ctrl_flow_op = [](const NodeDef& node) {
-    return IsIf(node) || IsWhile(node);
-  };
-  if (absl::c_any_of(func.node_def(), is_functional_ctrl_flow_op)) {
-    return errors::FailedPrecondition(
-        "Can't inline function with `If` or `While` nodes in the function "
-        "body: ",
-        SummarizeNodeDef(func_node));
-  }
-
   return Status::OK();
 }
 
@@ -1404,7 +1392,8 @@ Status CheckThatSideEffectsWillExecute(
     const FunctionOptimizerContext& ctx,
     const GraphTopologyView& graph_topo_view,
     const absl::flat_hash_set<string> output_nodes) {
-  // We ignore side-effects safety check in aggressive mode.
+  // In aggressive mode we just print a warning for side-effectful nodes that
+  // might not be executed after inlining.
   const bool aggressive = ctx.opt_level() == RewriterConfig::AGGRESSIVE;
 
   for (const NodeDef& func_body_node : graph_topo_view.graph()->node()) {
@@ -1435,18 +1424,17 @@ Status CheckThatSideEffectsWillExecute(
     DfsTraversal(graph_topo_view, {&func_body_node},
                  TraversalDirection::kFollowOutputs, predicates, callbacks);
 
-    if (!will_execute && !aggressive) {
-      return errors::Internal(
+    if (!will_execute) {
+      const string error_message = absl::StrCat(
           "Can't guarantee execution of a side-effectful node, that is not "
           "reachable from function outputs. Function body node: ",
           SummarizeNodeDef(func_body_node));
-    }
 
-    if (!will_execute && aggressive) {
-      LOG(WARNING)
-          << "Can't guarantee execution of a side-effectful node, that is not "
-             "reachable from function outputs. Function body node: "
-          << SummarizeNodeDef(func_body_node);
+      if (aggressive) {
+        LOG(WARNING) << error_message;
+      } else {
+        return errors::Internal(error_message);
+      }
     }
   }
 
@@ -1454,19 +1442,33 @@ Status CheckThatSideEffectsWillExecute(
 }
 
 Status PlaceInlinedFunctionBody(
-    const FunctionOptimizerContext& ctx, const NodeDef& func_node,
-    const GrapplerFunctionItem& item,
+    const NodeDef& func_node, const GrapplerFunctionItem& item,
     const absl::flat_hash_map<absl::string_view, int>& input_placeholders_idx,
-    GraphDef* placed_graph_def) {
+    FunctionOptimizerContext* ctx, GraphDef* placed_graph_def) {
   // Control flow lowering and Placer works with a Graph object.
   std::unique_ptr<Graph> func_body_graph =
-      absl::make_unique<Graph>(ctx.function_library());
+      absl::make_unique<Graph>(ctx->function_library());
 
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(opts, item.graph, func_body_graph.get()));
 
-  // TODO(ezhulenev): Lower If/While ops.
+  // ------------------------------------------------------------------------ //
+  // Grappler receives the graph after PRE_PLACEMENT, Placer, and POST_PLACEMENT
+  // passes, so each node has a valid device assignment. Also V2 control
+  // flow ops (functional If and While) should have been lowered to V1 control
+  // flow (Switch and Merge nodes). To keep the graph valid for execution we
+  // must assign device to every inlined graph node, and also lower the control
+  // flow.
+
+  GraphOptimizationPassOptions opt_options;
+  opt_options.graph = &func_body_graph;
+  opt_options.flib_def = ctx->mutable_function_library();
+
+  // TODO(ezhulenev): Should we run full PRE_PLACEMENT pass here? And
+  // POST_PLACEMENT after placer?
+  LowerIfWhilePass pass;
+  TF_RETURN_IF_ERROR(pass.Run(opt_options));
 
   // ------------------------------------------------------------------------ //
   // Before placing the function body nodes we pin input placeholders to the
@@ -1479,7 +1481,7 @@ Status PlaceInlinedFunctionBody(
     if (input_placeholder_idx != input_placeholders_idx.end()) {
       const int input_idx = input_placeholder_idx->second;
       const GraphView::OutputPort output_port =
-          ctx.graph_view().GetRegularFanin({&func_node, input_idx});
+          ctx->graph_view().GetRegularFanin({&func_node, input_idx});
 
       VLOG(3) << "Pin inlined function input node '" << func_body_node->name()
               << "' to the '" << output_port.node->device() << "' device.";
@@ -1491,7 +1493,7 @@ Status PlaceInlinedFunctionBody(
   // After placing nodes corresponding to the function inputs, we need to assign
   // device placements to all other function body nodes.
 
-  const DeviceSet* devices = ctx.devices();
+  const DeviceSet* devices = ctx->devices();
 
   if (devices->devices().empty()) {
     // If there are no devices available for placer, we just put all nodes to
@@ -1533,6 +1535,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
                                   FunctionOptimizerContext* ctx,
                                   GraphDef* optimized_graph) {
   VLOG(2) << "Inline indirect function call: " << SummarizeNodeDef(func_node);
+  VLOG(4) << "Inlined function definition: " << DebugString(func);
   TF_RETURN_IF_ERROR(IsInlinableIndirectFunctionCall(*ctx, func, func_node));
 
   const AttrSlice func_instantiation_attr =
@@ -1695,7 +1698,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
 
   GraphDef placed_graph_def;
   TF_RETURN_IF_ERROR(PlaceInlinedFunctionBody(
-      *ctx, func_node, item, input_placeholders_idx, &placed_graph_def));
+      func_node, item, input_placeholders_idx, ctx, &placed_graph_def));
 
   // ------------------------------------------------------------------------ //
   // After all nodes placed we need to prepare them for inlining into the
