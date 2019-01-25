@@ -175,59 +175,41 @@ class GrpcWorkerServiceThread {
       Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
            RequestMessage, ResponseMessage>;
 
-  void GetStatusHandler(WorkerCall<GetStatusRequest, GetStatusResponse>* call) {
-    Schedule([this, call]() {
-      Status s = worker_->GetStatus(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
-    });
-    ENQUEUE_REQUEST(GetStatus, false);
+  // Handle all non-cancellable simple methods with a standard wrapper.
+#define HANDLE_CALL(method)                                                   \
+  void method##Handler(WorkerCall<method##Request, method##Response>* call) { \
+    Schedule([this, call]() {                                                 \
+      Status s = worker_->method(&call->request, &call->response);            \
+      if (!s.ok()) {                                                          \
+        VLOG(1) << "Bad response from " << #method << ": " << s;              \
+      }                                                                       \
+      call->SendResponse(ToGrpcStatus(s));                                    \
+    });                                                                       \
+    ENQUEUE_REQUEST(method, false);                                           \
   }
 
-  void CreateWorkerSessionHandler(
-      WorkerCall<CreateWorkerSessionRequest, CreateWorkerSessionResponse>*
-          call) {
-    Schedule([this, call]() {
-      Status s = worker_->CreateWorkerSession(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
-    });
-    ENQUEUE_REQUEST(CreateWorkerSession, false);
-  }
+  HANDLE_CALL(GetStatus);
+  HANDLE_CALL(CreateWorkerSession);
+  HANDLE_CALL(DeleteWorkerSession);
+  HANDLE_CALL(CleanupAll);
+  HANDLE_CALL(RegisterGraph);
+  HANDLE_CALL(DeregisterGraph);
+  HANDLE_CALL(CleanupGraph);
+  HANDLE_CALL(Logging);
+  HANDLE_CALL(Tracing);
 
-  void DeleteWorkerSessionHandler(
-      WorkerCall<DeleteWorkerSessionRequest, DeleteWorkerSessionResponse>*
-          call) {
-    Schedule([this, call]() {
-      Status s = worker_->DeleteWorkerSession(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
-    });
-    ENQUEUE_REQUEST(DeleteWorkerSession, false);
-  }
+#undef HANDLE_CALL
 
-  void CleanupAllHandler(
-      WorkerCall<CleanupAllRequest, CleanupAllResponse>* call) {
+  void GetStepSequenceHandler(
+      WorkerCall<GetStepSequenceRequest, GetStepSequenceResponse>* call) {
     Schedule([this, call]() {
-      Status s = worker_->CleanupAll(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
+      worker_->GetStepSequenceAsync(
+          &call->request, &call->response, [call](const Status& s) {
+            VLOG(1) << "Bad response from GetStepSequence:" << s;
+            call->SendResponse(ToGrpcStatus(s));
+          });
     });
-    ENQUEUE_REQUEST(CleanupAll, false);
-  }
-
-  void RegisterGraphHandler(
-      WorkerCall<RegisterGraphRequest, RegisterGraphResponse>* call) {
-    Schedule([this, call]() {
-      Status s = worker_->RegisterGraph(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
-    });
-    ENQUEUE_REQUEST(RegisterGraph, false);
-  }
-
-  void DeregisterGraphHandler(
-      WorkerCall<DeregisterGraphRequest, DeregisterGraphResponse>* call) {
-    Schedule([this, call]() {
-      Status s = worker_->DeregisterGraph(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
-    });
-    ENQUEUE_REQUEST(DeregisterGraph, false);
+    ENQUEUE_REQUEST(GetStepSequence, true);
   }
 
   void RunGraphHandler(WorkerCall<RunGraphRequest, RunGraphResponse>* call) {
@@ -241,6 +223,9 @@ class GrpcWorkerServiceThread {
       worker_->RunGraphAsync(call_opts, wrapped_request, wrapped_response,
                              [call, call_opts, wrapped_request,
                               wrapped_response](const Status& s) {
+                               if (!s.ok()) {
+                                 VLOG(1) << "Bad response from RunGraph:" << s;
+                               }
                                call->ClearCancelCallback();
                                delete call_opts;
                                delete wrapped_request;
@@ -256,39 +241,18 @@ class GrpcWorkerServiceThread {
     Schedule([this, call]() {
       CallOptions* call_opts = new CallOptions;
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      worker_->GrpcRecvTensorAsync(call_opts, &call->request, &call->response,
-                                   [call, call_opts](const Status& s) {
-                                     call->ClearCancelCallback();
-                                     delete call_opts;
-                                     call->SendResponse(ToGrpcStatus(s));
-                                   });
+      worker_->GrpcRecvTensorAsync(
+          call_opts, &call->request, &call->response,
+          [call, call_opts](const Status& s) {
+            call->ClearCancelCallback();
+            delete call_opts;
+            if (!s.ok()) {
+              VLOG(1) << "Bad response from RecvTensor:" << s;
+            }
+            call->SendResponse(ToGrpcStatus(s));
+          });
     });
     EnqueueRecvTensorRequestRaw();
-  }
-
-  void CleanupGraphHandler(
-      WorkerCall<CleanupGraphRequest, CleanupGraphResponse>* call) {
-    Schedule([this, call]() {
-      Status s = worker_->CleanupGraph(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
-    });
-    ENQUEUE_REQUEST(CleanupGraph, false);
-  }
-
-  void LoggingHandler(WorkerCall<LoggingRequest, LoggingResponse>* call) {
-    Schedule([this, call]() {
-      Status s = worker_->Logging(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
-    });
-    ENQUEUE_REQUEST(Logging, false);
-  }
-
-  void TracingHandler(WorkerCall<TracingRequest, TracingResponse>* call) {
-    Schedule([this, call]() {
-      Status s = worker_->Tracing(&call->request, &call->response);
-      call->SendResponse(ToGrpcStatus(s));
-    });
-    ENQUEUE_REQUEST(Tracing, false);
   }
 
   void RecvBufHandler(WorkerCall<RecvBufRequest, RecvBufResponse>* call) {
@@ -299,6 +263,9 @@ class GrpcWorkerServiceThread {
                             [call, call_opts](const Status& s) {
                               call->ClearCancelCallback();
                               delete call_opts;
+                              if (!s.ok()) {
+                                VLOG(1) << "Bad response from RecvBuf:" << s;
+                              }
                               call->SendResponse(ToGrpcStatus(s));
                             });
     });
@@ -310,12 +277,16 @@ class GrpcWorkerServiceThread {
     Schedule([this, call]() {
       CallOptions* call_opts = new CallOptions;
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      worker_->CompleteGroupAsync(call_opts, &call->request, &call->response,
-                                  [call, call_opts](const Status& s) {
-                                    call->ClearCancelCallback();
-                                    delete call_opts;
-                                    call->SendResponse(ToGrpcStatus(s));
-                                  });
+      worker_->CompleteGroupAsync(
+          call_opts, &call->request, &call->response,
+          [call, call_opts](const Status& s) {
+            call->ClearCancelCallback();
+            delete call_opts;
+            if (!s.ok()) {
+              VLOG(1) << "Bad response from CompleteGroup:" << s;
+            }
+            call->SendResponse(ToGrpcStatus(s));
+          });
     });
     ENQUEUE_REQUEST(CompleteGroup, true);
   }
@@ -325,24 +296,18 @@ class GrpcWorkerServiceThread {
     Schedule([this, call]() {
       CallOptions* call_opts = new CallOptions;
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      worker_->CompleteInstanceAsync(call_opts, &call->request, &call->response,
-                                     [call, call_opts](const Status& s) {
-                                       call->ClearCancelCallback();
-                                       delete call_opts;
-                                       call->SendResponse(ToGrpcStatus(s));
-                                     });
+      worker_->CompleteInstanceAsync(
+          call_opts, &call->request, &call->response,
+          [call, call_opts](const Status& s) {
+            call->ClearCancelCallback();
+            delete call_opts;
+            if (!s.ok()) {
+              VLOG(1) << "Bad response from CompleteInstance:" << s;
+            }
+            call->SendResponse(ToGrpcStatus(s));
+          });
     });
     ENQUEUE_REQUEST(CompleteInstance, false);
-  }
-
-  void GetStepSequenceHandler(
-      WorkerCall<GetStepSequenceRequest, GetStepSequenceResponse>* call) {
-    Schedule([this, call]() {
-      worker_->GetStepSequenceAsync(
-          &call->request, &call->response,
-          [call](const Status& s) { call->SendResponse(ToGrpcStatus(s)); });
-    });
-    ENQUEUE_REQUEST(GetStepSequence, true);
   }
 #undef ENQUEUE_REQUEST
 
