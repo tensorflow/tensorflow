@@ -949,7 +949,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.device":
             "tf.device no longer takes function as an argument. "
-            "'devide_name_or_function' argument has been renamed to "
+            "'device_name_or_function' argument has been renamed to "
             "'device_name'.",
         "tf.flags":
             "tf.flags has been removed, please use the argparse or absl"
