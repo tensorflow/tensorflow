@@ -88,6 +88,7 @@ class PosixEnv : public Env {
 
   int32 GetCurrentThreadId() {
 #ifdef __APPLE__
+    uint64_t tid64;
     pthread_threadid_np(nullptr, &tid64);
     return static_cast<int32>(tid64);
 #elif defined(__FreeBSD__)
