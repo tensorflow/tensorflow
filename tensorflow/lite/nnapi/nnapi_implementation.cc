@@ -66,8 +66,13 @@ void* LoadFunction(void* handle, const char* name) {
 // Add /dev/shm implementation of shared memory for non-Android platforms
 int ASharedMemory_create(const char* name, size_t size) {
   int fd = shm_open(name, O_RDWR | O_CREAT, 0644);
-  if (fd >= 0) {
-    ftruncate(fd, size);
+  if (fd < 0) {
+    return fd;
+  }
+  int result = ftruncate(fd, size);
+  if (result < 0) {
+    close(fd);
+    return -1;
   }
   return fd;
 }
