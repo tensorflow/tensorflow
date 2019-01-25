@@ -182,7 +182,8 @@ static bool getFullMemRefAsRegion(OperationInst *opInst, unsigned numSymbols,
 
 // Creates a buffer in the faster memory space for the specified region;
 // generates a DMA from the lower memory space to this one, and replaces all
-// loads to load from that buffer. Returns true if DMAs are generated.
+// loads to load from that buffer. Returns false if DMAs could not be generated
+// due to yet unimplemented cases.
 bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
                                 uint64_t *sizeInBytes) {
 
@@ -229,7 +230,8 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
 
   if (numElements.getValue() == 0) {
     LLVM_DEBUG(llvm::dbgs() << "Nothing to DMA\n");
-    return false;
+    *sizeInBytes = 0;
+    return true;
   }
 
   const FlatAffineConstraints *cst = region.getConstraints();
@@ -483,7 +485,7 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
 
   uint64_t totalSizeInBytes = 0;
 
-  bool ret = false;
+  bool ret = true;
   auto processRegions =
       [&](const SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4>
               &regions) {
@@ -492,7 +494,7 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
           bool iRet = generateDma(*regionEntry.second, forInst, &sizeInBytes);
           if (iRet)
             totalSizeInBytes += sizeInBytes;
-          ret = ret | iRet;
+          ret = ret & iRet;
         }
       };
   processRegions(readRegions);
