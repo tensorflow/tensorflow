@@ -391,11 +391,6 @@ def validate_inputs(x, y, distribution_strategy):
     ValueError: if input is not a Dataset or a numpy array(when we use
       MirroredStrategy).
   """
-  if isinstance(x, dict) or isinstance(y, dict):
-    raise ValueError('`DistributionStrategy` does not support inputs of type '
-                     'dict. You must pass a `tf.data.Dataset` object or a '
-                     'numpy array as input.')
-
   if (isinstance(x, iterator_ops.Iterator) or
       isinstance(y, iterator_ops.Iterator)):
     raise ValueError('`DistributionStrategy` does not support inputs of type '
