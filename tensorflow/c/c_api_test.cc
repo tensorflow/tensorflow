@@ -163,6 +163,7 @@ TEST(CAPI, AllocateTensor) {
   EXPECT_EQ(dims[0], TF_Dim(t, 0));
   EXPECT_EQ(dims[1], TF_Dim(t, 1));
   EXPECT_EQ(num_bytes, TF_TensorByteSize(t));
+  EXPECT_EQ(6, TF_TensorElementCount(t));
   TF_DeleteTensor(t);
 }
 
@@ -1465,6 +1466,41 @@ TEST(CAPI, DeletingNullPointerIsSafe) {
   TF_DeleteApiDefMap(nullptr);
 
   TF_DeleteStatus(status);
+}
+
+TEST(CAPI, TestBitcastFrom_Reshape) {
+  int64_t dims[] = {2, 3};
+  TF_Tensor* a =
+      TF_AllocateTensor(TF_UINT64, dims, 2, 6 * TF_DataTypeSize(TF_UINT64));
+  TF_Tensor* b =
+      TF_AllocateTensor(TF_UINT64, nullptr, 0, TF_DataTypeSize(TF_UINT64));
+  EXPECT_NE(a, nullptr);
+  EXPECT_NE(b, nullptr);
+
+  EXPECT_EQ(6, TF_TensorElementCount(a));
+  EXPECT_EQ(1, TF_TensorElementCount(b));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(a));
+  EXPECT_EQ(TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(b));
+
+  int64_t new_dims[] = {3, 2};
+  TF_Status* status = TF_NewStatus();
+  TF_TensorBitcastFrom(a, TF_UINT64, b, new_dims, 2, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status));
+  TF_DeleteStatus(status);
+
+  EXPECT_EQ(6, TF_TensorElementCount(a));
+  EXPECT_EQ(6, TF_TensorElementCount(b));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(a));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(b));
+
+  // Check that a write to one tensor shows up in the other.
+  *(static_cast<int64_t*>(TF_TensorData(a))) = 4;
+  EXPECT_EQ(4, *(static_cast<int64_t*>(TF_TensorData(b))));
+  *(static_cast<int64_t*>(TF_TensorData(b))) = 6;
+  EXPECT_EQ(6, *(static_cast<int64_t*>(TF_TensorData(a))));
+
+  TF_DeleteTensor(a);
+  TF_DeleteTensor(b);
 }
 
 REGISTER_OP("TestOpWithNoGradient")

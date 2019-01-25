@@ -180,8 +180,8 @@ class _ContextSwitchStack(threading.local):
   def push(self, is_building_function, enter_context_fn):
     """Push metadata about a context switch onto the stack.
 
-    A context switch can take one of two forms: installing a graph as the
-    default graph, or entering the eager context. For each context switch,
+    A context switch can take any one of the two forms: installing a graph as
+    the default graph, or entering the eager context. For each context switch,
     we record whether or not the entered context is building a function.
 
     Args:
@@ -642,6 +642,10 @@ class Context(object):
     fdef_string = fdef.SerializeToString()
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
+
+  def has_function(self, name):
+    """Check if a function `name` is registered."""
+    return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.

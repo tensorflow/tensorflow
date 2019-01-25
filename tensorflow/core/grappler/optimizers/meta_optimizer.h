@@ -112,16 +112,19 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 // `device_set`: the set of devices that graph can refer to.
 // `cpu_device`: the CPU device.
 // `config_proto`: Grapper configuration.
+// `optimization_options`: Grappler optimization constraints that are known only
+//    at runtime.
 //
 // **g is a graph constructed based on the runtime library 'lib'.
 // OptimizeGraph mutates **g extensively and replaces '*g' with a
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
-Status OptimizeGraph(std::vector<string> ret_node_names,
-                     FunctionLibraryDefinition* lib,
-                     const DeviceSet& device_set, Device* cpu_device,
-                     const ConfigProto& config_proto,
-                     std::unique_ptr<tensorflow::Graph>* g);
+Status OptimizeGraph(
+    std::vector<string> ret_node_names, FunctionLibraryDefinition* lib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto,
+    const GrapplerItem::OptimizationOptions& optimization_options,
+    std::unique_ptr<tensorflow::Graph>* g);
 
 }  // namespace grappler
 }  // namespace tensorflow

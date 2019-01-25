@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -183,8 +184,8 @@ XlaOp Lgamma(XlaOp input) {
 
   XlaOp base_lanczos_coeff = ScalarLike(input, kBaseLanczosCoeff);
 
-  // If the input is less than 0.5 use Gauss's reflection formula:
-  // gamma(x) = pi / sin(pi * x) * gamma(1 - x)
+  // If the input is less than 0.5 use Euler's reflection formula:
+  // gamma(x) = pi / (sin(pi * x) * gamma(1 - x))
   XlaOp need_to_reflect = Lt(Real(input), one_half);
   XlaOp z = Select(need_to_reflect, -input, input - one);
 
@@ -236,7 +237,7 @@ XlaOp Digamma(XlaOp input) {
 
   XlaOp base_lanczos_coeff = ScalarLike(input, kBaseLanczosCoeff);
 
-  // If the input is less than 0.5 use Gauss's reflection formula:
+  // If the input is less than 0.5 use Euler's reflection formula:
   // digamma(x) = digamma(1 - x) - pi * cot(pi * x)
   XlaOp need_to_reflect = Lt(Real(input), one_half);
   XlaOp z = Select(need_to_reflect, -input, input - one);
@@ -323,7 +324,8 @@ XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    auto perform_conj = shape.element_type() == C64 && conjugate;
+    auto perform_conj =
+        primitive_util::IsComplexType(shape.element_type()) && conjugate;
     return perform_conj ? Conj(x) : x;
   });
 }

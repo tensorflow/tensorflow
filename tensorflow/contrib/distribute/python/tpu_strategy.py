@@ -22,9 +22,10 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import functools
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.contrib.tpu.python.tpu import topology
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
@@ -34,6 +35,7 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver_lib
@@ -51,15 +53,14 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
-_TPU_INITIALIZE_SYSTEM_COLLECTION = "TPU_STRATEGY_INITIALIZE"
-
-
 def initialize_tpu_system(cluster_resolver=None):
   """Initialize the TPU devices in a separate session and graph.
 
   Args:
     cluster_resolver: A tf.contrib.cluster_resolver.TPUClusterResolver,
         which provides information about the TPU cluster.
+  Returns:
+    The tf.contrib.tpu.Topology object for the topology of the TPU cluster.
   """
   if cluster_resolver is None:
     cluster_resolver = resolver_lib.TPUClusterResolver("")
@@ -70,8 +71,9 @@ def initialize_tpu_system(cluster_resolver=None):
 
   with ops.Graph().as_default():
     with session_lib.Session(config=session_config, target=master) as sess:
-      sess.run([tpu.initialize_system()])
+      serialized_topology = sess.run(tpu.initialize_system())
   logging.info("Finished initializing TPU system.")
+  return topology.Topology(serialized=serialized_topology)
 
 
 def get_tpu_system_metadata(tpu_cluster_resolver):
@@ -151,6 +153,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   def __init__(self,
                tpu_cluster_resolver=None,
                steps_per_run=None,
+               device_assignment=None,
                **kwargs):
     """Initializes the TPUStrategy object.
 
@@ -162,10 +165,13 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
           metrics, summaries etc.
           This parameter is only used when Distribution Strategy is used with
           estimator or keras.
+      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
+          the placement of replicas on the TPU cluster. Currently only supports
+          the usecase of using a single core within a TPU cluster.
       **kwargs: Additional experimental flags. Will be removed in future.
     """
     super(TPUStrategy, self).__init__(TPUExtended(
-        self, tpu_cluster_resolver, steps_per_run))
+        self, tpu_cluster_resolver, steps_per_run, device_assignment))
 
     self._disable_training_loop_on_host = False
     if len(kwargs) > 1:
@@ -190,7 +196,8 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   def __init__(self,
                container_strategy,
                tpu_cluster_resolver=None,
-               steps_per_run=None):
+               steps_per_run=None,
+               device_assignment=None):
     super(TPUExtended, self).__init__(container_strategy)
 
     if tpu_cluster_resolver is None:
@@ -203,6 +210,21 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
+    self._device_assignment = device_assignment
+
+    # Device assignment is currently only supported for 1 core case.
+    if self._device_assignment:
+      assert isinstance(self._device_assignment,
+                        device_assignment_lib.DeviceAssignment)
+      if self._device_assignment.num_replicas != 1:
+        raise ValueError("Device assignment is only supported for a single "
+                         "core single replica case currently.")
+      if self._device_assignment.num_cores_per_replica != 1:
+        raise ValueError("Device assignment is only supported for a single "
+                         "core single replica case currently.")
+      if not all(self._device_assignment.core_assignment[0][0] == [0, 0, 0]):
+        raise ValueError("Device assignment is only supported for a single "
+                         "core single replica case currently.")
 
     # TODO(jhseu): Switch to DeviceAssignment to support pods and model
     # parallelism.
@@ -297,14 +319,27 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
-
     return input_lib.DatasetIterator(dataset, self._input_workers,
                                      self._num_replicas_in_sync)
 
-  def _distribute_dataset(self, dataset_fn):
-    return input_lib.MultiWorkerDataset(
-        functools.partial(self._call_dataset_fn, dataset_fn),
-        self._input_workers)
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    input_contexts = []
+    num_workers = self._input_workers.num_workers
+    for i in range(num_workers):
+      input_contexts.append(distribute_lib.InputContext(
+          num_input_pipelines=num_workers,
+          input_pipeline_id=i,
+          num_replicas_in_sync=self._num_replicas_in_sync))
+    return input_lib.InputFunctionIterator(
+        input_fn, self._input_workers, input_contexts)
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    return numpy_dataset.one_host_numpy_dataset(
+        numpy_input, numpy_dataset.SingleDevice(self.get_host_cpu_device(0)),
+        session)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
@@ -455,27 +490,13 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     with _TPUReplicaContext(self._container_strategy()):
       return fn(*args, **kwargs)
 
-  def _initialize(self):
-    if context.executing_eagerly():
-      # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
-      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
-    else:
-      # TODO(jhseu): We need this hack because DistributionStrategies must be
-      # pickleable for copy.deepcopy(). Remove when initialize_system goes away.
-      graph = ops.get_default_graph()
-      tpu_init = graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
-      if tpu_init:
-        return tpu_init
-      graph.add_to_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION,
-                              tpu.initialize_system())
-      return graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
+  def _experimental_initialize_system(self):
+    """Experimental method added to be used by Estimator.
 
-  def _finalize(self):
-    if context.executing_eagerly():
-      # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
-      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
-    else:
-      return []
+    This is a private method only to be used by Estimator. Other frameworks
+    should directly be calling `tf.contrib.distribute.initialize_tpu_system`
+    """
+    initialize_tpu_system(self._tpu_cluster_resolver)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
@@ -483,6 +504,9 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     if colocate_with is None:
       device_map = self._device_map
       logical_device = 0  # TODO(josh11b): Get logical device from scope here.
+    elif isinstance(colocate_with, numpy_dataset.SingleDevice):
+      with ops.device(colocate_with.device):
+        return next_creator(*args, **kwargs)
     else:
       device_map = colocate_with.device_map
       logical_device = colocate_with.logical_device
@@ -599,15 +623,34 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
   @property
   def num_hosts(self):
-    return self._tpu_metadata.num_hosts
+    if self._device_assignment is None:
+      return self._tpu_metadata.num_hosts
+
+    return len(set([self._device_assignment.host_device(r)
+                    for r in range(self._device_assignment.num_replicas)]))
 
   @property
   def num_replicas_per_host(self):
-    return self._tpu_metadata.num_of_cores_per_host
+    if self._device_assignment is None:
+      return self._tpu_metadata.num_of_cores_per_host
+
+    # TODO(sourabhbajaj): Remove this method we use inputs and remove infeed
+    # as the computation of num_replicas_per_host is not a constant
+    # when using device_assignment. This is a temporary workaround to support
+    # StatefulRNN as everything is 1 in that case.
+    # This method needs to take host_id as input for correct computation.
+    max_models_per_host = (self._tpu_metadata.num_of_cores_per_host //
+                           self._device_assignment.num_cores_per_replica)
+    models_per_host = min(self._device_assignment.num_replicas,
+                          max_models_per_host)
+    return models_per_host * self._device_assignment.num_cores_per_replica
 
   @property
   def _num_replicas_in_sync(self):
-    return self._tpu_metadata.num_cores
+    if self._device_assignment is None:
+      return self._tpu_metadata.num_cores
+    return (self._device_assignment.num_replicas *
+            self._device_assignment.num_cores_per_replica)
 
   @property
   def experimental_between_graph(self):
@@ -675,6 +718,13 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
+
+    `make_input_fn_iterator` assumes per-replica batching.
+
+    Returns:
+      Boolean.
+    """
     return True
 
 

@@ -288,19 +288,21 @@ class StridedSliceAssignOp : public XlaOpKernel {
     xla::XlaOp rhs = ctx->Input(4);
 
     absl::InlinedVector<int64, 4> dimensions_to_reverse;
-    absl::InlinedVector<int64, 4> slice_begin, slice_dims;
+    absl::InlinedVector<xla::XlaOp, 4> slice_begin;
+    absl::InlinedVector<int64, 4> slice_dims;
     for (int i = 0; i < begin.size(); ++i) {
       // TODO(phawkins): implement strides != 1
       OP_REQUIRES(
           ctx, strides[i] == 1 || strides[i] == -1,
           errors::Unimplemented("Strides != 1 or -1 are not yet implemented"));
       if (strides[i] > 0) {
-        slice_begin.push_back(begin[i]);
+        slice_begin.push_back(xla::ConstantR0<int64>(ctx->builder(), begin[i]));
         slice_dims.push_back(end[i] - begin[i]);
       } else {
         // Negative stride: swap begin and end, add 1 because the interval
         // is semi-open, and mark the dimension to be reversed.
-        slice_begin.push_back(end[i] + 1);
+        slice_begin.push_back(
+            xla::ConstantR0<int64>(ctx->builder(), end[i] + 1));
         slice_dims.push_back(begin[i] - end[i]);
         dimensions_to_reverse.push_back(i);
       }
@@ -311,14 +313,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
     }
     rhs = xla::Reshape(rhs, slice_dims);
 
-    if (lhs_shape.dims() == 0) {
-      // TODO(b/38323843): DynamicUpdateSlice crashes on rank 0 inputs. Fix
-      // and remove this workaround.
-      lhs = rhs;
-    } else {
-      lhs = xla::DynamicUpdateSlice(
-          lhs, rhs, xla::ConstantR1<int64>(ctx->builder(), slice_begin));
-    }
+    lhs = xla::DynamicUpdateSlice(lhs, rhs, slice_begin);
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, lhs));
   }

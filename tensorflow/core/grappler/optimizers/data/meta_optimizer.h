@@ -50,7 +50,7 @@ class TFDataMetaOptimizer : public CustomGraphOptimizer {
                            GrapplerItem* item) const;
 };
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_META_OPTIMIZER_H_

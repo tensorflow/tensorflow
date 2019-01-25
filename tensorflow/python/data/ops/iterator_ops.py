@@ -68,7 +68,7 @@ def _device_stack_is_empty():
 
 
 @tf_export(v1=["data.Iterator"])
-class Iterator(checkpointable.CheckpointableBase):
+class Iterator(checkpointable.Checkpointable):
   """Represents the state of iterating through a `Dataset`."""
 
   def __init__(self, iterator_resource, initializer, output_types,
@@ -491,7 +491,7 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class EagerIterator(checkpointable.CheckpointableBase):
+class EagerIterator(checkpointable.Checkpointable):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
 
   def __init__(self, dataset):

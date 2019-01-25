@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
@@ -95,8 +96,8 @@ TEST_P(ShapeTest, Agrees) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(AgreeBroadcast, ShapeTest,
-                        ::testing::ValuesIn(CreateShapePairs()));
+INSTANTIATE_TEST_SUITE_P(AgreeBroadcast, ShapeTest,
+                         ::testing::ValuesIn(CreateShapePairs()));
 
 static const char kNegativeValuesMessage[] =
     "Tensor shape should not include negative values";
@@ -208,5 +209,6 @@ TEST(FusedActivationTest, DefaultsToUnfused) {
 int main(int argc, char** argv) {
   ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
+  ::toco::port::InitGoogleWasDoneElsewhere();
   return RUN_ALL_TESTS();
 }

@@ -18,16 +18,32 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace primitive_util {
 
+int SignificandWidth(PrimitiveType type) {
+  switch (type) {
+    case F32:
+      return std::numeric_limits<float>::digits;
+    case F64:
+      return std::numeric_limits<double>::digits;
+    case BF16:
+      return kBFloat16MantissaBits + 1;
+    case F16:
+      return 11;
+    default:
+      LOG(FATAL) << "Not a floating data type " << type;
+  }
+}
+
 bool IsFloatingPointType(PrimitiveType type) {
   return type == F16 || type == F32 || type == F64 || type == BF16;
 }
 
-bool IsComplexType(PrimitiveType type) { return type == C64; }
+bool IsComplexType(PrimitiveType type) { return type == C64 || type == C128; }
 
 bool IsSignedIntegralType(PrimitiveType type) {
   return type == S8 || type == S16 || type == S32 || type == S64;
@@ -67,6 +83,9 @@ int BitWidth(PrimitiveType type) {
     case C64:
       return 64;
 
+    case C128:
+      return 128;
+
     case TUPLE:
       LOG(FATAL) << "TUPLE is an invalid type for BitWidth";
 
@@ -82,6 +101,8 @@ PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
   switch (complex_type) {
     case C64:
       return F32;
+    case C128:
+      return F64;
     default:
       LOG(FATAL) << "Primitive type is not complex: "
                  << PrimitiveType_Name(complex_type);

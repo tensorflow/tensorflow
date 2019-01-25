@@ -462,8 +462,34 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
+  // Do not constant fold nodes that output DT_VARIANT type tensors.
+  // XLA does not support Const nodes of Variant type since it needs
+  // to know the original ops to be able to compile them to the relevant
+  // XLA form.
+  // TODO(srbs): This filter is a little conservative. E.g. a subgraph of
+  // the form:
+  //                          Const
+  //                            |
+  // EmptyTensorList -> TensorListPushBack -> TensorListPopBack -> Op
+  //                                                  |
+  //                                        (Discard popped list)
+  //
+  // Would have been reduced to "Const -> Op" without this filter.
+  // However since we are only allowed to specify the filter at the "Node"
+  // level there is no good way to allow the above behavior. So we
+  // disallow any sort of constant folding on Variant nodes for now.
+  auto cf_consider_fn = [](const Node* n) {
+    for (const auto& output_arg : n->op_def().output_arg()) {
+      if (output_arg.type() == DT_VARIANT) {
+        return false;
+      }
+    }
+    return true;
+  };
+  GraphOptimizer::Options graph_optimizer_options;
+  graph_optimizer_options.cf_consider_fn = cf_consider_fn;
   optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
-                     /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
+                     /*device=*/nullptr, &graph, graph_optimizer_options);
 
   return graph;
 }
@@ -620,14 +646,15 @@ Status XlaCompiler::BuildArguments(
     bool use_tuple_arg, xla::XlaBuilder* builder, XlaContext* context,
     const std::map<int, int>& arg_cores,
     std::vector<XlaExpression>* arg_expressions,
-    std::vector<int>* input_mapping, std::vector<xla::Shape>* input_shapes,
+    std::vector<int>* input_to_args, std::vector<xla::Shape>* input_shapes,
     bool is_entry_computation) {
   arg_expressions->resize(args.size());
 
   // Argument numbers of arguments and resources that are to be passed to the
-  // XLA computation as runtime parameters.
-  input_mapping->clear();
-  input_mapping->reserve(args.size());
+  // XLA computation as runtime parameters. `input_to_args[a] = b` means that
+  // the a'th XLA input corresponds to the b'th original arg indexes.
+  input_to_args->clear();
+  input_to_args->reserve(args.size());
 
   // Fills in constant arguments, and computes non-constant argument order.
   for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
@@ -648,13 +675,13 @@ Status XlaCompiler::BuildArguments(
                 /*tensor_array_multiple_writes_aggregate=*/true));
         arg_expression = XlaExpression::Resource(resource);
         if (arg.initialized) {
-          input_mapping->push_back(i);
+          input_to_args->push_back(i);
         }
         break;
       }
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kToken: {
-        input_mapping->push_back(i);
+        input_to_args->push_back(i);
         break;
       }
       case XlaCompiler::Argument::kConstant:
@@ -666,15 +693,23 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  if (input_mapping->empty()) {
+  if (input_to_args->empty()) {
     return Status::OK();
   }
 
-  std::vector<xla::Shape> arg_shapes(input_mapping->size());
-  for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+  // `arg_to_inputs[c] = d` means that the c'th original arg index corresponds
+  // to the d'th XLA input. Note that the value -1 corresponds to constants, or
+  // other args that don't correspond to an input.
+  std::vector<int> arg_to_inputs(args.size(), -1);
+  for (int i = 0; i < input_to_args->size(); i++) {
+    arg_to_inputs[input_to_args->at(i)] = i;
+  }
+
+  std::vector<xla::Shape> arg_shapes(input_to_args->size());
+  for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
     // Computes the shapes of non-constant arguments.
     TF_RETURN_IF_ERROR(XLAShapeForArgument(
-        args[(*input_mapping)[i]], is_entry_computation, &arg_shapes[i]));
+        args[(*input_to_args)[i]], is_entry_computation, &arg_shapes[i]));
   }
 
   if (use_tuple_arg) {
@@ -691,13 +726,13 @@ Status XlaCompiler::BuildArguments(
   builder->SetOpMetadata(arg_metadata);
 
   // Build parameter handles for non-constant arguments.
-  std::vector<xla::XlaOp> arg_handles(input_mapping->size());
+  std::vector<xla::XlaOp> arg_handles(input_to_args->size());
   if (use_tuple_arg) {
     xla::XlaOp tuple;
     if (is_entry_computation) {
       xla::OpSharding tuple_sharding;
       tuple_sharding.set_type(xla::OpSharding::Type::OpSharding_Type_TUPLE);
-      for (int64 parameter : *input_mapping) {
+      for (int64 parameter : *input_to_args) {
         auto it = arg_cores.find(parameter);
         const int core = it == arg_cores.end() ? 0 : it->second;
         *tuple_sharding.add_tuple_shardings() =
@@ -709,7 +744,19 @@ Status XlaCompiler::BuildArguments(
     } else {
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
-    for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+
+    for (int i = 0; i < input_to_args->size(); ++i) {
+      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
+      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
+        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
+            /*dynamic_size_param_num=*/0, {dynamic_size_param_index},
+            /*target_param_num=*/0, /*target_param_index=*/{i},
+            dim_and_arg_num.first));
+      }
+    }
+
+    for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_cores.find(i);
       const int core = it == arg_cores.end() ? -1 : it->second;
       xla::XlaScopedShardingAssignment assign_sharding(
@@ -718,7 +765,7 @@ Status XlaCompiler::BuildArguments(
       arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
   } else {
-    for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+    for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_cores.find(i);
       const int core = it == arg_cores.end() ? -1 : it->second;
       xla::XlaScopedShardingAssignment assign_sharding(
@@ -727,6 +774,17 @@ Status XlaCompiler::BuildArguments(
       arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
                                       absl::StrCat("arg", i));
     }
+
+    for (int i = 0; i < input_to_args->size(); ++i) {
+      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
+      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
+        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
+            /*dynamic_size_param_num=*/dynamic_size_param_index, {},
+            /*target_param_num=*/i, /*target_param_index=*/{},
+            dim_and_arg_num.first));
+      }
+    }
   }
 
   builder->ClearOpMetadata();
@@ -734,12 +792,12 @@ Status XlaCompiler::BuildArguments(
   // Fill in the handles in non-constant arguments, and reshape parameters
   // back to their correct shapes.
   VLOG(2) << "XLA computation inputs:";
-  for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
-    const XlaCompiler::Argument& arg = args[input_mapping->at(i)];
+  for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
+    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
     VLOG(2) << "  XLA arg " << i
             << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
-            << " name: " << arg.name << " TF arg " << input_mapping->at(i);
-    XlaExpression& arg_expression = (*arg_expressions)[input_mapping->at(i)];
+            << " name: " << arg.name << " TF arg " << input_to_args->at(i);
+    XlaExpression& arg_expression = (*arg_expressions)[input_to_args->at(i)];
     switch (arg.kind) {
       case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.initialized);

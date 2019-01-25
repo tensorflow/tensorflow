@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -28,11 +29,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+constexpr char kDatasetName[] = "ParallelInterleaveV2";
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -87,6 +90,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
                                       &captured_func));
 
+    if (num_parallel_calls == model::kAutoTune) {
+      metrics::RecordTFDataAutotune(kDatasetName);
+    }
+
     *output =
         new Dataset(ctx, input, interleave_func_, std::move(captured_func),
                     cycle_length, block_length, num_parallel_calls, sloppy_,
@@ -119,9 +126,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return MakeUnique<ParallelInterleaveIterator>(
+      return absl::make_unique<ParallelInterleaveIterator>(
           ParallelInterleaveIterator::Params{
-              this, strings::StrCat(prefix, "::ParallelInterleaveV2")},
+              this, strings::StrCat(prefix, "::", kDatasetName)},
           sloppy_);
     }
 
@@ -199,10 +206,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
                 params.dataset->num_parallel_calls_, mu_, cond_var_)),
             sloppy_(sloppy),
             current_elements_(params.dataset->cycle_length_),
-            thread_pool_(new thread::ThreadPool(
+            thread_pool_(absl::make_unique<thread::ThreadPool>(
                 Env::Default(), ThreadOptions(),
                 "data_parallel_interleave_worker_pool",
-                dataset()->cycle_length_ /* num_threads */,
+                port::NumSchedulableCPUs() /* num_threads */,
                 false /* low_latency_hint */)) {
         std::vector<string> components =
             str_util::Split(params.prefix, "::", str_util::SkipEmpty());
@@ -262,7 +269,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeAsyncInterleaveManyNode(
             std::move(args),
             {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                  /*max=*/dataset()->cycle_length_)});
+                                  /*max=*/port::NumSchedulableCPUs())});
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
@@ -512,15 +519,16 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         if (!current_elements_manager_) {
           auto new_ctx = std::make_shared<IteratorContext>(*ctx);
           current_elements_manager_ =
-              WrapUnique<Thread>(ctx->env()->StartThread(
+              absl::WrapUnique<Thread>(ctx->env()->StartThread(
                   {}, "tf_data_parallel_interleave_current",
                   [this, new_ctx]() { CurrentElementsManager(new_ctx); }));
         }
         if (!future_elements_manager_) {
           auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-          future_elements_manager_ = WrapUnique<Thread>(ctx->env()->StartThread(
-              {}, "tf_data_parallel_interleave_future",
-              [this, new_ctx]() { FutureElementsManager(new_ctx); }));
+          future_elements_manager_ =
+              absl::WrapUnique<Thread>(ctx->env()->StartThread(
+                  {}, "tf_data_parallel_interleave_future",
+                  [this, new_ctx]() { FutureElementsManager(new_ctx); }));
         }
       }
 
@@ -574,8 +582,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         RecordStart(ctx.get());
         auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
         auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
+          // TODO(jsimsa): Autotune the buffer size.
           return num_calls_ >= num_parallel_calls_->value ||
-                 future_elements_.size() >= dataset()->cycle_length_;
+                 future_elements_.size() >= 2 * dataset()->cycle_length_;
         };
         while (true) {
           mutex_lock l(*mu_);

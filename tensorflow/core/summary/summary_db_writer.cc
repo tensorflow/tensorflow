@@ -972,7 +972,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     return MigrateEvent(std::move(e));
   }
 
-  string DebugString() override { return "SummaryDbWriter"; }
+  string DebugString() const override { return "SummaryDbWriter"; }
 
  private:
   Status Write(int64 step, const Tensor& t, const string& tag,

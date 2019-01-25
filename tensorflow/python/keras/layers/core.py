@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
@@ -932,6 +933,10 @@ class Dense(Layer):
     self.input_spec = InputSpec(min_ndim=2)
 
   def build(self, input_shape):
+    dtype = dtypes.as_dtype(self.dtype or K.floatx())
+    if not (dtype.is_floating or dtype.is_complex):
+      raise TypeError('Unable to build `Dense` layer with non-floating point '
+                      'dtype %s' % (dtype,))
     input_shape = tensor_shape.TensorShape(input_shape)
     if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
@@ -972,6 +977,7 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
+      inputs = math_ops.cast(inputs, self.dtype)
       outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)

@@ -31,6 +31,7 @@ reorders = {
     'tf.batch_gather': ['params', 'indices', 'name'],
     'tf.batch_to_space': ['input', 'crops', 'block_size', 'name'],
     'tf.boolean_mask': ['tensor', 'mask', 'name', 'axis'],
+    'tf.cond': ['pred', 'true_fn', 'false_fn', 'strict', 'name', 'fn1', 'fn2'],
     'tf.confusion_matrix': ['labels', 'predictions', 'num_classes', 'dtype', 'name', 'weights'],
     'tf.convert_to_tensor': ['value', 'dtype', 'name', 'preferred_dtype'],
     'tf.decode_csv': ['records', 'record_defaults', 'field_delim', 'use_quote_delim', 'name', 'na_value', 'select_cols'],

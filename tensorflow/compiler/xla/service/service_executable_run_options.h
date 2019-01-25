@@ -32,12 +32,10 @@ class ServiceExecutableRunOptions {
   ServiceExecutableRunOptions()
       : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
 
-  explicit ServiceExecutableRunOptions(
-      ExecutableRunOptions run_options, StreamBorrower borrow_stream = nullptr,
-      tensorflow::thread::ThreadPool* xla_intra_op_thread_pool = nullptr)
+  explicit ServiceExecutableRunOptions(ExecutableRunOptions run_options,
+                                       StreamBorrower borrow_stream = nullptr)
       : run_options_(std::move(run_options)),
-        borrow_stream_(std::move(borrow_stream)),
-        xla_intra_op_thread_pool_(xla_intra_op_thread_pool) {}
+        borrow_stream_(std::move(borrow_stream)) {}
 
   // Returns reference or pointer to `ExecutableRunOptions` member.
   const ExecutableRunOptions& run_options() const { return run_options_; }
@@ -56,15 +54,9 @@ class ServiceExecutableRunOptions {
                : Status(tensorflow::error::UNIMPLEMENTED, "No stream cache");
   }
 
-  // Returns reference to thread pool for execution of XLA ops on CPU backend.
-  tensorflow::thread::ThreadPool* xla_intra_op_thread_pool() const {
-    return xla_intra_op_thread_pool_;
-  }
-
  private:
   ExecutableRunOptions run_options_;
   StreamBorrower borrow_stream_;
-  tensorflow::thread::ThreadPool* xla_intra_op_thread_pool_;
 };
 
 }  // namespace xla

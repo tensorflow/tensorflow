@@ -31,8 +31,25 @@ py_binary(
 
 py_binary(
     name = "keras_mnist",
+    srcs = ["keras_mnist.py"],
+    deps = [":keras_mnist_lib"],
+)
+
+py_library(
+    name = "keras_mnist_lib",
     srcs = [
         "keras_mnist.py",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_binary(
+    name = "mnist_eager_multigpu",
+    srcs = [
+        "mnist_eager_multigpu.py",
     ],
     deps = [
         "//tensorflow:tensorflow_py",

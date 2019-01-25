@@ -112,7 +112,7 @@ class SlurmClusterResolver(ClusterResolver):
 
     self._auto_set_gpu = auto_set_gpu
     self.task_type = None
-    self.task_index = None
+    self.task_id = None
     self.rpc_layer = rpc_layer
 
     self._gpu_allocation = []
@@ -170,7 +170,7 @@ class SlurmClusterResolver(ClusterResolver):
 
       if cluster_rank_offset_start <= self._rank < cluster_rank_offset_end:
         self.task_type = task_type
-        self.task_index = self._rank - cluster_rank_offset_start
+        self.task_id = self._rank - cluster_rank_offset_start
 
       cluster_rank_offset_start = cluster_rank_offset_end
 
@@ -180,7 +180,7 @@ class SlurmClusterResolver(ClusterResolver):
     return ClusterSpec(self._cluster_allocation)
 
   def get_task_info(self):
-    """Returns job name and task_index for the process which calls this.
+    """Returns job name and task_id for the process which calls this.
 
     This returns the job name and task index for the process which calls this
     function according to its rank and cluster specification. The job name and
@@ -191,14 +191,14 @@ class SlurmClusterResolver(ClusterResolver):
       A string specifying job name the process belongs to and an integner
         specifying the task index the process belongs to in that job.
     """
-    return self.task_type, self.task_index
+    return self.task_type, self.task_id
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Returns the master string for connecting to a TensorFlow master.
 
     Args:
       task_type: (Optional) Overrides the default auto-selected task type.
-      task_index: (Optional) Overrides the default auto-slected task index.
+      task_id: (Optional) Overrides the default auto-slected task index.
       rpc_layer: (Optional) Overrides the default RPC protocol TensorFlow uses
         to communicate across nodes.
 
@@ -206,11 +206,11 @@ class SlurmClusterResolver(ClusterResolver):
       A connection string for connecting to a TensorFlow master.
     """
     task_type = task_type if task_type is not None else self.task_type
-    task_index = task_index if task_index is not None else self.task_index
+    task_id = task_id if task_id is not None else self.task_id
 
-    if task_type is not None and task_index is not None:
+    if task_type is not None and task_id is not None:
       return format_master_url(
-          self.cluster_spec().task_address(task_type, task_index),
+          self.cluster_spec().task_address(task_type, task_id),
           rpc_layer or self.rpc_layer)
 
     return ''
@@ -227,9 +227,9 @@ class SlurmClusterResolver(ClusterResolver):
 
   def num_accelerators(self,
                        task_type=None,
-                       task_index=None,
+                       task_id=None,
                        accelerator_type='GPU',
                        config_proto=None):
     # Unused, since this is set in __init__ manually.
-    del task_type, task_index, accelerator_type, config_proto
+    del task_type, task_id, accelerator_type, config_proto
     return self._gpus_per_node

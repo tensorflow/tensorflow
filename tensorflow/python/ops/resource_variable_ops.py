@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import functools
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
@@ -218,7 +219,7 @@ class ResourceVariable(variables.VariableV1):
                initial_value=None,
                trainable=True,
                collections=None,
-               validate_shape=True,
+               validate_shape=True,  # pylint: disable=unused-argument
                caching_device=None,
                name=None,
                dtype=None,
@@ -230,8 +231,7 @@ class ResourceVariable(variables.VariableV1):
 
     Args:
       initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
-        which is the initial value for the Variable. The initial value must have
-        a shape specified unless `validate_shape` is set to False. Can also be a
+        which is the initial value for the Variable. Can also be a
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
          to a shape before being used here.)
@@ -291,7 +291,6 @@ class ResourceVariable(variables.VariableV1):
           initial_value=initial_value,
           trainable=trainable,
           collections=collections,
-          validate_shape=validate_shape,
           caching_device=caching_device,
           name=name,
           dtype=dtype,
@@ -306,12 +305,10 @@ class ResourceVariable(variables.VariableV1):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  # pylint: disable=unused-argument
   def _init_from_args(self,
                       initial_value=None,
                       trainable=True,
                       collections=None,
-                      validate_shape=True,
                       caching_device=None,
                       name=None,
                       dtype=None,
@@ -412,11 +409,13 @@ class ResourceVariable(variables.VariableV1):
         # Use attr_scope and device(None) to simulate the behavior of
         # colocate_with when the variable we want to colocate with doesn't
         # yet exist.
+        device_context_manager = (
+            ops.device if self._in_graph_mode else ops.NullContextmanager)
         attr = attr_value_pb2.AttrValue(
             list=attr_value_pb2.AttrValue.ListValue(
                 s=[compat.as_bytes("loc:@%s" % handle_name)]))
         with ops.get_default_graph()._attr_scope({"_class": attr}):
-          with ops.name_scope("Initializer"), ops.device(None):
+          with ops.name_scope("Initializer"), device_context_manager(None):
             initial_value = ops.convert_to_tensor(
                 initial_value() if init_from_fn else initial_value,
                 name="initial_value", dtype=dtype)
@@ -504,7 +503,6 @@ class ResourceVariable(variables.VariableV1):
       # all in graph mode.
       self._handle_deleter = EagerResourceDeleter(
           handle=self._handle, handle_device=self._handle.device)
-    self._cached_shape_as_list = None
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
@@ -562,7 +560,6 @@ class ResourceVariable(variables.VariableV1):
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._constraint = None
-    self._cached_shape_as_list = None
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -597,7 +594,8 @@ class ResourceVariable(variables.VariableV1):
         trainable=self._trainable,
         constraint=self._constraint,
         dtype=self._dtype,
-        name=self._shared_name + "_copy")
+        name=self._shared_name + "_copy",
+        distribute_strategy=self._distribute_strategy)
     memo[self._unique_id] = copied_variable
     return copied_variable
 
@@ -626,18 +624,10 @@ class ResourceVariable(variables.VariableV1):
     """The shape of this variable."""
     return self._shape
 
-  @property
-  def distribute_strategy(self):
-    """The `tf.distribute.Strategy` that this variable was created under."""
-    return self._distribute_strategy
-
   def _shape_as_list(self):
-    if self._cached_shape_as_list:
-      return self._cached_shape_as_list
     if self.shape.ndims is None:
       return None
-    self._cached_shape_as_list = [dim.value for dim in self.shape.dims]
-    return self._cached_shape_as_list
+    return [dim.value for dim in self.shape.dims]
 
   def _shape_tuple(self):
     shape = self._shape_as_list()
@@ -736,17 +726,6 @@ class ResourceVariable(variables.VariableV1):
     """
     return gen_state_ops.resource_count_up_to(self.handle, limit=limit,
                                               T=self.dtype)
-
-  def _set_save_slice_info(self, save_slice_info):
-    """Sets the slice info for this `ResourceVariable`.
-
-    Args:
-      save_slice_info: A `Variable.SaveSliceInfo` object.
-    """
-    self._save_slice_info = save_slice_info
-
-  def _get_save_slice_info(self):
-    return self._save_slice_info
 
   def _read_variable_op(self):
     if self.trainable:
@@ -943,7 +922,15 @@ class ResourceVariable(variables.VariableV1):
     return assign_op
 
   def __reduce__(self):
-    return (ResourceVariable, (self.numpy(),))
+    # The implementation mirrors that of __deepcopy__.
+    return functools.partial(
+        ResourceVariable,
+        initial_value=self.numpy(),
+        trainable=self.trainable,
+        name=self._shared_name,
+        dtype=self.dtype,
+        constraint=self.constraint,
+        distribute_strategy=self._distribute_strategy), ()
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.

@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -59,7 +61,7 @@ TEST(DequantizeOpTest, UINT8) {
   // [-63.5, 64] -> scale=0.5 zero_point=127 for UINT8
   DequantizeOpModel m(TensorType_UINT8, {2, 5}, 0.5, 127);
 
-  m.SetInput<uint8>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
+  m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -70,7 +72,7 @@ TEST(DequantizeOpTest, INT8) {
   // [-63.5, 64] -> scale=0.5, zero_point=1 for INT8
   DequantizeOpModel m(TensorType_INT8, {2, 5}, 0.5, -1);
 
-  m.SetInput<int8>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
+  m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(

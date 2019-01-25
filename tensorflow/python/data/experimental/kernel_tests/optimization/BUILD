@@ -190,6 +190,7 @@ py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -206,7 +207,7 @@ py_test(
 
 py_test(
     name = "map_vectorization_test",
-    size = "medium",
+    size = "small",
     srcs = ["map_vectorization_test.py"],
     shard_count = 8,
     srcs_version = "PY2AND3",
@@ -232,11 +233,32 @@ py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "choose_fastest_dataset_test",
+    size = "small",
+    srcs = ["choose_fastest_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )

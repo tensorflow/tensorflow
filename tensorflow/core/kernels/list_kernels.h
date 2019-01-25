@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -65,6 +66,10 @@ struct TensorList {
 
 Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out);
 
+Status GetElementShapeFromInput(OpKernelContext* c,
+                                const TensorList& tensor_list, int index,
+                                PartialTensorShape* element_shape);
+
 template <typename Device, typename T>
 class TensorListStack : public OpKernel {
  public:
@@ -74,8 +79,6 @@ class TensorListStack : public OpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
     OP_REQUIRES_OK(c, c->GetAttr("num_elements", &num_elements_));
   }
-
-  ~TensorListStack() {}
 
   void Compute(OpKernelContext* c) override {
     const TensorList* tensor_list =
@@ -89,13 +92,6 @@ class TensorListStack : public OpKernel {
         errors::InvalidArgument(
             "Invalid data types; op elements ", DataTypeString(element_dtype_),
             " but list elements ", DataTypeString(tensor_list->element_dtype)));
-    OP_REQUIRES(
-        c,
-        !tensor_list->tensors.empty() ||
-            tensor_list->element_shape.IsFullyDefined(),
-        errors::InvalidArgument("Tried to stack elements of a empty ",
-                                "list with non-fully-defined shape: ",
-                                tensor_list->element_shape.DebugString()));
     if (num_elements_ != -1) {
       OP_REQUIRES(c, tensor_list->tensors.size() == num_elements_,
                   errors::InvalidArgument(
@@ -103,37 +99,66 @@ class TensorListStack : public OpKernel {
                       " elements but got a list with ",
                       tensor_list->tensors.size(), " elements."));
     }
-    // Compute the shape of the output tensor.
-    // If `element_shape` is fully-defined it gets used. It is assumed that all
-    // element tensors have the same shape.
-    // If `element_shape` is not fully-defined the shape of the first element
-    // tensor is used and it is checked that all other tensors have the same
-    // shape.
-    TensorShape resulting_shape;
-    if (!tensor_list->element_shape.AsTensorShape(&resulting_shape)) {
-      const Tensor& t = tensor_list->tensors[0];
-      resulting_shape = t.shape();
-      for (int i = 1; i < tensor_list->tensors.size(); ++i) {
+    PartialTensorShape partial_element_shape;
+    OP_REQUIRES_OK(c, GetElementShapeFromInput(c, *tensor_list, 1,
+                                               &partial_element_shape));
+    OP_REQUIRES(
+        c,
+        partial_element_shape.IsFullyDefined() || !tensor_list->tensors.empty(),
+        errors::InvalidArgument("Tried to stack elements of an empty ",
+                                "list with non-fully-defined element_shape: ",
+                                partial_element_shape.DebugString()));
+
+    // Check that `element_shape` input tensor is compatible with the shapes of
+    // element tensors.
+    if (!tensor_list->element_shape.IsFullyDefined()) {
+      for (int i = 0; i < tensor_list->tensors.size(); ++i) {
         const Tensor& t = tensor_list->tensors[i];
-        OP_REQUIRES(c, t.shape() == resulting_shape,
-                    errors::InvalidArgument(
-                        "Tried to stack tensors with unequal shapes: ",
-                        resulting_shape.DebugString(), " vs ",
-                        t.shape().DebugString()));
+        if (t.dtype() != DT_INVALID) {
+          PartialTensorShape tmp = partial_element_shape;
+          OP_REQUIRES_OK(c, tmp.MergeWith(t.shape(), &partial_element_shape));
+        }
       }
     }
-    resulting_shape.InsertDim(0, tensor_list->tensors.size());
+
+    // Compute the shape of the output tensor by pre-pending the leading dim to
+    // the element_shape.
+    TensorShape element_shape;
+    OP_REQUIRES(c, partial_element_shape.AsTensorShape(&element_shape),
+                errors::InvalidArgument(
+                    "Tried to stack list which only contains uninitialized ",
+                    "tensors and has a non-fully-defined element_shape: ",
+                    partial_element_shape.DebugString()));
+    TensorShape output_shape = element_shape;
+    output_shape.InsertDim(0, tensor_list->tensors.size());
     Tensor* output;
-    OP_REQUIRES_OK(c, c->allocate_output(0, resulting_shape, &output));
+    OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
     if (output->NumElements() == 0) {
       return;
     }
 
     ConstMatrixVector inputs_flat;
     inputs_flat.reserve(tensor_list->tensors.size());
+    Tensor zeros;
     for (const auto& t : tensor_list->tensors) {
-      inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
-          t.shaped<T, 2>({1, t.NumElements()})));
+      if (t.dtype() != DT_INVALID) {
+        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+            t.shaped<T, 2>({1, t.NumElements()})));
+      } else {
+        if (!zeros.NumElements()) {
+          AllocatorAttributes attr;
+          if (element_dtype_ == DT_VARIANT) {
+            attr.set_on_host(true);
+          }
+          OP_REQUIRES_OK(
+              c, c->allocate_temp(element_dtype_, element_shape, &zeros, attr));
+          functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
+                                               zeros.flat<T>());
+        }
+        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+            const_cast<const Tensor&>(zeros).shaped<T, 2>(
+                {1, zeros.NumElements()})));
+      }
     }
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 
@@ -148,6 +173,123 @@ class TensorListStack : public OpKernel {
 
  private:
   int num_elements_;
+  DataType element_dtype_;
+};
+
+template <typename Device, typename T>
+class TensorListGetItem : public OpKernel {
+ public:
+  explicit TensorListGetItem(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    OP_REQUIRES(
+        c, c->input(0).shape().num_elements() == 1,
+        errors::InvalidArgument("List tensors are supposed to be scalars."));
+    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
+    OP_REQUIRES(c, l != nullptr,
+                errors::InvalidArgument(
+                    "Input handle is not a list. Saw: '",
+                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
+                errors::InvalidArgument("Invalid data types; op elements ",
+                                        DataTypeString(element_dtype_),
+                                        " but list elements ",
+                                        DataTypeString(l->element_dtype)));
+    int32 index = c->input(1).scalar<int32>()();
+    OP_REQUIRES(c, index < l->tensors.size(),
+                errors::InvalidArgument("Trying to access element ", index,
+                                        " in a list with ", l->tensors.size(),
+                                        " elements."));
+    if (l->tensors[index].dtype() != DT_INVALID) {
+      c->set_output(0, l->tensors[index]);
+    } else {
+      PartialTensorShape partial_element_shape;
+      OP_REQUIRES_OK(
+          c, GetElementShapeFromInput(c, *l, 2, &partial_element_shape));
+      TensorShape element_shape;
+      OP_REQUIRES(
+          c, partial_element_shape.AsTensorShape(&element_shape),
+          errors::InvalidArgument("Trying to read an uninitialized tensor but ",
+                                  "element_shape is not fully defined.",
+                                  partial_element_shape.DebugString()));
+      Tensor* result;
+      AllocatorAttributes attr;
+      if (element_dtype_ == DT_VARIANT) {
+        attr.set_on_host(true);
+      }
+      OP_REQUIRES_OK(c, c->allocate_output(0, element_shape, &result, attr));
+      functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
+                                           result->flat<T>());
+    }
+  }
+
+ private:
+  DataType element_dtype_;
+};
+
+template <typename Device, typename T>
+class TensorListPopBack : public OpKernel {
+ public:
+  explicit TensorListPopBack(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
+    OP_REQUIRES(c, l != nullptr,
+                errors::InvalidArgument(
+                    "Input handle is not a list. Saw: '",
+                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
+                errors::InvalidArgument("Invalid data types; op elements ",
+                                        DataTypeString(element_dtype_),
+                                        " but list elements ",
+                                        DataTypeString(l->element_dtype)));
+
+    OP_REQUIRES(c, !l->tensors.empty(),
+                errors::InvalidArgument("Trying to pop from an empty list."));
+
+    const Tensor& t = l->tensors.back();
+    if (t.dtype() != DT_INVALID) {
+      c->set_output(1, t);
+    } else {
+      PartialTensorShape partial_element_shape;
+      OP_REQUIRES_OK(
+          c, GetElementShapeFromInput(c, *l, 1, &partial_element_shape));
+      TensorShape element_shape;
+      OP_REQUIRES(
+          c, partial_element_shape.AsTensorShape(&element_shape),
+          errors::InvalidArgument("Trying to read an uninitialized tensor but ",
+                                  "element_shape is not fully defined.",
+                                  partial_element_shape.DebugString()));
+      Tensor* result;
+      AllocatorAttributes attr;
+      if (element_dtype_ == DT_VARIANT) {
+        attr.set_on_host(true);
+      }
+      OP_REQUIRES_OK(c, c->allocate_output(1, element_shape, &result, attr));
+      functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
+                                           result->flat<T>());
+    }
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    std::unique_ptr<Tensor> maybe_result = c->forward_input(
+        0, 0, DT_VARIANT, TensorShape{}, c->input_memory_type(0), attr);
+    if (maybe_result != nullptr) {
+      maybe_result->scalar<Variant>()().get<TensorList>()->tensors.pop_back();
+    } else {
+      TensorList output;
+      output = *l;
+      output.tensors.pop_back();
+      Tensor* result;
+      OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
+      result->scalar<Variant>()() = std::move(output);
+    }
+  }
+
+ private:
   DataType element_dtype_;
 };
 
@@ -170,8 +312,6 @@ class TensorListConcat : public OpKernel {
       }
     }
   }
-
-  ~TensorListConcat() {}
 
   void Compute(OpKernelContext* c) override {
     // Check that the input Variant tensor is indeed a TensorList and has the
@@ -383,47 +523,47 @@ class TensorListGather : public OpKernel {
             "Invalid data types; op elements ", DataTypeString(element_dtype_),
             " but list elements ", DataTypeString(tensor_list->element_dtype)));
     Tensor indices = c->input(1);
+    PartialTensorShape partial_element_shape;
+    OP_REQUIRES_OK(c, GetElementShapeFromInput(c, *tensor_list, 2,
+                                               &partial_element_shape));
     OP_REQUIRES(
-        c,
-        indices.NumElements() > 0 ||
-            tensor_list->element_shape.IsFullyDefined(),
+        c, partial_element_shape.IsFullyDefined() || indices.NumElements() > 0,
         errors::InvalidArgument("Tried to gather 0-elements from "
                                 "a list with non-fully-defined shape: ",
-                                tensor_list->element_shape.DebugString()));
-    // Compute the shape of the output tensor.
-    // If `element_shape` is fully-defined it gets used. It is assumed that all
-    // requested tensors have the same shape.
-    // If `element_shape` is not fully-defined the shape of the first requested
-    // tensor is used and it is checked that all other tensors have the same
-    // shape.
-    TensorShape resulting_shape;
-    if (!tensor_list->element_shape.AsTensorShape(&resulting_shape)) {
-      const int i = indices.flat<int32>()(0);
-      OP_REQUIRES(
-          c, i < tensor_list->tensors.size(),
-          errors::InvalidArgument("Index ", i, " out o range; list only has ",
-                                  tensor_list->tensors.size(), " elements."));
-      const Tensor& t = tensor_list->tensors[i];
-      resulting_shape = t.shape();
-      for (int index = 1; index < indices.NumElements(); ++index) {
+                                partial_element_shape.DebugString()));
+
+    // Check that `element_shape` input tensor is compatible with the shapes of
+    // element tensors.
+    if (!tensor_list->element_shape.IsFullyDefined()) {
+      for (int index = 0; index < indices.NumElements(); ++index) {
         const int i = indices.flat<int32>()(index);
         const Tensor& t = tensor_list->tensors[i];
-        OP_REQUIRES(c, t.shape() == resulting_shape,
-                    errors::InvalidArgument(
-                        "Tried to gather elements with unequal shapes: ",
-                        resulting_shape.DebugString(), " vs ",
-                        t.shape().DebugString()));
+        if (t.dtype() != DT_INVALID) {
+          PartialTensorShape tmp = partial_element_shape;
+          OP_REQUIRES_OK(c, tmp.MergeWith(t.shape(), &partial_element_shape));
+        }
       }
     }
-    resulting_shape.InsertDim(0, indices.NumElements());
+
+    // Compute the shape of the output tensor by pre-pending the leading dim to
+    // the element_shape.
+    TensorShape element_shape;
+    OP_REQUIRES(
+        c, partial_element_shape.AsTensorShape(&element_shape),
+        errors::InvalidArgument("Tried to gather uninitialized tensors from a ",
+                                "list with non-fully-defined element_shape: ",
+                                partial_element_shape.DebugString()));
+    TensorShape output_shape = element_shape;
+    output_shape.InsertDim(0, indices.NumElements());
     Tensor* output;
-    OP_REQUIRES_OK(c, c->allocate_output(0, resulting_shape, &output));
+    OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
     if (output->NumElements() == 0) {
       return;
     }
 
     ConstMatrixVector inputs_flat;
-    inputs_flat.reserve(tensor_list->tensors.size());
+    inputs_flat.reserve(indices.NumElements());
+    Tensor zeros;
     for (int index = 0; index < indices.NumElements(); ++index) {
       const int i = indices.flat<int32>()(index);
       OP_REQUIRES(
@@ -431,8 +571,24 @@ class TensorListGather : public OpKernel {
           errors::InvalidArgument("Index ", i, " out o range; list only has ",
                                   tensor_list->tensors.size(), " elements."));
       const Tensor& t = tensor_list->tensors[i];
-      inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
-          t.shaped<T, 2>({1, t.NumElements()})));
+      if (t.dtype() != DT_INVALID) {
+        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+            t.shaped<T, 2>({1, t.NumElements()})));
+      } else {
+        if (!zeros.NumElements()) {
+          AllocatorAttributes attr;
+          if (element_dtype_ == DT_VARIANT) {
+            attr.set_on_host(true);
+          }
+          OP_REQUIRES_OK(
+              c, c->allocate_temp(element_dtype_, element_shape, &zeros, attr));
+          functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
+                                               zeros.flat<T>());
+        }
+        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+            const_cast<const Tensor&>(zeros).shaped<T, 2>(
+                {1, zeros.NumElements()})));
+      }
     }
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 
@@ -621,8 +777,6 @@ class TensorListPushBackBatch : public OpKernel {
   explicit TensorListPushBackBatch(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
   }
-
-  ~TensorListPushBackBatch() override {}
 
   void Compute(OpKernelContext* c) override {
     const Tensor& input = c->input(1);

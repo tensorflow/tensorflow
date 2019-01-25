@@ -50,6 +50,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "*.compute_gradients": {
             "colocate_gradients_with_ops": None,
         },
+        "tf.cond": {
+            "strict": None,
+            "fn1": "true_fn",
+            "fn2": "false_fn"
+        },
         "tf.argmin": {
             "dimension": "axis",
         },
@@ -113,6 +118,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.load_file_system_library": {
             "library_filename": "library_location",
+        },
+        "tf.count_nonzero": {
+            "input_tensor": "input",
+            "keep_dims": "keepdims",
+            "reduction_indices": "axis",
         },
         "tf.math.count_nonzero": {
             "input_tensor": "input",
@@ -498,6 +508,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.saved_model.load_keras_model":
+            "tf.keras.experimental.load_from_saved_model",
+        "tf.contrib.saved_model.save_keras_model":
+            "tf.keras.experimental.export",
         "tf.contrib.rnn.RNNCell":
             "tf.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
@@ -506,6 +520,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sort",
         "tf.contrib.framework.argsort":
             "tf.argsort",
+        "tf.count_nonzero":
+            "tf.math.count_nonzero",
         "tf.manip.batch_to_space_nd":
             "tf.batch_to_space",
         "tf.quantize_v2":
@@ -594,6 +610,52 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.initializers.random_normal",
         "tf.truncated_normal_initializer":
             "tf.compat.v1.initializers.truncated_normal",
+        "tf.image.resize_images":
+            "tf.image.resize",
+        "tf.random_poisson":
+            "tf.random.poisson",
+        "tf.debugging.assert_greater":
+            "tf.compat.v1.debugging.assert_greater",
+        "tf.debugging.assert_greater_equal":
+            "tf.compat.v1.debugging.assert_greater_equal",
+        "tf.debugging.assert_integer":
+            "tf.compat.v1.debugging.assert_integer",
+        "tf.debugging.assert_less":
+            "tf.compat.v1.debugging.assert_less",
+        "tf.debugging.assert_less_equal":
+            "tf.compat.v1.debugging.assert_less_equal",
+        "tf.debugging.assert_near":
+            "tf.compat.v1.debugging.assert_near",
+        "tf.debugging.assert_negative":
+            "tf.compat.v1.debugging.assert_negative",
+        "tf.debugging.assert_non_negative":
+            "tf.compat.v1.debugging.assert_non_negative",
+        "tf.debugging.assert_non_positive":
+            "tf.compat.v1.debugging.assert_non_positive",
+        "tf.debugging.assert_none_equal":
+            "tf.compat.v1.debugging.assert_none_equal",
+        "tf.debugging.assert_type":
+            "tf.compat.v1.debugging.assert_type",
+        "tf.debugging.assert_positive":
+            "tf.compat.v1.debugging.assert_positive",
+        "tf.debugging.assert_equal":
+            "tf.compat.v1.debugging.assert_equal",
+        "tf.debugging.assert_scalar":
+            "tf.compat.v1.debugging.assert_scalar",
+        "tf.assert_equal":
+            "tf.compat.v1.assert_equal",
+        "tf.assert_less":
+            "tf.compat.v1.assert_less",
+        "tf.assert_greater":
+            "tf.compat.v1.assert_greater",
+        "tf.debugging.assert_rank":
+            "tf.compat.v1.debugging.assert_rank",
+        "tf.debugging.assert_rank_at_least":
+            "tf.compat.v1.debugging.assert_rank_at_least",
+        "tf.debugging.assert_rank_in":
+            "tf.compat.v1.debugging.assert_rank_in",
+        "tf.assert_rank":
+            "tf.compat.v1.assert_rank",
     }
     # pylint: enable=line-too-long
 
@@ -618,6 +680,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.argmin",
         "tf.batch_gather",
         "tf.batch_to_space",
+        "tf.cond",
         "tf.nn.space_to_batch",
         "tf.boolean_mask",
         "tf.convert_to_tensor",
@@ -714,6 +777,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # - a replacement for node, if the whole call node was replaced. The caller
     #   will take care of changing parent.
     self.function_transformers = {
+        "*.make_initializable_iterator": self._iterator_transformer,
+        "*.make_one_shot_iterator": self._iterator_transformer,
         "tf.nn.dropout": self._dropout_transformer,
         "tf.batch_gather": self._batch_gather_transformer,
         "tf.to_bfloat16": self._cast_transformer,
@@ -725,11 +790,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.to_int64": self._cast_transformer,
         "tf.nn.softmax_cross_entropy_with_logits":
             self._softmax_cross_entropy_with_logits_transformer,
+        "tf.image.resize_area": self._image_resize_transformer,
+        "tf.image.resize_bicubic": self._image_resize_transformer,
+        "tf.image.resize_bilinear": self._image_resize_transformer,
+        "tf.image.resize_nearest_neighbor": self._image_resize_transformer,
+
     }
 
     decay_function_comment = (
-        "WARNING: <function name> has been changed to return a callable instead"
-        " of a tensor when graph building, but its functionality remains "
+        "<function name> has been changed to return a callable instead "
+        "of a tensor when graph building, but its functionality remains "
         "unchanged during eager execution (returns a callable like "
         "before). The converter cannot detect and fix this reliably, so "
         "this usage has been converted to compat.v1 (even though it may already"
@@ -738,26 +808,26 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # TODO(b/118888586): add default value change to update script.
     default_loss_reduction_changed = (
-        "WARNING: default value of loss_reduction has been changed to "
+        "default value of loss_reduction has been changed to "
         "SUM_OVER_BATCH_SIZE.\n"
     )
 
     assert_return_type_comment = (
-        "WARNING: assert_* functions have been changed to return None, the "
+        "assert_* functions have been changed to return None, the "
         "data argument has been removed, and arguments have been reordered."
         "\nThe calls have been converted to compat.v1 for safety (even though "
         " they may already have been correct)."
     )
 
     assert_rank_comment = (
-        "WARNING: assert_rank_* functions have been changed to return None, and"
+        "assert_rank_* functions have been changed to return None, and"
         " the data and summarize arguments have been removed."
         "\nThe calls have been converted to compat.v1 for safety (even though "
         " they may already have been correct)."
     )
 
     tf_01s_like_no_optimize_comment = (
-        "WARNING: tf.zeros_like and tf.ones_like no longer have the optimize "
+        "tf.zeros_like and tf.ones_like no longer have the optimize "
         "argument in TF 2.0 or after (also, `tensor' argument is renamed to "
         "`input')."
         "\nThe calls have been converted to compat.v1 for safety (even though "
@@ -765,11 +835,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     )
 
     deprecate_partition_strategy_comment = (
-        "WARNING: `partition_strategy` has been removed from `%s` "
+        "`partition_strategy` has been removed from `%s` "
         " The 'div' strategy is used by default.")
 
     initializers_no_dtype_comment = (
-        "WARNING: tf.initializers and tf.keras.initializers no longer have the "
+        "tf.initializers and tf.keras.initializers no longer have the "
         "dtype argument in the constructor or partition_info argument in the "
         "call method in TF 2.0 and after. The only API symbols are now "
         "tf.keras.initializers.* or tf.initializers.*."
@@ -777,18 +847,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "they may already have been correct).")
 
     uniform_unit_scaling_initializer_comment = (
-        "WARNING: uniform_unit_scaling_initializer has been removed. Please use"
+        "uniform_unit_scaling_initializer has been removed. Please use"
         " tf.initializers.variance_scaling instead with distribution=uniform "
         "to get equivalent behaviour.")
 
     metrics_comment = (
-        "WARNING: tf.metrics have been converted to object oriented versions in"
+        "tf.metrics have been converted to object oriented versions in"
         " TF 2.0 and after. The metric function calls have been converted to "
         "compat.v1 for backward compatibility. Please update these calls to "
         "the TF 2.0 versions.")
 
     losses_comment = (
-        "WARNING: tf.losses have been converted to object oriented versions in"
+        "tf.losses have been converted to object oriented versions in"
         " TF 2.0 and after. The loss function calls have been converted to "
         "compat.v1 for backward compatibility. Please update these calls to "
         "the TF 2.0 versions.")
@@ -802,25 +872,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "only effects core estimator. If you are using "
         "tf.contrib.learn.Estimator, please switch to using core estimator.")
 
-    make_initializable_iterator_deprecation = (
-        "(Manual edit required) The "
-        "`tf.data.Dataset.make_initializable_iterator()` method has been "
-        "removed. If you are using the Estimator API, you can return a dataset "
-        "directly from your input functions without creating an iterator. "
-        "As a last resort, please replace calls to that method on `dataset` "
-        "with a call to "
-        "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
-
-    make_one_shot_iterator_deprecation = (
-        "(Manual edit required) The "
-        "`tf.data.Dataset.make_one_shot_iterator()` method has been "
-        "removed. If you are using eager execution, you can iterate over "
-        "`dataset` using a Python `for` loop. If you are using the Estimator "
-        "API, you can return a dataset directly from your input functions "
-        "without creating an iterator. As a last resort, please replace calls "
-        "to that method on `dataset` with a call to "
-        "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
-
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     # You can use *. to add items which do not check the FQN, and apply to e.g.,
@@ -828,22 +879,40 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_warnings = {
         "*.export_savedmodel":
             export_saved_model_renamed,
-        "*.make_initializable_iterator":
-            make_initializable_iterator_deprecation,
-        "*.make_one_shot_iterator":
-            make_one_shot_iterator_deprecation,
-        "tf.assert_greater":
-            assert_return_type_comment,
         "tf.assert_equal":
+            assert_return_type_comment,
+        "tf.assert_none_equal":
+            assert_return_type_comment,
+        "tf.assert_negative":
+            assert_return_type_comment,
+        "tf.assert_positive":
+            assert_return_type_comment,
+        "tf.assert_non_negative":
+            assert_return_type_comment,
+        "tf.assert_non_positive":
+            assert_return_type_comment,
+        "tf.assert_near":
             assert_return_type_comment,
         "tf.assert_less":
             assert_return_type_comment,
+        "tf.assert_less_equal":
+            assert_return_type_comment,
+        "tf.assert_greater":
+            assert_return_type_comment,
+        "tf.assert_greater_equal":
+            assert_return_type_comment,
+        "tf.assert_integer":
+            assert_return_type_comment,
+        "tf.assert_type":
+            assert_return_type_comment,
+        "tf.assert_scalar":
+            assert_return_type_comment,
         "tf.assert_rank":
             assert_rank_comment,
-        "tf.cond":
-            "tf.cond no longer takes 'strict'. "
-            "Now 'strict' defaults to True."
-            "fn1/fn2 arguments are replaced by true_fn/false_fn.",
+        "tf.assert_rank_at_least":
+            assert_rank_comment,
+        "tf.assert_rank_in":
+            assert_rank_comment,
         "tf.debugging.assert_equal":
             assert_return_type_comment,
         "tf.debugging.assert_greater":
@@ -867,6 +936,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.debugging.assert_none_equal":
             assert_return_type_comment,
         "tf.debugging.assert_positive":
+            assert_return_type_comment,
+        "tf.debugging.assert_type":
+            assert_return_type_comment,
+        "tf.debugging.assert_scalar":
             assert_return_type_comment,
         "tf.debugging.assert_rank":
             assert_rank_comment,
@@ -1139,22 +1212,27 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Warnings that are emitted only if a specific arg is found.
     self.function_arg_warnings = {
         "tf.gradients": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 4):
                 "tf.gradients no longer takes "
                 "'colocate_gradients_with_ops' argument, it behaves as if it "
                 "was set to True.",
         },
         "*.minimize": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 5):
                 "Optimizer.minimize no longer takes "
                 "'colocate_gradients_with_ops' argument, it behaves as if it "
                 "was set to True.",
         },
         "*.compute_gradients": {
-            "colocate_gradients_with_ops":
+            ("colocate_gradients_with_ops", 4):
                 "Optimizer.compute_gradients no "
                 "longer takes 'colocate_gradients_with_ops' argument, it "
                 "behaves as if it was set to True.",
+        },
+        "tf.cond": {
+            ("strict", 3):
+                "tf.cond no longer takes 'strict' argument, it behaves as "
+                "if was set to True."
         },
     }
 
@@ -1164,7 +1242,32 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
 
   @staticmethod
-  def _dropout_transformer(parent, node, full_name, name, logs, errors):
+  def _iterator_transformer(parent, node, full_name, name, logs):
+    # First, check that node.func.value is not already something we like
+    # (tf.compat.v1.data), or something which is handled in the rename
+    # (tf.data). This transformer only handles the method call to function call
+    # conversion.
+    if full_name and (full_name.startswith("tf.compat.v1.data") or
+                      full_name.startswith("tf.data")):
+      return
+
+    # This should never happen, since we're only called for Attribute nodes.
+    if not isinstance(node.func, ast.Attribute):
+      return
+
+    # Transform from x.f(y) to tf.compat.v1.data.f(x, y)
+    # Fortunately, node.func.value should already have valid position info
+    node.args = [node.func.value] + node.args
+    node.func.value = ast_edits.full_name_node("tf.compat.v1.data")
+
+    logs.append((ast_edits.WARNING, node.lineno, node.col_offset,
+                 "Changing dataset.%s() to tf.compat.v1.data.%s(dataset). "
+                 "Please check this transformation.\n" % (name, name)))
+
+    return node
+
+  @staticmethod
+  def _dropout_transformer(parent, node, full_name, name, logs):
     def _replace_keep_prob_node(parent, old_value):
       """Replaces old_value with 1-(old_value)."""
       one = ast.Num(n=1)
@@ -1183,40 +1286,47 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Check if we have a keep_prob keyword arg
     for keep_prob in node.keywords:
       if keep_prob.arg == "keep_prob":
-        logs.append((node.lineno, node.col_offset,
-                     "Changing keep_prob arg of tf.nn.dropout to rate, and "
-                     "recomputing value. Please check this transformation.\n"))
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "Changing keep_prob arg of tf.nn.dropout to rate\n"))
         keep_prob.arg = "rate"
         _replace_keep_prob_node(keep_prob, keep_prob.value)
         return node
 
     # Maybe it was a positional arg
     if len(node.args) < 2:
-      errors.append((node.lineno, node.col_offset,
-                     "ERROR: tf.nn.dropout called without arguments, so "
-                     "automatic fix was disabled. tf.nn.dropout has changed "
-                     "the semantics of the second argument."))
+      logs.append((ast_edits.ERROR, node.lineno, node.col_offset,
+                   "tf.nn.dropout called without arguments, so "
+                   "automatic fix was disabled. tf.nn.dropout has changed "
+                   "the semantics of the second argument."))
     else:
       _replace_keep_prob_node(node, node.args[1])
-      logs.append((node.lineno, node.col_offset,
+      logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                    "Changing keep_prob arg of tf.nn.dropout to rate, and "
                    "recomputing value.\n"))
-      errors.append((node.lineno, node.col_offset,
-                     "WARNING: tf.nn.dropout has changed the semantics of the "
-                     "second argument. Please check the applied transformation."
-                    ))
+
       return node
 
   @staticmethod
-  def _cast_transformer(parent, node, full_name, name, logs, errors):
+  def _cast_transformer(parent, node, full_name, name, logs):
     """Transforms to_int and to_float to cast(..., dtype=...)."""
 
     # Find out the dtype to cast to from the function name
     dtype_str = name[3:]
+    # Special cases where the full dtype is not given
+    if dtype_str == "float":
+      dtype_str = "float32"
+    elif dtype_str == "double":
+      dtype_str = "float64"
     new_arg = ast.keyword(arg="dtype",
                           value=ast.Attribute(value=ast.Name(id="tf",
                                                              ctx=ast.Load()),
                                               attr=dtype_str, ctx=ast.Load()))
+    # Ensures a valid transformation when a positional name arg is given
+    if len(node.args) == 2:
+      name_arg = ast.keyword(arg="name",
+                             value=node.args[-1])
+      node.args = node.args[:-1]
+      node.keywords.append(name_arg)
 
     # Python3 ast requires the args for the Attribute, but codegen will mess up
     # the arg order if we just set them to 0.
@@ -1230,14 +1340,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
       assert isinstance(node.func, ast.Name)
       node.func.id = "cast"
 
-    logs.append((node.lineno, node.col_offset,
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                  "Changed %s call to tf.cast(..., dtype=tf.%s)." % (full_name,
                                                                     dtype_str)))
     return node
 
   @staticmethod
   def _softmax_cross_entropy_with_logits_transformer(
-      parent, node, full_name, name, logs, errors):
+      parent, node, full_name, name, logs):
     def _wrap_label(parent, old_value):
       """Wrap labels with tf.stop_gradient."""
       if six.PY3:
@@ -1256,7 +1366,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Check if we have a labels keyword arg
     for karg in node.keywords:
       if karg.arg == "labels":
-        logs.append((node.lineno, node.col_offset,
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                      "Changing labels arg of "
                      "tf.nn.softmax_cross_entropy_with_logits to "
                      "tf.stop_gradient(labels). Please check this "
@@ -1266,11 +1376,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     return node
 
   @staticmethod
-  def _batch_gather_transformer(parent, node, full_name, name, logs, errors):
+  def _batch_gather_transformer(parent, node, full_name, name, logs):
     # Check if the call already has a batch_dims argument
     if any([kw.arg == "batch_dims" for kw in node.keywords]):
-      logs.append((node.lineno, node.col_offset, "tf.batch_gather already has "
-                   "batch_dims argument. Neat."))
+      logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                   "tf.batch_gather already has batch_dims argument. Neat."))
       return None
 
     minus_one = ast.Num(n=-1)
@@ -1278,6 +1388,50 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     minus_one.col_offset = 0
     new_arg = ast.keyword("batch_dims", minus_one)
     node.keywords.append(new_arg)
-    logs.append((node.lineno, node.col_offset,
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                  "Added keyword argument batch_dims=-1 to tf.batch_gather."))
+    return node
+
+  @staticmethod
+  def _image_resize_transformer(parent, node, full_name, name, logs):
+    """Transforms image.resize_* to image.resize(..., method=*, ...)."""
+
+    resize_method = name[7:].upper()
+    new_arg = ast.keyword(arg="method",
+                          value=ast.Attribute(
+                              value=ast.Attribute(
+                                  value=ast.Attribute(
+                                      value=ast.Name(id="tf", ctx=ast.Load()),
+                                      attr="image", ctx=ast.Load()),
+                                  attr="ResizeMethod", ctx=ast.Load()),
+                              attr=resize_method, ctx=ast.Load()))
+
+    # Ensures a valid transformation when a positional name arg is given
+    if len(node.args) == 4:
+      pos_arg = ast.keyword(arg="preserve_aspect_ratio",
+                            value=node.args[-1])
+      node.args = node.args[:-1]
+      node.keywords.append(pos_arg)
+    if len(node.args) == 3:
+      pos_arg = ast.keyword(arg="align_corners",
+                            value=node.args[-1])
+      node.args = node.args[:-1]
+      node.keywords.append(pos_arg)
+
+    # Python3 ast requires the args for the Attribute, but codegen will mess up
+    # the arg order if we just set them to 0.
+    new_arg.value.lineno = node.lineno
+    new_arg.value.col_offset = node.col_offset+100
+
+    node.keywords.append(new_arg)
+    if isinstance(node.func, ast.Attribute):
+      node.func.attr = "resize"
+    else:
+      assert isinstance(node.func, ast.Name)
+      node.func.id = "resize"
+
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Changed %s call to tf.image.resize(..., "
+                 "method=tf.image.ResizeMethod.%s)." % (full_name,
+                                                        resize_method)))
     return node

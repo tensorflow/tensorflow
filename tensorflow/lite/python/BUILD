@@ -72,8 +72,10 @@ py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
     ],
     deps = [
@@ -143,7 +145,6 @@ py_library(
     srcs = ["convert_saved_model.py"],
     srcs_version = "PY2AND3",
     visibility = [
-        "//tensorflow/contrib/lite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [

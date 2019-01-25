@@ -43,7 +43,7 @@ class _CallbackSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
     return self._restore_callback(tensor)
 
 
-class _SplitDependency(checkpointable.CheckpointableBase):
+class _SplitDependency(checkpointable.Checkpointable):
   """Looks like a regular variable while synchronizing save/restores."""
 
   def __init__(self, save_buffer, restore_buffer, name, dtype, num_components,

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
-#include <math.h>
-
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -37,6 +35,12 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+// Optional attribute name for Switch op as a vector of int that tells
+// which branch the Switch output is taken on every round of execution.
+// We use this side information, if provided, for scheduling ops after Switch
+// correctly (e.g., While loop).
+constexpr char kOutputSlots[] = "_output_slot_vector";
 
 Costs CombineCosts(const Costs& left, const Costs& right) {
   CHECK_NE(left.max_memory, kMemoryUnknown);
@@ -306,29 +310,15 @@ ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
   LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
 }
 
-VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
-                                   const bool use_static_shapes,
-                                   Cluster* cluster,
-                                   ReadyNodeManager* ready_nodes)
-    : ready_nodes_(ready_nodes),
-      graph_costs_(Costs::ZeroCosts()),
-      graph_properties_(new GraphProperties(*grappler_item)),
-      cluster_(cluster),
-      grappler_item_(grappler_item),
-      use_static_shapes_(use_static_shapes),
-      placer_(cluster) {
-  graph_costs_.num_ops_total = 0;
-  initialized_ = false;
-  track_mem_usage_snapshot_ = VLOG_IS_ON(1);
-}
-
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
+                                   const bool use_aggressive_shape_inference,
                                    Cluster* cluster,
                                    ReadyNodeManager* ready_nodes)
     : ready_nodes_(ready_nodes),
       graph_costs_(Costs::ZeroCosts()),
       cluster_(cluster),
       use_static_shapes_(use_static_shapes),
+      use_aggressive_shape_inference_(use_aggressive_shape_inference),
       placer_(cluster) {
   graph_costs_.num_ops_total = 0;
   initialized_ = false;
@@ -339,12 +329,6 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   grappler_item_ = item;
   graph_properties_ = absl::make_unique<GraphProperties>(*item);
 
-  return Init();
-}
-
-// TODO(pcma): Merge with Init(const GrapplerItem* item) when this
-// deprecated API is deleted
-Status VirtualScheduler::Init() {
   initialized_ = false;
 
   // Clear all internal states so that the VirtualScheduler is reusable for
@@ -368,7 +352,8 @@ Status VirtualScheduler::Init() {
 
   // Construct graph properties.
   if (use_static_shapes_) {
-    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(true));
+    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(
+        true, use_aggressive_shape_inference_));
   } else {
     TF_RETURN_IF_ERROR(graph_properties_->InferDynamically(cluster_));
   }
@@ -402,6 +387,8 @@ Status VirtualScheduler::Init() {
     name_to_node[node->name()] = node;
   }
 
+  // Traverse the graph to check if the graph is annotated with Switch outputs.
+  // Also record _Send nodes.
   // TODO(dyoon): Instead of identifying _Send node here manually, add _Send
   // to _Recv as control dependency when creating GrapplerItem.
   std::unordered_map<string, const NodeDef*> name_to_send;
@@ -409,6 +396,11 @@ Status VirtualScheduler::Init() {
     if (IsSend(node)) {
       const auto& attr = node.attr();
       name_to_send[attr.at("tensor_name").s()] = &node;
+    }
+
+    if (IsSwitch(node)) {
+      const auto& attr = node.attr();
+      if (attr.count(kOutputSlots) > 0) switch_outputs_annotated_ = true;
     }
   }
 
@@ -771,6 +763,82 @@ Costs& VirtualScheduler::FindOrCreateZero(const string& op_name,
   return it->second;
 }
 
+// Check Switch outputs in updated MetaGraphDef, add corresponding nodes to
+// ready queue.
+// Fallback to add all outputs if fail to find the actual output.
+bool VirtualScheduler::AddSwitchOutputsToReadyQueue(
+    const NodeDef* node, int curr_iter, const Costs::Duration& curr_time) {
+  if (node->attr().count(kOutputSlots) == 0) return false;
+
+  auto& node_state = node_map_[node];
+  const auto& slot_vector = node->attr().at(kOutputSlots);
+  if (slot_vector.list().i_size() <= curr_iter) {
+    // Sometimes we encounter infinite loop. Fall back to add all outputs.
+    return false;
+  }
+
+  int slot = slot_vector.list().i(curr_iter);
+  for (const auto& port_num_output_pair : node_state.outputs) {
+    if (port_num_output_pair.first != slot) continue;
+
+    for (auto* output_node : port_num_output_pair.second) {
+      auto& output_state = node_map_[output_node];
+      output_state.num_inputs_ready++;
+      // Execute a node as soon as all its inputs are ready. Merge nodes
+      // are special since they run as soon as one of their inputs becomes
+      // available.
+      if (output_state.num_inputs_ready == output_state.inputs.size() ||
+          IsMerge(*output_node)) {
+        // This output node is now ready.
+        output_state.time_ready = curr_time;
+        ready_nodes_->AddNode(output_node);
+        VLOG(3) << "Node " << node->name() << " iter " << curr_iter << "/"
+                << slot_vector.list().i_size() << " Add Switch output " << slot
+                << ": " << output_node->name();
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+void VirtualScheduler::AddOutputNodesToReadyQueue(
+    const NodeDef* node, const Costs::Duration& curr_time) {
+  auto& node_state = node_map_[node];
+  int curr_iter = node_state.num_executed_times;
+  ++node_state.num_executed_times;
+
+  if (switch_outputs_annotated_) {
+    // If the graph is annotated with StepStats, reset num_inputs_ready so we
+    // can schedule the node multiple times.
+    node_state.num_inputs_ready = 0;
+
+    // For Switch node, get output branch from updated MetaGraphDef.
+    if (IsSwitch(*node) &&
+        AddSwitchOutputsToReadyQueue(node, curr_iter, curr_time))
+      return;
+  }
+
+  // Increment num_inputs_ready of the output nodes and maybe add to ready
+  // nodes.
+  for (const auto& port_num_output_pair : node_state.outputs) {
+    for (auto* output_node : port_num_output_pair.second) {
+      auto& output_state = node_map_[output_node];
+      output_state.num_inputs_ready++;
+      // Execute a node as soon as all its inputs are ready. Merge nodes are
+      // special since they run as soon as one of their inputs becomes
+      // available.
+      if (output_state.num_inputs_ready == output_state.inputs.size() ||
+          IsMerge(*output_node)) {
+        // This output node is now ready.
+        output_state.time_ready = curr_time;
+        ready_nodes_->AddNode(output_node);
+      }
+    }
+  }
+}
+
 bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   // Update graph_costs_ and per-op costs.
   graph_costs_ = CombineCosts(graph_costs_, node_costs);
@@ -798,6 +866,10 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   // Node is scheduled when the device is available AND all the inputs are
   // ready; hence, time_scheduled is time_ready if time_ready > device curr
   // time.
+  // TODO(andiryxu): Current node_state result only records the last execution.
+  // With annotated MetaGraph we can schedule a node for multiple times.
+  // Refine NodeState structure accordingly, e.g. record time_scheduled in a
+  // vector.
   node_state.time_scheduled =
       std::max(device.GetCurrTime(), node_state.time_ready);
   // Override device curr time with the time_scheduled.
@@ -831,22 +903,8 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
           << ", scheduled: " << node_state.time_scheduled.count()
           << ", finished: " << node_state.time_finished.count();
 
-  // Increment num_inputs_ready of the output nodes and maybe add to ready nodes
-  for (const auto& port_num_output_pair : node_state.outputs) {
-    for (auto* output_node : port_num_output_pair.second) {
-      auto& output_state = node_map_[output_node];
-      output_state.num_inputs_ready++;
-      // Execute a node as soon as all its inputs are ready. Merge nodes are
-      // special since they run as soon as one of their inputs becomes
-      // available.
-      if (output_state.num_inputs_ready == output_state.inputs.size() ||
-          IsMerge(*output_node)) {
-        // This output node is now ready.
-        output_state.time_ready = curr_time;
-        ready_nodes_->AddNode(output_node);
-      }
-    }
-  }
+  // Check outputs, add ready nodes to queue.
+  AddOutputNodesToReadyQueue(node, curr_time);
 
   // Increment num_outputs_executed of the input nodes and maybe update memory.
   for (const auto& input_port : node_state.inputs) {

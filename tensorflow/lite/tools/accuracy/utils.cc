@@ -38,6 +38,12 @@ DataType GetTFDataType(TfLiteType tflite_type) {
       return DT_FLOAT;
     case kTfLiteUInt8:
       return DT_UINT8;
+    case kTfLiteInt8:
+      return DT_INT8;
+    case kTfLiteInt32:
+      return DT_INT32;
+    case kTfLiteInt64:
+      return DT_INT64;
     default:
       return DT_INVALID;
   }

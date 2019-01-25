@@ -175,13 +175,8 @@ void TestRemoteExecute(bool async) {
   TFE_Execute(matmul, &retvals[0], &num_retvals, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  auto* retval_task0 = TFE_TensorHandleCopyToDevice(
-      retvals[0], ctx, "/job:localhost/replica:0/task:0/device:CPU:0", status);
+  TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-
-  TF_Tensor* t = TFE_TensorHandleResolve(retval_task0, status);
-  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_DeleteTensorHandle(retval_task0);
   float product[4] = {0};
   EXPECT_EQ(sizeof(product), TF_TensorByteSize(t));
   memcpy(&product[0], TF_TensorData(t), TF_TensorByteSize(t));

@@ -35,6 +35,7 @@ ASYNC_STATEFUL_OPS = [
     "CollectiveReduce",
     "CollectiveBcastSend",
     "CollectiveBcastRecv",
+    "NcclAllReduce",
 ]
 
 

@@ -56,6 +56,8 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
       return ConstantR0<double>(builder, static_cast<double>(value));
     case C64:
       return ConstantR0<complex64>(builder, static_cast<complex64>(value));
+    case C128:
+      return ConstantR0<complex128>(builder, static_cast<complex128>(value));
     case U8:
       return ConstantR0<uint8>(builder, static_cast<uint8>(value));
     case U32:

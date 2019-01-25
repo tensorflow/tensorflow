@@ -57,6 +57,15 @@ using ::tensorflow::strings::HumanReadableNumBytes;
 
 // Returns true if the given instruction is rematerializable.
 bool IsRematerializable(const HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kCopy) {
+    if (LayoutUtil::Equal(instruction->shape().layout(),
+                          instruction->operand(0)->shape().layout())) {
+      // Don't rematerialize copies added by copy insertion (layout doesn't
+      // change).
+      return false;
+    }
+  }
+
   // Don't rematerialize instructions with side effects or instructions which
   // cannot be cloned safely.
   switch (instruction->opcode()) {

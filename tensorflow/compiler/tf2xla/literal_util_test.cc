@@ -49,7 +49,7 @@ using Types =
                      std::pair<int16, qint16>, std::pair<uint16, quint16>,
                      std::pair<int32, qint32>>;
 
-TYPED_TEST_CASE(LiteralUtilTest, Types);
+TYPED_TEST_SUITE(LiteralUtilTest, Types);
 
 TYPED_TEST(LiteralUtilTest, LiteralToQuantizedHostTensor) {
   using int_type = typename TypeParam::first_type;

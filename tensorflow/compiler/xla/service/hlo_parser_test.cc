@@ -553,6 +553,17 @@ ENTRY %Transpose.v2 () -> s32[1,2,3] {
 
 )"
 },
+{
+"TransposeC128",
+R"(HloModule TransposeC128_module
+
+ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
+  %input = c128[1,2,3]{2,1,0} parameter(0)
+  ROOT %transpose = c128[1,2,3]{2,1,0} transpose(c128[1,2,3]{2,1,0} %input), dimensions={0,1,2}
+}
+
+)"
+},
 // Dynamic slice
 {
 "DynamicSlice",
@@ -1360,20 +1371,20 @@ TEST_P(HloParserTestLongProto, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShort, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShortProto, Run) { ExpectEqual(); }
 
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestLongProto,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestShortProto,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestLongProto,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestShortProto,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
 
 class HloParserTest : public ::testing::Test {
  protected:

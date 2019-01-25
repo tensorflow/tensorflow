@@ -152,7 +152,7 @@ cc_library(
         ":status",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 
@@ -826,6 +826,7 @@ cc_library(
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
+    visibility = [":friends"],
     deps =
         [
             ":parse_flags_from_env",

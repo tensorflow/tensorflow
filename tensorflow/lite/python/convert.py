@@ -37,14 +37,11 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 # Lazy load since some of the performance benchmark skylark rules
 # break dependencies.
-if lite_constants.EXPERIMENTAL_USE_TOCO_API_DIRECTLY:
-  _toco_python = LazyLoader(
-      "tensorflow_wrap_toco", globals(),
-      "tensorflow.lite.toco.python."
-      "tensorflow_wrap_toco")
-  del LazyLoader
-else:
-  _toco_python = None
+_toco_python = LazyLoader(
+    "tensorflow_wrap_toco", globals(),
+    "tensorflow.lite.toco.python."
+    "tensorflow_wrap_toco")
+del LazyLoader
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has

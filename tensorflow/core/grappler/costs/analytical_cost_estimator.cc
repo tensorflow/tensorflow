@@ -113,8 +113,10 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
       node_estimator_(std::move(node_estimator)),
       node_manager_(std::move(node_manager)),
       use_static_shapes_(use_static_shapes) {
-  scheduler_ = absl::make_unique<VirtualScheduler>(use_static_shapes_, cluster_,
-                                                   node_manager_.get());
+  // Use aggressive static shape inference to minimize unknown shapes.
+  scheduler_ = absl::make_unique<VirtualScheduler>(
+      use_static_shapes_,
+      /*use_aggressive_shape_inference=*/true, cluster_, node_manager_.get());
 }
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
@@ -122,22 +124,9 @@ Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
   return Status::OK();
 }
 
-// TODO(b/67607683): unify logic with VirtualCluster logic
 Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
-                                             CostGraphDef* cost_graph,
+                                             RunMetadata* run_metadata,
                                              Costs* costs) const {
-  RunMetadata run_metadata;
-  auto s =
-      PredictCostsAndReturnRunMetadata(optimized_graph, &run_metadata, costs);
-  if (s.ok() && cost_graph) {
-    cost_graph->Swap(run_metadata.mutable_cost_graph());
-  }
-  return s;
-}
-
-Status AnalyticalCostEstimator::PredictCostsAndReturnRunMetadata(
-    const GraphDef& optimized_graph, RunMetadata* run_metadata,
-    Costs* costs) const {
   GrapplerItem item = item_;
   item.graph = optimized_graph;
 

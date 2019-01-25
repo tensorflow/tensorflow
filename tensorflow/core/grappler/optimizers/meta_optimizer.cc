@@ -527,7 +527,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // can't perform non-differentiable rewrites.
       if (differentiable_functions.find(func_name) !=
           differentiable_functions.end()) {
-        func_item.allowed_optimizations().non_differentiable_rewrites = false;
+        func_item.optimization_options().allow_non_differentiable_rewrites =
+            false;
       }
 
       // Function item is allowed to use all devices from the main graph.
@@ -536,10 +537,11 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         VLOG(3) << added_devices.error_message();
       }
 
-      // We are not allowed to prune side effects from the graph instantiated
-      // by the function definition, because we must guarantee function
-      // execution semantics wrt side effects (see function_optimizer.cc).
-      func_item.allowed_optimizations().prune_ops_with_side_effects = false;
+      // We are not allowed to prune certain types of ops from the graph
+      // instantiated by the function definition, because we must guarantee
+      // function execution semantics wrt side effects (see
+      // function_optimizer.cc).
+      func_item.optimization_options().is_function_instantiation = true;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -629,16 +631,18 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
   return status;
 }
 
-Status OptimizeGraph(std::vector<string> ret_node_names,
-                     FunctionLibraryDefinition* flib,
-                     const DeviceSet& device_set, Device* cpu_device,
-                     const ConfigProto& config_proto,
-                     std::unique_ptr<tensorflow::Graph>* g) {
+Status OptimizeGraph(
+    std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto,
+    const GrapplerItem::OptimizationOptions& optimization_options,
+    std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
     return Status::OK();
   }
 
   tensorflow::grappler::GrapplerItem item;
+  item.optimization_options() = optimization_options;
 
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {

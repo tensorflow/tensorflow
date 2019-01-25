@@ -17,10 +17,10 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/tools/accuracy/ilsvrc/inception_preprocessing.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/tools/accuracy/ilsvrc/inception_preprocessing.h"
 
 namespace {
 tensorflow::string* g_test_image_file = nullptr;
@@ -48,7 +48,7 @@ Status GetContents(const string& filename, string* output) {
   }
 }
 
-TEST(InceptionPreprocessingTest, TestImagePreprocessQuantized) {
+TEST(InceptionPreprocessingTest, TestImagePreprocessUInt8Quantized) {
   ASSERT_TRUE(g_test_image_file != nullptr);
   string image_contents;
   string image_path = *g_test_image_file;
@@ -56,8 +56,8 @@ TEST(InceptionPreprocessingTest, TestImagePreprocessQuantized) {
   ASSERT_TRUE(status.ok()) << status.error_message();
   const int width = 224;
   const int height = 224;
-  const bool is_quantized = true;
-  InceptionPreprocessingStage preprocess_stage(width, height, is_quantized);
+  auto params = InceptionPreprocessingStage::DefaultParamsForType(DT_UINT8);
+  InceptionPreprocessingStage preprocess_stage(width, height, DT_UINT8, params);
   Scope scope = Scope::NewRootScope();
   preprocess_stage.AddToGraph(scope, image_contents);
   TF_CHECK_OK(scope.status());
@@ -77,6 +77,35 @@ TEST(InceptionPreprocessingTest, TestImagePreprocessQuantized) {
   EXPECT_TRUE(outputs[0].shape().IsSameSize({1, 224, 224, 3}));
 }
 
+TEST(InceptionPreprocessingTest, TestImagePreprocessInt8Quantized) {
+  ASSERT_TRUE(g_test_image_file != nullptr);
+  string image_contents;
+  string image_path = *g_test_image_file;
+  auto status = GetContents(image_path, &image_contents);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+  const int width = 224;
+  const int height = 224;
+  auto params = InceptionPreprocessingStage::DefaultParamsForType(DT_INT8);
+  InceptionPreprocessingStage preprocess_stage(width, height, DT_INT8, params);
+  Scope scope = Scope::NewRootScope();
+  preprocess_stage.AddToGraph(scope, image_contents);
+  TF_CHECK_OK(scope.status());
+
+  GraphDef graph_def;
+  TF_CHECK_OK(scope.ToGraphDef(&graph_def));
+  std::unique_ptr<Session> session(NewSession(SessionOptions()));
+  TF_CHECK_OK(session->Create(graph_def));
+  std::vector<Tensor> outputs;
+  auto run_status =
+      session->Run({},                                   /*inputs*/
+                   {preprocess_stage.output_name()}, {}, /*target node names */
+                   &outputs);
+  TF_CHECK_OK(run_status);
+  EXPECT_EQ(1, outputs.size());
+  EXPECT_EQ(DT_INT8, outputs[0].dtype());
+  EXPECT_TRUE(outputs[0].shape().IsSameSize({1, 224, 224, 3}));
+}
+
 TEST(InceptionPreprocessingTest, TestImagePreprocessFloat) {
   ASSERT_TRUE(g_test_image_file != nullptr);
   string image_contents;
@@ -85,8 +114,8 @@ TEST(InceptionPreprocessingTest, TestImagePreprocessFloat) {
   ASSERT_TRUE(status.ok()) << status.error_message();
   const int width = 224;
   const int height = 224;
-  const bool is_quantized = false;
-  InceptionPreprocessingStage preprocess_stage(width, height, is_quantized);
+  auto params = InceptionPreprocessingStage::DefaultParamsForType(DT_FLOAT);
+  InceptionPreprocessingStage preprocess_stage(width, height, DT_FLOAT, params);
   Scope scope = Scope::NewRootScope();
   preprocess_stage.AddToGraph(scope, image_contents);
   TF_CHECK_OK(scope.status());

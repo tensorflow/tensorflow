@@ -3122,6 +3122,16 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    int offset = i;
+    output_data[offset] = std::ceil(input_data[offset]);
+  }
+}
+
 template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
@@ -3950,11 +3960,8 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
                const T3* input2_data, const RuntimeShape& output_shape,
                T2* output_data, const Cmp& cmp) {
   gemmlowp::ScopedProfilingLabel label("ArgMinMax");
-  // For ArgMax, the number of output dimensions = (number of input dimensions -
-  // 1). For the sake of simplicity, the output dimensions are equal to the
-  // input dimensions here. We enforce the constraint that the axis dimension
-  // must always be 1.
-  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount(),
+  TFLITE_DCHECK_GT(input1_shape.DimensionsCount(), 0);
+  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount() - 1,
                    output_shape.DimensionsCount());
 
   int axis = input2_data[0];
@@ -3963,7 +3970,6 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   }
 
   const int axis_size = input1_shape.Dims(axis);
-  TFLITE_DCHECK_EQ(output_shape.Dims(axis), 1);
 
   int outer_size = 1;
   for (int i = 0; i < axis; ++i) {
@@ -3974,7 +3980,7 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   int inner_size = 1;
   const int dims_count = input1_shape.DimensionsCount();
   for (int i = axis + 1; i < dims_count; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
+    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i - 1));
     inner_size *= input1_shape.Dims(i);
   }
 
@@ -4711,6 +4717,33 @@ void Fill(const RuntimeShape& value_shape, const T* value_data,
   const int flat_size = output_shape.FlatSize();
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = *value_data;
+  }
+}
+
+template <typename Scalar>
+void Reverse(int axis, const RuntimeShape& input_shape,
+             const Scalar* input_data, const RuntimeShape& output_shape,
+             Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Reverse");
+
+  int outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+
+  int copy_size = 1;
+  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
+    copy_size *= input_shape.Dims(i);
+  }
+
+  const int dims_at_axis = input_shape.Dims(axis);
+  for (int i = 0; i < outer_size; ++i) {
+    for (int j = 0; j < dims_at_axis; ++j) {
+      const int start_pos = (i * dims_at_axis + j) * copy_size;
+      Scalar* output_ptr = output_data + start_pos;
+      int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
+      memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
+    }
   }
 }
 

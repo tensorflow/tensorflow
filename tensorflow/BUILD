@@ -385,7 +385,7 @@ package_group(
         "-//third_party/tensorflow/python/estimator",
         "//learning/deepmind/...",
         "//learning/meta_rank/...",
-        "//learning/pathways/...",  # While dataset C++ api requires internals
+        "//platforms/performance/autograppler/...",
         "//tensorflow/...",
         "//tensorflow_estimator/contrib/...",
         "//tensorflow_fold/llgtm/...",
