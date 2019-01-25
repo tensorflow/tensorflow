@@ -258,15 +258,20 @@ def all_strategy_combinations_minus_default():
   return strategy_minus_default_combinations + tpu_strategy_combinations()
 
 
-# TODO(priyag): Add v2 optimizers here.
 def strategy_and_optimizer_combinations():
+  # TODO(b/122372746): Uncomment optimizers after they pass tests.
   return combinations.times(
       all_strategy_combinations(),
-      combinations.combine(
-          optimizer=[combinations.adagrad_optimizer_v1_fn,
-                     combinations.adam_optimizer_v1_fn,
-                     combinations.gradient_descent_optimizer_v1_fn,
-                     combinations.rmsprop_optimizer_v1_fn]))
+      combinations.combine(optimizer=[
+          combinations.adagrad_optimizer_v1_fn,
+          # combinations.adagrad_optimizer_keras_v2_fn,
+          combinations.adam_optimizer_v1_fn,
+          combinations.adam_optimizer_keras_v2_fn,
+          combinations.gradient_descent_optimizer_v1_fn,
+          combinations.gradient_descent_optimizer_keras_v2_fn,
+          combinations.rmsprop_optimizer_v1_fn,
+          # combinations.rmsprop_optimizer_keras_v2_fn
+      ]))
 
 
 def strategy_for_numpy_input_combinations():
