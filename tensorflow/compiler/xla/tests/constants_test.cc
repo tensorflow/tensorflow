@@ -224,9 +224,7 @@ XLA_TEST_F(ConstantsHloTest, DISABLED_ON_GPU(BitcastOfConstant)) {
       ROOT result = s32[] call(parameter.0, constant-as-scalar), to_apply=func
     }
   )";
-  auto module =
-      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
-          .ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
   auto param = LiteralUtil::CreateR0<int32>(1);
   auto result = ExecuteNoHloPasses(std::move(module), {&param});
   EXPECT_TRUE(LiteralTestUtil::Equal(param, result));
