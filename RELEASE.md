@@ -98,9 +98,9 @@
   * Replace all occurences of `tf.contrib.estimator.DNNLinearCombinedEstimator` with `tf.estimator.DNNLinearCombinedEstimator`
   * Replace all occurrences of `tf.contrib.estimator.DNNEstimator` with `tf.estimator.DNNEstimator`
   * Replace all occurrences of `tf.contrib.estimator.LinearEstimator` with `tf.estimator.LinearEstimator`
-  * Users of tf.contrib.estimator.export_all_saved_models and related should switch to tf.estimator.Estimator.experimental_export_all_saved_models.
-  * Update regression_head to the new Head API for Canned Estimator V2.
-  * Switch multi_class_head to Head V2 API for Canned Estimator V2.
+  * Users of `tf.contrib.estimator.export_all_saved_models` and related should switch to `tf.estimator.Estimator.experimental_export_all_saved_models`.
+  * Update `regression_head` to the new Head API for Canned Estimator V2.
+  * Switch `multi_class_head` to Head API for Canned Estimator V2.
   * Replace all occurences of `tf.contrib.estimator.InMemoryEvaluatorHook` and `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with `tf.estimator.experimental.InMemoryEvaluatorHook` and `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`
   * Migrate linear optimizer from contrib to core.
 
