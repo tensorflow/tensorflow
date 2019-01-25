@@ -31,6 +31,8 @@ const char* kSingleSoftmaxModelMinMinus5MaxPlus5 =
 const char* kSingleAvgPoolModelMinMinus5MaxPlus5 =
     "single_avg_pool_min_minus_5_max_plus_5.tflite";
 
+const char* kModelWithSharedWeights = "weight_shared_between_convs.tflite";
+
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];
   vsnprintf(buf, sizeof(buf), format, args);
