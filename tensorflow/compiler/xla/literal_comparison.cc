@@ -389,6 +389,20 @@ class NearComparator {
         abs_error = 0;
         rel_error = 0;
       }
+    } else if (IsInf(actual) && !IsInf(expected) && error_.fewer_infs_ok) {
+      // `fewer_infs_ok` gives us the option of comparing as though `actual`
+      // were float_max/min rather than inf.
+      T actual_finite = actual > T{0} ? std::numeric_limits<T>::max()
+                                      : std::numeric_limits<T>::lowest();
+      abs_error = FpAbsoluteValue(actual_finite - expected);
+
+      // Avoid division by 0 even though it's well-defined because ubsan can be
+      // configured to treat this as a fatal error.
+      if (expected != T{0}) {
+        rel_error = abs_error / FpAbsoluteValue(expected);
+      } else {
+        rel_error = std::numeric_limits<float>::infinity();
+      }
     } else if (IsInf(expected) || IsInf(actual)) {
       // If either the expected or actual value is infinity but not both,
       // then both absolute and relative error are regarded as inifity.
