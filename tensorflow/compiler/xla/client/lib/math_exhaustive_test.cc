@@ -137,10 +137,7 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
   ComputeAndCompareR1<half>(&b, expected_result, {}, tc.error);
 }
 
-// TODO(jlebar): The following tests are missing.
-//
-// - Fails on -1 (returns 0 instead of pi).
-//   Testcase{"acos", Acos, std::acos}.set_skip_infs(),
+// TODO(b/123355973): The following tests are missing.
 //
 // - Many failures.
 //   Testcase{"acosh", Acosh, std::acosh}.set_relaxed_nans(),
@@ -170,6 +167,7 @@ INSTANTIATE_TEST_CASE_P(
             .set_tolerance(0.1, 0.15)
             .set_fewer_infs_ok(),
         Testcase{"asin", Asin, std::asin}.set_skip_infs(),
+        Testcase{"acos", Acos, std::acos}.set_skip_infs(),
         Testcase{"atan", Atan, std::atan},
         Testcase{"tan", Tan, std::tan}.set_tolerance(0.05, 0.05),
     }));

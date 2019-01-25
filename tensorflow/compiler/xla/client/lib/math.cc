@@ -367,10 +367,13 @@ XlaOp RoundToEven(XlaOp x) {
 
 // Trigonometric functions.
 
-// acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))
+// acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
+//           pi                                if x == -1
 XlaOp Acos(XlaOp x) {
-  return ScalarLike(x, 2.0) *
-         Atan2(Sqrt(ScalarLike(x, 1.0) - x * x), ScalarLike(x, 1.0) + x);
+  return Select(Ne(x, FullLike(x, -1)),
+                ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
+                                           ScalarLike(x, 1.0) + x),
+                FullLike(x, M_PI));
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
