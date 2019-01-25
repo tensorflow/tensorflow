@@ -295,3 +295,15 @@ Expected<void (*)(void **)> ExecutionEngine::lookup(StringRef name) const {
     return make_string_error("looked up function is null");
   return fptr;
 }
+
+llvm::Error ExecutionEngine::invoke(StringRef name,
+                                    MutableArrayRef<void *> args) {
+  auto expectedFPtr = lookup(name);
+  if (!expectedFPtr)
+    return expectedFPtr.takeError();
+  auto fptr = *expectedFPtr;
+
+  (*fptr)(args.data());
+
+  return llvm::Error::success();
+}

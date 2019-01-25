@@ -67,6 +67,11 @@ public:
   template <typename... Args>
   llvm::Error invoke(StringRef name, Args &... args);
 
+  /// Invokes the function with the given name passing it the list of arguments
+  /// as a list of opaque pointers. This is the arity-agnostic equivalent of
+  /// the templated `invoke`.
+  llvm::Error invoke(StringRef name, MutableArrayRef<void *> args);
+
 private:
   // Private implementation of the JIT (PIMPL)
   std::unique_ptr<impl::OrcJIT> jit;
