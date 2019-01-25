@@ -832,13 +832,16 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
                                ArrayRef<OperationInst *> dstOpInsts,
                                ComputationSliceState *sliceState,
                                unsigned *dstLoopDepth) {
-  LLVM_DEBUG(llvm::dbgs() << "Checking whether fusion is profitable between:\n";
-             llvm::dbgs() << " "; srcOpInst->dump(); llvm::dbgs() << " and \n";
-             for (auto dstOpInst
-                  : dstOpInsts) {
-               llvm::dbgs() << " ";
-               dstOpInst->dump();
-             });
+  LLVM_DEBUG({
+    llvm::dbgs() << "Checking whether fusion is profitable between:\n";
+    llvm::dbgs() << " ";
+    srcOpInst->dump();
+    llvm::dbgs() << " and \n";
+    for (auto dstOpInst : dstOpInsts) {
+      llvm::dbgs() << " ";
+      dstOpInst->dump();
+    };
+  });
 
   // Compute cost of sliced and unsliced src loop nest.
   SmallVector<ForInst *, 4> srcLoopIVs;
@@ -963,15 +966,16 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
     double storageReduction =
         static_cast<double>(srcLoopNestCost) / sliceIterationCount;
 
-    LLVM_DEBUG(
-        std::stringstream msg;
-        msg << "  evaluating fusion profitability at depth : " << i << "\n"
-            << std::setprecision(2) << "   additional compute fraction: "
-            << 100.0 * additionalComputeFraction << "%\n"
-            << "   storage reduction factor: " << storageReduction << "x\n"
-            << "   fused nest cost: " << fusedLoopNestComputeCost << "\n"
-            << "   slice iteration count: " << sliceIterationCount << "\n";
-        llvm::dbgs() << msg.str());
+    LLVM_DEBUG({
+      std::stringstream msg;
+      msg << "  evaluating fusion profitability at depth : " << i << "\n"
+          << std::setprecision(2) << "   additional compute fraction: "
+          << 100.0 * additionalComputeFraction << "%\n"
+          << "   storage reduction factor: " << storageReduction << "x\n"
+          << "   fused nest cost: " << fusedLoopNestComputeCost << "\n"
+          << "   slice iteration count: " << sliceIterationCount << "\n";
+      llvm::dbgs() << msg.str();
+    });
 
     double computeToleranceThreshold =
         clFusionAddlComputeTolerance.getNumOccurrences() > 0
@@ -1014,8 +1018,8 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
   *dstLoopDepth = bestDstLoopDepth.getValue();
 
   LLVM_DEBUG(
-      llvm::dbgs() << " LoopFusion fusion stats:\n"
-                   << "\n  Best loop depth: " << bestDstLoopDepth
+      llvm::dbgs() << " LoopFusion fusion stats:"
+                   << "\n  best loop depth: " << bestDstLoopDepth
                    << "\n  src loop nest compute cost: " << srcLoopNestCost
                    << "\n  dst loop nest compute cost: " << dstLoopNestCost
                    << "\n  fused loop nest compute cost: "
@@ -1060,15 +1064,17 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
                    (static_cast<double>(srcLoopNestCost) + dstLoopNestCost) -
                1);
 
-  std::stringstream msg;
-  msg << " fusion is most profitable at depth " << *dstLoopDepth << " with "
-      << setprecision(2) << additionalComputeFraction
-      << "% redundant computation and a ";
-  msg << (storageReduction.hasValue()
-              ? std::to_string(storageReduction.getValue())
-              : "<unknown>");
-  msg << "% storage reduction.\n";
-  LLVM_DEBUG(llvm::dbgs() << msg.str());
+  LLVM_DEBUG({
+    std::stringstream msg;
+    msg << " fusion is most profitable at depth " << *dstLoopDepth << " with "
+        << setprecision(2) << additionalComputeFraction
+        << "% redundant computation and a ";
+    msg << (storageReduction.hasValue()
+                ? std::to_string(storageReduction.getValue())
+                : "<unknown>");
+    msg << "% storage reduction.\n";
+    llvm::dbgs() << msg.str();
+  });
 
   // Update return parameter 'sliceState' with 'bestSliceState'.
   ComputationSliceState *bestSliceState = &sliceStates[*dstLoopDepth - 1];
