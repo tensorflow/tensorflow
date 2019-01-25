@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This macro is required to make MSVC defines math constants in math.h
+#define _USE_MATH_DEFINES
+#include <math.h>
+
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
