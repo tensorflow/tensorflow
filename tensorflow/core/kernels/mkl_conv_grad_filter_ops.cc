@@ -505,7 +505,7 @@ class MklConvCustomBackpropFilterOp
           // filter_in_depth  | in_depth         | in_depth / group_count
           // For depthwise convolution, we have group_count == in_depth.
           // So here G = original I, and I = 1.
-          // And the GOIHW is mkldnn format, here is try to extract the TF
+          // And the GOIHW is mkldnn format, here we try to extract the TF
           // format, TF format is HWIO, as G = original I, so here is HWGO.
           TensorShape diff_filter_tf_shape(
               {bwd_output_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_H],
