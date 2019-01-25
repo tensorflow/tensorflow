@@ -14,14 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <cstdlib>
 
 #ifdef __ANDROID__
-#include <dlfcn.h>
-#include <sys/mman.h>
 #include <sys/system_properties.h>
-#include <unistd.h>
-#endif
+#endif  // __ANDROID__
 
 #define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
 
@@ -46,6 +49,7 @@ int32_t GetAndroidSdkVersion() {
   }
   return 0;
 }
+#endif  // __ANDROID__
 
 void* LoadFunction(void* handle, const char* name) {
   if (handle == nullptr) {
@@ -58,43 +62,48 @@ void* LoadFunction(void* handle, const char* name) {
   return fn;
 }
 
+#ifndef __ANDROID__
+// Add /dev/shm implementation of shared memory for non-Android platforms
+int ASharedMemory_create(const char* name, size_t size) {
+  int fd = shm_open(name, O_RDWR | O_CREAT, 0644);
+  if (fd >= 0) {
+    ftruncate(fd, size);
+  }
+  return fd;
+}
+#endif  // __ANDROID__
+
 #define LOAD_FUNCTION(handle, name) \
   nnapi.name = reinterpret_cast<name##_fn>(LoadFunction(handle, #name));
 
-#else
-
-#define LOAD_FUNCTION(handle, name) nnapi.name = nullptr;
-
-#endif
-
 const NnApi LoadNnApi() {
   NnApi nnapi = {};
+  nnapi.android_sdk_version = 0;
 
 #ifdef __ANDROID__
-  void* libneuralnetworks = nullptr;
   void* libandroid = nullptr;
   nnapi.android_sdk_version = GetAndroidSdkVersion();
   if (nnapi.android_sdk_version < 27) {
     NNAPI_LOG("nnapi error: requires android sdk version to be at least %d",
               27);
-  } else {
-    // TODO: change RTLD_LOCAL? Assumes there can be multiple instances of nn
-    // api RT
-    libneuralnetworks = dlopen("libneuralnetworks.so", RTLD_LAZY | RTLD_LOCAL);
-    if (libneuralnetworks == nullptr) {
-      NNAPI_LOG("nnapi error: unable to open library %s",
-                "libneuralnetworks.so");
-    }
-    libandroid = dlopen("libandroid.so", RTLD_LAZY | RTLD_LOCAL);
-    if (libandroid == nullptr) {
-      NNAPI_LOG("nnapi error: unable to open library %s", "libandroid.so");
-    }
+    nnapi.nnapi_exists = false;
+    return nnapi;
   }
+  libandroid = dlopen("libandroid.so", RTLD_LAZY | RTLD_LOCAL);
+  if (libandroid == nullptr) {
+    NNAPI_LOG("nnapi error: unable to open library %s", "libandroid.so");
+  }
+#endif  // __ANDROID__
+
+  void* libneuralnetworks = nullptr;
+  // TODO(b/123243014): change RTLD_LOCAL? Assumes there can be multiple
+  // instances of nn api RT
+  libneuralnetworks = dlopen("libneuralnetworks.so", RTLD_LAZY | RTLD_LOCAL);
+  if (libneuralnetworks == nullptr) {
+    NNAPI_LOG("nnapi error: unable to open library %s", "libneuralnetworks.so");
+  }
+
   nnapi.nnapi_exists = libneuralnetworks != nullptr;
-#else
-  nnapi.nnapi_exists = false;
-  nnapi.android_sdk_version = 0;
-#endif
 
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksMemory_createFromFd);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksMemory_free);
@@ -124,7 +133,11 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksExecution_startCompute);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_wait);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_free);
+#ifdef __ANDROID__
   LOAD_FUNCTION(libandroid, ASharedMemory_create);
+#else
+  nnapi.ASharedMemory_create = ASharedMemory_create;
+#endif  // __ANDROID__
 
   return nnapi;
 }
