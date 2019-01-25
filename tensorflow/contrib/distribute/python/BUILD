@@ -202,6 +202,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
