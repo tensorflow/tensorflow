@@ -109,6 +109,30 @@ Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// Input is [...,N,N].
+// First and second outputs are:
+//   [...,N,N]; [...,N].
+Status LuShapeFn(InferenceContext* c) {
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
+
+  DimensionHandle n;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -2), c->Dim(input, -1), &n));
+
+  ShapeHandle batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
+
+  ShapeHandle lu_shape;
+  ShapeHandle p_shape;
+
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(n, n), &lu_shape));
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &p_shape));
+
+  c->set_output(0, lu_shape);
+  c->set_output(1, p_shape);
+  return Status::OK();
+}
+
 // Input is [...,M,N].
 // First and second outputs are:
 //   [...,M,M]; [...,M,N], if full_matrices is true,
@@ -289,6 +313,14 @@ REGISTER_OP("SelfAdjointEigV2")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(SelfAdjointEigV2ShapeFn);
 
+REGISTER_OP("Lu")
+    .Input("input: T")
+    .Output("lu: T")
+    .Output("p: output_idx_type")
+    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("output_idx_type: {int32, int64} = DT_INT32")
+    .SetShapeFn(LuShapeFn);
+
 REGISTER_OP("MatrixSolve")
     .Input("matrix: T")
     .Input("rhs: T")
@@ -322,6 +354,12 @@ REGISTER_OP("MatrixSolveLs")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &l2_regularizer));
       return MatrixSolveShapeFn(c, false /* square */);
     });
+
+REGISTER_OP("MatrixSquareRoot")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn);
 
 REGISTER_OP("Qr")
     .Input("input: T")

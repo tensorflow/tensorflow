@@ -20,12 +20,14 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
 class UnicodeScriptOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testValidScripts(self):
     inputs = [
         ord("a"),
@@ -45,6 +47,7 @@ class UnicodeScriptOpTest(test.TestCase):
               0  # USCRIPT_COMMON (ZYYY)
           ])
 
+  @test_util.run_deprecated_v1
   def testInvalidScript(self):
     inputs = [-100, 0xffffff]
     with self.cached_session():

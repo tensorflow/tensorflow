@@ -24,13 +24,14 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class InitializersTest(test.TestCase):
 
   def _runner(self,
@@ -40,13 +41,8 @@ class InitializersTest(test.TestCase):
               target_std=None,
               target_max=None,
               target_min=None):
-    variable = resource_variable_ops.ResourceVariable(init(shape))
-    if context.executing_eagerly():
-      output = variable.numpy()
-    else:
-      sess = ops.get_default_session()
-      sess.run(variable.initializer)
-      output = sess.run(variable)
+    output = self.evaluate(init(shape))
+    self.assertEqual(output.shape, shape)
     lim = 3e-2
     if target_std is not None:
       self.assertGreater(lim, abs(output.std() - target_std))

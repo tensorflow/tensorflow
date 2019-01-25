@@ -55,6 +55,7 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.deprecation import deprecated
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Head(object):
   """Interface for the head/top of a model.
 
@@ -132,7 +133,6 @@ class Head(object):
       ... update train_op and hooks in ModelFnOps and return
     ```
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
   def logits_dimension(self):
@@ -504,7 +504,6 @@ def no_op_train_fn(loss):
 
 class _SingleHead(Head):
   """Interface for a single head/top of a model."""
-  __metaclass__ = abc.ABCMeta
 
   def __init__(
       self, problem_type, logits_dimension, label_name=None,

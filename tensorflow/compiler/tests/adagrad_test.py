@@ -42,17 +42,19 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
             zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Run 3 steps of adagrad
         for _ in range(3):
           ada_update.run()
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-1.6026098728179932, -0.6026098728179932]), var0.eval(),
+            np.array([-1.6026098728179932, -0.6026098728179932]),
+            self.evaluate(var0),
             float_rtol=1e-5)
         self.assertAllCloseAccordingToType(
-            np.array([2.715679168701172, 3.715679168701172]), var1.eval(),
+            np.array([2.715679168701172, 3.715679168701172]),
+            self.evaluate(var1),
             float_rtol=1e-5)
 
   def testTensorLearningRate(self):
@@ -68,17 +70,19 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
             zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Run 3 steps of adagrad
         for _ in range(3):
           ada_update.run()
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-1.6026098728179932, -0.6026098728179932]), var0.eval(),
+            np.array([-1.6026098728179932, -0.6026098728179932]),
+            self.evaluate(var0),
             float_rtol=1e-5)
         self.assertAllCloseAccordingToType(
-            np.array([2.715679168701172, 3.715679168701172]), var1.eval(),
+            np.array([2.715679168701172, 3.715679168701172]),
+            self.evaluate(var1),
             float_rtol=1e-5)
 
   def testSharing(self):
@@ -103,18 +107,20 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values.
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Mix the first and the second adagrad for 3 steps.
         ada_update1.run()
         ada_update2.run()
         ada_update1.run()
         # Validate updated params (the same as with only 1 Adagrad).
         self.assertAllCloseAccordingToType(
-            np.array([-1.6026098728179932, -0.6026098728179932]), var0.eval(),
+            np.array([-1.6026098728179932, -0.6026098728179932]),
+            self.evaluate(var0),
             float_rtol=1e-5)
         self.assertAllCloseAccordingToType(
-            np.array([2.715679168701172, 3.715679168701172]), var1.eval(),
+            np.array([2.715679168701172, 3.715679168701172]),
+            self.evaluate(var1),
             float_rtol=1e-5)
 
 

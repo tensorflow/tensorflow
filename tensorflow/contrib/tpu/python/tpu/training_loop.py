@@ -166,8 +166,8 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   # control dependencies from any side-effecting operations.
   if input_arity == 0:
     inputs = [array_ops.constant(0)]
-  return control_flow_ops.while_loop(condition_wrapper, body_wrapper, inputs,
-                                     name="")
+  return control_flow_ops.while_loop(
+      condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
 
 
 def repeat(n, body, inputs=None, infeed_queue=None, name=None):

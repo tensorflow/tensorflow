@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 import csv
+import functools
 
 import numpy as np
 
@@ -31,13 +32,13 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util.tf_export import tf_export
 
@@ -306,8 +307,8 @@ def make_tf_record_dataset(file_pattern,
     return dataset.prefetch(buffer_size=prefetch_buffer_size)
 
 
-@tf_export("data.experimental.make_csv_dataset")
-def make_csv_dataset(
+@tf_export("data.experimental.make_csv_dataset", v1=[])
+def make_csv_dataset_v2(
     file_pattern,
     batch_size,
     column_names=None,
@@ -506,11 +507,42 @@ def make_csv_dataset(
   return dataset
 
 
+@tf_export(v1=["data.experimental.make_csv_dataset"])
+def make_csv_dataset_v1(
+    file_pattern,
+    batch_size,
+    column_names=None,
+    column_defaults=None,
+    label_name=None,
+    select_columns=None,
+    field_delim=",",
+    use_quote_delim=True,
+    na_value="",
+    header=True,
+    num_epochs=None,
+    shuffle=True,
+    shuffle_buffer_size=10000,
+    shuffle_seed=None,
+    prefetch_buffer_size=optimization.AUTOTUNE,
+    num_parallel_reads=1,
+    sloppy=False,
+    num_rows_for_inference=100,
+    compression_type=None,
+):  # pylint: disable=missing-docstring
+  return dataset_ops.DatasetV1Adapter(make_csv_dataset_v2(
+      file_pattern, batch_size, column_names, column_defaults, label_name,
+      select_columns, field_delim, use_quote_delim, na_value, header,
+      num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
+      prefetch_buffer_size, num_parallel_reads, sloppy, num_rows_for_inference,
+      compression_type))
+make_csv_dataset_v1.__doc__ = make_csv_dataset_v2.__doc__
+
+
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 4 * 1024 * 1024  # 4 MB
 
 
-@tf_export("data.experimental.CsvDataset")
-class CsvDataset(dataset_ops.DatasetSource):
+@tf_export("data.experimental.CsvDataset", v1=[])
+class CsvDatasetV2(dataset_ops.DatasetSource):
   """A Dataset comprising lines from one or more CSV files."""
 
   def __init__(self,
@@ -540,7 +572,9 @@ class CsvDataset(dataset_ops.DatasetSource):
 
     We can construct a CsvDataset from it as follows:
     ```python
-    dataset = tf.data.experimental.CsvDataset(
+    tf.enable_eager_execution()
+
+     dataset = tf.data.experimental.CsvDataset(
         "my_file*.csv",
         [tf.float32,  # Required field, use dtype or empty tensor
          tf.constant([0.0], dtype=tf.float32),  # Optional field, default to 0.0
@@ -552,13 +586,8 @@ class CsvDataset(dataset_ops.DatasetSource):
 
     The expected output of its iterations is:
     ```python
-    next_element = dataset.make_one_shot_iterator().get_next()
-    with tf.Session() as sess:
-      while True:
-        try:
-          print(sess.run(next_element))
-        except tf.errors.OutOfRangeError:
-          break
+    for element in dataset:
+      print(element)
 
     >> (4.28e10, 5.55e6, 12)
     >> (-5.3e14, 0.0, 2)
@@ -593,7 +622,6 @@ class CsvDataset(dataset_ops.DatasetSource):
         the input data. If specified, only this subset of columns will be
         parsed. Defaults to parsing all columns.
     """
-    super(CsvDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     self._compression_type = convert.optional_param_to_tensor(
@@ -623,56 +651,64 @@ class CsvDataset(dataset_ops.DatasetSource):
         argument_default=[],
         argument_dtype=dtypes.int64,
     )
-    self._output_shapes = tuple(
-        tensor_shape.scalar() for _ in range(len(record_defaults)))
-    self._output_types = tuple(d.dtype for d in self._record_defaults)
-    self._output_classes = tuple(
-        ops.Tensor for _ in range(len(record_defaults)))
-
-  def _as_variant_tensor(self):
-    # Constructs graph node for the dataset op.
-    return gen_experimental_dataset_ops.experimental_csv_dataset(
+    self._structure = structure.NestedStructure(
+        tuple(structure.TensorStructure(d.dtype, [])
+              for d in self._record_defaults))
+    variant_tensor = gen_experimental_dataset_ops.experimental_csv_dataset(
         filenames=self._filenames,
         record_defaults=self._record_defaults,
         buffer_size=self._buffer_size,
         header=self._header,
-        output_shapes=self._output_shapes,
+        output_shapes=self._structure._flat_shapes,  # pylint: disable=protected-access
         field_delim=self._field_delim,
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
         select_cols=self._select_cols,
-        compression_type=self._compression_type,
-    )
+        compression_type=self._compression_type)
+    super(CsvDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def output_types(self):
-    return self._output_types
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_classes(self):
-    return self._output_classes
+  def _element_structure(self):
+    return self._structure
 
 
-@tf_export("data.experimental.make_batched_features_dataset")
-def make_batched_features_dataset(file_pattern,
-                                  batch_size,
-                                  features,
-                                  reader=core_readers.TFRecordDataset,
-                                  label_key=None,
-                                  reader_args=None,
-                                  num_epochs=None,
-                                  shuffle=True,
-                                  shuffle_buffer_size=10000,
-                                  shuffle_seed=None,
-                                  prefetch_buffer_size=optimization.AUTOTUNE,
-                                  reader_num_threads=1,
-                                  parser_num_threads=2,
-                                  sloppy_ordering=False,
-                                  drop_final_batch=False):
+@tf_export(v1=["data.experimental.CsvDataset"])
+class CsvDatasetV1(dataset_ops.DatasetV1Adapter):
+  """A Dataset comprising lines from one or more CSV files."""
+
+  @functools.wraps(CsvDatasetV2.__init__)
+  def __init__(self,
+               filenames,
+               record_defaults,
+               compression_type=None,
+               buffer_size=None,
+               header=False,
+               field_delim=",",
+               use_quote_delim=True,
+               na_value="",
+               select_cols=None):
+    wrapped = CsvDatasetV2(filenames, record_defaults, compression_type,
+                           buffer_size, header, field_delim, use_quote_delim,
+                           na_value, select_cols)
+    super(CsvDatasetV1, self).__init__(wrapped)
+
+
+@tf_export("data.experimental.make_batched_features_dataset", v1=[])
+def make_batched_features_dataset_v2(file_pattern,
+                                     batch_size,
+                                     features,
+                                     reader=core_readers.TFRecordDataset,
+                                     label_key=None,
+                                     reader_args=None,
+                                     num_epochs=None,
+                                     shuffle=True,
+                                     shuffle_buffer_size=10000,
+                                     shuffle_seed=None,
+                                     prefetch_buffer_size=optimization.AUTOTUNE,
+                                     reader_num_threads=1,
+                                     parser_num_threads=2,
+                                     sloppy_ordering=False,
+                                     drop_final_batch=False):
   """Returns a `Dataset` of feature dictionaries from `Example` protos.
 
   If label_key argument is provided, returns a `Dataset` of tuple
@@ -760,6 +796,7 @@ def make_batched_features_dataset(file_pattern,
     Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
 
   Raises:
+    TypeError: If `reader` is a `tf.ReaderBase` subclass.
     ValueError: If `label_key` is not one of the `features` keys.
   """
   # Create dataset of all matching filenames
@@ -767,6 +804,12 @@ def make_batched_features_dataset(file_pattern,
   dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
   if shuffle:
     dataset = dataset.shuffle(len(filenames), shuffle_seed)
+
+  if isinstance(reader, type) and issubclass(reader, io_ops.ReaderBase):
+    raise TypeError("The `reader` argument must return a `Dataset` object. "
+                    "`tf.ReaderBase` subclasses are not supported. For "
+                    "example, pass `tf.data.TFRecordDataset` instead of "
+                    "`tf.TFRecordReader`.")
 
   # Read `Example` records from files as tensor objects.
   if reader_args is None:
@@ -811,6 +854,31 @@ def make_batched_features_dataset(file_pattern,
   return dataset
 
 
+@tf_export(v1=["data.experimental.make_batched_features_dataset"])
+def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-docstring
+                                     batch_size,
+                                     features,
+                                     reader=core_readers.TFRecordDataset,
+                                     label_key=None,
+                                     reader_args=None,
+                                     num_epochs=None,
+                                     shuffle=True,
+                                     shuffle_buffer_size=10000,
+                                     shuffle_seed=None,
+                                     prefetch_buffer_size=optimization.AUTOTUNE,
+                                     reader_num_threads=1,
+                                     parser_num_threads=2,
+                                     sloppy_ordering=False,
+                                     drop_final_batch=False):
+  return dataset_ops.DatasetV1Adapter(make_batched_features_dataset_v2(
+      file_pattern, batch_size, features, reader, label_key, reader_args,
+      num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
+      prefetch_buffer_size, reader_num_threads, parser_num_threads,
+      sloppy_ordering, drop_final_batch))
+make_batched_features_dataset_v2.__doc__ = (
+    make_batched_features_dataset_v1.__doc__)
+
+
 def _get_file_names(file_pattern, shuffle):
   """Parse list of file names from pattern, optionally shuffled.
 
@@ -842,8 +910,8 @@ def _get_file_names(file_pattern, shuffle):
   return file_names
 
 
-@tf_export("data.experimental.SqlDataset")
-class SqlDataset(dataset_ops.DatasetSource):
+@tf_export("data.experimental.SqlDataset", v1=[])
+class SqlDatasetV2(dataset_ops.DatasetSource):
   """A `Dataset` consisting of the results from a SQL query."""
 
   def __init__(self, driver_name, data_source_name, query, output_types):
@@ -853,17 +921,14 @@ class SqlDataset(dataset_ops.DatasetSource):
     For example:
 
     ```python
+    tf.enable_eager_execution()
+
     dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
                                               "SELECT name, age FROM people",
                                               (tf.string, tf.int32))
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
     # Prints the rows of the result set of the above query.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
+    for element in dataset:
+      print(element)
     ```
 
     Args:
@@ -875,30 +940,38 @@ class SqlDataset(dataset_ops.DatasetSource):
       output_types: A tuple of `tf.DType` objects representing the types of the
         columns returned by `query`.
     """
-    super(SqlDataset, self).__init__()
     self._driver_name = ops.convert_to_tensor(
         driver_name, dtype=dtypes.string, name="driver_name")
     self._data_source_name = ops.convert_to_tensor(
         data_source_name, dtype=dtypes.string, name="data_source_name")
     self._query = ops.convert_to_tensor(
         query, dtype=dtypes.string, name="query")
-    self._output_types = output_types
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.sql_dataset(self._driver_name,
-                                       self._data_source_name, self._query,
-                                       nest.flatten(self.output_types),
-                                       nest.flatten(self.output_shapes))
-
-  @property
-  def output_classes(self):
-    return nest.map_structure(lambda _: ops.Tensor, self._output_types)
+    self._structure = structure.NestedStructure(
+        nest.map_structure(
+            lambda dtype: structure.TensorStructure(dtype, []), output_types))
+    variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
+        self._driver_name, self._data_source_name, self._query,
+        nest.flatten(self.output_types), nest.flatten(self.output_shapes))
+    super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def output_shapes(self):
-    return nest.map_structure(lambda _: tensor_shape.TensorShape([]),
-                              self._output_types)
+  def _element_structure(self):
+    return self._structure
 
-  @property
-  def output_types(self):
-    return self._output_types
+
+@tf_export(v1=["data.experimental.SqlDataset"])
+class SqlDatasetV1(dataset_ops.DatasetV1Adapter):
+  """A `Dataset` consisting of the results from a SQL query."""
+
+  @functools.wraps(SqlDatasetV2.__init__)
+  def __init__(self, driver_name, data_source_name, query, output_types):
+    wrapped = SqlDatasetV2(driver_name, data_source_name, query, output_types)
+    super(SqlDatasetV1, self).__init__(wrapped)
+
+
+# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
+# these aliases in place.
+CsvDataset = CsvDatasetV1
+SqlDataset = SqlDatasetV1
+make_batched_features_dataset = make_batched_features_dataset_v1
+make_csv_dataset = make_csv_dataset_v1

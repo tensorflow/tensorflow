@@ -41,6 +41,19 @@ END
 Whether the range is given or should be determined from the `input` tensor.
 END
   }
+  attr {
+    name: "round_mode"
+    description: <<END
+The 'round_mode' attribute controls which rounding tie-breaking algorithm is
+used when rounding float values to their quantized equivalents. The following
+rounding modes are currently supported:
+
+*   HALF_TO_EVEN: this is the default round_mode.
+*   HALF_UP: round towards positive. In this mode 7.5 rounds up to 8 and -7.5
+    rounds up to -7.
+
+END
+  }
   summary: "Quantizes then dequantizes a tensor."
   description: <<END
 This op simulates the precision loss from the quantized forward pass by:
@@ -93,7 +106,7 @@ following to each value in the 'input' tensor.
 
 output = round(clamp(value, input_min, input_max) * scale_factor) / scale_factor.
 
-The above round function uses half to even rounding.
+The above round function rounds the value based on the given round_mode.
 
 END
 }

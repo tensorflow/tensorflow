@@ -34,21 +34,16 @@ class Cluster;
 struct GrapplerItem;
 
 // Estimate the cost of running a Grappler item based on the theoretical
-// performance of the hardware that will run the model.
+// performance of the hardware that will run the model. Note that this
+// internally uses aggressive shape inference with static shape inference.
 class AnalyticalCostEstimator : public CostEstimator {
  public:
   // Does not take ownership of cluster.
   AnalyticalCostEstimator(Cluster* cluster, bool use_static_shapes);
-  // Does not take ownership of cluster or run_metadata
-  //
-  // When metadata is provided, step_stats and partition_graphs fields will
-  // always be filled during PredictCosts, and the cost_graph field of metadata
-  // will be filled only when cost_graph is not nullptr when invoking
-  // PredictCosts.
   AnalyticalCostEstimator(Cluster* cluster,
                           std::unique_ptr<OpLevelCostEstimator> node_estimator,
                           std::unique_ptr<ReadyNodeManager> node_manager,
-                          bool use_static_shapes, RunMetadata* run_metadata);
+                          bool use_static_shapes);
   ~AnalyticalCostEstimator() override {}
 
   // Initializes the estimator for the specified grappler item.
@@ -56,10 +51,10 @@ class AnalyticalCostEstimator : public CostEstimator {
   Status Initialize(const GrapplerItem& item) override;
 
   // Predict the performance of each node of the optimized graph and annotate
-  // the CostGraphDef with the corresponding estimates. Also returns the
+  // the RunMetadata with the corresponding estimates. Also returns the
   // expected cost for the whole graph.
-  Status PredictCosts(const GraphDef& optimized_graph, CostGraphDef* cost_graph,
-                      Costs* cost) const override;
+  Status PredictCosts(const GraphDef& optimized_graph,
+                      RunMetadata* run_metadata, Costs* cost) const override;
 
   const VirtualScheduler* GetScheduler() const { return scheduler_.get(); }
 
@@ -70,8 +65,6 @@ class AnalyticalCostEstimator : public CostEstimator {
   std::unique_ptr<ReadyNodeManager> node_manager_;
   bool use_static_shapes_;
   std::unique_ptr<VirtualScheduler> scheduler_;
-
-  RunMetadata* run_metadata_;
 };
 
 }  // end namespace grappler

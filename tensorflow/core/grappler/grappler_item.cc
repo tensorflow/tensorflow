@@ -19,27 +19,33 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
-GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef* graph_def) {
-  id = other.id;
-  feed = other.feed;
-  fetch = other.fetch;
-  init_ops = other.init_ops;
-  keep_ops = other.keep_ops;
-  expected_init_time = other.expected_init_time;
-  save_op = other.save_op;
-  restore_op = other.restore_op;
-  save_restore_loc_tensor = other.save_restore_loc_tensor;
-  queue_runners = other.queue_runners;
-  allowed_optimizations = other.allowed_optimizations;
-  graph.Swap(graph_def);
+GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
+  GrapplerItem item;
+  item.id = id;
+  item.feed = feed;
+  item.fetch = fetch;
+  item.init_ops = init_ops;
+  item.keep_ops = keep_ops;
+  item.expected_init_time = expected_init_time;
+  item.save_op = save_op;
+  item.restore_op = restore_op;
+  item.save_restore_loc_tensor = save_restore_loc_tensor;
+  item.queue_runners = queue_runners;
+  item.devices_ = devices_;
+  item.optimization_options_ = optimization_options_;
+  item.graph.Swap(&graph_def);
+  return item;
 }
 
 std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
@@ -108,7 +114,80 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
       result.insert(NodeName(queue_runner.cancel_op_name()));
     }
   }
+
+  // Tensorflow functions do not prune stateful or dataset-output ops from
+  // the function body (see PruneFunctionBody in common_runtime/function.cc).
+  //
+  // We also keep placeholders in the functions body, because it's a bug to have
+  // placeholders inside functions, and we want to catch such invalid graphs
+  // early.
+  if (optimization_options_.is_function_instantiation) {
+    for (const NodeDef& node : graph.node()) {
+      if (IsStateful(node) || IsDataset(node) || IsPlaceholder(node)) {
+        result.insert(node.name());
+      }
+    }
+  }
+
   return result;
+}
+
+const std::unordered_set<string>& GrapplerItem::devices() const {
+  return devices_;
+}
+
+Status GrapplerItem::AddDevice(const string& device) {
+  DeviceNameUtils::ParsedName name;
+
+  if (!DeviceNameUtils::ParseFullName(device, &name)) {
+    return errors::InvalidArgument("Invalid device name: device=", device);
+
+  } else if (!name.has_job || !name.has_replica || !name.has_task ||
+             !name.has_type || !name.has_id) {
+    return errors::InvalidArgument("Not a fully defined device name: device=",
+                                   device);
+  }
+
+  devices_.insert(DeviceNameUtils::ParsedNameToString(name));
+  return Status::OK();
+}
+
+Status GrapplerItem::AddDevices(const GrapplerItem& other) {
+  std::vector<absl::string_view> invalid_devices;
+  for (const string& device : other.devices()) {
+    Status added = AddDevice(device);
+    if (!added.ok()) invalid_devices.emplace_back(device);
+  }
+  return invalid_devices.empty()
+             ? Status::OK()
+             : errors::InvalidArgument("Skipped invalid devices: [",
+                                       absl::StrJoin(invalid_devices, ", "),
+                                       "]");
+}
+
+Status GrapplerItem::InferDevicesFromGraph() {
+  absl::flat_hash_set<absl::string_view> invalid_devices;
+  for (const NodeDef& node : graph.node()) {
+    Status added = AddDevice(node.device());
+    if (!added.ok()) invalid_devices.insert(node.device());
+  }
+  VLOG(2) << "Inferred device set: [" << absl::StrJoin(devices_, ", ") << "]";
+  return invalid_devices.empty()
+             ? Status::OK()
+             : errors::InvalidArgument("Skipped invalid devices: [",
+                                       absl::StrJoin(invalid_devices, ", "),
+                                       "]");
+}
+
+void GrapplerItem::ClearDevices() { devices_.clear(); }
+
+const GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options()
+    const {
+  return optimization_options_;
+}
+
+GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options() {
+  return optimization_options_;
 }
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(

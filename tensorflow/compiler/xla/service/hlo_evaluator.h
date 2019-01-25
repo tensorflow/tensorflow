@@ -21,7 +21,9 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -42,16 +44,24 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // specified.
   explicit HloEvaluator(int64 max_loop_iterations = -1);
 
-  // Evaluates an HLO module and an array of pointers to literals.
-  // Returns the evaluated result as a literal if successful.
+  // Evaluates an HLO module and an array of pointers to literals.  Returns the
+  // evaluated result as a literal if successful.
+  //
   // Precondition: The indices of arg_literals correspond to the parameter
   // numbers of the HLO parameters in the computation. See comment below for an
   // example.
-  // `LiteralPtr` accepts either Literal or const Literal*
-  // type.
-  template <typename LiteralPtr>
+  //
+  // (Dummy template arg is to reduce the overloading priority of one overload
+  // so that Evaluate(module, {}) resolves unambiguously.)
   StatusOr<Literal> Evaluate(const HloModule& module,
-                             absl::Span<const LiteralPtr> arg_literals);
+                             absl::Span<const Literal* const> arg_literals) {
+    return Evaluate(*module.entry_computation(), arg_literals);
+  }
+  template <typename Dummy = void>
+  StatusOr<Literal> Evaluate(const HloModule& module,
+                             absl::Span<const Literal> arg_literals) {
+    return Evaluate(*module.entry_computation(), arg_literals);
+  }
 
   // Evaluates an HLO computation and an array of pointers to literals.
   // Returns the evaluated result as a literal if successful.
@@ -69,29 +79,24 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // where Parameter0 has parameter_number 0 and Parameter1 has parameter_number
   // 1 in this computation. The input literals array will then have its first
   // literal map to Parameter0 and the second map to Parameter1.
-  // `LiteralPtr` accepts either Literal or const Literal*
-  // type.
-  template <typename LiteralPtr>
+  //
+  // (Dummy template arg is to reduce the overloading priority of one overload
+  // so that Evaluate(module, {}) resolves unambiguously.)
   StatusOr<Literal> Evaluate(const HloComputation& computation,
-                             absl::Span<const LiteralPtr> arg_literals);
+                             absl::Span<const Literal* const> arg_literals);
+  template <typename Dummy = void>
+  StatusOr<Literal> Evaluate(const HloComputation& computation,
+                             absl::Span<const Literal> arg_literals) {
+    std::vector<const Literal*> arg_literal_ptrs;
+    for (const auto& l : arg_literals) {
+      arg_literal_ptrs.push_back(&l);
+    }
+    return Evaluate(computation, arg_literal_ptrs);
+  }
 
-  // Evaluates a single HLO instruction and an array of pointers to literals.
-  // Return the evaluated result as literal if successful.
-  // Precondition:
-  // 1. argument literals correspond to the input instruction's parameters in
-  // their post-ordering.
-  // 2. the instruction's operands must be of either Parameter or Constant type.
-  // `LiteralPtr` accepts either Literal or const Literal*
-  // type.
-  template <typename LiteralPtr>
-  StatusOr<Literal> Evaluate(HloInstruction* instruction,
-                             absl::Span<const LiteralPtr> arg_literals);
-
-  // Evaluates a single HLO instruction with constant operands.
-  // Returns the evaluated result as literal if successful.
-  // Precondition:
-  // 1. all operands of the input instruction are constants.
-  // 2. the instruction is not a Parameter operation.
+  // Gets the value of running a single HLO instruction.
+  //
+  // All of the operands to this instruction must be constants.
   StatusOr<Literal> Evaluate(HloInstruction* instruction);
 
   // Same as Evaluate, except returning false on error and accepts an output
@@ -119,6 +124,22 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
                                   const PrecisionConfig& precision_config,
                                   const Literal& lhs, const Literal& rhs);
 
+  void set_dynamic_dimension_inference(
+      DynamicDimensionInference* dynamic_dimension_inference) {
+    dynamic_dimension_inference_ = dynamic_dimension_inference;
+  }
+
+  // Enable the fast path for certain operations like dot or convolution.
+  void set_use_fast_path(bool value) { use_fast_path_ = value; }
+
+  // Returns the result of a matrix multiply `lhs x rhs`.
+  static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
+      const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
+  static std::unique_ptr<Array2D<float>> MatmulArray2D(
+      const Array2D<float>& lhs, const Array2D<float>& rhs);
+  static std::unique_ptr<Array2D<double>> MatmulArray2D(
+      const Array2D<double>& lhs, const Array2D<double>& rhs);
+
  protected:
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
@@ -144,6 +165,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Operations that are type-agnostic or always return a specific type, such as
   // HandleIsFinite where boolean is always returned.
   //
+  Status HandleBitcast(HloInstruction* bitcast) override;
+
+  Status HandleGetDimensionSize(HloInstruction* get_dimension_size) override;
+
   Status HandleParameter(HloInstruction* parameter) override;
 
   Status HandleConstant(HloInstruction* constant) override;
@@ -180,7 +205,9 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
-  Status HandleAfterAll(HloInstruction* token) override;
+  Status HandleAfterAll(HloInstruction* after_all) override;
+
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status HandleSort(HloInstruction* sort) override;
 
@@ -188,15 +215,48 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleImag(HloInstruction* imag) override;
 
+  Status HandleComplex(HloInstruction* complex) override;
+
   Status HandleReduce(HloInstruction* reduce) override;
 
+  // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
+  // expanded in a semantic-preserving way into other HLOs by adding exanpsion
+  // HLO pass to the HLO optimization pass during compilation, which can then be
+  // handled by the evaluator.
+  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
+    return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
+  };
+  Status HandleBatchNormInference(
+      HloInstruction* batch_norm_inference) override {
+    return Unimplemented(
+        "BatchNormInference HLO is unsupported by the evaluator.");
+  };
+  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
+    return Unimplemented(
+        "BatchNormTraining HLO is unsupported by the evaluator.");
+  };
+  Status HandleInfeed(HloInstruction* infeed) override {
+    return Unimplemented("Infeed HLO is unsupported by the evaluator.");
+  };
+  Status HandleOutfeed(HloInstruction* outfeed) override {
+    return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
+  };
+
   // Returns the already-evaluated literal result for the instruction.
+  //
   // A Constant instruction is considered evaluated and its literal will be
   // returned directly without looking up the cache.
+  //
+  // Similarly, a Parameter instruction is considered evaluated and its literal
+  // is looked up in arg_literals.
+  //
   // Crash with log if the given instruction has not been evaluated previously.
   const Literal& GetEvaluatedLiteralFor(const HloInstruction* hlo) {
     if (hlo->IsConstant()) {
       return hlo->literal();
+    }
+    if (hlo->opcode() == HloOpcode::kParameter) {
+      return *arg_literals_.at(hlo->parameter_number());
     }
     auto it = evaluated_.find(hlo);
     CHECK(it != evaluated_.end())
@@ -205,13 +265,22 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   }
 
   // Tracks the HLO instruction and its evaluated literal result.
+  //
+  // Parameters and constants aren't stored here, see implementation of
+  // GetEvaluatedLiteralFor.
+  //
   // TODO(b/35950897): have better memory management here to free instructions
   // that are no longer a parent for any other subsequent instruction in
   // post-orderring.
+  //
   // Must be cleared for each evaluation.
-  // Storing Literal in place require the container to have pointer stability so
-  // we cannot use flat_hash_map any more.
+  //
+  // Storing Literal in place requires the container to have pointer stability
+  // so we cannot use flat_hash_map any more.
   absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
+
+  // Use fast path that uses eigen in the evaluator.
+  bool use_fast_path_ = false;
 
  private:
   template <typename ReturnT, typename NativeT>
@@ -221,16 +290,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const Literal& operand_literal) {
     const auto shape = instruction->shape();
     const auto* operand = instruction->operand(0);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-    // removed.
-    if (!ShapeUtil::SameDimensions(shape, operand->shape())) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s",
-          ShapeUtil::HumanString(shape),
-          ShapeUtil::HumanString(operand->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
     Literal result(shape);
     TF_RETURN_IF_ERROR(
@@ -252,9 +312,20 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Max loop iterations to execute with no maximum if negative.
   int64 max_loop_iterations_;
 
+  // Module-level seed handle.
+  uint64 seed_;
+  // RNG engine.
+  std::minstd_rand0 engine_;
+
+  // DynamicDimensionInference is used to evaluate GetDimensionSize, which
+  // returns the dynamic dimension size of its operand.
+  DynamicDimensionInference* dynamic_dimension_inference_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(HloEvaluator);
 };
 
+std::unique_ptr<Array2D<float>> MatmulArray2D(const Array2D<float>& lhs,
+                                              const Array2D<float>& rhs);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_

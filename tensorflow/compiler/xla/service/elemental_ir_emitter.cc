@@ -22,6 +22,7 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
@@ -811,11 +812,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto c = EmitExtractReal(rhs_value);
       auto d = EmitExtractImag(rhs_value);
       auto aa_p_bb = FAdd(FMul(a, a), FMul(b, b));
+      auto zero = llvm::ConstantFP::get(a->getType(), 0);
       auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
+      auto one = llvm::ConstantFP::get(a->getType(), 1);
       auto half_c = FMul(one_half, c);
 
       TF_ASSIGN_OR_RETURN(auto aa_p_bb_to_half_c,
                           EmitPow(component_type, aa_p_bb, half_c));
+
       auto neg_d = FNeg(d);
       TF_ASSIGN_OR_RETURN(auto arg_lhs, EmitAtan2(component_type, b, a));
       auto neg_d_arg_lhs = FMul(neg_d, arg_lhs);
@@ -827,7 +831,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
       TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
       TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
-      return EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q));
+      // 0^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
+      // Branch Cuts for Complex Elementary Functions or Much Ado About
+      // Nothing's Sign Bit, W. Kahan, Section 10.
+      return Select(
+          And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
+          EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
+          EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
     }
     default:
       return Unimplemented("binary complex op '%s'",
@@ -1326,9 +1336,9 @@ llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
 
   // If implicit broadcast is needed, the source dimensions that are broadcast
   // have index 0.
-  CHECK_EQ(ShapeUtil::Rank(operand_shape), ShapeUtil::Rank(hlo.shape()));
+  CHECK_EQ(operand_shape.rank(), hlo.shape().rank());
   llvm_ir::IrArray::Index source_index(target_index.GetType());
-  for (int64 i = 0; i < ShapeUtil::Rank(hlo.shape()); ++i) {
+  for (int64 i = 0; i < hlo.shape().rank(); ++i) {
     if (hlo.shape().dimensions(i) == operand_shape.dimensions(i)) {
       source_index.push_back(target_index[i]);
     } else {
@@ -1671,26 +1681,66 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
 
   b_->SetInsertPoint(init_block);
 
+  // Assign a unique id for each *different* operand, and count how often each
+  // operand is used. If all operands are different, the usage count will be 1
+  // for each operand.
+  absl::flat_hash_map<const HloInstruction*, int64> to_unique_operand_id;
+  std::vector<int64> operand_usage_count;
+  for (const auto* operand : hlo->operands()) {
+    if (to_unique_operand_id.contains(operand)) {
+      ++operand_usage_count[to_unique_operand_id[operand]];
+    } else {
+      int64 unique_operand_id = to_unique_operand_id.size();
+      to_unique_operand_id[operand] = unique_operand_id;
+      operand_usage_count.push_back(1);
+    }
+  }
+
+  // To avoid that we emit the same operand more than once, we create one basic
+  // block for each *different* operand with a PHI node for the different source
+  // index inputs.
+  std::vector<llvm::BasicBlock*> emit_operand_blocks(
+      to_unique_operand_id.size(), nullptr);
+  std::vector<llvm::PHINode*> source_index_phis(to_unique_operand_id.size(),
+                                                nullptr);
+  for (const auto* operand : hlo->operands()) {
+    int64 operand_id = to_unique_operand_id[operand];
+    if (emit_operand_blocks[operand_id] != nullptr) {
+      continue;
+    }
+
+    emit_operand_blocks[operand_id] = llvm_ir::CreateBasicBlock(
+        exit_block, StrCat("concat_index_from_operand_id", operand_id), b_);
+    auto saved_insert_point = b_->GetInsertPoint();
+    llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
+    source_index_phis[operand_id] =
+        PHI(source_index.GetType(), operand_usage_count[operand_id]);
+    auto operand_index = source_index;
+    operand_index[concat_dim] = source_index_phis[operand_id];
+
+    // Create the terminator of the block before calling operand generators,
+    // because they require non-degenerate basic blocks.
+    b_->SetInsertPoint(llvm::BranchInst::Create(
+        exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
+    TF_ASSIGN_OR_RETURN(llvm::Value * value,
+                        operand_to_generator.at(operand)(operand_index));
+    output->addIncoming(value, b_->GetInsertBlock());
+    b_->SetInsertPoint(init_block, saved_insert_point);
+  }
+
   for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = hlo->operand(operand_idx);
-    auto true_block = llvm_ir::CreateBasicBlock(
-        exit_block, StrCat("concat_index_from_operand", operand_idx), b_);
     auto false_block = llvm_ir::CreateBasicBlock(
         exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
     auto concat_dim_size =
         llvm::ConstantInt::get(source_index[concat_dim]->getType(),
                                operand->shape().dimensions(concat_dim));
-    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size), true_block,
-           false_block);
-
-    // Create the terminator of the true block before calling operand
-    // generators, because they require non-degenerate basic blocks.
-    b_->SetInsertPoint(
-        llvm::BranchInst::Create(exit_block, /*InsertAtEnd=*/true_block));
-    TF_ASSIGN_OR_RETURN(llvm::Value * value,
-                        operand_to_generator.at(operand)(source_index));
-    output->addIncoming(value, b_->GetInsertBlock());
+    int64 operand_id = to_unique_operand_id[operand];
+    source_index_phis[operand_id]->addIncoming(source_index[concat_dim],
+                                               b_->GetInsertBlock());
+    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size),
+           emit_operand_blocks[operand_id], false_block);
 
     // Subtract the size of the concat dimension of the current operand
     // from the source index.
@@ -1709,7 +1759,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     const llvm_ir::IrArray::Index& index) {
   // Emit IR to read dynamic start indices from hlo->operand(1).
   const HloInstruction* input_hlo = hlo->operand(0);
-  const int64 rank = ShapeUtil::Rank(input_hlo->shape());
+  const int64 rank = input_hlo->shape().rank();
   // Use the same index type for all tensor accesses in the same kernel.
   llvm::Type* index_type = index.GetType();
   llvm_ir::IrArray::Index slice_start_index(index_type, rank);
@@ -1717,9 +1767,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-    TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
-                        operand_to_generator.at(hlo->operand(1))(dim_index));
+    // TODO(b/118437727): Remove the R1 path.
+    llvm::Value* start_index_value;
+    if (hlo->operand(1)->shape().rank() == 1) {
+      llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
+      TF_ASSIGN_OR_RETURN(start_index_value,
+                          operand_to_generator.at(hlo->operand(1))(dim_index));
+    } else {
+      llvm_ir::IrArray::Index zero_index(index_type);
+      TF_ASSIGN_OR_RETURN(
+          start_index_value,
+          operand_to_generator.at(hlo->operand(1 + i))(zero_index));
+    }
 
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
@@ -1815,8 +1874,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     // Clamp the gather index so that the gather region fits in the operand.
     // gather_dim_component_extended_inbound =
     //     clamp(gather_dim_component_extended, 0, largest_valid_start_index);
-
-    // TODO(b/111078873): This is implementation defined behavior.
     bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
     auto gather_dim_component_extended_inbound = EmitIntegralMin(
         index.GetConstantWithIndexType(largest_valid_start_index),
@@ -1854,7 +1911,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* update_hlo = hlo->operand(1);
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
-  const int64 rank = ShapeUtil::Rank(input_hlo->shape());
+  const int64 rank = input_hlo->shape().rank();
   llvm_ir::IrArray::Index slice_start_index(index.GetType(), rank);
   llvm_ir::IrArray::Index slice_limit_index(index.GetType(), rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
@@ -1866,9 +1923,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-    TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
-                        operand_to_generator.at(start_hlo)(dim_index));
+
+    llvm::Value* start_index_value;
+    // TODO(b/118437727): Remove the R1 path.
+    if (hlo->operand(2)->shape().rank() == 1) {
+      llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
+      TF_ASSIGN_OR_RETURN(start_index_value,
+                          operand_to_generator.at(hlo->operand(2))(dim_index));
+    } else {
+      llvm_ir::IrArray::Index zero_index(index_type);
+      TF_ASSIGN_OR_RETURN(
+          start_index_value,
+          operand_to_generator.at(hlo->operand(2 + i))(zero_index));
+    }
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
@@ -2186,7 +2253,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         auto* iota = Cast<HloIotaInstruction>(hlo);
         PrimitiveType element_type = iota->shape().element_type();
         IrArray::Index elem_index =
-            ShapeUtil::Rank(iota->shape()) > 1
+            iota->shape().rank() > 1
                 ? target_index.SourceIndexOfBroadcast(
                       iota->shape(),
                       ShapeUtil::MakeShapeWithDescendingLayout(
@@ -2206,13 +2273,15 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 : iota->shape();
         PrimitiveType component_element_type = component_shape.element_type();
         llvm::Value* iota_result;
-        if (ShapeUtil::ElementIsIntegral(component_shape)) {
+        if (primitive_util::IsIntegralType(component_element_type) ||
+            component_element_type == PRED) {
           iota_result = b_->CreateIntCast(
               elem_index_linear,
               llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),
               /*isSigned=*/false);
         } else {
-          TF_RET_CHECK(ShapeUtil::ElementIsFloating(component_shape))
+          TF_RET_CHECK(
+              primitive_util::IsFloatingPointType(component_element_type))
               << component_element_type;
           llvm::Type* float_ir_type;
           if (component_element_type == BF16) {

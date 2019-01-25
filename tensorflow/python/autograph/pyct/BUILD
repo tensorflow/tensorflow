@@ -80,7 +80,6 @@ py_test(
     name = "compiler_test",
     srcs = ["compiler_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -154,7 +153,6 @@ py_test(
     name = "transformer_test",
     srcs = ["transformer_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",

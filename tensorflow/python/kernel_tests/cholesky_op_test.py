@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
@@ -97,7 +98,7 @@ def TriAngInvCompositeGrad(l, grad):
 class CholeskyOpTest(test.TestCase):
 
   def _verifyCholeskyBase(self, sess, x, chol, verification):
-    chol_np, verification_np = sess.run([chol, verification])
+    chol_np, verification_np = self.evaluate([chol, verification])
     self.assertAllClose(x, verification_np)
     self.assertShapeEqual(x, chol)
     # Check that the cholesky is lower triangular, and has positive diagonal
@@ -145,6 +146,7 @@ class CholeskyOpTest(test.TestCase):
       matrices[i] = np.dot(matrices[i].T.conj(), matrices[i])
     self._verifyCholesky(matrices)
 
+  @test_util.run_deprecated_v1
   def testNonSquareMatrix(self):
     with self.assertRaises(ValueError):
       linalg_ops.cholesky(np.array([[1., 2., 3.], [3., 4., 5.]]))
@@ -153,6 +155,7 @@ class CholeskyOpTest(test.TestCase):
           np.array([[[1., 2., 3.], [3., 4., 5.]], [[1., 2., 3.], [3., 4., 5.]]
                    ]))
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     tensor3 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
@@ -160,6 +163,7 @@ class CholeskyOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_ops.cholesky(tensor3)
 
+  @test_util.disable_xla("This test never passed for XLA")  # all nan on XLA
   def testNotInvertibleCPU(self):
     # The input should be invertible.
     with self.session(use_gpu=True):
@@ -175,6 +179,7 @@ class CholeskyOpTest(test.TestCase):
     self._verifyCholesky(np.empty([0, 2, 2]))
     self._verifyCholesky(np.empty([2, 0, 0]))
 
+  @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       matrix1 = random_ops.random_normal([5, 5], seed=42)
@@ -183,8 +188,8 @@ class CholeskyOpTest(test.TestCase):
       matrix2 = math_ops.matmul(matrix2, matrix2, adjoint_a=True)
       c1 = linalg_ops.cholesky(matrix1)
       c2 = linalg_ops.cholesky(matrix2)
-      c1_val, c2_val = sess.run([c1, c2])
-      self.assertAllEqual(c1_val, c2_val)
+      c1_val, c2_val = self.evaluate([c1, c2])
+      self.assertAllClose(c1_val, c2_val)
 
 
 class CholeskyGradTest(test.TestCase):
@@ -193,18 +198,21 @@ class CholeskyGradTest(test.TestCase):
   def getShapes(self, shapeList):
     return ((elem, int(np.floor(1.2 * elem))) for elem in shapeList)
 
+  @test_util.run_deprecated_v1
   def testSmallMatrices(self):
     np.random.seed(0)
     shapes = self.getShapes([1, 2, 10])
     self.runFiniteDifferences(
         shapes, dtypes=(dtypes_lib.float32, dtypes_lib.float64))
 
+  @test_util.run_deprecated_v1
   def testSmallMatricesComplex(self):
     np.random.seed(0)
     shapes = self.getShapes([1, 2, 10])
     self.runFiniteDifferences(
         shapes, dtypes=(dtypes_lib.complex64, dtypes_lib.complex128))
 
+  @test_util.run_deprecated_v1
   def testOneBlockMatrices(self):
     np.random.seed(0)
     shapes = self.getShapes([self._backprop_block_size + 1])
@@ -213,24 +221,28 @@ class CholeskyGradTest(test.TestCase):
         dtypes=(dtypes_lib.float32, dtypes_lib.float64),
         scalarTest=True)
 
+  @test_util.run_deprecated_v1
   def testTwoBlockMatrixFloat(self):
     np.random.seed(0)
     shapes = self.getShapes([2 * self._backprop_block_size + 1])
     self.runFiniteDifferences(
         shapes, dtypes=(dtypes_lib.float32,), scalarTest=True)
 
+  @test_util.run_deprecated_v1
   def testTwoBlockMatrixDouble(self):
     np.random.seed(0)
     shapes = self.getShapes([2 * self._backprop_block_size + 1])
     self.runFiniteDifferences(
         shapes, dtypes=(dtypes_lib.float64,), scalarTest=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testTwoBlockMatrixComplexFloat(self):
     np.random.seed(0)
     shapes = self.getShapes([2 * self._backprop_block_size + 1])
     self.runFiniteDifferences(
         shapes, dtypes=(dtypes_lib.complex64,), scalarTest=True)
 
+  @test_util.run_deprecated_v1
   def testTwoBlockMatrixComplexDouble(self):
     np.random.seed(0)
     shapes = self.getShapes([2 * self._backprop_block_size + 1])

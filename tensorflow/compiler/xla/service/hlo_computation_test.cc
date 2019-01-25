@@ -15,24 +15,28 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 
+#include <memory>
 #include <set>
+#include <unordered_map>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 
 namespace {
 
+namespace m = match;
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
@@ -65,7 +69,7 @@ class HloComputationTest : public HloTestBase {
 };
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsEmpty) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto negate_computation =
       module->AddEntryComputation(CreateNegateComputation());
   EXPECT_TRUE(negate_computation->MakeEmbeddedComputationsList().empty());
@@ -73,7 +77,7 @@ TEST_F(HloComputationTest, GetEmbeddedComputationsEmpty) {
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsOneComputation) {
   // Create computation which calls one other computation.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto negate_computation =
       module->AddEmbeddedComputation(CreateNegateComputation());
   auto map_computation =
@@ -85,7 +89,7 @@ TEST_F(HloComputationTest, GetEmbeddedComputationsOneComputation) {
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsDiamond) {
   // Create computations with a diamond-shaped callgraph.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto negate_computation =
       module->AddEmbeddedComputation(CreateNegateComputation());
   auto map1_computation =
@@ -119,7 +123,7 @@ TEST_F(HloComputationTest, PostOrderSingleton) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(), ElementsAre(constant));
 }
@@ -134,7 +138,7 @@ TEST_F(HloComputationTest, PostOrderSimple) {
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto negate2 = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
               ElementsAre(constant, negate1, negate2));
@@ -151,7 +155,7 @@ TEST_F(HloComputationTest, PostOrderTrace) {
       builder.AddInstruction(HloInstruction::CreateTrace("foobar", negate1));
   auto negate2 = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   // Trace instructions should be at the end of the sort.
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
@@ -170,7 +174,7 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant4 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
               UnorderedElementsAre(constant1, constant2, constant3, constant4));
@@ -192,7 +196,7 @@ TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
       r0f32_, HloOpcode::kAdd, constant2, constant3));
   auto add3 = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32_, HloOpcode::kAdd, constant1, constant3));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto post_order = computation->MakeInstructionPostOrder();
   EXPECT_EQ(6, post_order.size());
@@ -217,7 +221,7 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
                                                       constant2, constant3));
   builder.AddInstruction(HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
                                                       constant1, constant3));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   // Visitor which keeps track of which instructions have been visited.
   class TestVisitor : public DfsHloVisitorWithDefault {
@@ -226,7 +230,7 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
         : computation_(computation) {}
 
     Status DefaultAction(HloInstruction* hlo_instruction) override {
-      EXPECT_EQ(0, visited_set_.count(hlo_instruction));
+      EXPECT_FALSE(visited_set_.contains(hlo_instruction));
       visited_set_.insert(hlo_instruction);
       last_visited_ = hlo_instruction;
       return Status::OK();
@@ -239,7 +243,7 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
     }
 
     HloComputation* computation_;
-    std::set<HloInstruction*> visited_set_;
+    absl::flat_hash_set<HloInstruction*> visited_set_;
     int64 finish_visit_calls_ = 0;
     HloInstruction* last_visited_ = nullptr;
   };
@@ -257,11 +261,11 @@ TEST_F(HloComputationTest, DeepCopyArray) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
 
-  EXPECT_THAT(copy, op::Copy(constant));
+  EXPECT_THAT(copy, GmockMatch(m::Copy(m::Op().Is(constant))));
 }
 
 TEST_F(HloComputationTest, DeepCopyTuple) {
@@ -274,12 +278,13 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto tuple_copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
 
-  EXPECT_THAT(tuple_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
-                                    op::Copy(op::GetTupleElement(tuple))));
+  EXPECT_THAT(tuple_copy, GmockMatch(m::Tuple(
+                              m::Copy(m::GetTupleElement(m::Op().Is(tuple))),
+                              m::Copy(m::GetTupleElement(m::Op().Is(tuple))))));
   EXPECT_EQ(0, tuple_copy->operand(0)->operand(0)->tuple_index());
   EXPECT_EQ(1, tuple_copy->operand(1)->operand(0)->tuple_index());
 }
@@ -297,7 +302,7 @@ TEST_F(HloComputationTest, DeepCopyArrayAtIndices) {
     ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/true);
     EXPECT_THAT(computation->DeepCopyInstruction(constant, &indices_to_copy)
                     .ValueOrDie(),
-                op::Copy(constant));
+                GmockMatch(m::Copy(m::Op().Is(constant))));
   }
 
   {
@@ -330,10 +335,11 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
             .ValueOrDie();
 
-    EXPECT_THAT(deep_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
-                                     op::Copy(op::GetTupleElement(tuple))));
-    EXPECT_THAT(deep_copy, op::Tuple(copies_added.element({0}),
-                                     copies_added.element({1})));
+    EXPECT_THAT(deep_copy, GmockMatch(m::Tuple(
+                               m::Copy(m::GetTupleElement(m::Op().Is(tuple)))
+                                   .Is(copies_added.element({0})),
+                               m::Copy(m::GetTupleElement(m::Op().Is(tuple)))
+                                   .Is(copies_added.element({1})))));
   }
 
   {
@@ -346,8 +352,9 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
             .ValueOrDie();
 
-    EXPECT_THAT(deep_copy, op::Tuple(op::GetTupleElement(tuple),
-                                     op::GetTupleElement(tuple)));
+    EXPECT_THAT(deep_copy,
+                GmockMatch(m::Tuple(m::GetTupleElement(m::Op().Is(tuple)),
+                                    m::GetTupleElement(m::Op().Is(tuple)))));
     EXPECT_TRUE(copies_added.element({}) == nullptr);
     EXPECT_TRUE(copies_added.element({0}) == nullptr);
     EXPECT_TRUE(copies_added.element({1}) == nullptr);
@@ -363,8 +370,9 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
             .ValueOrDie();
 
-    EXPECT_THAT(deep_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
-                                     op::GetTupleElement(tuple)));
+    EXPECT_THAT(deep_copy, GmockMatch(m::Tuple(
+                               m::Copy(m::GetTupleElement(m::Op().Is(tuple))),
+                               m::GetTupleElement(m::Op().Is(tuple)))));
     EXPECT_TRUE(copies_added.element({}) == nullptr);
     EXPECT_TRUE(copies_added.element({0}) != nullptr);
     EXPECT_TRUE(copies_added.element({1}) == nullptr);
@@ -376,12 +384,12 @@ TEST_F(HloComputationTest, DeepCopyToken) {
   // copied.
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
 
   // No copy should be added.
-  EXPECT_THAT(copy, op::AfterAll());
+  EXPECT_THAT(copy, GmockMatch(m::AfterAll()));
 }
 
 TEST_F(HloComputationTest, DeepCopyTokenTuple) {
@@ -393,14 +401,15 @@ TEST_F(HloComputationTest, DeepCopyTokenTuple) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({token, constant}));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
 
   // Only the array (second tuple element) should be copied. The token is passed
   // through transparently.
-  EXPECT_THAT(copy, op::Tuple(op::GetTupleElement(tuple),
-                              op::Copy(op::GetTupleElement(tuple))));
+  EXPECT_THAT(copy, GmockMatch(m::Tuple(
+                        m::GetTupleElement(m::Op().Is(tuple)),
+                        m::Copy(m::GetTupleElement(m::Op().Is(tuple))))));
 }
 
 TEST_F(HloComputationTest, CycleDetection) {
@@ -412,7 +421,7 @@ TEST_F(HloComputationTest, CycleDetection) {
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, negate, negate));
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   // Add a control dependency to create a cycle.
   ASSERT_IS_OK(add->AddControlDependencyTo(negate));
@@ -440,16 +449,18 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
       r0f32_, HloOpcode::kAdd, dead_negate, dead_negate));
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(4, computation->instruction_count());
-  EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Negate(m::Op().Is(constant))));
   EXPECT_EQ(negate, computation->root_instruction());
 
   ASSERT_IS_OK(computation->RemoveInstructionAndUnusedOperands(dead_add));
 
   EXPECT_EQ(2, computation->instruction_count());
-  EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Negate(m::Op().Is(constant))));
   EXPECT_EQ(negate, computation->root_instruction());
 }
 
@@ -466,7 +477,7 @@ TEST_F(HloComputationTest, CloneWithControlDependency) {
       HloInstruction::CreateParameter(0, r0f32_, "param0"));
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, param));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/add));
 
@@ -484,105 +495,39 @@ TEST_F(HloComputationTest, CloneWithControlDependency) {
   EXPECT_THAT(successors, ::testing::ElementsAre(cloned_add));
 }
 
-TEST_F(HloComputationTest, Reachability) {
-  // Test reachability of a non-trivial computation:
-  //
-  // const1    const2
-  //    |         |
-  //    | +-------+
-  //    | |       |
-  //    add ..   negate
-  //     |   .     |
-  //     |   .... exp
-  //     |         |
-  //     +---+   +-+---+
-  //         |   |     |
-  //       multiply   copy
-  //
-  // There is a control dependency from 'add' to 'exp'.
+TEST_F(HloComputationTest, CloneWithReplacements) {
   auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
-  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
-      r0f32_, HloOpcode::kAdd, constant1, constant2));
-  auto negate = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant2));
-  auto exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, negate));
-  auto mul = builder.AddInstruction(
-      HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply, add, exp));
-  auto copy = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kCopy, exp));
-
-  auto module = CreateNewModule();
+  Shape r0s64 = ShapeUtil::MakeShape(S64, {});
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  Shape r0u32 = ShapeUtil::MakeShape(U32, {});
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "p.0.lhs"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
+  auto param2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
+  auto lt = builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param0, param1));
+  auto module = CreateNewVerifiedModule();
   auto computation =
-      module->AddEntryComputation(builder.Build(/*root_instruction=*/mul));
-
-  TF_CHECK_OK(add->AddControlDependencyTo(exp));
-  auto reachability = computation->ComputeReachability();
-
-  EXPECT_TRUE(reachability->IsReachable(constant1, constant1));
-  EXPECT_FALSE(reachability->IsReachable(constant1, constant2));
-  EXPECT_TRUE(reachability->IsReachable(constant1, add));
-  EXPECT_FALSE(reachability->IsReachable(constant1, negate));
-  EXPECT_TRUE(reachability->IsReachable(constant1, exp));
-  EXPECT_TRUE(reachability->IsReachable(constant1, mul));
-  EXPECT_TRUE(reachability->IsReachable(constant1, copy));
-
-  EXPECT_FALSE(reachability->IsReachable(constant2, constant1));
-  EXPECT_TRUE(reachability->IsReachable(constant2, constant2));
-  EXPECT_TRUE(reachability->IsReachable(constant2, add));
-  EXPECT_TRUE(reachability->IsReachable(constant2, negate));
-  EXPECT_TRUE(reachability->IsReachable(constant2, exp));
-  EXPECT_TRUE(reachability->IsReachable(constant2, mul));
-  EXPECT_TRUE(reachability->IsReachable(constant2, copy));
-
-  EXPECT_FALSE(reachability->IsReachable(exp, constant1));
-  EXPECT_FALSE(reachability->IsReachable(exp, constant2));
-  EXPECT_FALSE(reachability->IsReachable(exp, add));
-  EXPECT_FALSE(reachability->IsReachable(exp, negate));
-  EXPECT_TRUE(reachability->IsReachable(exp, exp));
-  EXPECT_TRUE(reachability->IsReachable(exp, mul));
-  EXPECT_TRUE(reachability->IsReachable(exp, copy));
-
-  EXPECT_FALSE(reachability->IsReachable(mul, constant1));
-  EXPECT_FALSE(reachability->IsReachable(mul, constant2));
-  EXPECT_FALSE(reachability->IsReachable(mul, add));
-  EXPECT_FALSE(reachability->IsReachable(mul, negate));
-  EXPECT_FALSE(reachability->IsReachable(mul, exp));
-  EXPECT_TRUE(reachability->IsReachable(mul, mul));
-  EXPECT_FALSE(reachability->IsReachable(mul, copy));
-
-  EXPECT_TRUE(reachability->IsConnected(constant1, copy));
-  EXPECT_TRUE(reachability->IsConnected(copy, constant1));
-  EXPECT_FALSE(reachability->IsConnected(negate, add));
-  EXPECT_FALSE(reachability->IsConnected(add, negate));
-
-  // Remove the control dependency then update and verify the reachability map
-  ASSERT_IS_OK(add->RemoveControlDependencyTo(exp));
-  computation->UpdateReachabilityThroughInstruction(exp, reachability.get());
-
-  EXPECT_TRUE(reachability->IsReachable(constant1, constant1));
-  EXPECT_FALSE(reachability->IsReachable(constant1, constant2));
-  EXPECT_TRUE(reachability->IsReachable(constant1, add));
-  EXPECT_FALSE(reachability->IsReachable(constant1, negate));
-  EXPECT_FALSE(reachability->IsReachable(constant1, exp));
-  EXPECT_TRUE(reachability->IsReachable(constant1, mul));
-  EXPECT_FALSE(reachability->IsReachable(constant1, copy));
-
-  // Change a use within the graph then update and verify the reachability map
-  ASSERT_IS_OK(constant2->ReplaceUseWith(negate, constant1));
-  computation->UpdateReachabilityThroughInstruction(negate, reachability.get());
-
-  EXPECT_FALSE(reachability->IsReachable(constant2, constant1));
-  EXPECT_TRUE(reachability->IsReachable(constant2, constant2));
-  EXPECT_TRUE(reachability->IsReachable(constant2, add));
-  EXPECT_FALSE(reachability->IsReachable(constant2, negate));
-  EXPECT_FALSE(reachability->IsReachable(constant2, exp));
-  EXPECT_TRUE(reachability->IsReachable(constant2, mul));
-  EXPECT_FALSE(reachability->IsReachable(constant2, copy));
+      module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
+  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  replacements.emplace(param2,
+                       HloInstruction::CreateParameter(2, r0s32, "p.1"));
+  auto param3 = HloInstruction::CreateParameter(3, r0u32, "p.2");
+  std::vector<const HloInstruction*> extra_parameters{param3.get()};
+  auto clone = computation->CloneWithReplacements(std::move(replacements),
+                                                  extra_parameters);
+  ASSERT_EQ(clone->num_parameters(), 4);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(1)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(2)->shape(), r0s32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(3)->shape(), r0u32));
 }
 
 TEST_F(HloComputationTest, Stringification) {
@@ -606,7 +551,7 @@ TEST_F(HloComputationTest, Stringification) {
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
@@ -641,7 +586,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options =
@@ -677,7 +622,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
@@ -700,26 +645,27 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 
-TEST_F(HloComputationTest, ChannelReachability) {
-  const Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
-  HloComputation::Builder builder("ChannelReachability");
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "param"));
-  auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(param, token0, 1));
-  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
-  auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
-  auto recv =
-      builder.AddInstruction(HloInstruction::CreateRecv(shape, token1, 1));
-  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+std::unique_ptr<HloComputation> MakeAddNComputation(int n) {
+  auto builder = HloComputation::Builder("add_n");
+  auto result = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "x_value"));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  for (int i = 0; i < n; ++i) {
+    result = builder.AddInstruction(HloInstruction::CreateBinary(
+        one->shape(), HloOpcode::kAdd, result, one));
+  }
+  return builder.Build();
+}
 
-  auto module = CreateNewModule();
-  auto computation = module->AddEntryComputation(builder.Build(recv_done));
-  auto reachability = computation->ComputeReachability();
-  EXPECT_TRUE(reachability->IsReachable(param, recv_done));
-  EXPECT_FALSE(reachability->IsReachable(send, recv));
-  EXPECT_FALSE(reachability->IsReachable(send_done, recv));
+TEST_F(HloComputationTest, DeepEquality) {
+  auto computation_a = MakeAddNComputation(200000);
+  auto computation_b = MakeAddNComputation(200000);
+  EXPECT_TRUE(*computation_a == *computation_b);
+
+  auto computation_c = MakeAddNComputation(199999);
+  EXPECT_FALSE(*computation_a == *computation_c);
+  EXPECT_FALSE(*computation_c == *computation_b);
 }
 
 }  // namespace

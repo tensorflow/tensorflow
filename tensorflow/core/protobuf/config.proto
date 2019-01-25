@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+// add go_package externally with copybara
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
@@ -148,6 +148,14 @@ message GPUOptions {
     // for each GPUDevice.  Default value is 0, which is automatically
     // converted to 1.
     int32 num_dev_to_dev_copy_streams = 3;
+
+    // If non-empty, defines a good GPU ring order on a single worker based on
+    // device interconnect.  This assumes that all workers have the same GPU
+    // topology.  Specify as a comma-separated string, e.g. "3,2,1,0,7,6,5,4".
+    // This ring order is used by the RingReducer implementation of
+    // CollectiveReduce, and serves as an override to automatic ring order
+    // generation in OrderTaskDeviceMap() during CollectiveParam resolution.
+    string collective_ring_order = 4;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -283,6 +291,13 @@ message RPCOptions {
   // transport for client-master communication that avoids the RPC
   // stack. This option is primarily for used testing the RPC stack.
   bool use_rpc_for_inprocess_master = 1;
+
+  // The compression algorithm to be used. One of "deflate", "gzip".
+  string compression_algorithm = 2;
+
+  // If compression_algorithm is set, the compression level to be used.
+  // From 0 (no compression), up to 3.
+  int32 compression_level = 3;
 };
 
 // Session configuration parameters.
@@ -400,6 +415,20 @@ message ConfigProto {
     // Which executor to use, the default executor will be used
     // if it is an empty string or "DEFAULT"
     string executor_type = 3;
+
+    // Guidance to formatting of large RecvBuf fields for transfer.
+    // Any positive value sets the max chunk size.  0 defaults to 4096.
+    // Any negative value indicates no max, i.e. one chunk only.
+    int32 recv_buf_max_chunk = 4;
+
+    // If true, and supported by the platform, the runtime will attempt to
+    // use NUMA affinity where applicable.  One consequence will be the
+    // existence of as many CPU devices as there are available NUMA nodes.
+    bool use_numa_affinity = 5;
+
+    // If true, make collective op execution order sequential and deterministic
+    // for potentially concurrent collective instances.
+    bool collective_deterministic_sequential_execution = 6;
   };
 
   Experimental experimental = 16;

@@ -43,24 +43,18 @@ the workers.
 
 Let's see how to scale to multiple GPUs on one machine using `MirroredStrategy` with [tf.keras] (https://www.tensorflow.org/guide/keras).
 
-Take a very simple model consisting of a single layer:
-
-```python
-inputs = tf.keras.layers.Input(shape=(1,))
-predictions = tf.keras.layers.Dense(1)(inputs)
-model = tf.keras.models.Model(inputs=inputs, outputs=predictions)
-```
-
-Let's also define a simple input dataset for training this model. Note that currently we require using
+Let's define a simple input dataset for training this model. Note that currently we require using
 [`tf.data.Dataset`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset)
 with `DistributionStrategy`.
 
 ```python
+import tensorflow as tf
+from tensorflow import keras
+
 features = tf.data.Dataset.from_tensors([1.]).repeat(10000).batch(10)
 labels = tf.data.Dataset.from_tensors([1.]).repeat(10000).batch(10)
 train_dataset = tf.data.Dataset.zip((features, labels))
 ```
-
 
 To distribute this Keras model on multiple GPUs using `MirroredStrategy` we
 first instantiate a `MirroredStrategy` object.
@@ -69,14 +63,17 @@ first instantiate a `MirroredStrategy` object.
 distribution = tf.contrib.distribute.MirroredStrategy()
 ```
 
-We then compile the Keras model and pass the `MirroredStrategy` object in the
-`distribute` argument (apart from other usual arguments like `loss` and
-`optimizer`).
+Take a very simple model consisting of a single layer. We need to create and compile
+the model under the distribution strategy scope.
 
 ```python
-model.compile(loss='mean_squared_error',
-              optimizer=tf.train.GradientDescentOptimizer(learning_rate=0.2),
-              distribute=distribution)
+with distribution.scope():
+  inputs = tf.keras.layers.Input(shape=(1,))
+  predictions = tf.keras.layers.Dense(1)(inputs)
+  model = tf.keras.models.Model(inputs=inputs, outputs=predictions)
+
+  model.compile(loss='mean_squared_error',
+                optimizer=tf.train.GradientDescentOptimizer(learning_rate=0.2))
 ```
 
 To train the model we call Keras `fit` API using the input dataset that we
@@ -90,8 +87,8 @@ Similarly, we can also call `evaluate` and `predict` as before using appropriate
 datasets.
 
 ```python
-model.evaluate(eval_dataset)
-model.predict(predict_dataset)
+model.evaluate(eval_dataset, steps=1)
+model.predict(predict_dataset, steps=1)
 ```
 
 That's all you need to train your model with Keras on multiple GPUs with
@@ -131,7 +128,7 @@ def model_fn(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode, loss=loss)
 
   if mode == tf.estimator.ModeKeys.TRAIN:
-    train_op = tf.train.GradientDescentOptimizer(0.2).minimize(loss_fn())
+    train_op = tf.train.GradientDescentOptimizer(0.2).minimize(loss)
     return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
 ```
 
@@ -245,18 +242,16 @@ Let's use the same example for multi-worker. We'll start a cluster with 3
 workers doing synchronous all-reduce training. In the following code snippet, we
 start multi-worker training using `tf.estimator.train_and_evaluate`:
 
-
 ```python
 def model_main():
-  estimator = ...
   distribution = tf.contrib.distribute.CollectiveAllReduceStrategy(
       num_gpus_per_worker=2)
   config = tf.estimator.RunConfig(train_distribute=distribution)
+  estimator = tf.estimator.Estimator(model_fn=model_fn, config=config)
   train_spec = tf.estimator.TrainSpec(input_fn=input_fn)
   eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 ```
-
 
 **Note**: You don't have to set "TF\_CONFIG" manually if you use our provided
 Kubernetes template.
@@ -324,13 +319,13 @@ start training.
 On your laptop, you can run
 
 ```python
-estimator = ...
 distribution = tf.contrib.distribute.CollectiveAllReduceStrategy(
     num_gpus_per_worker=2)
 config = tf.estimator.RunConfig(
     experimental_distribute=tf.contrib.distribute.DistributeConfig(
         train_distribute=distribution,
         remote_cluster={"worker": ["host1:port", "host2:port", "host3:port"]}))
+estimator = tf.estimator.Estimator(model_fn=model_fn, config=config)
 train_spec = tf.estimator.TrainSpec(input_fn=input_fn)
 eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn)
 tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)

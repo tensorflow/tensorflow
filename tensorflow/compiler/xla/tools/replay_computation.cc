@@ -47,10 +47,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -73,7 +74,17 @@ namespace {
 // fields.
 struct Options {
   string fake_infeed_shape;
-  bool generate_fake_infeed = false;
+  string fake_outfeed_shape;
+
+  // generate_fake_infeed == true is a safe default: If the model has 0 or 1
+  // infeeds, then it will work like normal.  If the model has more than one
+  // infeed, it will be an error, but that wouldn't have worked anyway if you
+  // hadn't passed generate_fake_infeed.
+  //
+  // Same for generate_fake_outfeed.
+  bool generate_fake_infeed = true;
+  bool generate_fake_outfeed = true;
+
   bool use_fake_data = false;
   bool print_result = true;
   int num_runs = 1;
@@ -82,14 +93,95 @@ struct Options {
 std::unique_ptr<LocalExecutable> CompileExecutable(const HloSnapshot& module,
                                                    LocalClient* client) {
   XlaComputation computation(module.hlo().hlo_module());
-  std::vector<const Shape*> argument_layouts;
-  for (const auto& param :
+  std::vector<Shape> argument_layouts;
+  argument_layouts.reserve(
+      computation.proto().host_program_shape().parameters_size());
+  std::vector<const Shape*> argument_layout_ptrs;
+  for (const ShapeProto& param :
        computation.proto().host_program_shape().parameters()) {
-    argument_layouts.push_back(&param);
+    argument_layouts.push_back(Shape(param));
+    argument_layout_ptrs.push_back(&argument_layouts.back());
   }
   return client
-      ->Compile(computation, argument_layouts, ExecutableBuildOptions())
+      ->Compile(computation, argument_layout_ptrs, ExecutableBuildOptions())
       .ValueOrDie();
+}
+
+absl::optional<Shape> GetXfeedShape(bool is_infeed,
+                                    const HloModuleProto& module,
+                                    const Options& opts) {
+  std::vector<HloInstructionProto> xfeed_instrs;
+  for (const auto& comp : module.computations()) {
+    for (const auto& instruction : comp.instructions()) {
+      if (instruction.opcode() == HloOpcodeString(is_infeed
+                                                      ? HloOpcode::kInfeed
+                                                      : HloOpcode::kOutfeed)) {
+        xfeed_instrs.push_back(instruction);
+      }
+    }
+  }
+
+  auto log_xfeed_instrs = [&] {
+    for (const auto& infeed : xfeed_instrs) {
+      LOG(ERROR) << "  " << ShapeUtil::HumanString(Shape(infeed.shape())) << " "
+                 << infeed.name();
+    }
+  };
+
+  auto find_instruction_from_id_or_die = [&](int64 id) {
+    for (const auto& comp : module.computations()) {
+      for (const auto& instruction : comp.instructions()) {
+        if (instruction.id() == id) {
+          return instruction;
+        }
+      }
+    }
+    LOG(FATAL) << "No instruction with id " << id;
+  };
+
+  absl::optional<Shape> xfeed_shape;
+  string xfeed_name = is_infeed ? "infeed" : "outfeed";
+  string fake_xfeed_shape =
+      is_infeed ? opts.fake_infeed_shape : opts.fake_outfeed_shape;
+  bool generate_fake_xfeed =
+      is_infeed ? opts.generate_fake_infeed : opts.generate_fake_outfeed;
+  if (!fake_xfeed_shape.empty()) {
+    xfeed_shape = std::move(ParseShape(fake_xfeed_shape)).ValueOrDie();
+  } else if (generate_fake_xfeed) {
+    CHECK_LT(xfeed_instrs.size(), 2)
+        << "--generate_fake_" << xfeed_name
+        << " only works if the model has 0 or 1 " << xfeed_name << " ops.";
+    if (xfeed_instrs.empty()) {
+      LOG(INFO) << "Not generating fake " << xfeed_name
+                << " shape; model has no " << xfeed_name << "s.";
+    } else if (xfeed_instrs.size() == 1) {
+      // kInfeed instructions should have a shape (buffer, token).  kOutfeed
+      // instructions should have operand 0 of shape `buffer`. We want to xfeed
+      // just `buffer`.
+      xfeed_shape = is_infeed
+                        ? Shape(xfeed_instrs.front().shape()).tuple_shapes(0)
+                        : Shape(find_instruction_from_id_or_die(
+                                    xfeed_instrs.front().operand_ids(0))
+                                    .shape());
+      LOG(INFO) << "Generating fake " << xfeed_name << " with inferred shape: "
+                << ShapeUtil::HumanString(*xfeed_shape);
+    } else {
+      LOG(ERROR) << "--generate_fake_" << xfeed_name
+                 << " only works if the model has 0 or 1 " << xfeed_name
+                 << " ops, but this model has " << xfeed_instrs.size()
+                 << " of them:";
+      log_xfeed_instrs();
+      LOG(FATAL) << "Can't run model with --generate_fake_infeed.";
+    }
+  } else if (!xfeed_instrs.empty()) {
+    LOG(ERROR) << "Model contains " << xfeed_instrs.size() << " " << xfeed_name
+               << " instruction(s), but neither --generate_fake_" << xfeed_name
+               << " nor --fake_" << xfeed_name
+               << "_shape was specified.  Execution will likely hang.";
+    log_xfeed_instrs();
+  }
+
+  return xfeed_shape;
 }
 
 // Invokes the given computation passing arbitrary data for every (unbound)
@@ -114,7 +206,12 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   std::vector<std::unique_ptr<GlobalData>> global_data_arguments;
   std::vector<const ShapedBuffer*> argument_ptrs;
   if (opts.use_fake_data) {
-    global_data_arguments = MakeFakeArgumentsOrDie(computation, client);
+    // Run fake computations with debug options ignoring XLA_FLAGS.  Users very
+    // likely want XLA_FLAGS only to apply to the "real" computation being run,
+    // not to the fake computations we use for generating arguments.
+    auto debug_opts = DefaultDebugOptionsIgnoringFlags();
+    global_data_arguments =
+        MakeFakeArgumentsOrDie(computation, client, &debug_opts);
     for (const auto& data : global_data_arguments) {
       argument_ptrs.push_back(
           client->GlobalDataToShapedBuffer(data->handle(), /*device_ordinal=*/0)
@@ -133,55 +230,37 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     }
   }
 
-  bool provide_infeed = false;
-  Shape infeed_shape;
-  if (!opts.fake_infeed_shape.empty()) {
-    StatusOr<Shape> shape_status =
-        ShapeUtil::ParseShapeString(opts.fake_infeed_shape);
-    TF_CHECK_OK(shape_status.status());
-    infeed_shape = std::move(shape_status).ValueOrDie();
-    provide_infeed = true;
-  } else if (opts.generate_fake_infeed) {
-    for (const auto& comp : computation.proto().computations()) {
-      for (const auto& instruction : comp.instructions()) {
-        if (instruction.opcode() == HloOpcodeString(HloOpcode::kInfeed)) {
-          CHECK(!provide_infeed)
-              << "--generate_fake_infeed only works if the model has 0 or 1 "
-                 "infeed ops, but this one has >= 2.";
-          provide_infeed = true;
-          infeed_shape = instruction.shape();
-          LOG(INFO) << "Generating fake infeed shape for inferred shape: "
-                    << ShapeUtil::HumanString(infeed_shape);
-        }
-      }
-    }
+  if (absl::optional<Shape> infeed_shape = GetXfeedShape(
+          /*is_infeed=*/true, computation.proto(), opts)) {
+    auto infeed_data = std::make_shared<Literal>(
+        std::move(MakeFakeLiteral(*infeed_shape)).ValueOrDie());
+    xla::gpu::GetOrCreateInfeedManager()
+        ->RegisterBeforeGetNextDestinationCallback([infeed_data, client] {
+          TF_CHECK_OK(client->TransferToInfeed(*infeed_data));
+        });
   }
-  // We only instantiate the thread pool if the user has requested that a
-  // concurrent infeed occur via the fake_infeed_shape, or when
-  // --generate_fake_infeed is passed and there exists an infeed operation in
-  // the HloSnapshot.
-  absl::optional<tensorflow::thread::ThreadPool> pool;
-  Literal data;
-  if (provide_infeed) {
-    data = std::move(MakeFakeLiteral(infeed_shape)).ValueOrDie();
-  }
-  auto transfer_infeed = [&data, client]() {
-    TF_CHECK_OK(client->TransferToInfeed(data));
-  };
-  if (provide_infeed) {
-    pool.emplace(tensorflow::Env::Default(), "infeed",
-                 /*num_threads=*/1);
-    pool->Schedule([transfer_infeed]() {
-      // There may be several infeed buffers needed, however we don't know how
-      // many. If we proactively transfer too many infeed buffers, we may run
-      // out of memory. If we transfer too few infeed buffers, the program will
-      // hang. Therefore, we register a callback that is called when the infeed
-      // becomes empty, and in this callback we will transfer another fake
-      // infeed.
-      auto infeed_manager = xla::gpu::GetOrCreateInfeedManager();
-      infeed_manager->RegisterOnEmptyCallback(transfer_infeed);
-      transfer_infeed();
-    });
+
+  absl::optional<tensorflow::thread::ThreadPool> outfeed_thread_pool;
+  if (absl::optional<Shape> outfeed_shape = GetXfeedShape(
+          /*is_infeed=*/false, computation.proto(), opts)) {
+    // For each an outfeed that runs, enqueue a task that will consume it.  We
+    // need a thread pool because the act of running an outfeed blocks on there
+    // being a destination available, and the act of making a destination
+    // available blocks on there being outfeed data available.
+    outfeed_thread_pool.emplace(tensorflow::Env::Default(), "infeed",
+                                /*num_threads=*/1);
+    auto consume_outfeed = [client, outfeed_shape] {
+      TF_CHECK_OK(
+          client->TransferFromOutfeedLocal(*outfeed_shape, /*device_ordinal=*/0)
+              .status());
+      VLOG(1) << "Received outfeed data of shape "
+              << ShapeUtil::HumanStringWithLayout(*outfeed_shape);
+    };
+    xla::gpu::GetOrCreateOutfeedManager()
+        ->RegisterBeforeGetNextDestinationCallback(
+            [consume_outfeed, &outfeed_thread_pool] {
+              outfeed_thread_pool->Schedule(consume_outfeed);
+            });
   }
 
   // Do not attempt to run the executable if num_runs is less than 1.
@@ -191,16 +270,16 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
 
   // Run the computation num_runs times, and return the result from the last
   // execution.
-  const bool xla_hlo_profile =
-      legacy_flags::GetDebugOptionsFromFlags().xla_hlo_profile();
+  const bool xla_hlo_profile = GetDebugOptionsFromFlags().xla_hlo_profile();
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  absl::optional<ScopedShapedBuffer> result;
+  absl::optional<ScopedShapedBuffer> final_result;
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.
-    if (xla_hlo_profile && i == opts.num_runs - 1) {
+    bool is_final_result = i == opts.num_runs - 1;
+    if (xla_hlo_profile && is_final_result) {
       LOG(INFO) << "\n\n***** Final run below ******";
     }
     ExecutionProfile profile;
@@ -208,14 +287,22 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     run_options.set_execution_profile(&profile);
     run_options.set_allocator(&allocator);
 
-    TF_ASSIGN_OR_RETURN(result, executable->Run(argument_ptrs, run_options));
+    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                        executable->Run(argument_ptrs, run_options));
     LOG(INFO) << "Done executing in "
               << static_cast<double>(profile.compute_time_ns()) / 1e9
               << "s: " << module.hlo().hlo_module().name();
+
+    // Save the result if this is for the final iteration.  Otherwise discard
+    // the result before rerunning the computation, so as to free up the
+    // relevant memory.
+    if (is_final_result) {
+      final_result = std::move(result);
+    }
   }
 
   TF_ASSIGN_OR_RETURN(Literal result_literal,
-                      client->ShapedBufferToLiteral(*result));
+                      client->ShapedBufferToLiteral(*final_result));
   return result_literal;
 }
 
@@ -288,8 +375,10 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
 
   for (int64 i = 0; i < executables.size(); ++i) {
     LocalExecutable* executable = executables[i].get();
+    LOG(ERROR) << "Running iteration " << i;
     StatusOr<Literal> result_status =
         ReplayComputation(snapshots[i], executable, client, opts);
+    LOG(ERROR) << "iteration complete.";
     if (!result_status.ok()) {
       fprintf(stderr, "%s: error: %s\n", args[i],
               result_status.status().ToString().c_str());
@@ -307,9 +396,10 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
       if (snapshot.has_result()) {
         Literal literal =
             Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
-        fprintf(stdout, "was %s:%s\n",
-                ShapeUtil::HumanString(snapshot.result().shape()).c_str(),
-                literal.ToString().c_str());
+        fprintf(
+            stdout, "was %s:%s\n",
+            ShapeUtil::HumanString(Shape(snapshot.result().shape())).c_str(),
+            literal.ToString().c_str());
       }
     }
   }
@@ -333,9 +423,14 @@ int main(int argc, char** argv) {
                        "Number of times to run each computation"),
       tensorflow::Flag("fake_infeed_shape", &opts.fake_infeed_shape,
                        "Shape of fake data to construct for (infinite) infeed"),
+      tensorflow::Flag("fake_outfeed_shape", &opts.fake_outfeed_shape,
+                       "Shape of fake data to outfeed from computation"),
       tensorflow::Flag("generate_fake_infeed", &opts.generate_fake_infeed,
-                       "Whether a fake infeed shape should be generated "
-                       "derived from the computation"),
+                       "Whether a fake infeed shape should be derived "
+                       "from the computation"),
+      tensorflow::Flag("generate_fake_outfeed", &opts.generate_fake_outfeed,
+                       "Whether a fake outfeed shape should be derived "
+                       "from the computation"),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);

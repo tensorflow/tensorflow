@@ -158,7 +158,7 @@ class HeapSimulator {
   void FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
                       const BufferValue* buffer,
                       const HloInstruction* instruction,
-                      const BufferValue* shared_with_canonical);
+                      const BufferValue* share_with_canonical);
 
   // Counterintuitive: the algorithm_ itself can be a NoFragmentationStatsHeap,
   // in which case we are calculating the same allocs/frees twice in the

@@ -107,11 +107,11 @@ class BiasAddGradOp : public XlaOpKernel {
     const DataType accumulation_type =
         XlaHelpers::SumAccumulationType(input_type(0));
     auto converted =
-        XlaHelpers::ConvertElementType(b, ctx->Input(0), accumulation_type);
+        XlaHelpers::ConvertElementType(ctx->Input(0), accumulation_type);
     auto reduce =
         xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
                     *ctx->GetOrCreateAdd(accumulation_type), reduce_dims);
-    ctx->SetOutput(0, XlaHelpers::ConvertElementType(b, reduce, input_type(0)));
+    ctx->SetOutput(0, XlaHelpers::ConvertElementType(reduce, input_type(0)));
   }
 
  private:

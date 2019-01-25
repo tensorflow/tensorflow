@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/protobuf.h"
-
 #include "tensorflow/core/util/proto/proto_utils.h"
+
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace proto_utils {
@@ -64,6 +67,50 @@ bool IsCompatibleType(FieldDescriptor::Type field_type, DataType dtype) {
       return dtype == tensorflow::DT_INT64;
       // default: intentionally omitted in order to enable static checking.
   }
+}
+
+Status ParseTextFormatFromString(absl::string_view input,
+                                 protobuf::Message* output) {
+  DCHECK(output != nullptr) << "output must be non NULL";
+  // When checks are disabled, instead log the error and return an error status.
+  if (output == nullptr) {
+    LOG(ERROR) << "output must be non NULL";
+    return Status(error::INVALID_ARGUMENT, "output must be non NULL");
+  }
+  string err;
+  StringErrorCollector err_collector(&err, /*one-indexing=*/true);
+  protobuf::TextFormat::Parser parser;
+  parser.RecordErrorsTo(&err_collector);
+  if (!parser.ParseFromString(string(input), output)) {
+    return Status(error::INVALID_ARGUMENT, err);
+  }
+  return Status::OK();
+}
+
+StringErrorCollector::StringErrorCollector(string* error_text)
+    : StringErrorCollector(error_text, false) {}
+
+StringErrorCollector::StringErrorCollector(string* error_text,
+                                           bool one_indexing)
+    : error_text_(error_text), index_offset_(one_indexing ? 1 : 0) {
+  DCHECK(error_text_ != nullptr) << "error_text must be non NULL";
+  // When checks are disabled, just log and then ignore added errors/warnings.
+  if (error_text_ == nullptr) {
+    LOG(ERROR) << "error_text must be non NULL";
+  }
+}
+
+void StringErrorCollector::AddError(int line, int column,
+                                    const string& message) {
+  if (error_text_ != nullptr) {
+    absl::SubstituteAndAppend(error_text_, "$0($1): $2\n", line + index_offset_,
+                              column + index_offset_, message);
+  }
+}
+
+void StringErrorCollector::AddWarning(int line, int column,
+                                      const string& message) {
+  AddError(line, column, message);
 }
 
 }  // namespace proto_utils

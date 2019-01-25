@@ -32,7 +32,7 @@ class InTopKTest(test.TestCase):
     np_ans = np.array(expected)
     with self.cached_session():
       precision = nn_ops.in_top_k(predictions, target, k)
-      out = precision.eval()
+      out = self.evaluate(precision)
       self.assertAllClose(np_ans, out)
       self.assertShapeEqual(np_ans, precision)
 
@@ -77,7 +77,7 @@ class InTopKTest(test.TestCase):
     np_ans = np.array([False, True])
     with self.cached_session():
       precision = nn_ops.in_top_k(predictions, target, k)
-      out = precision.eval()
+      out = self.evaluate(precision)
       self.assertAllClose(np_ans, out)
       self.assertShapeEqual(np_ans, precision)
 

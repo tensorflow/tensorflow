@@ -28,15 +28,7 @@ using ::testing::Eq;
 using ::testing::Not;
 using ::testing::ResultOf;
 
-class HloElementTypeConverterTest : public HloTestBase {
- public:
-  std::unique_ptr<HloModule> CreateModuleFromHloString(
-      const string& hlo_string) {
-    return HloRunner::CreateModuleFromString(hlo_string,
-                                             GetDebugOptionsForTest())
-        .ValueOrDie();
-  }
-};
+using HloElementTypeConverterTest = HloTestBase;
 
 TEST_F(HloElementTypeConverterTest, CustomCallsNotConverted) {
   const string& hlo_string = R"(
@@ -47,7 +39,7 @@ TEST_F(HloElementTypeConverterTest, CustomCallsNotConverted) {
            custom_call_target="foo"
     }
   )";
-  auto module = CreateModuleFromHloString(hlo_string);
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_FALSE(converted);
@@ -57,13 +49,13 @@ TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
   const string& hlo_string = R"(
     HloModule InfeedOutfeed
     ENTRY RoundTrip16MiBR1.v2 {
-      token = token[] after-all()
-      infeed = (bf16[4]{0}, token[]) infeed(token)
+      token0 = token[] after-all()
+      infeed = (bf16[4]{0}, token[]) infeed(token0)
       ROOT infeed.data = bf16[4]{0} get-tuple-element(infeed), index=0
-      outfeed = token[] outfeed(infeed.data, token)
+      outfeed = token[] outfeed(infeed.data, token0)
     }
   )";
-  auto module = CreateModuleFromHloString(hlo_string);
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_FALSE(converted);
@@ -73,17 +65,16 @@ TEST_F(HloElementTypeConverterTest, OperationsInNestedTuplesConverted) {
   const string& hlo_string = R"(
     HloModule NestedTuples
     ENTRY NestedTuples.v5 {
-      constant.4 = bf16[] constant(42)
       constant.2 = f32[2]{0} constant({1, 2})
-      constant.3 = bf16[] constant(42)
-      add = bf16[] add(constant.2, constant.3)
-      tuple = (f32[2]{0}, bf16[]) tuple(constant.2, add)
+      constant.3 = bf16[2]{0} constant({42, 42})
+      add = bf16[2]{0} add(constant.2, constant.3)
+      tuple = (f32[2]{0}, bf16[2]{0}) tuple(constant.2, add)
       constant.5 = bf16[2]{0} constant({22, 44})
-      ROOT tuple.1 = ((f32[2]{0}, bf16[]), bf16[2]{0}) tuple(tuple, constant.5)
+      ROOT tuple.1 = ((f32[2]{0}, bf16[2]{0}), bf16[2]{0}) tuple(tuple, constant.5)
     }
   )";
 
-  auto module = CreateModuleFromHloString(hlo_string);
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
@@ -96,13 +87,13 @@ TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
   const string& hlo_string = R"(
     HloModule BatchNormGrad
     ENTRY BatchNormGrad.v6 {
-      constant.4 = bf16[2,2,2,1]{3,2,1,0} constant(bf16[2,2,2,1] { { /*i0=0*/ 
+      constant.4 = bf16[2,2,2,1]{3,2,1,0} constant({ { /*i0=0*/
       { /*i1=0*/ {0}, {0} }, { /*i1=1*/ {0}, {0} } }, { /*i0=1*/ { /*i1=0*/ {0},
       {0} }, { /*i1=1*/ {0}, {0} } } })
       constant.5 = bf16[2]{0} constant({1, 1})
       constant.6 = bf16[2]{0} constant({0, 0})
       constant.7 = bf16[2]{0} constant({1, 1})
-      constant.8 = bf16[2,2,2,1]{3,2,1,0} constant(bf16[2,2,2,1] { { /*i0=0*/
+      constant.8 = bf16[2,2,2,1]{3,2,1,0} constant({ { /*i0=0*/
       { /*i1=0*/ {1}, {2} }, { /*i1=1*/ {3}, {4} } }, { /*i0=1*/ { /*i1=0*/
       {5}, {6} }, { /*i1=1*/ {7}, {8} } } })
       ROOT batch-norm-grad = (bf16[2,2,2,1]{3,2,1,0}, bf16[2]{0}, bf16[2]{0})
@@ -111,7 +102,7 @@ TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
     }
   )";
 
-  auto module = CreateModuleFromHloString(hlo_string);
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
@@ -135,7 +126,7 @@ ENTRY main {
   ROOT rng = bf16[1,1000,20]{2,1,0} rng(constant.3, constant.4), distribution=rng_uniform
 }
   )";
-  auto module = CreateModuleFromHloString(hlo_string);
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
@@ -161,7 +152,7 @@ ENTRY main {
   ROOT rng1 = bf16[1,1000,20]{2,1,0} rng(constant.3, constant.4), control-predecessors={%rng0}, distribution=rng_uniform
 }
   )";
-  auto module = CreateModuleFromHloString(hlo_string);
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
 
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));

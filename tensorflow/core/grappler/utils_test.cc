@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 
 #include <unistd.h>
+#include <limits>
 #include <memory>
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -384,6 +387,27 @@ TEST_F(UtilsTest, DeleteNodes) {
   // TODO(rmlarsen): write forgotten test.
 }
 
+TEST(IsKernelRegisteredForNode, All) {
+  NodeDef node;
+  node.set_name("foo");
+  node.set_op("NoOp");
+  node.set_device("/cpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+  node.set_device("/gpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+
+  // Bad device name.
+  node.set_device("");
+  EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
+
+  // Check an op that is only defined on CPU.
+  node.set_op("MatchingFiles");
+  node.set_device("/cpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+  node.set_device("/gpu:0");
+  EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
+}
+
 #define BM_NodePositionIfSameNode(I, N, NAME)               \
   static void BM_NodePositionIfSameNode_##NAME(int iters) { \
     string input = I;                                       \
@@ -419,6 +443,33 @@ BM_ParseNodeNameAsStringPiece("^foo/bar/baz", foo_bar_baz_ctrl);
 BM_ParseNodeNameAsStringPiece("foo:123", foo123);
 BM_ParseNodeNameAsStringPiece("foo/bar/baz:123", foo_bar_baz_123);
 BM_ParseNodeNameAsStringPiece("^foo/bar/baz:123", foo_bar_baz_123_ctrl);
+
+TEST_F(UtilsTest, SetTensorValueBFloat16) {
+  Tensor t(DT_BFLOAT16, TensorShape({}));
+  TF_ASSERT_OK(SetTensorValue(t.dtype(), 2, &t));
+  test::ExpectTensorEqual<bfloat16>(Tensor(bfloat16(2)), t);
+}
+
+TEST_F(UtilsTest, SetTensorValueBFloat16IntMax) {
+  Tensor t(DT_BFLOAT16, TensorShape({}));
+  TF_ASSERT_OK(SetTensorValue(t.dtype(), std::numeric_limits<int>::max(), &t));
+  test::ExpectTensorEqual<bfloat16>(
+      Tensor(bfloat16(std::numeric_limits<int>::max())), t);
+}
+
+TEST_F(UtilsTest, SetTensorValueBFloat16IntMin) {
+  Tensor t(DT_BFLOAT16, TensorShape({}));
+  TF_ASSERT_OK(SetTensorValue(t.dtype(), std::numeric_limits<int>::min(), &t));
+  test::ExpectTensorEqual<bfloat16>(
+      Tensor(bfloat16(std::numeric_limits<int>::min())), t);
+}
+
+TEST_F(UtilsTest, TensorIdToString) {
+  EXPECT_EQ("^foo", TensorIdToString({"foo", -1}));
+  EXPECT_EQ("foo", TensorIdToString({"foo", 0}));
+  EXPECT_EQ("foo:1", TensorIdToString({"foo", 1}));
+  EXPECT_EQ("foo:2", TensorIdToString({"foo", 2}));
+}
 
 }  // namespace
 }  // namespace grappler

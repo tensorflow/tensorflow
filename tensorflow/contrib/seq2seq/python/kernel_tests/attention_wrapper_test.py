@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
@@ -154,13 +155,13 @@ class AttentionWrapperTest(test.TestCase):
 
     if attention_layer_sizes is not None:
       # Compute sum of attention_layer_sizes. Use encoder_output_depth if None.
-      attention_depth = sum([attention_layer_size or encoder_output_depth
-                             for attention_layer_size in attention_layer_sizes])
+      attention_depth = sum(attention_layer_size or encoder_output_depth
+                            for attention_layer_size in attention_layer_sizes)
     elif attention_layers is not None:
       # Compute sum of attention_layers output depth.
       attention_depth = sum(
           attention_layer.compute_output_shape(
-              [batch_size, cell_depth + encoder_output_depth])[-1].value
+              [batch_size, cell_depth + encoder_output_depth]).dims[-1].value
           for attention_layer in attention_layers)
     else:
       attention_depth = encoder_output_depth * len(create_attention_mechanisms)
@@ -991,6 +992,68 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=True,
         expected_final_alignment_history=expected_final_alignment_history,
         name='testMultiAttention')
+
+  def testCustomizedAttention(self):
+    batch_size = 2
+    max_time = 3
+    num_units = 2
+    memory = constant_op.constant([[[1., 1.], [2., 2.], [3., 3.]],
+                                   [[4., 4.], [5., 5.], [6., 6.]]])
+    memory_sequence_length = constant_op.constant([3, 2])
+    attention_mechanism = wrapper.BahdanauAttention(num_units, memory,
+                                                    memory_sequence_length)
+
+    # Sets all returned values to be all ones.
+    def _customized_attention(unused_attention_mechanism, unused_cell_output,
+                              unused_attention_state, unused_attention_layer):
+      """Customized attention.
+
+      Returns:
+        attention: `Tensor` of shape [batch_size, num_units], attention output.
+        alignments: `Tensor` of shape [batch_size, max_time], sigma value for
+          each input memory (prob. function of input keys).
+        next_attention_state: A `Tensor` representing the next state for the
+          attention.
+      """
+      attention = array_ops.ones([batch_size, num_units])
+      alignments = array_ops.ones([batch_size, max_time])
+      next_attention_state = alignments
+      return attention, alignments, next_attention_state
+
+    attention_cell = wrapper.AttentionWrapper(
+        rnn_cell.LSTMCell(2),
+        attention_mechanism,
+        attention_layer_size=None,  # don't use attention layer.
+        output_attention=False,
+        alignment_history=(),
+        attention_fn=_customized_attention,
+        name='attention')
+    self.assertEqual(num_units, attention_cell.output_size)
+
+    initial_state = attention_cell.zero_state(
+        batch_size=2, dtype=dtypes.float32)
+    source_input_emb = array_ops.ones([2, 3, 2])
+    source_input_length = constant_op.constant([3, 2])
+
+    # 'state' is a tuple of
+    # (cell_state, h, attention, alignments, alignment_history, attention_state)
+    output, state = rnn.dynamic_rnn(
+        attention_cell,
+        inputs=source_input_emb,
+        sequence_length=source_input_length,
+        initial_state=initial_state,
+        dtype=dtypes.float32)
+
+    with self.session() as sess:
+      sess.run(variables.global_variables_initializer())
+      output_value, state_value = sess.run([output, state], feed_dict={})
+      self.assertAllEqual(np.array([2, 3, 2]), output_value.shape)
+      self.assertAllClose(np.array([[1., 1.], [1., 1.]]), state_value.attention)
+      self.assertAllClose(
+          np.array([[1., 1., 1.], [1., 1., 1.]]), state_value.alignments)
+      self.assertAllClose(
+          np.array([[1., 1., 1.], [1., 1., 1.]]), state_value.attention_state)
+
 
 if __name__ == '__main__':
   test.main()

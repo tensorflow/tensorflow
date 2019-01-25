@@ -58,6 +58,15 @@ class DynamicStitchTest(xla_test.XLATestCase):
         [idx1, idx2], [val1, val2],
         expected=np.array([[], [], [], []], np.int32))
 
+  def testEmptyIndex(self):
+    idx1 = np.array([], dtype=np.int32)
+    idx2 = np.array([[], []], dtype=np.int32)
+    val1 = np.ndarray(shape=(0, 9), dtype=np.int32)
+    val2 = np.ndarray(shape=(2, 0, 9), dtype=np.int32)
+    self._AssertDynamicStitchResultIs([idx1, idx2], [val1, val2],
+                                      expected=np.ndarray(
+                                          shape=(0, 9), dtype=np.int32))
+
   def testSimple1D(self):
     val1 = np.array([0, 4, 7], dtype=np.int32)
     val2 = np.array([1, 6, 2, 3, 5], dtype=np.int32)

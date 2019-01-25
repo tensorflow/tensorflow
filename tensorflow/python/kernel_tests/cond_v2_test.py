@@ -20,6 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,6 +35,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
@@ -66,6 +70,7 @@ class CondV2Test(test.TestCase):
       self.assertEqual(expected_val, actual_val)
       self.assertEqual(expected_grad_val, actual_grad_val)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -80,6 +85,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testMultipleOutputs(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(3.0, name="y")
@@ -94,6 +100,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testBasic2(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -108,6 +115,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testNoInputs(self):
     with self.cached_session() as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
@@ -124,7 +132,7 @@ class CondV2Test(test.TestCase):
       self.assertEqual(sess.run(out, {pred: False}), (2.0,))
 
   def _createCond(self, name):
-    """Helper function for testDefaultName."""
+    """Creates a cond_v2 call and returns the output tensor and the cond op."""
     pred = constant_op.constant(True, name="pred")
     x = constant_op.constant(1.0, name="x")
 
@@ -137,11 +145,27 @@ class CondV2Test(test.TestCase):
     output = cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
     cond_op = output.op.inputs[0].op
     self.assertEqual(cond_op.type, "If")
-    return cond_op
+    return output, cond_op
+
+  def _createNestedCond(self, name):
+    """Like _createCond but creates a nested cond_v2 call as well."""
+    pred = constant_op.constant(True, name="pred")
+    x = constant_op.constant(1.0, name="x")
+
+    def true_fn():
+      return cond_v2.cond_v2(pred, lambda: x, lambda: x + 1)
+
+    def false_fn():
+      return x + 2
+
+    output = cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
+    cond_op = output.op.inputs[0].op
+    self.assertEqual(cond_op.type, "If")
+    return output, cond_op
 
   def testDefaultName(self):
     with ops.Graph().as_default():
-      cond_op = self._createCond(None)
+      _, cond_op = self._createCond(None)
       self.assertEqual(cond_op.name, "cond")
       self.assertRegexpMatches(
           cond_op.get_attr("then_branch").name, r"cond_true_\d*")
@@ -150,22 +174,22 @@ class CondV2Test(test.TestCase):
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
-        cond1_op = self._createCond("")
+        _, cond1_op = self._createCond("")
         self.assertEqual(cond1_op.name, "foo/cond")
         self.assertRegexpMatches(
             cond1_op.get_attr("then_branch").name, r"foo_cond_true_\d*")
         self.assertRegexpMatches(
             cond1_op.get_attr("else_branch").name, r"foo_cond_false_\d*")
 
-        cond2_op = self._createCond(None)
+        _, cond2_op = self._createCond(None)
         self.assertEqual(cond2_op.name, "foo/cond_1")
         self.assertRegexpMatches(
             cond2_op.get_attr("then_branch").name, r"foo_cond_1_true_\d*")
         self.assertRegexpMatches(
             cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
+  @test_util.run_v1_only("b/120545219")
   def testDefunInCond(self):
-    self.skipTest("b/117293122")
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -184,9 +208,8 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testNestedDefunInCond(self):
-    self.skipTest("b/117284369")
-
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -210,9 +233,8 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testDoubleNestedDefunInCond(self):
-    self.skipTest("b/117284369")
-
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -538,6 +560,7 @@ class CondV2Test(test.TestCase):
               pred_inner: False
           }), [5., 0.])
 
+  @test_util.run_deprecated_v1
   def testSecondDerivative(self):
     with self.cached_session() as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
@@ -607,14 +630,34 @@ class CondV2Test(test.TestCase):
         # d2[x]/dx2 = 0
         self.assertEqual(false_val, [0.0])
 
+  def testGradientTapeOfCondWithResourceVariableInFunction(self):
+    with context.eager_mode():
+      v = variables.Variable(2.)
+
+      @def_function.function
+      def fnWithCond():  # pylint: disable=invalid-name
+        with backprop.GradientTape() as tape:
+          pred = constant_op.constant(True, dtype=dtypes.bool)
+
+          def true_fn():
+            return math_ops.pow(v, 3)
+
+          def false_fn():
+            return v
+
+          cond = cond_v2.cond_v2(pred, true_fn, false_fn, name="cond")
+        return tape.gradient(cond, v)
+
+      self.assertAllEqual(fnWithCond(), 12.0)
+
   def testLowering(self):
     with ops.Graph().as_default() as g:
       with self.session(graph=g) as sess:
-        out_cond = self._createCond("cond")
+        cond_output, _ = self._createCond("cond")
 
         run_options = config_pb2.RunOptions(output_partition_graphs=True)
         run_metadata = config_pb2.RunMetadata()
-        sess.run(out_cond, options=run_options, run_metadata=run_metadata)
+        sess.run(cond_output, options=run_options, run_metadata=run_metadata)
 
         # If lowering was enabled, there should be a `Switch` node
         switch_found = any(
@@ -634,17 +677,23 @@ class CondV2Test(test.TestCase):
         self.assertFalse(if_found,
                          "An `If` op was found, but it should be lowered.")
 
+  @test_util.run_deprecated_v1
   def testLoweringDisabledInXLA(self):
     with self.session(graph=ops.Graph()) as sess:
       # Build the cond_v2 in an XLA context
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
-      out_cond = self._createCond("cond")
+      cond_output, cond_op = self._createCond("cond")
       xla_context.Exit()
 
+      # Check lowering attr is not set.
+      with self.assertRaises(ValueError):
+        cond_op.get_attr("_lower_using_switch_merge")
+
+      # Check the actual graph that is run.
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       run_metadata = config_pb2.RunMetadata()
-      sess.run(out_cond, options=run_options, run_metadata=run_metadata)
+      sess.run(cond_output, options=run_options, run_metadata=run_metadata)
 
       # Lowering disabled in XLA, there should be no `Switch` node
       switch_found = any(
@@ -665,6 +714,153 @@ class CondV2Test(test.TestCase):
       self.assertTrue(
           if_found,
           "An `If` op was not found, but the graph should not be lowered.")
+
+  @test_util.run_deprecated_v1
+  def testNestedLoweringDisabledInXLA(self):
+    # Build the cond_v2 in an XLA context
+    xla_context = control_flow_ops.XLAControlFlowContext()
+    xla_context.Enter()
+    _, cond_op = self._createNestedCond("cond")
+    xla_context.Exit()
+
+    # Check lowering attr is not set for either If node.
+    with self.assertRaises(ValueError):
+      cond_op.get_attr("_lower_using_switch_merge")
+
+    nested_if_ops = []
+    for func in ops.get_default_graph()._functions.values():
+      nested_if_ops.extend(op for op in func._graph.get_operations()
+                           if op.type == "If")
+    self.assertEqual(len(nested_if_ops), 1)
+    with self.assertRaises(ValueError):
+      nested_if_ops[0].get_attr("_lower_using_switch_merge")
+
+    # TODO(skyewm): check the actual graphs that are run once we have a way to
+    # programmatically access those graphs.
+
+  @test_util.run_deprecated_v1
+  def testLoweringDisabledWithSingleThreadedExecutorContext(self):
+    with self.session(graph=ops.Graph()) as sess:
+      @function.defun
+      def _add_cond(x):
+        return cond_v2.cond_v2(
+            constant_op.constant(True, name="pred"),
+            lambda: x,
+            lambda: x + 1)
+
+      x = array_ops.placeholder(shape=None, dtype=dtypes.float32)
+      with context.function_executor_type("SINGLE_THREADED_EXECUTOR"):
+        out_cond = _add_cond(x)
+
+      # The fact that sess.run() succeeds means lowering is disabled, because
+      # the single threaded executor does not support cond v1 ops.
+      sess.run(out_cond, feed_dict={x: 1.0})
+
+  @test_util.enable_control_flow_v2
+  def testStructuredOutputs(self):
+    x = constant_op.constant(1.0, name="x")
+    y = constant_op.constant(3.0, name="y")
+
+    def true_fn():
+      return ((x * y,), y)
+
+    def false_fn():
+      return ((x,), y * 3.0)
+
+    output = control_flow_ops.cond(
+        constant_op.constant(False), true_fn, false_fn)
+    self.assertEqual(self.evaluate(output[0][0]), 1.)
+    self.assertEqual(self.evaluate(output[1]), 9.)
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
+  def testRaisesOutputStructuresMismatch(self):
+    x = constant_op.constant(1.0, name="x")
+    y = constant_op.constant(3.0, name="y")
+
+    def true_fn():
+      return x * y, y
+
+    def false_fn():
+      return ((x,), y * 3.0)
+
+    with self.assertRaisesRegexp(
+        ValueError, "Outputs of true_fn and false_fn must"
+        " have the same structure"):
+      control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
+
+  @test_util.enable_control_flow_v2
+  def testCondAndTensorArray(self):
+    x = math_ops.range(-5, 5)
+    output = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=x.shape[0])
+
+    def loop_body(i, output):
+
+      def if_true():
+        return output.write(i, x[i]**2)
+
+      def if_false():
+        return output.write(i, x[i])
+
+      output = control_flow_ops.cond(x[i] > 0, if_true, if_false)
+      return i + 1, output
+
+    _, output = control_flow_ops.while_loop(
+        lambda i, arr: i < x.shape[0],
+        loop_body,
+        loop_vars=(constant_op.constant(0), output))
+    output_t = output.stack()
+    self.assertAllEqual(
+        self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
+
+  @test_util.enable_control_flow_v2
+  def testCondAndTensorArrayInDefun(self):
+
+    @function.defun
+    def f():
+      x = math_ops.range(-5, 5)
+      output = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=x.shape[0])
+
+      def loop_body(i, output):
+
+        def if_true():
+          return output.write(i, x[i]**2)
+
+        def if_false():
+          return output.write(i, x[i])
+
+        output = control_flow_ops.cond(x[i] > 0, if_true, if_false)
+        return i + 1, output
+
+      _, output = control_flow_ops.while_loop(
+          lambda i, arr: i < x.shape[0],
+          loop_body,
+          loop_vars=(constant_op.constant(0), output))
+      return output.stack()
+
+    output_t = f()
+    self.assertAllEqual(
+        self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
+
+  @test_util.run_deprecated_v1
+  def testForwardPassRewrite(self):
+    x = constant_op.constant(1.0, name="x")
+    output = cond_v2.cond_v2(constant_op.constant(True),
+                             lambda: x * 2.0,
+                             lambda: x)
+    if_op = output.op.inputs[0].op
+    self.assertEqual(if_op.type, "If")
+    # pylint: disable=g-deprecated-assert
+    self.assertEqual(len(if_op.outputs), 1)
+
+    gradients_impl.gradients(output, x)
+    # if_op should have been rewritten to output 2.0 intermediate.
+    self.assertEqual(len(if_op.outputs), 2)
+
+    gradients_impl.gradients(output, x)
+    # Computing the gradient again shouldn't rewrite if_op again.
+    self.assertEqual(len(if_op.outputs), 2)
+    # pylint: enable=g-deprecated-assert
 
 
 class CondV2CollectionTest(test.TestCase):
@@ -910,7 +1106,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
                 self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
                                               fn2, fn2)))
         else:
-          self.skipTest("Test requrires a GPU to check GPU device placement.")
+          self.skipTest("Test requires a GPU to check GPU device placement.")
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:

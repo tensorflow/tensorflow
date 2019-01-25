@@ -19,8 +19,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 #include "tensorflow/core/platform/prefetch.h"
 
@@ -159,6 +159,7 @@ TF_CALL_ALL_TYPES(REGISTER_SELECT);
       Name("Select").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       SelectOp<GPUDevice, type>);
 
+REGISTER_SELECT_GPU(bool);
 REGISTER_SELECT_GPU(Eigen::half);
 REGISTER_SELECT_GPU(float);
 REGISTER_SELECT_GPU(double);

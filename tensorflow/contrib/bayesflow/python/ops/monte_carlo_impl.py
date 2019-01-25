@@ -353,12 +353,12 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
 
 def _sample_mean(values):
   """Mean over sample indices.  In this module this is always [0]."""
-  return math_ops.reduce_mean(values, reduction_indices=[0])
+  return math_ops.reduce_mean(values, axis=[0])
 
 
 def _sample_max(values):
   """Max over sample indices.  In this module this is always [0]."""
-  return math_ops.reduce_max(values, reduction_indices=[0])
+  return math_ops.reduce_max(values, axis=[0])
 
 
 def _get_samples(dist, z, n, seed):

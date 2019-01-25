@@ -87,8 +87,8 @@ class TFETest(test_util.TensorFlowTestCase):
       x += 1.
     # Without a device context, heuristics are used to place ops.
     # In this case, ops.reduce_mean runs on the GPU.
-    reduction_indices = range(x.shape.ndims)
-    m = math_ops.reduce_mean(x, reduction_indices)
+    axis = range(x.shape.ndims)
+    m = math_ops.reduce_mean(x, axis)
     # m is on GPU, bring it back to CPU and compare.
     self.assertEqual(3.5, m.cpu().numpy())
 

@@ -102,7 +102,9 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     raise NotImplementedError("operator_build_infos has not been implemented.")
 
   @abc.abstractmethod
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
     """Build a batch matrix and an Operator that should have similar behavior.
 
     Every operator acts like a (batch) matrix.  This method returns both
@@ -114,6 +116,11 @@ class LinearOperatorDerivedClassTest(test.TestCase):
       dtype:  Numpy dtype.  Data type of returned array/operator.
       use_placeholder:  Python bool.  If True, initialize the operator with a
         placeholder of undefined shape and correct dtype.
+      ensure_self_adjoint_and_pd: If `True`,
+        construct this operator to be Hermitian Positive Definite, as well
+        as ensuring the hints `is_positive_definite` and `is_self_adjoint`
+        are set.
+        This is useful for testing methods such as `cholesky`.
 
     Returns:
       operator:  `LinearOperator` subclass instance.
@@ -271,6 +278,21 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     self._skip_if_tests_to_skip_contains("matmul_with_broadcast")
     self._test_matmul(with_batch=False)
 
+  def test_cholesky(self):
+    self._skip_if_tests_to_skip_contains("cholesky")
+    for use_placeholder in self._use_placeholder_options:
+      for build_info in self._operator_build_infos:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat = self._operator_and_matrix(
+                build_info, dtype, use_placeholder=use_placeholder,
+                ensure_self_adjoint_and_pd=True)
+            op_chol = operator.cholesky().to_dense()
+            mat_chol = linalg_ops.cholesky(mat)
+            op_chol_v, mat_chol_v = sess.run([op_chol, mat_chol])
+            self.assertAC(mat_chol_v, op_chol_v)
+
   def _test_solve(self, with_batch):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
@@ -313,6 +335,22 @@ class LinearOperatorDerivedClassTest(test.TestCase):
   def test_solve_with_broadcast(self):
     self._skip_if_tests_to_skip_contains("solve_with_broadcast")
     self._test_solve(with_batch=False)
+
+  def _test_inverse(self):
+    for use_placeholder in self._use_placeholder_options:
+      for build_info in self._operator_build_infos:
+        for dtype in self._dtypes_to_test:
+          with self.session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat = self._operator_and_matrix(
+                build_info, dtype, use_placeholder=use_placeholder)
+            op_inverse_v, mat_inverse_v = sess.run([
+                operator.inverse().to_dense(), linalg.inv(mat)])
+            self.assertAC(op_inverse_v, mat_inverse_v)
+
+  def test_inverse(self):
+    self._skip_if_tests_to_skip_contains("inverse")
+    self._test_inverse()
 
   def test_trace(self):
     self._skip_if_tests_to_skip_contains("trace")
@@ -441,7 +479,14 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
   @property
   def _tests_to_skip(self):
     """List of test names to skip."""
-    return ["solve", "solve_with_broadcast", "det", "log_abs_det"]
+    return [
+        "cholesky",
+        "inverse",
+        "solve",
+        "solve_with_broadcast",
+        "det",
+        "log_abs_det"
+    ]
 
   @property
   def _operator_build_infos(self):

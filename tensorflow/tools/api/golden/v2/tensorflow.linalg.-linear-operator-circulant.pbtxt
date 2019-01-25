@@ -97,6 +97,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "cholesky"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cholesky\'], "
+  }
+  member_method {
     name: "convolution_kernel"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'convolution_kernel\'], "
   }
@@ -111,6 +115,10 @@ tf_class {
   member_method {
     name: "domain_dimension_tensor"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'domain_dimension_tensor\'], "
+  }
+  member_method {
+    name: "inverse"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'inverse\'], "
   }
   member_method {
     name: "log_abs_determinant"

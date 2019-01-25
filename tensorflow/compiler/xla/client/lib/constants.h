@@ -56,6 +56,8 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
       return ConstantR0<double>(builder, static_cast<double>(value));
     case C64:
       return ConstantR0<complex64>(builder, static_cast<complex64>(value));
+    case C128:
+      return ConstantR0<complex128>(builder, static_cast<complex128>(value));
     case U8:
       return ConstantR0<uint8>(builder, static_cast<uint8>(value));
     case U32:
@@ -85,6 +87,27 @@ XlaOp ScalarLike(XlaOp prototype, T value) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     return ConstantR0WithType(builder, shape.element_type(), value);
+  });
+}
+
+// Returns an array or scalar containing copies of `value` cast to the same
+// run-type type as `prototype` and broadcast to the same dimensions as
+// `prototype`.
+//
+// If `prototype` is not a scalar or array, returns an error.
+template <typename T>
+XlaOp FullLike(XlaOp prototype, T value) {
+  XlaBuilder* builder = prototype.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
+    if (ShapeUtil::IsScalar(shape) || shape.IsArray()) {
+      return Broadcast(ScalarLike(prototype, value), shape.dimensions());
+    } else {
+      return InvalidArgument(
+          "Prototype shape for BroadcastConstantLike must be a scalar or "
+          "array, but was %s",
+          shape.ToString());
+    }
   });
 }
 

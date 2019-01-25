@@ -72,7 +72,7 @@ NodeDef* AddScalarConstNodeHelper(
     MutableGraphView* graph) {
   NodeDef node;
   node.set_op(kConstOpName);
-  SetUniqueGraphNodeName(kConstOpName, graph->GetGraph(), &node);
+  SetUniqueGraphNodeName(kConstOpName, graph->graph(), &node);
 
   (*node.mutable_attr())["dtype"].set_type(dtype);
   std::unique_ptr<tensorflow::TensorProto> tensor =
@@ -92,7 +92,7 @@ NodeDef* AddScalarConstNodeHelper(
 NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph) {
   NodeDef node;
   node.set_op("Placeholder");
-  SetUniqueGraphNodeName(node.op(), graph->GetGraph(), &node);
+  SetUniqueGraphNodeName(node.op(), graph->graph(), &node);
   (*node.mutable_attr())["dtype"].set_type(dtype);
   TensorShapeProto* shape = (*node.mutable_attr())["shape"].mutable_shape();
   shape->set_unknown_rank(false);
@@ -107,7 +107,7 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
   if (!name.empty()) {
     node.set_name(string(name));
   } else {
-    SetUniqueGraphNodeName(op, graph->GetGraph(), &node);
+    SetUniqueGraphNodeName(op, graph->graph(), &node);
   }
   node.set_op(string(op));
   for (const string& input : inputs) {
@@ -228,7 +228,7 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph) {
   if (node.input_size() == 0) return nullptr;
-  GraphView::InputPort input_port = graph.GetInputPort(node.name(), 0);
+  MutableGraphView::InputPort input_port = graph.GetInputPort(node.name(), 0);
   return graph.GetRegularFanin(input_port).node;
 }
 
@@ -293,6 +293,6 @@ Status EnsureNodeNamesUnique(Graph* g) {
 
   return Status::OK();
 }
-}  // end namespace graph_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace graph_utils
+}  // namespace grappler
+}  // namespace tensorflow

@@ -148,7 +148,7 @@ class ExamplesIterable {
                                                       row_range.start);
           for (int64 row_idx = row_range.start; row_idx < row_range.end;
                ++row_idx) {
-            sparse_int_features[sparse_int_idx].insert(
+            sparse_int_features[sparse_int_idx].push_back(
                 iter_->sparse_int_column_values_[sparse_int_idx](row_idx));
           }
         }

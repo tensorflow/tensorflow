@@ -304,7 +304,6 @@ TEST_F(GraphPropertiesTest, ReadVariableOpAfterEnter) {
                   .Input("Enter", 0, DT_RESOURCE)
                   .Finalize(item.graph.add_node()));
 
-  // LOG(INFO) << item.graph.DebugString();
   GraphProperties properties(item);
   TF_CHECK_OK(properties.InferStatically(false));
   const auto props = properties.GetOutputProperties("ReadVariableOpAfterEnter");
@@ -340,6 +339,44 @@ TEST_F(GraphPropertiesTest, VarHandles) {
   EXPECT_EQ(2, prop.shape().dim_size());
   EXPECT_EQ(3, prop.shape().dim(0).size());
   EXPECT_EQ(7, prop.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, WhileLoopWithVarHandleOpInput) {
+  // Test graph is first generated in python using:
+  /*
+    i0 = tf.constant(0)
+    v = tf.get_variable(initializer=i0, name='loop_var', use_resource=True)
+    def cond(i, x):
+      return i < 3
+    def body(i, x):
+      return i + 1, x + x
+    v, y = tf.while_loop(cond, body, loop_vars=[v, tf.constant(1)])
+  */
+  // and then modified by hand such that the ReadVariableOp is inside the loop
+  // body instead of outside the while loop (which is the case when constructed
+  // using the python API), such that we have the following pattern: VarHandleOp
+  // -> Enter -> Switch -> ReadVariableOp -> other parts of loop body. Note
+  // DT_RESOURCE is passed all the way until ReadVariableOp.
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "while_loop_var_handle_op.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  std::vector<string> resource_nodes{
+      "loop_var",       "while/Enter",         "while/Merge", "while/Switch",
+      "while/Identity", "while/NextIteration", "while/Exit"};
+  for (const string& node : resource_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    EXPECT_GE(props.size(), 1);  // Merge has 2 outputs.
+    EXPECT_EQ("resource: []", PropToString(props[0]));
+  }
+
+  // After ReadVariableOp, the shape should be recovered.
+  const auto props = properties.GetOutputProperties("while/ReadVariableOp");
+  EXPECT_EQ(1, props.size());
+  EXPECT_EQ("int32: []", PropToString(props[0]));
 }
 
 TEST_F(GraphPropertiesTest, QueueWithOnlyDequeue_NoShapeAttr) {
@@ -1623,6 +1660,91 @@ TEST_F(GraphPropertiesTest, StridedSlicesOfShapes) {
   EXPECT_EQ(1, shape_o2.dim_size());
   EXPECT_EQ(shape_a.dim(0).size(), shape_o1.dim(0).size());
   EXPECT_EQ(shape_a.dim(1).size(), shape_o2.dim(0).size());
+}
+
+TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output placeholder =
+      ops::Placeholder(scope.WithOpName("input_placeholder"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape({5, 480, 40, 1})));
+  auto input_shape = ops::Shape(scope.WithOpName("input_shape"), placeholder);
+
+  Output begin = ops::Const(scope.WithOpName("begin"), {0}, {1});
+  Output end = ops::Const(scope.WithOpName("end"), {3}, {1});
+  Output stride = ops::Const(scope.WithOpName("stride"), {1}, {1});
+
+  Output slice =
+      ops::StridedSlice(scope.WithOpName("slice"), input_shape, begin, end,
+                        stride, ops::StridedSlice::ShrinkAxisMask(1));
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  // Without aggresive shape inference, it cannot infer output value of
+  // StridedSlice with ShrinkAxisMask.
+  {
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/false));
+    EXPECT_FALSE(properties.GetOutputProperties("slice").at(0).has_value());
+  }
+
+  // InferStatically with aggresive shape inference can infer output value of
+  // StridedSlice with ShrinkAxisMask.
+  {
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true));
+    EXPECT_TRUE(properties.GetOutputProperties("slice").at(0).has_value());
+    const auto slice_value =
+        properties.GetOutputProperties("slice").at(0).value();
+    ExpectTensorValues({5}, slice_value);
+  }
+}
+
+TEST_F(GraphPropertiesTest, ValuePropagationThroughArithmeticOps) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), {5, 7}, {2});
+  Output b = ops::Const(s.WithOpName("b"), {8, 8}, {2});
+  Output c = ops::Const(s.WithOpName("c"), {2, 2}, {2});
+
+  Output a1 = ops::OnesLike(s.WithOpName("a1"), a);
+  Output a_plus_one = ops::Add(s.WithOpName("a_plus_one"), a, a1);
+  Output a_plus_a = ops::Add(s.WithOpName("a_plus_a"), a, a);
+  Output b_plus_2a = ops::Add(s.WithOpName("b_plus_2a"), b, a_plus_a);
+  Output c_plus_b_plus_2a =
+      ops::Add(s.WithOpName("c_plus_b_plus_2a"), c, b_plus_2a);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(
+      /*assume_valid_feeds=*/false,
+      /*aggressive_shape_inference=*/true));
+
+  // Check output shapes and values.
+  const auto& a_plus_one_prop = properties.GetOutputProperties("a_plus_one")[0];
+  EXPECT_EQ("int32: [2]", PropToString(a_plus_one_prop));
+  EXPECT_TRUE(a_plus_one_prop.has_value());
+  ExpectTensorValues({6, 8}, a_plus_one_prop.value());
+
+  const auto& a_plus_a_prop = properties.GetOutputProperties("a_plus_a")[0];
+  EXPECT_EQ("int32: [2]", PropToString(a_plus_a_prop));
+  EXPECT_TRUE(a_plus_a_prop.has_value());
+  ExpectTensorValues({10, 14}, a_plus_a_prop.value());
+
+  const auto& b_plus_2a_prop = properties.GetOutputProperties("b_plus_2a")[0];
+  EXPECT_EQ("int32: [2]", PropToString(b_plus_2a_prop));
+  EXPECT_TRUE(b_plus_2a_prop.has_value());
+  ExpectTensorValues({18, 22}, b_plus_2a_prop.value());
+
+  const auto& c_plus_b_plus_2a_prop =
+      properties.GetOutputProperties("c_plus_b_plus_2a")[0];
+  EXPECT_EQ("int32: [2]", PropToString(c_plus_b_plus_2a_prop));
+  EXPECT_TRUE(c_plus_b_plus_2a_prop.has_value());
+  ExpectTensorValues({20, 24}, c_plus_b_plus_2a_prop.value());
 }
 
 }  // namespace

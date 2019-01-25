@@ -1,6 +1,9 @@
 # python_sanity_test.py will complain about invalid or missing entries
 # problematic entries can be commented for temporary whitelisting
 tensorflow
+tensorflow/compiler
+tensorflow/compiler/xla
+tensorflow/compiler/xla/service
 tensorflow/core
 tensorflow/core/example
 tensorflow/core/framework
@@ -57,6 +60,7 @@ tensorflow/python/ops
 tensorflow/python/ops/distributions
 tensorflow/python/ops/linalg
 tensorflow/python/ops/losses
+tensorflow/python/ops/signal
 tensorflow/python/platform
 tensorflow/python/profiler
 tensorflow/python/profiler/internal
@@ -279,10 +283,10 @@ tensorflow/contrib/linear_optimizer/kernels/g3doc
 tensorflow/contrib/linear_optimizer/python
 tensorflow/contrib/linear_optimizer/python/ops
 # TODO(drpngx): Fix failing imports
-# tensorflow/contrib/lite
-# tensorflow/contrib/lite/python
-# tensorflow/contrib/lite/toco
-# tensorflow/contrib/lite/toco/python
+# tensorflow/lite
+# tensorflow/lite/python
+# tensorflow/lite/toco
+# tensorflow/lite/toco/python
 tensorflow/contrib/lookup
 tensorflow/contrib/losses
 tensorflow/contrib/losses/python
@@ -308,11 +312,6 @@ tensorflow/contrib/model_pruning/examples
 tensorflow/contrib/model_pruning/examples/cifar10
 tensorflow/contrib/model_pruning/python
 tensorflow/contrib/model_pruning/python/layers
-tensorflow/contrib/nccl
-tensorflow/contrib/nccl/kernels
-tensorflow/contrib/nccl/ops
-tensorflow/contrib/nccl/python
-tensorflow/contrib/nccl/python/ops
 tensorflow/contrib/nearest_neighbor
 tensorflow/contrib/nearest_neighbor/kernels
 tensorflow/contrib/nearest_neighbor/ops
@@ -382,8 +381,6 @@ tensorflow/contrib/seq2seq/python/ops
 tensorflow/contrib/session_bundle
 tensorflow/contrib/session_bundle/example
 tensorflow/contrib/signal
-tensorflow/contrib/signal/python
-tensorflow/contrib/signal/python/ops
 tensorflow/contrib/slim
 tensorflow/contrib/slim/python
 tensorflow/contrib/slim/python/slim

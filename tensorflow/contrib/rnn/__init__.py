@@ -14,8 +14,6 @@
 # ==============================================================================
 """RNN Cells and additional RNN operations.
 
-See [Contrib RNN](https://tensorflow.org/api_guides/python/contrib.rnn) guide.
-
 <!--From core-->
 @@RNNCell
 @@LayerRNNCell

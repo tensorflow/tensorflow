@@ -46,7 +46,7 @@ TEST_F(GpuCopyTest, UseMemcpy) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   // There should not be any kernel prefixed "copy".

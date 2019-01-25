@@ -109,6 +109,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "loader"
     mtype: "<type \'module\'>"
   }
@@ -143,6 +147,10 @@ tf_module {
   member_method {
     name: "classification_signature_def"
     argspec: "args=[\'examples\', \'classes\', \'scores\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "contains_saved_model"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_tensor_from_tensor_info"

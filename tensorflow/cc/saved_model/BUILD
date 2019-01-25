@@ -133,5 +133,6 @@ filegroup(
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",
+        "testdata/half_plus_two_v2/**",
     ]),
 )

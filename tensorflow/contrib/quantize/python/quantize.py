@@ -91,48 +91,50 @@ def Quantize(graph,
 
     # If `scope` is given, only quantize it if the consumer of weights
     # (the layer op) is in the right scope.
-    _InsertQuantOp(
-        context,
-        'weights_quant',
-        layer_match.weight_tensor.op,
-        input_to_ops_map.ConsumerOperations(layer_match.weight_tensor.op),
-        is_training,
-        moving_avg=False,
-        ema_decay=ema_decay,
-        quant_delay=quant_delay,
-        narrow_range=True,
-        vars_collection=vars_collection,
-        bits=weight_bits,
-        symmetric=symmetric,
-        consumer_scope=scope)
+    if layer_match.weight_tensor is not None:
+      _InsertQuantOp(
+          context,
+          'weights_quant',
+          layer_match.weight_tensor.op,
+          input_to_ops_map.ConsumerOperations(layer_match.weight_tensor.op),
+          is_training,
+          moving_avg=False,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          narrow_range=True,
+          vars_collection=vars_collection,
+          bits=weight_bits,
+          symmetric=symmetric,
+          consumer_scope=scope)
 
     # Quantize the activations.
-    consumer_ops = input_to_ops_map.ConsumerOperations(
-        layer_match.activation_op)
-    add_context = context
-    if layer_match.bypass_op:
-      pattern_match_result = re.search(r'^(.*)/([^/]+)', context)
-      if pattern_match_result is not None:
-        add_context = pattern_match_result.group(1)
-      else:
-        add_context = ''
-    # If `scope` is given, only quantize it if the producer of weights
-    # (usually it's the layer op) is in the right scope.
-    _InsertQuantOp(
-        add_context,
-        'act_quant',
-        layer_match.activation_op,
-        consumer_ops,
-        is_training,
-        moving_avg=True,
-        ema_decay=ema_decay,
-        quant_delay=quant_delay,
-        vars_collection=vars_collection,
-        bits=activation_bits,
-        symmetric=symmetric,
-        init_min=0.0,
-        producer_scope=scope)
-    quantized_ops.add(layer_match.activation_op)
+    if layer_match.activation_op is not None:
+      consumer_ops = input_to_ops_map.ConsumerOperations(
+          layer_match.activation_op)
+      add_context = context
+      if layer_match.bypass_op:
+        pattern_match_result = re.search(r'^(.*)/([^/]+)', context)
+        if pattern_match_result is not None:
+          add_context = pattern_match_result.group(1)
+        else:
+          add_context = ''
+      # If `scope` is given, only quantize it if the producer of weights
+      # (usually it's the layer op) is in the right scope.
+      _InsertQuantOp(
+          add_context,
+          'act_quant',
+          layer_match.activation_op,
+          consumer_ops,
+          is_training,
+          moving_avg=True,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          vars_collection=vars_collection,
+          bits=activation_bits,
+          symmetric=symmetric,
+          init_min=0.0,
+          producer_scope=scope)
+      quantized_ops.add(layer_match.activation_op)
 
     # Quantize the inputs and output to the bypass (if it exists). The input to
     # the bypass is the bias add, and the output is the activation.
@@ -158,7 +160,7 @@ def Quantize(graph,
       # shouldn't quantize it, since the activation will be Fused into the
       # Add at inference time.
       consumers = input_to_ops_map.ConsumerOperations(layer_match.bypass_op)
-      if any([consumer.type in _ACTIVATION_TYPES for consumer in consumers]):
+      if any(consumer.type in _ACTIVATION_TYPES for consumer in consumers):
         logging.info('Skipping %s, because its followed by an activation.',
                      layer_match.bypass_op.name)
       else:
@@ -193,7 +195,7 @@ def Quantize(graph,
       # Add at inference time.
       consumers = input_to_ops_map.ConsumerOperations(
           layer_match.post_activation_bypass_op)
-      if any([consumer.type in _RELU_TYPES for consumer in consumers]):
+      if any(consumer.type in _RELU_TYPES for consumer in consumers):
         logging.info('Skipping %s, because its followed by an activation.',
                      layer_match.post_activation_bypass_op.name)
       else:
@@ -547,6 +549,8 @@ def _FindLayersToQuantize(graph):
   for match_result in sep_conv_matcher.match_graph(graph):
     layer_op = match_result.get_op(layer_pattern)
     weight_tensor = match_result.get_tensor(weight_identity_pattern)
+    if weight_tensor is None:
+      weight_tensor = match_result.get_tensor(weight_resource_var_pattern)
     activation_op = match_result.get_op(layer_pattern)
     if layer_op not in matched_layer_set:
       matched_layer_set.add(layer_op)
@@ -681,7 +685,7 @@ def _InsertQuantOp(context,
       [1; 2^bits - 1] or wide range [0; 2^bits - 1].
     producer_scope: The restriction of producer scope. If not None, the new op
       will be inserted only when the producer is in this scope.
-    consumer_scope: The restriction of producer scope. If not None, the new op
+    consumer_scope: The restriction of consumer scope. If not None, the new op
       will be inserted only when all the consumers are in this scope.
   Raises:
     ValueError: When producer operation is not directly connected to the

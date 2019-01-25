@@ -20,12 +20,14 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import training_util
 
 
+@test_util.run_v1_only('b/120545219')
 class GlobalStepTest(test.TestCase):
 
   def _assert_global_step(self, global_step, expected_dtype=dtypes.int64):
@@ -90,6 +92,7 @@ class GlobalStepTest(test.TestCase):
       self._assert_global_step(training_util.get_or_create_global_step(g))
 
 
+@test_util.run_v1_only('b/120545219')
 class GlobalStepReadTest(test.TestCase):
 
   def test_global_step_read_is_none_if_there_is_no_global_step(self):

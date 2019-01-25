@@ -51,6 +51,10 @@ ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
 
 pip3 install --upgrade pip
 
+# Install last working version of setuptools. This must happen before we install
+# absl-py, which uses install_requires notation introduced in setuptools 20.5.
+pip3 install --upgrade setuptools==39.1.0
+
 pip3 install --upgrade virtualenv
 
 set -e
@@ -60,7 +64,7 @@ pip3 install --upgrade absl-py
 pip3 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3 install --upgrade protobuf==3.6.0
+pip3 install --upgrade protobuf==3.6.1
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -97,12 +101,13 @@ pip3 install --upgrade astor
 pip3 install --upgrade gast
 pip3 install --upgrade termcolor
 
-# Install last working version of setuptools.
-pip3 install --upgrade setuptools==39.1.0
 pip3 install --upgrade h5py==2.8.0
 
 # Keras
 pip3 install keras_applications==1.0.6
 pip3 install keras_preprocessing==1.0.5
+
+# Estimator
+pip3 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)

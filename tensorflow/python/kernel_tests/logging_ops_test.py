@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import string
 import sys
 import tempfile
 
@@ -37,8 +38,10 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
+
 class LoggingOpsTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAssertDivideByZero(self):
     with self.cached_session() as sess:
       epsilon = ops.convert_to_tensor(1e-20)
@@ -52,7 +55,7 @@ class LoggingOpsTest(test.TestCase):
               math_ops.less(epsilon, y), ["Divide-by-zero"])
       ]):
         out = math_ops.div(z, y)
-      self.assertAllEqual(2.0, out.eval())
+      self.assertAllEqual(2.0, self.evaluate(out))
       # assert(epsilon < x)
       # z / x
       #
@@ -63,7 +66,7 @@ class LoggingOpsTest(test.TestCase):
       ]):
         out = math_ops.div(z, x)
       with self.assertRaisesOpError("less than x"):
-        out.eval()
+        self.evaluate(out)
 
 
 class PrintV2Test(test.TestCase):
@@ -78,6 +81,17 @@ class PrintV2Test(test.TestCase):
 
       expected = "[0 1 2 ... 7 8 9]"
       self.assertTrue((expected + "\n") in printed.contents())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testPrintOneStringTensor(self):
+    with self.cached_session():
+      tensor = ops.convert_to_tensor([char for char in string.ascii_lowercase])
+      with self.captureWritesToStream(sys.stderr) as printed:
+        print_op = logging_ops.print_v2(tensor)
+        self.evaluate(print_op)
+
+      expected = "[\"a\" \"b\" \"c\" ... \"x\" \"y\" \"z\"]"
+      self.assertIn((expected + "\n"), printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneTensorVarySummarize(self):
@@ -305,12 +319,14 @@ class PrintV2Test(test.TestCase):
             tensor, output_stream="unknown")
         self.evaluate(print_op)
 
+  @test_util.run_deprecated_v1
   def testPrintOpName(self):
     with self.cached_session():
       tensor = math_ops.range(10)
       print_op = logging_ops.print_v2(tensor, name="print_name")
       self.assertEqual(print_op.name, "print_name")
 
+  @test_util.run_deprecated_v1
   def testNoDuplicateFormatOpGraphModeAfterExplicitFormat(self):
     with self.cached_session():
       tensor = math_ops.range(10)
@@ -379,6 +395,7 @@ class PrintGradientTest(test.TestCase):
     inp_printed = logging_ops.Print(inp, ["hello"])
     self.assertEqual(inp.get_shape(), inp_printed.get_shape())
 
+  @test_util.run_deprecated_v1
   def testPrintGradient(self):
     with self.cached_session():
       inp = constant_op.constant(2.0, shape=[100, 32], name="in")
@@ -387,8 +404,8 @@ class PrintGradientTest(test.TestCase):
       wx_print = logging_ops.Print(wx, [w, w, w])
       wx_grad = gradients_impl.gradients(wx, w)[0]
       wx_print_grad = gradients_impl.gradients(wx_print, w)[0]
-      wxg = wx_grad.eval()
-      wxpg = wx_print_grad.eval()
+      wxg = self.evaluate(wx_grad)
+      wxpg = self.evaluate(wx_print_grad)
     self.assertAllEqual(wxg, wxpg)
 
 

@@ -14,6 +14,12 @@
     `gfx803,gfx900`.
 """
 
+load(
+    ":cuda_configure.bzl",
+    "make_copy_dir_rule",
+    "make_copy_files_rule",
+)
+
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _ROCM_TOOLKIT_PATH = "ROCM_TOOLKIT_PATH"
 _TF_ROCM_VERSION = "TF_ROCM_VERSION"
@@ -105,7 +111,7 @@ def get_cxx_inc_directories(repository_ctx, cc):
     return includes_cpp + [
         inc
         for inc in includes_c
-        if inc not in includes_cpp_set
+        if inc not in includes_cpp_set.to_list()
     ]
 
 def auto_configure_fail(msg):
@@ -445,7 +451,7 @@ def _create_dummy_repository(repository_ctx):
             "%{miopen_lib}": _lib_name("miopen", cpu_value),
             "%{rocfft_lib}": _lib_name("rocfft", cpu_value),
             "%{hiprand_lib}": _lib_name("hiprand", cpu_value),
-            "%{rocm_include_genrules}": "",
+            "%{copy_rules}": "",
             "%{rocm_headers}": "",
         },
     )
@@ -510,51 +516,6 @@ def _norm_path(path):
         path = path[:-1]
     return path
 
-def _symlink_genrule_for_dir(
-        repository_ctx,
-        src_dir,
-        dest_dir,
-        genrule_name,
-        src_files = [],
-        dest_files = []):
-    """Returns a genrule to symlink(or copy if on Windows) a set of files.
-
-    If src_dir is passed, files will be read from the given directory; otherwise
-    we assume files are in src_files and dest_files
-    """
-    if src_dir != None:
-        src_dir = _norm_path(src_dir)
-        dest_dir = _norm_path(dest_dir)
-        files = _read_dir(repository_ctx, src_dir)
-
-        # Create a list with the src_dir stripped to use for outputs.
-        dest_files = files.replace(src_dir, "").splitlines()
-        src_files = files.splitlines()
-    command = []
-
-    # We clear folders that might have been generated previously to avoid
-    # undesired inclusions
-    command.append('if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi')
-    command.append('if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi')
-    outs = []
-    for i in range(len(dest_files)):
-        if dest_files[i] != "":
-            # If we have only one file to link we do not want to use the dest_dir, as
-            # $(@D) will include the full path to the file.
-            dest = "$(@D)/" + dest_dir + dest_files[i] if len(dest_files) != 1 else "$(@D)/" + dest_files[i]
-
-            # On Windows, symlink is not supported, so we just copy all the files.
-            cmd = "ln -s"
-            command.append(cmd + ' "%s" "%s"' % (src_files[i], dest))
-            outs.append('        "' + dest_dir + dest_files[i] + '",')
-    genrule = _genrule(
-        src_dir,
-        genrule_name,
-        " && ".join(command),
-        "\n".join(outs),
-    )
-    return genrule
-
 def _genrule(src_dir, genrule_name, command, outs):
     """Returns a string with a genrule.
 
@@ -601,55 +562,49 @@ def _create_local_rocm_repository(repository_ctx):
     """Creates the repository containing files set up to build with ROCm."""
     rocm_config = _get_rocm_config(repository_ctx)
 
-    # Set up symbolic links for the rocm toolkit by creating genrules to do
-    # symlinking. We create one genrule for each directory we want to track under
+    # Copy header and library files to execroot.
     # rocm_toolkit_path
     rocm_toolkit_path = rocm_config.rocm_toolkit_path
-    rocm_include_path = rocm_toolkit_path + "/include"
-    genrules = [_symlink_genrule_for_dir(
-        repository_ctx,
-        rocm_include_path,
-        "rocm/include",
-        "rocm-include",
-    )]
-    genrules.append(_symlink_genrule_for_dir(
-        repository_ctx,
-        rocm_toolkit_path + "/rocfft/include",
-        "rocm/include/rocfft",
-        "rocfft-include",
-    ))
-    genrules.append(_symlink_genrule_for_dir(
-        repository_ctx,
-        rocm_toolkit_path + "/rocblas/include",
-        "rocm/include/rocblas",
-        "rocblas-include",
-    ))
-    genrules.append(_symlink_genrule_for_dir(
-        repository_ctx,
-        rocm_toolkit_path + "/miopen/include",
-        "rocm/include/miopen",
-        "miopen-include",
-    ))
+    copy_rules = [
+        make_copy_dir_rule(
+            repository_ctx,
+            name = "rocm-include",
+            src_dir = rocm_toolkit_path + "/include",
+            out_dir = "rocm/include",
+        ),
+        make_copy_dir_rule(
+            repository_ctx,
+            name = "rocfft-include",
+            src_dir = rocm_toolkit_path + "/rocfft/include",
+            out_dir = "rocm/include/rocfft",
+        ),
+        make_copy_dir_rule(
+            repository_ctx,
+            name = "rocblas-include",
+            src_dir = rocm_toolkit_path + "/rocblas/include",
+            out_dir = "rocm/include/rocblas",
+        ),
+        make_copy_dir_rule(
+            repository_ctx,
+            name = "miopen-include",
+            src_dir = rocm_toolkit_path + "/miopen/include",
+            out_dir = "rocm/include/miopen",
+        ),
+    ]
 
     rocm_libs = _find_libs(repository_ctx, rocm_config)
-    rocm_lib_src = []
-    rocm_lib_dest = []
+    rocm_lib_srcs = []
+    rocm_lib_outs = []
     for lib in rocm_libs.values():
-        rocm_lib_src.append(lib.path)
-        rocm_lib_dest.append("rocm/lib/" + lib.file_name)
-    genrules.append(_symlink_genrule_for_dir(
+        rocm_lib_srcs.append(lib.path)
+        rocm_lib_outs.append("rocm/lib/" + lib.file_name)
+    copy_rules.append(make_copy_files_rule(
         repository_ctx,
-        None,
-        "",
-        "rocm-lib",
-        rocm_lib_src,
-        rocm_lib_dest,
+        name = "rocm-lib",
+        srcs = rocm_lib_srcs,
+        outs = rocm_lib_outs,
     ))
 
-    included_files = _read_dir(repository_ctx, rocm_include_path).replace(
-        rocm_include_path,
-        "",
-    ).splitlines()
 
     # Set up BUILD file for rocm/
     _tpl(
@@ -672,7 +627,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocfft_lib}": rocm_libs["rocfft"].file_name,
             "%{hiprand_lib}": rocm_libs["hiprand"].file_name,
             "%{miopen_lib}": rocm_libs["miopen"].file_name,
-            "%{rocm_include_genrules}": "\n".join(genrules),
+            "%{copy_rules}": "\n".join(copy_rules),
             "%{rocm_headers}": ('":rocm-include",\n' +
                                 '":rocfft-include",\n' +
                                 '":rocblas-include",\n' +

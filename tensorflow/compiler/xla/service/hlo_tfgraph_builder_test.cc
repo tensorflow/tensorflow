@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 
@@ -24,7 +24,7 @@ namespace {
 
 using ::tensorflow::GraphDef;
 
-class HloTfGraphBuilderTest : public HloVerifiedTestBase {
+class HloTfGraphBuilderTest : public HloTestBase {
  protected:
   HloTfGraphBuilderTest() {}
   HloTfGraphBuilder generator_;

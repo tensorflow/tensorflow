@@ -18,8 +18,8 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 #include <memory>
-#include <vector>
 #include <string>
+#include <vector>
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 
@@ -50,18 +50,20 @@ struct MklPoolingParams {
   memory::dims padding_left;
   memory::dims padding_right;
   mkldnn::algorithm alg_kind;
+  mkldnn::prop_kind prop_kind;
 
   MklPoolingParams(memory::dims src_dims, memory::dims dst_dims,
                    memory::dims filter_dims, memory::dims strides,
                    memory::dims padding_left, memory::dims padding_right,
-                   mkldnn::algorithm alg_kind)
+                   mkldnn::algorithm alg_kind, mkldnn::prop_kind prop_kind)
       : src_dims(src_dims),
         dst_dims(dst_dims),
         filter_dims(filter_dims),
         strides(strides),
         padding_left(padding_left),
         padding_right(padding_right),
-        alg_kind(alg_kind) {}
+        alg_kind(alg_kind),
+        prop_kind(prop_kind) {}
 };
 
 template <typename T>
@@ -96,6 +98,9 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
   struct PoolingFwdContext {
     // algorithm
     mkldnn::algorithm alg_kind;
+
+    // Kind of propagation, forward or backward
+    mkldnn::prop_kind prop_kind;
 
     // expected memory format
     memory::format src_fmt;
@@ -187,6 +192,7 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(fwdParams.padding_left);
     key_creator.AddAsKey(fwdParams.padding_right);
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.alg_kind));
+    key_creator.AddAsKey<int>(static_cast<int>(fwdParams.prop_kind));
     return key_creator.GetKey();
   }
 
@@ -443,7 +449,12 @@ class MklPoolingOpBase : public OpKernel {
   explicit MklPoolingOpBase(OpKernelConstruction* context)
       : OpKernel(context), workspace_enabled_(false) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value) {
+      // current quantized convolution doesn't have data_format attribute.
+      data_format = "NHWC";
+    } else {
+      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    }
     OP_REQUIRES(context, FormatFromString(data_format, &this->data_format_tf_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &this->ksize_));
@@ -461,7 +472,7 @@ class MklPoolingOpBase : public OpKernel {
     bool is_pool2d = (this->ksize_.size() == 4);
     this->data_format_mkldnn_ =
         is_pool2d ? TFDataFormatToMklDnnDataFormat(this->data_format_tf_)
-                 : TFDataFormatToMklDnn3DDataFormat(this->data_format_tf_);
+                  : TFDataFormatToMklDnn3DDataFormat(this->data_format_tf_);
 
     // We may not get this attribute for this node if it does not go through
     // graph rewrite pass. So we do not check for error while retrieving this
@@ -655,10 +666,11 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
       OP_REQUIRES(context, input_tensor.dims() == 4 || input_tensor.dims() == 5,
                   errors::InvalidArgument("Input must be 4 or 5-dimensional"));
     } else {
-      OP_REQUIRES(context, input_mkl_shape.GetDimension() == 4 ||
-                               input_mkl_shape.GetDimension() == 5,
-                  errors::InvalidArgument("Input shape must be "
-                                          "4 or 5-dimensional"));
+      OP_REQUIRES(
+          context,
+          input_mkl_shape.GetDimension() == 4 ||
+              input_mkl_shape.GetDimension() == 5,
+          errors::InvalidArgument("Input shape must be 4 or 5-dimensional"));
     }
   }
   // .Input("value: T")

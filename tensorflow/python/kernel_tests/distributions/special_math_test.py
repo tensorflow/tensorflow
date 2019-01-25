@@ -104,6 +104,7 @@ class NdtriTest(test.TestCase):
     x = special_math.ndtri(p)
     self.assertAllClose(expected_x, self.evaluate(x), atol=0.)
 
+  @test_util.run_deprecated_v1
   def testNdtriDynamicShape(self):
     """Verifies that ndtri computation is correct."""
     with self.cached_session() as sess:
@@ -213,9 +214,11 @@ class NdtrTest(test.TestCase):
         rtol=error_spec.rtol,
         atol=error_spec.atol)
 
+  @test_util.run_deprecated_v1
   def test_float32(self):
     self._test_grid(np.float32, self._grid32, self._error32)
 
+  @test_util.run_deprecated_v1
   def test_float64(self):
     self._test_grid(np.float64, self._grid64, self._error64)
 
@@ -338,10 +341,12 @@ class NdtrGradientTest(test.TestCase):
           rtol=error_spec.rtol,
           atol=error_spec.atol)
 
+  @test_util.run_deprecated_v1
   def test_float32(self):
     self._test_grad_accuracy(np.float32, self._grid, self._error32)
     self._test_grad_finite(np.float32)
 
+  @test_util.run_deprecated_v1
   def test_float64(self):
     self._test_grad_accuracy(np.float64, self._grid, self._error64)
     self._test_grad_finite(np.float64)
@@ -362,7 +367,7 @@ class ErfInvTest(test.TestCase):
 
       expected_x = special.erfinv(x)
       x = special_math.erfinv(x)
-      self.assertAllClose(expected_x, x.eval(), atol=0.)
+      self.assertAllClose(expected_x, self.evaluate(x), atol=0.)
 
   def testErfInvIntegerInput(self):
     with self.cached_session():
@@ -418,6 +423,7 @@ class LogCDFLaplaceTest(test.TestCase):
           rtol=error_spec.rtol,
           atol=error_spec.atol)
 
+  @test_util.run_deprecated_v1
   def test_float32_lower_and_mid_segment_scipy_float32_ok(self):
     # Choose values mild enough that we can use scipy in float32, which will
     # allow for a high accuracy match to scipy (since we both use float32).
@@ -427,6 +433,7 @@ class LogCDFLaplaceTest(test.TestCase):
         GridSpec(min=-10, max=self.CUTOFF_FLOAT32_UPPER - 5, shape=[100]),
         ErrorSpec(rtol=5e-4, atol=0))
 
+  @test_util.run_deprecated_v1
   def test_float32_all_segments_with_scipy_float64_ok(self):
     # Choose values outside the range where scipy float32 works.
     # Let scipy use float64.  This means we
@@ -437,6 +444,7 @@ class LogCDFLaplaceTest(test.TestCase):
         GridSpec(min=-50, max=self.CUTOFF_FLOAT32_UPPER + 5, shape=[100]),
         ErrorSpec(rtol=0.05, atol=0))
 
+  @test_util.run_deprecated_v1
   def test_float32_extreme_values_result_and_gradient_finite_and_nonzero(self):
     with self.cached_session() as sess:
       # On the lower branch, log_cdf_laplace(x) = x, so we know this will be
@@ -448,7 +456,7 @@ class LogCDFLaplaceTest(test.TestCase):
       actual = sm.log_cdf_laplace(grid)
       grad = gradients_impl.gradients(actual, grid)[0]
 
-      actual_, grad_ = sess.run([actual, grad])
+      actual_, grad_ = self.evaluate([actual, grad])
 
       # isfinite checks for NaN and Inf.
       self.assertAllTrue(np.isfinite(actual_))
@@ -456,6 +464,7 @@ class LogCDFLaplaceTest(test.TestCase):
       self.assertFalse(np.any(actual_ == 0))
       self.assertFalse(np.any(grad_ == 0))
 
+  @test_util.run_deprecated_v1
   def test_float64_extreme_values_result_and_gradient_finite_and_nonzero(self):
     with self.cached_session() as sess:
       # On the lower branch, log_cdf_laplace(x) = x, so we know this will be
@@ -467,7 +476,7 @@ class LogCDFLaplaceTest(test.TestCase):
       actual = sm.log_cdf_laplace(grid)
       grad = gradients_impl.gradients(actual, grid)[0]
 
-      actual_, grad_ = sess.run([actual, grad])
+      actual_, grad_ = self.evaluate([actual, grad])
 
       # isfinite checks for NaN and Inf.
       self.assertAllTrue(np.isfinite(actual_))

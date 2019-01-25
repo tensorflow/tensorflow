@@ -18,9 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import distributions
-
 from tensorflow.contrib.rnn.python.ops import lstm_ops
+from tensorflow.contrib.timeseries.python.timeseries import math_utils
 from tensorflow.contrib.timeseries.python.timeseries import model
 from tensorflow.contrib.timeseries.python.timeseries import model_utils
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import PredictionFeatures
@@ -102,12 +101,12 @@ class FlatPredictionModel(training.Model):
       [batch size, output window size, num_features], where num_features is the
       same as the constructor argument.
     """
-    if input_window_features.shape[1].value == 0:
+    if input_window_features.shape.dims[1].value == 0:
       # TODO(allenl): Make reshape()'s static shape information work on
       # zero-size Tensors? Currently this special case is required because
       # otherwise the Dense layers get unknown last dimensions.
       activation = self._output_flatten(output_window_features)
-    elif output_window_features.shape[2].value == 0:
+    elif output_window_features.shape.dims[2].value == 0:
       activation = self._input_flatten(input_window_features)
     else:
       activation = array_ops.concat(
@@ -438,7 +437,7 @@ class ARModel(model.TimeSeriesModel):
       output_window_features = array_ops.zeros(
           [batch_size, self.output_window_size, 0],
           dtype=self.dtype)
-    static_batch_size = times.get_shape()[0].value
+    static_batch_size = times.get_shape().dims[0].value
     input_window_features.set_shape(
         [static_batch_size, self.input_window_size, input_feature_size])
     output_window_features.set_shape(
@@ -462,8 +461,8 @@ class ARModel(model.TimeSeriesModel):
     if self.loss == ARModel.NORMAL_LIKELIHOOD_LOSS:
       covariance = prediction_ops["covariance"]
       sigma = math_ops.sqrt(gen_math_ops.maximum(covariance, 1e-5))
-      normal = distributions.Normal(loc=targets, scale=sigma)
-      loss_op = -math_ops.reduce_sum(normal.log_prob(prediction))
+      loss_op = -math_ops.reduce_sum(
+          math_utils.normal_log_prob(targets, sigma, prediction))
     else:
       assert self.loss == ARModel.SQUARED_LOSS, self.loss
       loss_op = math_ops.reduce_sum(math_ops.square(prediction - targets))
@@ -772,7 +771,7 @@ class ARModel(model.TimeSeriesModel):
       # windows matching self.window_size (as with training), but this looping
       # allows easy plotting of "in-sample" predictions.
       times.get_shape().assert_has_rank(2)
-      static_window_size = times.get_shape()[1].value
+      static_window_size = times.get_shape().dims[1].value
       if (static_window_size is not None
           and static_window_size < self.window_size):
         raise ValueError(
@@ -965,16 +964,11 @@ class AnomalyMixtureARModel(ARModel):
       anomaly_variance = prediction_ops["anomaly_params"]
       anomaly_sigma = math_ops.sqrt(
           gen_math_ops.maximum(anomaly_variance, 1e-5))
-      normal = distributions.Normal(loc=targets, scale=anomaly_sigma)
-      log_prob = normal.log_prob(prediction)
+      log_prob = math_utils.normal_log_prob(targets, anomaly_sigma, prediction)
     else:
       assert self._anomaly_distribution == AnomalyMixtureARModel.CAUCHY_ANOMALY
       anomaly_scale = prediction_ops["anomaly_params"]
-      cauchy = distributions.StudentT(
-          df=array_ops.ones([], dtype=anomaly_scale.dtype),
-          loc=targets,
-          scale=anomaly_scale)
-      log_prob = cauchy.log_prob(prediction)
+      log_prob = math_utils.cauchy_log_prob(targets, anomaly_scale, prediction)
     return log_prob
 
   def loss_op(self, targets, prediction_ops):
@@ -983,8 +977,7 @@ class AnomalyMixtureARModel(ARModel):
     covariance = prediction_ops["covariance"]
     # Normal data log probability.
     sigma = math_ops.sqrt(gen_math_ops.maximum(covariance, 1e-5))
-    normal1 = distributions.Normal(loc=targets, scale=sigma)
-    log_prob1 = normal1.log_prob(prediction)
+    log_prob1 = math_utils.normal_log_prob(targets, sigma, prediction)
     log_prob1 += math_ops.log(1 - self._anomaly_prior_probability)
     # Anomaly log probability.
     log_prob2 = self._anomaly_log_prob(targets, prediction_ops)

@@ -71,7 +71,7 @@ def handle_options(func, x, axis, exclusive, reverse):
 
 class CumsumTest(xla_test.XLATestCase):
 
-  valid_dtypes = [np.float32]
+  valid_dtypes = [np.float32, np.int32]
 
   def axis_dtypes(self):
     return set(self.int_types).intersection([np.int32, np.int64])
@@ -149,7 +149,7 @@ class CumsumTest(xla_test.XLATestCase):
 
 class CumprodTest(xla_test.XLATestCase):
 
-  valid_dtypes = [np.float32]
+  valid_dtypes = [np.float32, np.int32]
 
   def axis_dtypes(self):
     return set(self.int_types).intersection([np.int32, np.int64])

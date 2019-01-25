@@ -53,9 +53,10 @@ using NodeOut = NodeBuilder::NodeOut;
 class LowerWhileHelper {
  public:
   static Status Run(Node* while_op, const string& cond_fn_name,
-                    const string& body_fn_name, Graph* graph,
-                    const FunctionLibraryDefinition& flib) {
-    LowerWhileHelper helper(while_op, cond_fn_name, body_fn_name, graph, flib);
+                    const string& body_fn_name, int parallel_iterations,
+                    Graph* graph, const FunctionLibraryDefinition& flib) {
+    LowerWhileHelper helper(while_op, cond_fn_name, body_fn_name,
+                            parallel_iterations, graph, flib);
     return helper.RunInternal();
   }
 
@@ -64,8 +65,8 @@ class LowerWhileHelper {
   // and body functions named `cond_fn_name` and `body_fn_name` respectively in
   // the given graph.
   LowerWhileHelper(Node* while_op, const string& cond_fn_name,
-                   const string& body_fn_name, Graph* graph,
-                   const FunctionLibraryDefinition& flib);
+                   const string& body_fn_name, int parallel_iterations,
+                   Graph* graph, const FunctionLibraryDefinition& flib);
 
   Status RunInternal();
 
@@ -132,7 +133,10 @@ class LowerWhileHelper {
   const FunctionLibraryDefinition& flib_;
   // Name of the `while_op_`.
   string name_;
+  // Max number of parallel_iterations for the while loop.
+  const int parallel_iterations_;
 
+  NodeDebugInfo debug_info_;
   NodeBuilder cond_call_builder_;
   NodeBuilder body_call_builder_;
 
@@ -146,14 +150,19 @@ class LowerWhileHelper {
 };
 
 LowerWhileHelper::LowerWhileHelper(Node* while_op, const string& cond_fn_name,
-                                   const string& body_fn_name, Graph* graph,
+                                   const string& body_fn_name,
+                                   int parallel_iterations, Graph* graph,
                                    const FunctionLibraryDefinition& flib)
     : while_op_(while_op),
       graph_(graph),
       flib_(flib),
       name_(while_op->name()),
-      cond_call_builder_(NewName("cond"), cond_fn_name, graph->op_registry()),
-      body_call_builder_(NewName("body"), body_fn_name, graph->op_registry()),
+      parallel_iterations_(parallel_iterations),
+      debug_info_(*while_op_),
+      cond_call_builder_(NewName("cond"), cond_fn_name, graph->op_registry(),
+                         &debug_info_),
+      body_call_builder_(NewName("body"), body_fn_name, graph->op_registry(),
+                         &debug_info_),
       num_loop_inputs_(while_op_->num_inputs()) {
   // We intentionally `resize` instead of `reserve` space in `enter_nodes_`
   // because we need to set it's elements out of order in `CreateEnterNodes`.
@@ -186,11 +195,12 @@ Status LowerWhileHelper::CreateEnterNodes() {
   TF_RETURN_IF_ERROR(while_op_->input_edges(&edges));
   for (const Edge* edge : edges) {
     Node* enter_node;
-    TF_RETURN_IF_ERROR(
-        NodeBuilder(NewName("enter"), "Enter", graph_->op_registry())
-            .Input(NodeOut(edge->src(), edge->src_output()))
-            .Attr("frame_name", name_)
-            .Finalize(graph_, &enter_node));
+    TF_RETURN_IF_ERROR(NodeBuilder(NewName("enter"), "Enter",
+                                   graph_->op_registry(), &debug_info_)
+                           .Input(NodeOut(edge->src(), edge->src_output()))
+                           .Attr("frame_name", name_)
+                           .Attr("parallel_iterations", parallel_iterations_)
+                           .Finalize(graph_, &enter_node));
     enter_nodes_[edge->dst_input()] = enter_node;
   }
   // Create a NoOp node that takes incoming control inputs of the original While
@@ -203,10 +213,10 @@ Status LowerWhileHelper::CreateEnterNodes() {
   }
   if (!control_inputs.empty()) {
     Node* incoming_control_node;
-    TF_RETURN_IF_ERROR(
-        NodeBuilder(NewName("LoopControlInputs"), "NoOp", graph_->op_registry())
-            .ControlInputs(control_inputs)
-            .Finalize(graph_, &incoming_control_node));
+    TF_RETURN_IF_ERROR(NodeBuilder(NewName("LoopControlInputs"), "NoOp",
+                                   graph_->op_registry(), &debug_info_)
+                           .ControlInputs(control_inputs)
+                           .Finalize(graph_, &incoming_control_node));
     for (Node* n : enter_nodes_) {
       graph_->AddControlEdge(incoming_control_node, n);
     }
@@ -218,7 +228,8 @@ Status LowerWhileHelper::CreateMergeNodes() {
   for (Node* enter_node : enter_nodes_) {
     Node* merge_node;
     TF_RETURN_IF_ERROR(
-        NodeBuilder(NewName("merge"), "Merge", graph_->op_registry())
+        NodeBuilder(NewName("merge"), "Merge", graph_->op_registry(),
+                    &debug_info_)
             .Input({NodeOut(enter_node, 0), NodeOut(enter_node, 0)})
             .Finalize(graph_, &merge_node));
     merge_nodes_.emplace_back(merge_node);
@@ -235,10 +246,10 @@ Status LowerWhileHelper::CreateCondFuncCallNode() {
   // are in the same frame as the rest of the function, otherwise
   // `BuildControlFlowInfo` throws an error.
   graph_->AddControlEdge(merge_nodes_[0], cond_call_node_);
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(NewName("LoopCond"), "LoopCond", graph_->op_registry())
-          .Input(NodeOut(cond_call_node_, 0))
-          .Finalize(graph_, &loop_cond_node_));
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("LoopCond"), "LoopCond",
+                                 graph_->op_registry(), &debug_info_)
+                         .Input(NodeOut(cond_call_node_, 0))
+                         .Finalize(graph_, &loop_cond_node_));
   return Status::OK();
 }
 
@@ -255,11 +266,11 @@ Status LowerWhileHelper::CreateSwitchNodes() {
     if (IsRefType(merge_nodes_[i]->output_type(0))) {
       op_type = "RefSwitch";
     }
-    TF_RETURN_IF_ERROR(
-        NodeBuilder(NewName(op_name), op_type, graph_->op_registry())
-            .Input(NodeOut(merge_nodes_[i], 0))
-            .Input(NodeOut(loop_cond_node_, 0))
-            .Finalize(graph_, &switch_node));
+    TF_RETURN_IF_ERROR(NodeBuilder(NewName(op_name), op_type,
+                                   graph_->op_registry(), &debug_info_)
+                           .Input(NodeOut(merge_nodes_[i], 0))
+                           .Input(NodeOut(loop_cond_node_, 0))
+                           .Finalize(graph_, &switch_node));
     switch_nodes_.emplace_back(switch_node);
   }
   return Status::OK();
@@ -282,10 +293,10 @@ Status LowerWhileHelper::CreateBodyFuncCallNode() {
   if (IsRefType(switch_nodes_[0]->output_type(1))) {
     op_type = "RefIdentity";
   }
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(NewName("loop_body_control"), op_type, graph_->op_registry())
-          .Input(NodeOut(switch_nodes_[0], 1))
-          .Finalize(graph_, &body_control_node_));
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("loop_body_control"), op_type,
+                                 graph_->op_registry(), &debug_info_)
+                         .Input(NodeOut(switch_nodes_[0], 1))
+                         .Finalize(graph_, &body_control_node_));
   graph_->AddControlEdge(body_control_node_, body_call_node_);
   return Status::OK();
 }
@@ -295,10 +306,10 @@ Status LowerWhileHelper::CreateExitNodes() {
   outputs.reserve(num_loop_inputs_);
   for (Node* switch_node : switch_nodes_) {
     Node* exit_node;
-    TF_RETURN_IF_ERROR(
-        NodeBuilder(NewName("exit"), "Exit", graph_->op_registry())
-            .Input(NodeOut(switch_node, 0))
-            .Finalize(graph_, &exit_node));
+    TF_RETURN_IF_ERROR(NodeBuilder(NewName("exit"), "Exit",
+                                   graph_->op_registry(), &debug_info_)
+                           .Input(NodeOut(switch_node, 0))
+                           .Finalize(graph_, &exit_node));
     exit_nodes_.emplace_back(exit_node);
     outputs.emplace_back(NodeOut(exit_node, 0));
   }
@@ -307,7 +318,7 @@ Status LowerWhileHelper::CreateExitNodes() {
   // original functional While op. This is used for
   // 1. Rewiring the control edges with the original while op as src.
   // 2. Fetching the output of the While node by name in calls to sess.run.
-  NodeBuilder ib(name_, "IdentityN");
+  NodeBuilder ib(name_, "IdentityN", OpRegistry::Global(), &debug_info_);
   ib.Input(outputs);
   TF_RETURN_IF_ERROR(ib.Finalize(graph_, &lowered_while_output_));
   return Status::OK();
@@ -317,7 +328,7 @@ Status LowerWhileHelper::CreateNextIterationNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
     Node* next_iteration;
     TF_RETURN_IF_ERROR(NodeBuilder(NewName("next_iteration"), "NextIteration",
-                                   graph_->op_registry())
+                                   graph_->op_registry(), &debug_info_)
                            .Input(NodeOut(body_call_node_, i))
                            .Finalize(graph_, &next_iteration));
     next_iterations_nodes_.emplace_back(next_iteration);
@@ -387,9 +398,15 @@ Status RewriteWhileNode(Node* n, Graph* g,
   if (body_attr == nullptr) {
     return errors::InvalidArgument("While body function missing");
   }
+  const AttrValue* parallel_iterations_attr =
+      n->attrs().Find("parallel_iterations");
+  if (parallel_iterations_attr == nullptr) {
+    return errors::InvalidArgument("parallel_iterations attr missing");
+  }
 
-  TF_RETURN_IF_ERROR(LowerWhileHelper::Run(n, cond_attr->func().name(),
-                                           body_attr->func().name(), g, flib));
+  TF_RETURN_IF_ERROR(LowerWhileHelper::Run(
+      n, cond_attr->func().name(), body_attr->func().name(),
+      parallel_iterations_attr->i(), g, flib));
   g->RemoveNode(n);
 
   return Status::OK();

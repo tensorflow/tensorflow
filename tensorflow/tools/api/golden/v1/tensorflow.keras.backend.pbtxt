@@ -125,6 +125,14 @@ tf_module {
     argspec: "args=[\'labels\', \'label_lengths\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "cumprod"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "cumsum"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
     name: "dot"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
@@ -182,7 +190,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'inputs\', \'outputs\', \'updates\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'outputs\', \'updates\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "gather"
@@ -247,6 +255,10 @@ tf_module {
   member_method {
     name: "learning_phase"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "learning_phase_scope"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "less"
@@ -398,7 +410,7 @@ tf_module {
   }
   member_method {
     name: "rnn"
-    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\', \'time_major\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
+    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\', \'time_major\', \'zero_output_for_mask\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "round"
@@ -511,6 +523,10 @@ tf_module {
   member_method {
     name: "temporal_padding"
     argspec: "args=[\'x\', \'padding\'], varargs=None, keywords=None, defaults=[\'(1, 1)\'], "
+  }
+  member_method {
+    name: "tile"
+    argspec: "args=[\'x\', \'n\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_dense"

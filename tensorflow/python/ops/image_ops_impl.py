@@ -24,6 +24,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
@@ -511,15 +513,20 @@ def _rot90_4D(images, k, name_scope):
   result.set_shape([shape[0], None, None, shape[3]])
   return result
 
-@tf_export('image.transpose_image')
-def transpose_image(image):
-  """Transpose image(s) by swapping the height and width dimension.
 
-  See also `transpose()`.
+@tf_export(v1=['image.transpose', 'image.transpose_image'])
+def transpose_image(image):
+  return transpose(image=image, name=None)
+
+
+@tf_export('image.transpose', v1=[])
+def transpose(image, name=None):
+  """Transpose image(s) by swapping the height and width dimension.
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
+    name: A name for this operation (optional).
 
   Returns:
     If `image` was 4-D, a 4-D float Tensor of shape
@@ -530,14 +537,14 @@ def transpose_image(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'transpose_image', [image]):
+  with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
     if shape.ndims == 3 or shape.ndims is None:
-      return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
+      return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
-      return array_ops.transpose(image, [0, 2, 1, 3], name='transpose_image')
+      return array_ops.transpose(image, [0, 2, 1, 3], name=name)
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
@@ -587,7 +594,7 @@ def central_crop(image, central_fraction):
     # Helper method to return the `idx`-th dimension of `tensor`, along with
     # a boolean signifying if the dimension is dynamic.
     def _get_dim(tensor, idx):
-      static_shape = tensor.get_shape()[idx].value
+      static_shape = tensor.get_shape().dims[idx].value
       if static_shape is not None:
         return static_shape, False
       return array_ops.shape(tensor)[idx], True
@@ -938,12 +945,28 @@ class ResizeMethod(object):
   AREA = 3
 
 
-@tf_export('image.resize_images')
+@tf_export(v1=['image.resize_images', 'image.resize'])
 def resize_images(images,
                   size,
                   method=ResizeMethod.BILINEAR,
                   align_corners=False,
                   preserve_aspect_ratio=False):
+  return resize_images_v2(
+      images=images,
+      size=size,
+      method=method,
+      align_corners=align_corners,
+      preserve_aspect_ratio=preserve_aspect_ratio,
+      name=None)
+
+
+@tf_export('image.resize', v1=[])
+def resize_images_v2(images,
+                     size,
+                     method=ResizeMethod.BILINEAR,
+                     align_corners=False,
+                     preserve_aspect_ratio=False,
+                     name=None):
   """Resize `images` to `size` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
@@ -979,6 +1002,7 @@ def resize_images(images,
       then `images` will be resized to a size that fits in `size` while
       preserving the aspect ratio of the original image. Scales up the image if
       `size` is bigger than the current size of the `image`. Defaults to False.
+    name: A name for this operation (optional).
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -992,7 +1016,7 @@ def resize_images(images,
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
   """
-  with ops.name_scope(None, 'resize_images', [images, size]):
+  with ops.name_scope(name, 'resize', [images, size]):
     images = ops.convert_to_tensor(images, name='images')
     if images.get_shape().ndims is None:
       raise ValueError('\'images\' contains no shape.')
@@ -1014,8 +1038,8 @@ def resize_images(images,
       raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
                        'new_height, new_width')
     size_const_as_shape = tensor_util.constant_value_as_shape(size)
-    new_height_const = size_const_as_shape[0].value
-    new_width_const = size_const_as_shape[1].value
+    new_height_const = size_const_as_shape.dims[0].value
+    new_width_const = size_const_as_shape.dims[1].value
 
     if preserve_aspect_ratio:
       # Get the current shapes of the image, even if dynamic.
@@ -1036,8 +1060,8 @@ def resize_images(images,
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
                                    dtypes.int32, name='size')
       size_const_as_shape = tensor_util.constant_value_as_shape(size)
-      new_height_const = size_const_as_shape[0].value
-      new_width_const = size_const_as_shape[1].value
+      new_height_const = size_const_as_shape.dims[0].value
+      new_width_const = size_const_as_shape.dims[1].value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
@@ -1226,14 +1250,14 @@ def random_brightness(image, max_delta, seed=None):
   interval `[-max_delta, max_delta)`.
 
   Args:
-    image: An image.
+    image: An image or images to adjust.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
       `tf.set_random_seed`
       for behavior.
 
   Returns:
-    The brightness-adjusted image.
+    The brightness-adjusted image(s).
 
   Raises:
     ValueError: if `max_delta` is negative.
@@ -1247,7 +1271,7 @@ def random_brightness(image, max_delta, seed=None):
 
 @tf_export('image.random_contrast')
 def random_contrast(image, lower, upper, seed=None):
-  """Adjust the contrast of an image by a random factor.
+  """Adjust the contrast of an image or images by a random factor.
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.
@@ -1257,11 +1281,10 @@ def random_contrast(image, lower, upper, seed=None):
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
-    The contrast-adjusted tensor.
+    The contrast-adjusted image(s).
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
@@ -1281,19 +1304,19 @@ def random_contrast(image, lower, upper, seed=None):
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, adjusts its brightness, and then converts it back to the
-  original data type. If several adjustments are chained it is advisable to
+  This is a convenience method that converts RGB images to float
+  representation, adjusts their brightness, and then converts them back to the
+  original data type. If several adjustments are chained, it is advisable to
   minimize the number of redundant conversions.
 
-  The value `delta` is added to all components of the tensor `image`. Both
-  `image` and `delta` are converted to `float` before adding (and `image` is
-  scaled appropriately if it is in fixed-point representation). For regular
+  The value `delta` is added to all components of the tensor `image`. `image` is
+  converted to `float` and scaled appropriately if it is in fixed-point
+  representation, and `delta` is converted to the same data type. For regular
   images, `delta` should be in the range `[0,1)`, as it is added to the image in
   floating point representation, where pixel values are in the `[0,1)` range.
 
   Args:
-    image: A tensor.
+    image: RGB image or images to adjust.
     delta: A scalar. Amount to add to the pixel values.
 
   Returns:
@@ -1303,10 +1326,14 @@ def adjust_brightness(image, delta):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+
+    if orig_dtype in [dtypes.float16, dtypes.float32]:
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     adjusted = math_ops.add(
-        flt_image, math_ops.cast(delta, dtypes.float32), name=name)
+        flt_image, math_ops.cast(delta, flt_image.dtype), name=name)
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
@@ -1315,9 +1342,9 @@ def adjust_brightness(image, delta):
 def adjust_contrast(images, contrast_factor):
   """Adjust contrast of RGB or grayscale images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, adjusts its contrast, and then converts it back to the
-  original data type. If several adjustments are chained it is advisable to
+  This is a convenience method that converts RGB images to float
+  representation, adjusts their contrast, and then converts them back to the
+  original data type. If several adjustments are chained, it is advisable to
   minimize the number of redundant conversions.
 
   `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
@@ -1342,7 +1369,11 @@ def adjust_contrast(images, contrast_factor):
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
-    flt_images = convert_image_dtype(images, dtypes.float32)
+
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_images = images
+    else:
+      flt_images = convert_image_dtype(images, dtypes.float32)
 
     adjusted = gen_image_ops.adjust_contrastv2(
         flt_images, contrast_factor=contrast_factor, name=name)
@@ -1536,7 +1567,7 @@ def grayscale_to_rgb(images, name=None):
 # pylint: disable=invalid-name
 @tf_export('image.random_hue')
 def random_hue(image, max_delta, seed=None):
-  """Adjust the hue of an RGB image by a random factor.
+  """Adjust the hue of RGB images by a random factor.
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
   picked in the interval `[-max_delta, max_delta]`.
@@ -1546,10 +1577,10 @@ def random_hue(image, max_delta, seed=None):
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
     max_delta: float.  Maximum value for the random delta.
-    seed: An operation-specific seed. It will be used in conjunction
-      with the graph-level seed to determine the real seeds that will be
-      used in this operation. Please see the documentation of
-      set_random_seed for its interaction with the graph-level random seed.
+    seed: An operation-specific seed. It will be used in conjunction with the
+      graph-level seed to determine the real seeds that will be used in this
+      operation. Please see the documentation of set_random_seed for its
+      interaction with the graph-level random seed.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -1569,7 +1600,7 @@ def random_hue(image, max_delta, seed=None):
 
 @tf_export('image.adjust_hue')
 def adjust_hue(image, delta, name=None):
-  """Adjust hue of an RGB image.
+  """Adjust hue of RGB images.
 
   This is a convenience method that converts an RGB image to float
   representation, converts it to HSV, add an offset to the hue channel, converts
@@ -1577,7 +1608,7 @@ def adjust_hue(image, delta, name=None):
   are chained it is advisable to minimize the number of redundant conversions.
 
   `image` is an RGB image.  The image hue is adjusted by converting the
-  image to HSV and rotating the hue channel (H) by
+  image(s) to HSV and rotating the hue channel (H) by
   `delta`.  The image is then converted back to RGB.
 
   `delta` must be in the interval `[-1, 1]`.
@@ -1594,7 +1625,10 @@ def adjust_hue(image, delta, name=None):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
@@ -1672,7 +1706,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
 @tf_export('image.random_saturation')
 def random_saturation(image, lower, upper, seed=None):
-  """Adjust the saturation of an RGB image by a random factor.
+  """Adjust the saturation of RGB images by a random factor.
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
   picked in the interval `[lower, upper]`.
@@ -1681,10 +1715,10 @@ def random_saturation(image, lower, upper, seed=None):
     image: RGB image or images. Size of the last dimension must be 3.
     lower: float.  Lower bound for the random saturation factor.
     upper: float.  Upper bound for the random saturation factor.
-    seed: An operation-specific seed. It will be used in conjunction
-      with the graph-level seed to determine the real seeds that will be
-      used in this operation. Please see the documentation of
-      set_random_seed for its interaction with the graph-level random seed.
+    seed: An operation-specific seed. It will be used in conjunction with the
+      graph-level seed to determine the real seeds that will be used in this
+      operation. Please see the documentation of set_random_seed for its
+      interaction with the graph-level random seed.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -1705,17 +1739,17 @@ def random_saturation(image, lower, upper, seed=None):
 
 @tf_export('image.adjust_saturation')
 def adjust_saturation(image, saturation_factor, name=None):
-  """Adjust saturation of an RGB image.
+  """Adjust saturation of RGB images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, converts it to HSV, add an offset to the saturation channel,
+  This is a convenience method that converts RGB images to float
+  representation, converts them to HSV, add an offset to the saturation channel,
   converts back to RGB and then back to the original data type. If several
   adjustments are chained it is advisable to minimize the number of redundant
   conversions.
 
-  `image` is an RGB image.  The image saturation is adjusted by converting the
-  image to HSV and multiplying the saturation (S) channel by
-  `saturation_factor` and clipping. The image is then converted back to RGB.
+  `image` is an RGB image or images.  The image saturation is adjusted by
+  converting the images to HSV and multiplying the saturation (S) channel by
+  `saturation_factor` and clipping. The images are then converted back to RGB.
 
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
@@ -1729,14 +1763,17 @@ def adjust_saturation(image, saturation_factor, name=None):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
-    return convert_image_dtype(
-        gen_image_ops.adjust_saturation(flt_image, saturation_factor),
-        orig_dtype)
+    adjusted = gen_image_ops.adjust_saturation(flt_image, saturation_factor)
+
+    return convert_image_dtype(adjusted, orig_dtype)
 
 
-@tf_export('image.is_jpeg')
+@tf_export('io.is_jpeg', 'image.is_jpeg', v1=['io.is_jpeg', 'image.is_jpeg'])
 def is_jpeg(contents, name=None):
   r"""Convenience function to check if the 'contents' encodes a JPEG image.
 
@@ -1771,8 +1808,28 @@ def _is_png(contents, name=None):
     substr = string_ops.substr(contents, 0, 3)
     return math_ops.equal(substr, b'\211PN', name=name)
 
+tf_export('io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg',
+          v1=['io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg'])(
+              gen_image_ops.decode_and_crop_jpeg)
 
-@tf_export('image.decode_image')
+tf_export('io.decode_bmp', 'image.decode_bmp',
+          v1=['io.decode_bmp', 'image.decode_bmp'])(gen_image_ops.decode_bmp)
+tf_export('io.decode_gif', 'image.decode_gif',
+          v1=['io.decode_gif', 'image.decode_gif'])(gen_image_ops.decode_gif)
+tf_export('io.decode_jpeg', 'image.decode_jpeg',
+          v1=['io.decode_jpeg', 'image.decode_jpeg'])(gen_image_ops.decode_jpeg)
+tf_export('io.decode_png', 'image.decode_png',
+          v1=['io.decode_png', 'image.decode_png'])(gen_image_ops.decode_png)
+
+tf_export('io.encode_jpeg', 'image.encode_jpeg',
+          v1=['io.encode_jpeg', 'image.encode_jpeg'])(gen_image_ops.encode_jpeg)
+tf_export('io.extract_jpeg_shape', 'image.extract_jpeg_shape',
+          v1=['io.extract_jpeg_shape', 'image.extract_jpeg_shape'])(
+              gen_image_ops.extract_jpeg_shape)
+
+
+@tf_export('io.decode_image', 'image.decode_image',
+           v1=['io.decode_image', 'image.decode_image'])
 def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
@@ -1942,7 +1999,113 @@ def total_variation(images, name=None):
   return tot_var
 
 
-@tf_export('image.sample_distorted_bounding_box')
+@tf_export('image.sample_distorted_bounding_box', v1=[])
+def sample_distorted_bounding_box_v2(image_size,
+                                     bounding_boxes,
+                                     seed=0,
+                                     min_object_covered=0.1,
+                                     aspect_ratio_range=None,
+                                     area_range=None,
+                                     max_attempts=None,
+                                     use_image_if_no_bounding_boxes=None,
+                                     name=None):
+  """Generate a single randomly distorted bounding box for an image.
+
+  Bounding box annotations are often supplied in addition to ground-truth labels
+  in image recognition or object localization tasks. A common technique for
+  training such a system is to randomly distort an image while preserving
+  its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+  localization of an object, i.e. bounding box, given an `image_size`,
+  `bounding_boxes` and a series of constraints.
+
+  The output of this Op is a single bounding box that may be used to crop the
+  original image. The output is returned as 3 tensors: `begin`, `size` and
+  `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+  image. The latter may be supplied to `tf.image.draw_bounding_boxes` to
+  visualize what the bounding box looks like.
+
+  Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`.
+  The bounding box coordinates are floats in `[0.0, 1.0]` relative to the width
+  and height of the underlying image.
+
+  For example,
+
+  ```python
+      # Generate a single distorted bounding box.
+      begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+          tf.shape(image),
+          bounding_boxes=bounding_boxes,
+          min_object_covered=0.1)
+
+      # Draw the bounding box in an image summary.
+      image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                    bbox_for_draw)
+      tf.summary.image('images_with_box', image_with_box)
+
+      # Employ the bounding box to distort the image.
+      distorted_image = tf.slice(image, begin, size)
+  ```
+
+  Note that if no bounding box information is available, setting
+  `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+  bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+  false and no bounding boxes are supplied, an error is raised.
+
+  Args:
+    image_size: A `Tensor`. Must be one of the following types: `uint8`, `int8`,
+      `int16`, `int32`, `int64`.
+      1-D, containing `[height, width, channels]`.
+    bounding_boxes: A `Tensor` of type `float32`.
+      3-D with shape `[batch, N, 4]` describing the N bounding boxes
+      associated with the image.
+    seed: An optional `int`. Defaults to `0`.
+      If `seed` is set to non-zero, the random number generator is seeded by
+      the given `seed`.  Otherwise, it is seeded by a random seed.
+    min_object_covered: A Tensor of type `float32`. Defaults to `0.1`.
+      The cropped area of the image must contain at least this
+      fraction of any bounding box supplied. The value of this parameter should
+      be non-negative. In the case of 0, the cropped area does not need to
+      overlap any of the bounding boxes supplied.
+    aspect_ratio_range: An optional list of `floats`. Defaults to `[0.75,
+      1.33]`.
+      The cropped area of the image must have an aspect `ratio =
+      width / height` within this range.
+    area_range: An optional list of `floats`. Defaults to `[0.05, 1]`.
+      The cropped area of the image must contain a fraction of the
+      supplied image within this range.
+    max_attempts: An optional `int`. Defaults to `100`.
+      Number of attempts at generating a cropped region of the image
+      of the specified constraints. After `max_attempts` failures, return the
+      entire image.
+    use_image_if_no_bounding_boxes: An optional `bool`. Defaults to `False`.
+      Controls behavior if no bounding boxes supplied.
+      If true, assume an implicit bounding box covering the whole input. If
+      false, raise an error.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of `Tensor` objects (begin, size, bboxes).
+
+    begin: A `Tensor`. Has the same type as `image_size`. 1-D, containing
+    `[offset_height, offset_width, 0]`. Provide as input to
+      `tf.slice`.
+    size: A `Tensor`. Has the same type as `image_size`. 1-D, containing
+    `[target_height, target_width, -1]`. Provide as input to
+      `tf.slice`.
+    bboxes: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing
+    the distorted bounding box.
+    Provide as input to `tf.image.draw_bounding_boxes`.
+  """
+  seed1, seed2 = random_seed.get_seed(seed) if seed else (0, 0)
+  return sample_distorted_bounding_box(
+      image_size, bounding_boxes, seed1, seed2, min_object_covered,
+      aspect_ratio_range, area_range, max_attempts,
+      use_image_if_no_bounding_boxes, name)
+
+
+@tf_export(v1=['image.sample_distorted_bounding_box'])
+@deprecation.deprecated(date=None, instructions='`seed2` arg is deprecated.'
+                        'Use sample_distorted_bounding_box_v2 instead.')
 def sample_distorted_bounding_box(image_size,
                                   bounding_boxes,
                                   seed=None,
@@ -2345,7 +2508,8 @@ def _verify_compatible_image_shapes(img1, img2):
   shape1[-3:].assert_is_compatible_with(shape2[-3:])
 
   if shape1.ndims is not None and shape2.ndims is not None:
-    for dim1, dim2 in zip(reversed(shape1[:-3]), reversed(shape2[:-3])):
+    for dim1, dim2 in zip(reversed(shape1.dims[:-3]),
+                          reversed(shape2.dims[:-3])):
       if not (dim1 == 1 or dim2 == 1 or dim1.is_compatible_with(dim2)):
         raise ValueError(
             'Two images are not compatible: %s and %s' % (shape1, shape2))
@@ -2807,3 +2971,102 @@ def sobel_edges(image):
   output = array_ops.reshape(output, shape=shape)
   output.set_shape(static_image_shape.concatenate([num_kernels]))
   return output
+
+
+resize_area_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
+tf_export(v1=['image.resize_area'])(
+    resize_area_deprecation(gen_image_ops.resize_area))
+
+resize_bicubic_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
+tf_export(v1=['image.resize_bicubic'])(
+    resize_bicubic_deprecation(gen_image_ops.resize_bicubic))
+
+resize_bilinear_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
+tf_export(v1=['image.resize_bilinear'])(
+    resize_bilinear_deprecation(gen_image_ops.resize_bilinear))
+
+resize_nearest_neighbor_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
+        'instead.'))
+tf_export(v1=['image.resize_nearest_neighbor'])(
+    resize_nearest_neighbor_deprecation(gen_image_ops.resize_nearest_neighbor))
+
+
+@tf_export('image.crop_and_resize', v1=[])
+def crop_and_resize_v2(
+    image,
+    boxes,
+    box_indices,
+    crop_size,
+    method='bilinear',
+    extrapolation_value=0,
+    name=None):
+  """Extracts crops from the input image tensor and resizes them.
+
+  Extracts crops from the input image tensor and resizes them using bilinear
+  sampling or nearest neighbor sampling (possibly with aspect ratio change) to a
+  common output size specified by `crop_size`. This is more general than the
+  `crop_to_bounding_box` op which extracts a fixed size slice from the input
+  image and does not allow resizing or aspect ratio change.
+
+  Returns a tensor with `crops` from the input `image` at positions defined at
+  the bounding box locations in `boxes`. The cropped boxes are all resized (with
+  bilinear or nearest neighbor interpolation) to a fixed
+  `size = [crop_height, crop_width]`. The result is a 4-D tensor
+  `[num_boxes, crop_height, crop_width, depth]`. The resizing is corner aligned.
+  In particular, if `boxes = [[0, 0, 1, 1]]`, the method will give identical
+  results to using `tf.image.resize_bilinear()` or
+  `tf.image.resize_nearest_neighbor()`(depends on the `method` argument) with
+  `align_corners=True`.
+
+  Args:
+    image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+      Both `image_height` and `image_width` need to be positive.
+    boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+      specifies the coordinates of a box in the `box_ind[i]` image and is
+      specified in normalized coordinates `[y1, x1, y2, x2]`. A normalized
+      coordinate value of `y` is mapped to the image coordinate at `y *
+      (image_height - 1)`, so as the `[0, 1]` interval of normalized image
+      height is mapped to `[0, image_height - 1]` in image height coordinates.
+      We do allow `y1` > `y2`, in which case the sampled crop is an up-down
+      flipped version of the original image. The width dimension is treated
+      similarly. Normalized coordinates outside the `[0, 1]` range are allowed,
+      in which case we use `extrapolation_value` to extrapolate the input image
+      values.
+    box_indices: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0,
+      batch)`. The value of `box_ind[i]` specifies the image that the `i`-th box
+      refers to.
+    crop_size: A 1-D tensor of 2 elements, `size = [crop_height, crop_width]`.
+      All cropped image patches are resized to this size. The aspect ratio of
+      the image content is not preserved. Both `crop_height` and `crop_width`
+      need to be positive.
+    method: An optional string specifying the sampling method for resizing. It
+      can be either `"bilinear"` or `"nearest"` and default to `"bilinear"`.
+      Currently two sampling methods are supported: Bilinear and Nearest
+      Neighbor.
+    extrapolation_value: An optional `float`. Defaults to `0`. Value used for
+      extrapolation, when applicable.
+    name: A name for the operation (optional).
+
+  Returns:
+    A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+  """
+  return gen_image_ops.crop_and_resize(
+      image, boxes, box_indices, crop_size, method, extrapolation_value, name)
+
+
+crop_and_resize_deprecation = deprecation.deprecated_args(
+    None, 'box_ind is deprecated, use box_indices instead', 'box_ind')
+tf_export(v1=['image.crop_and_resize'])(
+    crop_and_resize_deprecation(gen_image_ops.crop_and_resize))

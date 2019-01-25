@@ -31,8 +31,8 @@ class WindowDataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return std::unique_ptr<IteratorBase>(
-        new Iterator({this, strings::StrCat(prefix, "::Window")}));
+    return absl::make_unique<Iterator>(
+        Iterator::Params{this, strings::StrCat(prefix, "::Window")});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -40,6 +40,16 @@ class WindowDataset : public DatasetBase {
   const std::vector<PartialTensorShape>& output_shapes() const override {
     return output_shapes_;
   }
+
+  int64 AllocatedBytes() const override {
+    int64 allocated_bytes = 0;
+    for (auto& element : elements_) {
+      allocated_bytes += GetAllocatedBytes(element);
+    }
+    return allocated_bytes;
+  }
+
+  int64 Cardinality() const override { return elements_.size(); }
 
   string DebugString() const override { return "WindowDataset"; }
 

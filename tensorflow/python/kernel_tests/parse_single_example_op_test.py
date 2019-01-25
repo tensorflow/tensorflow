@@ -29,6 +29,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -107,7 +108,7 @@ class ParseExampleTest(test.TestCase):
         for result_dict in [out, out_with_example_name]:
           result = flatten_values_tensors_or_sparse(result_dict.values())
           # Check values.
-          tf_result = sess.run(result)
+          tf_result = self.evaluate(result)
           _compare_output_to_expected(self, result_dict, expected_values,
                                       tf_result)
 
@@ -121,6 +122,7 @@ class ParseExampleTest(test.TestCase):
           self.assertEqual(
               tuple(out[k].dense_shape.get_shape().as_list()), (1,))
 
+  @test_util.run_deprecated_v1
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
     a_name = "a"
@@ -229,6 +231,7 @@ class ParseExampleTest(test.TestCase):
         },
         expected_err=(ValueError, "Missing shape for feature a"))
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparse(self):
     original = [
         example(features=features({
@@ -552,6 +555,7 @@ class ParseExampleTest(test.TestCase):
           }
       }, expected_output)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparseAndSparseFeatureAndDenseWithNoDefault(self):
     original = [
         example(features=features({
@@ -618,6 +622,7 @@ class ParseExampleTest(test.TestCase):
           },
           expected_output)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
     original = [
         example(features=features({
@@ -658,6 +663,7 @@ class ParseExampleTest(test.TestCase):
           }
       }, expected_output)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"
@@ -869,6 +875,7 @@ class ParseSingleExampleTest(test.TestCase):
           self.assertEqual(
               tuple(out[k].dense_shape.get_shape().as_list()), (1,))
 
+  @test_util.run_deprecated_v1
   def testSingleExampleWithSparseAndSparseFeatureAndDense(self):
     original = example(features=features({
         "c": float_feature([3, 4]),

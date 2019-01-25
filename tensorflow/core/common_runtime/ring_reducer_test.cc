@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_reducer.h"
 
 #include <algorithm>
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -157,7 +158,7 @@ class RingReducerTest : public ::testing::Test {
     InitGPUDevices();
 #endif
     device_type_ = device_type;
-    std::vector<Device*> local_devices;
+    std::vector<std::unique_ptr<Device>> local_devices;
     SessionOptions sess_opts;
     sess_opts.env = Env::Default();
     Bytes mem_limit(4 << 20);
@@ -167,7 +168,7 @@ class RingReducerTest : public ::testing::Test {
         if (device_type == DEVICE_CPU) {
           string dev_name =
               strings::StrCat("/job:worker/replica:0/task:", wi, "/cpu:", di);
-          local_devices.push_back(new ThreadPoolDevice(
+          local_devices.push_back(absl::make_unique<ThreadPoolDevice>(
               sess_opts, dev_name, mem_limit, dev_locality, cpu_allocator()));
         } else if (device_type == DEVICE_GPU && !gpu_devices_.empty()) {
           int dev_idx = (wi * num_devices) + di;
@@ -175,7 +176,7 @@ class RingReducerTest : public ::testing::Test {
             LOG(INFO) << "dev_mgr has access to limited GPUs, reusing for more "
                          "than one ring node.";
           } else {
-            local_devices.push_back(gpu_devices_[dev_idx]);
+            local_devices.push_back(std::move(gpu_devices_[dev_idx]));
           }
         } else {
           LOG(FATAL) << "Unsupported device_type " << device_type;
@@ -185,13 +186,14 @@ class RingReducerTest : public ::testing::Test {
     if (!dev_mgr_ || device_type == DEVICE_CPU) {
       LOG(ERROR) << "resetting dev_mgr for " << local_devices.size()
                  << " devices: ";
-      dev_mgr_.reset(new DeviceMgr(local_devices));
+      dev_mgr_.reset(new DeviceMgr(std::move(local_devices)));
     }
+    if (!gpu_ring_order_) gpu_ring_order_.reset(new string());
     dev_resolver_.reset(new DeviceResolverLocal(dev_mgr_.get()));
     rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
                            fail_after);
-    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
-                                           dev_mgr_.get());
+    col_exec_ = new BaseCollectiveExecutor(
+        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
     col_params_.name = "test_collective";
     static const int kGroupKey = 5;
     col_params_.group.group_key = kGroupKey;
@@ -543,8 +545,9 @@ class RingReducerTest : public ::testing::Test {
   std::unique_ptr<DeviceResolverLocal> dev_resolver_;
   std::vector<DeviceInstance*> instances_;
   CollectiveParams col_params_;
-  std::vector<tensorflow::Device*> gpu_devices_;
+  std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
+  std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
   int32 reduce_counter_ GUARDED_BY(mu_) = 0;
 };

@@ -22,34 +22,28 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class EnumerateDatasetTest(test_base.DatasetTestBase):
 
   def testEnumerateDataset(self):
     components = (["a", "b"], [1, 2], [37.0, 38])
     start = constant_op.constant(20, dtype=dtypes.int64)
 
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components).apply(
-        enumerate_ops.enumerate_dataset(start)).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
+        enumerate_ops.enumerate_dataset(start))
 
-    self.assertEqual(dtypes.int64, get_next[0].dtype)
-    self.assertEqual((), get_next[0].shape)
+    self.assertEqual(dtypes.int64, dataset.output_types[0])
+    self.assertEqual((), dataset.output_shapes[0])
     self.assertEqual([tensor_shape.TensorShape([])] * 3,
-                     [t.shape for t in get_next[1]])
+                     [shape for shape in dataset.output_shapes[1]])
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertEqual((20, (b"a", 1, 37.0)), sess.run(get_next))
-      self.assertEqual((21, (b"b", 2, 38.0)), sess.run(get_next))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    self.assertDatasetProduces(dataset, [(20, (b"a", 1, 37.0)),
+                                         (21, (b"b", 2, 38.0))])
 
 
 if __name__ == "__main__":

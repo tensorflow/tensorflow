@@ -77,7 +77,11 @@ bool CanImplementAsCudnnForwardConv(HloInstruction* conv) {
     return false;
   }
 
-  if (window_util::HasWindowReversal(conv->window())) {
+  // CuDNN can perform either cross correlation (no reversal),
+  // or convolution (all dimensions reversed).
+  if (dnums.input_spatial_dimensions_size() == 2
+          ? !window_util::AllOrNoneReversed(conv->window())
+          : window_util::HasWindowReversal(conv->window())) {
     return false;
   }
   return true;
@@ -167,6 +171,8 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
     // The window's low padding is the same as the low padding of the
     // activations.
     dim->set_padding_low(conv->window().dimensions(i).padding_low());
+    dim->set_base_dilation(1);
+    dim->set_window_dilation(1);
 
     int64 input_size =
         conv->operand(0)->shape().dimensions(input_spatial_dims[i]);
@@ -252,7 +258,7 @@ MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
-  // TODO(b/31709653): Theoretically cuDNN supports grouped convolutions also
+  // TODO(b/119479517): Theoretically cuDNN supports grouped convolutions also
   // for the backward input convolution, but at least for now with version 7.1.4
   // it is slower. This needs to be re-evaluated for future cuDNN versions.
   // Note that we already have the necessary code down below, the only thing to
@@ -335,6 +341,7 @@ MatchBackwardInput(HloInstruction* conv) {
     // = the base dilation factor of the forward convolution
     auto dim = new_window.mutable_dimensions(i);
     dim->set_stride(old_window.dimensions(i).base_dilation());
+    dim->set_base_dilation(1);
 
     // The low padding = kernel_size - 1 - low padding on the gradients
     // Make sure the low padding is not negative.

@@ -113,15 +113,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CuDNNGRU"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "CuDNNLSTM"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Dense"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DenseFeatures"
     mtype: "<type \'type\'>"
   }
   member {
@@ -238,6 +234,10 @@ tf_module {
   }
   member {
     name: "LeakyReLU"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearModel"
     mtype: "<type \'type\'>"
   }
   member {
@@ -395,6 +395,10 @@ tf_module {
   member {
     name: "ZeroPadding3D"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
   }
   member_method {
     name: "Input"

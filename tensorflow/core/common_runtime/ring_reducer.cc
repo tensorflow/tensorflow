@@ -290,7 +290,7 @@ void RingReducer::Run(StatusCallback done) {
         col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
         col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,
         col_ctx_->output, 0 /*dev_to_dev_stream_index*/,
-        [this, &note, &status](const Status& s) {
+        [&note, &status](const Status& s) {
           status.Update(s);
           note.Notify();
         });
@@ -392,37 +392,6 @@ void RingReducer::Finish(bool ok) {
   }
   rfv_.clear();  // Give up Refs on output tensor.
   done_(s);
-}
-
-RingReducer::SubContext::SubContext(OpKernelContext* ctx,
-                                    OpKernelContext::Params* params,
-                                    OpKernel* op, Tensor* output, Tensor* input)
-    : sub_params_(*params),
-      sub_inputs_({output, input}),
-      sub_input_attr_({ctx->input_alloc_attr(0), ctx->input_alloc_attr(0)}),
-      sub_input_dc_(
-          {ctx->input_device_context(0), ctx->input_device_context(0)}) {
-  sub_params_.op_kernel = op;
-  sub_params_.inputs = &sub_inputs_;
-  sub_params_.input_alloc_attrs = &sub_input_attr_;
-  sub_params_.input_device_contexts = &sub_input_dc_;
-  sub_params_.eigen_gpu_device = nullptr;
-  sub_params_.ensure_eigen_gpu_device();
-  sub_params_.forward_from_array = &forward_from_;
-  sub_ctx_ = new OpKernelContext(&sub_params_, 1);
-}
-
-Status RingReducer::ComputeBinOp(Device* device, OpKernel* op, Tensor* output,
-                                 Tensor* input) {
-  // Prepare an OpKernelContext that is identical to that of the original Op
-  // (i.e. the collective), except for the input output sizes and identities and
-  // the Op itself.
-  // TODO(tucker): Is it possible to cache and reuse these objects?  They're
-  // mostly identical inside one device execution.
-  std::unique_ptr<SubContext> sub_ctx(
-      new SubContext(col_ctx_->op_ctx, col_ctx_->op_params, op, output, input));
-  device->Compute(op, sub_ctx->sub_ctx_);
-  return sub_ctx->sub_ctx_->status();
 }
 
 // At the beginning of the algorithm initialize a RingField struct for
@@ -632,9 +601,9 @@ bool RingReducer::RunAsyncParts() {
           --recv_pending_count;
           if (!rf->second_pass) {
             rf->action = RF_REDUCE;
-            Status s =
-                ComputeBinOp(col_ctx_->device, col_params_->merge_op.get(),
-                             &rf->chunk, &rf->tmp_chunk);
+            Status s = collective_util::ComputeBinOp(
+                col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
+                col_params_->merge_op.get(), &rf->chunk, &rf->tmp_chunk);
             if (!s.ok()) {
               aborted = true;
               StartAbort(s);
@@ -647,9 +616,9 @@ bool RingReducer::RunAsyncParts() {
           if (!rf->second_pass && col_params_->final_op.get() && rf->is_final) {
             rf->action = RF_FINALIZE;
             group_size_tensor_ready_.WaitForNotification();
-            Status s =
-                ComputeBinOp(col_ctx_->device, col_params_->final_op.get(),
-                             &rf->chunk, &group_size_tensor_);
+            Status s = collective_util::ComputeBinOp(
+                col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
+                col_params_->final_op.get(), &rf->chunk, &group_size_tensor_);
             if (!s.ok()) {
               aborted = true;
               StartAbort(s);

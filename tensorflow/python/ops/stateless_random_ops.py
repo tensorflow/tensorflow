@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable("StatelessMultinomial")
@@ -179,7 +180,9 @@ def stateless_truncated_normal(shape,
     return math_ops.add(rnd * stddev, mean, name=name)
 
 
-@tf_export("random.stateless_multinomial")
+@tf_export(v1=["random.stateless_multinomial"])
+@deprecation.deprecated(
+    date=None, instructions="Use tf.random.stateless_categorical instead.")
 def stateless_multinomial(logits,
                           num_samples,
                           seed,
@@ -207,13 +210,58 @@ def stateless_multinomial(logits,
       `[i, :]` represents the unnormalized log-probabilities for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A shape [2] integer Tensor of seeds to the random number generator.
-    name: Optional name for the operation.
     output_dtype: integer type to use for the output. Defaults to int64.
+    name: Optional name for the operation.
 
   Returns:
     The drawn samples of shape `[batch_size, num_samples]`.
   """
   with ops.name_scope(name, "stateless_multinomial", [logits, seed]):
-    logits = ops.convert_to_tensor(logits, name="logits")
-    return gen_stateless_random_ops.stateless_multinomial(
-        logits, num_samples, seed, output_dtype=output_dtype)
+    return stateless_multinomial_categorical_impl(logits, num_samples,
+                                                  output_dtype, seed)
+
+
+@tf_export("random.stateless_categorical")
+def stateless_categorical(logits,
+                          num_samples,
+                          seed,
+                          dtype=dtypes.int64,
+                          name=None):
+  """Draws deterministic pseudorandom samples from a categorical distribution.
+
+  This is a stateless version of `tf.categorical`: if run twice with the
+  same seeds, it will produce the same pseudorandom numbers.  The output is
+  consistent across multiple runs on the same hardware (and between CPU
+  and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
+  hardware.
+
+  Example:
+
+  ```python
+  # samples has shape [1, 5], where each value is either 0 or 1 with equal
+  # probability.
+  samples = tf.random.stateless_categorical(
+      tf.log([[10., 10.]]), 5, seed=[7, 17])
+  ```
+
+  Args:
+    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
+      `[i, :]` represents the unnormalized log-probabilities for all classes.
+    num_samples: 0-D.  Number of independent samples to draw for each row slice.
+    seed: A shape [2] integer Tensor of seeds to the random number generator.
+    dtype: integer type to use for the output. Defaults to int64.
+    name: Optional name for the operation.
+
+  Returns:
+    The drawn samples of shape `[batch_size, num_samples]`.
+  """
+  with ops.name_scope(name, "stateless_categorical", [logits, seed]):
+    return stateless_multinomial_categorical_impl(logits, num_samples, dtype,
+                                                  seed)
+
+
+def stateless_multinomial_categorical_impl(logits, num_samples, dtype, seed):
+  """Implementation for stateless multinomial/categorical ops (v1/v2)."""
+  logits = ops.convert_to_tensor(logits, name="logits")
+  return gen_stateless_random_ops.stateless_multinomial(
+      logits, num_samples, seed, output_dtype=dtype)

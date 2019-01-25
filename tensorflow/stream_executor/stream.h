@@ -650,6 +650,13 @@ class Stream {
                           DeviceMemory<Eigen::half> *output_data,
                           ScratchAllocator *workspace_allocator = nullptr);
 
+  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                          const dnn::BatchDescriptor &input_dimensions,
+                          const DeviceMemory<int8> &input_data,
+                          const dnn::BatchDescriptor &output_dimensions,
+                          DeviceMemory<int8> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
+
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
                            const DeviceMemory<double> &input_data,
@@ -2034,8 +2041,19 @@ class Stream {
   internal::StreamInterface *implementation() { return implementation_.get(); }
 
   // Entrains onto the stream a callback to the host (from the device).
+  // Behaves as ThenDoHostCallbackWithStatus below, but the callback should
+  // never fail or its failure is inconsequential.
+  //
+  // This is kept for backward compatibility. Future code should use
+  // ThenDoHostCallbackWithStatus and explicitly return a success status.
+  // TODO(b/112125301): Eventually remove this method.
+  Stream &ThenDoHostCallback(std::function<void()> callback);
+
+  // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
+  // Whether the callback return status affects the result of BlockHostUntilDone
+  // is platform-dependent.
   //
   // Behavior is undefined when synchronizing using OpenCL user events.
   // Behavior is undefined if host callbacks call device routines or insert
@@ -2043,11 +2061,6 @@ class Stream {
   //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
-  Stream &ThenDoHostCallback(std::function<void()> callback);
-
-  // Entrains onto the stream a callback to the host (from the device).
-  // Behaves as ThenDoHostCallback above, but returns a Status instead of void.
-  // This overload should be preferred if the callback could fail.
   Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
@@ -2085,6 +2098,9 @@ class Stream {
     mutex_lock lock(mu_);
     ok_ = false;
   }
+
+  // Checks the status and logs the error message, if any.
+  void CheckStatus(port::Status status) LOCKS_EXCLUDED(mu_);
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 

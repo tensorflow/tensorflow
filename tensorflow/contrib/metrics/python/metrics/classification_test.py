@@ -291,12 +291,11 @@ class F1ScoreTest(test.TestCase):
 
     labels = labels.astype(np.float32)
     predictions = predictions.astype(np.float32)
-    tf_predictions, tf_labels = (dataset_ops.Dataset
-                                 .from_tensor_slices((predictions, labels))
-                                 .repeat()
-                                 .batch(batch_size)
-                                 .make_one_shot_iterator()
-                                 .get_next())
+    tf_predictions, tf_labels = dataset_ops.make_one_shot_iterator(
+        dataset_ops.Dataset
+        .from_tensor_slices((predictions, labels))
+        .repeat()
+        .batch(batch_size)).get_next()
     f1, f1_op = classification.f1_score(tf_labels, tf_predictions,
                                         num_thresholds=3)
 

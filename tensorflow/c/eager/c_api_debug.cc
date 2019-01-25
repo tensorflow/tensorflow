@@ -57,13 +57,9 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     return nullptr;
   }
 
-  tensorflow::Device* device;
-  status->status = handle->handle->Device(&device);
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-
 #ifdef TENSORFLOW_EAGER_USE_XLA
+  tensorflow::Device* device = handle->handle->device();
+
   // If tensor resides on an XLA device, use XLA device's PaddedShapeFn.
   tensorflow::XlaDevice* xla_device =
       dynamic_cast<tensorflow::XlaDevice*>(device);
@@ -87,7 +83,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
       }
     }
 
-    if (xla::ShapeUtil::IsTuple(padded_shape)) {
+    if (padded_shape.IsTuple()) {
       if (xla::ShapeUtil::TupleElementCount(padded_shape) != 2) {
         // Currently, the only case of XlaTensor containing a tuple shape is to
         // represent 64 bit ints, doubles, and complex numbers (we don't support
@@ -103,7 +99,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
       xla::Shape shape0 = xla::ShapeUtil::GetTupleElementShape(padded_shape, 0);
       const xla::Shape& shape1 =
           xla::ShapeUtil::GetTupleElementShape(padded_shape, 1);
-      if (xla::ShapeUtil::IsTuple(shape0) || xla::ShapeUtil::IsTuple(shape1)) {
+      if (shape0.IsTuple() || shape1.IsTuple()) {
         status->status = tensorflow::errors::InvalidArgument(
             "XlaTensors should not contain nested tuples. Shape: ",
             padded_shape.DebugString());

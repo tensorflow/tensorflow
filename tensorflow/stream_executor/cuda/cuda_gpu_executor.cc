@@ -24,24 +24,26 @@ limitations under the License.
 #else
 #include <unistd.h>
 #endif
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#include "tensorflow/stream_executor/cuda/cuda_driver_wrapper.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/mathutil.h"
+#include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -51,7 +53,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/timer.h"
-#include "tensorflow/stream_executor/lib/numbers.h"
+
+// LOG(ERROR) uses a const named ERROR, so a macro with the same name is
+// always unwanted. This happens on Windows that defines such a macro.
+#undef ERROR
 
 #ifdef PLATFORMS_GPUS_CUDA_DYNAMIC_LIBCUDA_DYNAMIC_LIBCUDA_H_
 #error \
@@ -147,14 +152,14 @@ port::Status CUDAExecutor::Init(int device_ordinal,
 }
 
 bool CUDAExecutor::FindOnDiskForComputeCapability(
-    port::StringPiece filename, port::StringPiece canonical_suffix,
+    absl::string_view filename, absl::string_view canonical_suffix,
     string *found_filename) const {
   if (cc_major_ == 0 && cc_minor_ == 0) {
     return false;
   }
 
   string cc_specific =
-      port::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
+      absl::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
   if (port::FileExists(cc_specific).ok()) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
@@ -497,7 +502,7 @@ int CUDAExecutor::CalculateOccupancy(
     CUfunction func) {
   int suggested_blocks = 0;
   int suggested_threads = 0;
-  CUresult err = cuOccupancyMaxPotentialBlockSize(
+  CUresult err = tensorflow::wrap::cuOccupancyMaxPotentialBlockSize(
       &suggested_blocks, &suggested_threads, func, nullptr,
       shared_memory_per_block, 0);
   CHECK_EQ(err, CUDA_SUCCESS);
@@ -514,7 +519,7 @@ int CUDAExecutor::CompareOccupancy(int *initial_blocks,
                                    CUfunction func) {
   int suggested_blocks = 0;
   int suggested_threads = 0;
-  CUresult err = cuOccupancyMaxPotentialBlockSize(
+  CUresult err = tensorflow::wrap::cuOccupancyMaxPotentialBlockSize(
       &suggested_blocks, &suggested_threads, func, nullptr,
       shared_memory_per_block, 0);
   CHECK_EQ(err, CUDA_SUCCESS);
@@ -662,8 +667,13 @@ bool CUDAExecutor::MemcpyDeviceToDevice(Stream *stream,
 }
 
 bool CUDAExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
-  auto callback_ptr = new std::function<void()>(callback);
+                                std::function<port::Status()> callback) {
+  auto callback_ptr = new std::function<void()>([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return CUDADriver::AddStreamCallback(context_, AsCUDAStreamValue(stream),
                                        InternalHostCallback, callback_ptr);
 }
@@ -1034,18 +1044,28 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
     builder.set_numa_node(numa_node);
   }
 
-  CUdevprop prop;
-  if (CUDADriver::GetDeviceProperties(&prop, device_ordinal_)) {
-    builder.set_threads_per_block_limit(prop.maxThreadsPerBlock);
+  {
+    builder.set_threads_per_block_limit(
+        CUDADriver::GetDeviceAttribute(
+            CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, device_)
+            .ValueOrDie());
 
     ThreadDim thread_dim_limit;
-    thread_dim_limit.x = prop.maxThreadsDim[0];
-    thread_dim_limit.y = prop.maxThreadsDim[1];
-    thread_dim_limit.z = prop.maxThreadsDim[2];
+    thread_dim_limit.x = CUDADriver::GetDeviceAttribute(
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, device_)
+                             .ValueOrDie();
+    thread_dim_limit.y = CUDADriver::GetDeviceAttribute(
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y, device_)
+                             .ValueOrDie();
+    thread_dim_limit.z = CUDADriver::GetDeviceAttribute(
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, device_)
+                             .ValueOrDie();
     builder.set_thread_dim_limit(thread_dim_limit);
 
-    float clock_rate_ghz = static_cast<float>(prop.clockRate) / 1e6;
-    builder.set_clock_rate_ghz(clock_rate_ghz);
+    int clock_rate =
+        CUDADriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device_)
+            .ValueOrDie();
+    builder.set_clock_rate_ghz(static_cast<float>(clock_rate) / 1e6);
   }
 
   {
@@ -1085,7 +1105,7 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
   }
 
   builder.set_platform_version(
-      port::StrCat("Compute Capability ", cc_major_, ".", cc_minor_));
+      absl::StrCat("Compute Capability ", cc_major_, ".", cc_minor_));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.

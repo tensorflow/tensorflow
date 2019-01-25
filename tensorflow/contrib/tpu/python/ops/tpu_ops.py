@@ -137,10 +137,18 @@ if platform.system() != "Windows":
     """
     return gen_tpu_ops.collective_permute(x, source_target_pairs, name=name)
 
+  @ops.RegisterGradient("CollectivePermute")
+  def _collective_permute_grad(op, grad):
+    # The gradient of a collective permute operation is also a collective
+    # permute, but with source/target pairs reversed. The gradient with respect
+    # to input argument `source_target_pairs` is `None`.
+    source_target_pairs = op.inputs[1][:, ::-1]
+    return [gen_tpu_ops.collective_permute(grad, source_target_pairs), None]
+
   @ops.RegisterGradient("CrossReplicaSum")
   def _cross_replica_sum_grad(op, grad):
     # The gradient of a cross replica sum is also a cross-replica sum.
-    # The graident with respect to group_assignment is None.
+    # The gradient with respect to group_assignment is None.
     return [gen_tpu_ops.cross_replica_sum(grad, op.inputs[1]), None]
 
   # This extra type checking exists to give a more helpful error message in
@@ -209,13 +217,19 @@ if platform.system() != "Windows":
 
     Args:
       inputs: A TensorList of gradients with which to update embedding tables.
-        Contains one tensor per embedding table in the model.
+          This argument has the same length and shapes as the return value of
+          RecvTPUEmbeddingActivations, but contains gradients of the model's
+          loss with respect to the embedding activations. The embedding tables
+          are updated from these gradients via the optimizers specified in the
+          TPU embedding configuration given to tpu.initialize_system.
       config: Serialized TPUEmbeddingConfiguration proto.
-      learning_rates: A TensorList of float32 scalars, one for each embedding
-        table, containing the learning rates for each table when dynamic
-        learning rate is enabled through the OptimizationParameters in
-        TPUEmbeddingConfiguration. When the learning rate is constant, the list
-        should be empty (optional).
+      learning_rates: A TensorList of float32 scalars, one for each dynamic
+          learning rate tag: see the comments in
+          //third_party/tensorflow/contrib/tpu/proto/
+                                               optimization_parameters.proto.
+          Multiple tables can share the same dynamic learning rate tag as
+          specified in the configuration. If the learning rates for all tables
+          are constant, this list should be empty.
       name: A name for the operation (optional).
 
     Returns:
@@ -329,9 +343,8 @@ if platform.system() != "Windows":
     Args:
       sample_indices: A list of rank 1 Tensors specifying the training example
         to which the corresponding embedding_indices and aggregation_weights
-        values
-        belong. It corresponds to sp_ids.indices[:,0] in
-          embedding_lookup_sparse().
+        values belong. It corresponds to sp_ids.indices[:,0] in
+        embedding_lookup_sparse().
       embedding_indices: A list of rank 1 Tensors, indices into the embedding
         tables. It corresponds to sp_ids.values in embedding_lookup_sparse().
       aggregation_weights: A list of rank 1 Tensors containing per training

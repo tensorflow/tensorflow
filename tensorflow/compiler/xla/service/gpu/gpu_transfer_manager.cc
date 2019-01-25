@@ -59,7 +59,7 @@ Status GpuTransferManager::TransferLiteralToInfeed(
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       shape, [&](const Shape& literal_subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsArray(literal_subshape)) {
+        if (literal_subshape.IsArray()) {
           int64 tuple_element_size = GetByteSizeRequirement(literal_subshape);
           TF_ASSIGN_OR_RETURN(
               *buffer_tree.mutable_element(index),
@@ -126,13 +126,12 @@ static void ShapeTreeToLiteral(
         ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree,
         ShapeIndex* index) {
       const Shape& shape = ShapeUtil::GetSubshape(shape_tree->shape(), *index);
-      if (ShapeUtil::IsArray(shape)) {
+      if (shape.IsArray()) {
         (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
         return;
       }
 
-      CHECK(ShapeUtil::IsTuple(shape))
-          << ShapeUtil::HumanStringWithLayout(shape);
+      CHECK(shape.IsTuple()) << ShapeUtil::HumanStringWithLayout(shape);
       const int64 tuple_element_count = ShapeUtil::TupleElementCount(shape);
       index->push_back(0);
       for (int64 i = 0; i < tuple_element_count; ++i) {
@@ -158,7 +157,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
           std::unique_ptr<gpu::OutfeedBuffer>* buffer) {
         const Shape& shape = ShapeUtil::GetSubshape(literal_shape, index);
         // Do not transfer tuple index buffers.
-        if (ShapeUtil::IsTuple(shape)) {
+        if (shape.IsTuple()) {
           return;
         }
         *buffer = absl::make_unique<gpu::OutfeedBuffer>(

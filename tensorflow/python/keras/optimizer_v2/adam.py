@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,202 +12,248 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Adam optimizer for TensorFlow."""
+"""Adam for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.optimizers.Adam')
 class Adam(optimizer_v2.OptimizerV2):
-  r"""Adam Optimizer.
+  """Optimizer that implements the Adam algorithm.
 
-  Default parameters follow those provided in the original paper.
+  Adam optimization is a stochastic gradient descent method that is based on
+  adaptive estimation of first-order and second-order moments. According to the
+  reference, the method is 'computationally efficient, has little memory
+  requirement, invariant to diagonal rescaling of gradients, and is well suited
+  for problems that are large in terms of data/parameters'.
 
-  See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
-  ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
+  Note, amsgrad is currently not supported and the argument can only be False.
 
-  Some of the args below are hyperparameters where a hyperparameter is
-  defined as a scalar Tensor, a regular Python value, or a callable (which
-  will be evaluated when `apply_gradients` is called) returning a scalar
-  Tensor or a Python value.
-
-  Initialization:
-
-  $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
-  $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
-  $$t := 0 \text{(Initialize timestep)}$$
-  The update rule for `variable` with gradient `g` uses an optimization
-  described at the end of section2 of the paper:
-
-  $$t := t + 1$$
-  $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
-
-  $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
-  $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
-  $$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
-
-  The default value of 1e-8 for epsilon might not be a good default in
-  general. For example, when training an Inception network on ImageNet a
-  current good choice is 1.0 or 0.1. Note that since AdamOptimizer uses the
-  formulation just before Section 2.1 of the Kingma and Ba paper rather than
-  the formulation in Algorithm 1, the "epsilon" referred to here is "epsilon
-  hat" in the paper.
-
-  The sparse implementation of this algorithm (used when the gradient is an
-  IndexedSlices object, typically because of `tf.gather` or an embedding
-  lookup in the forward pass) does apply momentum to variable slices even if
-  they were not used in the forward pass (meaning they have a gradient equal
-  to zero). Momentum decay (beta1) is also applied to the entire momentum
-  accumulator. This means that the sparse behavior is equivalent to the dense
-  behavior (in contrast to some momentum implementations which ignore momentum
-  unless a variable slice was actually used).
-
-  Arguments:
-      learning_rate: float hyperparameter >= 0. Learning rate.
-      beta_1: float hyperparameter, 0 < beta_1 < 1. Generally close to 1. The
-        exponential decay rate for the 1st moment estimates.
-      beta_2: float hyperparameter, 0 < beta_2 < 1. Generally close to 1. The
-        exponential decay rate for the 2nd moment estimates.
-      epsilon: float hyperparameter >= 0. Fuzz factor. This epsilon is "epsilon
-        hat" in the Kingma and Ba paper (in the formula just before Section
-        2.1), not the epsilon in Algorithm 1 of the paper.
-      name: Optional name for the operations created when applying gradients.
-        Defaults to "Adam".
+  # References
+      See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
+        ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
+      For AMSGrad see [Reddi et al., 2-18]
+        (https://openreview.net/pdf?id=ryQu7f-RZ)
   """
 
   def __init__(self,
                learning_rate=0.001,
                beta_1=0.9,
                beta_2=0.999,
-               epsilon=1e-8,
-               name="Adam"):
-    super(Adam, self).__init__(name)
+               epsilon=1e-7,
+               amsgrad=False,
+               name='Adam',
+               **kwargs):
+    r"""Construct a new Adam optimizer.
 
-    self._set_hyper("learning_rate", learning_rate)
-    self._set_hyper("beta_1", beta_1)
-    self._set_hyper("beta_2", beta_2)
-    self._set_hyper("epsilon", epsilon)
+    If amsgrad = False:
+      Initialization:
 
-  def _get_beta_accumulators(self, state=None):
-    if state is None:
-      state = self._get_per_graph_state()
-    return (state.get_non_slot("beta_1_power"),
-            state.get_non_slot("beta_2_power"))
+      $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
+      $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+      $$t := 0 \text{(Initialize timestep)}$$
 
-  def _create_vars(self, var_list, state):
-    # Non-slot variables end up on the same device(s).
-    state.create_non_slot(
-        initial_value=lambda: state.get_hyper("beta_1"), name="beta_1_power")
-    state.create_non_slot(
-        initial_value=lambda: state.get_hyper("beta_2"), name="beta_2_power")
+      The update rule for `variable` with gradient `g` uses an optimization
+      described at the end of section2 of the paper:
 
+      $$t := t + 1$$
+      $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
+
+      $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
+      $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
+      $$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
+
+    If amsgrad = True:
+      Initialization:
+
+      $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
+      $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+      $$v_hat_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+      $$t := 0 \text{(Initialize timestep)}$$
+
+      The update rule for `variable` with gradient `g` uses an optimization
+      described at the end of section2 of the paper:
+
+      $$t := t + 1$$
+      $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
+
+      $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
+      $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
+      $$v_hat_t := max(v_hat_{t-1}, v_t)
+      $$variable := variable - lr_t * m_t / (\sqrt{v_hat_t} + \epsilon)$$
+
+    The default value of 1e-7 for epsilon might not be a good default in
+    general. For example, when training an Inception network on ImageNet a
+    current good choice is 1.0 or 0.1. Note that since AdamOptimizer uses the
+    formulation just before Section 2.1 of the Kingma and Ba paper rather than
+    the formulation in Algorithm 1, the "epsilon" referred to here is "epsilon
+    hat" in the paper.
+
+    The sparse implementation of this algorithm (used when the gradient is an
+    IndexedSlices object, typically because of `tf.gather` or an embedding
+    lookup in the forward pass) does apply momentum to variable slices even if
+    they were not used in the forward pass (meaning they have a gradient equal
+    to zero). Momentum decay (beta1) is also applied to the entire momentum
+    accumulator. This means that the sparse behavior is equivalent to the dense
+    behavior (in contrast to some momentum implementations which ignore momentum
+    unless a variable slice was actually used).
+
+    Args:
+      learning_rate: A Tensor or a floating point value.  The learning rate.
+      beta_1: A float value or a constant float tensor. The exponential decay
+        rate for the 1st moment estimates.
+      beta_2: A float value or a constant float tensor. The exponential decay
+        rate for the 2nd moment estimates.
+      epsilon: A small constant for numerical stability. This epsilon is
+        "epsilon hat" in the Kingma and Ba paper (in the formula just before
+        Section 2.1), not the epsilon in Algorithm 1 of the paper.
+      amsgrad: boolean. Whether to apply AMSGrad variant of this algorithm from
+        the paper "On the Convergence of Adam and beyond".
+      name: Optional name for the operations created when applying gradients.
+        Defaults to "Adam".  @compatibility(eager) When eager execution is
+        enabled, `learning_rate`, `beta_1`, `beta_2`, and `epsilon` can each be
+        a callable that takes no arguments and returns the actual value to use.
+        This can be useful for changing these values across different
+        invocations of optimizer functions. @end_compatibility
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
+    """
+
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
+    super(Adam, self).__init__(name, **kwargs)
+    self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
+    self._set_hyper('decay', self._initial_decay)
+    self._set_hyper('beta_1', beta_1)
+    self._set_hyper('beta_2', beta_2)
+    self._set_hyper('epsilon', epsilon)
+    self.amsgrad = amsgrad
+
+  def _create_slots(self, var_list):
     # Create slots for the first and second moments.
-    for v in var_list:
-      state.zeros_slot(v, "m")
-      state.zeros_slot(v, "v")
+    # Separate for-loops to respect the ordering of slot variables from v1.
+    for var in var_list:
+      self.add_slot(var, 'm')
+    for var in var_list:
+      self.add_slot(var, 'v')
+    if self.amsgrad:
+      for var in var_list:
+        self.add_slot(var, 'vhat')
 
-  def _apply_dense(self, grad, var, state):
-    m = state.get_slot(var, "m")
-    v = state.get_slot(var, "v")
-    beta_1_power, beta_2_power = self._get_beta_accumulators(state)
-    return training_ops.apply_adam(
-        var,
-        m,
-        v,
-        math_ops.cast(beta_1_power, var.dtype.base_dtype),
-        math_ops.cast(beta_2_power, var.dtype.base_dtype),
-        state.get_hyper("learning_rate", var.dtype.base_dtype),
-        state.get_hyper("beta_1", var.dtype.base_dtype),
-        state.get_hyper("beta_2", var.dtype.base_dtype),
-        state.get_hyper("epsilon", var.dtype.base_dtype),
-        grad,
-        use_locking=self._use_locking).op
+  def set_weights(self, weights):
+    params = self.weights
+    # If the weights are generated by Keras V1 optimizer, it includes vhats
+    # even without amsgrad, i.e, V1 optimizer has 3x + 1 variables, while V2
+    # optimizer has 2x + 1 variables. Filter vhats out for compatibility.
+    num_vars = int((len(params) - 1) / 2)
+    if len(weights) == 3 * num_vars + 1:
+      weights = weights[:len(params)]
+    super(Adam, self).set_weights(weights)
 
-  def _resource_apply_dense(self, grad, var, state):
-    m = state.get_slot(var, "m")
-    v = state.get_slot(var, "v")
-    beta_1_power, beta_2_power = self._get_beta_accumulators(state)
-    return training_ops.resource_apply_adam(
-        var.handle,
-        m.handle,
-        v.handle,
-        math_ops.cast(beta_1_power, grad.dtype.base_dtype),
-        math_ops.cast(beta_2_power, grad.dtype.base_dtype),
-        state.get_hyper("learning_rate", grad.dtype.base_dtype),
-        state.get_hyper("beta_1", grad.dtype.base_dtype),
-        state.get_hyper("beta_2", grad.dtype.base_dtype),
-        state.get_hyper("epsilon", grad.dtype.base_dtype),
-        grad,
-        use_locking=self._use_locking)
+  def _resource_apply_dense(self, grad, var):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    m = self.get_slot(var, 'm')
+    v = self.get_slot(var, 'v')
+    beta_1_t = self._get_hyper('beta_1', var_dtype)
+    beta_2_t = self._get_hyper('beta_2', var_dtype)
+    epsilon = self._get_hyper('epsilon', var_dtype)
+    local_step = math_ops.cast(self.iterations + 1, var_dtype)
+    beta_1_power = math_ops.pow(beta_1_t, local_step)
+    beta_2_power = math_ops.pow(beta_2_t, local_step)
+    if not self.amsgrad:
+      return training_ops.resource_apply_adam(
+          var.handle,
+          m.handle,
+          v.handle,
+          beta_1_power,
+          beta_2_power,
+          lr_t,
+          beta_1_t,
+          beta_2_t,
+          epsilon,
+          grad,
+          use_locking=self._use_locking)
+    else:
+      vhat = self.get_slot(var, 'vhat')
+      return training_ops.resource_apply_adam_with_amsgrad(
+          var.handle,
+          m.handle,
+          v.handle,
+          vhat.handle,
+          beta_1_power,
+          beta_2_power,
+          lr_t,
+          beta_1_t,
+          beta_2_t,
+          epsilon,
+          grad,
+          use_locking=self._use_locking)
 
-  def _apply_sparse_shared(self, grad, var, indices, scatter_add, state):
-    beta_1_power, beta_2_power = self._get_beta_accumulators(state)
-    beta_1_power = math_ops.cast(beta_1_power, var.dtype.base_dtype)
-    beta_2_power = math_ops.cast(beta_2_power, var.dtype.base_dtype)
-    lr_t = state.get_hyper("learning_rate", var.dtype.base_dtype)
-    beta_1_t = state.get_hyper("beta_1", var.dtype.base_dtype)
-    beta_2_t = state.get_hyper("beta_2", var.dtype.base_dtype)
-    epsilon_t = state.get_hyper("epsilon", var.dtype.base_dtype)
+  def _resource_apply_sparse(self, grad, var, indices):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    beta_1_t = self._get_hyper('beta_1', var_dtype)
+    beta_2_t = self._get_hyper('beta_2', var_dtype)
+    local_step = math_ops.cast(self.iterations + 1, var_dtype)
+    beta_1_power = math_ops.pow(beta_1_t, local_step)
+    beta_2_power = math_ops.pow(beta_2_t, local_step)
+    epsilon_t = self._get_hyper('epsilon', var_dtype)
     lr = (lr_t * math_ops.sqrt(1 - beta_2_power) / (1 - beta_1_power))
-    # m_t = beta_1 * m + (1 - beta_1) * g_t
-    m = state.get_slot(var, "m")
+
+    # m_t = beta1 * m + (1 - beta1) * g_t
+    m = self.get_slot(var, 'm')
     m_scaled_g_values = grad * (1 - beta_1_t)
     m_t = state_ops.assign(m, m * beta_1_t, use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
-      m_t = scatter_add(m, indices, m_scaled_g_values)
-    # v_t = beta_2 * v + (1 - beta_2) * (g_t * g_t)
-    v = state.get_slot(var, "v")
+      m_t = self._resource_scatter_add(m, indices, m_scaled_g_values)
+
+    # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
+    v = self.get_slot(var, 'v')
     v_scaled_g_values = (grad * grad) * (1 - beta_2_t)
     v_t = state_ops.assign(v, v * beta_2_t, use_locking=self._use_locking)
     with ops.control_dependencies([v_t]):
-      v_t = scatter_add(v, indices, v_scaled_g_values)
-    v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(var,
-                                      lr * m_t / (v_sqrt + epsilon_t),
-                                      use_locking=self._use_locking)
-    return control_flow_ops.group(*[var_update, m_t, v_t])
+      v_t = self._resource_scatter_add(v, indices, v_scaled_g_values)
 
-  def _apply_sparse(self, grad, var, state):
-    return self._apply_sparse_shared(
-        grad.values, var, grad.indices,
-        lambda x, i, v: state_ops.scatter_add(  # pylint: disable=g-long-lambda
-            x, i, v, use_locking=self._use_locking),
-        state)
-
-  def _resource_scatter_add(self, x, i, v):
-    with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(
-            x.handle, i, v)]):
-      return x.value()
-
-  def _resource_apply_sparse(self, grad, var, indices, state):
-    return self._apply_sparse_shared(
-        grad, var, indices, self._resource_scatter_add, state)
-
-  def _finish(self, state):
-    # Update the power accumulators.
-    beta_1_power, beta_2_power = self._get_beta_accumulators(state)
-    update_beta_1 = beta_1_power.assign(
-        beta_1_power * state.get_hyper("beta_1"), use_locking=self._use_locking)
-    update_beta_2 = beta_2_power.assign(
-        beta_2_power * state.get_hyper("beta_2"), use_locking=self._use_locking)
-    return control_flow_ops.group(update_beta_1, update_beta_2)
+    if not self.amsgrad:
+      v_sqrt = math_ops.sqrt(v_t)
+      var_update = state_ops.assign_sub(
+          var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
+      return control_flow_ops.group(*[var_update, m_t, v_t])
+    else:
+      v_hat = self.get_slot(var, 'vhat')
+      v_hat_t = math_ops.maximum(v_hat, v_t)
+      with ops.control_dependencies([v_hat_t]):
+        v_hat_t = state_ops.assign(
+            v_hat, v_hat_t, use_locking=self._use_locking)
+      v_hat_sqrt = math_ops.sqrt(v_hat_t)
+      var_update = state_ops.assign_sub(
+          var,
+          lr * m_t / (v_hat_sqrt + epsilon_t),
+          use_locking=self._use_locking)
+      return control_flow_ops.group(*[var_update, m_t, v_t, v_hat_t])
 
   def get_config(self):
     config = super(Adam, self).get_config()
     config.update({
-        "learning_rate": self._serialize_hyperparameter("learning_rate"),
-        "beta_1": self._serialize_hyperparameter("beta_1"),
-        "beta_2": self._serialize_hyperparameter("beta_2"),
-        "epsilon": self._serialize_hyperparameter("epsilon")
+        'learning_rate': self._serialize_hyperparameter('learning_rate'),
+        'decay': self._serialize_hyperparameter('decay'),
+        'beta_1': self._serialize_hyperparameter('beta_1'),
+        'beta_2': self._serialize_hyperparameter('beta_2'),
+        'epsilon': self._serialize_hyperparameter('epsilon'),
+        'amsgrad': self.amsgrad,
     })
     return config

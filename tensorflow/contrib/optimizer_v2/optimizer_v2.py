@@ -22,6 +22,11 @@ from __future__ import print_function
 
 import abc
 
+import six
+
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -32,14 +37,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribute as distribute_lib
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _OptimizableVariable(object):
   """Interface for abstracting over variables in the optimizers."""
 
@@ -443,7 +447,7 @@ class _OptimizerV2State(object):
     if v is None:
       if colocate_with is None:
         colocate_with = self._non_slot_devices
-      with self._distribution.colocate_vars_with(colocate_with):
+      with self._distribution.extended.colocate_vars_with(colocate_with):
         # TODO(josh11b): Use get_variable() except for the legacy Adam use case.
         v = variable_scope.variable(initial_value, name=name, trainable=False)
       self._non_slot_dict[name] = v
@@ -631,16 +635,16 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # Map from graph_key to state for that graph. We use the graph_key
     # since it works in both eager and graph mode, and gives the outer
     # graph inside functions.
-    tower_context = distribution_strategy_context.get_tower_context()
-    if tower_context is None:
-      # In a cross-tower context for a DistributionStrategy, which means
-      # only one Optimizer will be created, not one per tower.
+    replica_context = distribute_ctx.get_replica_context()
+    if replica_context is None:
+      # In a cross-replica context for a DistributionStrategy, which means
+      # only one Optimizer will be created, not one per replica.
       self._per_graph_state = {}
     else:
-      # We use get_tower_context().merge_call() to get a single dict
+      # We use get_replica_context().merge_call() to get a single dict
       # shared across all model replicas when running with a
       # DistributionStrategy.
-      self._per_graph_state = tower_context.merge_call(lambda _: {})
+      self._per_graph_state = replica_context.merge_call(lambda _: {})
 
     # Hyper parameters, and whether they should be re-evaluated every step.
     self._hyper = {}
@@ -654,11 +658,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
                var_list=None,
                gate_gradients=GATE_OP,
                aggregation_method=None,
-               colocate_gradients_with_ops=False,
                name=None,
                grad_loss=None,
                stop_gradients=None,
-               scale_loss_by_num_towers=None):
+               scale_loss_by_num_replicas=None):
     """Add operations to minimize `loss` by updating `var_list`.
 
     This method simply combines calls `compute_gradients()` and
@@ -677,14 +680,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
         `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
         Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
       name: Optional name for the returned operation.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
       stop_gradients: Optional. A Tensor or list of tensors not to differentiate
         through.
-      scale_loss_by_num_towers: Optional boolean. If true, scale the loss down
-        by the number of towers. By default, auto-detects whether this is
+      scale_loss_by_num_replicas: Optional boolean. If true, scale the loss down
+        by the number of replicas. By default, auto-detects whether this is
         needed.
 
     Returns:
@@ -701,8 +702,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Minimization (and gradient computation) is done with respect to the
     elements of `var_list` if not None, else with respect to any trainable
     variables created during the execution of the `loss` function.
-    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-    `grad_loss` are ignored when eager execution is enabled.
+    `gate_gradients`, `aggregation_method`, and `grad_loss` are ignored when
+    eager execution is enabled.
     @end_compatibility
     """
     grads_and_vars = self.compute_gradients(
@@ -710,10 +711,9 @@ class OptimizerV2(optimizer_v1.Optimizer):
         var_list=var_list,
         gate_gradients=gate_gradients,
         aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
         grad_loss=grad_loss,
         stop_gradients=stop_gradients,
-        scale_loss_by_num_towers=scale_loss_by_num_towers)
+        scale_loss_by_num_replicas=scale_loss_by_num_replicas)
 
     vars_with_grad = [v for g, v in grads_and_vars if g is not None]
     if not vars_with_grad:
@@ -730,10 +730,9 @@ class OptimizerV2(optimizer_v1.Optimizer):
                         var_list=None,
                         gate_gradients=GATE_OP,
                         aggregation_method=None,
-                        colocate_gradients_with_ops=False,
                         grad_loss=None,
                         stop_gradients=None,
-                        scale_loss_by_num_towers=None):
+                        scale_loss_by_num_replicas=None):
     """Compute gradients of `loss` for the variables in `var_list`.
 
     This is the first part of `minimize()`.  It returns a list
@@ -753,13 +752,11 @@ class OptimizerV2(optimizer_v1.Optimizer):
         `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
         Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
       stop_gradients: Optional. A Tensor or list of tensors not to differentiate
         through.
-      scale_loss_by_num_towers: Optional boolean. If true, scale the loss down
-        by the number of towers. By default, auto-detects whether this is
+      scale_loss_by_num_replicas: Optional boolean. If true, scale the loss down
+        by the number of replicas. By default, auto-detects whether this is
         needed.
 
     Returns:
@@ -773,8 +770,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
         not callable.
 
     @compatibility(eager)
-    When eager execution is enabled, `gate_gradients`, `aggregation_method`,
-    and `colocate_gradients_with_ops` are ignored.
+    When eager execution is enabled, `gate_gradients`, and `aggregation_method`
+    are ignored.
     @end_compatibility
     """
     # TODO(josh11b): Test that we handle weight decay in a reasonable way.
@@ -784,18 +781,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
           tape.watch(var_list)
         loss_value = loss()
 
-        # Scale loss for number of towers (callable-loss case). In this case,
+        # Scale loss for number of replicas (callable-loss case). In this case,
         # we have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
-        if scale_loss_by_num_towers is None:
-          scale_loss_by_num_towers = (
-              distribute_lib.get_loss_reduction() == variable_scope
-              .VariableAggregation.MEAN)
-        if scale_loss_by_num_towers:
-          num_towers = distribution_strategy_context.get_distribution_strategy(
-          ).num_towers
-          if num_towers > 1:
-            loss_value *= 1. / num_towers
+        loss_value = self._scale_loss(loss_value, scale_loss_by_num_replicas)
 
       if var_list is None:
         var_list = tape.watched_variables()
@@ -805,16 +794,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
       raise RuntimeError("`loss` passed to Optimizer.compute_gradients should "
                          "be a function when eager execution is enabled.")
 
-    # Scale loss for number of towers (non-callable-loss case).
-    if scale_loss_by_num_towers is None:
-      scale_loss_by_num_towers = (
-          distribute_lib.get_loss_reduction() == variable_scope
-          .VariableAggregation.MEAN)
-    if scale_loss_by_num_towers:
-      num_towers = distribution_strategy_context.get_distribution_strategy(
-      ).num_towers
-      if num_towers > 1:
-        loss *= 1. / num_towers
+    # Scale loss for number of replicas (non-callable-loss case).
+    loss = self._scale_loss(loss, scale_loss_by_num_replicas)
 
     if gate_gradients not in [
         optimizer_v1.Optimizer.GATE_NONE, optimizer_v1.Optimizer.GATE_OP,
@@ -845,7 +826,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
         grad_ys=grad_loss,
         gate_gradients=(gate_gradients == optimizer_v1.Optimizer.GATE_OP),
         aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
         stop_gradients=stop_gradients)
     if gate_gradients == optimizer_v1.Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
@@ -855,6 +835,18 @@ class OptimizerV2(optimizer_v1.Optimizer):
         if g is not None and v.dtype != dtypes.resource
     ])
     return grads_and_vars
+
+  @staticmethod
+  def _scale_loss(loss_value, scale_loss_by_num_replicas):
+    """Scale loss for the number of replicas."""
+    if scale_loss_by_num_replicas is None:
+      scale_loss_by_num_replicas = (
+          distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN)
+    if scale_loss_by_num_replicas:
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
+      if num_replicas > 1:
+        loss_value *= 1. / num_replicas
+    return loss_value
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
@@ -890,8 +882,9 @@ class OptimizerV2(optimizer_v1.Optimizer):
     if not filtered:
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, v in grads_and_vars],))
-    return distribution_strategy_context.get_tower_context().merge_call(
-        self._distributed_apply, filtered, global_step=global_step, name=name)
+    return distribute_ctx.get_replica_context().merge_call(
+        self._distributed_apply, args=(filtered,),
+        kwargs={"global_step": global_step, "name": name})
 
   def _get_or_create_state(self, var_list=None):
     """Either looks up or creates `_OptimizerV2State`.
@@ -926,8 +919,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   def _distributed_apply(self, distribution, grads_and_vars, global_step, name):
     """`apply_gradients` for use with a `DistributionStrategy`."""
-    reduced_grads = distribution.batch_reduce(
-        variable_scope.VariableAggregation.SUM, grads_and_vars)
+    reduced_grads = distribution.extended.batch_reduce_to(
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 
@@ -943,7 +936,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     with ops.name_scope(name, self._name) as name:
       per_graph_state = self._get_or_create_state(var_list=unwrapped_var_list)
       # Include the current value of any dynamic hyper parameters in `state`.
-      non_slot_devices = distribution.non_slot_devices(var_list)
+      non_slot_devices = distribution.extended.non_slot_devices(var_list)
       state = per_graph_state._copy_with_dynamic_hyper(  # pylint: disable=protected-access
           self._hyper, distribution, non_slot_devices)
 
@@ -988,7 +981,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
       # Use the processors to update the variables.
       update_ops = []
       for grad, var in grads_and_vars:
-        update_ops.extend(distribution.update(var, update, grad, grouped=False))
+        update_ops.extend(distribution.extended.update(
+            var, update, args=(grad,), group=False))
 
       # Give the child class a chance to do something after applying
       # gradients
@@ -1000,12 +994,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
       update_ops = control_flow_ops.group(update_ops)
       with ops.control_dependencies([update_ops]):
-        finish_updates = distribution.update_non_slot(
-            non_slot_devices, finish, grouped=False)
-      # We said grouped=False, which means finish_updates is always a list.
-      # It will be [None] when finish() returns None.
-      if finish_updates == [None]:
-        finish_updates = [update_ops]
+        finish_updates = distribution.extended.update_non_slot(
+            non_slot_devices, finish, group=False)
+      # We said group=False, which means finish_updates is always a tuple.
+      # It will be (None,) when finish() returns None.
+      if finish_updates == (None,):
+        finish_updates = (update_ops,)
 
       # Update `global_step` (if any).
       if global_step is None:
@@ -1016,8 +1010,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
           def update_global_step(global_step, name):
             return global_step.assign_add(1, read_value=False, name=name)
 
-          apply_updates = distribution.update(global_step, update_global_step,
-                                              name)
+          apply_updates = distribution.extended.update(
+              global_step, update_global_step, args=(name,))
 
       # Add the training op to the TRAIN_OP graph collection in graph mode.
       if not eager_execution:

@@ -45,6 +45,22 @@ class NamerTest(test.TestCase):
     self.assertEqual(('tf__foo', True), namer.compiled_function_name(
         'foo', foo))
 
+  def test_compiled_function_name_unsanitized_fqn(self):
+    namer = naming.Namer({}, True, None, ())
+    self.assertEqual(('tf__foo_bar', True),
+                     namer.compiled_function_name('foo.bar'))
+    self.assertEqual(('tf__foo_bar_baz', True), namer.compiled_function_name(
+        ('foo.bar', 'baz')))
+
+  def test_compiled_class_name_basic(self):
+    namer = naming.Namer({}, True, None, ())
+    self.assertEqual('TfFooBar', namer.compiled_class_name(('foo', 'Bar')))
+
+  def test_compiled_class_name_unsanitized_fqn(self):
+    namer = naming.Namer({}, True, None, ())
+    self.assertEqual('TfFooBarBaz',
+                     namer.compiled_class_name(('foo.bar', 'Baz')))
+
   def test_compiled_function_name_avoids_global_conflicts(self):
     def foo():
       pass

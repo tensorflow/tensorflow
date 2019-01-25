@@ -20,6 +20,7 @@ limitations under the License.
 #include <cmath>
 #include <unordered_map>
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 class GraphDef;
@@ -215,14 +216,14 @@ class CostEstimator {
 
   // Predicts the cost of running the given optimized version of the grappler
   // item.
-  // If a CostGraphDef is passed, it will be populated with detailed information
+  // If a RunMetadata is passed, it will be populated with detailed information
   // about the cost of running each operation of the optimized graph.
   // if a double value is passed, it will be set to a value that reflects the
   // overall cost of running the graph (e.g. the latency of the computation).
   // Returns a status that indicate is the performance could be estimated or
   // not.
   virtual Status PredictCosts(const GraphDef& optimized_graph,
-                              CostGraphDef* cost_graph, Costs* cost) const = 0;
+                              RunMetadata* run_metadata, Costs* cost) const = 0;
 };
 
 }  // end namespace grappler

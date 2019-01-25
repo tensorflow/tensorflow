@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -53,7 +53,7 @@ void RealMain(absl::Span<char* const> args) {
         tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
     XlaComputation computation =
         client->LoadSnapshot(module).ConsumeValueOrDie();
-    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+    DebugOptions debug_options = GetDebugOptionsFromFlags();
     debug_options.set_xla_generate_hlo_graph(".*");
     debug_options.set_xla_hlo_dump_as_graphdef(true);
     ComputationStats stats =
@@ -68,7 +68,7 @@ void RealMain(absl::Span<char* const> args) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

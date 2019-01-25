@@ -28,6 +28,7 @@ from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.ops import gen_tpu_ops
 from tensorflow.contrib.tpu.proto import tpu_embedding_configuration_pb2 as elc
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -42,19 +43,6 @@ from tensorflow.python.ops import variables
 
 TRAINING = elc.TPUEmbeddingConfiguration.TRAINING
 INFERENCE = elc.TPUEmbeddingConfiguration.INFERENCE
-
-# TODO(shizhiw): A better interface is to make `num_hosts` and
-# `num_cores_per_host` optional parameters for `TPUEmbedding`
-# constructor. Usually they can be automatically detected, but
-# user can also specify them for debugging (b/112112496).
-# Auto-detection can be done with `tpu_system_metadata.py`.
-_MASTER_JOB = 'tpu_worker'
-_HOST_PATTERN = '/job:tpu_worker/task:{}/device:CPU:0'
-_NUM_CORES_PER_HOST = 8
-
-_TEST_MASTER_JOB = None
-_TEST_HOST = '/replica:0/task:0/device:CPU:0'
-_TEST_NUM_CORES_PER_HOST = 2
 
 
 class TableConfig(
@@ -158,6 +146,8 @@ class AdamParameters(_OptimizationParameters):
                beta1=0.9,
                beta2=0.999,
                epsilon=1e-08,
+               lazy_adam=True,
+               sum_inside_sqrt=True,
                use_gradient_accumulation=False,
                pipeline_execution_with_tensor_core=True):
     """Optimization parameters for Adam.
@@ -169,10 +159,14 @@ class AdamParameters(_OptimizationParameters):
       beta2: A float value.
         The exponential decay rate for the 2nd moment estimates.
       epsilon: A small constant for numerical stability.
+      lazy_adam: Use lazy Adam instead of Adam. Lazy Adam trains faster.
+        Please see `optimization_parameters.proto` for details.
+      sum_inside_sqrt: This improves training speed. Please see
+        `optimization_parameters.proto` for details.
       use_gradient_accumulation: setting this to `True` makes embedding
-         gradients calculation more accurate but slower. Please see
-         `optimization_parameters.proto` for details.
-         for details.
+        gradients calculation more accurate but slower. Please see
+        `optimization_parameters.proto` for details.
+        for details.
       pipeline_execution_with_tensor_core: setting this to `True` makes training
         faster, but trained model will be different if step N and step N+1
         involve the same set of embedding ID. Please see
@@ -184,6 +178,8 @@ class AdamParameters(_OptimizationParameters):
     self.beta1 = beta1
     self.beta2 = beta2
     self.epsilon = epsilon
+    self.lazy_adam = lazy_adam
+    self.sum_inside_sqrt = sum_inside_sqrt
 
 
 class StochasticGradientDescentParameters(_OptimizationParameters):
@@ -276,6 +272,8 @@ class TPUEmbedding(object):
   # could have a field to indicate that the feature should not be used to
   # update embedding table (cr/204852758, cr/204940540). Also, this can support
   # different combiners for different features within the same table.
+  # TODO(shizhiw, b/118512626): Remove `batch_size` from `__init__` and move it
+  # to `FeatureConfig`?
 
   # TODO(shizhiw): will it be cleaner to make `table_to_config_dict` and
   # `feature_to_table_dict` lists of `TableSpec` and `FeatureSpec` respectively?
@@ -291,10 +289,9 @@ class TPUEmbedding(object):
                table_to_config_dict,
                feature_to_table_dict,
                batch_size,
-               num_hosts,
                mode,
-               optimization_parameters=None,
-               tpu_embedding_test=False):
+               master,
+               optimization_parameters=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -305,12 +302,11 @@ class TPUEmbedding(object):
         to string of table name. Feature refers to ids to lookup in embedding
         table, e.g. `sp_ids` argument to `tf.nn.embedding_lookup_sparse()`.
       batch_size: An `int` representing the global batch size.
-      num_hosts: An `int` representing the number of TPU hosts.
       mode: `TRAINING` or `INFERENCE`.
+      master: A `string` representing the TensorFlow master to use.
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
         `Stochasticgradientdescentparameters`. Must be set in training and must
-        not be `None` in inference.
-      tpu_embedding_test: A `bool`. Only used for testing.
+        be `None` in inference.
 
     Raises:
       ValueError: if any input is invalid.
@@ -327,15 +323,17 @@ class TPUEmbedding(object):
 
     self._batch_size = batch_size
 
-    if tpu_embedding_test:
-      self._num_hosts = 1
-      self._hosts = [_TEST_HOST]
-      self._num_cores_per_host = _TEST_NUM_CORES_PER_HOST
-    else:
-      self._num_hosts = num_hosts
-      self._hosts = [_HOST_PATTERN.format(i) for i in range(self._num_hosts)]
-      self._num_cores_per_host = _NUM_CORES_PER_HOST
-    self._num_cores = self._num_cores_per_host * self._num_hosts
+    self._master = master
+    self._tpu_system_metadata = (
+        tpu_system_metadata_lib._query_tpu_system_metadata(self._master))  # pylint: disable=protected-access
+    if self._tpu_system_metadata.num_cores == 0:
+      raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
+                       'TPUs.'.format(self._master))
+    self._num_hosts = self._tpu_system_metadata.num_hosts
+    self._hosts = [device.name for device in self._tpu_system_metadata.devices
+                   if 'device:CPU:' in device.name]
+    self._num_cores_per_host = self._tpu_system_metadata.num_of_cores_per_host
+    self._num_cores = self._tpu_system_metadata.num_cores
 
     _validate_batch_size(self._batch_size, self._num_cores)
     self._batch_size_per_core = self._batch_size // self._num_cores
@@ -379,7 +377,7 @@ class TPUEmbedding(object):
     Returns:
       A list of device names for CPU hosts.
     """
-    return self._hosts
+    return copy.copy(self._hosts)
 
   # TODO(shizhiw): change to num_tensor_cores_per_host to be more explicit and
   # to be consistent with `tpu_embedding_configuration.proto`.
@@ -884,6 +882,10 @@ class _AdamHandler(_OptimizerHandler):
         self._optimization_parameters.beta2)
     table_descriptor.optimization_parameters.adam.epsilon = (
         self._optimization_parameters.epsilon)
+    table_descriptor.optimization_parameters.adam.use_non_lazy_adam = (
+        not self._optimization_parameters.lazy_adam)
+    table_descriptor.optimization_parameters.adam.use_sum_inside_sqrt = (
+        self._optimization_parameters.sum_inside_sqrt)
 
   def create_variables_and_ops(self, table, variable_name, num_hosts,
                                table_config, table_variables,
@@ -1055,17 +1057,14 @@ def _create_partitioned_variables(name,
                      'As TPU embedding is not optimized for small tables, '
                      'please consider other ways for this embedding lookup.')
 
-  slicing = [num_hosts, 1]
-
-  # TODO(shizhiw): deprecated, use tf.get_variable()?
-  return partitioned_variables.create_partitioned_variables(
-      name=name,
-      slicing=slicing,
+  return list(variable_scope.get_variable(
+      name,
       shape=(vocabulary_size, embedding_dimension),
+      partitioner=partitioned_variables.fixed_size_partitioner(num_hosts),
       dtype=dtypes.float32,
       initializer=initializer,
       collections=collections,
-      trainable=False)
+      trainable=False))
 
 
 @ops.RegisterGradient('TPUEmbeddingActivations')

@@ -263,7 +263,7 @@ def print_v2(*inputs, **kwargs):
   # If we are only printing a single string scalar, there is no need to format
   if (len(inputs) == 1 and tensor_util.is_tensor(inputs[0])
       and (not isinstance(inputs[0], sparse_tensor.SparseTensor))
-      and inputs[0].shape and (inputs[0].dtype == dtypes.string)):
+      and (inputs[0].shape.ndims == 0)and (inputs[0].dtype == dtypes.string)):
     formatted_string = inputs[0]
   # Otherwise, we construct an appropriate template for the tensors we are
   # printing, and format the template using those tensors.
@@ -629,4 +629,6 @@ ops.NotDifferentiable("AudioSummary")
 ops.NotDifferentiable("AudioSummaryV2")
 ops.NotDifferentiable("MergeSummary")
 ops.NotDifferentiable("ScalarSummary")
+ops.NotDifferentiable("TensorSummary")
+ops.NotDifferentiable("TensorSummaryV2")
 ops.NotDifferentiable("Timestamp")

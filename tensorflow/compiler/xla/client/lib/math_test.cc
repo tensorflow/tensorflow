@@ -30,6 +30,45 @@ class MathTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.0001};
 };
 
+// Write TYPED_TESTs within the class definition so that we don't have to litter
+// "this->" everywhere.
+template <typename T>
+class MathTypedTest : public MathTest {
+ public:
+  void TestLogEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    Log(AddParam(LiteralUtil::CreateR1<T>({T{0.0}, T{-0.0}}), &b));
+    ComputeAndCompareR1<T>(&b,
+                           {-std::numeric_limits<T>::infinity(),
+                            -std::numeric_limits<T>::infinity()},
+                           {}, error_spec_);
+  }
+
+  void TestLog1pEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    Log1p(AddParam(LiteralUtil::CreateR1<T>({T{0.0}, T{-0.0}, T{-1.0}}), &b));
+    ComputeAndCompareR1<T>(
+        &b, {T{0.0}, T{-0.0}, -std::numeric_limits<T>::infinity()}, {},
+        error_spec_);
+  }
+};
+
+// TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
+using TestTypes = ::testing::Types<float>;
+#else
+using TestTypes = ::testing::Types<float, Eigen::half>;
+#endif
+
+TYPED_TEST_CASE(MathTypedTest, TestTypes);
+
+XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
+XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
+
 XLA_TEST_F(MathTest, SqrtF32) {
   XlaBuilder builder(TestName());
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
@@ -106,6 +145,28 @@ XLA_TEST_F(MathTest, Lgamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+// TODO(jlebar): Fails on interpreter due to unimplemented operation.
+XLA_TEST_F(MathTest, DISABLED_ON_INTERPRETER(LgammaF16)) {
+  SetFastMathDisabled(true);
+
+  XlaBuilder b(TestName());
+
+  // These seemingly arbitrary inputs came from debugging the lgamma
+  // implementation against a test which tried all possible f16 values.
+  auto x = ConstantR1<half>(&b, {
+                                    half(-7360.0),
+                                    half(-4066.0),
+                                    half(-5.9605e-08),
+                                });
+  Lgamma(x);
+  std::vector<half> expected = {
+      std::numeric_limits<half>::infinity(),
+      std::numeric_limits<half>::infinity(),
+      half(16.64),
+  };
+  ComputeAndCompareR1<half>(&b, expected, {}, ErrorSpec{0.1});
+}
+
 XLA_TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 0.5, 1 / 3.0, 0.25, 1 / 6.0, 0.125,
@@ -134,6 +195,53 @@ XLA_TEST_F(MathTest, Digamma) {
       static_cast<float>(363 / 140.0 - euler_mascheroni),
       static_cast<float>(761 / 280.0 - euler_mascheroni)};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, RoundToEven) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {-1.4, -1.5, -2.5, -0.5, 0, 0.5, 1.5, 2.5, 3.5, 4.5});
+  RoundToEven(x);
+
+  std::vector<float> expected = {-1.0, -2.0, -2.0, -0.0, 0,
+                                 0.0,  2.0,  2.0,  4.0,  4.0};
+
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, ErfRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Erf(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, ErfcRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Erfc(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, LgammaRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Lgamma(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, DigammaRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Digamma(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, RoundToEvenRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  RoundToEven(x);
+  EXPECT_FALSE(b.Build().status().ok());
 }
 
 }  // namespace

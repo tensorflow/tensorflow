@@ -21,6 +21,7 @@ import collections
 import numpy as np
 from tensorflow.contrib.optimizer_v2 import optimizer_v2
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
@@ -120,7 +121,7 @@ class GGTOptimizer(optimizer_v2.OptimizerV2):
     # Construct ordered dictionary for variable dimensions, sorted by name.
     shape_dict = {}
     for v in var_list:
-      shape_dict[v.name] = np.prod(v.get_shape()).value
+      shape_dict[v.name] = tensor_shape.dimension_value(np.prod(v.get_shape()))
     self.shape_dict = collections.OrderedDict(
         sorted(shape_dict.items(), key=lambda t: t[0]))
 

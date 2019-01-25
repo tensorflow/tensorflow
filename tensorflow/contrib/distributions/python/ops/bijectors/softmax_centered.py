@@ -110,7 +110,7 @@ class SoftmaxCentered(bijector.Bijector):
 
     # Set shape hints.
     if x.shape.ndims is not None:
-      shape = x.shape[:-1].concatenate(x.shape[-1] + 1)
+      shape = x.shape[:-1].concatenate(x.shape.dims[-1] + 1)
       y.shape.assert_is_compatible_with(shape)
       y.set_shape(shape)
 
@@ -135,7 +135,7 @@ class SoftmaxCentered(bijector.Bijector):
 
     # Set shape hints.
     if y.shape.ndims is not None:
-      shape = y.shape[:-1].concatenate(y.shape[-1] - 1)
+      shape = y.shape[:-1].concatenate(y.shape.dims[-1] - 1)
       x.shape.assert_is_compatible_with(shape)
       x.set_shape(shape)
 
@@ -168,7 +168,7 @@ class SoftmaxCentered(bijector.Bijector):
     #   log_normalization = 1 + reduce_sum(exp(logits))
     #   -log_normalization + reduce_sum(logits - log_normalization)
     log_normalization = nn_ops.softplus(
-        math_ops.reduce_logsumexp(x, axis=-1, keep_dims=True))
+        math_ops.reduce_logsumexp(x, axis=-1, keepdims=True))
     return array_ops.squeeze(
         (-log_normalization + math_ops.reduce_sum(
             x - log_normalization, axis=-1, keepdims=True)), axis=-1)

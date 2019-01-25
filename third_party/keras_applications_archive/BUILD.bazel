@@ -1,0 +1,31 @@
+# Description: Keras Applications: set of pre-trained deep learning models.
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+licenses(["notice"])  # MIT
+
+exports_files(["LICENSE"])
+
+py_library(
+    name = "keras_applications",
+    srcs = [
+        "keras_applications/__init__.py",
+        "keras_applications/densenet.py",
+        "keras_applications/imagenet_utils.py",
+        "keras_applications/inception_resnet_v2.py",
+        "keras_applications/inception_v3.py",
+        "keras_applications/mobilenet.py",
+        "keras_applications/mobilenet_v2.py",
+        "keras_applications/nasnet.py",
+        "keras_applications/resnet50.py",
+        "keras_applications/vgg16.py",
+        "keras_applications/vgg19.py",
+        "keras_applications/xception.py",
+    ],
+    deps = [
+        "@org_tensorflow//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)

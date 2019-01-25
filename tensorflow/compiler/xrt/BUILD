@@ -22,6 +22,7 @@ xla_proto_library(
     deps = [
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
 )
@@ -32,20 +33,25 @@ cc_library(
         "xrt_compilation_cache.cc",
         "xrt_device.cc",
         "xrt_state.cc",
+        "xrt_util.cc",
     ],
     hdrs = [
         "xrt_compilation_cache.h",
         "xrt_device.h",
         "xrt_state.h",
+        "xrt_util.h",
     ],
     deps = [
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:device_memory_allocator",

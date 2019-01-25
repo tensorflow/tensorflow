@@ -37,7 +37,7 @@ cc_library(
     hdrs = ["gpu_codegen_test.h"],
     tags = tf_cuda_tests_tags(),
     deps = [
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/tests:filecheck",

@@ -21,10 +21,9 @@ from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util import deprecation
 
@@ -355,7 +354,7 @@ def read_batch_features(file_pattern,
       shuffle=randomize_input,
       num_epochs=num_epochs,
       shuffle_buffer_size=capacity)
-  iterator = dataset.make_one_shot_iterator()
+  iterator = dataset_ops.make_one_shot_iterator(dataset)
   outputs = iterator.get_next()
   return outputs
 
@@ -379,37 +378,25 @@ class LMDBDataset(dataset_ops.DatasetSource):
     (key value) pairs sequentially.
     For example:
     ```python
+    tf.enable_eager_execution()
+
     dataset = tf.contrib.lmdb.LMDBDataset("/foo/bar.mdb")
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
+
     # Prints the (key, value) pairs inside a lmdb file.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
+    for key, value in dataset:
+      print(key, value)
     ```
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
     """
-    super(LMDBDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
-
-  def _as_variant_tensor(self):
-    return gen_experimental_dataset_ops.experimental_lmdb_dataset(
-        self._filenames,
-        output_types=nest.flatten(self.output_types),
-        output_shapes=nest.flatten(self.output_shapes))
+    variant_tensor = gen_experimental_dataset_ops.experimental_lmdb_dataset(
+        self._filenames, **dataset_ops.flat_structure(self))
+    super(LMDBDataset, self).__init__(variant_tensor)
 
   @property
-  def output_classes(self):
-    return ops.Tensor, ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
-
-  @property
-  def output_types(self):
-    return dtypes.string, dtypes.string
+  def _element_structure(self):
+    return structure.NestedStructure(
+        (structure.TensorStructure(dtypes.string, []),
+         structure.TensorStructure(dtypes.string, [])))

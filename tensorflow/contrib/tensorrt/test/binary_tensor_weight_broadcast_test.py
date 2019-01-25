@@ -26,7 +26,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -56,21 +55,21 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
       ]:
         a = self._ConstOp(weights_shape)
         f = x + a
-        x = math_ops.sigmoid(f)
+        x = self.trt_incompatible_op(f)
         a = self._ConstOp(weights_shape)
         f = a + x
-        x = math_ops.sigmoid(f)
+        x = self.trt_incompatible_op(f)
       gen_array_ops.reshape(x, [5, -1], name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[(5, 23040)])
+        expected_output_dims=[[[5, 23040]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["my_trt_op_%d" % i for i in range(16)]
+    return ["TRTEngineOp_%d" % i for i in range(16)]
 
 
 if __name__ == "__main__":

@@ -26,6 +26,9 @@ import os
 
 import numpy as np
 
+import six
+from six.moves import xrange
+
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 from tensorflow.compiler.xla.service import hlo_pb2
@@ -44,6 +47,15 @@ _OP_METADATA_FIELDS = [
     'source_line',
 ]
 OpMetadata = collections.namedtuple('OpMetadata', _OP_METADATA_FIELDS)
+
+
+class BackendType(enum.Enum):
+  XLA_LOCAL = 1
+  XRT = 2
+
+
+BackendSpec = collections.namedtuple('Backend', ('backend_type', 'target'))
+XLA_LOCAL_BACKEND = BackendSpec(BackendType.XLA_LOCAL, 'local')
 
 
 def OpMetadataToProto(pyobj):
@@ -66,6 +78,13 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
       source_line=lineno)
 
 
+def _maybe_encode_string(s):
+  if six.PY3:
+    return s.encode('utf-8')
+  else:
+    return s
+
+
 class PaddingType(enum.Enum):
   VALID = 1
   SAME = 2
@@ -73,16 +92,32 @@ class PaddingType(enum.Enum):
 
 def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
                                         window_strides):
-  """Maps PaddingType (VALID or SAME) to pad values (list of pairs of ints)."""
+  """Maps PaddingType or string to pad values (list of pairs of ints)."""
+  if not isinstance(padding_type, (str, PaddingType)):
+    msg = 'padding_type must be str or PaddingType, got {}.'
+    raise TypeError(msg.format(type(padding_type)))
+
+  if isinstance(padding_type, str):
+    if padding_type.upper() == 'VALID':
+      padding_type = PaddingType.VALID
+    elif padding_type.upper() == 'SAME':
+      padding_type = PaddingType.SAME
+    else:
+      msg = 'Unknown padding type string: expected "VALID" or "SAME", got {}.'
+      raise ValueError(msg.format(padding_type))
+
   if padding_type == PaddingType.VALID:
     return [(0, 0)] * len(window_strides)
-
-  out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
-  pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
-               for out_size, stride, filter_size, in_size
-               in zip(out_shape, window_strides, rhs_dims, lhs_dims)]
-  return [(pad_size // 2, pad_size - pad_size // 2)
-          for pad_size in pad_sizes]
+  elif padding_type == PaddingType.SAME:
+    out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
+    pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
+                 for out_size, stride, filter_size, in_size
+                 in zip(out_shape, window_strides, rhs_dims, lhs_dims)]
+    return [(pad_size // 2, pad_size - pad_size // 2)
+            for pad_size in pad_sizes]
+  else:
+    msg = 'Unexpected PaddingType value: {}'
+    raise ValueError(msg.format(padding_type))
 
 
 _UNARY_OPS = [
@@ -164,6 +199,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F32: np.dtype('float32'),
     xla_data_pb2.F64: np.dtype('float64'),
     xla_data_pb2.C64: np.dtype('complex64'),
+    xla_data_pb2.C128: np.dtype('complex128'),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
@@ -187,38 +223,66 @@ class LocalBuffer(object):
   means the referent is in device memory.
   """
 
-  def __init__(self, c_local_shaped_buffer):
-    self.c_local_shaped_buffer = c_local_shaped_buffer
-    self._delete = c_api.DeleteLocalShapedBuffer
+  def __init__(self, c_buffer, backend, replica):
+    self.c_buffer = c_buffer
+    self._backend = backend
+    self._replica = replica
+    if backend.backend_type == BackendType.XRT:
+      self._delete = c_api.DeleteXrtAllocation
+    else:
+      self._delete = c_api.DeleteLocalShapedBuffer
 
   @staticmethod
-  def from_pyval(pyval, layout_fn=None):
+  def from_pyval(pyval, replica=0, backend=XLA_LOCAL_BACKEND):
+    """Allocate and copy to XLA the given python value."""
     pyval = require_numpy_array_layout(pyval)
-    if layout_fn:
-      shape = Shape.from_pyval(pyval)
-      shape = shape.map_leaves(layout_fn)
+    num_replicas = get_replica_count()
+    if not 0 <= replica < num_replicas:
+      raise ValueError(
+          'Attempt to place buffer on replica {} when the replica count is {}'
+          .format(replica, num_replicas))
+    if backend.backend_type == BackendType.XRT:
+      if replica != 0:
+        raise NotImplementedError(
+            'Multi-replica execution is not yet supported via the XRT backend.')
+      cbuf = c_api.XrtAllocation.FromLiteral(
+          pyval, _maybe_encode_string(backend.target))
     else:
-      shape = None
-    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(pyval, shape))
+      cbuf = c_api.LocalShapedBuffer.FromLiteral(pyval, None, replica)
+    return LocalBuffer(cbuf, backend, replica)
 
   def to_py(self):
-    return self.c_local_shaped_buffer.ToLiteral()
+    return self.c_buffer.ToLiteral()
+
+  def shape(self):
+    return _wrap_shape(self.c_buffer.shape())
+
+  def replica(self):
+    return self._replica
 
   def delete(self):
-    if self.c_local_shaped_buffer is not None:
-      self._delete(self.c_local_shaped_buffer)
-      self.c_local_shaped_buffer = None
+    if self.c_buffer is not None:
+      self._delete(self.c_buffer)
+      self.c_buffer = None
 
   def destructure(self):
-    assert self.c_local_shaped_buffer is not None
-    result = c_api.DestructureLocalShapedBufferTuple(self.c_local_shaped_buffer)
-    self.c_local_shaped_buffer = None
+    """Assuming a tuple buffer, unpack it into constituent tuple elements."""
+    assert self.c_buffer is not None
+    if self._backend.backend_type == BackendType.XRT:
+      result = c_api.DestructureXrtAllocationTuple(
+          self.c_buffer, _maybe_encode_string(self._backend.target))
+    else:
+      result = c_api.DestructureLocalShapedBufferTuple(self.c_buffer)
+    self.delete()
     size = result.size()
-    destructured = tuple(LocalBuffer(result.Release(i)) for i in xrange(size))
+    destructured = tuple(
+        LocalBuffer(
+            result.Release(i), replica=self._replica, backend=self._backend)
+        for i in xrange(size))
     return destructured
 
   def is_deleted(self):
-    return self.c_local_shaped_buffer is None
+    return self.c_buffer is None
 
   def __del__(self):
     self.delete()
@@ -282,6 +346,9 @@ class Shape(object):
 
   def __ne__(self, other):
     return not self == other
+
+  def __hash__(self):
+    return hash((self._dtype, self._dimensions, self._minor_to_major))
 
   def __repr__(self):
     return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
@@ -349,7 +416,7 @@ class Shape(object):
       assert mtm is None, self
     if mtm is not None:
       assert self.rank() == len(mtm), self
-      assert sorted(mtm) == range(len(mtm)), self
+      assert sorted(mtm) == list(range(len(mtm))), self
 
   def update_minor_to_major(self, minor_to_major):
     if not self.is_array():
@@ -392,6 +459,7 @@ class CompileOptions(object):
     self.dump_unoptimized_hlo_proto_to = None
     self.dump_per_pass_hlo_proto_to = None
     self.hlo_profile = False
+    self.num_replicas = get_replica_count()
 
 
 def transfer_to_infeed(value, replica_number=None):
@@ -436,17 +504,29 @@ class LocalComputation(object):
   ComputationBuilder methods.
   """
 
-  def __init__(self, c_local_computation, is_compiled):
-    self.c_local_computation = c_local_computation
-    self.is_compiled = is_compiled
+  def __init__(self, c_computation, is_compiled, backend=XLA_LOCAL_BACKEND):
+    self._c_computation = c_computation
+    self._backend = backend
+    self._is_compiled = is_compiled
 
     # Ensure a reference to C-based destructor for use in __del__.
     if is_compiled:
-      assert isinstance(c_local_computation, c_api.CompiledLocalComputation)
-      self._delete = c_api.DeleteCompiledLocalComputation
+      if backend.backend_type == BackendType.XRT:
+        assert isinstance(c_computation, c_api.CompiledXrtComputation)
+        self._delete = c_api.DeleteCompiledXrtComputation
+      else:
+        assert isinstance(c_computation, c_api.CompiledLocalComputation)
+        self._delete = c_api.DeleteCompiledLocalComputation
     else:
-      assert isinstance(c_local_computation, c_api.LocalComputation)
+      assert isinstance(c_computation, c_api.LocalComputation)
       self._delete = c_api.DeleteLocalComputation
+
+  @property
+  def computation(self):
+    if self._is_compiled:
+      raise ValueError(
+          'Attempt to read the XLA computation of a compiled LocalComputation.')
+    return self._c_computation
 
   def GetProto(self):
     """Get the HloModuleProto proto object in this local computation.
@@ -454,8 +534,7 @@ class LocalComputation(object):
     Returns:
        An HloModuleProto proto object that has the whole-graph information.
     """
-
-    serialized = self.c_local_computation.GetSerializedProto()
+    serialized = self.computation.GetSerializedProto()
     proto = hlo_pb2.HloModuleProto.FromString(serialized)
     return proto
 
@@ -480,10 +559,10 @@ class LocalComputation(object):
     Returns:
       A newly *compiled* local computation instance.
     """
-    if self.is_compiled:
+    if self._is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
 
-    result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
+    result_shape = _wrap_shape(self.computation.GetReturnValueShape())
 
     if layout_fn:
       argument_shapes = [
@@ -491,11 +570,16 @@ class LocalComputation(object):
       ]
       result_shape = result_shape.map_leaves(layout_fn)
 
+    argument_shapes = list(argument_shapes)
+
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
-    return LocalComputation(
-        self.c_local_computation.Compile(argument_shapes, compile_options),
-        is_compiled=True)
+    if self._backend.backend_type == BackendType.XRT:
+      c = self.computation.CompileForXrt(
+          argument_shapes, _maybe_encode_string(self._backend.target))
+    else:
+      c = self.computation.Compile(argument_shapes, compile_options)
+    return LocalComputation(c, is_compiled=True, backend=self._backend)
 
   def CompileWithExampleArguments(self,
                                   arguments=(),
@@ -506,33 +590,89 @@ class LocalComputation(object):
         compile_options=compile_options,
         layout_fn=layout_fn)
 
-  def Execute(self, arguments=(), layout_fn=None):
-    """Execute with Python values as arguments and return value."""
-    if not self.is_compiled:
-      raise ValueError('Cannot execute an uncompiled local XLA computation.')
-    argument_shapes = [Shape.from_pyval(arg) for arg in arguments]
-    if layout_fn:
-      argument_shapes = [
-          shape.map_leaves(layout_fn) for shape in argument_shapes
-      ]
-    else:
-      argument_shapes = [None for shape in argument_shapes]
-    arguments = tuple(map(require_numpy_array_layout, arguments))
-    return self.c_local_computation.Execute(arguments, argument_shapes)
+  def GetReturnValueShape(self):
+    return _wrap_shape(self._c_computation.GetReturnValueShape())
 
-  def ExecuteWithLocalBuffers(self, arguments=()):
-    """Execute with LocalBuffer arguments and return value."""
-    if not self.is_compiled:
-      raise ValueError('Cannot execute an uncompiled local XLA computation.')
-    arguments = tuple(arguments)
-    if any(arg.is_deleted() for arg in arguments):
+  def Execute(self, arguments=(), check_for_deleted_args=True):
+    """Execute on one replica with LocalBuffer arguments and return value."""
+    if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
       raise ValueError('Executing with deleted local buffer argument')
-    return LocalBuffer(
-        self.c_local_computation.ExecuteWithShapedBuffers(
-            [arg.c_local_shaped_buffer for arg in arguments]))
+    raw_args = [arg.c_buffer for arg in arguments]
+    output_buffer = self._c_computation.Execute(raw_args)
+    return LocalBuffer(output_buffer, backend=self._backend, replica=0)
+
+  def ExecutePerReplica(self, arguments=None):
+    """Execute on many replicas with LocalBuffer arguments and return value.
+
+    Args:
+      arguments: A sequence of sequences of LocalBuffers. The i'th inner
+        sequence comprises the arguments for execution on the i'th replica.
+
+    Returns:
+      A list of the computation's outputs on each replica, as a LocalBuffer. If
+      a shallow sequence of arguments was passed in for `arguments`, then the
+      sole, zero'th replica's output is returned instead, as a LocalBuffer.
+    """
+    if not self._is_compiled:
+      raise ValueError('Cannot execute an uncompiled local XLA computation.')
+    if arguments is None:
+      arguments = ((),) * get_replica_count()
+    else:
+      arguments = [list(replica_args) for replica_args in arguments]
+
+    # Check arguments
+    for replica, replica_args in enumerate(arguments):
+      for arg in replica_args:
+        if arg.is_deleted():
+          raise ValueError('Executing with deleted local buffer argument')
+        if arg.replica() != replica:
+          raise ValueError(
+              'Executing on replica {} with argument from replica {}'.format(
+                  replica, arg.replica()))
+
+    # Pull out argument buffer handles
+    stripped_args = [
+        [arg.c_buffer for arg in replica_args] for replica_args in arguments
+    ]
+
+    # Execute
+    if self._backend.backend_type == BackendType.XRT:
+      if len(stripped_args) > 1:
+        raise NotImplementedError(
+            'Multi-replica execution is not yet supported via the XRT backend.')
+      output_buffers = [self._c_computation.Execute(stripped_args[0])]
+    else:
+      output_buffer_tup = self._c_computation.ExecutePerReplica(stripped_args)
+      size = output_buffer_tup.size()
+      output_buffers = [output_buffer_tup.Release(i) for i in xrange(size)]
+
+    # Wrap output handles in LocalBuffer instances
+    return tuple(
+        LocalBuffer(output_buffer, backend=self._backend, replica=replica)
+        for replica, output_buffer in enumerate(output_buffers))
+
+  def ExecuteWithPythonValues(self, arguments=()):
+    """Execute on one replica with Python values as arguments and output."""
+
+    def put(arg):
+      return LocalBuffer.from_pyval(arg, backend=self._backend)
+
+    arguments = [put(arg) for arg in arguments]
+    return self.Execute(arguments).to_py()
+
+  def ExecuteWithPythonValuesPerReplica(self, arguments):
+    """Execute on many replicas with Python values as arguments and output."""
+
+    def put(arg, replica):
+      return LocalBuffer.from_pyval(arg, replica, backend=self._backend)
+
+    arguments = [[put(arg, replica)
+                  for arg in replica_args]
+                 for replica, replica_args in enumerate(arguments)]
+    return [out.to_py() for out in self.ExecutePerReplica(arguments)]
 
   def __del__(self):
-    self._delete(self.c_local_computation)
+    self._delete(self._c_computation)
 
 
 class ComputationBuilder(object):
@@ -554,8 +694,13 @@ class ComputationBuilder(object):
     self._client = c_api.LocalComputationBuilder(name.encode('utf8'))
     self._parameter_numbering = itertools.count()
 
-  def Build(self):
-    return LocalComputation(self._client.Build(), is_compiled=False)
+  def Build(self, root=None, backend=XLA_LOCAL_BACKEND):
+    if root is not None:
+      return LocalComputation(
+          self._client.BuildWithRoot(root), is_compiled=False, backend=backend)
+    else:
+      return LocalComputation(
+          self._client.Build(), is_compiled=False, backend=backend)
 
   def SetOpMetadata(self, op_metadata):
     """Set metadata for operations that are about to be enqueued."""
@@ -688,6 +833,33 @@ class ComputationBuilder(object):
     return self.ParameterWithShape(
         Shape.from_pyval(value), name=name, parameter_num=parameter_num)
 
+  def Iota(self, dtype, size):
+    """Enqueues an iota constant onto the computation.
+
+    Args:
+      dtype: expected numpy dtype of the output.
+      size: integer, the number of elements in the array.
+
+    Returns:
+      A LocalOp representing the added iota constant.
+    """
+    element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
+    return self._client.Iota(element_type, size)
+
+  def BroadcastedIota(self, dtype, shape, dimension):
+    """Enqueues a broadcasted iota constant onto the computation.
+
+    Args:
+      dtype: expected numpy dtype of the output.
+      shape: tuple of integers, the expected output shape (dimensions).
+      dimension: positive integer, dimension along which to increment values.
+
+    Returns:
+      A LocalOp representing the added broadcasted iota constant.
+    """
+    xla_shape = Shape.array_shape(dtype, shape)
+    return self._client.BroadcastedIota(xla_shape, dimension)
+
   def Broadcast(self, operand, sizes):
     """Enqueues a broadcast operation onto the computation.
 
@@ -699,6 +871,20 @@ class ComputationBuilder(object):
       A LocalOp representing the added broadcast op.
     """
     return self._client.Broadcast(operand, sizes)
+
+  def BroadcastInDim(self, operand, shape, broadcast_dimensions):
+    """Enqueues a broadcast-in-dimensions operation onto the computation.
+
+    Args:
+      operand: the operand LocalOp to broadcast.
+      shape: tuple of integers, the expected output shape.
+      broadcast_dimensions: tuple of integers identifying which dimensions
+        of the output are to be broadcast into.
+
+    Returns:
+      A LocalOp representing the added broadcast-in-dimensions op.
+    """
+    return self._client.BroadcastInDim(operand, shape, broadcast_dimensions)
 
   def Concatenate(self, operands, dimension):
     """Enqueues a concatenate operation onto the computation.
@@ -779,16 +965,30 @@ class ComputationBuilder(object):
       dimensions = tuple(range(ndim))
     return self._client.Reshape(operand, dimensions, new_sizes)
 
-  def CrossReplicaSum(self, operand):
+  def CrossReplicaSum(self, operand, replica_groups=None):
     """CrossReplicaSum op.
 
     Args:
       operand: the operand to sum across replica instances.
+      replica_groups: optional, list of lists of ints encoding a partition of
+        the set {0, 1, ..., num_replicas} into equally-sized replica groups
+        within which the cross-replica sum is performed. If not supplied or None
+        (the default), all replicas belong to the same group.
 
     Returns:
-      A LocalOp that has the sum of the value among all replicas.
+      A LocalOp that represents on each replica the sum of its group's values.
     """
-    return self._client.CrossReplicaSum(operand)
+
+    def make_proto(replica_group):
+      replica_group_proto = xla_data_pb2.ReplicaGroup()
+      replica_group_proto.replica_ids.extend(replica_group)
+      return replica_group_proto
+
+    if replica_groups is None:
+      replica_groups = []  # special value for XLA API
+    else:
+      replica_groups = [make_proto(group) for group in replica_groups]
+    return self._client.CrossReplicaSum(operand, replica_groups)
 
   def Collapse(self, operand, dimensions):
     """Collapse op."""
@@ -834,8 +1034,8 @@ class ComputationBuilder(object):
         padding, self.GetShape(operand).dimensions(),
         window_dimensions, window_strides)
     return self._client.SelectAndScatterWithGeneralPadding(
-        operand, select.c_local_computation, window_dimensions, window_strides,
-        pads, source, init_value, scatter.c_local_computation)
+        operand, select.computation, window_dimensions, window_strides, pads,
+        source, init_value, scatter.computation)
 
   def Select(self, pred, on_true, on_false):
     """Element-wise selection op.
@@ -943,7 +1143,32 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp representing the added call op.
     """
-    return self._client.Call(computation_to_apply.c_local_computation, operands)
+    return self._client.Call(computation_to_apply.computation, operands)
+
+  def CustomCall(self,
+                 call_target_name,
+                 operands,
+                 shape_with_layout,
+                 operand_shapes_with_layout,
+                 opaque=None):
+    """Enqueues a custom call operation onto the computation.
+
+    Args:
+      call_target_name: the name of the function to call.
+      operands: an iterable of LocalOp. The number and types of operands must
+        match the arity of `operand_shapes_with_layout`.
+      shape_with_layout: the shape of the operator's output, with layout.
+      operand_shapes_with_layout: the shapes of `operands`, including the
+        expected layouts.
+      opaque: an opaque string passed to the backend.
+
+    Returns:
+      A LocalOp representing the added custom call op.
+    """
+    opaque = opaque or b''
+    return self._client.CustomCall(call_target_name, operands,
+                                   shape_with_layout,
+                                   operand_shapes_with_layout, opaque)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -956,7 +1181,7 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp representing the added Map op.
     """
-    return self._client.Map(operands, computation_to_apply.c_local_computation,
+    return self._client.Map(operands, computation_to_apply.computation,
                             dimensions)
 
   def Reduce(self, operand, init_value, computation_to_apply, dimensions):
@@ -972,8 +1197,7 @@ class ComputationBuilder(object):
       A LocalOp representing the added Reduce op.
     """
     return self._client.Reduce(operand, init_value,
-                               computation_to_apply.c_local_computation,
-                               dimensions)
+                               computation_to_apply.computation, dimensions)
 
   def ReduceWindow(self, operand, init_value, computation_to_apply,
                    window_dimensions, window_strides, padding):
@@ -994,7 +1218,7 @@ class ComputationBuilder(object):
         padding, self.GetShape(operand).dimensions(), window_dimensions,
         window_strides)
     return self._client.ReduceWindowWithGeneralPadding(
-        operand, init_value, computation_to_apply.c_local_computation,
+        operand, init_value, computation_to_apply.computation,
         window_dimensions, window_strides, (), (), pads)
 
   def ReduceWindowWithGeneralPadding(
@@ -1016,7 +1240,7 @@ class ComputationBuilder(object):
       A LocalOp representing the added ReduceWindow op.
     """
     return self._client.ReduceWindowWithGeneralPadding(
-        operand, init_value, computation_to_apply.c_local_computation,
+        operand, init_value, computation_to_apply.computation,
         window_dimensions, window_strides, base_dilations, window_dilations,
         padding)
 
@@ -1062,8 +1286,7 @@ class ComputationBuilder(object):
 
     Returns: a LocalOp representing the While operation.
     """
-    return self._client.While(cond.c_local_computation,
-                              body.c_local_computation, init)
+    return self._client.While(cond.computation, body.computation, init)
 
   def Conditional(self, pred, true_operand, true_computation, false_operand,
                   false_computation):
@@ -1079,8 +1302,8 @@ class ComputationBuilder(object):
     Returns: a LocalOp representing the Conditional operation.
     """
     return self._client.Conditional(
-        pred, true_operand, true_computation.c_local_computation, false_operand,
-        false_computation.c_local_computation)
+        pred, true_operand, true_computation.computation, false_operand,
+        false_computation.computation)
 
   def IsConstant(self, operand):
     """Checks whether the given operand is a compile-time constant.
@@ -1147,10 +1370,9 @@ class ComputationBuilder(object):
     pads = _convert_padding_type_to_pad_values(
         padding, self.GetShape(lhs).dimensions()[2:],
         self.GetShape(rhs).dimensions()[2:], window_strides)
-    dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
-    return self._client.ConvGeneralDilated(lhs, rhs, window_strides, pads, (),
-                                           (), dimension_numbers,
-                                           feature_group_count)
+    return self.ConvGeneralDilated(
+        lhs, rhs, window_strides, pads, (), (),
+        dimension_numbers=None, feature_group_count=feature_group_count)
 
   def ConvWithGeneralPadding(self, lhs, rhs, window_strides, padding,
                              lhs_dilation, rhs_dilation, feature_group_count=1):
@@ -1168,11 +1390,9 @@ class ComputationBuilder(object):
     Returns:
       A ComputationdataHandle representing the added ConvWithGeneralPadding op.
     """
-    dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
-    return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
-                                           lhs_dilation, rhs_dilation,
-                                           dimension_numbers,
-                                           feature_group_count)
+    return self.ConvGeneralDilated(
+        lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+        dimension_numbers=None, feature_group_count=feature_group_count)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1190,7 +1410,7 @@ class ComputationBuilder(object):
     return dimension_numbers
 
   def ConvGeneralDilated(self, lhs, rhs, window_strides, padding, lhs_dilation,
-                         rhs_dilation, dimension_numbers,
+                         rhs_dilation, dimension_numbers=None,
                          feature_group_count=1):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
@@ -1201,10 +1421,11 @@ class ComputationBuilder(object):
       padding: length-N array-like of pairs of integers of (low, high) padding.
       lhs_dilation: length-N array-like of integer dilation factors.
       rhs_dilation: length-N array-like of integer dilation factors.
-      dimension_numbers: either an xla_data_pb2.ConvolutionDimensionNumbers or a
-        triple (lhs_spec, rhs_spec, out_spec) where each element is a string of
-        length N+2 identifying by position (1) batch dimensions in lhs, rhs, and
-        the output with the character 'N', (2) feature dimensions in lhs and the
+      dimension_numbers: optional, either an
+        xla_data_pb2.ConvolutionDimensionNumbers proto instance or a tuple
+        (lhs_spec, rhs_spec, out_spec) where each element is a string of length
+        N+2 identifying by position (1) batch dimensions in lhs, rhs, and the
+        output with the character 'N', (2) feature dimensions in lhs and the
         output with the character 'C', (3) input and output feature dimensions
         in rhs with the characters 'I' and 'O' respectively, and (4) spatial
         dimension correspondences between lhs, rhs, and the output using any
@@ -1217,13 +1438,16 @@ class ComputationBuilder(object):
         spatial dimension character labels according to the order in which the
         labels appear in the rhs_spec string, so that window_strides[0] is
         matched with the dimension corresponding to the first character
-        appearing in rhs_spec that is not 'I' or 'O'.
+        appearing in rhs_spec that is not 'I' or 'O'. By default, use the same
+        dimension numbering as Conv and ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
 
     Returns: a LocalOp representing the ConvGenralDilated operation.
     """
-    if not isinstance(dimension_numbers,
-                      xla_data_pb2.ConvolutionDimensionNumbers):
+    if dimension_numbers is None:
+      dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
+    elif not isinstance(dimension_numbers,
+                        xla_data_pb2.ConvolutionDimensionNumbers):
       lhs_spec, rhs_spec, out_spec = dimension_numbers
       dimension_numbers = xla_data_pb2.ConvolutionDimensionNumbers()
 
@@ -1254,6 +1478,32 @@ class ComputationBuilder(object):
   def SortKeyVal(self, keys, values, dimension=-1):
     """Enqueues a key-value sort operation onto the computation."""
     return self._client.SortKeyVal(keys, values, dimension)
+
+  def Cholesky(self, a):
+    """Enqueues a Cholesky decomposition onto the computation."""
+    return self._client.Cholesky(a)
+
+  def QR(self, a, full_matrices=True):
+    """Enqueues a QR decomposition onto the computation."""
+    return self._client.QR(a, full_matrices)
+
+  def TriangularSolve(self, a, b, left_side=False, lower=False,
+                      transpose_a=False, conjugate_a=False):
+    """Enqueues a triangular-solve operation onto the computation."""
+    return self._client.TriangularSolve(
+        a, b, left_side, lower, transpose_a, conjugate_a)
+
+  def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
+    """Enqueues a Gather operation onto the computation."""
+    return self._client.Gather(a, start_indices, dimension_numbers,
+                               slice_sizes)
+
+  def Scatter(self, a, scatter_indices, updates, update_computation,
+              dimension_numbers):
+    """Enqueues a Scatter operation onto the computation."""
+    return self._client.Scatter(
+        a, scatter_indices, updates, update_computation.computation,
+        dimension_numbers,)
 
 
 def _forward_methods_to_local_builder():
@@ -1308,6 +1558,19 @@ def initialize_replica_count(replica_count):
   c_api.InitializeReplicaCount(replica_count)
 
 
+def initialize_platform_name(platform_name):
+  """Initializes the desired platform name to use on XLA service init.
+
+  Args:
+    platform_name: string name of platform.
+
+  Raises:
+    A runtime exception if the XLA service has already been initialized.
+  """
+  platform_name = _maybe_encode_string(platform_name)
+  c_api.InitializePlatformName(platform_name)
+
+
 def get_replica_count():
   """Returns the current replica count used for the XLA service.
 
@@ -1315,6 +1578,16 @@ def get_replica_count():
   yet or not.
   """
   return c_api.GetReplicaCount()
+
+
+def register_cpu_custom_call_target(name, fn):
+  """Registers a CPU custom call target.
+
+  Args:
+    name: bytes containing the name of the function.
+    fn: a PyCapsule object containing the function pointer.
+  """
+  c_api.RegisterCpuCustomCallTarget(name, fn)
 
 
 def GetPaddingConfigFromTriples(triples):

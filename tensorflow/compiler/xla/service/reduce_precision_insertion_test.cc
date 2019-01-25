@@ -54,7 +54,34 @@ TEST_F(ReducePrecisionInsertionTest, BeforeUnaryInstruction) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCos, a));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  // Confirm expected state before adding ops.
+  EXPECT_EQ(computation->root_instruction(), b);
+  EXPECT_EQ(b->operand(0), a);
+
+  EXPECT_TRUE(InsertOps(module.get(), HloReducePrecisionOptions::OP_INPUTS,
+                        [](const HloInstruction* instruction) {
+                          return instruction->opcode() == HloOpcode::kCos;
+                        }));
+
+  // Confirm expected graph after adding ops.
+  EXPECT_EQ(computation->root_instruction(), b);
+  EXPECT_THAT(b->operand(0), op::ReducePrecision(a));
+}
+
+TEST_F(ReducePrecisionInsertionTest, BeforeUnaryScalarInstruction) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  // Create a simple graph with a parameter feeding a unary cosine function.
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, a));
+
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected state before adding ops.
@@ -84,7 +111,7 @@ TEST_F(ReducePrecisionInsertionTest, BeforeBinaryInstruction) {
   HloInstruction* c = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, a, b));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected state before adding ops.
@@ -113,7 +140,7 @@ TEST_F(ReducePrecisionInsertionTest, BeforeZeroInputInstruction) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCos, a));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected state before adding ops.
@@ -146,7 +173,7 @@ TEST_F(ReducePrecisionInsertionTest, AvoidAddingDuplicateInstructions) {
   HloInstruction* d = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, b, c));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected state before adding ops.
@@ -178,7 +205,7 @@ TEST_F(ReducePrecisionInsertionTest, AfterRootInstruction) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCos, a));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected state before adding ops.
@@ -215,7 +242,7 @@ TEST_F(ReducePrecisionInsertionTest, AfterNonRootInstruction) {
   HloInstruction* c = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, a_cos, b_cos));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   // Confirm expected graph before adding ops.
@@ -242,7 +269,7 @@ TEST_F(ReducePrecisionInsertionTest, OutputIsNotFloat) {
   HloInstruction* y = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCos, x));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected graph before adding ops.
@@ -268,7 +295,7 @@ TEST_F(ReducePrecisionInsertionTest, ShouldReduceOutputPrecisionIsFalse) {
   HloInstruction* y = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCos, x));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected graph before adding ops.
@@ -294,7 +321,7 @@ TEST_F(ReducePrecisionInsertionTest, InsertionIsNotRecursive) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateReducePrecision(shape, a, 8, 23));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected state before adding ops.
@@ -321,7 +348,7 @@ TEST_F(ReducePrecisionInsertionTest, SkipRedundantReducePrecisionAfter) {
   HloInstruction* y = builder.AddInstruction(
       HloInstruction::CreateReducePrecision(shape, x, 5, 10));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected graph before adding ops.
@@ -349,7 +376,7 @@ TEST_F(ReducePrecisionInsertionTest, AddNonRedundantReducePrecision) {
   HloInstruction* y = builder.AddInstruction(
       HloInstruction::CreateReducePrecision(shape, x, 8, 23));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Confirm expected graph before adding ops.
@@ -375,7 +402,7 @@ TEST_F(ReducePrecisionInsertionTest, IgnoreOpsInsideFusionNode) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
   HloInstruction* y = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCos, x));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Manually fuse the kCos operation into a fusion operation.
@@ -411,7 +438,7 @@ TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInHeadOfFusionNode) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
   HloInstruction* y = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCos, x));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Manually fuse the kCos operation into a fusion operation.
@@ -458,7 +485,7 @@ TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInTailOfFusionNode) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
   HloInstruction* y = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCos, x));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Manually fuse the kCos operation into a fusion operation.

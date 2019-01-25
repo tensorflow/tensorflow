@@ -34,6 +34,7 @@ tensorflow/core/lib/core/error_codes.proto
 tensorflow/core/protobuf/cluster.proto
 tensorflow/core/protobuf/config.proto
 tensorflow/core/protobuf/debug.proto
+tensorflow/core/protobuf/eager_service.proto
 tensorflow/core/protobuf/device_properties.proto
 tensorflow/core/protobuf/meta_graph.proto
 tensorflow/core/protobuf/named_tensor.proto

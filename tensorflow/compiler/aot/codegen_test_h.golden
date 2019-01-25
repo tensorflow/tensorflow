@@ -22,7 +22,7 @@ extern "C" void entry_point(
     void* result, const xla::ExecutableRunOptions* run_options,
     const void** args, void** temps, tensorflow::int64* profile_counters);
 
-extern "C" char __tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[];
+extern "C" char __tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[];
 
 
 namespace foo {
@@ -59,7 +59,7 @@ namespace bar {
 //   arg bytes aligned:  192
 //   temp bytes total:   126
 //   temp bytes aligned: 320
-class MyClass : public tensorflow::XlaCompiledCpuFunction {
+class MyClass final : public tensorflow::XlaCompiledCpuFunction {
  public:
   // Number of input arguments for the compiled computation.
   static constexpr size_t kNumArgs = 2;
@@ -74,16 +74,17 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
     static XlaCompiledCpuFunction::StaticData* kStaticData = [](){
       XlaCompiledCpuFunction::StaticData* data =
         new XlaCompiledCpuFunction::StaticData;
-      data->set_raw_function(entry_point);
-      data->set_buffer_infos(BufferInfos());
-      data->set_num_buffers(kNumBuffers);
-      data->set_arg_index_table(ArgIndexToBufferIndex());
-      data->set_num_args(kNumArgs);
-      data->set_result_index(kResultIndex);
-      data->set_arg_names(StaticArgNames());
-      data->set_result_names(StaticResultNames());
-      data->set_program_shape(StaticProgramShape());
-      data->set_hlo_profile_printer_data(StaticHloProfilePrinterData());
+      set_static_data_raw_function(data, entry_point);
+      set_static_data_buffer_infos(data, BufferInfos());
+      set_static_data_num_buffers(data, kNumBuffers);
+      set_static_data_arg_index_table(data, ArgIndexToBufferIndex());
+      set_static_data_num_args(data, kNumArgs);
+      set_static_data_result_index(data, kResultIndex);
+      set_static_data_arg_names(data, StaticArgNames());
+      set_static_data_result_names(data, StaticResultNames());
+      set_static_data_program_shape(data, StaticProgramShape());
+      set_static_data_hlo_profile_printer_data(
+          data, StaticHloProfilePrinterData());
 
       return data;
     }();
@@ -114,7 +115,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   //   with dim indices specifying which value. No bounds checking is performed
   //   on dim indices.
 
-  void set_arg0_data(void* data) {
+  void set_arg0_data(const void* data) {
     set_arg_data(0, data);
   }
   float* arg0_data() {
@@ -132,7 +133,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         arg_data(0)))[dim0][dim1];
   }
 
-  void set_arg_myfeed_data(void* data) {
+  void set_arg_myfeed_data(const void* data) {
     set_arg_data(0, data);
   }
   float* arg_myfeed_data() {
@@ -150,7 +151,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         arg_data(0)))[dim0][dim1];
   }
 
-  void set_arg1_data(void* data) {
+  void set_arg1_data(const void* data) {
     set_arg_data(1, data);
   }
   tensorflow::int64* arg1_data() {
@@ -253,10 +254,10 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   }
 
   // Shape of the args and results.
-  static const xla::ProgramShape* StaticProgramShape() {
-    static const xla::ProgramShape* kShape = []() {
-    xla::ProgramShape* proto = new xla::ProgramShape;
-    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[0], 52);
+  static const xla::ProgramShapeProto* StaticProgramShape() {
+    static const xla::ProgramShapeProto* kShape = []() {
+    xla::ProgramShapeProto* proto = new xla::ProgramShapeProto;
+    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 64);
     return proto;
   }();
     return kShape;

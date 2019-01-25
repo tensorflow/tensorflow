@@ -111,7 +111,7 @@ StatusOr<bool> ReducePrecisionInsertion::insert_on_inputs(
       VLOG(2) << "Adding to operand " << i << ": " << operand;
 
       if (!is_valid_shape(operand->shape())) {
-        VLOG(2) << "Skipped: value is not an F32 vector";
+        VLOG(2) << "Skipped: value is not of type F32";
         continue;
       }
 
@@ -168,7 +168,7 @@ StatusOr<bool> ReducePrecisionInsertion::insert_on_outputs(
             << instruction->ToString();
 
     if (!is_valid_shape(instruction->shape())) {
-      VLOG(2) << "Skipped: value is not an F32 nonscalar array";
+      VLOG(2) << "Skipped: value is not of type F32";
       continue;
     }
 

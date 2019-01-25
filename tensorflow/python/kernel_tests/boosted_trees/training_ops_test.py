@@ -30,6 +30,7 @@ from tensorflow.python.platform import googletest
 class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
   """Tests for growing tree ensemble from split candidates."""
 
+  @test_util.run_deprecated_v1
   def testGrowWithEmptyEnsemble(self):
     """Test growing an empty ensemble."""
     with self.cached_session() as session:
@@ -139,6 +140,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 1)
       self.assertProtoEquals(expected_result, tree_ensemble)
 
+  @test_util.run_deprecated_v1
   def testBiasCenteringOnEmptyEnsemble(self):
     """Test growing with bias centering on an empty ensemble."""
     with self.cached_session() as session:
@@ -182,6 +184,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 1)
       self.assertProtoEquals(expected_result, tree_ensemble)
 
+  @test_util.run_deprecated_v1
   def testGrowExistingEnsembleTreeNotFinalized(self):
     """Test growing an existing ensemble with the last tree not finalized."""
     with self.cached_session() as session:
@@ -366,6 +369,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 1)
       self.assertProtoEquals(expected_result, tree_ensemble)
 
+  @test_util.run_deprecated_v1
   def testGrowExistingEnsembleTreeFinalized(self):
     """Test growing an existing ensemble with the last tree finalized."""
     with self.cached_session() as session:
@@ -515,6 +519,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 1)
       self.assertProtoEquals(expected_result, tree_ensemble)
 
+  @test_util.run_deprecated_v1
   def testPrePruning(self):
     """Test growing an existing ensemble with pre-pruning."""
     with self.cached_session() as session:
@@ -671,6 +676,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 1)
       self.assertProtoEquals(expected_result, tree_ensemble)
 
+  @test_util.run_deprecated_v1
   def testMetadataWhenCantSplitDueToEmptySplits(self):
     """Test that the metadata is updated even though we can't split."""
     with self.cached_session() as session:
@@ -782,6 +788,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 1)
       self.assertProtoEquals(expected_result, tree_ensemble)
 
+  @test_util.run_deprecated_v1
   def testMetadataWhenCantSplitDuePrePruning(self):
     """Test metadata is updated correctly when no split due to prepruning."""
     with self.cached_session() as session:
@@ -917,6 +924,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 1)
       self.assertProtoEquals(expected_result, tree_ensemble)
 
+  @test_util.run_deprecated_v1
   def testPostPruningOfSomeNodes(self):
     """Test growing an ensemble with post-pruning."""
     with self.cached_session() as session:
@@ -1251,6 +1259,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 3)
       self.assertProtoEquals(expected_result, res_ensemble)
 
+  @test_util.run_deprecated_v1
   def testPostPruningOfAllNodes(self):
     """Test growing an ensemble with post-pruning, with all nodes are pruned."""
     with self.cached_session() as session:
@@ -1434,6 +1443,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       }
       """, res_ensemble)
 
+  @test_util.run_deprecated_v1
   def testPostPruningChangesNothing(self):
     """Test growing an ensemble with post-pruning with all gains >0."""
     with self.cached_session() as session:

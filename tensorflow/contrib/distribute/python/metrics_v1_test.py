@@ -72,14 +72,14 @@ def _regression_dataset_fn():
       "predictions": [1., .75, .25, 0.]}).repeat()
 
 
-# TODO(priyag): Add TPU Strategy to this once metrics aggregate correctly using
-# TowerLocalVariables on TPUs. Submit http://cl/208914352.
 def all_combinations():
   return combinations.combine(
       distribution=[combinations.default_strategy,
                     combinations.one_device_strategy,
                     combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus],
+                    combinations.mirrored_strategy_with_two_gpus,
+                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
+                    combinations.core_mirrored_strategy_with_two_gpus],
       mode=["graph"])
 
 
@@ -95,33 +95,32 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
 
   def _test_metric(self, distribution, dataset_fn, metric_fn, expected_fn):
     with ops.Graph().as_default(), distribution.scope():
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_initializable_iterator()
+      iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
-          value, update = distribution.call_for_each_tower(
-              metric_fn, inputs)
+          value, update = distribution.extended.call_for_each_replica(
+              metric_fn, args=(inputs,))
           ctx.set_non_tensor_output(name="value", output=value)
           return distribution.group(update)
 
-        ctx = distribution.run_steps_on_dataset(
-            step_fn, iterator, iterations=distribution.steps_per_run)
+        ctx = distribution.extended.experimental_run_steps_on_iterator(
+            step_fn, iterator, iterations=distribution.extended.steps_per_run)
         update = ctx.run_op
         value = ctx.non_tensor_outputs["value"]
         # In each run, we run multiple steps, and each steps consumes as many
-        # batches as number of towers.
+        # batches as number of replicas.
         batches_per_update = (
-            distribution.num_towers * distribution.steps_per_run)
+            distribution.num_replicas_in_sync *
+            distribution.extended.steps_per_run)
       else:
-        value, update = distribution.call_for_each_tower(
-            metric_fn, iterator.get_next())
+        value, update = distribution.extended.call_for_each_replica(
+            metric_fn, args=(iterator.get_next(),))
         update = distribution.group(update)
         # TODO(josh11b): Once we switch to using a global batch size for input,
-        # replace "distribution.num_towers" with "1".
-        batches_per_update = distribution.num_towers
+        # replace "distribution.num_replicas_in_sync" with "1".
+        batches_per_update = distribution.num_replicas_in_sync
 
-      self.evaluate(iterator.initializer)
-      self.evaluate(distribution.initialize())
+      self.evaluate(iterator.initialize())
       self.evaluate(variables.local_variables_initializer())
 
       batches_consumed = 0
@@ -134,8 +133,6 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
                             msg="After update #" + str(i+1))
         if batches_consumed >= 4:  # Consume 4 input batches in total.
           break
-
-      self.evaluate(distribution.finalize())
 
   @combinations.generate(all_combinations() + tpu_combinations())
   def testMean(self, distribution):

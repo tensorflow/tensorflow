@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 filegroup(
     name = "all_files",
@@ -31,32 +31,29 @@ py_library(
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/autograph/utils",
+        "//third_party/py/numpy",
         "@gast_archive//:gast",
         "@six_archive//:six",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "api_test",
     srcs = ["api_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
-    deps = [
+    additional_deps = [
         ":impl",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/utils",
-        "//third_party/py/numpy",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
-    deps = [
+    additional_deps = [
         ":impl",
-        "//tensorflow/python:client_testlib",
         "@gast_archive//:gast",
+        "//tensorflow/python:client_testlib",
     ],
 )

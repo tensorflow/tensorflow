@@ -50,7 +50,7 @@ class XlaTensor {
   // Assign the internal ShapedBuffer to new memory for the given dtype and
   // shape. If a ShapedBuffer exists already (has_shaped_buffer() == true), it
   // is replaced and the managed memory deallocated.
-  Status AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
+  Status AllocateShapedBuffer(DataType dtype, const xla::Shape& on_host_shape,
                               xla::LocalClient* client, int device_ordinal);
 
   // Some Tensors can have complex on-device shapes, including tuple shapes. To
@@ -88,23 +88,19 @@ class XlaTensor {
     host_tensor_.reset(new Tensor(tensor));
   }
 
-  // If the tensor's content is not yet defined on 'stream', and there exists an
-  // se::Event declaring when the tensor's content is defined, return it.
-  // Otherwise, return nullptr. If this function returns nullptr then the
-  // tensor's content can be read on 'stream' without additional
-  // synchronization.
-  se::Event* GetDefinitionEvent(se::Stream* stream);
+  // Adds synchronization events to 'stream' that wait for this tensor to be
+  // defined on 'stream'. Does nothing if the tensor is already defined on that
+  // stream.
+  void WaitForDefinitionEventOnStream(se::Stream* stream);
 
-  // Assert that the tensor's content is defined on 'stream' by the time 'event'
-  // triggers.
-  void SetDefinedOn(se::Stream* stream, std::shared_ptr<se::Event> event);
-
-  // Assert that the tensor's content is defined on 'stream'. This version does
-  // not provide an event, and must be called *after* SetDefinedOn(Stream,
-  // Event). This call can be read as an assertion that the definition event has
-  // been waited on by 'stream', so further calls to GetDefinitionEvent(stream)
-  // do not need to also wait on the event.
-  void SetDefinedOn(se::Stream* stream);
+  // (Re)sets the definition event of the tensor to 'event', and promises that
+  // the tensor has already been defined on stream. Removes any previous
+  // definition event or any previous promises about the tensor being defined on
+  // streams.
+  // It is legal to reset the definition event of a tensor when overwriting the
+  // tensor's value (at which point, it is effectively a new tensor once again.)
+  void ResetDefinitionEvent(std::shared_ptr<se::Event> event,
+                            se::Stream* stream);
 
   // Convert from a raw pointer to an XlaTensor, removing the pointer tag.
   static XlaTensor* FromOpaquePointer(void* ptr);

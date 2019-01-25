@@ -147,5 +147,36 @@ TEST(GetOpListForValidationTest, ShouldStripDocs) {
   EXPECT_TRUE(found_has_docs);
 }
 
+TEST(VerifyNoDuplicateNodeNames, NoDuplicateNodeNames) {
+  const string graph_def_str =
+      "node { name: 'A' op: 'FloatInput' }"
+      "node { name: 'B' op: 'Int32Input' }"
+      "node { "
+      "       name: 'C' op: 'Sum' "
+      "       attr { key: 'T' value { type: DT_FLOAT } }"
+      "       input: ['A', 'B'] "
+      "}";
+  GraphDef graph_def;
+  auto parser = protobuf::TextFormat::Parser();
+  CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
+  TF_ASSERT_OK(graph::VerifyNoDuplicateNodeNames(graph_def));
+}
+
+TEST(VerifyNoDuplicateNodeNames, DuplicateNodeNames) {
+  const string graph_def_str =
+      "node { name: 'A' op: 'FloatInput' }"
+      "node { name: 'A' op: 'Int32Input' }"
+      "node { "
+      "       name: 'C' op: 'Sum' "
+      "       attr { key: 'T' value { type: DT_FLOAT } }"
+      "       input: ['A', 'A'] "
+      "}";
+  GraphDef graph_def;
+  auto parser = protobuf::TextFormat::Parser();
+  CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
+  EXPECT_EQ(tensorflow::error::ALREADY_EXISTS,
+            graph::VerifyNoDuplicateNodeNames(graph_def).code());
+}
+
 }  // namespace
 }  // namespace tensorflow

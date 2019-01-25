@@ -41,7 +41,7 @@ class QuantizedOpsTest(test.TestCase):
       x_min = 0.0
       x_max = 255.0
       op = array_ops.quantize(x, x_min, x_max, dtypes.quint8, mode="MIN_FIRST")
-      value = sess.run(op)
+      value = self.evaluate(op)
       self.assertArrayNear(expected_output, value.output, 0.1)
 
   def testDequantizeOp(self):
@@ -52,7 +52,7 @@ class QuantizedOpsTest(test.TestCase):
       x_min = 0.0
       x_max = 255.0
       op = array_ops.dequantize(x, x_min, x_max, mode="MIN_FIRST")
-      value = sess.run(op)
+      value = self.evaluate(op)
       self.assertArrayNear(expected_output, value, 0.1)
 
 

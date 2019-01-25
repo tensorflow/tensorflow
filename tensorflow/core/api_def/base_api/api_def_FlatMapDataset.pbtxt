@@ -1,5 +1,6 @@
 op {
   graph_op_name: "FlatMapDataset"
+  visibility: HIDDEN
   attr {
     name: "f"
     description: <<END

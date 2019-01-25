@@ -81,10 +81,10 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(dtypes.int8, dtypes.as_dtype(np.int8))
     self.assertIs(dtypes.complex64, dtypes.as_dtype(np.complex64))
     self.assertIs(dtypes.complex128, dtypes.as_dtype(np.complex128))
-    self.assertIs(dtypes.string, dtypes.as_dtype(np.object))
+    self.assertIs(dtypes.string, dtypes.as_dtype(np.object_))
     self.assertIs(dtypes.string,
                   dtypes.as_dtype(np.array(["foo", "bar"]).dtype))
-    self.assertIs(dtypes.bool, dtypes.as_dtype(np.bool))
+    self.assertIs(dtypes.bool, dtypes.as_dtype(np.bool_))
     with self.assertRaises(TypeError):
       dtypes.as_dtype(np.dtype([("f1", np.uint), ("f2", np.int32)]))
 
@@ -294,6 +294,9 @@ class TypesTest(test_util.TensorFlowTestCase):
   def testEqWithNonTFTypes(self):
     self.assertNotEqual(dtypes.int32, int)
     self.assertNotEqual(dtypes.float64, 2.1)
+
+  def testPythonLongConversion(self):
+    self.assertIs(dtypes.int64, dtypes.as_dtype(np.array(2**32).dtype))
 
   def testPythonTypesConversion(self):
     self.assertIs(dtypes.float32, dtypes.as_dtype(float))

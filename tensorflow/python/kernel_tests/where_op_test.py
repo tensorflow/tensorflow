@@ -27,6 +27,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -41,11 +42,11 @@ class WhereOpTest(test.TestCase):
       ans = array_ops.where(x)
       self.assertEqual([None, x.ndim], ans.get_shape().as_list())
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertAllClose(tf_ans, truth, atol=1e-10)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
   def testWrongNumbers(self):
     with self.session(use_gpu=True):
@@ -54,6 +55,7 @@ class WhereOpTest(test.TestCase):
       with self.assertRaises(ValueError):
         array_ops.where([False, True], None, [1, 2])
 
+  @test_util.run_deprecated_v1
   def testBasicVec(self):
     x = np.asarray([True, False])
     truth = np.asarray([[0]], dtype=np.int64)
@@ -67,11 +69,13 @@ class WhereOpTest(test.TestCase):
     truth = np.asarray([[2], [4]], dtype=np.int64)
     self._testWhere(x, truth)
 
+  @test_util.run_deprecated_v1
   def testRandomVec(self):
     x = np.random.rand(1000000) > 0.5
     truth = np.vstack([np.where(x)[0].astype(np.int64)]).T
     self._testWhere(x, truth)
 
+  @test_util.run_deprecated_v1
   def testBasicMat(self):
     x = np.asarray([[True, False], [True, False]])
 
@@ -80,6 +84,7 @@ class WhereOpTest(test.TestCase):
 
     self._testWhere(x, truth)
 
+  @test_util.run_deprecated_v1
   def testBasic3Tensor(self):
     x = np.asarray([[[True, False], [True, False]],
                     [[False, True], [False, True]],
@@ -99,36 +104,47 @@ class WhereOpTest(test.TestCase):
     truth = np.vstack(truth).T  # Convert to [num_true, indices].
     self._testWhere(x, truth, expected_err_re)
 
+  @test_util.run_deprecated_v1
   def testRandomBool(self):
     self._testRandom(np.bool)
 
+  @test_util.run_deprecated_v1
   def testRandomInt32(self):
     self._testRandom(np.int32)
 
+  @test_util.run_deprecated_v1
   def testRandomInt64(self):
     self._testRandom(np.int64)
 
+  @test_util.run_deprecated_v1
   def testRandomFloat(self):
     self._testRandom(np.float32)
 
+  @test_util.run_deprecated_v1
   def testRandomDouble(self):
     self._testRandom(np.float64)
 
+  @test_util.run_deprecated_v1
   def testRandomComplex64(self):
     self._testRandom(np.complex64)
 
+  @test_util.run_deprecated_v1
   def testRandomComplex128(self):
     self._testRandom(np.complex128)
 
+  @test_util.run_deprecated_v1
   def testRandomUint8(self):
     self._testRandom(np.uint8)
 
+  @test_util.run_deprecated_v1
   def testRandomInt8(self):
     self._testRandom(np.int8)
 
+  @test_util.run_deprecated_v1
   def testRandomInt16(self):
     self._testRandom(np.int16)
 
+  @test_util.run_deprecated_v1
   def testThreeArgument(self):
     x = np.array([[-2, 3, -1], [1, -3, -3]])
     np_val = np.where(x > 0, x * x, -x)
@@ -136,6 +152,7 @@ class WhereOpTest(test.TestCase):
       tf_val = array_ops.where(constant_op.constant(x) > 0, x * x, -x).eval()
     self.assertAllEqual(tf_val, np_val)
 
+  @test_util.run_deprecated_v1
   def testBatchSelect(self):
     x = np.array([[-2, 3, -1] * 64, [1, -3, -3] * 64] * 8192)  # [16384, 192]
     c_mat = np.array([[False] * 192, [True] * 192] * 8192)  # [16384, 192]

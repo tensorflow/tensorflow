@@ -90,8 +90,8 @@ Status VectorizeMapDefun(const FunctionDef& outer_scope,
                          const NodeDef& map_defun_node, FunctionDefLibrary* lib,
                          FunctionDef** result);
 
-}  // end namespace vectorization_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace vectorization_utils
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_VECTORIZATION_UTILS_H_

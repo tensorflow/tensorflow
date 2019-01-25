@@ -18,7 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum
+
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import qual_names
+from tensorflow.python.autograph.utils import misc
+
+
+class _NamingStyle(enum.Enum):
+  SNAKE = 1
+  CAMEL = 2
 
 
 class Namer(object):
@@ -45,17 +54,52 @@ class Namer(object):
 
     self.generated_names = set()
 
+  def _as_symbol_name(self, fqn, style=_NamingStyle.SNAKE):
+    """Returns a symbol name that matches a fully-qualified name.
+
+    The returned name is safe to use for Python symbols. Any special characters
+    present in fqn are replaced according to the style argument.
+
+    Examples:
+
+      self._as_symbol_name('foo.bar', style=_NamingStyle.CAMEL) == 'FooBar'
+      self._as_symbol_name('foo.bar', style=_NamingStyle.SNAKE) == 'foo_bar'
+
+    See the unit tests for more examples.
+
+    Args:
+      fqn: Union[Text, Tuple[Text]] a fully-qualified symbol name. The qualifier
+        may include module, class names, attributes, etc.
+      style: _NamingStyle
+    Returns:
+      Text
+    """
+    assert style in _NamingStyle
+
+    if isinstance(fqn, tuple):
+      cn = '.'.join(fqn)
+    else:
+      cn = fqn
+
+    # Until we clean up the whole FQN mechanism, `fqn` may not be
+    # canonical, that is, in can appear as ('foo.bar', 'baz')
+    # This replaces any characters that might remain because of that.
+    pieces = cn.split('.')
+
+    if style == _NamingStyle.CAMEL:
+      pieces = tuple(misc.capitalize_initial(p) for p in pieces)
+      return ''.join(pieces)
+    elif style == _NamingStyle.SNAKE:
+      return '_'.join(pieces)
+
   def compiled_class_name(self, original_fqn, live_entity=None):
     """See call_trees.FunctionNamer.compiled_class_name."""
     if live_entity is not None and live_entity in self.renamed_calls:
       return self.renamed_calls[live_entity]
 
-    if isinstance(original_fqn, tuple):
-      original_name = '__'.join(original_fqn)
-    else:
-      original_name = original_fqn
-
-    new_name_root = 'Tf%s' % original_name
+    canonical_name = self._as_symbol_name(
+        original_fqn, style=_NamingStyle.CAMEL)
+    new_name_root = 'Tf%s' % canonical_name
     new_name = new_name_root
     n = 0
     while new_name in self.global_namespace:
@@ -72,23 +116,22 @@ class Namer(object):
                              live_entity=None,
                              owner_type=None):
     """See call_trees.FunctionNamer.compiled_function_name."""
-
     if not self.recursive:
+      return None, False
+
+    if (live_entity is not None and inspect_utils.islambda(live_entity)):
       return None, False
 
     if owner_type is not None and owner_type not in self.partial_types:
       # Members are not renamed when part of an entire converted class.
       return None, False
 
-    if isinstance(original_fqn, tuple):
-      original_name = '__'.join(original_fqn)
-    else:
-      original_name = original_fqn
-
     if live_entity is not None and live_entity in self.renamed_calls:
       return self.renamed_calls[live_entity], True
 
-    new_name_root = 'tf__%s' % original_name
+    canonical_name = self._as_symbol_name(
+        original_fqn, style=_NamingStyle.SNAKE)
+    new_name_root = 'tf__%s' % canonical_name
     new_name = new_name_root
     n = 0
     while new_name in self.global_namespace:

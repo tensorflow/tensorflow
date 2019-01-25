@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import model_analyzer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -28,6 +29,7 @@ from tensorflow.python.platform import test
 
 class PyWrapOptimizeGraphTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     """Make sure arguments can be passed correctly."""
     a = constant_op.constant([10, 11], name="a")
@@ -49,6 +51,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     # Also print the report to make it easier to debug
     print("{}".format(report))
 
+  @test_util.run_deprecated_v1
   def testDebugMode(self):
     """Make sure arguments can be passed correctly."""
     a = constant_op.constant([10, 11], name="a")

@@ -102,8 +102,9 @@ class DynamicSliceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("XlaDynamicSlice").CompileTimeConstInput("size_indices"),
-                DynamicSliceOp);
+REGISTER_XLA_OP(
+    Name("XlaDynamicSlice").CompileTimeConstantInput("size_indices"),
+    DynamicSliceOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Proximal stochastic dual coordinate ascent optimizer for linear models."""
+# pylint: disable=line-too-long
+"""Proximal stochastic dual coordinate ascent optimizer for linear models (deprecated).
+
+This module and all its submodules are deprecated. To UPDATE or USE linear
+optimizers, please check its latest version in core:
+tensorflow_estimator/python/estimator/canned/linear_optimizer/.
+"""
+# pylint: enable=line-too-long
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,6 +33,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.ops import internal_convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
@@ -39,6 +47,7 @@ from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import log_poisson_loss
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.summary import summary
+from tensorflow.python.util import deprecation
 
 __all__ = ['SdcaModel']
 
@@ -47,7 +56,7 @@ __all__ = ['SdcaModel']
 class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
 
-    Loss functions supported:
+  Loss functions supported:
 
      * Binary logistic loss
      * Squared loss
@@ -108,6 +117,10 @@ class SdcaModel(object):
     ```
   """
 
+  @deprecation.deprecated(
+      None, 'This class is deprecated. To UPDATE or USE linear optimizers, '
+      'please check its latest version in core: '
+      'tensorflow_estimator/python/estimator/canned/linear_optimizer/.')
   def __init__(self, examples, variables, options):
     """Create a new sdca optimizer."""
 
@@ -427,14 +440,15 @@ class SdcaModel(object):
           dim_0_size = self._get_first_dimension_size_statically(
               w, num_partitions)
 
-          if dim_0_size.value:
-            num_total_ids = constant_op.constant(dim_0_size.value,
-                                                 flat_ids.dtype)
+          if tensor_shape.dimension_value(dim_0_size):
+            num_total_ids = constant_op.constant(
+                tensor_shape.dimension_value(dim_0_size),
+                flat_ids.dtype)
           else:
             dim_0_sizes = []
             for p in range(num_partitions):
-              if w[p].get_shape()[0].value is not None:
-                dim_0_sizes.append(w[p].get_shape()[0].value)
+              if tensor_shape.dimension_value(w[p].shape[0]) is not None:
+                dim_0_sizes.append(tensor_shape.dimension_value(w[p].shape[0]))
               else:
                 with ops.colocate_with(w[p]):
                   dim_0_sizes.append(array_ops.shape(w[p])[0])

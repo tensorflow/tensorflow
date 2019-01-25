@@ -128,8 +128,9 @@ NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 
-# Bazel uses defaults for all test sizes when given `-1`.
-TF_BUILD_TEST_TIMEOUT=${TF_BUILD_TEST_TIMEOUT:--1}
+# Default values for various settings.
+TF_BUILD_TEST_TIMEOUT=${TF_BUILD_TEST_TIMEOUT:--1}  # Use bazel defaults
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 
 # Helpful flags:
 # --test_summary=detailed: Tell us more about which targets are being built
@@ -144,9 +145,20 @@ TF_BUILD_TEST_TIMEOUT=${TF_BUILD_TEST_TIMEOUT:--1}
 BAZEL_TEST_FLAGS=""\
 "--test_summary=detailed --build_tests_only --keep_going "\
 "--test_timeout=${TF_BUILD_TEST_TIMEOUT} "\
-"--test_env=TF_GPU_COUNT=${TF_GPU_COUNT} "\
-"--test_env=TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU} "\
+"--test_env=TF_GPU_COUNT=${TF_GPU_COUNT}"
+
+# Only set these environment variables if they're specified, to avoid causing
+# problems like b/118404869, where an envvar set to the empty string has
+# different semantics from an unset envvar.
+if [ -n "${TF_TESTS_PER_GPU}" ]; then
+  BAZEL_TEST_FLAGS="${BAZEL_TEST_FLAGS} "\
+"--test_env=TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU}"
+fi
+if [ -n "${TF_PER_DEVICE_MEMORY_LIMIT_MB}" ]; then
+  BAZEL_TEST_FLAGS="${BAZEL_TEST_FLAGS} "\
 "--test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=${TF_PER_DEVICE_MEMORY_LIMIT_MB}"
+fi
+
 BAZEL_BUILD_FLAGS="--keep_going"
 
 # Explicitly set jdk8 since that's what's installed in our images. Note that
@@ -163,7 +175,6 @@ PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 ANDROID_FULL_CMD="${CI_BUILD_DIR}/builds/android_full.sh"
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
@@ -387,7 +398,8 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
         NEW_ITEM="${NEW_ITEM},-benchmark-test"
       fi
       if [[ ${IS_MAC} == "1" ]] && [[ ${NEW_ITEM} != *"nomac"* ]]; then
-        NEW_ITEM="${NEW_ITEM},-nomac"
+        # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+        NEW_ITEM="${NEW_ITEM},-nomac,-no_mac"
       fi
       EXTRA_ARGS="${EXTRA_ARGS} ${NEW_ITEM}"
     else
@@ -397,11 +409,13 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
 else
   EXTRA_ARGS="${EXTRA_ARGS} ${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
-    EXTRA_ARGS="${EXTRA_ARGS},-nomac"
+    # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac,-no_mac"
   fi
   EXTRA_ARGS="${EXTRA_ARGS} --build_tag_filters=-no_oss,-oss_serial,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
-    EXTRA_ARGS="${EXTRA_ARGS},-nomac"
+    # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac,-no_mac"
   fi
 fi
 
@@ -599,6 +613,13 @@ if [[ "${DO_DOCKER}" == "1" ]]; then
   fi
 fi
 
+# Set a disk usage trap.
+function debug_disk_usage {
+    echo "Finished script... disk usage report in ${TMP_DIR}"
+    du -k -d 2 ${TMP_DIR} | sort -n -r
+}
+# trap debug_disk_usage EXIT
+
 chmod +x ${TMP_SCRIPT}
 
 # Map TF_BUILD container types to containers we actually have.
@@ -634,6 +655,8 @@ echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
 "(Elapsed time: $((END_TIME - START_TIME)) s)"
 
+# Dump disk usage
+debug_disk_usage
 
 # Clean up temporary directory if it exists
 if [[ ! -z "${TMP_DIR}" ]]; then
