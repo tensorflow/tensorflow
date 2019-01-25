@@ -1,11 +1,19 @@
 path: "tensorflow.keras.metrics"
 tf_module {
   member {
+    name: "AUC"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Accuracy"
     mtype: "<type \'type\'>"
   }
   member {
     name: "BinaryAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BinaryCrossentropy"
     mtype: "<type \'type\'>"
   }
   member {
@@ -37,6 +45,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "KLDivergence"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LogCoshError"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Mean"
     mtype: "<type \'type\'>"
   }
@@ -49,11 +65,31 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "MeanIoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanRelativeError"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MeanSquaredError"
     mtype: "<type \'type\'>"
   }
   member {
     name: "MeanSquaredLogarithmicError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Metric"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Poisson"
     mtype: "<type \'type\'>"
   }
   member {
@@ -65,11 +101,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RootMeanSquaredError"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SensitivityAtSpecificity"
     mtype: "<type \'type\'>"
   }
   member {
     name: "SparseCategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseTopKCategoricalAccuracy"
     mtype: "<type \'type\'>"
   }
   member {
@@ -82,6 +126,10 @@ tf_module {
   }
   member {
     name: "Sum"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TopKCategoricalAccuracy"
     mtype: "<type \'type\'>"
   }
   member {

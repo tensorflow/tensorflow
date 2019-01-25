@@ -895,7 +895,7 @@ class SparseTopKCategoricalAccuracyTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class LogcoshTest(test.TestCase):
+class LogCoshErrorTest(test.TestCase):
 
   def setup(self):
     y_pred = np.asarray([1, 9, 2, -5, -2, 6]).reshape((2, 3))
@@ -909,13 +909,13 @@ class LogcoshTest(test.TestCase):
     self.y_true = constant_op.constant(y_true)
 
   def test_config(self):
-    logcosh_obj = metrics.Logcosh(name='logcosh', dtype=dtypes.int32)
+    logcosh_obj = metrics.LogCoshError(name='logcosh', dtype=dtypes.int32)
     self.assertEqual(logcosh_obj.name, 'logcosh')
     self.assertEqual(logcosh_obj._dtype, dtypes.int32)
 
   def test_unweighted(self):
     self.setup()
-    logcosh_obj = metrics.Logcosh()
+    logcosh_obj = metrics.LogCoshError()
     self.evaluate(variables.variables_initializer(logcosh_obj.variables))
 
     update_op = logcosh_obj.update_state(self.y_true, self.y_pred)
@@ -926,7 +926,7 @@ class LogcoshTest(test.TestCase):
 
   def test_weighted(self):
     self.setup()
-    logcosh_obj = metrics.Logcosh()
+    logcosh_obj = metrics.LogCoshError()
     self.evaluate(variables.variables_initializer(logcosh_obj.variables))
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
     result = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
@@ -984,7 +984,7 @@ class PoissonTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class KullbackLeiblerDivergenceTest(test.TestCase):
+class KLDivergenceTest(test.TestCase):
 
   def setup(self):
     y_pred = np.asarray([.4, .9, .12, .36, .3, .4]).reshape((2, 3))
@@ -997,17 +997,17 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
     self.y_true = constant_op.constant(y_true)
 
   def test_config(self):
-    k_obj = metrics.KullbackLeiblerDivergence(name='kld', dtype=dtypes.int32)
+    k_obj = metrics.KLDivergence(name='kld', dtype=dtypes.int32)
     self.assertEqual(k_obj.name, 'kld')
     self.assertEqual(k_obj._dtype, dtypes.int32)
 
-    k_obj2 = metrics.KullbackLeiblerDivergence.from_config(k_obj.get_config())
+    k_obj2 = metrics.KLDivergence.from_config(k_obj.get_config())
     self.assertEqual(k_obj2.name, 'kld')
     self.assertEqual(k_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     self.setup()
-    k_obj = metrics.KullbackLeiblerDivergence()
+    k_obj = metrics.KLDivergence()
     self.evaluate(variables.variables_initializer(k_obj.variables))
 
     update_op = k_obj.update_state(self.y_true, self.y_pred)
@@ -1018,7 +1018,7 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
 
   def test_weighted(self):
     self.setup()
-    k_obj = metrics.KullbackLeiblerDivergence()
+    k_obj = metrics.KLDivergence()
     self.evaluate(variables.variables_initializer(k_obj.variables))
 
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
