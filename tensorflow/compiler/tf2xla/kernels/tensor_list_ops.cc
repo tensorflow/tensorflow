@@ -70,7 +70,7 @@ class TensorListReserveOp : public XlaOpKernel {
     ctx->SetTensorListOutput(
         0, xla::Tuple(b, {xla::Broadcast(XlaHelpers::Zero(b, dtype_),
                                          tensor_shape.dim_sizes()),
-                          xla::ConstantR0<int32>(b, 0)}));
+                          xla::ConstantR0<int32>(b, num_elements)}));
   }
 
  private:
