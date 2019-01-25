@@ -23,6 +23,7 @@
 #define MLIR_TABLEGEN_OPERATOR_H_
 
 #include "mlir/Support/LLVM.h"
+#include "mlir/TableGen/Argument.h"
 #include "mlir/TableGen/Attribute.h"
 #include "mlir/TableGen/Type.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -59,13 +60,6 @@ public:
   // Returns the C++ class name of the op with namespace added.
   std::string qualifiedCppClassName() const;
 
-  struct NamedAttribute {
-    std::string getName() const;
-
-    llvm::StringInit *name;
-    Attribute attr;
-  };
-
   // Op attribute interators.
   using attribute_iterator = NamedAttribute *;
   attribute_iterator attribute_begin();
@@ -79,15 +73,6 @@ public:
     return attributes[index];
   }
 
-  struct Operand {
-    bool hasMatcher() const;
-    // Return the type constraint applicable to this operand.
-    tblgen::TypeConstraint getTypeConstraint() const;
-
-    llvm::StringInit *name;
-    llvm::DefInit *defInit;
-  };
-
   // Op operand iterators.
   using operand_iterator = Operand *;
   operand_iterator operand_begin();
@@ -100,7 +85,6 @@ public:
   const Operand &getOperand(int index) const { return operands[index]; }
 
   // Op argument (attribute or operand) accessors.
-  using Argument = llvm::PointerUnion<NamedAttribute *, Operand *>;
   Argument getArg(int index);
   StringRef getArgName(int index) const;
   int getNumArgs() const { return operands.size() + attributes.size(); }

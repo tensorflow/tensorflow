@@ -38,7 +38,10 @@
 using namespace llvm;
 using namespace mlir;
 
+using mlir::tblgen::Argument;
 using mlir::tblgen::Attribute;
+using mlir::tblgen::NamedAttribute;
+using mlir::tblgen::Operand;
 using mlir::tblgen::Operator;
 using mlir::tblgen::Type;
 
@@ -46,17 +49,17 @@ namespace {
 
 // Wrapper around DAG argument.
 struct DagArg {
-  DagArg(mlir::tblgen::Operator::Argument arg, Init *constraintInit)
+  DagArg(Argument arg, Init *constraintInit)
       : arg(arg), constraintInit(constraintInit) {}
   bool isAttr();
 
-  mlir::tblgen::Operator::Argument arg;
+  Argument arg;
   Init *constraintInit;
 };
 
 } // end namespace
 
-bool DagArg::isAttr() { return arg.is<Operator::NamedAttribute *>(); }
+bool DagArg::isAttr() { return arg.is<NamedAttribute *>(); }
 
 namespace {
 class Pattern {
@@ -186,7 +189,7 @@ void Pattern::matchOp(DagInit *tree, int depth) {
     // Verify arguments.
     if (auto defInit = dyn_cast<DefInit>(arg)) {
       // Verify operands.
-      if (auto *operand = opArg.dyn_cast<Operator::Operand *>()) {
+      if (auto *operand = opArg.dyn_cast<Operand *>()) {
         // Skip verification where not needed due to definition of op.
         if (operand->defInit == defInit)
           goto StateCapture;
@@ -204,7 +207,7 @@ void Pattern::matchOp(DagInit *tree, int depth) {
       }
 
       // TODO(jpienaar): Verify attributes.
-      if (auto *namedAttr = opArg.dyn_cast<Operator::NamedAttribute *>()) {
+      if (auto *namedAttr = opArg.dyn_cast<NamedAttribute *>()) {
         // TODO(jpienaar): move to helper class.
         if (defInit->getDef()->isSubClassOf("mAttr")) {
           auto pred =
@@ -224,10 +227,10 @@ void Pattern::matchOp(DagInit *tree, int depth) {
     auto name = tree->getArgNameStr(i);
     if (name.empty())
       continue;
-    if (opArg.is<Operator::Operand *>())
+    if (opArg.is<Operand *>())
       os.indent(indent) << "state->" << name << " = op" << depth
                         << "->getOperand(" << i << ");\n";
-    if (auto namedAttr = opArg.dyn_cast<Operator::NamedAttribute *>()) {
+    if (auto namedAttr = opArg.dyn_cast<NamedAttribute *>()) {
       os.indent(indent) << "state->" << name << " = op" << depth
                         << "->getAttrOfType<"
                         << namedAttr->attr.getStorageType() << ">(\""
@@ -266,8 +269,7 @@ void Pattern::emit(StringRef rewriteName) {
   // Emit matched state.
   os << "  struct MatchedState : public PatternState {\n";
   for (auto &arg : boundArguments) {
-    if (auto namedAttr =
-            arg.second.arg.dyn_cast<Operator::NamedAttribute *>()) {
+    if (auto namedAttr = arg.second.arg.dyn_cast<NamedAttribute *>()) {
       os.indent(4) << namedAttr->attr.getStorageType() << " " << arg.first()
                    << ";\n";
     } else {
@@ -382,7 +384,7 @@ void Pattern::emitReplaceOpWithNewOp(DagInit *resultTree) {
 
     // TODO(jpienaar): Refactor out into map to avoid recomputing these.
     auto argument = resultOp.getArg(i);
-    if (!argument.is<Operator::NamedAttribute *>())
+    if (!argument.is<NamedAttribute *>())
       PrintFatalError(pattern->getLoc(),
                       Twine("expected attribute ") + Twine(i));
 

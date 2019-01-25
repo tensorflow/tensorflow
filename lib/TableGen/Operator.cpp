@@ -149,23 +149,6 @@ void tblgen::Operator::populateOperandsAndAttributes() {
   }
 }
 
-std::string tblgen::Operator::NamedAttribute::getName() const {
-  std::string ret = name->getAsUnquotedString();
-  // TODO(jpienaar): Revise this post dialect prefixing attribute discussion.
-  auto split = StringRef(ret).split("__");
-  if (split.second.empty())
-    return ret;
-  return llvm::join_items("$", split.first, split.second);
-}
-
-bool tblgen::Operator::Operand::hasMatcher() const {
-  return !tblgen::TypeConstraint(*defInit).getPredicate().isNull();
-}
-
-tblgen::TypeConstraint tblgen::Operator::Operand::getTypeConstraint() const {
-  return tblgen::TypeConstraint(*defInit);
-}
-
 bool tblgen::Operator::hasDescription() const {
   return def.getValue("description") != nullptr;
 }
