@@ -93,6 +93,16 @@
   * A new environment variable `TF_XLA_DEBUG_OPTIONS_PASSTHROUGH` set to "1" or "true" allows the debug options passed within an XRTCompile op to be passed directly to the XLA compilation backend. If such variable is not set (service side), only a restricted set will be passed through.
   * Allow the XRTCompile op to return the ProgramShape resulted form the XLA compilation as a second return argument.
   * XLA HLO graphs can now be rendered as SVG/HTML.
+* Estimator
+  * Replace all occurences of `tf.contrib.estimator.BaselineEstimator` with `tf.estimator.BaselineEstimator`
+  * Replace all occurences of `tf.contrib.estimator.DNNLinearCombinedEstimator` with `tf.estimator.DNNLinearCombinedEstimator`
+  * Replace all occurrences of `tf.contrib.estimator.DNNEstimator` with `tf.estimator.DNNEstimator`
+  * Replace all occurrences of `tf.contrib.estimator.LinearEstimator` with `tf.estimator.LinearEstimator`
+  * Users of tf.contrib.estimator.export_all_saved_models and related should switch to tf.estimator.Estimator.experimental_export_all_saved_models.
+  * Update regression_head to the new Head API for Canned Estimator V2.
+  * Switch multi_class_head to Head V2 API for Canned Estimator V2.
+  * Replace all occurences of `tf.contrib.estimator.InMemoryEvaluatorHook` and `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with `tf.estimator.experimental.InMemoryEvaluatorHook` and `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`
+  * Migrate linear optimizer from contrib to core.
 
 
 ## Thanks to our Contributors
