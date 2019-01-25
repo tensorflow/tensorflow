@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 from absl.testing import parameterized
 import numpy as np
 
@@ -1147,6 +1148,48 @@ class TestDistributionStrategyWithNormalizationLayer(
       out /= keras.backend.eval(norm.gamma)
       np.testing.assert_allclose(out.mean(), 0.0, atol=1e-1)
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
+
+
+class TestDistributionStrategySaveLoadWeights(test.TestCase,
+                                              parameterized.TestCase):
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_save_load_h5(self, distribution):
+    with self.cached_session():
+      dataset = get_dataset(distribution)
+      with distribution.scope():
+        model = get_model()
+        model.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model.fit(dataset, epochs=1, steps_per_epoch=1)
+
+        weights_file = tempfile.mktemp('.h5')
+        model.save_weights(weights_file)
+
+        model_2 = get_model()
+        model_2.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model_2.load_weights(weights_file)
+        model_2.predict(get_predict_dataset(distribution), steps=2)
+        model_2.fit(dataset, epochs=1, steps_per_epoch=1)
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_save_load_checkpointable(self, distribution):
+    # TODO(sourabhbajaj): Fix this and enable the test.
+    self.skipTest('Restore for checkpoint for optimizer weights fails.')
+    with self.cached_session():
+      dataset = get_dataset(distribution)
+      with distribution.scope():
+        model = get_model()
+        model.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model.fit(dataset, epochs=1, steps_per_epoch=1)
+
+        weights_file = tempfile.mktemp()
+        model.save_weights(weights_file)
+
+        model_2 = get_model()
+        model_2.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model_2.load_weights(weights_file)
+        model_2.predict(get_predict_dataset(distribution), steps=2)
+        model_2.fit(dataset, epochs=1, steps_per_epoch=1)
 
 
 class TestDistributionStrategyValidation(test.TestCase,
