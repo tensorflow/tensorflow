@@ -378,7 +378,13 @@ def function_to_graph(f,
       arg_types=arg_types,
       owner_type=owner_type)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context)
+  try:
+    node = node_to_graph(node, context)
+  except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
+    # TODO(znado): raise InternalError
+    if not context.current_origin:
+      raise e
+    raise transformer.AutoGraphParseError(str(e), context.current_origin)
 
   if isinstance(node, gast.Lambda):
     new_name = namer.new_symbol('tf__lambda', ())

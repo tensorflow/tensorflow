@@ -113,7 +113,7 @@ TEST(NnapiLibTest, NnApiImplementation) {
   EXPECT_EQ(nnapi->ANeuralNetworksExecution_startCompute, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksEvent_wait, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksEvent_free, nullptr);
-  EXPECT_EQ(nnapi->ASharedMemory_create, nullptr);
+  EXPECT_NE(nnapi->ASharedMemory_create, nullptr);
 #endif
 }
 

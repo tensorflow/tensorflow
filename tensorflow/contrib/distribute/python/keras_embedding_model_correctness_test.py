@@ -71,5 +71,80 @@ class DistributionStrategyEmbeddingModelCorrectnessTest(
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
 
+class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
+    keras_correctness_test_base.
+    TestDistributionStrategyEmbeddingModelCorrectnessBase):
+
+  def get_model(self, max_words=10, initial_weights=None, distribution=None):
+    with keras_correctness_test_base.MaybeDistributionScope(distribution):
+      word_ids_a = keras.layers.Input(
+          shape=(max_words,), dtype=np.int32, name='words_a')
+      word_ids_b = keras.layers.Input(
+          shape=(max_words,), dtype=np.int32, name='words_b')
+
+      def submodel(embedding, word_ids):
+        word_embed = embedding(word_ids)
+        rep = keras.layers.GlobalAveragePooling1D()(word_embed)
+        return keras.Model(inputs=[word_ids], outputs=[rep])
+
+      word_embed = keras.layers.Embedding(
+          input_dim=20,
+          output_dim=10,
+          input_length=max_words,
+          embeddings_initializer=keras.initializers.RandomUniform(0, 1))
+
+      a_rep = submodel(word_embed, word_ids_a).outputs[0]
+      b_rep = submodel(word_embed, word_ids_b).outputs[0]
+      sim = keras.layers.Dot(axes=1, normalize=True)([a_rep, b_rep])
+
+      model = keras.Model(inputs=[word_ids_a, word_ids_b], outputs=[sim])
+
+      if initial_weights:
+        model.set_weights(initial_weights)
+
+      model.compile(
+          optimizer=gradient_descent.GradientDescentOptimizer(
+              learning_rate=0.1),
+          loss='mse',
+          metrics=['mse'])
+    return model
+
+  def get_data(self,
+               count=(keras_correctness_test_base._GLOBAL_BATCH_SIZE *
+                      keras_correctness_test_base._EVAL_STEPS),
+               min_words=5,
+               max_words=10,
+               max_word_id=19,
+               num_classes=2):
+    features_a, labels_a, _ = (super(
+        DistributionStrategySiameseEmbeddingModelCorrectnessTest, self).
+                               get_data(count, min_words, max_words,
+                                        max_word_id, num_classes))
+
+    features_b, labels_b, _ = (super(
+        DistributionStrategySiameseEmbeddingModelCorrectnessTest, self).
+                               get_data(count, min_words, max_words,
+                                        max_word_id, num_classes))
+
+    y_train = np.zeros((count, 1), dtype=np.float32)
+    y_train[labels_a == labels_b] = 1.0
+    y_train[labels_a != labels_b] = -1.0
+    # TODO(b/123360757): Add tests for using list as inputs for multi-input
+    # models.
+    x_train = {
+        'words_a': features_a,
+        'words_b': features_b,
+    }
+    x_predict = x_train
+
+    return x_train, y_train, x_predict
+
+  @combinations.generate(keras_correctness_test_base.
+                         test_combinations_for_embedding_model())
+  def test_siamese_embedding_model_correctness(self, distribution, use_numpy,
+                                               use_validation_data):
+    self.run_correctness_test(distribution, use_numpy, use_validation_data)
+
+
 if __name__ == '__main__':
   test.main()

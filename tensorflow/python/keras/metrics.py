@@ -30,6 +30,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
@@ -135,8 +136,8 @@ class Metric(Layer):
   ```
   """
 
-  def __init__(self, name=None, dtype=None):
-    super(Metric, self).__init__(name=name, dtype=dtype)
+  def __init__(self, name=None, dtype=None, **kwargs):
+    super(Metric, self).__init__(name=name, dtype=dtype, **kwargs)
     self.stateful = True  # All metric layers are stateful.
     self.built = True
     self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
@@ -190,6 +191,14 @@ class Metric(Layer):
         result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t
 
+  @property
+  def dtype(self):
+    return self._dtype
+
+  def get_config(self):
+    """Returns the serializable config of the metric."""
+    return {'name': self.name, 'dtype': self.dtype}
+
   def reset_states(self):
     """Resets all of the metric state variables.
 
@@ -228,12 +237,6 @@ class Metric(Layer):
     metric value using the state variables.
     """
     NotImplementedError('Must be implemented in subclasses.')
-
-  @classmethod
-  def from_config(cls, config):
-    if 'trainable' in config:
-      config.pop('trainable')
-    return cls(**config)
 
   ### For use by subclasses ###
   @doc_controls.for_subclass_implementers
@@ -506,7 +509,8 @@ class MeanRelativeError(Mean):
         relative_errors, sample_weight=sample_weight)
 
   def get_config(self):
-    config = {'normalizer': self.normalizer}
+    n = self.normalizer
+    config = {'normalizer': K.eval(n) if _is_tensor_or_variable(n) else n}
     base_config = super(MeanRelativeError, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -553,8 +557,9 @@ class MeanMetricWrapper(Mean):
         matches, sample_weight=sample_weight)
 
   def get_config(self):
-    config = {'fn': self._fn}
-    config.update(self._fn_kwargs)
+    config = {}
+    for k, v in six.iteritems(self._fn_kwargs):
+      config[k] = K.eval(v) if _is_tensor_or_variable(v) else v
     base_config = super(MeanMetricWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -593,12 +598,6 @@ class Accuracy(MeanMetricWrapper):
 
   def __init__(self, name='accuracy', dtype=None):
     super(Accuracy, self).__init__(accuracy, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(Accuracy, cls).from_config(config)
 
 
 @keras_export('keras.metrics.BinaryAccuracy')
@@ -644,12 +643,6 @@ class BinaryAccuracy(MeanMetricWrapper):
     """
     super(BinaryAccuracy, self).__init__(
         binary_accuracy, name, dtype=dtype, threshold=threshold)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(BinaryAccuracy, cls).from_config(config)
 
 
 @keras_export('keras.metrics.CategoricalAccuracy')
@@ -701,12 +694,6 @@ class CategoricalAccuracy(MeanMetricWrapper):
     super(CategoricalAccuracy, self).__init__(
         categorical_accuracy, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(CategoricalAccuracy, cls).from_config(config)
-
 
 @keras_export('keras.metrics.SparseCategoricalAccuracy')
 class SparseCategoricalAccuracy(MeanMetricWrapper):
@@ -748,12 +735,6 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
     super(SparseCategoricalAccuracy, self).__init__(
         sparse_categorical_accuracy, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(SparseCategoricalAccuracy, cls).from_config(config)
-
 
 class TopKCategoricalAccuracy(MeanMetricWrapper):
   """Computes how often targets are in the top `K` predictions.
@@ -785,12 +766,6 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
     """
     super(TopKCategoricalAccuracy, self).__init__(
         top_k_categorical_accuracy, name, dtype=dtype, k=k)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(TopKCategoricalAccuracy, cls).from_config(config)
 
 
 class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
@@ -825,12 +800,6 @@ class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
     """
     super(SparseTopKCategoricalAccuracy, self).__init__(
         sparse_top_k_categorical_accuracy, name, dtype=dtype, k=k)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(SparseTopKCategoricalAccuracy, cls).from_config(config)
 
 
 class _ConfusionMatrixConditionCount(Metric):
@@ -1877,12 +1846,6 @@ class CosineProximity(MeanMetricWrapper):
     """
     super(CosineProximity, self).__init__(cosine, name, dtype=dtype, axis=axis)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(CosineProximity, cls).from_config(config)
-
 
 @keras_export('keras.metrics.MeanAbsoluteError')
 class MeanAbsoluteError(MeanMetricWrapper):
@@ -1909,12 +1872,6 @@ class MeanAbsoluteError(MeanMetricWrapper):
   def __init__(self, name='mean_absolute_error', dtype=None):
     super(MeanAbsoluteError, self).__init__(
         mean_absolute_error, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(MeanAbsoluteError, cls).from_config(config)
 
 
 @keras_export('keras.metrics.MeanAbsolutePercentageError')
@@ -1944,12 +1901,6 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
     super(MeanAbsolutePercentageError, self).__init__(
         mean_absolute_percentage_error, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(MeanAbsolutePercentageError, cls).from_config(config)
-
 
 @keras_export('keras.metrics.MeanSquaredError')
 class MeanSquaredError(MeanMetricWrapper):
@@ -1977,12 +1928,6 @@ class MeanSquaredError(MeanMetricWrapper):
   def __init__(self, name='mean_squared_error', dtype=None):
     super(MeanSquaredError, self).__init__(
         mean_squared_error, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(MeanSquaredError, cls).from_config(config)
 
 
 @keras_export('keras.metrics.MeanSquaredLogarithmicError')
@@ -2012,12 +1957,6 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
     super(MeanSquaredLogarithmicError, self).__init__(
         mean_squared_logarithmic_error, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(MeanSquaredLogarithmicError, cls).from_config(config)
-
 
 @keras_export('keras.metrics.Hinge')
 class Hinge(MeanMetricWrapper):
@@ -2044,12 +1983,6 @@ class Hinge(MeanMetricWrapper):
 
   def __init__(self, name='hinge', dtype=None):
     super(Hinge, self).__init__(hinge, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(Hinge, cls).from_config(config)
 
 
 @keras_export('keras.metrics.SquaredHinge')
@@ -2078,12 +2011,6 @@ class SquaredHinge(MeanMetricWrapper):
   def __init__(self, name='squared_hinge', dtype=None):
     super(SquaredHinge, self).__init__(squared_hinge, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(SquaredHinge, cls).from_config(config)
-
 
 @keras_export('keras.metrics.CategoricalHinge')
 class CategoricalHinge(MeanMetricWrapper):
@@ -2110,12 +2037,6 @@ class CategoricalHinge(MeanMetricWrapper):
 
   def __init__(self, name='categorical_hinge', dtype=None):
     super(CategoricalHinge, self).__init__(categorical_hinge, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(CategoricalHinge, cls).from_config(config)
 
 
 class RootMeanSquaredError(Mean):
@@ -2189,12 +2110,6 @@ class Logcosh(MeanMetricWrapper):
   def __init__(self, name='logcosh', dtype=None):
     super(Logcosh, self).__init__(logcosh, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(Logcosh, cls).from_config(config)
-
 
 class Poisson(MeanMetricWrapper):
   """Computes the poisson metric between `y_true` and `y_pred`.
@@ -2219,12 +2134,6 @@ class Poisson(MeanMetricWrapper):
 
   def __init__(self, name='poisson', dtype=None):
     super(Poisson, self).__init__(poisson, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(Poisson, cls).from_config(config)
 
 
 class KullbackLeiblerDivergence(MeanMetricWrapper):
@@ -2251,12 +2160,6 @@ class KullbackLeiblerDivergence(MeanMetricWrapper):
   def __init__(self, name='kullback_leibler_divergence', dtype=None):
     super(KullbackLeiblerDivergence, self).__init__(
         kullback_leibler_divergence, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(KullbackLeiblerDivergence, cls).from_config(config)
 
 
 class MeanIoU(Metric):
@@ -2494,7 +2397,10 @@ class MeanTensor(Metric):
 
 
 class BinaryCrossentropy(MeanMetricWrapper):
-  """Computes the binary crossentropy between `y_true` and `y_pred`.
+  """Computes the crossentropy metric between the labels and predictions.
+
+  This is the crossentropy metric class to be used when there are only two
+  label classes (0 and 1).
 
   Usage:
 
@@ -2552,11 +2458,69 @@ class BinaryCrossentropy(MeanMetricWrapper):
         from_logits=from_logits,
         label_smoothing=label_smoothing)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(BinaryCrossentropy, cls).from_config(config)
+
+@keras_export('keras.metrics.CategoricalCrossentropy')
+class CategoricalCrossentropy(MeanMetricWrapper):
+  """Computes the crossentropy metric between the labels and predictions.
+
+  This is the crossentropy metric class to be used when there are multiple
+  label classes (2 or more). Here we assume that labels are given as a `one_hot`
+  representation. eg., When labels values are [2, 0, 1],
+   `y_true` = [[0, 0, 1], [1, 0, 0], [0, 1, 0]].
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.CategoricalCrossentropy()
+  m.update_state([[0, 1, 0], [0, 0, 1]],
+                 [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+
+  # EPSILON = 1e-7, y = y_true, y` = y_pred
+  # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+  # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+
+  # xent = -sum(y * log(y'), axis = -1)
+  #      = -((log 0.95), (log 0.1))
+  #      = [0.051, 2.302]
+  # Reduced xent = (0.051 + 2.302) / 2
+
+  print('Final result: ', m.result().numpy())  # Final result: 1.176
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+    'sgd',
+    loss='mse',
+    metrics=[tf.keras.metrics.CategoricalCrossentropy()])
+  ```
+
+  Args:
+    name: (Optional) string name of the metric instance.
+    dtype: (Optional) data type of the metric result.
+    from_logits: (Optional ) Whether `y_pred` is expected to be a logits tensor.
+      By default, we assume that `y_pred` encodes a probability distribution.
+    label_smoothing: Float in [0, 1]. When > 0, label values are smoothed,
+      meaning the confidence on label values are relaxed. e.g.
+      `label_smoothing=0.2` means that we will use a value of `0.1` for label
+      `0` and `0.9` for label `1`"
+  """
+
+  def __init__(self,
+               name='categorical_crossentropy',
+               dtype=None,
+               from_logits=False,
+               label_smoothing=0):
+    label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
+
+    super(CategoricalCrossentropy, self).__init__(
+        categorical_crossentropy,
+        name,
+        dtype=dtype,
+        from_logits=from_logits,
+        label_smoothing=label_smoothing)
 
 
 def accuracy(y_true, y_pred):
@@ -2666,3 +2630,7 @@ def get(identifier):
   else:
     raise ValueError('Could not interpret '
                      'metric function identifier: %s' % identifier)
+
+
+def _is_tensor_or_variable(x):
+  return tensor_util.is_tensor(x) or isinstance(x, tf_variables.Variable)

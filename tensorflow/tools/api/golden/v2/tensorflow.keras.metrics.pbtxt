@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CategoricalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CategoricalHinge"
     mtype: "<type \'type\'>"
   }

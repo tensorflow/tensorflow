@@ -25,6 +25,7 @@ namespace tensorflow {
 /// access timer related operations.
 class EnvTime {
  public:
+  static constexpr uint64 kMicrosToPicos = 1000ULL * 1000ULL;
   static constexpr uint64 kMicrosToNanos = 1000ULL;
   static constexpr uint64 kMillisToMicros = 1000ULL;
   static constexpr uint64 kMillisToNanos = 1000ULL * 1000ULL;

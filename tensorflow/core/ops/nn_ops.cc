@@ -2534,6 +2534,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+#endif  // INTEL_MKL
 REGISTER_OP("QuantizedConv2DAndRequantize")
     .Input("input: Tinput")
     .Input("filter: Tfilter")
@@ -2870,6 +2871,5 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       return Status::OK();
     });
 
-#endif  // INTEL_MKL
 
 }  // namespace tensorflow

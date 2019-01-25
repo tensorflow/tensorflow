@@ -202,6 +202,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -633,6 +634,7 @@ distribute_py_test(
         "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
+        "notap",  # TODO(123409374): Re-enable this test in TAP.
         "notsan",
     ],
     deps = [
