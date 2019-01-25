@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import sys
 
@@ -35,9 +34,9 @@ from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
-from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -161,9 +160,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
-  logging.log(1,
-              'Converted call: %s; owner: %s\n    args: %s\n    kwargs: %s\n',
-              f, owner, args, kwargs)
+  logging.vlog(logging.DEBUG, 'Converted call: %s; owner: %s', f, owner)
 
   if owner is not None:
     if not isinstance(f, str):
@@ -182,13 +179,9 @@ def converted_call(f, owner, options, *args, **kwargs):
   if inspect_utils.isbuiltin(f):
     return py_builtins.overload_of(f)(*args, **kwargs)
 
-  # Other built-in modules are permanently whitelisted.
-  # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
-  if f in collections.__dict__.values():
-    return f(*args, **kwargs)
-
   # TODO(mdan): This needs cleanup.
-  if (not options.force_conversion and conversion.is_whitelisted_for_graph(f)):
+  # In particular, we may want to avoid renaming functions altogether.
+  if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
 
     # TODO(mdan): This may be inconsistent in certain situations.
     # If the function had already been annotated with @tf.function, it
@@ -230,13 +223,6 @@ def converted_call(f, owner, options, *args, **kwargs):
     arg_map_target = f
     f_self = inspect_utils.getmethodself(f)
 
-    if owner is not None:
-      partial_types = (type(owner),)
-    elif f_self is not None:
-      partial_types = (type(f_self),)
-    else:
-      partial_types = ()
-
     # TODO(b/119246461): This may be more elegantly handled using __get__?
     if f_self is not None:
       # If this is a method call, it may or may not include self.
@@ -257,8 +243,10 @@ def converted_call(f, owner, options, *args, **kwargs):
           effective_args = (f_self,) + args
         else:
           effective_args = (f_self,) + args[1:]
+      partial_types = (f_self,)
     else:
       effective_args = args
+      partial_types = ()
 
   elif tf_inspect.isclass(f):
     # Constructors
@@ -294,9 +282,6 @@ def converted_call(f, owner, options, *args, **kwargs):
       if tf_inspect.isclass(arg_values['cls']):
         partial_types = (arg_values['cls'],)
 
-  logging.log(
-      3, 'Partial types in conversion of %s: %s', target_entity, partial_types)
-
   converted_f = to_graph(
       target_entity,
       recursive=options.recursive,
@@ -306,12 +291,6 @@ def converted_call(f, owner, options, *args, **kwargs):
       experimental_strip_decorators=options.strip_decorators,
       experimental_verbose=options.verbose,
       experimental_partial_types=partial_types)
-
-  if logging.has_verbosity(2):
-    callargs = tf_inspect.getcallargs(converted_f, *effective_args, **kwargs)
-    formatted_callargs = '\n'.join(
-        '    {}: {}'.format(k, v) for k, v in callargs.items())
-    logging.log(2, 'Calling %s with\n%s\n', converted_f, formatted_callargs)
 
   result = converted_f(*effective_args, **kwargs)
 
@@ -457,9 +436,6 @@ def to_graph(entity,
 
   if tf_inspect.isfunction(entity):
     compiled.__defaults__ = entity.__defaults__
-
-  logging.log(3, 'Namespace of %s includes: %s', compiled,
-              compiled_module.__dict__.keys())
 
   if hasattr(compiled, '__globals__'):
     # Remove self to avoid circular references. This will probably only work
