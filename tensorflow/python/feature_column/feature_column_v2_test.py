@@ -40,6 +40,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import partitioned_variables
@@ -3261,7 +3262,7 @@ class DenseFeaturesTest(test.TestCase):
       fc.DenseFeatures(feature_columns=[])(features={})
 
   def test_should_be_dense_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a DenseColumn'):
+    with self.assertRaisesRegexp(ValueError, 'must be a .*DenseColumn'):
       fc.DenseFeatures(feature_columns=[
           fc.categorical_column_with_hash_bucket('wire_cast', 4)
       ])(
@@ -3422,7 +3423,7 @@ class DenseFeaturesTest(test.TestCase):
               sparse_tensor.SparseTensor(
                   indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
       }
-      with self.assertRaisesRegexp(Exception, 'must be a DenseColumn'):
+      with self.assertRaisesRegexp(Exception, 'must be a .*DenseColumn'):
         fc.DenseFeatures([animal])(features)
 
   def test_static_batch_size_mismatch(self):
@@ -7147,7 +7148,60 @@ class EmbeddingColumnTest(test.TestCase):
                           self.evaluate(predictions))
 
   @test_util.run_deprecated_v1
-  def test_serialization(self):
+  def test_serialization_with_default_initializer(self):
+
+    # Build columns.
+    categorical_column = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    embedding_column = fc.embedding_column(categorical_column, dimension=2)
+
+    self.assertEqual([categorical_column], embedding_column.parents)
+
+    config = embedding_column._get_config()
+    self.assertEqual({
+        'categorical_column': {
+            'class_name': 'IdentityCategoricalColumn',
+            'config': {
+                'number_buckets': 3,
+                'key': 'aaa',
+                'default_value': None
+            }
+        },
+        'ckpt_to_load_from': None,
+        'combiner': 'mean',
+        'dimension': 2,
+        'initializer': {
+            'class_name': 'TruncatedNormal',
+            'config': {
+                'dtype': 'float32',
+                'stddev': 0.7071067811865475,
+                'seed': None,
+                'mean': 0.0
+            }
+        },
+        'max_norm': None,
+        'tensor_name_in_ckpt': None,
+        'trainable': True
+    }, config)
+
+    custom_objects = {'TruncatedNormal': init_ops.TruncatedNormal}
+    new_embedding_column = fc.EmbeddingColumn._from_config(
+        config, custom_objects=custom_objects)
+    self.assertEqual(embedding_column._get_config(),
+                     new_embedding_column._get_config())
+    self.assertIsNot(categorical_column,
+                     new_embedding_column.categorical_column)
+
+    new_embedding_column = fc.EmbeddingColumn._from_config(
+        config,
+        custom_objects=custom_objects,
+        columns_by_name={categorical_column.name: categorical_column})
+    self.assertEqual(embedding_column._get_config(),
+                     new_embedding_column._get_config())
+    self.assertIs(categorical_column, new_embedding_column.categorical_column)
+
+  @test_util.run_deprecated_v1
+  def test_serialization_with_custom_initializer(self):
 
     def _initializer(shape, dtype, partition_info):
       del shape, dtype, partition_info

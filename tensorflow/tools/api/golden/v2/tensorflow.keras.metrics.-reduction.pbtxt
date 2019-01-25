@@ -1,0 +1,16 @@
+path: "tensorflow.keras.metrics.Reduction"
+tf_class {
+  is_instance: "<enum \'Reduction\'>"
+  member {
+    name: "SUM"
+    mtype: "<enum \'Reduction\'>"
+  }
+  member {
+    name: "SUM_OVER_BATCH_SIZE"
+    mtype: "<enum \'Reduction\'>"
+  }
+  member {
+    name: "WEIGHTED_MEAN"
+    mtype: "<enum \'Reduction\'>"
+  }
+}

@@ -54,6 +54,7 @@ constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
+constexpr char kShapeN[] = "ShapeN";
 constexpr char kSize[] = "Size";
 constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
@@ -264,6 +265,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
+      {kShapeN, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kMaxPool, wrap(&OpLevelCostEstimator::PredictMaxPool)},
       {kMaxPoolGrad, wrap(&OpLevelCostEstimator::PredictMaxPoolGrad)},

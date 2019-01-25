@@ -1011,10 +1011,14 @@ Status BufferAssigner::AssignBuffersForComputation(
       // callers.
       BufferAllocation* allocation =
           assignment->NewAllocation(*buffer, buffer_size);
+      bool parameter_has_alias =
+          assignment->module().input_output_alias_config().ParameterHasAlias(
+              instruction->parameter_number(), buffer->index());
       allocation->set_entry_computation_parameter(
-          instruction->parameter_number(), buffer->index());
-      VLOG(3) << "New allocation #" << allocation->index()
-              << " for entry computation parameter: " << *buffer;
+          instruction->parameter_number(), buffer->index(),
+          parameter_has_alias);
+      VLOG(3) << "Mark allocation #" << allocation->index()
+              << " as entry computation parameter: " << *buffer;
       continue;
     }
 
@@ -1416,12 +1420,14 @@ BufferAssigner::MergeColocatedBufferSets(
           << colocated_buffer_sets.size();
 
   // Returns true if the given buffer is for the entry parameter.
-  auto is_entry_parameter = [](const LogicalBuffer& buffer) {
+  auto is_readonly_entry_parameter = [](const LogicalBuffer& buffer) {
     auto* instruction = buffer.instruction();
     auto* computation = instruction->parent();
     auto* module = computation->parent();
     return instruction->opcode() == HloOpcode::kParameter &&
-           computation == module->entry_computation();
+           computation == module->entry_computation() &&
+           !module->input_output_alias_config().ParameterHasAlias(
+               instruction->parameter_number(), buffer.index());
   };
 
   std::vector<bool> set_can_be_merged(colocated_buffer_sets.size(), true);
@@ -1443,7 +1449,7 @@ BufferAssigner::MergeColocatedBufferSets(
   for (int64 i = 0; i < colocated_buffer_sets.size(); ++i) {
     for (auto& buffer : colocated_buffer_sets[i]) {
       if (buffer_liveness.MaybeLiveOut(*buffer) ||
-          is_entry_parameter(*buffer) ||
+          is_readonly_entry_parameter(*buffer) ||
           buffer->instruction()->opcode() == HloOpcode::kConstant) {
         set_can_be_merged[i] = false;
         break;
@@ -1530,15 +1536,16 @@ void BufferAssigner::BuildColocatedBufferSets(
   VLOG(4) << "Input/Output Alias Config: ";
   VLOG(4) << module->input_output_alias_config();
   module->input_output_alias_config().ForEachAlias(
-      [&](const ShapeIndex& output_index, int64 param_number,
-          const ShapeIndex& param_index) {
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
         std::vector<const LogicalBuffer*> colocated_set;
         AddBufferToColocatedSet(module->entry_computation()->root_instruction(),
                                 output_index, points_to_analysis,
                                 &colocated_set);
         AddBufferToColocatedSet(
-            module->entry_computation()->parameter_instruction(param_number),
-            param_index, points_to_analysis, &colocated_set);
+            module->entry_computation()->parameter_instruction(
+                alias.parameter_number),
+            alias.parameter_index, points_to_analysis, &colocated_set);
         AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
       });
 
@@ -1732,10 +1739,6 @@ void BufferAssigner::AssignColocatedBufferSets(
         // module-level scope, we can allow buffers to be shared across
         // computations (in some cases).
         allocation = assignment->NewAllocation(*buffer, buffer_size);
-        if (entry_parameter_number >= 0) {
-          allocation->set_entry_computation_parameter(
-              entry_parameter_number, *entry_parameter_shape_idx);
-        }
         if (is_constant) {
           allocation->set_constant(true);
         }
@@ -1748,6 +1751,16 @@ void BufferAssigner::AssignColocatedBufferSets(
                                   buffer_size);
       }
       colocated_buffers->insert(buffer);
+    }
+
+    // If an allocation contains a parameter, set corresponding fields.
+    if (entry_parameter_number >= 0) {
+      bool parameter_has_alias =
+          assignment->module().input_output_alias_config().ParameterHasAlias(
+              entry_parameter_number, *entry_parameter_shape_idx);
+      allocation->set_entry_computation_parameter(entry_parameter_number,
+                                                  *entry_parameter_shape_idx,
+                                                  parameter_has_alias);
     }
   }
 }

@@ -61,19 +61,13 @@ class IdentityTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
-        input_dims=[input_dims],
+        input_dims=[[input_dims]],
         output_names=['output1', 'output2', 'output3'],
-        expected_output_dims=[(100, 4), (100, 4), (100, 4)])
+        expected_output_dims=[[[100, 4]] * 3])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return ['TRTEngineOp_0']
-
-  def ShouldRunTest(self, run_params):
-    """Whether to run the test."""
-    # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
-    # mode, which is a bug. Re-enable this when trt library is fixed.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
 
 if __name__ == '__main__':

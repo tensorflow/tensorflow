@@ -23,6 +23,8 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
@@ -34,6 +36,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.control_flow_ops import while_loop as while_loop_v1
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
@@ -64,6 +67,21 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertLen(eval_result, 1)
       self.assertEqual(16., eval_result[0])
       self.assertSequenceEqual(sess.run(grad), [32.])
+
+  def testGradientTapeResourceVariable(self):
+    with context.eager_mode():
+      v = variables.Variable(1.)
+
+      @def_function.function
+      def fnWithLoop():  # pylint: disable=invalid-name
+        with backprop.GradientTape() as tape:
+          _, x = while_loop_v2(
+              lambda i, _: i < 2,
+              lambda i, x: (i + 1, x * v),
+              [0, 2.])
+        return tape.gradient(x, v)
+
+      self.assertAllEqual(fnWithLoop(), 4.0)
 
   @test_util.run_deprecated_v1
   def testMultipleLoopVarsBasic(self):

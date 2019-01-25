@@ -25,6 +25,7 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:framework",
@@ -55,6 +56,7 @@ py_library(
         ":execute",
         ":function",
         ":graph_only_ops",
+        ":profiler",
         ":tape",
         ":test",
         ":wrap_function",
@@ -86,6 +88,28 @@ py_library(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "profiler",
+    srcs = ["profiler.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_test",
+    srcs = ["profiler_test.py"],
+    additional_deps = [
+        ":profiler",
+        ":test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
     ],
 )
 

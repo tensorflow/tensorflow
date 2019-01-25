@@ -310,12 +310,34 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
         TF_ASSIGN_OR_RETURN(
             const BufferAllocation::Slice slice,
             this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
-        CHECK(!slice.allocation()->is_entry_computation_parameter());
 
         se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
-        *device_memory = src_base;
+        if (!slice.allocation()->is_entry_computation_parameter()) {
+          // If the buffer coming out of the result is from a parameter, it
+          // means the caller aliased some parameter buffer to an output one
+          // (via the HloInputOutputAliasConfig API). If that is the case, the
+          // caller will receive a partially complete scoped shaped buffer,
+          // which they will have to fill up on return.
+          // Unfortunately the interface to the execute APIs are ShapedBuffer
+          // pointer based, which assumes caller ownership, and hence a buffer
+          // coming from there cannot be part of the new ScopedShapedBuffer we
+          // create for the result (which assumes ownership).
+          *device_memory = src_base;
+        } else {
+          const HloInputOutputAliasConfig& input_output_alias =
+              module().input_output_alias_config();
+          auto output_alias = input_output_alias.GetAliasedOutput(
+              slice.allocation()->parameter_number(),
+              slice.allocation()->param_shape_index());
+          CHECK(output_alias)
+              << "Ouput buffer is coming from parameter "
+              << slice.allocation()->parameter_number() << " at index "
+              << slice.allocation()->param_shape_index()
+              << ", but no alias exists";
+          CHECK_EQ(*output_alias, index);
+        }
         buffers_in_result.insert(src_base);
         return Status::OK();
       }));

@@ -249,15 +249,16 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
                                         flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("XTimesTwo", item.id);
-  EXPECT_EQ(4, item.function_body().node_size());
+  EXPECT_EQ(5, item.function_body().node_size());
 
   EXPECT_EQ(1, item.input_size());
   EXPECT_EQ("x", item.input(0).input_name);
-  EXPECT_EQ(std::vector<string>{"x"}, item.input(0).placeholders);
+  ASSERT_EQ(1, item.input(0).placeholders.size());
+  EXPECT_EQ("x", item.input(0).placeholders[0]);
 
   EXPECT_EQ(1, item.output_size());
   EXPECT_EQ("y", item.output(0).output_name);
-  EXPECT_EQ("y", item.output(0).output_tensors[0]);
+  EXPECT_EQ("y_output_node_0", item.output(0).output_nodes[0]);
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
@@ -279,9 +280,13 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("scale", node.input(1));
+    } else if (node.name() == "y_output_node_0" && ++count) {
+      EXPECT_EQ("Identity", node.op());
+      ASSERT_EQ(1, node.input_size());
+      EXPECT_EQ("y", node.input(0));
     }
   }
-  EXPECT_EQ(4, count);
+  EXPECT_EQ(5, count);
 }
 
 TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
@@ -326,7 +331,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
                                         flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("SubGrad", item.id);
-  EXPECT_EQ(12, item.function_body().node_size());
+  EXPECT_EQ(14, item.function_body().node_size());
 
   ASSERT_EQ(3, item.input_size());
   EXPECT_EQ("x", item.input(0).input_name);
@@ -334,8 +339,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
   EXPECT_EQ("dz", item.input(2).input_name);
 
   ASSERT_EQ(2, item.output_size());
-  EXPECT_EQ("dx", item.output(0).output_tensors[0]);
-  EXPECT_EQ("dy", item.output(1).output_tensors[0]);
+  EXPECT_EQ("dx_output_node_0", item.output(0).output_nodes[0]);
+  EXPECT_EQ("dy_output_node_0", item.output(1).output_nodes[0]);
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
@@ -359,9 +364,17 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("gy", node.input(0));
       EXPECT_EQ("rx:1", node.input(1));
+    } else if (node.name() == "dx_output_node_0" && ++count) {
+      EXPECT_EQ("Identity", node.op());
+      ASSERT_EQ(1, node.input_size());
+      EXPECT_EQ("dx", node.input(0));
+    } else if (node.name() == "dy_output_node_0" && ++count) {
+      EXPECT_EQ("Identity", node.op());
+      ASSERT_EQ(1, node.input_size());
+      EXPECT_EQ("dy", node.input(0));
     }
   }
-  EXPECT_EQ(6, count);
+  EXPECT_EQ(8, count);
 }
 
 TEST_F(FunctionsTest, FromFunctionDefWithNestedFuncs) {
@@ -472,7 +485,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
                                         flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(1, item.output_size());
-  EXPECT_EQ("Exp", item.output(0).output_tensors[0]);
+  EXPECT_EQ("out_output_node_0", item.output(0).output_nodes[0]);
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
@@ -488,9 +501,13 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
       EXPECT_EQ("Exp", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("Linear_func", node.input(0));
+    } else if (node.name() == "out_output_node_0" && ++count) {
+      EXPECT_EQ("Identity", node.op());
+      ASSERT_EQ(1, node.input_size());
+      EXPECT_EQ("Exp", node.input(0));
     }
   }
-  EXPECT_EQ(3, count);
+  EXPECT_EQ(4, count);
 }
 
 TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
@@ -517,27 +534,44 @@ TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
                                         flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("ForwardInputs", item.id);
-  EXPECT_EQ(5, item.function_body().node_size());
+  EXPECT_EQ(8, item.function_body().node_size());
 
   EXPECT_EQ(3, item.output_size());
-  EXPECT_EQ("in0", item.output(0).output_tensors[0]);
-  EXPECT_EQ("arg2", item.output(1).output_tensors[0]);
-  EXPECT_EQ("arg3", item.output(2).output_tensors[0]);
+  EXPECT_EQ("out0_output_node_0", item.output(0).output_nodes[0]);
+  EXPECT_EQ("arg2_output_node_0", item.output(1).output_nodes[0]);
+  EXPECT_EQ("arg3_output_node_0", item.output(2).output_nodes[0]);
 
   int count = 0;
+
+  const auto is_arg_placeholder = [](const string &name) {
+    return name == "in0" || name == "in1" || name == "arg2" || name == "arg3" ||
+           name == "arg4";
+  };
+
   for (const NodeDef &node : item.function_body().node()) {
-    EXPECT_TRUE(node.name() == "in0" || node.name() == "in1" ||
-                node.name() == "arg2" || node.name() == "arg3" ||
-                node.name() == "arg4");
-    count++;
-    EXPECT_EQ("Placeholder", node.op());
-    if (node.name() == "arg3") {
-      EXPECT_EQ(DT_INT32, node.attr().at("dtype").type());
-    } else {
-      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
+    if (is_arg_placeholder(node.name()) && node.op() == "Placeholder") {
+      count++;
+      if (node.name() == "arg3") {
+        EXPECT_EQ(DT_INT32, node.attr().at("dtype").type());
+      } else {
+        EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
+      }
+      continue;
+    }
+
+    EXPECT_EQ("Identity", node.op());
+    ASSERT_EQ(1, node.input_size());
+    EXPECT_TRUE(is_arg_placeholder(node.input(0)));
+
+    if (node.name() == "out0_output_node_0" && ++count) {
+      EXPECT_EQ("in0", node.input(0));
+    } else if (node.name() == "arg2_output_node_0" && ++count) {
+      EXPECT_EQ("arg2", node.input(0));
+    } else if (node.name() == "arg3_output_node_0" && ++count) {
+      EXPECT_EQ("arg3", node.input(0));
     }
   }
-  EXPECT_EQ(5, count);
+  EXPECT_EQ(8, count);
 }
 
 TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
@@ -566,16 +600,22 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
 
   EXPECT_EQ(0, item.input_size());
   EXPECT_EQ(1, item.output_size());
-  EXPECT_EQ("o", item.output(0).output_tensors[0]);
+  EXPECT_EQ("o_output_node_0", item.output(0).output_nodes[0]);
+  EXPECT_EQ(3, item.function_body().node_size());
 
-  EXPECT_EQ(2, item.function_body().node_size());
   const NodeDef &two = item.function_body().node(0);
   EXPECT_EQ("two", two.name());
   EXPECT_EQ(0, two.input_size());
+
   const NodeDef &cast = item.function_body().node(1);
   EXPECT_EQ("o", cast.name());
   EXPECT_EQ(1, cast.input_size());
   EXPECT_EQ("two", cast.input(0));
+
+  const NodeDef &retval = item.function_body().node(2);
+  EXPECT_EQ("o_output_node_0", retval.name());
+  EXPECT_EQ(1, retval.input_size());
+  EXPECT_EQ("o", retval.input(0));
 }
 
 TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
@@ -601,7 +641,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
   EXPECT_EQ(3, item.function_body().node_size());
   EXPECT_EQ(1, item.input_size());
   EXPECT_EQ(0, item.output_size());
-  EXPECT_EQ(false, item.allowed_optimizations().prune_ops_with_side_effects);
+  EXPECT_EQ(true, item.optimization_options().is_function_instantiation);
 }
 
 TEST_F(FunctionsTest, MakeFunctionDef) {
@@ -674,7 +714,7 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
   EXPECT_EQ(2, item.input_size());
   EXPECT_EQ(1, item.output_size());
 
-  ASSERT_EQ(3, item.function_body().node_size());
+  ASSERT_EQ(4, item.function_body().node_size());
 
   const NodeDef &input_x = item.function_body().node(0);
   const NodeDef &input_y = item.function_body().node(1);
@@ -748,8 +788,9 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
       {{"z", "output:z:0"}});
 
   GraphDef id_func_body = test::function::GDef(
-      {/* pass input to output through identity */
-       NDef("output", "Identity", {"x"}, {{"T", "float"}})});
+      {/* Read and return input argument through Identity node. */
+       NDef("read_x", "Identity", {"x"}, {{"T", "float"}}),
+       NDef("z_output_node_0", "Identity", {"read_x"}, {{"T", "float"}})});
 
   protobuf::Map<string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
@@ -772,15 +813,15 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   // Check that graph body was updated.
   int count = 0;
   for (const NodeDef &node : specialized.node_def()) {
-    if (node.name() == "output" && ++count) {
+    if (node.name() == "read_x" && ++count) {
       EXPECT_EQ("Identity", node.op());
       EXPECT_EQ("x:0", node.input(0));
     }
   }
   EXPECT_EQ(1, count);
 
-  // And return tensor mapping was updated with a new output name (z->output).
-  EXPECT_EQ("output:output:0", (*specialized.mutable_ret())["z"]);
+  // And return tensor mapping was updated with a new output name (z->read_x).
+  EXPECT_EQ("read_x:output:0", (*specialized.mutable_ret())["z"]);
 }
 
 TEST_F(FunctionsTest, FunctionDefGrapplerFunctionItemRoundTrip) {

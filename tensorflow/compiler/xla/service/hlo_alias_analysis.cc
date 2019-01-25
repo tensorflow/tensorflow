@@ -176,13 +176,12 @@ class BufferValueMap {
       const HloValue& value, std::vector<BufferNumber>* aliased_buffers) {
     // Get parameter value from an aliased_input object.
     const auto get_parameter_value =
-        [this](const std::pair<int64, ShapeIndex>& aliased_input)
+        [this](const HloInputOutputAliasConfig::Alias& aliased_input)
         -> const HloValue& {
-      int64 param_number = aliased_input.first;
-      const ShapeIndex& param_index = aliased_input.second;
       return dataflow_.GetUniqueValueAt(
-          module_->entry_computation()->parameter_instruction(param_number),
-          param_index);
+          module_->entry_computation()->parameter_instruction(
+              aliased_input.parameter_number),
+          aliased_input.parameter_index);
     };
 
     // If the value shows up in a root instruction, alias it with parameter

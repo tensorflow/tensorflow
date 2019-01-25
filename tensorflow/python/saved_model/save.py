@@ -22,6 +22,7 @@ import collections
 import functools
 import os
 
+from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.eager import context
@@ -38,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -68,21 +70,27 @@ class _SaveableView(object):
     self.nodes = checkpointable_objects
     self.node_ids = node_ids
     self.slot_variables = slot_variables
-    self.polymorphic_functions = util.ObjectIdentityDictionary()
+    self.functions = util.ObjectIdentityDictionary()
 
-    # Also add polymorphic functions as nodes.
-    for obj in self.nodes:
-      self.polymorphic_functions[obj] = self._list_polymorphic_functions(obj)
-      for function in self.polymorphic_functions[obj].values():
+    # Also add `Function`s as nodes.
+    nodes_without_functions = list(self.nodes)
+    for obj in nodes_without_functions:
+      self.functions[obj] = self._list_functions(obj)
+      for function in self.functions[obj].values():
         if function not in self.node_ids:
           self.node_ids[function] = len(self.nodes)
           self.nodes.append(function)
-        # Force listing the concrete functions for the side effects:
-        #  - populate the cache for polymorphic functions that have an
-        #  input_signature and have not been called.
-        #  - force side effects of creation of concrete functions, e.g. create
-        #  variables on first run.
-        function_serialization.list_all_concrete_functions(function)
+          # Avoids recursing into functions to see if other functions are
+          # assigned to attributes. This is sometimes true for concrete
+          # functions but not helpful.
+          self.functions[function] = {}
+        if isinstance(function, def_function.Function):
+          # Force listing the concrete functions for the side effects:
+          #  - populate the cache for functions that have an input_signature
+          #  and have not been called.
+          #  - force side effects of creation of concrete functions, e.g. create
+          #  variables on first run.
+          function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
 
   @property
   def root(self):
@@ -94,20 +102,20 @@ class _SaveableView(object):
       assert self.node_ids[node] == node_id
       object_proto = proto.nodes.add()
       object_proto.slot_variables.extend(self.slot_variables.get(node, ()))
-      if isinstance(node, def_function.PolymorphicFunction):
+      if isinstance(node, (def_function.Function, defun.ConcreteFunction)):
         continue
       for child in node._checkpoint_dependencies:  # pylint: disable=protected-access
         child_proto = object_proto.children.add()
         child_proto.node_id = self.node_ids[child.ref]
         child_proto.local_name = child.name
-      for local_name, ref_function in self.polymorphic_functions[node].items():
+      for local_name, ref_function in self.functions[node].items():
         child_proto = object_proto.children.add()
         child_proto.node_id = self.node_ids[ref_function]
         child_proto.local_name = local_name
 
-  def _list_polymorphic_functions(self, checkpointable_object):
-    """Return a dict of polymorphic functions of a checkpointable."""
-    polymorphic_functions = dict()
+  def _list_functions(self, checkpointable_object):
+    """Return a dict of `Function`s of a checkpointable."""
+    functions = dict()
     for attribute_name in dir(checkpointable_object):
       try:
         attribute_value = getattr(checkpointable_object, attribute_name, None)
@@ -115,69 +123,66 @@ class _SaveableView(object):
         # We really don't want to throw an exception just because some object's
         # attribute accessor is broken.
         attribute_value = None
-      if isinstance(attribute_value, def_function.PolymorphicFunction):
-        polymorphic_functions[attribute_name] = attribute_value
-    return polymorphic_functions
+      if isinstance(attribute_value, (def_function.Function,
+                                      defun.ConcreteFunction)):
+        functions[attribute_name] = attribute_value
+    return functions
+
+
+def _get_signature(function):
+  if (isinstance(function, (defun.Function, def_function.Function)) and
+      function._input_signature is not None):  # pylint: disable=protected-access
+    function = function.get_concrete_function()
+  if not isinstance(function, defun.ConcreteFunction):
+    return None
+  return function
+
+
+def _valid_signature(concrete_function):
+  """Returns whether concrete function can be converted to a signature."""
+  try:
+    _normalize_outputs(concrete_function.structured_outputs, "unused", "unused")
+  except ValueError:
+    return False
+  return True
 
 
 def _find_function_to_export(saveable_view):
-  """Iterate over `root`'s attributes, finding traced functions."""
-  exported_function = None
-  previous_attribute_name = None
-  functions = saveable_view.polymorphic_functions[saveable_view.root]
-  for name, value in sorted(functions.items()):
-    if exported_function is not None:
-      raise ValueError(
-          ("Exporting an object with no "
-           "tf.saved_model.save(..., signatures=...) "
-           "argument specified, and with more than one "
-           "@tf.function-decorated method attached to it: {}. The signature "
-           "keys for these functions are ambiguous. Specify signature "
-           "functions explicitly.").format(
-               [previous_attribute_name, name]))
-    exported_function = value
-    previous_attribute_name = name
-  if exported_function is None:
-    exported_function = functions.get(DEFAULT_SIGNATURE_ATTR, None)
-  if exported_function is None:
-    raise ValueError(
-        ("Exporting an object with no tf.saved_model.save(..., signatures=...) "
-         "argument specified, and with no @tf.function-decorated methods "
-         "attached to it. In the future this will be a supported use-case for "
-         "Python re-import, but at the moment saving a SavedModel without "
-         "signatures does not make sense, as the only consumers will expect "
-         "signatures. Either decorate a method or specify a signature function "
-         "explicitly."))
-  return exported_function
+  """Function to export, None if no suitable function was found."""
+  # If the user did not specify signatures, check the root object for a function
+  # that can be made into a signature.
+  functions = saveable_view.functions[saveable_view.root]
+  signature = functions.get(DEFAULT_SIGNATURE_ATTR, None)
+  if signature is not None:
+    return signature
+
+  # TODO(andresp): Discuss removing this behaviour. It can lead to WTFs when a
+  # user decides to annotate more functions with tf.function and suddenly
+  # serving that model way later in the process stops working.
+  if len(functions) == 1:
+    single_function = list(functions.values())[0]
+    signature = _get_signature(single_function)
+    if signature and  _valid_signature(signature):
+      return signature
+  return None
 
 
 def _canonicalize_signatures(signatures):
   """Converts `signatures` into a dictionary of concrete functions."""
+  if signatures is None:
+    return {}
   if not isinstance(signatures, collections.Mapping):
     signatures = {
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signatures}
   concrete_signatures = {}
-  for serving_key, signature_function in signatures.items():
-    if isinstance(signature_function, (defun.PolymorphicFunction,
-                                       def_function.PolymorphicFunction)):
-      input_signature = signature_function._input_signature  # pylint: disable=protected-access
-      if input_signature is None:
-        raise ValueError(
-            ("Unable to use the function {} as a signature directly. Functions "
-             "used to generate serving signatures must either have an "
-             "`input_signature=` specified when constructed, or must be "
-             "converted to concrete functions using "
-             "`f.get_concrete_function(...)`.").format(signature_function))
-      signature_function = signature_function.get_concrete_function()
-    elif not isinstance(signature_function, defun.Function):
+  for signature_key, function in signatures.items():
+    signature_function = _get_signature(function)
+    if signature_function is None:
       raise ValueError(
           ("Expected a TensorFlow function to generate a signature for, but "
-           "got {}. Python functions may be decorated with "
-           "`@tf.function(input_signature=...)` and passed as signatures "
-           "directly, or created without a signature using `@tf.function` "
-           "and then converted to a concrete TensorFlow function using "
-           "`f.get_concrete_function(...)`.").format(signature_function))
-    concrete_signatures[serving_key] = signature_function
+           "got {}. Only `tf.functions` with an input signature or "
+           "concrete functions can be used as a signature.").format(function))
+    concrete_signatures[signature_key] = signature_function
   return concrete_signatures
 
 
@@ -222,7 +227,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
 
 
 def _tensor_dict_to_tensorinfo(tensor_dict):
-  return {key: utils_impl.build_tensor_info(value)
+  return {key: utils_impl.build_tensor_info_internal(value)
           for key, value in tensor_dict.items()}
 
 
@@ -547,18 +552,21 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   # the exported graph (thus the `to_graph` argument).
   saver = object_saver.freeze(object_map=object_map, to_graph=exported_graph)
 
-  # We must instantiate and list all concrete functions of polymorphic functions
-  # while in eager mode so they end up added to the graph and can later be used
-  # by the object based saved model.
+  # We must instantiate and list all concrete functions of `Function`s while in
+  # eager mode so they end up added to the graph and can later be used by the
+  # object based saved model.
   concrete_functions = []
   for obj in accessible_objects:
-    for function in saveable_view.polymorphic_functions[obj].values():
-      concrete_functions.extend(
-          function_serialization.list_all_concrete_functions(function))
+    for function in saveable_view.functions[obj].values():
+      if isinstance(function, defun.ConcreteFunction):
+        concrete_functions.append(function)
+      else:
+        concrete_functions.extend(
+            function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
 
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
-    for _, concrete_function in concrete_functions:
+    for concrete_function in concrete_functions:
       concrete_function.add_to_graph()
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
@@ -610,13 +618,24 @@ def _write_object_proto(obj, proto, asset_file_def_index, node_ids):
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
     proto.variable.SetInParent()
+    proto.variable.trainable = obj.trainable
     proto.variable.dtype = obj.dtype.as_datatype_enum
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
-  elif isinstance(obj, def_function.PolymorphicFunction):
+  elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(
-        function_serialization.serialize_polymorphic_function(obj, node_ids))
+        function_serialization.serialize_function(obj, node_ids))
+  elif isinstance(obj, defun.ConcreteFunction):
+    proto.concrete_function.CopyFrom(
+        function_serialization.serialize_concrete_function(obj, node_ids))
   else:
-    proto.user_object.SetInParent()
+    registered_type_proto = revived_types.serialize(obj)
+    if registered_type_proto is None:
+      # Fallback for types with no matching registration
+      registered_type_proto = saved_object_graph_pb2.SavedUserObject(
+          identifier="_generic_user_object",
+          version=versions_pb2.VersionDef(
+              producer=1, min_consumer=1, bad_consumers=[]))
+    proto.user_object.CopyFrom(registered_type_proto)
 
 
 @tf_export("saved_model.save", v1=["saved_model.experimental.save"])
@@ -786,7 +805,7 @@ def save(obj, export_dir, signatures=None):
             "tf.enable_eager_execution() must run first when calling it from "
             "TensorFlow 1.x.")
   # pylint: enable=line-too-long
-  if not isinstance(obj, base.CheckpointableBase):
+  if not isinstance(obj, base.Checkpointable):
     raise ValueError(
         "Expected a Checkpointable object for export, got {}.".format(obj))
 
@@ -798,6 +817,7 @@ def save(obj, export_dir, signatures=None):
 
   if signatures is None:
     signatures = _find_function_to_export(saveable_view)
+
   signatures = _canonicalize_signatures(signatures)
 
   # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x

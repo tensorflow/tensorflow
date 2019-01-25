@@ -134,6 +134,7 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
   @parameterized.parameters([
       [[2]], [[3]], [[10]], [[2, 20]], [[2, 3, 25]]])
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def test_random(self, shape):
     """Test randomly generated batches of data."""
     with spectral_ops_test_util.fft_kernel_label_map():

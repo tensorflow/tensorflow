@@ -46,7 +46,7 @@ namespace {
 // Describes a tensor with its operation Node and output position
 typedef std::pair<Node*, int> TensorDesc;
 
-const char* const kRetValOp = "_Retval";
+constexpr char kRetValOp[] = "_Retval";
 
 void ReplaceEdgeSources(const TensorDesc& old_src, const TensorDesc& new_src,
                         Graph* graph) {
@@ -643,6 +643,6 @@ Status VectorizeMapDefun(const FunctionDef& outer_scope,
   return Vectorization(lib).Vectorize(outer_scope, map_defun_node, result);
 }
 
-}  // end namespace vectorization_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace vectorization_utils
+}  // namespace grappler
+}  // namespace tensorflow

@@ -60,16 +60,13 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":arena_planner",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -196,7 +193,7 @@ cc_library(
         "//tensorflow/lite/core/api:api",
         "//tensorflow/lite/kernels:eigen_support",
         "//tensorflow/lite/kernels:gemm_support",
-        "//tensorflow/lite/nnapi:nnapi_lib",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({

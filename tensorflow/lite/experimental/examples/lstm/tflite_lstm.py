@@ -184,7 +184,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
       var = self.add_variable(
           name, shape=shape, initializer=initializer, partitioner=partitioner)
       return self._tflite_wrapper.add_input(
-          var, name="name", index_override=index)
+          var, name=name, index_override=index)
 
     weight_initializer = self._initializer
     if self.dtype is None:

@@ -27,7 +27,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import util as checkpointable_util
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class _RNNCellWithConstants(keras.layers.Layer):
@@ -77,7 +76,7 @@ class TimeDistributedTest(test.TestCase):
     model.add(
         keras.layers.TimeDistributed(
             keras.layers.Dense(2), input_shape=(3, 4)))
-    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.compile(optimizer='rmsprop', loss='mse')
     model.fit(
         np.random.random((10, 3, 4)),
         np.random.random((10, 3, 2)),
@@ -98,7 +97,7 @@ class TimeDistributedTest(test.TestCase):
     model.add(
         keras.layers.TimeDistributed(
             keras.layers.Dense(2), input_shape=(3, 4), batch_size=10))
-    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.compile(optimizer='rmsprop', loss='mse')
     model.fit(
         np.random.random((10, 3, 4)),
         np.random.random((10, 3, 2)),
@@ -159,8 +158,8 @@ class TimeDistributedTest(test.TestCase):
       # test layers that need learning_phase to be set
       np.random.seed(1234)
       x = keras.layers.Input(shape=(3, 2))
-      y = keras.layers.TimeDistributed(
-          keras.layers.Dropout(.999))(x, training=True)
+      y = keras.layers.TimeDistributed(keras.layers.Dropout(.999))(
+          x, training=True)
       model = keras.models.Model(x, y)
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
@@ -277,7 +276,7 @@ class BidirectionalTest(test.TestCase):
         model.add(
             keras.layers.Bidirectional(
                 rnn(output_dim), merge_mode=mode, input_shape=(timesteps, dim)))
-        model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+        model.compile(optimizer='rmsprop', loss='mse')
         model.fit(x, y, epochs=1, batch_size=1)
 
         # check whether the model variables are present in the

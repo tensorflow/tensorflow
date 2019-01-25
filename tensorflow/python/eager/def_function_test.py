@@ -61,6 +61,21 @@ class _HasDecoratedMethod(object):
   def f(self, x):
     return x * 3.
 
+# pylint: disable=bad-continuation,anomalous-backslash-in-string
+MIXING_GRAPH_EAGER_TENSORS_ERROR = (
+"""An op outside of the function building code is being passed
+a "Graph" tensor. It is possible to have Graph tensors
+leak out of the function building context by including a
+tf.init_scope in your function building code.
+For example, the following function will fail:
+  @tf.function
+  def has_init_scope\(\):
+    my_constant = tf.constant\(1.\)
+    with tf.init_scope\(\):
+      added = my_constant \* 2
+The graph tensor has name: Const:0""")
+# pylint: enable=bad-continuation,anomalous-backslash-in-string
+
 
 class DefFunctionTest(test.TestCase):
 
@@ -247,10 +262,9 @@ class DefFunctionTest(test.TestCase):
     concrete = compute.get_concrete_function(
         tensor_spec.TensorSpec(None, dtypes.float32))
     self.assertAllClose(4., concrete(constant_op.constant(2.)))
-    input_signature, = compute._cached_input_signatures
-    self.assertEqual(
-        tuple(input_signature),
-        (tensor_spec.TensorSpec(None, dtypes.float32),))
+    signature_args, _ = concrete.structured_input_signature
+    self.assertEqual(signature_args,
+                     (tensor_spec.TensorSpec(None, dtypes.float32),))
 
   def test_serialization_signature_cache(self):
 
@@ -260,8 +274,16 @@ class DefFunctionTest(test.TestCase):
 
     f(constant_op.constant([[3., 4.]]), constant_op.constant([2.]))
     f(constant_op.constant([[3, 4, 5]]), constant_op.constant([2]))
+
+    signatures_args = set()
+    concrete_functions = f._list_all_concrete_functions_for_serialization()
+    for concrete_function in concrete_functions:
+      args, kwargs = concrete_function.structured_input_signature
+      signatures_args.add(args)
+      self.assertEqual(dict(), kwargs)
+
     self.assertEqual(
-        set(f._cached_input_signatures),
+        signatures_args,
         set(((tensor_spec.TensorSpec([1, 2], dtypes.float32),
               tensor_spec.TensorSpec([1], dtypes.float32)),
              (tensor_spec.TensorSpec([1, 3], dtypes.int32),
@@ -288,6 +310,18 @@ class DefFunctionTest(test.TestCase):
     # means the object has been deleted. This should be true as long as the
     # function itself is not involved in a reference cycle.
     self.assertIs(None, weak_fn())
+
+  def testErrorMessageWhenGraphTensorIsPassedToEager(self):
+
+    @def_function.function
+    def failing_function():
+      a = constant_op.constant(1.)
+
+      with ops.init_scope():
+        _ = a + a
+
+    with self.assertRaisesRegexp(TypeError, MIXING_GRAPH_EAGER_TENSORS_ERROR):
+      failing_function()
 
 
 if __name__ == '__main__':

@@ -23,7 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 
@@ -344,7 +344,7 @@ def _build_ragged_tensor_from_value_ranges(starts, limits, step, values):
 
   # Use `ragged_gather` or `array_ops.gather` to collect the values.
   if isinstance(values, ragged_tensor.RaggedTensor):
-    gathered_values = ragged_array_ops.gather(
+    gathered_values = ragged_gather_ops.gather(
         params=values, indices=value_indices.values)
   else:
     gathered_values = array_ops.gather(

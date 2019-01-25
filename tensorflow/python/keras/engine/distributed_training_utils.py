@@ -34,23 +34,12 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
-
-
-def validate_not_in_strategy_scope():
-  """Validate fit/eval/predict are not running in DS scope."""
-  if distribution_strategy_context.has_distribution_strategy():
-    if distribution_strategy_context.in_cross_replica_context():
-      raise RuntimeError(
-          'Fit/Eval/Predict should not be run inside the tf.distribute.Strategy'
-          ' scope. Only model creation and compilation should be in '
-          'tf.distribute.Strategy scope.')
 
 
 def set_weights(distribution_strategy, dist_model, weights):
@@ -530,100 +519,25 @@ def get_batch_dimension(iterator):
   return dims[0] if dims else None
 
 
-def get_cpu_device(distribution_strategy):
-  """Returns the CPU device of the TPU host or the default CPU device string.
-
-  Args:
-    distribution_strategy: The DistributionStrategy used to compile the model.
-
-  Returns:
-    A device string which is the TPU host's CPU device in case of
-    TPUDistributionStrategy or the default CPU device string in all other
-    cases.
-
-  Raises:
-    NotImplementedError: We currently don't support copying numpy data to
-    multiple hosts in the case of Cloud TPU pods.
-  """
-  if is_tpu_strategy(distribution_strategy):
-    if distribution_strategy.extended.num_hosts > 1:
-      raise NotImplementedError('TPUDistributionStrategy does not '
-                                'support numpy inputs when running on Cloud'
-                                'TPU pods.')
-    return distribution_strategy.extended.get_host_cpu_device(0)
-  else:
-    # For all strategies except TPUDistributionStrategy
-    # TODO(anjalisridhar): We may need to modify this when we add support for
-    # multi-worker strategy.
-    return '/CPU:0'
+def list_to_tuple(maybe_list):
+  """Datasets treat lists specially, so switch them to tuples."""
+  if isinstance(maybe_list, list):
+    return tuple(maybe_list)
+  return maybe_list
 
 
-def get_var_for_numpy(distribution_strategy, x):
-  if isinstance(x, list):
-    var_x = tuple([_get_var_for_numpy(distribution_strategy, single_input)
-                   for single_input in x])
-  else:
-    var_x = _get_var_for_numpy(distribution_strategy, x)
-  return var_x
+def get_iterator(dataset, distribution_strategy):
+  with distribution_strategy.scope():
+    iterator = distribution_strategy.make_dataset_iterator(dataset)
+  initialize_iterator(iterator, distribution_strategy)
+  return iterator
 
 
-def _get_var_for_numpy(distribution_strategy, input_array):
-  """Creates a variable and assigns the value of the numpy array to it.
-
-  Args:
-    distribution_strategy: The DistributionStrategy used to compile the model.
-    input_array: The input numpy array whose value will be assigned to the
-      variable we create.
-
-  Returns:
-    The variable to which we will copy the value of the input numpy array.
-
-  """
-  with ops.device(get_cpu_device(distribution_strategy)):
-    # Create and initialize a variable on the CPU device. This is the CPU
-    # device of the host in the case of TPUDistributionStrategy.
-    input_var = variables.VariableV1(array_ops.zeros(input_array.shape,
-                                                     input_array.dtype),
-                                     trainable=False, use_resource=True)
-  K.get_session().run(input_var.initializer)
-
-  # Create a placeholder for the numpy array input slices. We copy the value
-  # of the input numpy array to the variable in slices of size 64 MB to avoid
-  # running into memory issues or RPC message limits.
-  start_placeholder = array_ops.placeholder(dtypes.int64, ())
-  end_placeholder = array_ops.placeholder(dtypes.int64, ())
-  slice_placeholder = array_ops.placeholder(input_var.dtype)
-  assign_slice_op = input_var[start_placeholder:end_placeholder].assign(
-      slice_placeholder)
-
-  # If each batch element is > 64 MB, then we copy each batch element
-  # individually. Otherwise, the slices will be < 128 MB. There might be padding
-  # which might mean that the slices are 128 MB even if the size of the
-  # tensor allocated is less than 128 MB.
-  # This formula gives slices with size:
-  # ceil(64 MB / byte size per batch element) bytes.
-  # Using ceil() guarantees we get a number >= 1.
-
-  # Calculate the size of each batch element.
-  byte_size_per_batch_element = np.prod(input_array.shape[1:]) * \
-                                input_var.dtype.size
-
-  # Calculate number of elements we want to copy per slice.
-  batch_size_per_slice = int(np.ceil((64 << 20) / byte_size_per_batch_element))
-
-  # Copy slices of the above size starting at 0, except the last slice will be
-  # smaller.
-  start = 0
-  limit = input_array.shape[0]
-  while start < limit:
-    end = min(start + batch_size_per_slice, limit)
-    K.get_session().run(assign_slice_op, feed_dict={
-        start_placeholder: start,
-        end_placeholder: end,
-        slice_placeholder: input_array[start:end]})
-    start = end
-
-  return input_var
+def initialize_iterator(iterator, distribution_strategy):
+  with distribution_strategy.scope():
+    init_op = control_flow_ops.group(iterator.initialize())
+    if not context.executing_eagerly():
+      K.get_session().run(init_op)
 
 
 def _get_input_from_iterator(iterator, model):
@@ -642,8 +556,6 @@ def _get_input_from_iterator(iterator, model):
     x, y, sample_weights = next_element
 
   # Validate that all the elements in x and y are of the same type and shape.
-  # We can then pass the first element of x and y to `_standardize_weights`
-  # below and be confident of the output.
   validate_distributed_dataset_inputs(
       model._distribution_strategy, x, y, sample_weights)
   return x, y, sample_weights
@@ -910,7 +822,7 @@ def _make_eager_execution_function(model, mode):
   with K.get_graph().as_default(), strategy.scope():
     # Create train ops on each of the devices when we call
     # `_per_device_fit_function`.
-    (grouped_inputs, grouped_outputs) = strategy.call_for_each_replica(
+    (grouped_inputs, grouped_outputs) = strategy.extended.call_for_each_replica(
         _per_device_function, args=(model._distributed_model,))
 
     # Unwrap all the per device values returned from `call_for_each_replica`.

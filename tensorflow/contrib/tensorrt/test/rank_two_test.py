@@ -63,9 +63,9 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=input_names,
-        input_dims=input_dims,
+        input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[tuple(input_dims[1])])
+        expected_output_dims=[[input_dims[1]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -79,12 +79,6 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
             "abs1_1", "abs1_2", "reciprocal0", "reciprocal1"
         ],
     }
-
-  def ShouldRunTest(self, run_params):
-    """Whether to run the test."""
-    # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
-    # mode, which is a bug. Re-enable this when trt library is fixed.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
 
 if __name__ == "__main__":

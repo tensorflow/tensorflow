@@ -70,6 +70,7 @@ def handle_options(func, x, axis, exclusive, reverse):
   return x
 
 
+@test_util.disable_all_xla("This test never passed for XLA")
 class CumsumTest(test.TestCase):
 
   valid_dtypes = [
@@ -193,6 +194,7 @@ class CumsumTest(test.TestCase):
           self._compareGradient([5, 10], axis, exclusive, reverse)
 
 
+@test_util.disable_all_xla("This test never passed for XLA")
 class CumprodTest(test.TestCase):
 
   valid_dtypes = [

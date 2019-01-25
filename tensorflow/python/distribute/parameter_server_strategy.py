@@ -26,6 +26,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
@@ -77,9 +78,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   variables.
 
   2) It is also not recommended to open a colocation scope (i.e. calling
-  `tf.colocate_with`) under the strategy's scope. For colocating variables,
-  use `distribution.colocate_vars_with` instead. Colocation of ops will possibly
-  create conflicts of device assignment.
+  `tf.colocate_with`) under the strategy's scope. For colocating variables, use
+  `strategy.extended.colocate_vars_with` instead. Colocation of ops will
+  possibly create conflicts of device assignment.
   """
 
   def __init__(self):
@@ -129,7 +130,7 @@ class ParameterServerStrategyExtended(
     num_gpus = cluster_resolver.num_accelerators()
     cluster_spec = cluster_resolver.cluster_spec()
     task_type = cluster_resolver.task_type
-    task_id = cluster_resolver.task_index
+    task_id = cluster_resolver.task_id
     if not task_type or task_id is None:
       raise ValueError("When `cluster_spec` is given, you must also specify "
                        "`task_type` and `task_id`")
@@ -137,6 +138,7 @@ class ParameterServerStrategyExtended(
     assert cluster_spec.as_dict()
 
     worker_device = "/job:%s/task:%d" % (task_type, task_id)
+    self._input_host_device = numpy_dataset.SingleDevice(worker_device)
 
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
@@ -195,6 +197,7 @@ class ParameterServerStrategyExtended(
   def _initialize_local(self, cluster_resolver):
     """Initialize internal devices for local training."""
     worker_device = device_util.canonicalize("/device:CPU:0")
+    self._input_host_device = numpy_dataset.SingleDevice(worker_device)
     num_gpus = cluster_resolver.num_accelerators()
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
@@ -230,14 +233,6 @@ class ParameterServerStrategyExtended(
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
 
-  def _distribute_dataset(self, dataset_fn):
-    """Distributes the dataset to each local GPU."""
-    return input_lib.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn),
-        self._input_workers,
-        0,
-        prefetch_on_device=True)
-
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(dataset, self._input_workers,
                                      self._num_replicas_in_sync)
@@ -261,6 +256,10 @@ class ParameterServerStrategyExtended(
         num_replicas_in_sync=self._num_replicas_in_sync)
     return input_lib.InputFunctionIterator(input_fn, self._input_workers,
                                            [input_context])
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    return numpy_dataset.one_host_numpy_dataset(
+        numpy_input, self._input_host_device, session)
 
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay
@@ -329,8 +328,12 @@ class ParameterServerStrategyExtended(
       var_creator = next_creator
 
     if "colocate_with" in kwargs:
+      colocate_with = kwargs["colocate_with"]
+      if isinstance(colocate_with, numpy_dataset.SingleDevice):
+        with ops.device(colocate_with.device):
+          return var_creator(*args, **kwargs)
       with ops.device(None):
-        with ops.colocate_with(kwargs["colocate_with"]):
+        with ops.colocate_with(colocate_with):
           return var_creator(*args, **kwargs)
 
     with ops.colocate_with(None, ignore_existing=True):
@@ -460,7 +463,7 @@ class ParameterServerStrategyExtended(
       cluster_resolver = SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
-          task_index=task_id,
+          task_id=task_id,
           num_accelerators=self._num_gpus_per_worker)
       self._initialize_multi_worker(cluster_resolver)
 
@@ -525,4 +528,11 @@ class ParameterServerStrategyExtended(
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
+
+    `make_input_fn_iterator` assumes per-replica batching.
+
+    Returns:
+      Boolean.
+    """
     return True

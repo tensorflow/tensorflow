@@ -357,12 +357,14 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 
 
 @tf_export("size", v1=[])
+@dispatch.add_dispatch_support
 def size_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   return size(input, name, out_type)
 
 
 @tf_export(v1=["size"])
+@dispatch.add_dispatch_support
 def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
@@ -3264,7 +3266,7 @@ def gather(params,
            validate_indices=None,
            name=None,
            axis=None,
-           batch_dims=0):  # pylint: disable=g-doc-args
+           batch_dims=0):
   r"""Gather slices from params axis axis according to indices.
 
   Gather slices from params axis axis according to indices.  `indices` must be
@@ -3318,13 +3320,14 @@ def gather(params,
       `axis + 1`.
     indices: The index `Tensor`.  Must be one of the following types: `int32`,
       `int64`. Must be in range `[0, params.shape[axis])`.
+    validate_indices: Deprecated, does nothing.
+    name: A name for the operation (optional).
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
       negative indexes.
     batch_dims: An `integer`.  The number of batch dimensions.  Must be less
       than `ndims(inices)`.
-    name: A name for the operation (optional).
 
   Returns:
     A `Tensor`. Has the same type as `params`.

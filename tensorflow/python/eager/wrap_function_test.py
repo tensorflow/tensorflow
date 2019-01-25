@@ -104,6 +104,45 @@ class WrapFunctionTest(test.TestCase):
         fetches=f_wrapped.graph.get_tensor_by_name('fetch:0'))
     self.assertAllEqual(6.0, pruned())
 
+  def testCollectionsIsolation(self):
+
+    v1 = variables.Variable(2.)
+    v2_holder = []
+    def f():
+      v2 = variables.Variable(3.)
+      v2_holder.append(v2)
+      ops.add_to_collection(ops.GraphKeys.LOSSES, v2 * constant_op.constant(3.))
+      return array_ops.identity(v1 * v2 * constant_op.constant(1.), 'fetch')
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    self.assertAllEqual(6.0, f_wrapped())
+    self.assertEqual(
+        len(f_wrapped.graph.get_collection(ops.GraphKeys.LOSSES)), 1)
+    f_var_collection = f_wrapped.graph.get_collection(
+        ops.GraphKeys.TRAINABLE_VARIABLES)
+    self.assertEqual(len(f_var_collection), 1)
+    self.assertIs(f_var_collection[0], v2_holder[0])
+
+    v3_holder = []
+    def g():
+      v3 = variables.Variable(4.)
+      v3_holder.append(v3)
+      ops.add_to_collection(ops.GraphKeys.LOSSES, v3 * constant_op.constant(3.))
+      return array_ops.identity(v1 * v3 * constant_op.constant(1.), 'fetch')
+
+    g_wrapped = wrap_function.wrap_function(g, [])
+    self.assertAllEqual(8.0, g_wrapped())
+    self.assertEqual(
+        len(g_wrapped.graph.get_collection(ops.GraphKeys.LOSSES)), 1)
+    g_var_collection = g_wrapped.graph.get_collection(
+        ops.GraphKeys.TRAINABLE_VARIABLES)
+    self.assertEqual(len(g_var_collection), 1)
+    self.assertIs(g_var_collection[0], v3_holder[0])
+
+    # Both have only one value, and their values aren't equal. So no sharing.
+    self.assertNotEqual(g_wrapped.graph.get_collection(ops.GraphKeys.LOSSES),
+                        f_wrapped.graph.get_collection(ops.GraphKeys.LOSSES))
+
   def testGradientsOfPrune(self):
 
     v1 = variables.Variable(2.)
@@ -177,6 +216,31 @@ class WrapFunctionTest(test.TestCase):
         fetches=f_wrapped.graph.get_tensor_by_name('other:0'))
     self.assertEqual(1, does_not_increment(constant_op.constant(3)).numpy())
     self.assertEqual(3, v.numpy())
+
+  def testPruneStatefulOpsFromWrappedFunc(self):
+
+    v0 = variables.Variable(0)
+    v1 = variables.Variable(0)
+
+    # When we wrap a function, we expect it to be executed with 'tf.Graph`
+    # rules: it's allowed to prune all ops that are not in transitive fanin of
+    # the fetches.
+    def f(x):
+      v0.assign_add(1, name='increment_v0')
+      v1.assign_add(1, name='increment_v1')
+      return x
+
+    f_wrapped = wrap_function.wrap_function(f, [1])
+
+    self.assertEqual(1, f_wrapped().numpy())
+    self.assertEqual(0, v0.numpy())
+    self.assertEqual(0, v1.numpy())
+
+    f_wrapped_with_name = wrap_function.wrap_function(f, [2], name='func')
+
+    self.assertEqual(2, f_wrapped_with_name().numpy())
+    self.assertEqual(0, v0.numpy())
+    self.assertEqual(0, v1.numpy())
 
 
 if __name__ == '__main__':

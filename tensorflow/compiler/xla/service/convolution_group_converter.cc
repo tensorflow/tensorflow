@@ -207,7 +207,8 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
     return Status::OK();
   }
 
-  VLOG(2) << "Dealing with batch_group_count " << batch_group_count << "\n";
+  VLOG(2) << "Dealing with batch_group_count " << batch_group_count
+          << " for convolution " << convolution->ToString() << "\n";
 
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     return computation_->AddInstruction(std::move(inst));
@@ -332,17 +333,18 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
       return computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
     };
 
+    auto reduce_window_shape = new_convolution->shape();
+    reduce_window_shape.set_dimensions(output_batch_dimension, 1);
+
     // Ensure that data input to reduce window is of type F32.
     if (primitive_util::BitWidth(new_filter->shape().element_type()) <
         primitive_util::BitWidth(F32)) {
+      reduce_window_shape.set_element_type(F32);
       Shape convert_shape = new_filter->shape();
       convert_shape.set_element_type(F32);
       new_filter =
-          add(HloInstruction::CreateBitcastConvert(convert_shape, new_filter));
+          add(HloInstruction::CreateConvert(convert_shape, new_filter));
     }
-
-    auto reduce_window_shape = new_convolution->shape();
-    reduce_window_shape.set_dimensions(output_batch_dimension, 1);
 
     // Create the reduce window.
     Window window;
@@ -369,7 +371,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
 
     // Convert reduced data back to the original data type.
     auto reduce_window_converted =
-        HloInstruction::CreateBitcastConvert(convert_back_shape, reduce_window);
+        HloInstruction::CreateConvert(convert_back_shape, reduce_window);
 
     TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
         convolution, std::move(reduce_window_converted)));

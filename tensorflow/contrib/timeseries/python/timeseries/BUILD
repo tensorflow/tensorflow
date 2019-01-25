@@ -281,6 +281,7 @@ py_library(
         "input_pipeline.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":feature_keys",
         ":model_utils",

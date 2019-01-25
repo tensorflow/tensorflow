@@ -141,5 +141,95 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   return Status::OK();
 }
 
+namespace {
+
+constexpr char kDelimiter[] = "@@";
+
+}  // namespace
+
+VariantTensorDataReader::VariantTensorDataReader(
+    const tensorflow::VariantTensorData* data)
+    : data_(data) {
+  string metadata;
+  data_->get_metadata(&metadata);
+  auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+  for (size_t i = 0; i < keys.size(); ++i) {
+    map_[keys[i]] = i;
+  }
+}
+
+Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
+  return ReadScalarInternal(key, val);
+}
+
+Status VariantTensorDataReader::ReadScalar(StringPiece key, string* val) {
+  return ReadScalarInternal(key, val);
+}
+
+Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) {
+  return ReadTensorInternal(key, val);
+}
+
+bool VariantTensorDataReader::Contains(StringPiece key) {
+  return map_.find(string(key)) != map_.end();
+}
+
+template <typename T>
+Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
+  if (map_.find(string(key)) == map_.end()) {
+    return errors::NotFound(key);
+  }
+  *val = data_->tensors(map_[string(key)]).scalar<T>()();
+  return Status::OK();
+}
+
+Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
+                                                   Tensor* val) {
+  if (map_.find(string(key)) == map_.end()) {
+    return errors::NotFound(key);
+  }
+  *val = data_->tensors(map_[string(key)]);
+  return Status::OK();
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
+  return WriteScalarInternal(key, val);
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece key,
+                                            const string& val) {
+  return WriteScalarInternal(key, val);
+}
+
+Status VariantTensorDataWriter::WriteTensor(StringPiece key,
+                                            const Tensor& val) {
+  return WriteTensorInternal(key, val);
+}
+
+Status VariantTensorDataWriter::Flush() {
+  string metadata;
+  for (size_t i = 0; i < keys_.size(); ++i) {
+    strings::StrAppend(&metadata, kDelimiter, keys_[i]);
+  }
+  data_->set_metadata(metadata);
+  return Status::OK();
+}
+
+template <typename T>
+Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
+                                                    const T& val) {
+  Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+  val_t.scalar<T>()() = val;
+  return WriteTensorInternal(key, val_t);
+}
+
+Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
+                                                    const Tensor& val) {
+  DCHECK_EQ(key.find(kDelimiter), string::npos);
+  keys_.push_back(string(key));
+  *(data_->add_tensors()) = val;
+  return Status::OK();
+}
+
 }  // namespace data
 }  // namespace tensorflow

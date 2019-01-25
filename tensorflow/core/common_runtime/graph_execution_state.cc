@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -731,6 +733,7 @@ Status GraphExecutionState::OptimizeGraph(
 Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
                                        std::unique_ptr<ClientGraph>* out) {
   VLOG(1) << "BuildGraph";
+  const uint64 start_time_usecs = Env::Default()->NowMicros();
   if (!graph_) {
     // It is only valid to call this method directly when the original graph
     // was created with the option `place_pruned_graph == false`.
@@ -819,6 +822,12 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     }
   }
 
+  // Make collective execution order deterministic if needed.
+  if (options.collective_order != GraphCollectiveOrder::kNone) {
+    TF_RETURN_IF_ERROR(
+        OrderCollectives(optimized_graph.get(), options.collective_order));
+  }
+
   // Copy the extracted graph in order to make its node ids dense,
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
@@ -828,7 +837,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   CopyGraph(*optimized_graph, &dense_copy->graph);
 
   // TODO(vrv): We should check invariants of the graph here.
-
+  metrics::UpdateGraphBuildTime(Env::Default()->NowMicros() - start_time_usecs);
   *out = std::move(dense_copy);
   return Status::OK();
 }

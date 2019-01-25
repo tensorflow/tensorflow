@@ -90,7 +90,7 @@ def create_test_objects(cluster_spec=None,
       cluster_resolver = SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
-          task_index=task_id,
+          task_id=task_id,
           num_accelerators=num_gpus)
       target = 'grpc://' + cluster_spec[WORKER][task_id]
     else:
@@ -190,7 +190,7 @@ class ParameterServerStrategyTestBase(
                          '/job:worker/replica:0/task:0/%s' % last_part_device)
 
         # The colocate_vars_with can override the distribution's device.
-        with d.colocate_vars_with(x):
+        with d.extended.colocate_vars_with(x):
           y = variable_scope.get_variable(
               'y', initializer=20.0,
               aggregation=variable_scope.VariableAggregation.SUM)
@@ -236,7 +236,7 @@ class ParameterServerStrategyTestBase(
         self.assertIn('/job:ps/', h.device)
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_replica(model_fn)
+      y, z, f = d.extended.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -252,7 +252,7 @@ class ParameterServerStrategyTestBase(
       self, task_type, task_id, num_gpus, use_core_strategy=False):
     d, _, sess_config = self._get_test_objects(
         task_type, task_id, num_gpus, use_core_strategy=use_core_strategy)
-    num_shards = len(d.parameter_devices)
+    num_shards = len(d.extended.parameter_devices)
     partitioner = partitioned_variables.fixed_size_partitioner(num_shards)
     with ops.Graph().as_default(), \
          self.cached_session(target=self._default_target,
@@ -286,7 +286,7 @@ class ParameterServerStrategyTestBase(
 
         return x_add
 
-      x = d.call_for_each_replica(model_fn)
+      x = d.extended.call_for_each_replica(model_fn)
 
       if context.num_gpus() >= 1:
         variables.global_variables_initializer().run()
@@ -344,7 +344,7 @@ class ParameterServerStrategyTestBase(
         self.assertEqual(e.device, device_util.canonicalize('/device:GPU:2'))
 
         # The colocate_vars_with can override the distribution's device.
-        with d.colocate_vars_with(x):
+        with d.extended.colocate_vars_with(x):
           y = variable_scope.get_variable(
               'y', initializer=20.0,
               aggregation=variable_scope.VariableAggregation.SUM)
@@ -387,7 +387,7 @@ class ParameterServerStrategyTestBase(
             device_util.canonicalize(h.device))
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_replica(model_fn)
+      y, z, f = d.extended.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -438,7 +438,7 @@ class ParameterServerStrategyTestBase(
         train_op = control_flow_ops.group(x_add, y_add, z_add)
         return x, y, z, train_op
 
-      x, y, z, train_op = d.call_for_each_replica(model_fn)
+      x, y, z, train_op = d.extended.call_for_each_replica(model_fn)
       train_op = d.group(train_op)
 
       if context.num_gpus() < d.extended._num_gpus_per_worker:
@@ -519,7 +519,7 @@ class ParameterServerStrategyTestBase(
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, args=(one,))
+        g_v = d.extended.call_for_each_replica(grad_fn, args=(one,))
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
@@ -531,7 +531,7 @@ class ParameterServerStrategyTestBase(
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
-                d.update(v, update, g, grouped=False)):
+                d.extended.update(v, update, args=(g,), group=False)):
               after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
@@ -603,9 +603,11 @@ class ParameterServerStrategyTestBase(
         self.assertEqual(expected_value, computed_value)
 
 
-class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
-                                  strategy_test_lib.DistributionTestBase,
-                                  parameterized.TestCase):
+class ParameterServerStrategyTest(
+    ParameterServerStrategyTestBase,
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase,
+    parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -782,6 +784,36 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
+  def testAllReduceSum(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum(distribution)
+
+  def testAllReduceSumGradients(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum_gradients(distribution)
+
+  def testAllReduceSumGradientTape(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_sum_gradient_tape(distribution)
+
+  def testAllReduceMean(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean(distribution)
+
+  def testAllReduceMeanGradients(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean_gradients(distribution)
+
+  def testAllReduceMeanGradientTape(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_all_reduce_mean_gradient_tape(distribution)
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):
@@ -841,7 +873,10 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                              id(get_step), get_step.__class__.__name__)))
       self.assertIs(resource_variable_ops.ResourceVariable, type(created_step))
       self.assertIs(resource_variable_ops.ResourceVariable, type(get_step))
-      self.assertIs(strategy, created_step.distribute_strategy)
+      # All variables have an _distribute_strategy parameter. Only variable
+      # subclasses in distribution strategy expose it publicly.
+      self.assertFalse(hasattr(strategy, 'distribute_strategy'))
+      self.assertIs(strategy, created_step._distribute_strategy)
 
   @combinations.generate(
       combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
@@ -859,6 +894,18 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
         self.assertIs(values.AggregatingVariable, type(w))
 
       strategy.extended.call_for_each_replica(f)
+
+
+class LocalParameterServerStrategyTest(strategy_test_lib.DistributionTestBase,
+                                       parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager'],
+                                              use_core_strategy=[True, False],
+                                              required_gpus=2))
+  def testNumpyIterator(self, use_core_strategy):
+    strategy, _, _ = create_test_objects(
+        num_gpus=2, use_core_strategy=use_core_strategy)
+    self._test_numpy_iterator(strategy)
 
 
 if __name__ == '__main__':

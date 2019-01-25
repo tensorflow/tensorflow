@@ -29,8 +29,8 @@ from __future__ import print_function
 import argparse
 import json
 import os
-import subprocess
 import shutil
+import subprocess
 
 
 def parse_branch_ref(filename):
@@ -175,7 +175,7 @@ def get_git_version(git_base_path, git_tag_override):
       # two "-" are those inserted by the git describe command.
       abbrev_commit = split_val[-1]
       val = version_separator.join(
-          [bytes(git_tag_override), b"0", abbrev_commit])
+          [bytes(git_tag_override, "utf-8"), b"0", abbrev_commit])
     return val if val else unknown_label
   except (subprocess.CalledProcessError, OSError):
     return unknown_label

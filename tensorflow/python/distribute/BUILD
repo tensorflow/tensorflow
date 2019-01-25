@@ -124,6 +124,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":device_util",
+        ":numpy_dataset",
         ":reduce_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -221,6 +222,7 @@ py_library(
         ":distribute_lib",
         ":input_lib",
         ":multi_worker_util",
+        ":numpy_dataset",
         ":reduce_util",
         ":shared_variable_creator",
         ":values",
@@ -249,6 +251,7 @@ py_library(
     deps = [
         ":input_lib",
         ":mirrored_strategy",
+        ":numpy_dataset",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
@@ -277,6 +280,35 @@ py_library(
 )
 
 py_library(
+    name = "numpy_dataset",
+    srcs = ["numpy_dataset.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "numpy_dataset_test",
+    size = "small",
+    srcs = ["numpy_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":numpy_dataset",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "input_lib",
     srcs = ["input_lib.py"],
     deps = [
@@ -284,10 +316,7 @@ py_library(
         ":distribute_lib",
         ":input_ops",
         ":values",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
     ],

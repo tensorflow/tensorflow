@@ -285,6 +285,7 @@ class SpaceToDepthTest(test.TestCase):
       actual_vals, expected_vals = self.evaluate([actual, expected])
       self.assertTrue(np.array_equal(actual_vals, expected_vals))
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testAgainstTranspose(self):
     self.compareToTranspose(3, 2, 3, 1, 2, "NHWC", False)
     self.compareToTranspose(1, 2, 3, 2, 2, "NHWC", False)

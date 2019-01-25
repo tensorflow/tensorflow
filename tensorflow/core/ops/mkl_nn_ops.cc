@@ -59,6 +59,63 @@ REGISTER_OP("_MklFusedConv2D")
  is expected to create these operators.
 )doc");
 
+REGISTER_OP("__MklDummyPadWithFusedConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Input("paddings: Tpaddings")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {float}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
+    .SetShapeFn(shape_inference::Conv2DShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. MKL DNN graph transformer
+ is expected to create these operators.
+)doc");
+
+REGISTER_OP("_MklPadWithFusedConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Input("paddings: Tpaddings")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_args: num_args * uint8")
+    .Input("mkl_paddings: uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {float}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
+    .SetShapeFn(shape_inference::Conv2DShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. MKL DNN graph transformer
+ is expected to create these operators.
+)doc");
+
 REGISTER_OP("_MklQuantizedMaxPool")
     .Input("input:         T")
     .Input("min_input:     float")

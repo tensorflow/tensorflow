@@ -124,6 +124,16 @@ def _is_iterable(obj):
     return False
 
 
+class CatchInvalidHostcallFunctions(control_flow_ops.XLAControlFlowContext):
+
+  def AddOp(self, op):
+    if op.type in [
+        'AudioSummary', 'AudioSummaryV2', 'HistogramSummary', 'ImageSummary',
+        'MergeSummary', 'ScalarSummary', 'TensorSummary', 'TensorSummaryV2'
+    ]:
+      raise ValueError('Use tf.contrib.summary inside of host_calls.')
+
+
 def _create_global_step(graph):
   graph = graph or ops.get_default_graph()
   if training.get_global_step(graph) is not None:
@@ -1412,7 +1422,8 @@ class _ModelFnWrapper(object):
       if tensor_tracer.TensorTracer.is_enabled():
         tt = tensor_tracer.TensorTracer()
         loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
-                                         self._ctx.num_replicas)
+                                         self._ctx.num_replicas,
+                                         fetches=[loss, train_op])
 
       # We must run train_op to update the variables prior to running the
       # outfeed.
@@ -1801,12 +1812,24 @@ class _OutfeedHostCall(object):
           dequeue_ops[j].append(item)
 
     # Deconstruct dequeue ops.
+    flat_dequeue_ops = []
+    for l in dequeue_ops:
+      flat_dequeue_ops.extend(l)
+
     dequeue_ops_by_name = {}
     pos = 0
     for name in self._names:
       dequeue_ops_by_name[name] = dequeue_ops[pos:pos +
                                               len(self._tensors[name])]
       pos += len(self._tensors[name])
+
+    def _call_host_fn(fn, *args, **kw):
+      context = CatchInvalidHostcallFunctions()
+      context.Enter()
+      result = fn(*args, **kw)
+      context.Exit()
+      context.ExitResult(result)
+      return result
 
     # It is assumed evaluation always happens on single host TPU system. So,
     # place all ops on tpu host if possible.
@@ -1841,7 +1864,7 @@ class _OutfeedHostCall(object):
           # The user-provided eval_metrics[1] is a dict.
           dequeue_ops = dict(zip(self._tensor_keys[name], dequeue_ops))
           try:
-            ret[name] = self._host_fns[name](**dequeue_ops)
+            ret[name] = _call_host_fn(self._host_fns[name], **dequeue_ops)
           except TypeError as e:
             logging.warning(
                 'Exception while calling %s: %s. It is likely the tensors '
@@ -1849,8 +1872,10 @@ class _OutfeedHostCall(object):
                 'function\'s arguments', name, e, name)
             raise
         else:
-          ret[name] = self._host_fns[name](*dequeue_ops)
+          ret[name] = _call_host_fn(self._host_fns[name], *dequeue_ops)
 
+    # force all dequeue operations to be run if not consumed by the host calls
+    ret['__force_dequeue'] = control_flow_ops.group(*flat_dequeue_ops)
     return ret
 
 
@@ -2142,8 +2167,10 @@ class TPUEstimator(estimator_lib.Estimator):
                batch_axis=None,
                eval_on_tpu=True,
                export_to_tpu=True,
+               export_to_cpu=True,
                warm_start_from=None,
-               experimental_exported_model_uses_all_cores=False):
+               experimental_exported_model_uses_all_cores=False,
+               experimental_export_device_assignment=False):
     """Constructs an `TPUEstimator` instance.
 
     Args:
@@ -2186,7 +2213,11 @@ class TPUEstimator(estimator_lib.Estimator):
       eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
         model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
       export_to_tpu: If True, `export_savedmodel()` exports a metagraph for
-        serving on TPU besides the one on CPU.
+        serving on TPU. Note that unsupported export modes such as EVAL will be
+        ignored. For those modes, only a CPU model will be exported.
+        Currently, export_to_tpu only supports PREDICT.
+      export_to_cpu: If True, `export_savedmodel()` exports a metagraph for
+        serving on CPU.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
         warm-start from, or a `tf.estimator.WarmStartSettings` object to fully
         configure warm-starting.  If the string filepath is provided instead of
@@ -2198,6 +2229,10 @@ class TPUEstimator(estimator_lib.Estimator):
         cores for inference with TPUPartitionedCall(). Once outside compilation
         is supported in TPUPartitionedCall(), this flag will be enabled by
         default.
+      experimental_export_device_assignment: Whether to include the device
+        assignment in the exported model. Doing so is useful in case of model
+        parallel inference but will tie the exported model to the TPU topology
+        used to export the model.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -2261,9 +2296,17 @@ class TPUEstimator(estimator_lib.Estimator):
         self._config, train_batch_size, eval_batch_size, predict_batch_size,
         use_tpu, eval_on_tpu)
 
+    self._export_to_cpu = export_to_cpu
     self._export_to_tpu = export_to_tpu
     self._experimental_exported_model_uses_all_cores = (
         experimental_exported_model_uses_all_cores)
+    self._experimental_export_device_assignment = (
+        experimental_export_device_assignment)
+    if (experimental_exported_model_uses_all_cores and
+        experimental_export_device_assignment):
+      raise ValueError('experimental_exported_model_uses_all_cores and '
+                       'experimental_export_device_assignment is not supported '
+                       'at the same time.')
 
     self._is_input_fn_invoked = None
     self._rendezvous = {}
@@ -2277,35 +2320,43 @@ class TPUEstimator(estimator_lib.Estimator):
                                export_tags=None,
                                check_variables=True):
     if self._export_to_tpu and mode != model_fn_lib.ModeKeys.PREDICT:
-      raise NotImplementedError(
-          'TPUEstimator only handles mode PREDICT for exporting '
-          'when `export_to_tpu` is `True`; '
-          'got {}.'.format(mode))
+      logging.warning('TPUEstimator only handles mode PREDICT for exporting '
+                      'when `export_to_tpu` is `True`; Mode {} will be ignored '
+                      'for TPU.'.format(mode))
 
-    (super(TPUEstimator, self)._add_meta_graph_for_mode(
-        builder,
-        input_receiver_fn_map,
-        checkpoint_path,
-        save_variables,
-        mode=mode,
-        export_tags=export_tags,
-        check_variables=check_variables))
+    if not self._export_to_cpu and not self._export_to_tpu:
+      raise ValueError('One of export_to_cpu and export_to_tpu must be true.')
 
-    if self._export_to_tpu:
+    if self._export_to_cpu:
+      (super(TPUEstimator, self)._add_meta_graph_for_mode(
+          builder,
+          input_receiver_fn_map,
+          checkpoint_path,
+          save_variables,
+          mode=mode,
+          export_tags=export_tags,
+          check_variables=check_variables))
+
+    if self._export_to_tpu and mode == model_fn_lib.ModeKeys.PREDICT:
       input_receiver_fn_map = {
           _REWRITE_FOR_INFERENCE_MODE: input_receiver_fn_map[mode]
       }
       export_tags = [tag_constants.SERVING, tag_constants.TPU]
       mode = _REWRITE_FOR_INFERENCE_MODE
+
       # See b/110052256 for why `check_variables` is `False`.
+      if not self._export_to_cpu:
+        check_variables = save_variables = True
+      else:
+        check_variables = save_variables = False
       (super(TPUEstimator, self)._add_meta_graph_for_mode(
           builder,
           input_receiver_fn_map,
           checkpoint_path,
-          save_variables=False,
+          save_variables=save_variables,
           mode=mode,
           export_tags=export_tags,
-          check_variables=False))
+          check_variables=check_variables))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
@@ -2365,7 +2416,16 @@ class TPUEstimator(estimator_lib.Estimator):
       tpu_computation, tpu_capture = self._build_tpu_computation_for_inference(
           features, labels, mode, config)
 
-      tensors_on_cpu = tpu.rewrite_for_inference(tpu_computation)
+      if self._experimental_export_device_assignment:
+        # Export the device assignment as part of the model. This is useful for
+        # model parallel usecases where the model relies on the mapping between
+        # logical and physical devices.
+        with self._ctx.with_mode(mode) as ctx:
+          device_assignment = ctx.device_assignment
+      else:
+        device_assignment = None
+      tensors_on_cpu = tpu.rewrite_for_inference(
+          tpu_computation, device_assignment=device_assignment)
       (estimator_spec, export_outputs_dict, export_outputs_list,
        predictions_dict) = (
            tpu_capture.get())
@@ -2654,7 +2714,11 @@ class TPUEstimator(estimator_lib.Estimator):
         if self._log_every_n_steps is not None:
           examples_hook = ExamplesPerSecondHook(
               ctx.global_batch_size,
-              output_dir=self.model_dir,
+              # pylint:disable=g-long-ternary
+              output_dir=(self.model_dir
+                          if not config or config.save_summary_steps
+                          else None),
+              # pylint:enable=g-long-ternary
               every_n_steps=self._log_every_n_steps)
 
         if ctx.is_running_on_cpu(is_export_mode=is_export_mode):

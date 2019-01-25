@@ -38,6 +38,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -57,6 +58,7 @@ def while_loop(cond,
                body,
                loop_vars,
                shape_invariants=None,
+               parallel_iterations=10,
                maximum_iterations=None,
                name=None,
                return_same_structure=True):
@@ -115,15 +117,15 @@ def while_loop(cond,
             loop_counter < maximum_iterations,
             cond(*_pack_sequence_as(orig_loop_vars, args)))
 
-    # NOTE(skyewm): we set read_only_collections=False for compatibility with
-    # TPUEstimator.
+    # NOTE(skyewm): we set collections to the outer graph's collections for
+    # compatibility with TPUEstimator.
     cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name,
         wrapped_cond,
         loop_vars, {},
         signature=_build_signature(loop_vars, shape_invariants),
-        func_graph=util.WhileCondFuncGraph(cond_name,
-                                           read_only_collections=False),
+        func_graph=util.WhileCondFuncGraph(
+            cond_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
 
     # Add external_captures of cond to the list of loop vars.
@@ -174,8 +176,8 @@ def while_loop(cond,
         wrapped_body,
         loop_vars, {},
         signature=_build_signature(loop_vars, shape_invariants),
-        func_graph=util.WhileBodyFuncGraph(body_name,
-                                           read_only_collections=False),
+        func_graph=util.WhileBodyFuncGraph(
+            body_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
@@ -215,6 +217,7 @@ def while_loop(cond,
         util.create_new_tf_function(cond_graph),
         util.create_new_tf_function(body_graph),
         output_shapes=[t.shape for t in body_graph.outputs],
+        parallel_iterations=parallel_iterations,
         name=scope)
 
     _copy_handle_data(body_graph.outputs, outputs)
@@ -257,23 +260,13 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   maximum_iterations = op.get_attr(
       "_maximum_iterations") if _is_in_xla_context() else None
+  parallel_iterations = op.get_attr("parallel_iterations")
   assert not _is_in_xla_context() or maximum_iterations is not None
   maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
 
-  # Set the incoming gradient of non-trainable inputs to None. It is possible
-  # that we receive non-None gradients for non-trainable types in nested while
-  # loops because we accumulate outputs of the inner while as variant tensors
-  # which are trainable and hence receive zeros_like tensors in the gradient
-  # pass. The non-trainable tensors then receive the popped zeros tensor from
-  # this zeros variant. The gradient for the loop vars corresponding to these
-  # tensors is None or zeros (this happens only if the loop var is accumulated
-  # as well) in _grad_fn so we reset these.
-  # TODO(b/118712257): Remove the IsTrainable filter once we can handle None
-  # output grads in _grad_fn.
-  grads = [
-      None if not _is_trainable(output) else grad
-      for grad, output in zip(grads, body_graph.outputs)
-  ]
+  grads = [_preprocess_grad(grad, body_out, while_out)
+           for grad, body_out, while_out
+           in zip(grads, body_graph.outputs, while_op.outputs)]
 
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
@@ -325,6 +318,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(cond_grad_graph),
       util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
+      parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
@@ -346,6 +340,47 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       none_padded_outputs.append(outputs[index])
       index += 1
   return none_padded_outputs
+
+
+def _preprocess_grad(grad, body_graph_output, while_op_output):
+  """Returns the initial gradient to be used for a given output tensor.
+
+  Args:
+    grad: the original gradient Tensor passed to the gradient function.
+    body_graph_output: the corresponding Tensor in the body graph.
+    while_op_output: the corresponding Tensor output of the While op.
+
+  Returns:
+    A Tensor or None.
+  """
+  # Set the incoming gradient of non-trainable inputs to None. It is possible
+  # that we receive non-None gradients for non-trainable types in nested while
+  # loops because we accumulate outputs of the inner while as variant tensors
+  # which are trainable and hence receive zeros_like tensors in the gradient
+  # pass. The non-trainable tensors then receive the popped zeros tensor from
+  # this zeros variant. The gradient for the loop vars corresponding to these
+  # tensors is None or zeros (this happens only if the loop var is accumulated
+  # as well) in _grad_fn so we reset these.
+  # TODO(b/118712257): Remove once we can handle None output grads in _grad_fn.
+  if not _is_trainable(body_graph_output):
+    return None
+
+  # GradientTape initializes resource and variant grads as None instead of
+  # zeros. Set to zeros so _GradientsHelper computes the gradients instead of
+  # returning None.
+  if (while_op_output.dtype in (dtypes.resource, dtypes.variant)
+      and grad is None):
+    return _zeros_like(while_op_output)
+
+  return grad
+
+
+def _zeros_like(op_output):
+  """Like array_ops.zeros_like() but also accepts resource var handles."""
+  if op_output.dtype == dtypes.resource:
+    return array_ops.zeros(
+        gen_resource_variable_ops.variable_shape(op_output))
+  return array_ops.zeros_like(op_output)
 
 
 def _is_trainable(tensor):
@@ -724,31 +759,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     if captured_tensor is not None:
       return captured_tensor
 
+    # Resource tensors are not accumulated and handled specially.
     if tensor.dtype == dtypes.resource:
-      # Resource-type tensors are not accumulated.
-      # If a resource tensor exists in the loop body it must either be a loop
-      # input or an output of a nested While op inside the loop body which
-      # had captured the external resource.
-      if tensor in self._forward_graph.inputs:
-        index = self._forward_graph.inputs.index(tensor)
-      elif tensor.op.type == "While":
-        # Captured resources occur at the same index in the lists of inputs and
-        # outputs of a while op. So we lookup the input of `tensor.op` at the
-        # same index as the index of `tensor` in the `tensor.op.outputs`.
-        index = self._forward_graph.inputs.index(
-            tensor.op.inputs[tensor.value_index])
-      else:
-        raise ValueError(
-            "Taking gradient of a while loop which creates"
-            " a resource in its body is not supported: %s" % str(tensor))
-      # This must be a loop invariant.
-      assert self._forward_graph.inputs[index] == self._forward_graph.outputs[
-          index], "Resource tensors must be loop invariants %s." % str(
-              self._forward_graph._while.inputs[index])
-      tensor_in_outer_graph = self._forward_graph._while.inputs[index]
-      self._indirect_captures[tensor] = self.capture(
-          tensor_in_outer_graph, whitelisted=True)
-      return self._indirect_captures[tensor]
+      return self._resource_capture_helper(tensor)
 
     # Create or find an existing accumulator output for `tensor` in the forward
     # graph, and fetch from this accumulator in the gradient graph to get the
@@ -788,6 +801,41 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     self._indirect_captures[tensor] = captured_tensor
     self.popped_tensor_lists[captured_accumulator] = new_tensor_list
     return captured_tensor
+
+  def _resource_capture_helper(self, tensor):
+    """Returns the captured resource tensor.
+
+    Resource-type tensors are not accumulated. If a resource tensor exists in
+    the loop body it must either be a loop input or an output of a nested While
+    op inside the loop body which had captured the external resource.
+
+    Args:
+      tensor: the external resource Tensor to be captured.
+
+    Returns:
+      Tensor in this graph.
+    """
+    assert tensor.dtype == dtypes.resource
+    if tensor in self._forward_graph.inputs:
+      index = self._forward_graph.inputs.index(tensor)
+    elif tensor.op.type == "While":
+      # Captured resources occur at the same index in the lists of inputs and
+      # outputs of a while op. So we lookup the input of `tensor.op` at the
+      # same index as the index of `tensor` in the `tensor.op.outputs`.
+      index = self._forward_graph.inputs.index(
+          tensor.op.inputs[tensor.value_index])
+    else:
+      raise ValueError(
+          "Taking gradient of a while loop which creates "
+          "a resource in its body is not supported: %s" % tensor)
+    # This must be a loop invariant.
+    assert self._forward_graph.inputs[index] == self._forward_graph.outputs[
+        index], ("Resource tensors must be loop invariants %s." %
+                 self._forward_graph._while.inputs[index])
+    tensor_in_outer_graph = self._forward_graph._while.inputs[index]
+    self._indirect_captures[tensor] = self.capture(
+        tensor_in_outer_graph, whitelisted=True)
+    return self._indirect_captures[tensor]
 
 
 def _check_shapes_compat(output_tensors, shape_invariants, input_tensors):
