@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -178,6 +179,29 @@ TEST_F(ConstantsTest, Token) {
   // TODO(b/80000000): tokens cannot be returned from computations.
   Tuple(&builder, {});
   TF_ASSERT_OK(Execute(&builder, {}).status());
+}
+
+TEST_F(ConstantsTest, FullLike) {
+  XlaBuilder b(TestName());
+  auto val1 = Iota(&b, F32, 3);
+  auto val2 = FullLike(val1, 10);
+  val1 + val2;
+  ComputeAndCompareR1<float>(&b, {10, 11, 12}, {}, error_spec_);
+}
+
+TEST_F(ConstantsTest, IllegalFullLikeOnTuple) {
+  XlaBuilder b(TestName());
+  auto tuple = Tuple(&b, {Iota(&b, F32, 3), Iota(&b, F32, 1)});
+  FullLike(tuple, 10);  // Illegal; can't do FullLike on a tuple.
+  EXPECT_FALSE(b.Build().ok());
+}
+
+TEST_F(ConstantsTest, FullLikeScalar) {
+  XlaBuilder b(TestName());
+  auto scalar1 = ConstantR0WithType(&b, F32, 1);
+  auto scalar2 = FullLike(scalar1, 2);
+  scalar1 - scalar2;
+  ComputeAndCompareR0<float>(&b, -1, {}, error_spec_);
 }
 
 class ConstantsHloTest : public HloTestBase {};
