@@ -136,37 +136,30 @@ XlaOp Erf(XlaOp x) {
 //   }
 //   return p*x
 XlaOp ErfInv(XlaOp x) {
-  XlaBuilder* b = x.builder();
-  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, b->GetShape(x));
-    constexpr int kDegree = 9;
-    constexpr std::array<float, 9> w_less_than_5_constants = {
-        2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
-        -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
-        -0.00417768164f,  0.246640727f,    1.50140941f};
-    constexpr std::array<float, 9> w_greater_than_5_constants = {
-        -0.000200214257f, 0.000100950558f, 0.00134934322f,
-        -0.00367342844f,  0.00573950773f,  -0.0076224613f,
-        0.00943887047f,   1.00167406f,     2.83297682f};
+  constexpr int kDegree = 9;
+  constexpr std::array<float, 9> w_less_than_5_constants = {
+      2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+      -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+      -0.00417768164f,  0.246640727f,    1.50140941f};
+  constexpr std::array<float, 9> w_greater_than_5_constants = {
+      -0.000200214257f, 0.000100950558f, 0.00134934322f,
+      -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+      0.00943887047f,   1.00167406f,     2.83297682f};
 
-    auto one = ScalarLike(x, 1.0);
-    auto w = -Log((one - x) * (one + x));
+  auto one = ScalarLike(x, 1.0);
+  auto w = -Log((one - x) * (one + x));
 
-    auto lt = Lt(w, ScalarLike(x, 5.0));
-    auto coefficient = [&](int i) {
-      return Select(lt,
-                    Broadcast(ScalarLike(x, w_less_than_5_constants[i]),
-                              AsInt64Slice(shape.dimensions())),
-                    Broadcast(ScalarLike(x, w_greater_than_5_constants[i]),
-                              AsInt64Slice(shape.dimensions())));
-    };
-    w = Select(lt, w - ScalarLike(x, 2.5), Sqrt(w) - ScalarLike(x, 3.0));
-    auto p = coefficient(0);
-    for (int i = 1; i < kDegree; ++i) {
-      p = coefficient(i) + p * w;
-    }
-    return p * x;
-  });
+  auto lt = Lt(w, ScalarLike(x, 5.0));
+  auto coefficient = [&](int i) {
+    return Select(lt, FullLike(x, w_less_than_5_constants[i]),
+                  FullLike(x, w_greater_than_5_constants[i]));
+  };
+  w = Select(lt, w - ScalarLike(x, 2.5), Sqrt(w) - ScalarLike(x, 3.0));
+  auto p = coefficient(0);
+  for (int i = 1; i < kDegree; ++i) {
+    p = coefficient(i) + p * w;
+  }
+  return p * x;
 }
 
 namespace {
@@ -276,9 +269,7 @@ XlaOp Lgamma(XlaOp input) {
     XlaOp result = Select(need_to_reflect, reflection, log_y);
 
     // lgamma(+/-inf) = +inf.
-    XlaOp inf_bcast =
-        Broadcast(ScalarLike(input, std::numeric_limits<float>::infinity()),
-                  AsInt64Slice(shape.dimensions()));
+    XlaOp inf_bcast = FullLike(input, std::numeric_limits<float>::infinity());
     return Select(Or(IsFinite(input),                           // is finite, or
                      Not(Or(Lt(input, one), Ge(input, one)))),  // is nan
                   result, inf_bcast);
