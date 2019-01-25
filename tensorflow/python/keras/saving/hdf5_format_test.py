@@ -348,13 +348,16 @@ class TestWholeModelSaving(test.TestCase):
           optimizer=keras.optimizers.RMSprop(lr=0.0001),
           metrics=[
               keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
+              keras.metrics.CategoricalCrossentropy(
+                  name='cce', label_smoothing=constant_op.constant(0.2)),
           ],
           weighted_metrics=[
-              keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
+              keras.metrics.categorical_crossentropy,
+              keras.metrics.CategoricalCrossentropy(
+                  name='cce', label_smoothing=constant_op.constant(0.2)),
           ],
           sample_weight_mode='temporal')
+
       x = np.random.random((1, 3))
       y = np.random.random((1, 3, 3))
       model.train_on_batch(x, y)
