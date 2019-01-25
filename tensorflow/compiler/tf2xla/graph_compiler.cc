@@ -89,6 +89,9 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
       case XlaExpression::Kind::kResource:
         return errors::Unimplemented(
             "Resource as function argument is not yet implemented.");
+      case XlaExpression::Kind::kTensorList:
+        return errors::Unimplemented(
+            "TensorList as function argument is not yet implemented.");
       case XlaExpression::Kind::kInvalid:
         return errors::InvalidArgument("Invalid function argument");
     }
