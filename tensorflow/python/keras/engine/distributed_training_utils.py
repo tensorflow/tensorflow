@@ -344,7 +344,7 @@ def init_restore_or_wait_for_variables():
   session = K._get_session()  # pylint: disable=protected-access
   worker_context = dc_context.get_current_worker_context()
   if not worker_context or worker_context.experimental_should_init:
-    # TODO(yuefengz): if checkpoints exit, restore from checkpoint.
+    # TODO(yuefengz): if checkpoints exist, restore from checkpoint.
     K._initialize_variables(session)  # pylint: disable=protected-access
   else:
     _wait_for_variable_initialization(session)
@@ -771,12 +771,11 @@ def _make_execution_function(model, mode):
      grouped_session_args) = strategy.extended.call_for_each_replica(
          _per_device_function, args=(model._distributed_model,))
 
-    if mode == ModeKeys.TRAIN:
-      # Initialize the variables in the replicated model. This is necessary for
-      # multi-worker training because on some workers, initialization is not
-      # needed. This method does initialization or waiting for initialization
-      # according to the context object of distribute coordinator.
-      init_restore_or_wait_for_variables()
+    # Initialize the variables in the replicated model. This is necessary for
+    # multi-worker training because on some workers, initialization is not
+    # needed. This method does initialization or waiting for initialization
+    # according to the context object of distribute coordinator.
+    init_restore_or_wait_for_variables()
 
     # Unwrap all the per device values returned from `call_for_each_replica`.
     # Unwrapping per device values gives you a list of values that can be
