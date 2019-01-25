@@ -49,6 +49,8 @@ cc_library(
     deps = [
         ":input_yielder",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:grappler_item",
