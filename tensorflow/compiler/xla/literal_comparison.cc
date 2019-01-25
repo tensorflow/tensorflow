@@ -736,7 +736,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual) {
 // via recursion. shape_index is the ShapeIndex of expected (or actual)
 // currently being compared.
 Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
-                  const ErrorSpec& error, bool detailed_message,
+                  const ErrorSpec& error, absl::optional<bool> detailed_message,
                   const MiscompareCallback& miscompare_callback,
                   const ShapeIndex& shape_index) {
   TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
@@ -777,30 +777,32 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 
   if (ShapeUtil::ElementIsFloating(expected.shape()) ||
       ShapeUtil::ElementIsComplex(expected.shape())) {
+    bool use_detailed_message = detailed_message.value_or(
+        ShapeUtil::ElementsIn(expected.shape()) >= 64);
     switch (expected.shape().element_type()) {
       case BF16:
         return NearComparator<bfloat16>::Compare(
-            expected, actual, error, detailed_message, miscompare_callback);
+            expected, actual, error, use_detailed_message, miscompare_callback);
         break;
       case F16:
         return NearComparator<half>::Compare(
-            expected, actual, error, detailed_message, miscompare_callback);
+            expected, actual, error, use_detailed_message, miscompare_callback);
         break;
       case F32:
         return NearComparator<float>::Compare(
-            expected, actual, error, detailed_message, miscompare_callback);
+            expected, actual, error, use_detailed_message, miscompare_callback);
         break;
       case F64:
         return NearComparator<double>::Compare(
-            expected, actual, error, detailed_message, miscompare_callback);
+            expected, actual, error, use_detailed_message, miscompare_callback);
         break;
       case C64:
         return NearComparator<complex64>::Compare(
-            expected, actual, error, detailed_message, miscompare_callback);
+            expected, actual, error, use_detailed_message, miscompare_callback);
         break;
       case C128:
         return NearComparator<complex128>::Compare(
-            expected, actual, error, detailed_message, miscompare_callback);
+            expected, actual, error, use_detailed_message, miscompare_callback);
         break;
       default:
         LOG(FATAL) << "Unsupported primitive type in near comparator: "
@@ -891,7 +893,7 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
 }
 
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
-            const ErrorSpec& error, bool detailed_message,
+            const ErrorSpec& error, absl::optional<bool> detailed_message,
             const MiscompareCallback& miscompare_callback) {
   VLOG(1) << "Expected literal:";
   XLA_VLOG_LINES(1, expected.ToString());
