@@ -1621,6 +1621,55 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradInput_Positive) {
             "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
 }
 
+TEST_F(MklLayoutPassTest,
+       NodeRewrite_DepthwiseConv2dNativeGradFilter_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropFilter'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Int32Input);C(Input);D(_"
+            "MklDepthwiseConv2dNativeBackpropFilter);"
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"
+            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"
+            "DMT/_1->D:4;DMT/_2->D:5");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_DepthwiseConv2dNativeGradInput_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropInput'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['B', 'A', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Int32Input);C(Input);D(_"
+            "MklDepthwiseConv2dNativeBackpropInput);"
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"
+            "A->D:1;A->E;B->D;B:control->DMT/_0:control;"
+            "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"
+            "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+}
+
 // Check that we never rewrite BiasAddGrad.
 TEST_F(MklLayoutPassTest, NodeRewrite_BiasAddGrad_Positive) {
   InitGraph(
@@ -2651,6 +2700,29 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradFilter_DeviceTest) {
       kGPUDevice);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Int32Input);C(Input);D(Conv2DBackpropFilter);E(Zeta)|"
+            "A->D;A->E;B->D:1;C->D:2;D->E:1");
+}
+
+TEST_F(MklLayoutPassTest,
+       NodeRewrite_DepthwiseConv2dNativeGradFilter_DeviceTest) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropFilter'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'D'] }",
+      kGPUDevice);
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Int32Input);C(Input);D("
+            "DepthwiseConv2dNativeBackpropFilter);E(Zeta)|"
             "A->D;A->E;B->D:1;C->D:2;D->E:1");
 }
 
