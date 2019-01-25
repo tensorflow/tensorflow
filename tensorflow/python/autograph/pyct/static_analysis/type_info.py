@@ -45,6 +45,7 @@ import gast
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
@@ -178,7 +179,8 @@ class TypeInfoResolver(transformer.Base):
       func = value.func
       if anno.hasanno(func, 'live_val'):
         func_obj = anno.getanno(func, 'live_val')
-        if tf_inspect.isclass(func_obj):
+        if (tf_inspect.isclass(func_obj) and
+            not inspect_utils.isbuiltin(func_obj)):
           anno.setanno(value, 'is_constructor', True)
           anno.setanno(value, 'type', func_obj)
           anno.setanno(value, 'type_fqn', anno.getanno(func, 'fqn'))
