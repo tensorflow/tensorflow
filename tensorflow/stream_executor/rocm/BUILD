@@ -137,7 +137,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocblas",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:event",
@@ -148,8 +147,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
-    #] + if_static(["@local_config_rocm//rocm:rocblas"])),
+    ] + if_static(["@local_config_rocm//rocm:rocblas"])),
     alwayslink = True,
 )
 
@@ -165,7 +163,6 @@ cc_library(
         ":rocm_platform_id",
         ":rocm_stream",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocfft",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:fft",
         "//tensorflow/stream_executor:plugin_registry",
@@ -173,8 +170,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
-    #] + if_static(["@local_config_rocm//rocm:rocfft"])),
+    ] + if_static(["@local_config_rocm//rocm:rocfft"])),
     alwayslink = True,
 )
 
@@ -194,7 +190,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:miopen",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:logger",
@@ -208,8 +203,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
-    #] + if_static(["@local_config_rocm//rocm:miopen"])),
+    ] + if_static(["@local_config_rocm//rocm:miopen"])),
     alwayslink = True,
 )
 
@@ -224,15 +218,13 @@ cc_library(
         ":rocm_platform_id",
         ":rocm_stream",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:hiprand",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:rng",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
-    #] + if_static(["@local_config_rocm//rocm:hiprand"])),
+    ] + if_static(["@local_config_rocm//rocm:hiprand"])),
     alwayslink = True,
 )
 
