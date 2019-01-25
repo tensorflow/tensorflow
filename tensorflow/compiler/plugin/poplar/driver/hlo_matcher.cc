@@ -155,6 +155,54 @@ FindValidCandidates(
   return targets;
 }
 
+// We determine whether a proposed state is valid iff given the current state
+// and the proposed pairing, every predecessors of the proposed pairing has
+// a valid pairing and that every successor has at least one valid pairing.
+bool IsValidState(
+    const NodeId candidate_node_id, const HloInstruction* candidate_inst,
+    absl::flat_hash_map<NodeId, absl::flat_hash_set<HloInstruction*>>&
+        invalid_pairings,
+    const HloMatcherPattern& pattern) {
+  HloMatcherNode matcher_node = pattern.GetPatternNodes()[candidate_node_id];
+  // Check that all the predecessors of the proposed pairing make sense.
+  // For each operand we need a pairing which is not invalid.
+  for (NodeId operand_id :
+       pattern.GetNodesToOperandsMetaGraph()[candidate_node_id]) {
+    auto operand_idx = *GetOperandIndexForNodeId(matcher_node, operand_id);
+    const HloInstruction* operand_inst = candidate_inst->operand(operand_idx);
+    HloMatcherNode operand_node = pattern.GetPatternNodes()[operand_id];
+    if (!operand_node.Matches(operand_inst) ||
+        invalid_pairings[operand_id].contains(operand_inst)) {
+      return false;
+    }
+  }
+
+  // Check that all the successors of the proposed pairing make sense.
+  // For each user we need at least one pairing which is not invalid.
+  for (NodeId user_id :
+       pattern.GetOperandsToNodesMetaGraph()[candidate_node_id]) {
+    bool has_valid_target = false;
+    HloMatcherNode user_matcher_node = pattern.GetPatternNodes()[user_id];
+    for (const HloInstruction* user_inst : candidate_inst->users()) {
+      auto operand_idx =
+          *GetOperandIndexForNodeId(user_matcher_node, candidate_node_id);
+
+      if (operand_idx < user_inst->operand_count() &&
+          user_inst->operand(operand_idx) == candidate_inst) {
+        if (user_matcher_node.Matches(user_inst) &&
+            !invalid_pairings[user_id].contains(user_inst)) {
+          has_valid_target = true;
+        }
+      }
+    }
+
+    if (!has_valid_target) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // We use the VF2 algorithm - published paper "An Improved Algorithm for
 // Matching Large Graphs" by L. P. Cordella, P. Foggia, C. Sansone, M. Vento -
 // with one difference being we are matching DAGs - we only ever visit nodes
@@ -198,18 +246,35 @@ bool MatchDAGIsomorphism(
     for (auto pair : candidates) {
       NodeId candidate_node_id = pair.first;
       for (HloInstruction* candidate_inst : pair.second) {
-        // Match the DAG with the new pairing candidate_node_id <->
-        // candidate_inst added.
-        parital_matching[candidate_node_id] = candidate_inst;
+        // Search space pruning - Check that the state we are about to make is
+        // valid.
+        if (IsValidState(candidate_node_id, candidate_inst, invalid_pairings,
+                         pattern)) {
+          // Match the DAG with the new pairing candidate_node_id <->
+          // candidate_inst added.
+          parital_matching[candidate_node_id] = candidate_inst;
 
-        if (MatchDAGIsomorphism(parital_matching, invalid_pairings, pattern)) {
-          return true;
+          if (MatchDAGIsomorphism(parital_matching, invalid_pairings,
+                                  pattern)) {
+            return true;
+          }
+
+          // If this was not a successful match then we need to remove it from
+          // partial matching.
+          parital_matching.erase(candidate_node_id);
         }
-
-        // If this was not a successful match then we need to remove it from
-        // partial matching.
-        parital_matching.erase(candidate_node_id);
+        // If this state is not valid, then we can use this pairing to prune
+        // the search space.
         invalid_pairings[candidate_node_id].insert(candidate_inst);
+      }
+    }
+    // If this partial matching was not valid, then we need to restore
+    // invalid_pairings to the original state, as these pairings are *only*
+    // invalid with the current invalid partial matching.
+    for (auto pair : candidates) {
+      NodeId candidate_node_id = pair.first;
+      for (HloInstruction* candidate_inst : pair.second) {
+        invalid_pairings[candidate_node_id].erase(candidate_inst);
       }
     }
     return false;
