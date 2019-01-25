@@ -206,6 +206,7 @@ static port::ThreadPool* GetROCmThreadpool() {
   __macro(miopenConvolutionBackwardBias)                   \
   __macro(miopenConvolutionForwardGetWorkSpaceSize)        \
   __macro(miopenInitConvolutionDescriptor)                 \
+  __macro(miopenGetConvolutionDescriptor)                  \
   __macro(miopenSetConvolutionGroupCount)                  \
   __macro(miopenSet4dTensorDescriptor)                     \
   __macro(miopenGetTensorDescriptor)                       \
@@ -289,7 +290,8 @@ uint64 GetHashValue(miopenTensorDescriptor_t tensor_desc) {
   miopenDataType_t dataType = miopenFloat;
   int dims[kMaxMIOpenTensorSize] = {0};
   int strides[kMaxMIOpenTensorSize] = {0};
-  miopenGetTensorDescriptor(tensor_desc, &dataType, dims, strides);
+  wrap::miopenGetTensorDescriptor(tensor_desc, &dataType, dims,
+                                              strides);
 
   uint64 hashValue = tensorflow::hash<int>()(dataType);
   for (int dim : dims)
@@ -305,8 +307,9 @@ uint64 GetHashValue(miopenTensorDescriptor_t tensor_desc) {
 uint64 GetHashValue(miopenConvolutionDescriptor_t conv_desc) {
   miopenConvolutionMode_t c_mode = miopenConvolution;
   int pad_h = 0, pad_w = 0, u = 0, v = 0, dilation_h = 0, dilation_w = 0;
-  miopenGetConvolutionDescriptor(conv_desc, &c_mode, &pad_h, &pad_w, &u, &v,
-                                 &dilation_h, &dilation_w);
+  wrap::miopenGetConvolutionDescriptor(conv_desc, &c_mode, &pad_h,
+                                                   &pad_w, &u, &v, &dilation_h,
+                                                   &dilation_w);
 
   uint64 hashValue = tensorflow::hash<int>()(c_mode);
   hashValue =
