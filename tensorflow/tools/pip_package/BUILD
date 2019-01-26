@@ -100,6 +100,7 @@ COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
     "//tensorflow/contrib/compiler:xla",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
+    "//tensorflow/contrib/distribute/python:distribute_test_lib_pip",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
     "//tensorflow/contrib/gan:gan",
