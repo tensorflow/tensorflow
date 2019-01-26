@@ -62,8 +62,13 @@ OpAsmPrinter::~OpAsmPrinter() {}
 // info or when we have a system for printer flags.
 static llvm::cl::opt<bool>
     shouldPrintDebugInfoOpt("mlir-print-debuginfo",
-                            llvm::cl::desc("Include debug info in MLIR output"),
+                            llvm::cl::desc("Print debug info in MLIR output"),
                             llvm::cl::init(false));
+
+static llvm::cl::opt<bool> printPrettyDebugInfo(
+    "mlir-pretty-debuginfo",
+    llvm::cl::desc("Print pretty debug info in MLIR output"),
+    llvm::cl::init(false));
 
 namespace {
 class ModuleState {
@@ -347,7 +352,7 @@ protected:
   void printIntegerSetReference(IntegerSet integerSet);
   void printIntegerSetAlias(StringRef alias) const;
   void printTrailingLocation(Location loc);
-  void printLocationInternal(Location loc);
+  void printLocationInternal(Location loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
 
   /// This enum is used to represent the binding stength of the enclosing
@@ -423,15 +428,19 @@ void ModulePrinter::printTrailingLocation(Location loc) {
   printLocation(loc);
 }
 
-void ModulePrinter::printLocationInternal(Location loc) {
+void ModulePrinter::printLocationInternal(Location loc, bool pretty) {
   switch (loc.getKind()) {
   case Location::Kind::Unknown:
-    os << "unknown";
+    if (pretty)
+      os << "[unknown]";
+    else
+      os << "unknown";
     break;
   case Location::Kind::FileLineCol: {
     auto fileLoc = loc.cast<FileLineColLoc>();
-    os << '\"' << fileLoc.getFilename() << '\"' << ':' << fileLoc.getLine()
-       << ':' << fileLoc.getColumn();
+    auto mayQuote = pretty ? "" : "\"";
+    os << mayQuote << fileLoc.getFilename() << mayQuote << ':'
+       << fileLoc.getLine() << ':' << fileLoc.getColumn();
     break;
   }
   case Location::Kind::Name: {
@@ -441,22 +450,38 @@ void ModulePrinter::printLocationInternal(Location loc) {
   case Location::Kind::CallSite: {
     auto callLocation = loc.cast<CallSiteLoc>();
     auto caller = callLocation.getCaller();
-    os << "callsite(";
-    printLocationInternal(callLocation.getCallee());
-    os << " at ";
-    printLocationInternal(caller);
-    os << ")";
+    auto callee = callLocation.getCallee();
+    if (!pretty)
+      os << "callsite(";
+    printLocationInternal(callee, pretty);
+    if (pretty) {
+      if (callee.isa<NameLoc>()) {
+        if (caller.isa<FileLineColLoc>()) {
+          os << " at ";
+        } else {
+          os << "\n at ";
+        }
+      } else {
+        os << "\n at ";
+      }
+    } else {
+      os << " at ";
+    }
+    printLocationInternal(caller, pretty);
+    if (!pretty)
+      os << ")";
     break;
   }
   case Location::Kind::FusedLocation: {
     auto fusedLoc = loc.cast<FusedLoc>();
-    os << "fused";
+    if (!pretty)
+      os << "fused";
     if (auto metadata = fusedLoc.getMetadata())
       os << '<' << metadata << '>';
     os << '[';
     interleave(
         fusedLoc.getLocations(),
-        [&](Location loc) { printLocationInternal(loc); },
+        [&](Location loc) { printLocationInternal(loc, pretty); },
         [&]() { os << ", "; });
     os << ']';
     break;
@@ -531,9 +556,13 @@ void ModulePrinter::printFunctionReference(const Function *func) {
 }
 
 void ModulePrinter::printLocation(Location loc) {
-  os << "loc(";
-  printLocationInternal(loc);
-  os << ')';
+  if (printPrettyDebugInfo) {
+    printLocationInternal(loc, /*pretty=*/true);
+  } else {
+    os << "loc(";
+    printLocationInternal(loc);
+    os << ')';
+  }
 }
 
 void ModulePrinter::printAttribute(Attribute attr) {
