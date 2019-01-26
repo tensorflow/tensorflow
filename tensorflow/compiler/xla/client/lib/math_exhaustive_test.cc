@@ -137,21 +137,30 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
   ComputeAndCompareR1<half>(&b, expected_result, {}, tc.error);
 }
 
-// TODO(b/123355973): The following tests are missing.
+// TODO(b/123355973): The following tests from math.cc are missing.
 //
 // - Many failures.
+//
 //   Testcase{"acosh", Acosh, std::acosh}.set_relaxed_nans(),
 //   Testcase{"asinh", Asinh, std::asinh},
 //   Testcase{"sinh", Sinh, std::sinh},
 //   Testcase{"cosh", Cosh, std::cosh}.set_fewer_infs_ok(),
 //   Testcase{"erf", Erf, std::erf},
-//   Testcase{"erfc", Erfc, std::erfc}.set_skip_infs(),
 //   Testcase{"round_to_even", RoundToEven,
 //            [](float x) { return std::nearbyint(x / 2) * 2; }},
 //
 // - No equivalent std function to compare with.
+//
 //   Testcase{"erfinv", ErfInv, std::erfinv},
 //   Testcase{"digamma", Digamma, std::digamma},
+//
+// - Needs a special test (function takes two args, and simply computing in f32
+//   and downcasting to f16 doesn't give the correct answer).
+//
+//   Testcase{"nextafter", NextAfter, std::nextafter},
+//
+// TODO(b/123355973): Test math functions not from math.cc (e.g. log).
+// TODO(b/123355973): Test bf16 and f32.
 //
 INSTANTIATE_TEST_CASE_P(
     MathExhaustiveTest_Instantiation, MathExhaustiveTest,
@@ -163,6 +172,7 @@ INSTANTIATE_TEST_CASE_P(
             .set_skip_neg_zero(),
         Testcase{"square", Square, [](float x) { return x * x; }},
         Testcase{"reciprocal", Reciprocal, [](float x) { return 1 / x; }},
+        Testcase{"erfc", Erfc, std::erfc},
         Testcase{"lgamma", Lgamma, std::lgamma}
             .set_tolerance(0.1, 0.15)
             .set_fewer_infs_ok(),
