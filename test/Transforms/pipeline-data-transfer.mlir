@@ -98,7 +98,7 @@ func @loop_step(%arg0: memref<512xf32>,
 // CHECK-NEXT: }
 
 #map0 = (d0, d1) -> (d0, d1)
-#map1 = (d0, d1) -> ((d0 * 2048 + d1 * 256) floordiv 32, 0)
+#map1 = (d0, d1) -> ((d0 * 2048 + d1 * 256) floordiv 32)
 #map2 = (d0) -> ((d0 * 2048) floordiv 32)
 // CHECK-LABEL: func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>
 func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<512x32xvector<8xf32>, #map0>, %arg2: memref<512x32xvector<8xf32>, #map0>) {
