@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 import itertools
@@ -303,7 +302,7 @@ class Layer(checkpointable.Checkpointable):
       if kwarg not in ['getter', 'collections']:
         raise TypeError('Unknown keyword argument:', kwarg)
     getter = kwargs.pop('getter', None)
-    collections = kwargs.pop('collections', None)  # pylint: disable=redefined-outer-name
+    collections = kwargs.pop('collections', None)
 
     if dtype is None:
       dtype = self.dtype or backend.floatx()
@@ -1493,11 +1492,11 @@ class Layer(checkpointable.Checkpointable):
         arguments: dictionary of keyword arguments that were passed to the
             `call` method of the layer at the call that created the node.
     """
-    inbound_layers = nest.map_structure(lambda t: t._keras_history.layer,
+    inbound_layers = nest.map_structure(lambda t: t._keras_history[0],
                                         input_tensors)
-    node_indices = nest.map_structure(lambda t: t._keras_history.node_index,
+    node_indices = nest.map_structure(lambda t: t._keras_history[1],
                                       input_tensors)
-    tensor_indices = nest.map_structure(lambda t: t._keras_history.tensor_index,
+    tensor_indices = nest.map_structure(lambda t: t._keras_history[2],
                                         input_tensors)
 
     # Create node, add it to inbound nodes.
@@ -1519,8 +1518,7 @@ class Layer(checkpointable.Checkpointable):
     # or multi-input layers (e.g. a layer can return multiple tensors,
     # and each can be sent to a different layer).
     for i, tensor in enumerate(nest.flatten(output_tensors)):
-      tensor._keras_history = KerasHistory(self,
-                                           len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
+      tensor._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
 
   def _get_node_attribute_at_index(self, node_index, attr, attr_name):
     """Private utility to retrieves an attribute (e.g. inputs) from a node.
@@ -1827,30 +1825,6 @@ class TensorFlowOpLayer(Layer):
         'constants': self.constants
     })
     return config
-
-
-class KerasHistory(
-    collections.namedtuple('KerasHistory',
-                           ['layer', 'node_index', 'tensor_index'])):
-  """Tracks the Layer calls that created a Tensor, for Keras Graph Networks.
-
-  During construction of Keras Graph Networks, this metadata is added to
-  each Tensor produced as the output of a Layer, starting with an
-  `InputLayer`. This allows Keras to track how each Tensor was produced, and
-  this information is later retraced by the `keras.engine.Network` class to
-  reconstruct the Keras Graph Network.
-
-  Attributes:
-    layer: The Layer that produced the Tensor.
-    node_index: The specific call to the Layer that produced this Tensor. Layers
-      can be called multiple times in order to share weights. A new node is
-      created every time a Tensor is called.
-    tensor_index: The output index for this Tensor. Always zero if the Layer
-      that produced this Tensor only has one output.
-  """
-  # Added to maintain memory and performance characteristics of `namedtuple`
-  # while subclassing.
-  __slots__ = ()
 
 
 def default(method):
