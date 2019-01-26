@@ -29,6 +29,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.layers._Merge')
 class _Merge(Layer):
   """Generic merge layer for elementwise merge functions.
 
