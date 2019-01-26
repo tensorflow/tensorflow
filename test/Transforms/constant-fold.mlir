@@ -124,14 +124,16 @@ func @affine_apply(%variable : index) -> (index, index, index) {
 
   // CHECK: %c1159 = constant 1159 : index
   // CHECK: %c1152 = constant 1152 : index
-  %x = affine_apply (d0, d1)[S0] -> ( (d0 + 128 * S0) floordiv 128 + d1 mod 128, 128 * (S0 ceildiv 128) )
+  %x0 = affine_apply (d0, d1)[S0] -> ( (d0 + 128 * S0) floordiv 128 + d1 mod 128)
+           (%c177, %c211)[%N]
+  %x1 = affine_apply (d0, d1)[S0] -> (128 * (S0 ceildiv 128))
            (%c177, %c211)[%N]
 
   // CHECK: %c42 = constant 42 : index
   %y = affine_apply (d0) -> (42) (%variable)
 
   // CHECK: return %c1159, %c1152, %c42
-  return %x#0, %x#1, %y : index, index, index
+  return %x0, %x1, %y : index, index, index
 }
 
 // CHECK-LABEL:  func @constant_fold_bounds(%arg0: index) {

@@ -5,11 +5,6 @@
 // CHECK: #[[map_proj_d0d1_d1:map[0-9]+]] = (d0, d1) -> (d1)
 
 #map0 = (d0) -> (d0)
-#map1 = (d0, d1) -> (d0, d1)
-#map1_t = (d0, d1) -> (d1, d0)
-#map2 = (d0, d1) -> (d1 + d0, d0)
-#map3 = (d0, d1) -> (d1, d0 + d1)
-#map4 = (d0, d1, d2) -> (d1, d0 + d1, d0 + d2)
 #mapadd1 = (d0) -> (d0 + 1)
 #mapadd2 = (d0) -> (d0 + 2)
 #mapadd3 = (d0) -> (d0 + 3)
@@ -53,12 +48,14 @@ func @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
 //
 // CHECK:for [[IV4:%[i0-9]+]] = 0 to [[ARG_M]] step 128 {
 // CHECK-NEXT:   for [[IV5:%[i0-9]*]] = 0 to [[ARG_N]] {
-// CHECK-NEXT:   [[APP5:%[0-9]+]] = affine_apply {{.*}}([[IV4]], [[IV5]])
-// CHECK-NEXT:   {{.*}} = vector_transfer_read %arg0, [[APP5]]#0, [[APP5]]#1 {permutation_map: #[[map_proj_d0d1_d1]]} : {{.*}} -> vector<128xf32>
+// CHECK-NEXT:   [[APP50:%[0-9]+]] = affine_apply {{.*}}([[IV4]], [[IV5]])
+// CHECK-NEXT:   [[APP51:%[0-9]+]] = affine_apply {{.*}}([[IV4]], [[IV5]])
+// CHECK-NEXT:   {{.*}} = vector_transfer_read %arg0, [[APP50]], [[APP51]] {permutation_map: #[[map_proj_d0d1_d1]]} : {{.*}} -> vector<128xf32>
    for %i4 = 0 to %M { // vectorized
      for %i5 = 0 to %N { // not vectorized, would vectorize with --test-fastest-varying=1
-       %r5 = affine_apply #map1_t (%i4, %i5)
-       %a5 = load %A[%r5#0, %r5#1] : memref<?x?xf32>
+       %r50 = affine_apply (d0, d1) -> (d1) (%i4, %i5)
+       %r51 = affine_apply (d0, d1) -> (d0) (%i4, %i5)
+       %a5 = load %A[%r50, %r51] : memref<?x?xf32>
      }
    }
 //
@@ -66,19 +63,22 @@ func @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
 // CHECK-NEXT:   for [[IV7:%[i0-9]*]] = 0 to [[ARG_N]] {
    for %i6 = 0 to %M { // not vectorized, would vectorize with --test-fastest-varying=1
      for %i7 = 0 to %N { // not vectorized, can never vectorize
-       %r7 = affine_apply #map2 (%i6, %i7)
-       %a7 = load %A[%r7#0, %r7#1] : memref<?x?xf32>
+       %r70 = affine_apply (d0, d1) -> (d1 + d0) (%i6, %i7)
+       %r71 = affine_apply (d0, d1) -> (d0) (%i6, %i7)
+       %a7 = load %A[%r70, %r71] : memref<?x?xf32>
      }
    }
 //
 // CHECK:for [[IV8:%[i0-9]+]] = 0 to [[ARG_M]] step 128
 // CHECK-NEXT:   for [[IV9:%[i0-9]*]] = 0 to [[ARG_N]] {
-// CHECK-NEXT:   [[APP9:%[0-9]+]] = affine_apply {{.*}}([[IV8]], [[IV9]])
-// CHECK-NEXT:   {{.*}} = vector_transfer_read %arg0, [[APP9]]#0, [[APP9]]#1 {permutation_map: #[[map_proj_d0d1_d1]]} : {{.*}} -> vector<128xf32>
+// CHECK-NEXT:   [[APP9_0:%[0-9]+]] = affine_apply {{.*}}([[IV8]], [[IV9]])
+// CHECK-NEXT:   [[APP9_1:%[0-9]+]] = affine_apply {{.*}}([[IV8]], [[IV9]])
+// CHECK-NEXT:   {{.*}} = vector_transfer_read %arg0, [[APP9_0]], [[APP9_1]] {permutation_map: #[[map_proj_d0d1_d1]]} : {{.*}} -> vector<128xf32>
    for %i8 = 0 to %M { // vectorized
      for %i9 = 0 to %N {
-       %r9 = affine_apply #map3 (%i8, %i9)
-       %a9 = load %A[%r9#0, %r9#1] : memref<?x?xf32>
+       %r90 = affine_apply (d0, d1) -> (d1) (%i8, %i9)
+       %r91 = affine_apply (d0, d1) -> (d0 + d1) (%i8, %i9)
+       %a9 = load %A[%r90, %r91] : memref<?x?xf32>
      }
    }
 //
@@ -86,10 +86,12 @@ func @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
 // CHECK:   for [[IV11:%[i0-9]*]] = 0 to %{{[0-9]*}} {
    for %i10 = 0 to %M { // not vectorized, need per load transposes
      for %i11 = 0 to %N { // not vectorized, need per load transposes
-       %r11 = affine_apply #map1 (%i10, %i11)
-       %a11 = load %A[%r11#0, %r11#1] : memref<?x?xf32>
-       %r12 = affine_apply #map1_t (%i10, %i11)
-       store %a11, %A[%r12#0, %r12#1] : memref<?x?xf32>
+       %r11_0 = affine_apply (d0, d1) -> (d0) (%i10, %i11)
+       %r11_1 = affine_apply (d0, d1) -> (d1) (%i10, %i11)
+       %a11 = load %A[%r11_0, %r11_1] : memref<?x?xf32>
+       %r12_0 = affine_apply (d0, d1) -> (d1) (%i10, %i11)
+       %r12_1 = affine_apply (d0, d1) -> (d0) (%i10, %i11)
+       store %a11, %A[%r12_0, %r12_1] : memref<?x?xf32>
      }
    }
 //
@@ -99,8 +101,10 @@ func @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
    for %i12 = 0 to %M { // not vectorized, can never vectorize
      for %i13 = 0 to %N { // not vectorized, can never vectorize
        for %i14 = 0 to %P { // vectorized
-         %r14 = affine_apply #map4 (%i12, %i13, %i14)
-         %a14 = load %B[%r14#0, %r14#1, %r14#2] : memref<?x?x?xf32>
+         %r14_0 = affine_apply (d0, d1, d2) -> (d1) (%i12, %i13, %i14)
+         %r14_1 = affine_apply (d0, d1, d2) -> (d0 + d1) (%i12, %i13, %i14)
+         %r14_2 = affine_apply (d0, d1, d2) -> (d0 + d2) (%i12, %i13, %i14)
+         %a14 = load %B[%r14_0, %r14_1, %r14_2] : memref<?x?x?xf32>
        }
      }
    }

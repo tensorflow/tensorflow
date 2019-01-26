@@ -55,9 +55,11 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
   %m = alloc() : memref<10x10xf32>
   for %i0 = 0 to 10 {
     for %i1 = 0 to 10 {
-      %t = affine_apply (d0, d1) -> (d1 + 1, d0)(%i0, %i1)
-      %idx = affine_apply (d0, d1) -> (d1, d0 - 1) (%t#0, %t#1)
-      store %cf7, %m[%idx#0, %idx#1] : memref<10x10xf32>
+      %t0 = affine_apply (d0, d1) -> (d1 + 1)(%i0, %i1)
+      %t1 = affine_apply (d0, d1) -> (d0)(%i0, %i1)
+      %idx0 = affine_apply (d0, d1) -> (d1) (%t0, %t1)
+      %idx1 = affine_apply (d0, d1) -> (d0 - 1) (%t0, %t1)
+      store %cf7, %m[%idx0, %idx1] : memref<10x10xf32>
       // CHECK-NOT: load %{{[0-9]+}}
       %v0 = load %m[%i0, %i1] : memref<10x10xf32>
       %v1 = addf %v0, %v0 : f32
@@ -70,9 +72,11 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
 // CHECK-NEXT:  for %i0 = 0 to 10 {
 // CHECK-NEXT:    for %i1 = 0 to 10 {
 // CHECK-NEXT:      %1 = affine_apply #map0(%i0, %i1)
-// CHECK-NEXT:      %2 = affine_apply #map1(%1#0, %1#1)
-// CHECK-NEXT:      store %cst, %0[%2#0, %2#1] : memref<10x10xf32>
-// CHECK-NEXT:      %3 = addf %cst, %cst : f32
+// CHECK-NEXT:      %2 = affine_apply #map1(%i0, %i1)
+// CHECK-NEXT:      %3 = affine_apply #map2(%1, %2)
+// CHECK-NEXT:      %4 = affine_apply #map3(%1, %2)
+// CHECK-NEXT:      store %cst, %0[%3, %4] : memref<10x10xf32>
+// CHECK-NEXT:      %5 = addf %cst, %cst : f32
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return %0 : memref<10x10xf32>
@@ -230,7 +234,7 @@ func @store_load_store_nested_fwd(%N : index) -> f32 {
 // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
 // CHECK-NEXT:    for %i1 = 0 to %arg0 {
 // CHECK-NEXT:      %1 = addf %cst, %cst : f32
-// CHECK-NEXT:      %2 = affine_apply #map2(%i0)
+// CHECK-NEXT:      %2 = affine_apply #map4(%i0)
 // CHECK-NEXT:      store %cst_0, %0[%2] : memref<10xf32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }

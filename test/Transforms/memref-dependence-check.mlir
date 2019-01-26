@@ -400,16 +400,18 @@ func @perfectly_nested_loops_loop_independent() {
   for %i0 = 0 to 11 {
     for %i1 = 0 to 11 {
       // Dependence from access 0 to 1 is loop independent at depth = 3.
-      %a0 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i1)
-      store %c7, %m[%a0#0, %a0#1] : memref<10x10xf32>
+      %a00 = affine_apply (d0, d1) -> (d0) (%i0, %i1)
+      %a01 = affine_apply (d0, d1) -> (d1) (%i0, %i1)
+      store %c7, %m[%a00, %a01] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 0 to 0 at depth 3 = false}}
       // expected-note@-4 {{dependence from 0 to 1 at depth 1 = false}}
       // expected-note@-5 {{dependence from 0 to 1 at depth 2 = false}}
       // expected-note@-6 {{dependence from 0 to 1 at depth 3 = true}}
-      %a1 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i1)
-      %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
+      %a10 = affine_apply (d0, d1) -> (d0) (%i0, %i1)
+      %a11 = affine_apply (d0, d1) -> (d1) (%i0, %i1)
+      %v0 = load %m[%a10, %a11] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 1 to 0 at depth 3 = false}}
@@ -429,16 +431,18 @@ func @perfectly_nested_loops_loop_carried_at_depth1() {
   for %i0 = 0 to 9 {
     for %i1 = 0 to 9 {
       // Dependence from access 0 to 1 is loop carried at depth 1.
-      %a0 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i1)
-      store %c7, %m[%a0#0, %a0#1] : memref<10x10xf32>
+      %a00 = affine_apply (d0, d1) -> (d0) (%i0, %i1)
+      %a01 = affine_apply (d0, d1) -> (d1) (%i0, %i1)
+      store %c7, %m[%a00, %a01] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 0 to 0 at depth 3 = false}}
       // expected-note@-4 {{dependence from 0 to 1 at depth 1 = [2, 2][0, 0]}}
       // expected-note@-5 {{dependence from 0 to 1 at depth 2 = false}}
       // expected-note@-6 {{dependence from 0 to 1 at depth 3 = false}}
-      %a1 = affine_apply (d0, d1) -> (d0 - 2, d1) (%i0, %i1)
-      %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
+      %a10 = affine_apply (d0, d1) -> (d0 - 2) (%i0, %i1)
+      %a11 = affine_apply (d0, d1) -> (d1) (%i0, %i1)
+      %v0 = load %m[%a10, %a11] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 1 to 0 at depth 3 = false}}
@@ -458,16 +462,18 @@ func @perfectly_nested_loops_loop_carried_at_depth2() {
   for %i0 = 0 to 10 {
     for %i1 = 0 to 10 {
       // Dependence from access 0 to 1 is loop carried at depth 2.
-      %a0 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i1)
-      store %c7, %m[%a0#0, %a0#1] : memref<10x10xf32>
+      %a00 = affine_apply (d0, d1) -> (d0) (%i0, %i1)
+      %a01 = affine_apply (d0, d1) -> (d1) (%i0, %i1)
+      store %c7, %m[%a00, %a01] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 0 to 0 at depth 3 = false}}
       // expected-note@-4 {{dependence from 0 to 1 at depth 1 = false}}
       // expected-note@-5 {{dependence from 0 to 1 at depth 2 = [0, 0][3, 3]}}
       // expected-note@-6 {{dependence from 0 to 1 at depth 3 = false}}
-      %a1 = affine_apply (d0, d1) -> (d0, d1 - 3) (%i0, %i1)
-      %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
+      %a10 = affine_apply (d0, d1) -> (d0) (%i0, %i1)
+      %a11 = affine_apply (d0, d1) -> (d1 - 3) (%i0, %i1)
+      %v0 = load %m[%a10, %a11] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 1 to 0 at depth 3 = false}}
@@ -487,8 +493,9 @@ func @one_common_loop() {
   // There is a loop-independent dependence from access 0 to 1 at depth 2.
   for %i0 = 0 to 10 {
     for %i1 = 0 to 10 {
-      %a0 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i1)
-      store %c7, %m[%a0#0, %a0#1] : memref<10x10xf32>
+      %a00 = affine_apply (d0, d1) -> (d0) (%i0, %i1)
+      %a01 = affine_apply (d0, d1) -> (d1) (%i0, %i1)
+      store %c7, %m[%a00, %a01] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 0 to 0 at depth 3 = false}}
@@ -496,8 +503,9 @@ func @one_common_loop() {
       // expected-note@-5 {{dependence from 0 to 1 at depth 2 = true}}
     }
     for %i2 = 0 to 9 {
-      %a1 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i2)
-      %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
+      %a10 = affine_apply (d0, d1) -> (d0) (%i0, %i2)
+      %a11 = affine_apply (d0, d1) -> (d1) (%i0, %i2)
+      %v0 = load %m[%a10, %a11] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 1 to 1 at depth 1 = false}}
@@ -569,16 +577,18 @@ func @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
   %c7 = constant 7.0 : f32
   for %i0 = 0 to %arg0 {
     for %i1 = 0 to %arg1 {
-      %a0 = affine_apply (d0, d1) -> (d0 - 1, d1 + 1) (%i0, %i1)
-      %v0 = load %m[%a0#0, %a0#1] : memref<10x10xf32>
+      %a00 = affine_apply (d0, d1) -> (d0 - 1) (%i0, %i1)
+      %a01 = affine_apply (d0, d1) -> (d1 + 1) (%i0, %i1)
+      %v0 = load %m[%a00, %a01] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
       // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 0 to 0 at depth 3 = false}}
       // expected-note@-4 {{dependence from 0 to 1 at depth 1 = false}}
       // expected-note@-5 {{dependence from 0 to 1 at depth 2 = false}}
       // expected-note@-6 {{dependence from 0 to 1 at depth 3 = false}}
-      %a1 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i1)
-      store %c7, %m[%a1#0, %a1#1] : memref<10x10xf32>
+      %a10 = affine_apply (d0, d1) -> (d0) (%i0, %i1)
+      %a11 = affine_apply (d0, d1) -> (d1) (%i0, %i1)
+      store %c7, %m[%a10, %a11] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 1 to 0 at depth 1 = [1, 1][-1, -1]}}
       // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
       // expected-note@-3 {{dependence from 1 to 0 at depth 3 = false}}
@@ -686,8 +696,10 @@ func @mod_div_3d() {
   for %i0 = 0 to 8 {
     for %i1 = 0 to 8 {
       for %i2 = 0 to 8 {
-        %idx = affine_apply (d0, d1, d2) -> (d0 floordiv 4, d1 mod 2, d2 floordiv 4) (%i0, %i1, %i2)
-        store %c0, %M[%idx#0, %idx#1, %idx#2] : memref<2 x 2 x 2 x i32>
+        %idx0 = affine_apply (d0, d1, d2) -> (d0 floordiv 4) (%i0, %i1, %i2)
+        %idx1 = affine_apply (d0, d1, d2) -> (d1 mod 2) (%i0, %i1, %i2)
+        %idx2 = affine_apply (d0, d1, d2) -> (d2 floordiv 4) (%i0, %i1, %i2)
+        store %c0, %M[%idx0, %idx1, %idx2] : memref<2 x 2 x 2 x i32>
         // expected-note@-1 {{dependence from 0 to 0 at depth 1 = [1, 3][-7, 7][-3, 3]}}
         // expected-note@-2 {{dependence from 0 to 0 at depth 2 = [0, 0][2, 7][-3, 3]}}
         // expected-note@-3 {{dependence from 0 to 0 at depth 3 = [0, 0][0, 0][1, 3]}}
@@ -733,15 +745,20 @@ func @delinearize_mod_floordiv() {
   for %ii = 0 to 64 {
     for %jj = 0 to 9 {
       %a0 = affine_apply (d0, d1) -> (d0 * (9 * 1024) + d1 * 128) (%ii, %jj)
-      %a1 = affine_apply (d0) ->
-        (d0 floordiv (2 * 3 * 3 * 128 * 128),
-        (d0 mod 294912) floordiv (3 * 3 * 128 * 128),
-        (((d0 mod 294912) mod 147456) floordiv 1152) floordiv 8,
-        (((d0 mod 294912) mod 147456) mod 1152) floordiv 384,
-        ((((d0 mod 294912) mod 147456) mod 1152) mod 384) floordiv 128,
-        (((((d0 mod 294912) mod 147456) mod 1152) mod 384) mod 128)
+      %a10 = affine_apply (d0) ->
+        (d0 floordiv (2 * 3 * 3 * 128 * 128)) (%a0)
+      %a11 = affine_apply (d0) ->
+        ((d0 mod 294912) floordiv (3 * 3 * 128 * 128)) (%a0)
+      %a12 = affine_apply (d0) ->
+        ((((d0 mod 294912) mod 147456) floordiv 1152) floordiv 8) (%a0)
+      %a13 = affine_apply (d0) ->
+        ((((d0 mod 294912) mod 147456) mod 1152) floordiv 384) (%a0)
+      %a14 = affine_apply (d0) ->
+        (((((d0 mod 294912) mod 147456) mod 1152) mod 384) floordiv 128) (%a0)
+      %a15 = affine_apply (d0) ->
+        ((((((d0 mod 294912) mod 147456) mod 1152) mod 384) mod 128)
           floordiv 128) (%a0)
-      %v0 = load %in[%a1#0, %a1#1, %a1#3, %a1#4, %a1#2, %a1#5] : memref<2x2x3x3x16x1xi32>
+      %v0 = load %in[%a10, %a11, %a13, %a14, %a12, %a15] : memref<2x2x3x3x16x1xi32>
 // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
 // expected-note@-2 {{dependence from 1 to 1 at depth 1 = false}}
 // expected-note@-3 {{dependence from 1 to 1 at depth 2 = false}}

@@ -21,9 +21,6 @@
 // CHECK-DAG: #map{{[0-9]+}} = ()[s0] -> (100, s0 + 1)
 #inline_map_minmax_loop2 = ()[s0] -> (100, s0 + 1)
 
-// CHECK-DAG: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1, s0 + 1)
-#inline_map_loop_bounds1 = (d0, d1)[s0] -> (d0 + d1, s0 + 1)
-
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1 + s0)
 #bound_map1 = (i, j)[s] -> (i + j + s)
 
@@ -259,16 +256,18 @@ func @loop_bounds(%N : index) {
     // CHECK: for %i1 = #map{{[0-9]+}}(%i0) to 0
     for %j = %i to 0 step 1 {
        // CHECK: %1 = affine_apply #map{{.*}}(%i0, %i1)[%0]
-       %w = affine_apply(d0, d1)[s0] -> (d0+d1, s0+1) (%i, %j) [%s]
-       // CHECK: for %i2 = #map{{.*}}(%1#0, %i0)[%arg0] to #map{{.*}}(%1#1, %i1)[%0] {
-       for %k = #bound_map1 (%w#0, %i)[%N] to (i, j)[s] -> (i + j + s) (%w#1, %j)[%s] {
+       %w1 = affine_apply(d0, d1)[s0] -> (d0+d1) (%i, %j) [%s]
+       // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i1)[%0]
+       %w2 = affine_apply(d0, d1)[s0] -> (s0+1) (%i, %j) [%s]
+       // CHECK: for %i2 = #map{{.*}}(%1, %i0)[%arg0] to #map{{.*}}(%2, %i1)[%0] {
+       for %k = #bound_map1 (%w1, %i)[%N] to (i, j)[s] -> (i + j + s) (%w2, %j)[%s] {
           // CHECK: "foo"(%i0, %i1, %i2) : (index, index, index) -> ()
           "foo"(%i, %j, %k) : (index, index, index)->()
           // CHECK: %c30 = constant 30 : index
           %c = constant 30 : index
-          // CHECK: %2 = affine_apply #map{{.*}}(%arg0, %c30)
+          // CHECK: %3 = affine_apply #map{{.*}}(%arg0, %c30)
           %u = affine_apply (d0, d1)->(d0+d1) (%N, %c)
-          // CHECK: for %i3 = max #map{{.*}}(%i0)[%2] to min #map{{.*}}(%i2)[%c30] {
+          // CHECK: for %i3 = max #map{{.*}}(%i0)[%3] to min #map{{.*}}(%i2)[%c30] {
           for %l = max #bound_map2(%i)[%u] to min #bound_map2(%k)[%c] {
             // CHECK: "bar"(%i3) : (index) -> ()
             "bar"(%l) : (index) -> ()
