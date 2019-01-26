@@ -770,44 +770,6 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   }
 }
 
-void ReorderRSCKtoRSKC(const TRT_ShapedWeights& iweights,
-                   TRT_ShapedWeights* oweights) {
-  CHECK_EQ(iweights.type_, oweights->type_);
-  CHECK_EQ(iweights.size_bytes(), oweights->size_bytes());
-  const int r = iweights.shape_.d[0];
-  const int s = iweights.shape_.d[1];
-  const int c = iweights.shape_.d[2];
-  const int k = iweights.shape_.d[3];
-  oweights->shape_.d[0] = r;
-  oweights->shape_.d[1] = s;
-  oweights->shape_.d[2] = k;
-  oweights->shape_.d[3] = c;
-  const nvinfer1::DimsNCHW istrides = {s*k*c, k*c, 1, k};
-  const nvinfer1::DimsNCHW ostrides = {s*k*c, k*c, c, 1};
-  switch (iweights.type_) {
-    case tensorflow::DataType::DT_FLOAT: {
-      Reorder4({r, s, k, c}, static_cast<float const*>(iweights.GetValues()),
-               istrides,
-               // TODO(aaroey): get rid of all the const_cast like this.
-               static_cast<float*>(const_cast<void*>(oweights->GetValues())),
-               ostrides);
-      break;
-    }
-    case tensorflow::DataType::DT_HALF: {
-      Reorder4(
-          {r, s, k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
-          istrides,
-          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues())),
-          ostrides);
-      break;
-    }
-    default:
-      LOG(FATAL) << "Unsupported type in reorder expected fp32 or fp16 but got "
-                 << DataTypeString(iweights.type_);
-  }
-}
-
-
 TRT_ShapedWeights TrtWeightStore::GetTempWeights(tensorflow::DataType type,
                                                  const nvinfer1::Dims& dims) {
   TensorShape shape;
@@ -1673,7 +1635,6 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group,
     return tensorflow::errors::InvalidArgument(
         "Conv2D expects kernel of dimension 4, at " + node_def.name());
   }
-  LOG(INFO) << "Conv weights: " << DebugString(weights_rsck.shape_);
   TFAttrs attrs(node_def);
   auto data_format = attrs.get<string>("data_format");
   int c_index = (data_format == "NHWC") ? 3 : 1;
@@ -1734,7 +1695,6 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group,
   TRT_ShapedWeights weights =
       params->weight_store->GetTempWeights(weights_rsck);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
-  LOG(INFO) << "Reordered weight: " << DebugString(weights.shape_);
   TRT_ShapedWeights biases(weights.type_);
   const int output_axis = is_conv2d_backprop_input ? 1 : 0;
   const int noutput = weights.shape_.d[output_axis] * num_groups;
