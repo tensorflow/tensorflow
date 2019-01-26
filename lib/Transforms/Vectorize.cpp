@@ -881,8 +881,9 @@ static bool vectorizeForInst(ForInst *loop, int64_t step,
     auto load = opInst->dyn_cast<LoadOp>();
     auto store = opInst->dyn_cast<StoreOp>();
     LLVM_DEBUG(opInst->print(dbgs()));
-    auto fail = load ? vectorizeRootOrTerminal(loop, load, state)
-                     : vectorizeRootOrTerminal(loop, store, state);
+    auto fail =
+        load ? vectorizeRootOrTerminal(loop->getInductionVar(), load, state)
+             : vectorizeRootOrTerminal(loop->getInductionVar(), store, state);
     if (fail) {
       return fail;
     }
@@ -1210,7 +1211,8 @@ static bool vectorizeRootMatches(NestedMatch matches,
     /// RAII.
     ScopeGuard sg2([&fail, loop, clonedLoop]() {
       if (fail) {
-        loop->replaceAllUsesWith(clonedLoop);
+        loop->getInductionVar()->replaceAllUsesWith(
+            clonedLoop->getInductionVar());
         loop->erase();
       } else {
         clonedLoop->erase();

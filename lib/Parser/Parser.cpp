@@ -3201,7 +3201,8 @@ ParseResult FunctionParser::parseForInst() {
                         ubOperands, ubMap, step);
 
   // Create SSA value definition for the induction variable.
-  if (addDefinition({inductionVariableName, 0, loc}, forInst))
+  if (addDefinition({inductionVariableName, 0, loc},
+                    forInst->getInductionVar()))
     return ParseFailure;
 
   // Try to parse the optional trailing location.
@@ -3347,7 +3348,7 @@ ParseResult FunctionParser::parseBound(SmallVectorImpl<Value *> &operands,
   // Create an identity map using dim id for an induction variable and
   // symbol otherwise. This representation is optimized for storage.
   // Analysis passes may expand it into a multi-dimensional map if desired.
-  if (isa<ForInst>(operands[0]))
+  if (isForInductionVar(operands[0]))
     map = builder.getDimIdentityMap();
   else
     map = builder.getSymbolIdentityMap();

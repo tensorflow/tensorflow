@@ -555,7 +555,7 @@ void mlir::getReachableAffineApplyOps(
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
 bool mlir::getIndexSet(ArrayRef<ForInst *> forInsts,
                        FlatAffineConstraints *domain) {
-  SmallVector<Value *, 4> indices(forInsts.begin(), forInsts.end());
+  auto indices = extractForInductionVars(forInsts);
   // Reset while associated Values in 'indices' to the domain.
   domain->reset(forInsts.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
   for (auto *forInst : forInsts) {
@@ -677,7 +677,7 @@ static void buildDimAndSymbolPositionMaps(
   auto updateValuePosMap = [&](ArrayRef<Value *> values, bool isSrc) {
     for (unsigned i = 0, e = values.size(); i < e; ++i) {
       auto *value = values[i];
-      if (!isa<ForInst>(values[i])) {
+      if (!isForInductionVar(values[i])) {
         assert(values[i]->isValidSymbol() &&
                "access operand has to be either a loop IV or a symbol");
         valuePosMap->addSymbolValue(value);
@@ -739,7 +739,7 @@ void initDependenceConstraints(const FlatAffineConstraints &srcDomain,
   // Set values for the symbolic identifier dimensions.
   auto setSymbolIds = [&](ArrayRef<Value *> values) {
     for (auto *value : values) {
-      if (!isa<ForInst>(value)) {
+      if (!isForInductionVar(value)) {
         assert(value->isValidSymbol() && "expected symbol");
         dependenceConstraints->setIdValue(valuePosMap.getSymPos(value), value);
       }
@@ -907,7 +907,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   // Add equality constraints for any operands that are defined by constant ops.
   auto addEqForConstOperands = [&](ArrayRef<const Value *> operands) {
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
-      if (isa<ForInst>(operands[i]))
+      if (isForInductionVar(operands[i]))
         continue;
       auto *symbol = operands[i];
       assert(symbol->isValidSymbol());
@@ -976,8 +976,8 @@ static unsigned getNumCommonLoops(const FlatAffineConstraints &srcDomain,
       std::min(srcDomain.getNumDimIds(), dstDomain.getNumDimIds());
   unsigned numCommonLoops = 0;
   for (unsigned i = 0; i < minNumLoops; ++i) {
-    if (!isa<ForInst>(srcDomain.getIdValue(i)) ||
-        !isa<ForInst>(dstDomain.getIdValue(i)) ||
+    if (!isForInductionVar(srcDomain.getIdValue(i)) ||
+        !isForInductionVar(dstDomain.getIdValue(i)) ||
         srcDomain.getIdValue(i) != dstDomain.getIdValue(i))
       break;
     ++numCommonLoops;
@@ -998,8 +998,9 @@ static const Block *getCommonBlock(const MemRefAccess &srcAccess,
     return block;
   }
   auto *commonForValue = srcDomain.getIdValue(numCommonLoops - 1);
-  assert(isa<ForInst>(commonForValue));
-  return cast<ForInst>(commonForValue)->getBody();
+  auto *forInst = getForInductionVarOwner(commonForValue);
+  assert(forInst && "commonForValue was not an induction variable");
+  return forInst->getBody();
 }
 
 // Returns true if the ancestor operation instruction of 'srcAccess' appears

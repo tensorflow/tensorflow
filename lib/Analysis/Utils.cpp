@@ -149,7 +149,8 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
     // A rank 0 memref has a 0-d region.
     SmallVector<ForInst *, 4> ivs;
     getLoopIVs(*opInst, &ivs);
-    SmallVector<Value *, 4> regionSymbols(ivs.begin(), ivs.end());
+
+    SmallVector<Value *, 8> regionSymbols = extractForInductionVars(ivs);
     regionCst->reset(0, loopDepth, 0, regionSymbols);
     return true;
   }
@@ -172,7 +173,7 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
   unsigned numSymbols = accessMap.getNumSymbols();
   // Add inequalties for loop lower/upper bounds.
   for (unsigned i = 0; i < numDims + numSymbols; ++i) {
-    if (auto *loop = dyn_cast<ForInst>(accessValueMap.getOperand(i))) {
+    if (auto *loop = getForInductionVarOwner(accessValueMap.getOperand(i))) {
       // Note that regionCst can now have more dimensions than accessMap if the
       // bounds expressions involve outer loops or other symbols.
       // TODO(bondhugula): rewrite this to use getInstIndexSet; this way
@@ -207,7 +208,7 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
   outerIVs.resize(loopDepth);
   for (auto *operand : accessValueMap.getOperands()) {
     ForInst *iv;
-    if ((iv = dyn_cast<ForInst>(operand)) &&
+    if ((iv = getForInductionVarOwner(operand)) &&
         std::find(outerIVs.begin(), outerIVs.end(), iv) == outerIVs.end()) {
       regionCst->projectOut(operand);
     }

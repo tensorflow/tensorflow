@@ -121,8 +121,8 @@ static bool doubleBuffer(Value *oldMemRef, ForInst *forInst) {
   int64_t step = forInst->getStep();
   auto modTwoMap = bInner.getAffineMap(/*dimCount=*/1, /*symbolCount=*/0,
                                        {d0.floorDiv(step) % 2}, {});
-  auto ivModTwoOp =
-      bInner.create<AffineApplyOp>(forInst->getLoc(), modTwoMap, forInst);
+  auto ivModTwoOp = bInner.create<AffineApplyOp>(forInst->getLoc(), modTwoMap,
+                                                 forInst->getInductionVar());
 
   // replaceAllMemRefUsesWith will always succeed unless the forInst body has
   // non-deferencing uses of the memref.

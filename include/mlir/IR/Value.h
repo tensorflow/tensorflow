@@ -45,7 +45,6 @@ public:
   enum class Kind {
     BlockArgument, // block argument
     InstResult,    // operation instruction result
-    ForInst,       // 'for' instruction induction variable
   };
 
   ~Value() {}
@@ -140,6 +139,9 @@ public:
 
   /// Returns the number of this argument.
   unsigned getArgNumber() const;
+
+  /// Returns if the current argument is a function argument.
+  bool isFunctionArgument() const;
 
 private:
   friend class Block; // For access to private constructor.

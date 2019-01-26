@@ -53,9 +53,9 @@ bool DominanceInfo::properlyDominates(const Block *a, const Block *b) {
   if (blockListA == blockListB)
     return DominatorTreeBase::properlyDominates(a, b);
 
-  // Otherwise, 'a' properly dominates 'b' if 'b' is defined in an
-  // IfInst/ForInst that (recursively) ends up being dominated by 'a'. Walk up
-  // the list of containers enclosing B.
+  // Otherwise, 'a' properly dominates 'b' if 'b' is defined in an instruction
+  // region that (recursively) ends up being dominated by 'a'. Walk up the list
+  // of containers enclosing B.
   Instruction *bAncestor;
   do {
     bAncestor = blockListB->getContainingInst();
@@ -105,11 +105,6 @@ bool DominanceInfo::properlyDominates(const Instruction *a,
 bool DominanceInfo::properlyDominates(const Value *a, const Instruction *b) {
   if (auto *aInst = a->getDefiningInst())
     return properlyDominates(aInst, b);
-
-  // The induction variable of a ForInst properly dominantes its body, so we
-  // can just do a simple block dominance check.
-  if (auto *forInst = dyn_cast<ForInst>(a))
-    return dominates(forInst->getBody(), b->getBlock());
 
   // block arguments properly dominate all instructions in their own block, so
   // we use a dominates check here, not a properlyDominates check.

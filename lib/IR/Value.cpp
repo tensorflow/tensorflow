@@ -35,8 +35,6 @@ Function *Value::getFunction() {
     return cast<BlockArgument>(this)->getFunction();
   case Value::Kind::InstResult:
     return getDefiningInst()->getFunction();
-  case Value::Kind::ForInst:
-    return cast<ForInst>(this)->getFunction();
   }
 }
 
@@ -82,4 +80,10 @@ Function *BlockArgument::getFunction() {
   if (auto *owner = getOwner())
     return owner->getFunction();
   return nullptr;
+}
+
+/// Returns if the current argument is a function argument.
+bool BlockArgument::isFunctionArgument() const {
+  auto *containingFn = getFunction();
+  return containingFn && &containingFn->front() == getOwner();
 }

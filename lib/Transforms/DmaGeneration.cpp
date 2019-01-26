@@ -171,7 +171,8 @@ static bool getFullMemRefAsRegion(OperationInst *opInst, unsigned numSymbols,
   getLoopIVs(*opInst, &ivs);
 
   auto *regionCst = region->getConstraints();
-  SmallVector<Value *, 4> symbols(ivs.begin(), ivs.end());
+
+  SmallVector<Value *, 8> symbols = extractForInductionVars(ivs);
   regionCst->reset(rank, numSymbols, 0, symbols);
 
   // Memref dim sizes provide the bounds.

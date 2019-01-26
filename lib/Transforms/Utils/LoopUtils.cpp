@@ -99,24 +99,25 @@ bool mlir::promoteIfSingleIteration(ForInst *forInst) {
     return false;
 
   // Replaces all IV uses to its single iteration value.
-  if (!forInst->use_empty()) {
+  auto *iv = forInst->getInductionVar();
+  if (!iv->use_empty()) {
     if (forInst->hasConstantLowerBound()) {
       auto *mlFunc = forInst->getFunction();
       FuncBuilder topBuilder(mlFunc);
       auto constOp = topBuilder.create<ConstantIndexOp>(
           forInst->getLoc(), forInst->getConstantLowerBound());
-      forInst->replaceAllUsesWith(constOp);
+      iv->replaceAllUsesWith(constOp);
     } else {
       const AffineBound lb = forInst->getLowerBound();
       SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
       FuncBuilder builder(forInst->getBlock(), Block::iterator(forInst));
       if (lb.getMap() == builder.getDimIdentityMap()) {
         // No need of generating an affine_apply.
-        forInst->replaceAllUsesWith(lbOperands[0]);
+        iv->replaceAllUsesWith(lbOperands[0]);
       } else {
         auto affineApplyOp = builder.create<AffineApplyOp>(
             forInst->getLoc(), lb.getMap(), lbOperands);
-        forInst->replaceAllUsesWith(affineApplyOp->getResult(0));
+        iv->replaceAllUsesWith(affineApplyOp->getResult(0));
       }
     }
   }
@@ -161,6 +162,8 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
 
   auto *loopChunk = b->createFor(srcForInst->getLoc(), lbOperands, lbMap,
                                  ubOperands, ubMap, srcForInst->getStep());
+  auto *loopChunkIV = loopChunk->getInductionVar();
+  auto *srcIV = srcForInst->getInductionVar();
 
   BlockAndValueMapping operandMap;
 
@@ -172,17 +175,17 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
     // remapped to results of cloned instructions, and their IV used remapped.
     // Generate the remapping if the shift is not zero: remappedIV = newIV -
     // shift.
-    if (!srcForInst->use_empty() && shift != 0) {
+    if (!srcIV->use_empty() && shift != 0) {
       auto b = FuncBuilder::getForInstBodyBuilder(loopChunk);
       auto *ivRemap = b.create<AffineApplyOp>(
                            srcForInst->getLoc(),
                            b.getSingleDimShiftAffineMap(-static_cast<int64_t>(
                                srcForInst->getStep() * shift)),
-                           loopChunk)
+                           loopChunkIV)
                           ->getResult(0);
-      operandMap.map(srcForInst, ivRemap);
+      operandMap.map(srcIV, ivRemap);
     } else {
-      operandMap.map(srcForInst, loopChunk);
+      operandMap.map(srcIV, loopChunkIV);
     }
     for (auto *inst : insts) {
       loopChunk->getBody()->push_back(inst->clone(operandMap, b->getContext()));
@@ -419,19 +422,20 @@ bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
   Block::iterator srcBlockEnd = std::prev(forInst->getBody()->end());
 
   // Unroll the contents of 'forInst' (append unrollFactor-1 additional copies).
+  auto *forInstIV = forInst->getInductionVar();
   for (unsigned i = 1; i < unrollFactor; i++) {
     BlockAndValueMapping operandMap;
 
     // If the induction variable is used, create a remapping to the value for
     // this unrolled instance.
-    if (!forInst->use_empty()) {
+    if (!forInstIV->use_empty()) {
       // iv' = iv + 1/2/3...unrollFactor-1;
       auto d0 = builder.getAffineDimExpr(0);
       auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
       auto *ivUnroll =
-          builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInst)
+          builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInstIV)
               ->getResult(0);
-      operandMap.map(forInst, ivUnroll);
+      operandMap.map(forInstIV, ivUnroll);
     }
 
     // Clone the original body of 'forInst'.

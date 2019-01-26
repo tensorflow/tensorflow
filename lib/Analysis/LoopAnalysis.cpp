@@ -125,7 +125,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForInst &forInst) {
 }
 
 bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
-  assert(isa<ForInst>(iv) && "iv must be a ForInst");
+  assert(isForInductionVar(&iv) && "iv must be a ForInst");
   assert(index.getType().isa<IndexType>() && "index must be of IndexType");
   SmallVector<OperationInst *, 4> affineApplyOps;
   getReachableAffineApplyOps({const_cast<Value *>(&index)}, affineApplyOps);
@@ -288,8 +288,10 @@ bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
       [fastestVaryingDim](const ForInst &loop, const OperationInst &op) {
         auto load = op.dyn_cast<LoadOp>();
         auto store = op.dyn_cast<StoreOp>();
-        return load ? isContiguousAccess(loop, *load, fastestVaryingDim)
-                    : isContiguousAccess(loop, *store, fastestVaryingDim);
+        return load ? isContiguousAccess(*loop.getInductionVar(), *load,
+                                         fastestVaryingDim)
+                    : isContiguousAccess(*loop.getInductionVar(), *store,
+                                         fastestVaryingDim);
       });
   return isVectorizableLoopWithCond(loop, fun);
 }

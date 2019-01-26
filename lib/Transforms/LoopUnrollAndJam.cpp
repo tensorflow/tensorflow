@@ -215,6 +215,7 @@ bool mlir::loopUnrollJamByFactor(ForInst *forInst, uint64_t unrollJamFactor) {
   int64_t step = forInst->getStep();
   forInst->setStep(step * unrollJamFactor);
 
+  auto *forInstIV = forInst->getInductionVar();
   for (auto &subBlock : subBlocks) {
     // Builder to insert unroll-jammed bodies. Insert right at the end of
     // sub-block.
@@ -226,14 +227,15 @@ bool mlir::loopUnrollJamByFactor(ForInst *forInst, uint64_t unrollJamFactor) {
 
       // If the induction variable is used, create a remapping to the value for
       // this unrolled instance.
-      if (!forInst->use_empty()) {
+      if (!forInstIV->use_empty()) {
         // iv' = iv + i, i = 1 to unrollJamFactor-1.
         auto d0 = builder.getAffineDimExpr(0);
         auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
         auto *ivUnroll =
-            builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInst)
+            builder
+                .create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInstIV)
                 ->getResult(0);
-        operandMapping.map(forInst, ivUnroll);
+        operandMapping.map(forInstIV, ivUnroll);
       }
       // Clone the sub-block being unroll-jammed.
       for (auto it = subBlock.first; it != std::next(subBlock.second); ++it) {

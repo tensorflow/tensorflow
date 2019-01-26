@@ -348,7 +348,7 @@ bool LowerAffinePass::lowerForInst(ForInst *forInst) {
                                       oldBody->begin(), oldBody->end());
 
   // The code in the body of the forInst now uses 'iv' as its indvar.
-  forInst->replaceAllUsesWith(iv);
+  forInst->getInductionVar()->replaceAllUsesWith(iv);
 
   // Append the induction variable stepping logic and branch back to the exit
   // condition block.  Construct an affine expression f : (x -> x+step) and

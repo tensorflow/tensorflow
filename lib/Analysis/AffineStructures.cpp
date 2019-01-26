@@ -1251,7 +1251,7 @@ void FlatAffineConstraints::setDimSymbolSeparation(unsigned newSymbolCount) {
 bool FlatAffineConstraints::addForInstDomain(const ForInst &forInst) {
   unsigned pos;
   // Pre-condition for this method.
-  if (!findId(forInst, &pos)) {
+  if (!findId(*forInst.getInductionVar(), &pos)) {
     assert(0 && "Value not found");
     return false;
   }

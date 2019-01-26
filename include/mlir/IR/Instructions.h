@@ -555,18 +555,11 @@ inline auto OperationInst::getResultTypes() const
 }
 
 /// For instruction represents an affine loop nest.
-class ForInst : public Instruction, public Value {
+class ForInst : public Instruction {
 public:
   static ForInst *create(Location location, ArrayRef<Value *> lbOperands,
                          AffineMap lbMap, ArrayRef<Value *> ubOperands,
                          AffineMap ubMap, int64_t step);
-
-  ~ForInst() {
-    // There may be references to the induction variable of this loop within its
-    // body or, in case of ill-formed code during parsing, outside its body.
-    // Explicitly drop all uses of the induction variable before destroying it.
-    dropAllUses();
-  }
 
   /// Resolve base class ambiguity.
   using Instruction::getFunction;
@@ -700,7 +693,9 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Return the context this operation is associated with.
-  MLIRContext *getContext() const { return getType().getContext(); }
+  MLIRContext *getContext() const {
+    return getInductionVar()->getType().getContext();
+  }
 
   using Instruction::dump;
   using Instruction::print;
@@ -710,11 +705,10 @@ public:
     return ptr->getKind() == IROperandOwner::Kind::ForInst;
   }
 
-  // For instruction represents implicitly represents induction variable by
-  // inheriting from Value class. Whenever you need to refer to the loop
-  // induction variable, just use the for instruction itself.
-  static bool classof(const Value *value) {
-    return value->getKind() == Value::Kind::ForInst;
+  /// Returns the induction variable for this loop.
+  Value *getInductionVar();
+  const Value *getInductionVar() const {
+    return const_cast<ForInst *>(this)->getInductionVar();
   }
 
 private:
@@ -737,6 +731,17 @@ private:
   explicit ForInst(Location location, unsigned numOperands, AffineMap lbMap,
                    AffineMap ubMap, int64_t step);
 };
+
+/// Returns if the provided value is the induction variable of a ForInst.
+bool isForInductionVar(const Value *val);
+
+/// Returns the loop parent of an induction variable. If the provided value is
+/// not an induction variable, then return nullptr.
+ForInst *getForInductionVarOwner(Value *val);
+const ForInst *getForInductionVarOwner(const Value *val);
+
+/// Extracts the induction variables from a list of ForInsts and returns them.
+SmallVector<Value *, 8> extractForInductionVars(ArrayRef<ForInst *> forInsts);
 
 /// AffineBound represents a lower or upper bound in the for instruction.
 /// This class does not own the underlying operands. Instead, it refers

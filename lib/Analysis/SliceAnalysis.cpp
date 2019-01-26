@@ -64,7 +64,7 @@ void mlir::getForwardSlice(Instruction *inst,
       }
     }
   } else if (auto *forInst = dyn_cast<ForInst>(inst)) {
-    for (auto &u : forInst->getUses()) {
+    for (auto &u : forInst->getInductionVar()->getUses()) {
       auto *ownerInst = u.getOwner();
       if (forwardSlice->count(ownerInst) == 0) {
         getForwardSlice(ownerInst, forwardSlice, filter,

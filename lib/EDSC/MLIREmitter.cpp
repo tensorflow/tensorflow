@@ -133,9 +133,7 @@ static void printDefininingStatement(llvm::raw_ostream &os, const Value &v) {
     inst->print(os);
     return;
   }
-  // &v is required here otherwise we get:
-  //  non-pointer operand type 'const mlir::ForInst' incompatible with nullptr
-  if (auto *forInst = dyn_cast<ForInst>(&v)) {
+  if (auto *forInst = getForInductionVarOwner(&v)) {
     forInst->print(os);
   } else {
     os << "unknown_ssa_value";
@@ -296,7 +294,7 @@ Value *MLIREmitter::emit(Expr e) {
           exprs[1]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
       auto step =
           exprs[2]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
-      res = builder->createFor(location, lb, ub, step);
+      res = builder->createFor(location, lb, ub, step)->getInductionVar();
     }
   }
 
@@ -347,7 +345,8 @@ void MLIREmitter::emitStmt(const Stmt &stmt) {
     bind(stmt.getLHS(), val);
     if (stmt.getRHS().getKind() == ExprKind::For) {
       // Step into the loop.
-      builder->setInsertionPointToStart(cast<ForInst>(val)->getBody());
+      builder->setInsertionPointToStart(
+          getForInductionVarOwner(val)->getBody());
     }
   }
   emitStmts(stmt.getEnclosedStmts());
