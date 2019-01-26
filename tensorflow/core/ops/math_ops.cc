@@ -1686,6 +1686,8 @@ Add two input tensors element wise using mkl kernel sum.
 inputs: Must all be the same size and shape.
 )doc");
 
+#endif  // INTEL_MKL
+
 REGISTER_OP("RequantizePerChannel")
     .Input("input: T")
     .Input("input_min: float")
@@ -1724,8 +1726,6 @@ REGISTER_OP("RequantizationRangePerChannel")
       c->set_output(1, c->Scalar());
       return Status::OK();
     });
-
-#endif  // INTEL_MKL
 
 REGISTER_OP("NextAfter")
     .Attr("T: {float64, float32} = DT_FLOAT")
