@@ -126,9 +126,12 @@ class _SaveableView(object):
   def _list_functions(self, checkpointable_object):
     """Return a dict of `Function`s of a checkpointable."""
     functions = dict()
-    for attribute_name in dir(checkpointable_object):
+    attribute_extractor, attribute_getter = (
+        revived_types.get_attribute_extractors(checkpointable_object))
+    for attribute_name in attribute_extractor(checkpointable_object):
       try:
-        attribute_value = getattr(checkpointable_object, attribute_name, None)
+        attribute_value = attribute_getter(
+            checkpointable_object, attribute_name, None)
       except Exception:  # pylint: disable=broad-except
         # We really don't want to throw an exception just because some object's
         # attribute accessor is broken.

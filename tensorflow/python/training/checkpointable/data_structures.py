@@ -803,7 +803,9 @@ revived_types.register_revived_type(
         version=1,
         min_producer_version=1,
         min_consumer_version=1,
-        setter=operator.setitem)])
+        setter=operator.setitem,
+        getter=_DictWrapper.get,
+        attribute_extractor=lambda obj: obj.keys())])
 
 
 def _set_list_item(list_object, index_string, value):
@@ -811,6 +813,13 @@ def _set_list_item(list_object, index_string, value):
   if len(list_object) <= item_index:
     list_object.extend([None] * (1 + item_index - len(list_object)))
   list_object[item_index] = value
+
+
+def _list_getter(obj, item, default=None):
+  index = int(item)
+  if index < len(obj):
+    return obj[index]
+  return default
 
 
 revived_types.register_revived_type(
@@ -821,4 +830,6 @@ revived_types.register_revived_type(
         version=1,
         min_producer_version=1,
         min_consumer_version=1,
-        setter=_set_list_item)])
+        setter=_set_list_item,
+        getter=_list_getter,
+        attribute_extractor=lambda obj: [str(i) for i in range(len(obj))])])
