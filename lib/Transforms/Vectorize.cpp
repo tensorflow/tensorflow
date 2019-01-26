@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/LoopAnalysis.h"
-#include "mlir/Analysis/MLFunctionMatcher.h"
+#include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
@@ -567,14 +567,14 @@ static FilterFunctionType
 isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension);
 
 // Build a bunch of predetermined patterns that will be traversed in order.
-// Due to the recursive nature of MLFunctionMatchers, this captures
+// Due to the recursive nature of NestedPatterns, this captures
 // arbitrarily nested pairs of loops at any position in the tree.
 /// Note that this currently only matches 2 nested loops and will be extended.
 // TODO(ntv): support 3-D loop patterns with a common reduction loop that can
 // be matched to GEMMs.
-static std::vector<MLFunctionMatcher> defaultPatterns() {
+static std::vector<NestedPattern> defaultPatterns() {
   using matcher::For;
-  return std::vector<MLFunctionMatcher>{
+  return std::vector<NestedPattern>{
       // 3-D patterns
       For(isVectorizableLoopPtrFactory(2),
           For(isVectorizableLoopPtrFactory(1),
@@ -627,7 +627,7 @@ static std::vector<MLFunctionMatcher> defaultPatterns() {
 /// Up to 3-D patterns are supported.
 /// If the command line argument requests a pattern of higher order, returns an
 /// empty pattern list which will conservatively result in no vectorization.
-static std::vector<MLFunctionMatcher> makePatterns() {
+static std::vector<NestedPattern> makePatterns() {
   using matcher::For;
   if (clFastestVaryingPattern.empty()) {
     return defaultPatterns();
@@ -644,7 +644,7 @@ static std::vector<MLFunctionMatcher> makePatterns() {
         For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[1]),
             For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[2]))))};
   default:
-    return std::vector<MLFunctionMatcher>();
+    return std::vector<NestedPattern>();
   }
 }
 
@@ -656,7 +656,7 @@ struct Vectorize : public FunctionPass {
   PassResult runOnFunction(Function *f) override;
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
-  MLFunctionMatcherContext MLContext;
+  NestedPatternContext MLContext;
 
   static char passID;
 };
@@ -703,8 +703,8 @@ static void vectorizeLoopIfProfitable(ForInst *loop, unsigned depthInPattern,
 ///   3. account for impact of vectorization on maximal loop fusion.
 /// Then we can quantify the above to build a cost model and search over
 /// strategies.
-static bool analyzeProfitability(MLFunctionMatches matches,
-                                 unsigned depthInPattern, unsigned patternDepth,
+static bool analyzeProfitability(NestedMatch matches, unsigned depthInPattern,
+                                 unsigned patternDepth,
                                  VectorizationStrategy *strategy) {
   for (auto m : matches) {
     auto *loop = cast<ForInst>(m.first);
@@ -890,7 +890,7 @@ static bool vectorizeForInst(ForInst *loop, int64_t step,
   return false;
 }
 
-/// Returns a FilterFunctionType that can be used in MLFunctionMatcher to
+/// Returns a FilterFunctionType that can be used in NestedPattern to
 /// match a loop whose underlying load/store accesses are all varying along the
 /// `fastestVaryingMemRefDimension`.
 /// TODO(ntv): In the future, allow more interesting mixed layout permutation
@@ -906,16 +906,15 @@ isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension) {
 }
 
 /// Forward-declaration.
-static bool vectorizeNonRoot(MLFunctionMatches matches,
-                             VectorizationState *state);
+static bool vectorizeNonRoot(NestedMatch matches, VectorizationState *state);
 
 /// Apply vectorization of `loop` according to `state`. This is only triggered
 /// if all vectorizations in `childrenMatches` have already succeeded
 /// recursively in DFS post-order.
-static bool doVectorize(MLFunctionMatches::EntryType oneMatch,
+static bool doVectorize(NestedMatch::EntryType oneMatch,
                         VectorizationState *state) {
   ForInst *loop = cast<ForInst>(oneMatch.first);
-  MLFunctionMatches childrenMatches = oneMatch.second;
+  NestedMatch childrenMatches = oneMatch.second;
 
   // 1. DFS postorder recursion, if any of my children fails, I fail too.
   auto fail = vectorizeNonRoot(childrenMatches, state);
@@ -949,8 +948,7 @@ static bool doVectorize(MLFunctionMatches::EntryType oneMatch,
 
 /// Non-root pattern iterates over the matches at this level, calls doVectorize
 /// and exits early if anything below fails.
-static bool vectorizeNonRoot(MLFunctionMatches matches,
-                             VectorizationState *state) {
+static bool vectorizeNonRoot(NestedMatch matches, VectorizationState *state) {
   for (auto m : matches) {
     auto fail = doVectorize(m, state);
     if (fail) {
@@ -1186,7 +1184,7 @@ static bool vectorizeOperations(VectorizationState *state) {
 /// The root match thus needs to maintain a clone for handling failure.
 /// Each root may succeed independently but will otherwise clean after itself if
 /// anything below it fails.
-static bool vectorizeRootMatches(MLFunctionMatches matches,
+static bool vectorizeRootMatches(NestedMatch matches,
                                  VectorizationStrategy *strategy) {
   for (auto m : matches) {
     auto *loop = cast<ForInst>(m.first);

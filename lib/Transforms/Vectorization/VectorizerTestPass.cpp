@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/MLFunctionMatcher.h"
+#include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/Builders.h"
@@ -95,7 +95,7 @@ struct VectorizerTestPass : public FunctionPass {
   void testNormalizeMaps(Function *f);
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
-  MLFunctionMatcherContext MLContext;
+  NestedPatternContext MLContext;
 
   static char passID;
 };
@@ -153,7 +153,7 @@ static std::string toString(Instruction *inst) {
   return res;
 }
 
-static MLFunctionMatches matchTestSlicingOps(Function *f) {
+static NestedMatch matchTestSlicingOps(Function *f) {
   // Just use a custom op name for this test, it makes life easier.
   constexpr auto kTestSlicingOpName = "slicing-test-op";
   using functional::map;

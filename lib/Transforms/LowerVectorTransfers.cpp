@@ -22,7 +22,7 @@
 #include <type_traits>
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/MLFunctionMatcher.h"
+#include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/EDSC/MLIREmitter.h"

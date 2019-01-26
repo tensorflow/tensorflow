@@ -22,7 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/MLFunctionMatcher.h"
+#include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -49,7 +49,7 @@ struct ComposeAffineMaps : public FunctionPass {
   PassResult runOnFunction(Function *f) override;
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
-  MLFunctionMatcherContext MLContext;
+  NestedPatternContext MLContext;
 
   static char passID;
 };
@@ -74,8 +74,7 @@ PassResult ComposeAffineMaps::runOnFunction(Function *f) {
   auto apps = pattern.match(f);
   for (auto m : apps) {
     auto app = cast<OperationInst>(m.first)->cast<AffineApplyOp>();
-    SmallVector<Value *, 8> operands(app->getOperands().begin(),
-                                     app->getOperands().end());
+    SmallVector<Value *, 8> operands(app->getOperands());
     FuncBuilder b(m.first);
     auto newApp = makeComposedAffineApply(&b, app->getLoc(),
                                           app->getAffineMap(), operands);

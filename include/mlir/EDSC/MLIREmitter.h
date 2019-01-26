@@ -23,7 +23,7 @@
 // generally designed to be automatically generated from various IR dialects in
 // the future.
 // The implementation is supported by a lightweight by-value abstraction on a
-// scoped BumpAllocator with similarities to AffineExpr and MLFunctionMatcher.
+// scoped BumpAllocator with similarities to AffineExpr and NestedPattern.
 //
 //===----------------------------------------------------------------------===//
 
