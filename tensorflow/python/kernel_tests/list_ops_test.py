@@ -949,16 +949,25 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               list_ops.empty_tensor_list([], dtypes.float32),
               element_dtype=dtypes.float32))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "element shapes are not identical at index 0"):
+    if context.executing_eagerly():
+      expected_error = (
+          errors.InvalidArgumentError,
+          "element shapes are not identical at index 0")
+    else:
+      expected_error = (ValueError, "Shapes must be equal rank")
+    with self.assertRaisesRegexp(*expected_error):
       l_batch_of_vec_tls = array_ops.stack(
           [list_ops.tensor_list_from_tensor([[1.0]], element_shape=[1])] * 2)
       self.evaluate(
           list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_vec_tls,
                                             element_dtype=dtypes.float32))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r"input_b\[0\].dtype != element_dtype."):
+    if context.executing_eagerly():
+      expected_error = (errors.InvalidArgumentError,
+                        r"input_b\[0\].dtype != element_dtype.")
+    else:
+      expected_error = (ValueError, "input_b.type != element_dtype")
+    with self.assertRaisesRegexp(*expected_error):
       l_batch_of_int_tls = array_ops.stack(
           [list_ops.tensor_list_from_tensor([1], element_shape=[])] * 2)
       self.evaluate(
@@ -1003,8 +1012,11 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(
           list_ops.tensor_list_push_back_batch(l_batch, [[3.0], [4.0]]))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Invalid data type at index 0"):
+    if context.executing_eagerly():
+      expected_error = (errors.InvalidArgumentError, "Invalid data type")
+    else:
+      expected_error = (ValueError, "wrong element dtype")
+    with self.assertRaisesRegexp(*expected_error):
       self.evaluate(list_ops.tensor_list_push_back_batch(l_batch, [3, 4]))
 
   def testZerosLike(self):
