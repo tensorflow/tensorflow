@@ -26,7 +26,6 @@ import numpy as np
 import six
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -54,11 +53,9 @@ from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util.tf_export import keras_export
@@ -130,7 +127,7 @@ class Metric(Layer):
       if sample_weight is not None:
         sample_weight = math_ops.cast(sample_weight, self._dtype)
         values = math_ops.multiply(values, sample_weight)
-      state_ops.assign_add(self.true_positives, math_ops.reduce_sum(values))
+      self.true_positives.assign_add(math_ops.reduce_sum(values))
 
     def result(self):
       return array_ops.identity(self.true_positives)
@@ -260,6 +257,7 @@ class Metric(Layer):
 
   ### End: For use by subclasses ###
 
+
 class Reduce(Metric):
   """Encapsulates metrics that perform a reduce operation on the values."""
 
@@ -318,7 +316,7 @@ class Reduce(Metric):
 
     value_sum = math_ops.reduce_sum(values)
     with ops.control_dependencies([value_sum]):
-      update_total_op = state_ops.assign_add(self.total, value_sum)
+      update_total_op = self.total.assign_add(value_sum)
 
     # Exit early if the reduction doesn't have a denominator.
     if self.reduction == metrics_utils.Reduction.SUM:
@@ -337,7 +335,7 @@ class Reduce(Metric):
           'reduction [%s] not implemented' % self.reduction)
 
     with ops.control_dependencies([update_total_op]):
-      return state_ops.assign_add(self.count, num_values)
+      return self.count.assign_add(num_values)
 
   def result(self):
     if self.reduction == metrics_utils.Reduction.SUM:
@@ -2260,7 +2258,7 @@ class MeanIoU(Metric):
         self.num_classes,
         weights=sample_weight,
         dtype=dtypes.float64)
-    return state_ops.assign_add(self.total_cm, current_cm)
+    return self.total_cm.assign_add(current_cm)
 
   def result(self):
     """Compute the mean intersection-over-union via the confusion matrix."""
@@ -2388,9 +2386,9 @@ class MeanTensor(Metric):
       num_values = math_ops.multiply(num_values, sample_weight)
       values = math_ops.multiply(values, sample_weight)
 
-    update_total_op = state_ops.assign_add(self._total, values)
+    update_total_op = self._total.assign_add(values)
     with ops.control_dependencies([update_total_op]):
-      return state_ops.assign_add(self._count, num_values)
+      return self._count.assign_add(num_values)
 
   def result(self):
     if not self._built:
