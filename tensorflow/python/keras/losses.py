@@ -790,7 +790,7 @@ class Huber(Loss):
               'keras.losses.mse',
               'keras.losses.MSE')
 def mean_squared_error(y_true, y_pred):
-  return K.mean(math_ops.square(y_pred - y_true), axis=-1)
+  return K.mean(math_ops.squared_difference(y_pred, y_true), axis=-1)
 
 
 @keras_export('keras.metrics.mean_absolute_error',
