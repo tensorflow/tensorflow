@@ -95,6 +95,26 @@ std::vector<Device*> FilterSupportedDevices(
   return filtered_devices;
 }
 
+// Returns true if the node has no inputs and produces outputs
+// that are consumed by a single node.
+//
+// TODO(vrv): Currently this handles only nodes with one output, but
+// this could be extended to handle the case where a node has many
+// outputs that are connected to nodes in the same colocation group.
+bool IsGeneratorNode(const Node* node) {
+  return node->num_inputs() == 0 && node->num_outputs() == 1 &&
+         !IsRefType(node->output_type(0));
+}
+
+bool IsExemptFromResourceInputColocation(const Node* node) {
+  // Note: Partitioned function calls, which place and partition their
+  // function bodies, are exempt from this check: they forward resource and
+  // ref inputs to operations that are appropriately placed, instead of
+  // dereferencing them.
+  const string& op_type = node->op_def().name();
+  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall";
+}
+
 // This class maintains the connected components of a colocation
 // constraint graph, and uses this information to assign a satisfying
 // device placement to the nodes of the graph.
@@ -191,6 +211,82 @@ class ColocationGraph {
       }
     }
 
+    return Status::OK();
+  }
+
+  Status ColocateResourceAndRefEdges(bool log_device_placement) {
+    // Enumerate the constraint edges, and use them to update the disjoint
+    // node set.
+
+    // If `node` has an input edge with reference type, add an edge from the
+    // source of that edge to `node`.
+    for (const Edge* edge : graph_->edges()) {
+      if (edge->IsControlEdge()) {
+        continue;
+      }
+      Node* src = edge->src();
+      Node* dst = edge->dst();
+      DataType input_type = dst->input_type(edge->dst_input());
+      if ((input_type == DT_RESOURCE || IsRefType(input_type)) &&
+          !IsExemptFromResourceInputColocation(dst)) {
+        // Colocate `src` and `dst` to maintain the invariant that nodes
+        // connected by reference edges are colocated.
+        int src_root_id = FindRoot(src->id());
+        int dst_root_id = FindRoot(dst->id());
+        auto& src_root = members_[src_root_id];
+        auto& dst_root = members_[dst_root_id];
+        // If both the source node and this node have partially
+        // specified a device, then 'node's device should be
+        // cleared: the reference edge forces 'node' to be on the
+        // same device as the source node.
+        const auto& source_parsed_name = src_root.device_name;
+        const auto& dest_parsed_name = dst_root.device_name;
+        if (DeviceNameUtils::HasSomeDetails(source_parsed_name) &&
+            DeviceNameUtils::HasSomeDetails(dest_parsed_name)) {
+          // Ignore a specified device for 'dst' if the two names were
+          // incompatible.
+          if (!DeviceNameUtils::AreCompatibleDevNames(source_parsed_name,
+                                                      dest_parsed_name)) {
+            TF_RETURN_IF_ERROR(VerifyResourceAndRefInputsCanBeColocated(
+                dst, src, source_parsed_name));
+            if (log_device_placement) {
+              LOG(INFO)
+                  << "Ignoring device specification "
+                  << DeviceNameUtils::ParsedNameToString(dest_parsed_name)
+                  << " for node '" << dst->name()
+                  << "' because the input edge from '" << src->name()
+                  << "' is a reference connection and already has a device "
+                     "field set to "
+                  << DeviceNameUtils::ParsedNameToString(source_parsed_name);
+            }
+
+            // Make 'dst' colocated with the source
+            dst_root.device_name = source_parsed_name;
+          } else {
+            bool source_subset_of_dest = DeviceNameUtils::IsSpecification(
+                source_parsed_name, dest_parsed_name);
+            bool dest_subset_of_source = DeviceNameUtils::IsSpecification(
+                dest_parsed_name, source_parsed_name);
+
+            if (source_subset_of_dest && !dest_subset_of_source) {
+              src_root.device_name = dest_parsed_name;
+            } else {
+              dst_root.device_name = source_parsed_name;
+            }
+          }
+        }
+        Status status = ColocateNodes(*src, src_root_id, *dst, dst_root_id);
+        if (!status.ok()) {
+          return AttachDef(errors::InvalidArgument(
+                               "Nodes were connected by a "
+                               "reference connection (requiring them to "
+                               "be on the same device), but the two nodes "
+                               "were assigned two different devices: ",
+                               status.error_message()),
+                           *dst);
+        }
+      }
+    }
     return Status::OK();
   }
 
@@ -790,27 +886,6 @@ class ColocationGraph {
   const bool allow_soft_placement_;
   const Device* default_device_;
 };
-
-// Returns true if the node has no inputs and produces outputs
-// that are consumed by a single node.
-//
-// TODO(vrv): Currently this handles only nodes with one output, but
-// this could be extended to handle the case where a node has many
-// outputs that are connected to nodes in the same colocation group.
-bool IsGeneratorNode(const Node* node) {
-  return node->num_inputs() == 0 && node->num_outputs() == 1 &&
-         !IsRefType(node->output_type(0));
-}
-
-bool IsExemptFromResourceInputColocation(const Node* node) {
-  // Note: Partitioned function calls, which place and partition their
-  // function bodies, are exempt from this check: they forward resource and
-  // ref inputs to operations that are appropriately placed, instead of
-  // dereferencing them.
-  const string& op_type = node->op_def().name();
-  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall";
-}
-
 }  // namespace
 
 Placer::Placer(Graph* graph, const DeviceSet* devices,
@@ -844,81 +919,9 @@ Status Placer::Run() {
   // the constraints) may not be acyclic.
   TF_RETURN_IF_ERROR(colocation_graph.ColocateAllNodes());
 
-  // 2. Enumerate the constraint edges, and use them to update the disjoint
-  // node set.
-
-  // If `node` has an input edge with reference type, add an edge from the
-  // source of that edge to `node`.
-  for (const Edge* edge : graph_->edges()) {
-    if (edge->IsControlEdge()) {
-      continue;
-    }
-    Node* src = edge->src();
-    Node* dst = edge->dst();
-    DataType input_type = dst->input_type(edge->dst_input());
-    if ((input_type == DT_RESOURCE || IsRefType(input_type)) &&
-        !IsExemptFromResourceInputColocation(dst)) {
-      // Colocate `src` and `dst` to maintain the invariant that nodes connected
-      // by reference edges are colocated.
-      int src_root_id = colocation_graph.FindRoot(src->id());
-      int dst_root_id = colocation_graph.FindRoot(dst->id());
-      auto& src_root = colocation_graph.members_[src_root_id];
-      auto& dst_root = colocation_graph.members_[dst_root_id];
-      // If both the source node and this node have partially
-      // specified a device, then 'node's device should be
-      // cleared: the reference edge forces 'node' to be on the
-      // same device as the source node.
-      const auto& source_parsed_name = src_root.device_name;
-      const auto& dest_parsed_name = dst_root.device_name;
-      if (DeviceNameUtils::HasSomeDetails(source_parsed_name) &&
-          DeviceNameUtils::HasSomeDetails(dest_parsed_name)) {
-        // Ignore a specified device for 'dst' if the two names were
-        // incompatible.
-        if (!DeviceNameUtils::AreCompatibleDevNames(source_parsed_name,
-                                                    dest_parsed_name)) {
-          TF_RETURN_IF_ERROR(
-              colocation_graph.VerifyResourceAndRefInputsCanBeColocated(
-                  dst, src, source_parsed_name));
-          if (log_device_placement_) {
-            LOG(INFO) << "Ignoring device specification "
-                      << DeviceNameUtils::ParsedNameToString(dest_parsed_name)
-                      << " for node '" << dst->name()
-                      << "' because the input edge from '" << src->name()
-                      << "' is a reference connection and already has a device "
-                         "field set to "
-                      << DeviceNameUtils::ParsedNameToString(
-                             source_parsed_name);
-          }
-
-          // Make 'dst' colocated with the source
-          dst_root.device_name = source_parsed_name;
-        } else {
-          bool source_subset_of_dest = DeviceNameUtils::IsSpecification(
-              source_parsed_name, dest_parsed_name);
-          bool dest_subset_of_source = DeviceNameUtils::IsSpecification(
-              dest_parsed_name, source_parsed_name);
-
-          if (source_subset_of_dest && !dest_subset_of_source) {
-            src_root.device_name = dest_parsed_name;
-          } else {
-            dst_root.device_name = source_parsed_name;
-          }
-        }
-      }
-
-      Status status =
-          colocation_graph.ColocateNodes(*src, src_root_id, *dst, dst_root_id);
-      if (!status.ok()) {
-        return AttachDef(
-            errors::InvalidArgument("Nodes were connected by a "
-                                    "reference connection (requiring them to "
-                                    "be on the same device), but the two nodes "
-                                    "were assigned two different devices: ",
-                                    status.error_message()),
-            *dst);
-      }
-    }
-  }
+  // 2. Add constraints based on resource and ref edges.
+  TF_RETURN_IF_ERROR(
+      colocation_graph.ColocateResourceAndRefEdges(log_device_placement_));
 
   // 3. For each node, assign a device based on the constraints in the
   // disjoint node set.
