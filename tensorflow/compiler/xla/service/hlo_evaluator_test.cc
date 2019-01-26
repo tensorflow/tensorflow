@@ -152,6 +152,33 @@ TEST_P(HloEvaluatorBf16Test, DoesClamp) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+// Verifies that clamping of int64 does not cause loss of precision
+TEST_P(HloEvaluatorBf16Test, DoesClamp) {
+  auto ones = [](int bits) -> int64 { return (1LL << bits) - 1; };
+
+  auto low =
+      LiteralUtil::CreateR2<int64>({{0, ones(54)}, {ones(54), ones(58)}});
+  auto value = LiteralUtil::CreateR2<int64>({{0, ones(56)}, {0, ones(58)}});
+  auto high = LiteralUtil::CreateR2<int64>(
+      {{ones(54), ones(55)}, {ones(56), ones(58)}});
+
+  Shape shape = low.shape();
+  HloComputation::Builder b(TestName());
+  auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(low)));
+  auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
+  auto c3 = b.AddInstruction(HloInstruction::CreateConstant(std::move(high)));
+  b.AddInstruction(
+      HloInstruction::CreateTernary(shape, HloOpcode::kClamp, c1, c2, c3));
+  m_->AddEntryComputation(b.Build());
+
+  Literal result = Evaluate();
+
+  auto expected =
+      LiteralUtil::CreateR2<int64>({{0, ones(55)}, {ones(54), ones(58)}});
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_P(HloEvaluatorBf16Test, DISABLED_DoesClampSpecialBroadcast) {
   auto low = LiteralUtil::CreateR0<float>(0.f);
   auto value = LiteralUtil::CreateR2<float>({{-1.f, 0.f}, {1.f, 2.f}});
