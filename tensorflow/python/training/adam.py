@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Adam for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
@@ -37,8 +36,13 @@ class AdamOptimizer(optimizer.Optimizer):
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
   """
 
-  def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
-               use_locking=False, name="Adam"):
+  def __init__(self,
+               learning_rate=0.001,
+               beta1=0.9,
+               beta2=0.999,
+               epsilon=1e-8,
+               use_locking=False,
+               name="Adam"):
     r"""Construct a new Adam optimizer.
 
     Initialization:
@@ -102,9 +106,6 @@ class AdamOptimizer(optimizer.Optimizer):
     self._beta2_t = None
     self._epsilon_t = None
 
-    # Created in SparseApply if needed.
-    self._updated_lr = None
-
   def _get_beta_accumulators(self):
     with ops.init_scope():
       if context.executing_eagerly():
@@ -120,12 +121,10 @@ class AdamOptimizer(optimizer.Optimizer):
     # workers (these need to go on the same PS, otherwise some updates are
     # silently ignored).
     first_var = min(var_list, key=lambda x: x.name)
-    self._create_non_slot_variable(initial_value=self._beta1,
-                                   name="beta1_power",
-                                   colocate_with=first_var)
-    self._create_non_slot_variable(initial_value=self._beta2,
-                                   name="beta2_power",
-                                   colocate_with=first_var)
+    self._create_non_slot_variable(
+        initial_value=self._beta1, name="beta1_power", colocate_with=first_var)
+    self._create_non_slot_variable(
+        initial_value=self._beta2, name="beta2_power", colocate_with=first_var)
 
     # Create slots for the first and second moments.
     for v in var_list:
@@ -148,28 +147,34 @@ class AdamOptimizer(optimizer.Optimizer):
     v = self.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators()
     return training_ops.apply_adam(
-        var, m, v,
+        var,
+        m,
+        v,
         math_ops.cast(beta1_power, var.dtype.base_dtype),
         math_ops.cast(beta2_power, var.dtype.base_dtype),
         math_ops.cast(self._lr_t, var.dtype.base_dtype),
         math_ops.cast(self._beta1_t, var.dtype.base_dtype),
         math_ops.cast(self._beta2_t, var.dtype.base_dtype),
         math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
-        grad, use_locking=self._use_locking).op
+        grad,
+        use_locking=self._use_locking).op
 
   def _resource_apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators()
     return training_ops.resource_apply_adam(
-        var.handle, m.handle, v.handle,
+        var.handle,
+        m.handle,
+        v.handle,
         math_ops.cast(beta1_power, grad.dtype.base_dtype),
         math_ops.cast(beta2_power, grad.dtype.base_dtype),
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta1_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_t, grad.dtype.base_dtype),
         math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
-        grad, use_locking=self._use_locking)
+        grad,
+        use_locking=self._use_locking)
 
   def _apply_sparse_shared(self, grad, var, indices, scatter_add):
     beta1_power, beta2_power = self._get_beta_accumulators()
@@ -183,8 +188,7 @@ class AdamOptimizer(optimizer.Optimizer):
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = self.get_slot(var, "m")
     m_scaled_g_values = grad * (1 - beta1_t)
-    m_t = state_ops.assign(m, m * beta1_t,
-                           use_locking=self._use_locking)
+    m_t = state_ops.assign(m, m * beta1_t, use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
@@ -194,26 +198,29 @@ class AdamOptimizer(optimizer.Optimizer):
     with ops.control_dependencies([v_t]):
       v_t = scatter_add(v, indices, v_scaled_g_values)
     v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(var,
-                                      lr * m_t / (v_sqrt + epsilon_t),
-                                      use_locking=self._use_locking)
+    var_update = state_ops.assign_sub(
+        var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
 
   def _apply_sparse(self, grad, var):
     return self._apply_sparse_shared(
-        grad.values, var, grad.indices,
+        grad.values,
+        var,
+        grad.indices,
         lambda x, i, v: state_ops.scatter_add(  # pylint: disable=g-long-lambda
-            x, i, v, use_locking=self._use_locking))
+            x,
+            i,
+            v,
+            use_locking=self._use_locking))
 
   def _resource_scatter_add(self, x, i, v):
     with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(
-            x.handle, i, v)]):
+        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
       return x.value()
 
   def _resource_apply_sparse(self, grad, var, indices):
-    return self._apply_sparse_shared(
-        grad, var, indices, self._resource_scatter_add)
+    return self._apply_sparse_shared(grad, var, indices,
+                                     self._resource_scatter_add)
 
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
@@ -224,5 +231,5 @@ class AdamOptimizer(optimizer.Optimizer):
             beta1_power * self._beta1_t, use_locking=self._use_locking)
         update_beta2 = beta2_power.assign(
             beta2_power * self._beta2_t, use_locking=self._use_locking)
-    return control_flow_ops.group(*update_ops + [update_beta1, update_beta2],
-                                  name=name_scope)
+    return control_flow_ops.group(
+        *update_ops + [update_beta1, update_beta2], name=name_scope)
