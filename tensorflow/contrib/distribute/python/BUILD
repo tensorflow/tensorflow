@@ -628,13 +628,12 @@ distribute_py_test(
     srcs = ["keras_backward_compat_test.py"],
     full_precision = True,
     main = "keras_backward_compat_test.py",
-    shard_count = 16,
+    shard_count = 31,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
-        "notap",  # TODO(123409374): Re-enable this test in TAP.
         "notsan",
     ],
     deps = [
