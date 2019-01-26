@@ -200,12 +200,10 @@ public:
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
 
   // Polyhedral structures.
-  void parseAffineStructureInline(AffineMap *map, IntegerSet *set);
-  void parseAffineStructureReference(AffineMap *map, IntegerSet *set);
-  AffineMap parseAffineMapInline();
   AffineMap parseAffineMapReference();
-  IntegerSet parseIntegerSetInline();
   IntegerSet parseIntegerSetReference();
+  ParseResult parseAffineMapOrIntegerSetReference(AffineMap &map,
+                                                  IntegerSet &set);
   DenseElementsAttr parseDenseElementsAttr(VectorOrTensorType type);
   DenseElementsAttr parseDenseElementsAttr(Type eltType, bool isVector);
   VectorOrTensorType parseVectorOrTensorType();
@@ -997,13 +995,13 @@ Attribute Parser::parseAttribute(Type type) {
     // Try to parse an affine map or an integer set reference.
     AffineMap map;
     IntegerSet set;
-    parseAffineStructureReference(&map, &set);
+    if (parseAffineMapOrIntegerSetReference(map, set))
+      return (emitError("expected affine map or integer set attribute value"),
+              nullptr);
     if (map)
       return builder.getAffineMapAttr(map);
-    if (set)
-      return builder.getIntegerSetAttr(set);
-    return (emitError("expected affine map or integer set attribute value"),
-            nullptr);
+    assert(set);
+    return builder.getIntegerSetAttr(set);
   }
 
   case Token::at_identifier: {
@@ -1474,8 +1472,10 @@ class AffineParser : public Parser {
 public:
   explicit AffineParser(ParserState &state) : Parser(state) {}
 
-  void parseAffineStructureInline(AffineMap *map, IntegerSet *set);
+  AffineMap parseAffineMapInline();
   AffineMap parseAffineMapRange(unsigned numDims, unsigned numSymbols);
+  IntegerSet parseIntegerSetInline();
+  ParseResult parseAffineMapOrIntegerSetInline(AffineMap &map, IntegerSet &set);
   IntegerSet parseIntegerSetConstraints(unsigned numDims, unsigned numSymbols);
 
 private:
@@ -1486,6 +1486,8 @@ private:
   // Identifier lists for polyhedral structures.
   ParseResult parseDimIdList(unsigned &numDims);
   ParseResult parseSymbolIdList(unsigned &numSymbols);
+  ParseResult parseDimAndOptionalSymbolIdList(unsigned &numDims,
+                                              unsigned &numSymbols);
   ParseResult parseIdentifierDefinition(AffineExpr idExpr);
 
   AffineExpr parseAffineExpr();
@@ -1841,6 +1843,20 @@ ParseResult AffineParser::parseIdentifierDefinition(AffineExpr idExpr) {
   return ParseSuccess;
 }
 
+/// Parse the list of dimensional identifiers to an affine map.
+ParseResult AffineParser::parseDimIdList(unsigned &numDims) {
+  if (parseToken(Token::l_paren,
+                 "expected '(' at start of dimensional identifiers list")) {
+    return ParseFailure;
+  }
+
+  auto parseElt = [&]() -> ParseResult {
+    auto dimension = getAffineDimExpr(numDims++, getContext());
+    return parseIdentifierDefinition(dimension);
+  };
+  return parseCommaSeparatedListUntil(Token::r_paren, parseElt);
+}
+
 /// Parse the list of symbolic identifiers to an affine map.
 ParseResult AffineParser::parseSymbolIdList(unsigned &numSymbols) {
   consumeToken(Token::l_square);
@@ -1851,23 +1867,21 @@ ParseResult AffineParser::parseSymbolIdList(unsigned &numSymbols) {
   return parseCommaSeparatedListUntil(Token::r_square, parseElt);
 }
 
-/// Parse the list of dimensional identifiers to an affine map.
-ParseResult AffineParser::parseDimIdList(unsigned &numDims) {
-  if (parseToken(Token::l_paren,
-                 "expected '(' at start of dimensional identifiers list"))
-    return ParseFailure;
-
-  auto parseElt = [&]() -> ParseResult {
-    auto dimension = getAffineDimExpr(numDims++, getContext());
-    return parseIdentifierDefinition(dimension);
-  };
-  return parseCommaSeparatedListUntil(Token::r_paren, parseElt);
+/// Parse the list of symbolic identifiers to an affine map.
+ParseResult
+AffineParser::parseDimAndOptionalSymbolIdList(unsigned &numDims,
+                                              unsigned &numSymbols) {
+  if (parseDimIdList(numDims)) {
+    return ParseResult::ParseFailure;
+  }
+  if (!getToken().is(Token::l_square)) {
+    numSymbols = 0;
+    return ParseResult::ParseSuccess;
+  }
+  return parseSymbolIdList(numSymbols);
 }
 
-/// Parses either an affine map or an integer set definition inline. If both
-/// 'map' and 'set' are non-null, parses either an affine map or an integer set.
-/// If 'map' is set to nullptr, parses an integer set. If 'set' is set to
-/// nullptr, parses an affine map.  'map'/'set' are set to the parsed structure.
+/// Parses an affine map definition inline.
 ///
 ///  affine-map-inline ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
 ///                        (`size` `(` dim-size (`,` dim-size)* `)`)?
@@ -1875,6 +1889,23 @@ ParseResult AffineParser::parseDimIdList(unsigned &numDims) {
 ///
 ///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
 ///
+AffineMap AffineParser::parseAffineMapInline() {
+  unsigned numDims = 0, numSymbols = 0;
+
+  // List of dimensional and optional symbol identifiers.
+  if (parseDimAndOptionalSymbolIdList(numDims, numSymbols)) {
+    return AffineMap();
+  }
+
+  if (parseToken(Token::arrow, "expected '->' or '['")) {
+    return AffineMap();
+  }
+
+  // Parse the affine map.
+  return parseAffineMapRange(numDims, numSymbols);
+}
+
+/// Parses an integer set definition inline.
 ///
 ///  integer-set-inline
 ///                ::= dim-and-symbol-id-lists `:`
@@ -1883,68 +1914,49 @@ ParseResult AffineParser::parseDimIdList(unsigned &numDims) {
 ///                                 | affine-constraint (`,`
 ///                                 affine-constraint)*
 ///
-void AffineParser::parseAffineStructureInline(AffineMap *map, IntegerSet *set) {
-  assert((map || set) && "one of map or set expected to be non-null");
-
+IntegerSet AffineParser::parseIntegerSetInline() {
   unsigned numDims = 0, numSymbols = 0;
 
-  // List of dimensional identifiers.
-  if (parseDimIdList(numDims)) {
-    if (map)
-      *map = AffineMap::Null();
-    if (set)
-      *set = IntegerSet::Null();
-    return;
+  // List of dimensional and optional symbol identifiers.
+  if (parseDimAndOptionalSymbolIdList(numDims, numSymbols)) {
+    return IntegerSet();
   }
 
-  // Symbols are optional.
-  if (getToken().is(Token::l_square)) {
-    if (parseSymbolIdList(numSymbols)) {
-      if (map)
-        *map = AffineMap::Null();
-      if (set)
-        *set = IntegerSet::Null();
-      return;
-    }
+  if (parseToken(Token::colon, "expected ':' or '['")) {
+    return IntegerSet();
+  }
+
+  return parseIntegerSetConstraints(numDims, numSymbols);
+}
+
+/// Parses an ambiguous affine map or integer set definition inline.
+ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
+                                                           IntegerSet &set) {
+  unsigned numDims = 0, numSymbols = 0;
+
+  // List of dimensional and optional symbol identifiers.
+  if (parseDimAndOptionalSymbolIdList(numDims, numSymbols)) {
+    return ParseResult::ParseFailure;
   }
 
   // This is needed for parsing attributes as we wouldn't know whether we would
   // be parsing an integer set attribute or an affine map attribute.
-  if (map && set && getToken().isNot(Token::arrow) &&
-      getToken().isNot(Token::colon)) {
-    emitError("expected '->' or ':' or '['");
-    *map = AffineMap::Null();
-    *set = IntegerSet::Null();
-    return;
+  bool isArrow = getToken().is(Token::arrow);
+  bool isColon = getToken().is(Token::colon);
+  if (!isArrow && !isColon) {
+    return ParseFailure;
+  } else if (isArrow) {
+    parseToken(Token::arrow, "expected '->' or '['");
+    map = parseAffineMapRange(numDims, numSymbols);
+    return map ? ParseSuccess : ParseFailure;
+  } else if (parseToken(Token::colon, "expected ':' or '['")) {
+    return ParseFailure;
   }
 
-  if (map && (!set || getToken().is(Token::arrow))) {
-    // Parse an affine map.
-    if (parseToken(Token::arrow, "expected '->' or '['")) {
-      *map = AffineMap::Null();
-      if (set)
-        *set = IntegerSet::Null();
-      return;
-    }
-    *map = parseAffineMapRange(numDims, numSymbols);
-    if (set)
-      *set = IntegerSet::Null();
-    return;
-  }
+  if ((set = parseIntegerSetConstraints(numDims, numSymbols)))
+    return ParseSuccess;
 
-  if (set && (!map || getToken().is(Token::colon))) {
-    // Parse an integer set.
-    if (parseToken(Token::colon, "expected ':' or '['")) {
-      *set = IntegerSet::Null();
-      if (map)
-        *map = AffineMap::Null();
-      return;
-    }
-    *set = parseIntegerSetConstraints(numDims, numSymbols);
-    if (map)
-      *map = AffineMap::Null();
-    return;
-  }
+  return ParseFailure;
 }
 
 /// Parse the range and sizes affine map definition inline.
@@ -1970,7 +1982,7 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
   // 1-d affine expressions); the list cannot be empty. Grammar:
   // multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
-    return AffineMap::Null();
+    return AffineMap();
 
   // Parse optional range sizes.
   //  range-sizes ::= (`size` `(` dim-size (`,` dim-size)* `)`)?
@@ -1982,7 +1994,7 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
     // Location of the l_paren token (if it exists) for error reporting later.
     auto loc = getToken().getLoc();
     if (parseToken(Token::l_paren, "expected '(' at start of affine map range"))
-      return AffineMap::Null();
+      return AffineMap();
 
     auto parseRangeSize = [&]() -> ParseResult {
       auto loc = getToken().getLoc();
@@ -1999,89 +2011,17 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
     };
 
     if (parseCommaSeparatedListUntil(Token::r_paren, parseRangeSize, false))
-      return AffineMap::Null();
+      return AffineMap();
     if (exprs.size() > rangeSizes.size())
       return (emitError(loc, "fewer range sizes than range expressions"),
-              AffineMap::Null());
+              AffineMap());
     if (exprs.size() < rangeSizes.size())
       return (emitError(loc, "more range sizes than range expressions"),
-              AffineMap::Null());
+              AffineMap());
   }
 
   // Parsed a valid affine map.
   return builder.getAffineMap(numDims, numSymbols, exprs, rangeSizes);
-}
-
-void Parser::parseAffineStructureInline(AffineMap *map, IntegerSet *set) {
-  AffineParser(state).parseAffineStructureInline(map, set);
-}
-
-AffineMap Parser::parseAffineMapInline() {
-  AffineMap map;
-  AffineParser(state).parseAffineStructureInline(&map, nullptr);
-  return map;
-}
-
-/// Parse either an affine map reference or integer set reference.
-///
-///  affine-structure ::= affine-structure-id | affine-structure-inline
-///  affine-structure-id ::= `#` suffix-id
-///
-///  affine-structure ::= affine-map | integer-set
-///
-void Parser::parseAffineStructureReference(AffineMap *map, IntegerSet *set) {
-  assert((map || set) && "both map and set are non-null");
-  if (getToken().isNot(Token::hash_identifier)) {
-    // Try to parse inline affine map or integer set.
-    return parseAffineStructureInline(map, set);
-  }
-
-  // Parse affine map / integer set identifier and verify that it exists.
-  // Note that an id can't be in both affineMapDefinitions and
-  // integerSetDefinitions since they use the same sigil '#'.
-  StringRef affineStructId = getTokenSpelling().drop_front();
-  if (getState().affineMapDefinitions.count(affineStructId) > 0) {
-    consumeToken(Token::hash_identifier);
-    if (map)
-      *map = getState().affineMapDefinitions[affineStructId];
-    if (set)
-      *set = IntegerSet::Null();
-    return;
-  }
-
-  if (getState().integerSetDefinitions.count(affineStructId) > 0) {
-    consumeToken(Token::hash_identifier);
-    if (set)
-      *set = getState().integerSetDefinitions[affineStructId];
-    if (map)
-      *map = AffineMap::Null();
-    return;
-  }
-
-  // The id isn't among any of the recorded definitions.
-  // Emit the right message depending on what the caller expected.
-  if (map && !set)
-    emitError("undefined affine map id '" + affineStructId + "'");
-  else if (set && !map)
-    emitError("undefined integer set id '" + affineStructId + "'");
-  else if (set && map)
-    emitError("undefined affine map or integer set id '" + affineStructId +
-              "'");
-
-  if (map)
-    *map = AffineMap::Null();
-  if (set)
-    *set = IntegerSet::Null();
-}
-
-/// Parse a reference to an integer set.
-///  affine-map ::= affine-map-id | affine-map-inline
-///  affine-map-id ::= `#` suffix-id
-///
-AffineMap Parser::parseAffineMapReference() {
-  AffineMap map;
-  parseAffineStructureReference(&map, nullptr);
-  return map;
 }
 
 /// Parse a reference to an integer set.
@@ -2089,9 +2029,72 @@ AffineMap Parser::parseAffineMapReference() {
 ///  integer-set-id ::= `#` suffix-id
 ///
 IntegerSet Parser::parseIntegerSetReference() {
-  IntegerSet set;
-  parseAffineStructureReference(nullptr, &set);
-  return set;
+  if (getToken().isNot(Token::hash_identifier)) {
+    // Try to parse inline integer set.
+    return AffineParser(state).parseIntegerSetInline();
+  }
+
+  // Parse integer set identifier and verify that it exists.
+  StringRef id = getTokenSpelling().drop_front();
+  if (getState().integerSetDefinitions.count(id) > 0) {
+    consumeToken(Token::hash_identifier);
+    return getState().integerSetDefinitions[id];
+  }
+
+  // The id isn't among any of the recorded definitions.
+  emitError("undefined integer set id '" + id + "'");
+  return IntegerSet();
+}
+
+/// Parse a reference to an affine map.
+///  affine-map ::= affine-map-id | affine-map-inline
+///  affine-map-id ::= `#` suffix-id
+///
+AffineMap Parser::parseAffineMapReference() {
+  if (getToken().isNot(Token::hash_identifier)) {
+    // Try to parse inline affine map.
+    return AffineParser(state).parseAffineMapInline();
+  }
+
+  // Parse affine map identifier and verify that it exists.
+  StringRef id = getTokenSpelling().drop_front();
+  if (getState().affineMapDefinitions.count(id) > 0) {
+    consumeToken(Token::hash_identifier);
+    return getState().affineMapDefinitions[id];
+  }
+
+  // The id isn't among any of the recorded definitions.
+  emitError("undefined affine map id '" + id + "'");
+  return AffineMap();
+}
+
+/// Parse an ambiguous reference to either and affine map or an integer set.
+ParseResult Parser::parseAffineMapOrIntegerSetReference(AffineMap &map,
+                                                        IntegerSet &set) {
+  if (getToken().isNot(Token::hash_identifier)) {
+    // Try to parse inline affine map.
+    return AffineParser(state).parseAffineMapOrIntegerSetInline(map, set);
+  }
+
+  // Parse affine map / integer set identifier and verify that it exists.
+  // Note that an id can't be in both affineMapDefinitions and
+  // integerSetDefinitions since they use the same sigil '#'.
+  StringRef id = getTokenSpelling().drop_front();
+  if (getState().affineMapDefinitions.count(id) > 0) {
+    consumeToken(Token::hash_identifier);
+    map = getState().affineMapDefinitions[id];
+    return ParseSuccess;
+  }
+  if (getState().integerSetDefinitions.count(id) > 0) {
+    consumeToken(Token::hash_identifier);
+    set = getState().integerSetDefinitions[id];
+    return ParseSuccess;
+  }
+
+  // The id isn't among any of the recorded definitions.
+  emitError("undefined affine map or integer set id '" + id + "'");
+
+  return ParseFailure;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3402,7 +3405,7 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
                                                     unsigned numSymbols) {
   if (parseToken(Token::l_paren,
                  "expected '(' at start of integer set constraint list"))
-    return IntegerSet::Null();
+    return IntegerSet();
 
   SmallVector<AffineExpr, 4> constraints;
   SmallVector<bool, 4> isEqs;
@@ -3422,22 +3425,16 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
   // affine-constraint)* `)
   auto constraintListLoc = getToken().getLoc();
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
-    return IntegerSet::Null();
+    return IntegerSet();
 
   // Check that at least one constraint was parsed.
   if (constraints.empty()) {
     emitError(constraintListLoc, "expected a valid affine constraint");
-    return IntegerSet::Null();
+    return IntegerSet();
   }
 
   // Parsed a valid integer set.
   return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
-}
-
-IntegerSet Parser::parseIntegerSetInline() {
-  IntegerSet set;
-  AffineParser(state).parseAffineStructureInline(nullptr, &set);
-  return set;
 }
 
 /// If instruction.
@@ -3564,15 +3561,16 @@ ParseResult ModuleParser::parseAffineStructureDef() {
 
   AffineMap map;
   IntegerSet set;
-  parseAffineStructureInline(&map, &set);
-  if (!map && !set)
+  if (AffineParser(getState()).parseAffineMapOrIntegerSetInline(map, set))
     return ParseFailure;
 
-  if (map)
+  if (map) {
     getState().affineMapDefinitions[affineStructureId] = map;
-  else
-    getState().integerSetDefinitions[affineStructureId] = set;
+    return ParseSuccess;
+  }
 
+  assert(set);
+  getState().integerSetDefinitions[affineStructureId] = set;
   return ParseSuccess;
 }
 

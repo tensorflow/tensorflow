@@ -378,7 +378,7 @@ public:
   /// identifiers as an affine map of the remaining identifiers (dimensional and
   /// symbolic). This method is able to detect identifiers as floordiv's
   /// and mod's of affine expressions of other identifiers with respect to
-  /// (positive) constants. Sets bound map to AffineMap::Null if such a bound
+  /// (positive) constants. Sets bound map to a null AffineMap if such a bound
   /// can't be found (or yet unimplemented).
   void getSliceBounds(unsigned num, MLIRContext *context,
                       SmallVectorImpl<AffineMap> *lbMaps,

@@ -595,7 +595,7 @@ static bool buildSliceTripCountMap(
   for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
     AffineMap lbMap = sliceState->lbs[i];
     AffineMap ubMap = sliceState->ubs[i];
-    if (lbMap == AffineMap::Null() || ubMap == AffineMap::Null()) {
+    if (lbMap == AffineMap() || ubMap == AffineMap()) {
       // The iteration of src loop IV 'i' was not sliced. Use full loop bounds.
       if (srcLoopIVs[i]->hasConstantLowerBound() &&
           srcLoopIVs[i]->hasConstantUpperBound()) {
@@ -675,16 +675,16 @@ static bool getSliceUnion(const ComputationSliceState &sliceStateA,
   for (unsigned i = 0, e = sliceStateA.lbs.size(); i < e; ++i) {
     AffineMap lbMapA = sliceStateA.lbs[i];
     AffineMap ubMapA = sliceStateA.ubs[i];
-    if (lbMapA == AffineMap::Null()) {
-      assert(ubMapA == AffineMap::Null());
+    if (lbMapA == AffineMap()) {
+      assert(ubMapA == AffineMap());
       continue;
     }
     assert(ubMapA && "expected non-null ub map");
 
     AffineMap lbMapB = sliceStateB->lbs[i];
     AffineMap ubMapB = sliceStateB->ubs[i];
-    if (lbMapB == AffineMap::Null()) {
-      assert(ubMapB == AffineMap::Null());
+    if (lbMapB == AffineMap()) {
+      assert(ubMapB == AffineMap());
       // Union 'sliceStateB' does not have a bound for 'i' so copy from A.
       sliceStateB->lbs[i] = lbMapA;
       sliceStateB->ubs[i] = ubMapA;
@@ -799,7 +799,7 @@ static Value *createPrivateMemRef(ForInst *forInst,
   }
   auto indexRemap =
       zeroOffsetCount == rank
-          ? AffineMap::Null()
+          ? AffineMap()
           : b.getAffineMap(outerIVs.size() + rank, 0, remapExprs, {});
   // Replace all users of 'oldMemRef' with 'newMemRef'.
   bool ret =
@@ -1107,11 +1107,11 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
 
   // Canonicalize slice bound affine maps.
   for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
-    if (sliceState->lbs[i] != AffineMap::Null()) {
+    if (sliceState->lbs[i] != AffineMap()) {
       canonicalizeMapAndOperands(&sliceState->lbs[i],
                                  &sliceState->lbOperands[i]);
     }
-    if (sliceState->ubs[i] != AffineMap::Null()) {
+    if (sliceState->ubs[i] != AffineMap()) {
       canonicalizeMapAndOperands(&sliceState->ubs[i],
                                  &sliceState->ubOperands[i]);
     }

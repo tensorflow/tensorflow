@@ -46,8 +46,10 @@ class AffineMap {
 public:
   using ImplType = detail::AffineMapStorage;
 
-  explicit AffineMap(ImplType *map = nullptr) : map(map) {}
-  static AffineMap Null() { return AffineMap(nullptr); }
+  AffineMap() : map(nullptr) {}
+  explicit AffineMap(ImplType *map) : map(map) {}
+  AffineMap(const AffineMap &other) : map(other.map) {}
+  AffineMap &operator=(const AffineMap &other) = default;
 
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
                        ArrayRef<AffineExpr> results,
@@ -62,9 +64,9 @@ public:
 
   MLIRContext *getContext() const;
 
-  explicit operator bool() { return map; }
-  bool operator==(const AffineMap &other) const { return other.map == map; }
-  bool operator!=(const AffineMap &other) const { return !(other.map == map); }
+  explicit operator bool() { return map != nullptr; }
+  bool operator==(AffineMap other) const { return other.map == map; }
+  bool operator!=(AffineMap other) const { return !(other.map == map); }
 
   /// Returns true if the co-domain (or more loosely speaking, range) of this
   /// map is bounded. Bounded affine maps have a size (extent) for each of

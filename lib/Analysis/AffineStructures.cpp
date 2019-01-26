@@ -1133,8 +1133,8 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
             numMapDims, numMapSymbols,
             getAffineConstantExpr(ubConst.getValue() + 1, context), {});
       } else {
-        (*lbMaps)[pos] = AffineMap::Null();
-        (*ubMaps)[pos] = AffineMap::Null();
+        (*lbMaps)[pos] = AffineMap();
+        (*ubMaps)[pos] = AffineMap();
       }
     }
     LLVM_DEBUG(llvm::dbgs() << "lb map for pos = " << Twine(pos) << ", expr: ");

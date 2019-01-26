@@ -65,7 +65,7 @@ class Function;
 //  TODO(bondhugula): allow extraIndices to be added at any position.
 bool replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                               ArrayRef<Value *> extraIndices = {},
-                              AffineMap indexRemap = AffineMap::Null(),
+                              AffineMap indexRemap = AffineMap(),
                               ArrayRef<Value *> extraOperands = {},
                               const Instruction *domInstFilter = nullptr);
 

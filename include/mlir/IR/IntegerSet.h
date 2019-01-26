@@ -52,12 +52,10 @@ class IntegerSet {
 public:
   using ImplType = detail::IntegerSetStorage;
 
-  explicit IntegerSet(ImplType *set = nullptr) : set(set) {}
-
-  IntegerSet &operator=(const IntegerSet other) {
-    set = other.set;
-    return *this;
-  }
+  IntegerSet() : set(nullptr) {}
+  explicit IntegerSet(ImplType *set) : set(set) {}
+  IntegerSet(const IntegerSet &other) : set(other.set) {}
+  IntegerSet &operator=(const IntegerSet &other) = default;
 
   static IntegerSet get(unsigned dimCount, unsigned symbolCount,
                         ArrayRef<AffineExpr> constraints,
@@ -73,8 +71,6 @@ public:
 
   /// Returns true if this is the canonical integer set.
   bool isEmptyIntegerSet() const;
-
-  static IntegerSet Null() { return IntegerSet(nullptr); }
 
   explicit operator bool() { return set; }
   bool operator==(IntegerSet other) const { return set == other.set; }

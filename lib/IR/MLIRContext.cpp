@@ -1202,7 +1202,7 @@ AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
 
   // Check if we already have this affine map.
   auto key = std::make_tuple(dimCount, symbolCount, results, rangeSizes);
-  auto existing = impl.affineMaps.insert_as(AffineMap(nullptr), key);
+  auto existing = impl.affineMaps.insert_as(AffineMap(), key);
 
   // If we already have it, return that value.
   if (!existing.second)

@@ -410,8 +410,8 @@ bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
                                    numDstLoopIVs - dstLoopDepth);
 
   // Set up lower/upper bound affine maps for the slice.
-  sliceState->lbs.resize(numSrcLoopIVs, AffineMap::Null());
-  sliceState->ubs.resize(numSrcLoopIVs, AffineMap::Null());
+  sliceState->lbs.resize(numSrcLoopIVs, AffineMap());
+  sliceState->ubs.resize(numSrcLoopIVs, AffineMap());
 
   // Get bounds for src IVs in terms of dst IVs, symbols, and constants.
   dependenceConstraints.getSliceBounds(numSrcLoopIVs,
