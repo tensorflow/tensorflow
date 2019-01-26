@@ -153,7 +153,7 @@ TEST_P(HloEvaluatorBf16Test, DoesClamp) {
 }
 
 // Verifies that clamping of int64 does not cause loss of precision
-TEST_P(HloEvaluatorBf16Test, DoesClamp) {
+TEST_P(HloEvaluatorBf16Test, DoesClampInt64) {
   auto ones = [](int bits) -> int64 { return (1LL << bits) - 1; };
 
   auto low =
