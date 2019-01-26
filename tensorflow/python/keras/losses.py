@@ -88,7 +88,10 @@ class Loss(object):
     Raises:
       ValueError: If the shape of `sample_weight` is invalid.
     """
-    with ops.name_scope(self.name, format(self.__class__.__name__),
+    # If we are wrapping a lambda function strip '<>' from the name as it is not
+    # accepted in scope name.
+    scope_name = 'lambda' if self.name == '<lambda>' else self.name
+    with ops.name_scope(scope_name, format(self.__class__.__name__),
                         (y_pred, y_true, sample_weight)):
       losses = self.call(y_true, y_pred)
       return compute_weighted_loss(
@@ -119,6 +122,48 @@ class Loss(object):
       y_pred: The predicted values.
     """
     NotImplementedError('Must be implemented in subclasses.')
+
+
+class LossFunctionWrapper(Loss):
+  """Wraps a loss function in the `Loss` class.
+
+  Args:
+    fn: The loss function to wrap, with signature `fn(y_true, y_pred,
+      **kwargs)`.
+    reduction: (Optional) Type of `tf.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
+    name: (Optional) name for the loss.
+    **kwargs: The keyword arguments that are passed on to `fn`.
+  """
+
+  def __init__(self,
+               fn,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None,
+               **kwargs):
+    super(LossFunctionWrapper, self).__init__(reduction=reduction, name=name)
+    self.fn = fn
+    self._fn_kwargs = kwargs
+
+  def call(self, y_true, y_pred):
+    """Invokes the `LossFunctionWrapper` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Loss values per sample.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return self.fn(y_true, y_pred, **self._fn_kwargs)
+
+  def get_config(self):
+    config = {'fn': self.fn}
+    config.update(self._fn_kwargs)
+    base_config = super(LossFunctionWrapper, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.losses.MeanSquaredError')
@@ -995,6 +1040,16 @@ mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 kld = KLD = kullback_leibler_divergence
 cosine = cosine_proximity
+
+
+def is_categorical_crossentropy(loss):
+  result = ((isinstance(loss, CategoricalCrossentropy) or
+             (isinstance(loss, LossFunctionWrapper) and
+              loss.fn == categorical_crossentropy) or
+             (hasattr(loss, '__name__') and
+              loss.__name__ == 'categorical_crossentropy') or
+             (loss == 'categorical_crossentropy')))
+  return result
 
 
 @keras_export('keras.losses.serialize')
