@@ -69,7 +69,7 @@ def _ConvertNumpyArrayToLiteral(ndarray):
 
   if ndarray.ndim == 0:
     getattr(literal, type_record.literal_field_name).append(
-        ndarray.astype(type_record.literal_field_type).item())
+        _np.asscalar(ndarray.astype(type_record.literal_field_type)))
   else:
     # Ndarrays with boolean dtypes need special type conversion with protobufs
     if ndarray.dtype in {_np.bool_, _np.dtype('bool')}:
