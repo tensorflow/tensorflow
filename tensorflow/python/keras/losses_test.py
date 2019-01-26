@@ -56,7 +56,7 @@ class _MSEMAELoss(object):
   def __init__(self, mse_fraction):
     self.mse_fraction = mse_fraction
 
-  def __call__(self, y_true, y_pred):
+  def __call__(self, y_true, y_pred, sample_weight=None):
     return (self.mse_fraction * keras.losses.mse(y_true, y_pred) +
             (1 - self.mse_fraction) * keras.losses.mae(y_true, y_pred))
 
@@ -179,6 +179,25 @@ class KerasLossesTest(test.TestCase):
       with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
         loaded_model = keras.models.load_model(model_filename)
         loaded_model.predict(np.random.rand(128, 2))
+
+  def test_loss_wrapper(self):
+    loss_fn = keras.losses.get('mse')
+    mse_obj = keras.losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
+
+    self.assertEqual(mse_obj.name, 'mean_squared_error')
+    self.assertEqual(mse_obj.reduction,
+                     losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE)
+
+    y_true = constant_op.constant([[1., 9.], [2., 5.]])
+    y_pred = constant_op.constant([[4., 8.], [12., 3.]])
+    sample_weight = constant_op.constant([1.2, 0.5])
+    loss = mse_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # mse = [((4 - 1)^2 + (8 - 9)^2) / 2, ((12 - 2)^2 + (3 - 5)^2) / 2]
+    # mse = [5, 52]
+    # weighted_mse = [5 * 1.2, 52 * 0.5] = [6, 26]
+    # reduced_weighted_mse = (6 + 26) / 2 =
+    self.assertAllClose(self.evaluate(loss), 16, 1e-2)
 
 
 @test_util.run_all_in_graph_and_eager_modes

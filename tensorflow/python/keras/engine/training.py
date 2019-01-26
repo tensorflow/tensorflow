@@ -464,21 +464,18 @@ class Model(Network):
           mask = masks[i]
           loss_weight = loss_weights_list[i]
           with K.name_scope(self.output_names[i] + '_loss'):
-            if isinstance(loss_fn, losses.Loss):
-              if mask is not None:
-                mask = math_ops.cast(mask, y_pred.dtype)
-                # Update weights with mask.
-                if sample_weight is None:
-                  sample_weight = mask
-                else:
-                  # Update dimensions of weights to match with mask if possible.
-                  mask, _, sample_weight = squeeze_or_expand_dimensions(
-                      mask, None, sample_weight)
-                  sample_weight *= mask
-              output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
-            else:
-              weighted_loss = training_utils.weighted_masked_objective(loss_fn)
-              output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
+            if mask is not None:
+              mask = math_ops.cast(mask, y_pred.dtype)
+              # Update weights with mask.
+              if sample_weight is None:
+                sample_weight = mask
+              else:
+                # Update dimensions of weights to match with mask if possible.
+                mask, _, sample_weight = squeeze_or_expand_dimensions(
+                    mask, None, sample_weight)
+                sample_weight *= mask
+
+            output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
 
           if len(self.outputs) > 1:
             # Keep track of the un-aggregated loss result tensor.
@@ -486,10 +483,8 @@ class Model(Network):
                                           '_loss'] = output_loss
 
             # Keep track of stateful result tensor and function for the loss.
-            loss_name = loss_fn.name if isinstance(
-                loss_fn, losses.Loss) else loss_fn.__name__
             mean_wrapped_loss = metrics_module.MeanMetricWrapper(
-                loss_fn, name=loss_name)
+                loss_fn, name=loss_fn.name)
             result_tensor = self._call_metric_fn(mean_wrapped_loss, y_true,
                                                  y_pred, sample_weight, mask)
             self._compile_stateful_metrics_tensors[self.output_names[i] +
@@ -2541,18 +2536,21 @@ class Model(Network):
         feed_output_shapes = []
         for output_shape, loss_fn in zip(self._feed_output_shapes,
                                          self._feed_loss_fns):
-          if loss_fn is losses.sparse_categorical_crossentropy:
+          if ((isinstance(loss_fn, losses.LossFunctionWrapper) and
+               loss_fn.fn == losses.sparse_categorical_crossentropy)) or (
+                   isinstance(loss_fn, losses.SparseCategoricalCrossentropy)):
             if K.image_data_format() == 'channels_first':
               feed_output_shapes.append(
                   (output_shape[0], 1) + output_shape[2:])
             else:
               feed_output_shapes.append(output_shape[:-1] + (1,))
-          elif (not hasattr(loss_fn, '__name__') or
-                getattr(losses, loss_fn.__name__, None) is None):
-            # If `loss_fn` is not a function (e.g. callable class)
-            # or if it not in the `losses` module, then
-            # it is a user-defined loss and we make no assumptions
-            # about it.
+          elif (not isinstance(loss_fn, losses.Loss) or
+                (isinstance(loss_fn, losses.LossFunctionWrapper) and
+                 (getattr(losses, loss_fn.fn.__name__, None) is None))):
+            # If the given loss is not an instance of the `Loss` class (custom
+            # class) or if the loss function that is wrapped is not in the
+            # `losses` module, then it is a user-defined loss and we make no
+            # assumptions about it.
             feed_output_shapes.append(None)
           else:
             feed_output_shapes.append(output_shape)
