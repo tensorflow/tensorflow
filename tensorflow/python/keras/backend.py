@@ -333,7 +333,13 @@ def learning_phase_scope(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
-  previous_value = learning_phase()
+
+  with ops.init_scope():
+    if context.executing_eagerly():
+      previous_eager_value = _GRAPH_LEARNING_PHASES.get(
+          _DUMMY_EAGER_GRAPH, None)
+    previous_graph_value = _GRAPH_LEARNING_PHASES.get(get_graph(), None)
+
   try:
     set_learning_phase(value)
     yield
@@ -341,9 +347,16 @@ def learning_phase_scope(value):
     # Restore learning phase to initial value.
     with ops.init_scope():
       if context.executing_eagerly():
-        _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
-      _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
+        if previous_eager_value is not None:
+          _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_eager_value
+        elif _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES:
+          del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
+      graph = get_graph()
+      if previous_graph_value is not None:
+        _GRAPH_LEARNING_PHASES[graph] = previous_graph_value
+      elif graph in _GRAPH_LEARNING_PHASES:
+        del _GRAPH_LEARNING_PHASES[graph]
 
 @tf_contextlib.contextmanager
 def eager_learning_phase_scope(value):
