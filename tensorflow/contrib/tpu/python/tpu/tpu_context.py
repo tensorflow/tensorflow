@@ -21,6 +21,7 @@ from __future__ import print_function
 from contextlib import contextmanager
 import copy
 
+from tensorflow.contrib.tpu.python.tpu import _tpu_estimator_embedding
 from tensorflow.contrib.tpu.python.tpu import device_assignment  as tpu_device_assignment
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
@@ -192,8 +193,14 @@ class _InternalTPUContext(object):
   ```
   """
 
-  def __init__(self, config, train_batch_size, eval_batch_size,
-               predict_batch_size, use_tpu, eval_on_tpu=True):
+  def __init__(self,
+               config,
+               train_batch_size,
+               eval_batch_size,
+               predict_batch_size,
+               use_tpu,
+               eval_on_tpu=True,
+               embedding_config_spec=None):
     self._config = config
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
@@ -216,6 +223,8 @@ class _InternalTPUContext(object):
     self._lazy_tpu_system_metadata_dict = {}  # key by master address
     self._lazy_device_assignment_dict = {}  # key by master address
     self._lazy_validation_dict = {}  # key by ModeKeys
+    self._embedding_config_spec = embedding_config_spec
+    self._lazy_embedding_config_dict = {}  # key by master address
 
   def _assert_mode(self):
     if self._mode is None:
@@ -292,6 +301,30 @@ class _InternalTPUContext(object):
 
     self._lazy_device_assignment_dict[master] = device_assignment
     return device_assignment
+
+  @property
+  def embedding_config(self):
+    """Returns the embedding config based on current mode."""
+    master = self._get_master_address()
+    if master in self._lazy_embedding_config_dict:
+      embedding_config = self._lazy_embedding_config_dict[master]
+    else:
+      embedding_config = None
+      if self._use_tpu and self._embedding_config_spec:
+        embedding_config = _tpu_estimator_embedding.EmbeddingConfig(
+            self._embedding_config_spec, self._train_batch_size,
+            self._eval_batch_size, self.num_hosts, self.num_cores, master)
+        if not embedding_config.has_embedding_tables():
+          embedding_config = None
+      self._lazy_embedding_config_dict[master] = embedding_config
+
+    if embedding_config is not None:
+      mode = self._assert_mode()
+      # Dynamically attach tpu_embedding based on mode. With
+      # this, we could keep embedding_config immutable but call site always
+      # accesses the unified API '.tpu_embedding'.
+      embedding_config.tpu_embedding = embedding_config.get_tpu_embedding(mode)
+    return embedding_config
 
   @property
   def model_parallelism_enabled(self):
@@ -710,11 +743,15 @@ class _OneCoreTPUContext(_InternalTPUContext):
 
 
 def _get_tpu_context(config, train_batch_size, eval_batch_size,
-                     predict_batch_size, use_tpu, eval_on_tpu):
+                     predict_batch_size, use_tpu, eval_on_tpu,
+                     embedding_config_spec):
   """Returns an instance of `_InternalTPUContext`."""
 
   if (config.tpu_config.num_shards == 1 and
       config.tpu_config.num_cores_per_replica is None):
+    if embedding_config_spec is not None:
+      raise ValueError('Setting TPUConfig.num_shards==1 is unsupported '
+                       'when embedding_config_spec is not None.')
     logging.warning(
         'Setting TPUConfig.num_shards==1 is an unsupported behavior. '
         'Please fix as soon as possible (leaving num_shards as None.)')
@@ -722,4 +759,5 @@ def _get_tpu_context(config, train_batch_size, eval_batch_size,
                               predict_batch_size, use_tpu)
 
   return _InternalTPUContext(config, train_batch_size, eval_batch_size,
-                             predict_batch_size, use_tpu, eval_on_tpu)
+                             predict_batch_size, use_tpu, eval_on_tpu,
+                             embedding_config_spec)
