@@ -10456,6 +10456,18 @@ op {
     name: "num_experiments"
     type: "int"
   }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "ExperimentalDatasetCardinality"
