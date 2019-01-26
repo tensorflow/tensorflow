@@ -40,14 +40,15 @@ class ExhaustiveF32ElementwiseOpTest
 
     Literal input_literal =
         LiteralUtil::CreateFromDimensions(F32, {input_size});
+    absl::Span<float> input_arr = input_literal.data<float>();
     for (int64 i = begin; i < end; i++) {
       if (i >= known_incorrect_range.first &&
           i < known_incorrect_range.second) {
         // If the operation is known to be buggy on a specific input clamp that
         // input to 0 under the assumption that the op is at least correct on 0.
-        input_literal.Set({i - begin}, 0.0f);
+        input_arr[i - begin] = 0;
       } else {
-        input_literal.Set({i - begin}, absl::bit_cast<float, int>(i));
+        input_arr[i - begin] = absl::bit_cast<float, int>(i);
       }
     }
 
@@ -60,7 +61,7 @@ class ExhaustiveF32ElementwiseOpTest
     std::vector<float> expected_result;
     expected_result.reserve(input_size);
     for (int64 i = 0; i < input_size; i++) {
-      expected_result.push_back(evaluate_op(input_literal.Get<float>({i})));
+      expected_result.push_back(evaluate_op(input_arr[i]));
     }
 
     ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
