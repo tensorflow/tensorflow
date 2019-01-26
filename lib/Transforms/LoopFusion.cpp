@@ -819,8 +819,9 @@ static uint64_t getSliceIterationCount(
 
 // Checks the profitability of fusing a backwards slice of the loop nest
 // surrounding 'srcOpInst' into the loop nest surrounding 'dstOpInsts'.
-// Returns true if it profitable to fuse the candidate loop nests. Returns
-// false otherwise.
+// Returns true if it is profitable to fuse the candidate loop nests. Returns
+// false otherwise. `dstLoopDepth` is set to the most profitable depth at which
+// to materialize the source loop nest slice.
 // The profitability model executes the following steps:
 // *) Computes the backward computation slice at 'srcOpInst'. This
 //    computation slice of the loop nest surrounding 'srcOpInst' is
@@ -837,7 +838,7 @@ static uint64_t getSliceIterationCount(
 //    NOTE: If the dst loop nest includes multiple loads in 'dstOpInsts' for
 //    the same memref as is written by 'srcOpInst', then the union of slice
 //    loop bounds is used to compute the slice and associated slice cost.
-//    NOTE: 'dstLoopDepth' refers the loop depth within the destination loop
+//    NOTE: 'dstLoopDepth' refers to the loop depth within the destination loop
 //    nest, at which the src computation slice is inserted/fused.
 //    NOTE: We attempt to maximize the dst loop depth, but there are cases
 //    where a particular setting for 'dstLoopNest' might fuse an unsliced
@@ -933,18 +934,17 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
       // Compute slice boun dunion of 'tmpSliceState' and 'sliceStates[i - 1]'.
       getSliceUnion(tmpSliceState, &sliceStates[i - 1]);
     }
-    // Build trip count map for computation slice.
+    // Build trip count map for computation slice. We'll skip cases where the
+    // trip count was non-constant.
     sliceTripCountMap.clear();
     if (!buildSliceTripCountMap(srcOpInst, &sliceStates[i - 1],
                                 &sliceTripCountMap))
-      // We'll skip cases where we the trip count was non-constant.
       continue;
 
     // Checks whether a store to load forwarding will happen.
     int64_t sliceIterationCount = getSliceIterationCount(sliceTripCountMap);
-    bool storeLoadFwdGuaranteed = (sliceIterationCount == 1);
-
     assert(sliceIterationCount > 0);
+    bool storeLoadFwdGuaranteed = (sliceIterationCount == 1);
 
     // Compute cost of fusion for this dest loop depth.
 
@@ -1217,18 +1217,18 @@ public:
           if (mdg->hasDependenceTargetInRange(srcNode->id, dstNode->id, memref))
             continue;
 
-          // Check if fusion would be profitable.
+          // Check if fusion would be profitable and at what depth.
           // Get unique 'srcNode' store op.
           auto *srcStoreOpInst = srcNode->stores.front();
-          unsigned dstLoopDepth;
+          unsigned bestDstLoopDepth;
           mlir::ComputationSliceState sliceState;
           if (!isFusionProfitable(srcStoreOpInst, dstLoadOpInsts, &sliceState,
-                                  &dstLoopDepth))
+                                  &bestDstLoopDepth))
             continue;
 
           // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
           auto *sliceLoopNest = mlir::insertBackwardComputationSlice(
-              srcStoreOpInst, dstLoadOpInsts[0], dstLoopDepth, &sliceState);
+              srcStoreOpInst, dstLoadOpInsts[0], bestDstLoopDepth, &sliceState);
           if (sliceLoopNest != nullptr) {
             // Update edges between 'srcNode' and 'dstNode'.
             mdg->updateEdges(srcNode->id, dstNode->id);
@@ -1250,7 +1250,7 @@ public:
             }
             assert(storesForMemref.size() == 1);
             auto *newMemRef = createPrivateMemRef(
-                dstForInst, storesForMemref[0], dstLoopDepth);
+                dstForInst, storesForMemref[0], bestDstLoopDepth);
             visitedMemrefs.insert(newMemRef);
 
             // Collect dst loop stats after memref privatizaton transformation.

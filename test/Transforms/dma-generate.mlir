@@ -1,12 +1,16 @@
 // RUN: mlir-opt %s -split-input-file -dma-generate -verify | FileCheck %s
 
 // Index of the buffer for the second DMA is remapped.
-// CHECK-DAG: [[MAP:#map[0-9]+]] = (d0) -> (d0 - 256)
+// CHECK-DAG: [[MAP_MINUS_256:#map[0-9]+]] = (d0) -> (d0 - 256)
+// CHECK-DAG: [[MAP_PLUS_256:#map[0-9]+]] = (d0) -> (d0 + 256)
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0 * 16 + d1)
-// CHECK-DAG: [[MAP_INDEX_DIFF:#map[0-9]+]] = (d0, d1, d2, d3) -> (d2 - d0, d3 - d1)
-// CHECK-DAG: [[MAP_MINUS_ONE:#map[0-9]+]] = (d0, d1) -> (d0 - 1, d1)
-// CHECK-DAG: [[MAP_ORIG_ACCESS:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0, d1 + s0 + s1)
-// CHECK-DAG: [[MAP_SUB_OFFSET:#map[0-9]+]] = (d0, d1, d2) -> (d1, d2 - (d0 + 9))
+// CHECK-DAG: [[MAP_INDEX_DIFF_EVEN:#map[0-9]+]] = (d0, d1, d2, d3) -> (d2 - d0)
+// CHECK-DAG: [[MAP_INDEX_DIFF_ODD:#map[0-9]+]] = (d0, d1, d2, d3) -> (d3 - d1)
+// CHECK-DAG: [[MAP_D0_MINUS_ONE:#map[0-9]+]] = (d0, d1) -> (d0 - 1)
+// CHECK-DAG: [[MAP_D1:#map[0-9]+]] = (d0, d1) -> (d1)
+// CHECK-DAG: [[MAP_SYM_SHIFT:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d1 + s0 + s1)
+// CHECK-DAG: [[MAP_3D_D1:#map[0-9]+]] = (d0, d1, d2) -> (d1)
+// CHECK-DAG: [[MAP_SUB_OFFSET:#map[0-9]+]] = (d0, d1, d2) -> (d2 - (d0 + 9))
 
 // CHECK-LABEL: func @loop_nest_1d() {
 func @loop_nest_1d() {
@@ -30,8 +34,8 @@ func @loop_nest_1d() {
   // CHECK-NEXT:  dma_wait %6[%c0], %c256_0 : memref<1xi32>
   // CHECK: for %i0 = 0 to 256 {
       // CHECK-NEXT: %7 = load %3[%i0] : memref<256xf32, 1>
-      // CHECK:      %8 = affine_apply #map{{[0-9]+}}(%i0)
-      // CHECK:      %9 = affine_apply [[MAP]](%8)
+      // CHECK:      %8 = affine_apply [[MAP_PLUS_256]](%i0)
+      // CHECK:      %9 = affine_apply [[MAP_MINUS_256]](%8)
       // CHECK-NEXT: %10 = load %5[%9] : memref<256xf32, 1>
       // Already in faster memory space.
       // CHECK:     %11 = load %2[%i0] : memref<256xf32, 1>
@@ -171,8 +175,9 @@ func @loop_nest_tiled() -> memref<256x1024xf32> {
 // CHECK-NEXT:   for %i3 = #map
       for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 32)(%i0) {
         for %i3 = (d0) -> (d0)(%i1) to (d0) -> (d0 + 32)(%i1) {
-          // CHECK:      %5 = affine_apply [[MAP_INDEX_DIFF]](%i0, %i1, %i2, %i3)
-          // CHECK-NEXT: %6 = load %3[%5#0, %5#1] : memref<32x32xf32, 1>
+          // CHECK-NEXT: %5 = affine_apply [[MAP_INDEX_DIFF_EVEN]](%i0, %i1, %i2, %i3)
+          // CHECK-NEXT: %6 = affine_apply [[MAP_INDEX_DIFF_ODD]](%i0, %i1, %i2, %i3)
+          // CHECK-NEXT: %7 = load %3[%5, %6] : memref<32x32xf32, 1>
           %1 = load %0[%i2, %i3] : memref<256x1024xf32>
         } // CHECK-NEXT: }
       }
@@ -193,8 +198,9 @@ func @dma_constant_dim_access(%A : memref<100x100xf32>) {
   // CHECK-NEXT: dma_wait %1[%c0], %c100 : memref<1xi32>
   for %i = 0 to 100 {
     for %j = 0 to ()[s0] -> (s0) ()[%N] {
-      // CHECK:      %2 = affine_apply [[MAP_MINUS_ONE]](%c1_0, %i1)
-      // CHECK-NEXT: %3 = load %0[%2#0, %2#1] : memref<1x100xf32, 1>
+      // CHECK:      %2 = affine_apply [[MAP_D0_MINUS_ONE]](%c1_0, %i1)
+      // CHECK:      %3 = affine_apply [[MAP_D1]](%c1_0, %i1)
+      // CHECK-NEXT: %4 = load %0[%2, %3] : memref<1x100xf32, 1>
       load %A[%one, %j] : memref<100 x 100 x f32>
     }
   }
@@ -206,8 +212,8 @@ func @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
   %N = constant 9 : index
   for %i = 0 to 100 {
     for %j = 0 to 100 {
-      %idx = affine_apply (d0, d1) [s0, s1] -> (d0, d1 + s0 + s1)(%i, %j)[%M, %N]
-      load %A[%idx#0, %idx#1] : memref<100 x 100 x f32>
+      %idy = affine_apply (d0, d1) [s0, s1] -> (d1 + s0 + s1)(%i, %j)[%M, %N]
+      load %A[%i, %idy] : memref<100 x 100 x f32>
     }
   }
   return
@@ -217,9 +223,10 @@ func @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
 // CHECK-NEXT:  dma_wait %2[%c0], %c10000
 // CHECK-NEXT:  for %i0 = 0 to 100 {
 // CHECK-NEXT:    for %i1 = 0 to 100 {
-// CHECK-NEXT:      %3 = affine_apply [[MAP_ORIG_ACCESS]](%i0, %i1)[%arg1, %c9]
-// CHECK-NEXT:      %4 = affine_apply [[MAP_SUB_OFFSET]](%arg1, %3#0, %3#1)
-// CHECK-NEXT:      %5 = load %1[%4#0, %4#1] : memref<100x100xf32, 1>
+// CHECK-NEXT:      %3 = affine_apply [[MAP_SYM_SHIFT]](%i0, %i1)[%arg1, %c9]
+// CHECK-NEXT:      %4 = affine_apply [[MAP_3D_D1]](%arg1, %i0, %3)
+// CHECK-NEXT:      %5 = affine_apply [[MAP_SUB_OFFSET]](%arg1, %i0, %3)
+// CHECK-NEXT:      %6 = load %1[%4, %5] : memref<100x100xf32, 1>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
@@ -236,8 +243,8 @@ func @dma_with_symbolic_loop_bounds(%A : memref<100x100xf32>, %M : index, %N: in
 // CHECK-NEXT:  dma_wait %1[%c0], %c10000 : memref<1xi32>
   for %i = 0 to 100 {
     for %j = %M to %N {
-      %idx = affine_apply (d0, d1) [s0] -> (d0, d1 + s0)(%i, %j)[%K]
-      load %A[%idx#0, %idx#1] : memref<100 x 100 x f32>
+      %idy = affine_apply (d1) [s0] -> (d1 + s0)(%j)[%K]
+      load %A[%i, %idy] : memref<100 x 100 x f32>
     }
   }
   return
@@ -268,12 +275,14 @@ func @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
   for %i = 0 to 1024 {
     for %j = 0 to 1024 {
       for %k = 0 to 1024 {
-        %idx = affine_apply (d0, d1, d2) -> (d0 mod 128, d1 mod 128, d2 mod 128)(%i, %j, %k)
+        %idx = affine_apply (d0) -> (d0 mod 128)(%i)
+        %idy = affine_apply (d0) -> (d0 mod 128)(%j)
+        %idz = affine_apply (d0) -> (d0 mod 128)(%k)
         // DMA with nested striding (or emulating with loop around strided DMA)
         // not yet implemented.
-        // CHECK: %3 = load %arg0[%2#0, %2#1, %2#2] : memref<1024x1024x1024xf32>
-        %v = load %arg0[%idx#0, %idx#1, %idx#2] : memref<1024 x 1024 x 1024 x f32>
-        // expected-error@-8 {{DMA generation failed for one or more memref's}}
+        // CHECK: %5 = load %arg0[%2, %3, %4] : memref<1024x1024x1024xf32>
+        %v = load %arg0[%idx, %idy, %idz] : memref<1024 x 1024 x 1024 x f32>
+        // expected-error@-10 {{DMA generation failed for one or more memref's}}
       }
     }
   }
@@ -285,8 +294,9 @@ func @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
 // CHECK:      #map0 = (d0) -> (d0 + 64)
 // CHECK-NEXT: #map1 = (d0) -> (d0 + 128)
 // CHECK-NEXT: #map2 = (d0) -> (d0 + 2)
-// CHECK-NEXT: #map3 = (d0, d1) -> (d0 - 2, d1 - 2)
-// CHECK-NEXT: #map4 = (d0) -> (d0 + 192)
+// CHECK-NEXT: #map3 = (d0, d1) -> (d0 - 2)
+// CHECK-NEXT: #map4 = (d0, d1) -> (d1 - 2)
+// CHECK-NEXT: #map5 = (d0) -> (d0 + 192)
 
 // The first load accesses ([2,258), [128,384))
 // The second load accesses ([64,320), [2,258))
@@ -330,15 +340,19 @@ func @multi_load_store_union() {
 // CHECK-NEXT:      %6 = affine_apply #map2(%i0)
 // CHECK-NEXT:      %7 = affine_apply #map2(%i1)
 // CHECK-NEXT:      %8 = affine_apply #map3(%6, %5)
-// CHECK-NEXT:      %9 = load %1[%8#0, %8#1] : memref<382x446xf32, 1>
-// CHECK-NEXT:      %10 = affine_apply #map3(%4, %7)
-// CHECK-NEXT:      %11 = load %1[%10#0, %10#1] : memref<382x446xf32, 1>
-// CHECK-NEXT:      %12 = affine_apply #map1(%i0)
-// CHECK-NEXT:      %13 = affine_apply #map4(%i1)
-// CHECK-NEXT:      %14 = affine_apply #map3(%6, %13)
-// CHECK-NEXT:      store %9, %1[%14#0, %14#1] : memref<382x446xf32, 1>
-// CHECK-NEXT:      %15 = affine_apply #map3(%12, %7)
-// CHECK-NEXT:      store %11, %1[%15#0, %15#1] : memref<382x446xf32, 1>
+// CHECK-NEXT:      %9 = affine_apply #map4(%6, %5)
+// CHECK-NEXT:      %10 = load %1[%8, %9] : memref<382x446xf32, 1>
+// CHECK-NEXT:      %11 = affine_apply #map3(%4, %7)
+// CHECK-NEXT:      %12 = affine_apply #map4(%4, %7)
+// CHECK-NEXT:      %13 = load %1[%11, %12] : memref<382x446xf32, 1>
+// CHECK-NEXT:      %14 = affine_apply #map1(%i0)
+// CHECK-NEXT:      %15 = affine_apply #map5(%i1)
+// CHECK-NEXT:      %16 = affine_apply #map3(%6, %15)
+// CHECK-NEXT:      %17 = affine_apply #map4(%6, %15)
+// CHECK-NEXT:      store %10, %1[%16, %17] : memref<382x446xf32, 1>
+// CHECK-NEXT:      %18 = affine_apply #map3(%14, %7)
+// CHECK-NEXT:      %19 = affine_apply #map4(%14, %7)
+// CHECK-NEXT:      store %13, %1[%18, %19] : memref<382x446xf32, 1>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  dma_start %1[%c0, %c0], %0[%c2, %c2_0], %c170372, %3[%c0], %c512, %c446 : memref<382x446xf32, 1>, memref<512x512xf32>, memref<1xi32>

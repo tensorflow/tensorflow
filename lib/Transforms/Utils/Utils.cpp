@@ -128,11 +128,16 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                              oldMemRefRank);
     if (indexRemap &&
         indexRemap != builder.getMultiDimIdentityMap(indexRemap.getNumDims())) {
-      auto remapOp = builder.create<AffineApplyOp>(opInst->getLoc(), indexRemap,
-                                                   remapOperands);
+
       // Remapped indices.
-      state.operands.append(remapOp->getInstruction()->result_begin(),
-                            remapOp->getInstruction()->result_end());
+      for (auto resultExpr : indexRemap.getResults()) {
+        auto singleResMap =
+            builder.getAffineMap(indexRemap.getNumDims(),
+                                 indexRemap.getNumSymbols(), resultExpr, {});
+        auto afOp = builder.create<AffineApplyOp>(opInst->getLoc(),
+                                                  singleResMap, remapOperands);
+        state.operands.push_back(afOp->getResult(0));
+      }
     } else {
       // No remapping specified.
       state.operands.append(remapOperands.begin(), remapOperands.end());
