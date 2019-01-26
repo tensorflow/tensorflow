@@ -119,6 +119,9 @@ void AffineApplyOp::print(OpAsmPrinter *p) const {
 }
 
 bool AffineApplyOp::verify() const {
+  if (getNumResults() != 1)
+    return emitOpError("multi-result affine_apply is not supported");
+
   // Check that affine map attribute was specified.
   auto affineMapAttr = getAttrOfType<AffineMapAttr>("map");
   if (!affineMapAttr)
