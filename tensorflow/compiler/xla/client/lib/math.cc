@@ -79,6 +79,21 @@ XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients) {
 }
 
 // Compute an approximation of the error function complement (1 - erf(x)).
+//
+// TODO(jlebar): This is not particularly efficient.  The implementation in
+// Cephes that this follows was written for double precision, but our
+// coefficients are specified only to single-precision!  Cephes has a different,
+// simpler implementation for single-precision.
+//
+// Furthermore, we could simplify this further for f16 -- for example, because
+// exp(-4.2 * 4.2) = 0 (f16), the computations in service of the x < 8.0 branch
+// below are unnecessary.
+//
+// See also these alternate implementations of erf and erfc:
+//
+//   https://stackoverflow.com/questions/35148198
+//   https://stackoverflow.com/questions/35966695
+//
 XlaOp Erfc(XlaOp x) {
   auto& b = *x.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -98,9 +113,25 @@ XlaOp Erfc(XlaOp x) {
     XlaOp pr = EvaluatePolynomial(abs_x, kErfcRCoefficient);
     XlaOp ps = EvaluatePolynomial(abs_x, kErfcSCoefficient);
 
-    XlaOp y = Select(Lt(abs_x, ScalarLike(x, 8.0)), z * pp / pq, z * pr / ps);
+    XlaOp abs_x_small = Lt(abs_x, ScalarLike(x, 8.0));
+    XlaOp y = Select(abs_x_small, z * pp / pq, z * pr / ps);
+    XlaOp result_no_underflow =
+        Select(Lt(x, ScalarLike(x, 0.0)), ScalarLike(x, 2.0) - y, y);
 
-    return Select(Lt(x, ScalarLike(x, 0.0)), ScalarLike(x, 2.0) - y, y);
+    // Check for edge cases, namely, exp(-x^2) is exactly 0, or the appropriate
+    // denominator (ps or pq) is inf.  (The check for exp(-x^2) == 0 is
+    // necessary only for x == +/- inf, where this check lets us avoid
+    // multiplying 0 by inf and getting nan.)
+    auto is_pos_inf = [](XlaOp op) {
+      return And(Not(IsFinite(op)), Gt(op, ScalarLike(op, 0)));
+    };
+    XlaOp underflow =
+        Or(Eq(z, ScalarLike(z, 0)), Or(And(is_pos_inf(pq), abs_x_small),
+                                       And(is_pos_inf(ps), Not(abs_x_small))));
+    XlaOp result_underflow =
+        Select(Lt(x, ScalarLike(x, 0)), FullLike(x, 2), FullLike(x, 0));
+
+    return Select(underflow, result_underflow, result_no_underflow);
   });
 }
 
