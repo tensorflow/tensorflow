@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -284,6 +285,20 @@ MetaOptimizer::GetCustomGraphOptimizerConfig(const string& name) const {
   return nullptr;
 }
 
+void MetaOptimizer::InitializeVerifiers(
+    std::vector<std::unique_ptr<GraphVerifier>>* inter_optimizer_verifiers,
+    std::vector<std::unique_ptr<GraphVerifier>>* post_optimization_verifiers)
+    const {
+  if (cfg_.inter_optimizer_verifier_config().structure_verifier() ==
+      VerifierConfig::ON) {
+    inter_optimizer_verifiers->push_back(MakeUnique<StructureVerifier>());
+  }
+  if (cfg_.post_optimization_verifier_config().structure_verifier() ==
+      VerifierConfig::ON) {
+    post_optimization_verifiers->push_back(MakeUnique<StructureVerifier>());
+  }
+}
+
 #define RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer)                            \
   {                                                                            \
     const Status status = RunOptimizer(optimizer, cluster, &optimized_item,    \
@@ -312,6 +327,23 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
   } else {
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
+  }
+
+  // Initialize the configured verifiers.
+  std::vector<std::unique_ptr<GraphVerifier>> inter_optimizer_verifiers;
+  std::vector<std::unique_ptr<GraphVerifier>> post_optimization_verifiers;
+  InitializeVerifiers(&inter_optimizer_verifiers, &post_optimization_verifiers);
+  if (inter_optimizer_verifiers.empty()) {
+    VLOG(2) << "No inter optimizer verifiers have been configured";
+  } else {
+    VLOG(2) << inter_optimizer_verifiers.size()
+            << " inter optimizer verifiers have been configured";
+  }
+  if (post_optimization_verifiers.empty()) {
+    VLOG(2) << "No post optimization verifiers have been configured";
+  } else {
+    VLOG(2) << post_optimization_verifiers.size()
+            << " post optimization verifiers have been configured";
   }
 
   VLOG(2) << "Optimize GrapplerItem: item.id=" << item.id
@@ -358,6 +390,14 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
       RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
+      for (const auto& verifier : inter_optimizer_verifiers) {
+        // TODO(ashwinm): Need to enforce verification_deadline.
+        TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
+      }
+    }
+    // TODO(ashwinm): Need to enforce verification_deadline.
+    for (const auto& verifier : post_optimization_verifiers) {
+      TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
     }
   }
 

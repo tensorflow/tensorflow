@@ -24,7 +24,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_verifier",
-        "//tensorflow/cc:ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

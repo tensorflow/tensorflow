@@ -22,9 +22,11 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/grappler/verifiers/graph_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/protobuf/verifier_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -62,6 +64,12 @@ class MetaOptimizer : public GraphOptimizer {
   // Returns the config for a custom graph optimizer. Null if none was found.
   const RewriterConfig::CustomGraphOptimizer* GetCustomGraphOptimizerConfig(
       const string& name) const;
+
+  // Initialiaze active verifiers from the RewriterConfig toggles.
+  void InitializeVerifiers(
+      std::vector<std::unique_ptr<GraphVerifier>>* inter_optimizer_verifiers,
+      std::vector<std::unique_ptr<GraphVerifier>>* post_optimization_verifiers)
+      const;
 
   // Run optimization pass over a single GrapplerItem. Meta optimizer might run
   // multiple such passes: 1) for the main graph 2) for the function library
