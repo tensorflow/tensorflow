@@ -57,11 +57,16 @@
 
 using namespace mlir;
 
+#define DEBUG_TYPE "loop-unroll-jam"
+
+static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
+
 // Loop unroll and jam factor.
 static llvm::cl::opt<unsigned>
     clUnrollJamFactor("unroll-jam-factor", llvm::cl::Hidden,
                       llvm::cl::desc("Use this unroll jam factor for all loops"
-                                     " (default 4)"));
+                                     " (default 4)"),
+                      llvm::cl::cat(clOptionsCategory));
 
 namespace {
 /// Loop unroll jam pass. Currently, this just unroll jams the first

@@ -47,16 +47,20 @@ using llvm::SetVector;
 
 using namespace mlir;
 
+static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
+
 /// Disables fusion profitability check and fuses if valid.
 static llvm::cl::opt<bool>
     clMaximalLoopFusion("fusion-maximal", llvm::cl::Hidden,
-                        llvm::cl::desc("Enables maximal loop fusion"));
+                        llvm::cl::desc("Enables maximal loop fusion"),
+                        llvm::cl::cat(clOptionsCategory));
 
 /// A threshold in percent of additional computation allowed when fusing.
 static llvm::cl::opt<double> clFusionAddlComputeTolerance(
     "fusion-compute-tolerance", llvm::cl::Hidden,
     llvm::cl::desc("Fractional increase in additional"
-                   "computation tolerated while fusing"));
+                   " computation tolerated while fusing"),
+    llvm::cl::cat(clOptionsCategory));
 
 namespace {
 

@@ -39,13 +39,17 @@
 using namespace mlir;
 using llvm::SmallMapVector;
 
+static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
+
 static llvm::cl::opt<unsigned> clFastMemorySpace(
     "dma-fast-mem-space", llvm::cl::Hidden,
-    llvm::cl::desc("Set fast memory space id for DMA generation"));
+    llvm::cl::desc("Set fast memory space id for DMA generation"),
+    llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::opt<uint64_t> clFastMemoryCapacity(
     "dma-fast-mem-capacity", llvm::cl::Hidden,
-    llvm::cl::desc("Set fast memory space capacity in KiB"));
+    llvm::cl::desc("Set fast memory space capacity in KiB"),
+    llvm::cl::cat(clOptionsCategory));
 
 namespace {
 

@@ -35,22 +35,30 @@
 
 using namespace mlir;
 
+#define DEBUG_TYPE "loop-unroll"
+
+static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
+
 // Loop unrolling factor.
 static llvm::cl::opt<unsigned> clUnrollFactor(
     "unroll-factor", llvm::cl::Hidden,
-    llvm::cl::desc("Use this unroll factor for all loops being unrolled"));
+    llvm::cl::desc("Use this unroll factor for all loops being unrolled"),
+    llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::opt<bool> clUnrollFull("unroll-full", llvm::cl::Hidden,
-                                        llvm::cl::desc("Fully unroll loops"));
+                                        llvm::cl::desc("Fully unroll loops"),
+                                        llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::opt<unsigned> clUnrollNumRepetitions(
     "unroll-num-reps", llvm::cl::Hidden,
-    llvm::cl::desc("Unroll innermost loops repeatedly this many times"));
+    llvm::cl::desc("Unroll innermost loops repeatedly this many times"),
+    llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::opt<unsigned> clUnrollFullThreshold(
     "unroll-full-threshold", llvm::cl::Hidden,
     llvm::cl::desc(
-        "Unroll all loops with trip count less than or equal to this"));
+        "Unroll all loops with trip count less than or equal to this"),
+    llvm::cl::cat(clOptionsCategory));
 
 namespace {
 /// Loop unrolling pass. Unrolls all innermost loops unless full unrolling and a

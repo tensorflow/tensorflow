@@ -43,36 +43,41 @@ using llvm::SetVector;
 
 using functional::map;
 
+static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
+
 static llvm::cl::list<int> clTestVectorShapeRatio(
     "vector-shape-ratio",
     llvm::cl::desc("Specify the HW vector size for vectorization"),
-    llvm::cl::ZeroOrMore);
+    llvm::cl::ZeroOrMore, llvm::cl::cat(clOptionsCategory));
 static llvm::cl::opt<bool> clTestForwardSlicingAnalysis(
     "forward-slicing",
-    llvm::cl::desc(
-        "Specify to enable testing forward static slicing and topological sort "
-        "functionalities"));
+    llvm::cl::desc("Enable testing forward static slicing and topological sort "
+                   "functionalities"),
+    llvm::cl::cat(clOptionsCategory));
 static llvm::cl::opt<bool> clTestBackwardSlicingAnalysis(
     "backward-slicing",
-    llvm::cl::desc("Specify to enable testing backward static slicing and "
-                   "topological sort functionalities"));
+    llvm::cl::desc("Enable testing backward static slicing and "
+                   "topological sort functionalities"),
+    llvm::cl::cat(clOptionsCategory));
 static llvm::cl::opt<bool> clTestSlicingAnalysis(
     "slicing",
-    llvm::cl::desc(
-        "Specify to enable testing static slicing and topological sort "
-        "functionalities"));
+    llvm::cl::desc("Enable testing static slicing and topological sort "
+                   "functionalities"),
+    llvm::cl::cat(clOptionsCategory));
 static llvm::cl::opt<bool> clTestComposeMaps(
     "compose-maps",
     llvm::cl::desc(
-        "Specify to enable testing the composition of AffineMap where each "
+        "Enable testing the composition of AffineMap where each "
         "AffineMap in the composition is specified as the affine_map attribute "
-        "in a constant op."));
+        "in a constant op."),
+    llvm::cl::cat(clOptionsCategory));
 static llvm::cl::opt<bool> clTestNormalizeMaps(
     "normalize-maps",
     llvm::cl::desc(
-        "Specify to enable testing the normalization of AffineAffineApplyOp "
+        "Enable testing the normalization of AffineAffineApplyOp "
         "where each AffineAffineApplyOp in the composition is a single output "
-        "instruction."));
+        "instruction."),
+    llvm::cl::cat(clOptionsCategory));
 
 namespace {
 

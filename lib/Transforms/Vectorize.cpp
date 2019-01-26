@@ -547,10 +547,12 @@ using llvm::dbgs;
 using llvm::DenseSet;
 using llvm::SetVector;
 
+static llvm::cl::OptionCategory clOptionsCategory("vectorize options");
+
 static llvm::cl::list<int> clVirtualVectorSize(
     "virtual-vector-size",
     llvm::cl::desc("Specify n-D virtual vector size for early vectorization"),
-    llvm::cl::ZeroOrMore);
+    llvm::cl::ZeroOrMore, llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::list<int> clFastestVaryingPattern(
     "test-fastest-varying",
@@ -558,7 +560,7 @@ static llvm::cl::list<int> clFastestVaryingPattern(
         "Specify a 1-D, 2-D or 3-D pattern of fastest varying memory"
         " dimensions to match. See defaultPatterns in Vectorize.cpp for a"
         " description and examples. This is used for testing purposes"),
-    llvm::cl::ZeroOrMore);
+    llvm::cl::ZeroOrMore, llvm::cl::cat(clOptionsCategory));
 
 /// Forward declaration.
 static FilterFunctionType

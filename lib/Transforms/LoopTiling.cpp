@@ -31,10 +31,15 @@
 
 using namespace mlir;
 
+#define DEBUG_TYPE "loop-tile"
+
+static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
+
 // Tile size for all loops.
 static llvm::cl::opt<unsigned>
     clTileSize("tile-size", llvm::cl::Hidden,
-               llvm::cl::desc("Use this tile size for all loops"));
+               llvm::cl::desc("Use this tile size for all loops"),
+               llvm::cl::cat(clOptionsCategory));
 
 namespace {
 
