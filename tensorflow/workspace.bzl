@@ -140,6 +140,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
+        patch_file = clean_dep("//third_party/eigen3:gebp_neon.patch"),
         sha256 = "48678550a32665331d729be87076e576f2502fff325f5b6c2c78ebf7b1b22c7b",
         strip_prefix = "eigen-eigen-bcc817c0ba98",
         urls = [
