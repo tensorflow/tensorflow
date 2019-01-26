@@ -99,13 +99,6 @@ REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
 
-Status TensorListShape(const TensorList& t, TensorShape* s) {
-  *s = TensorShape({});
-  return Status::OK();
-}
-
-REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorListShape);
-
 bool TensorList::Decode(const VariantTensorData& data) {
   // TODO(srbs): Change the signature to Decode(VariantTensorData data) so
   // that we do not have to copy each tensor individually below. This would

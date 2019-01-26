@@ -1259,7 +1259,6 @@ bool InferenceContext::RelaxHandleShapesAndMergeTypes(
     return false;
   }
   std::vector<ShapeAndType> new_values(shapes_and_types.size());
-  bool refined = false;
   for (int i = 0; i < shapes_and_types.size(); ++i) {
     const ShapeAndType& existing = (*to_update)[i];
     if (shapes_and_types[i].dtype == existing.dtype) {
@@ -1269,16 +1268,9 @@ bool InferenceContext::RelaxHandleShapesAndMergeTypes(
         return false;
       } else {
         new_values[i].dtype = shapes_and_types[i].dtype;
-        refined = true;
       }
     }
     Relax(existing.shape, shapes_and_types[i].shape, &new_values[i].shape);
-    if (!existing.shape.SameHandle(new_values[i].shape)) {
-      refined = true;
-    }
-  }
-  if (!refined) {
-    return false;
   }
   to_update->swap(new_values);
   return true;
