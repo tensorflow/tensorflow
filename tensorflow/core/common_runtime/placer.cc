@@ -253,19 +253,6 @@ class ColocationGraph {
 
         // Make 'dst' colocated with the source
         dst_root.device_name = source_parsed_name;
-      } else {
-        // If we are here, devices are compatible. If devices are compatible
-        // at least one of source_subset_of_dest is true.
-        bool source_subset_of_dest = DeviceNameUtils::IsSpecification(
-            source_parsed_name, dest_parsed_name);
-        bool dest_subset_of_source = DeviceNameUtils::IsSpecification(
-            dest_parsed_name, source_parsed_name);
-
-        if (source_subset_of_dest && !dest_subset_of_source) {
-          src_root.device_name = dest_parsed_name;
-        } else {
-          dst_root.device_name = source_parsed_name;
-        }
       }
     }
     Status status = ColocateNodes(*src, src_root_id, *dst, dst_root_id);
