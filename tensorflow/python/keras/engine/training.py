@@ -276,7 +276,9 @@ class Model(Network):
     self.target_tensors = target_tensors
 
     # Set DistributionStrategy specific parameters.
-    self._distributed_model = None
+    for mode in [ModeKeys.TRAIN, ModeKeys.TEST, ModeKeys.PREDICT]:
+      distributed_training_utils.set_distributed_model(self, mode, None)
+
     # Initialize model metric attributes.
     self._init_metric_attributes()
     if not self.built or not self.inputs or not self.outputs:
