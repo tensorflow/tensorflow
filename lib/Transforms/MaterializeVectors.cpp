@@ -376,11 +376,10 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
 
   // Create a bunch of single result maps.
   return functional::map(
-      [b, numIndices, memrefIndices](AffineExpr expr) {
+      [b, numIndices, memrefIndices](AffineExpr expr) -> Value * {
         auto map = AffineMap::get(numIndices, 0, expr, {});
-        auto app = makeComposedAffineApply(b, b->getInsertionPoint()->getLoc(),
-                                           map, memrefIndices);
-        return app->getResult(0);
+        return makeComposedAffineApply(b, b->getInsertionPoint()->getLoc(), map,
+                                       memrefIndices);
       },
       affineExprs);
 }

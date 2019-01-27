@@ -136,7 +136,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                                  indexRemap.getNumSymbols(), resultExpr, {});
         auto afOp = builder.create<AffineApplyOp>(opInst->getLoc(),
                                                   singleResMap, remapOperands);
-        state.operands.push_back(afOp->getResult(0));
+        state.operands.push_back(afOp);
       }
     } else {
       // No remapping specified.
@@ -266,7 +266,7 @@ void mlir::createAffineComputationSlice(
         break;
     }
     if (j < subOperands.size()) {
-      newOperands[i] = (*sliceOps)[j]->getResult(0);
+      newOperands[i] = (*sliceOps)[j];
     }
   }
   for (unsigned idx = 0, e = newOperands.size(); idx < e; idx++) {

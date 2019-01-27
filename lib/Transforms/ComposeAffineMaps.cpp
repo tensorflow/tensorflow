@@ -78,10 +78,7 @@ PassResult ComposeAffineMaps::runOnFunction(Function *f) {
     FuncBuilder b(m.first);
     auto newApp = makeComposedAffineApply(&b, app->getLoc(),
                                           app->getAffineMap(), operands);
-    unsigned idx = 0;
-    for (auto *v : app->getResults()) {
-      v->replaceAllUsesWith(newApp->getResult(idx++));
-    }
+    app->replaceAllUsesWith(newApp);
   }
   {
     auto pattern = Op(affineApplyOp);
@@ -89,9 +86,7 @@ PassResult ComposeAffineMaps::runOnFunction(Function *f) {
     std::reverse(apps.begin(), apps.end());
     for (auto m : apps) {
       auto app = cast<OperationInst>(m.first)->cast<AffineApplyOp>();
-      bool hasNonEmptyUse = llvm::any_of(
-          app->getResults(), [](Value *r) { return !r->use_empty(); });
-      if (!hasNonEmptyUse) {
+      if (app->use_empty()) {
         m.first->erase();
       }
     }

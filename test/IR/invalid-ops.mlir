@@ -62,7 +62,7 @@ func @affine_apply_wrong_result_count() {
 ^bb0:
   %i = "constant"() {value: 0} : () -> index
   %j = "constant"() {value: 1} : () -> index
-  %x = "affine_apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine_apply' op result count and affine map result count must match}}
+  %x = "affine_apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine_apply' op mapping must produce one value}}
   return
 }
 

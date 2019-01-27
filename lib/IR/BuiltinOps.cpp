@@ -119,9 +119,6 @@ void AffineApplyOp::print(OpAsmPrinter *p) const {
 }
 
 bool AffineApplyOp::verify() const {
-  if (getNumResults() != 1)
-    return emitOpError("multi-result affine_apply is not supported");
-
   // Check that affine map attribute was specified.
   auto affineMapAttr = getAttrOfType<AffineMapAttr>("map");
   if (!affineMapAttr)
@@ -136,8 +133,8 @@ bool AffineApplyOp::verify() const {
         "operand count and affine map dimension and symbol count must match");
 
   // Verify that result count matches affine map result count.
-  if (getNumResults() != map.getNumResults())
-    return emitOpError("result count and affine map result count must match");
+  if (map.getNumResults() != 1)
+    return emitOpError("mapping must produce one value");
 
   return false;
 }
@@ -163,14 +160,13 @@ bool AffineApplyOp::isValidSymbol() const {
   return true;
 }
 
-bool AffineApplyOp::constantFold(ArrayRef<Attribute> operandConstants,
-                                 SmallVectorImpl<Attribute> &results,
-                                 MLIRContext *context) const {
+Attribute AffineApplyOp::constantFold(ArrayRef<Attribute> operands,
+                                      MLIRContext *context) const {
   auto map = getAffineMap();
-  if (map.constantFold(operandConstants, results))
-    return true;
-  // Return false on success.
-  return false;
+  SmallVector<Attribute, 1> result;
+  if (map.constantFold(operands, result))
+    return Attribute();
+  return result[0];
 }
 
 namespace {

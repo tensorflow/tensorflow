@@ -562,13 +562,12 @@ bool LowerAffinePass::lowerAffineApply(AffineApplyOp *op) {
                       llvm::to_vector<8>(op->getOperands()));
   if (!maybeExpandedMap)
     return true;
-  for (auto pair : llvm::zip(op->getResults(), *maybeExpandedMap)) {
-    Value *original = std::get<0>(pair);
-    Value *expanded = std::get<1>(pair);
-    if (!expanded)
-      return true;
-    original->replaceAllUsesWith(expanded);
-  }
+
+  Value *original = op->getResult();
+  Value *expanded = (*maybeExpandedMap)[0];
+  if (!expanded)
+    return true;
+  original->replaceAllUsesWith(expanded);
   op->erase();
   return false;
 }

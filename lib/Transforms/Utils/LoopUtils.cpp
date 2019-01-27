@@ -117,7 +117,7 @@ bool mlir::promoteIfSingleIteration(ForInst *forInst) {
       } else {
         auto affineApplyOp = builder.create<AffineApplyOp>(
             forInst->getLoc(), lb.getMap(), lbOperands);
-        iv->replaceAllUsesWith(affineApplyOp->getResult(0));
+        iv->replaceAllUsesWith(affineApplyOp);
       }
     }
   }
@@ -177,12 +177,11 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
     // shift.
     if (!srcIV->use_empty() && shift != 0) {
       auto b = FuncBuilder::getForInstBodyBuilder(loopChunk);
-      auto *ivRemap = b.create<AffineApplyOp>(
-                           srcForInst->getLoc(),
-                           b.getSingleDimShiftAffineMap(-static_cast<int64_t>(
-                               srcForInst->getStep() * shift)),
-                           loopChunkIV)
-                          ->getResult(0);
+      auto ivRemap = b.create<AffineApplyOp>(
+          srcForInst->getLoc(),
+          b.getSingleDimShiftAffineMap(
+              -static_cast<int64_t>(srcForInst->getStep() * shift)),
+          loopChunkIV);
       operandMap.map(srcIV, ivRemap);
     } else {
       operandMap.map(srcIV, loopChunkIV);
@@ -432,9 +431,8 @@ bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
       // iv' = iv + 1/2/3...unrollFactor-1;
       auto d0 = builder.getAffineDimExpr(0);
       auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
-      auto *ivUnroll =
-          builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInstIV)
-              ->getResult(0);
+      auto ivUnroll =
+          builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInstIV);
       operandMap.map(forInstIV, ivUnroll);
     }
 

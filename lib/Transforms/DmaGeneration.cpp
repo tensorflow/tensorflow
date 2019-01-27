@@ -280,8 +280,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
       // corresponding dimension on the memory region (stored in 'offset').
       auto map = top.getAffineMap(
           cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset, {});
-      memIndices.push_back(
-          b->create<AffineApplyOp>(loc, map, outerIVs)->getResult(0));
+      memIndices.push_back(b->create<AffineApplyOp>(loc, map, outerIVs));
     }
     // The fast buffer is DMAed into at location zero; addressing is relative.
     bufIndices.push_back(zeroIndex);

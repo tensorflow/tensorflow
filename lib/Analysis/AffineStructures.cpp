@@ -105,8 +105,7 @@ AffineValueMap::AffineValueMap(const AffineApplyOp &op)
     : map(op.getAffineMap()) {
   for (auto *operand : op.getOperands())
     operands.push_back(const_cast<Value *>(operand));
-  for (unsigned i = 0, e = op.getNumResults(); i < e; i++)
-    results.push_back(const_cast<Value *>(op.getResult(i)));
+  results.push_back(const_cast<Value *>(op.getResult()));
 }
 
 AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<Value *> operands)

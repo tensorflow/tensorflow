@@ -37,10 +37,10 @@ public:
 };
 
 /// The "affine_apply" operation applies an affine map to a list of operands,
-/// yielding a list of results. The operand and result list sizes must be the
-/// same. All operands and results are of type 'Index'. This operation
-/// requires a single affine map attribute named "map".
-/// For example:
+/// yielding a single result. The operand list must be the same size as the
+/// number of arguments to the affine mapping.  All operands and the result are
+/// of type 'Index'. This operation requires a single affine map attribute named
+/// "map".  For example:
 ///
 ///   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
 ///          (index) -> (index)
@@ -50,9 +50,8 @@ public:
 ///   #map42 = (d0)->(d0+1)
 ///   %y = affine_apply #map42(%x)
 ///
-class AffineApplyOp
-    : public Op<AffineApplyOp, OpTrait::VariadicOperands,
-                OpTrait::VariadicResults, OpTrait::HasNoSideEffect> {
+class AffineApplyOp : public Op<AffineApplyOp, OpTrait::VariadicOperands,
+                                OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
   /// Builds an affine apply op with the specified map and operands.
   static void build(Builder *builder, OperationState *result, AffineMap map,
@@ -75,9 +74,8 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
-  bool constantFold(ArrayRef<Attribute> operandConstants,
-                    SmallVectorImpl<Attribute> &results,
-                    MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);

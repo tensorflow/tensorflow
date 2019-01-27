@@ -252,7 +252,7 @@ loops and if instructions), the result of a
 [`affine_apply`](#'affine_apply'-operation) operation that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
 that a symbol is bound to, but also to induction variables of enclosing
-[for instructions](#'for'-instruction), and the results of an
+[for instructions](#'for'-instruction), and the result of an
 [`affine_apply` operation](#'affine_apply'-operation) (which recursively may use
 other dimensions and symbols).
 
@@ -1038,15 +1038,15 @@ nullary mapping function that returns the constant value (e.g. `()->(-42)()`).
 Example showing reverse iteration of the inner loop:
 
 ```mlir {.mlir}
-#map57 = (d0, d1)[s0] -> (d0, s0 - d1 - 1)
+#map57 = (d0)[s0] -> (s0 - d0 - 1)
 
 func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
   %N = dim %A, 0 : memref<?x?xf32>
   for %i = 0 to %N step 1 {
     for %j = 0 to %N {   // implicitly steps by 1
-      %0 = affine_apply #map57(%i, %j)[%N]
-      %tmp = call @F1(%A, %0#0, %0#1) : (memref<?x?xf32>, index, index)->(f32)
-      call @F2(%tmp, %B, %0#0, %0#1) : (f32, memref<?x?xf32>, index, index)->()
+      %0 = affine_apply #map57(%j)[%N]
+      %tmp = call @F1(%A, %i, %0) : (memref<?x?xf32>, index, index)->(f32)
+      call @F2(%tmp, %B, %i, %0) : (f32, memref<?x?xf32>, index, index)->()
     }
   }
   return
@@ -1085,11 +1085,11 @@ Example:
 func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
   for %i = 0 to %N {
      for %j = 0 to %N {
-       %0 = affine_apply #map42(%i, %j)
-       %tmp = call @S1(%X, %0#0, %0#1)
+       %0 = affine_apply #map42(%j)
+       %tmp = call @S1(%X, %i, %0)
        if #set(%i, %j)[%N] {
           %1 = affine_apply #map43(%i, %j)
-          call @S2(%tmp, %A, %1#0, %1#1)
+          call @S2(%tmp, %A, %i, %1)
        }
     }
   }
@@ -1242,17 +1242,16 @@ operation ::= ssa-id `=` `affine_apply` affine-map dim-and-symbol-use-list
 ```
 
 The `affine_apply` instruction applies an [affine mapping](#affine-expressions)
-to a list of SSA values, yielding another list of SSA values. The number of
-dimension and symbol arguments to affine_apply must be equal to the respective
-number of dimensional and symbolic inputs to the affine mapping, and the number
-of results is the dimensionality of the range of the affine mapping. The input
-SSA values must all have 'index' type, and the results are all of 'index' type.
+to a list of SSA values, yielding a single SSA value. The number of dimension
+and symbol arguments to affine_apply must be equal to the respective number of
+dimensional and symbolic inputs to the affine mapping; the `affine_apply`
+instruction always returns one value. The input operands and result must all
+have 'index' type.
 
 Example:
 
 ```mlir {.mlir}
-#map10 = (d0, d1) -> (floordiv(d0,8), floordiv(d1,128),
-                      d0 mod 8, d1 mod 128)
+#map10 = (d0, d1) -> (floordiv(d0,8) + floordiv(d1,128))
 ...
 %1 = affine_apply #map10 (%s, %t)
 
@@ -1572,34 +1571,33 @@ The arity of indices is the rank of the memref (i.e., if the memref loaded from
 is of rank 3, then 3 indices are required for the load following the memref
 identifier).
 
-In an ML Function, the indices of a load are restricted to SSA values bound to
-surrounding loop induction variables, [symbols](#dimensions-and-symbols),
-results of a [`constant` operation](#'constant'-operation), or the results of an
+In an `if` or `for` body, the indices of a load are restricted to SSA values
+bound to surrounding loop induction variables,
+[symbols](#dimensions-and-symbols), results of a
+[`constant` operation](#'constant'-operation), or the result of an
 `affine_apply` operation that can in turn take as arguments all of the
-aforementioned SSA values or the recursively results of such an `affine_apply`
+aforementioned SSA values or the recursively result of such an `affine_apply`
 operation.
 
 Example:
 
 ```mlir {.mlir}
-#remap1 = (d0, d1) -> (3*d0, d1+1)
-#remap2 = (d0) -> (2*d0 + 1)
- ...
-%1 = affine_apply #remap1(%i, %j)
-%12 = load %A[%1#0, %1#1] : memref<8x?xi32, #layout, hbm>
+%1 = affine_apply (d0, d1) -> (3*d0) (%i, %j)
+%2 = affine_apply (d0, d1) -> (d1+1) (%i, %j)
+%12 = load %A[%1, %2] : memref<8x?xi32, #layout, hbm>
 
 // Example of an indirect load (treated as non-affine)
-%2 = affine_apply #remap2(%12)
-%13 = load %A[%2, %1#1] : memref<4x?xi32, #layout, hbm>
+%3 = affine_apply (d0) -> (2*d0 + 1)(%12)
+%13 = load %A[%3, %2] : memref<4x?xi32, #layout, hbm>
 ```
 
 **Context:** The `load` and `store` instructions are specifically crafted to
-fully resolve a reference to an element of a memref, and (in an ML function) the
-compiler can follow use-def chains (e.g. through
+fully resolve a reference to an element of a memref, and (in polyhedral `if` and
+`for` instructions) the compiler can follow use-def chains (e.g. through
 [`affine_apply`](#'affine_apply'-operation) operations) to precisely analyze
 references at compile-time using polyhedral techniques. This is possible because
-of the [restrictions on dimensions and symbols](#dimensions-and-symbols) in ML
-functions.
+of the [restrictions on dimensions and symbols](#dimensions-and-symbols) in
+these contexts.
 
 #### 'store' operation {#'store'-operation}
 
@@ -1616,10 +1614,10 @@ provided within brackets need to match the rank of the memref.
 
 In an ML Function, the indices of a store are restricted to SSA values bound to
 surrounding loop induction variables, [symbols](#dimensions-and-symbols),
-results of a [`constant` operation](#'constant'-operation), or the results of an
+results of a [`constant` operation](#'constant'-operation), or the result of an
 [`affine_apply`](#'affine_apply'-operation) operation that can in turn take as
-arguments all of the aforementioned SSA values or the recursively results of
-such an `affine_apply` operation.
+arguments all of the aforementioned SSA values or the recursively result of such
+an `affine_apply` operation.
 
 Example:
 
@@ -1628,12 +1626,12 @@ store %100, %A[%1, 1023] : memref<4x?xf32, #layout, hbm>
 ```
 
 **Context:** The `load` and `store` instructions are specifically crafted to
-fully resolve a reference to a scalar member of a memref, and (in an ML
-function) the compiler can follow use-def chains (e.g. through
+fully resolve a reference to an element of a memref, and (in polyhedral `if` and
+`for` instructions) the compiler can follow use-def chains (e.g. through
 [`affine_apply`](#'affine_apply'-operation) operations) to precisely analyze
 references at compile-time using polyhedral techniques. This is possible because
-of the [restrictions on dimensions and symbols](#dimensions-and-symbols) in ML
-functions.
+of the [restrictions on dimensions and symbols](#dimensions-and-symbols) in
+these contexts.
 
 #### 'tensor_load' operation {#'tensor_load'-operation}
 

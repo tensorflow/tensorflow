@@ -116,10 +116,10 @@ n-ranked tensor. This disallows the equivalent of pointer arithmetic or the
 ability to index into the same memref in other ways (something which C arrays
 allow for example). Furthermore, in an affine constructs, the compiler can
 follow use-def chains (e.g. through
-[affine_apply instructions](https://docs.google.com/document/d/1lwJ3o6MrkAa-jiqEwoORBLW3bAI1f4ONofjRqMK1-YU/edit?ts=5b208818#heading=h.kt8lzanb487r))
-to precisely analyze references at compile-time using polyhedral techniques.
-This is possible because of the
-[restrictions on dimensions and symbols](https://docs.google.com/document/d/1lwJ3o6MrkAa-jiqEwoORBLW3bAI1f4ONofjRqMK1-YU/edit?ts=5b208818#heading=h.fnmv1awabfj).
+[affine_apply instructions](LangRef.md#'affine_apply'-operation)) to precisely
+analyze references at compile-time using polyhedral techniques. This is possible
+because of the
+[restrictions on dimensions and symbols](LangRef.md#dimensions-and-symbols).
 
 A scalar of element-type (a primitive type or a vector type) that is stored in
 memory is modeled as a 0-d memref. This is also necessary for scalars that are
@@ -634,12 +634,13 @@ in a dilated convolution.
 // S4 = h_pad_low, S5 = w_pad_low
 //     %out0 =  %0#1 * %h_stride + %0#4 * %h_kernel_dilation - %h_pad_low
 //     %out1=  %0#2 * %w_stride + %0#5 * %w_kernel_dilation - %w_pad_low
-#map1 = (d0, d1, d2, d3) [S0, S1, S2, S3, S4, S5] -> (d0 * S0 + d2 * S2 - %S4,
-                                                      d1 * S1 + d3 * S3 - %S5)
+#map1_0 = (d0, d1, d2, d3) [S0, S1, S2, S3, S4, S5] -> (d0 * S0 + d2 * S2 - %S4)
+#map1_1 = (d0, d1, d2, d3) [S0, S1, S2, S3, S4, S5] -> (d1 * S1 + d3 * S3 - %S5)
 
 // Semi-affine map to undilated input coordinate space.
 // d0 = input_h, d1 = input_w, S0 = h_base_dilation, S1 = w_base_dilation.
-#map2 = (d0, d1) [S0, S1] -> (d0 / S0, d1 / S1)
+#map2_0 = (d0, d1) [S0, S1] -> (d0 / S0)
+#map2_1 = (d0, d1) [S0, S1] -> (d1 / S1)
 
 // Conv2D shapes:
 // input:   [batch, input_height, input_width, input_feature]
@@ -655,19 +656,21 @@ func @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
           for %kh = 0 to %kernel_height {
             for %kw = 0 to %kernel_width {
               for %if = 0 to %input_feature {
-                %0 = affine_apply #map0 (%b, %oh, %ow, %of, %kh, %kw, %if)
                 // Calculate input indices.
-                %1 = affine_apply #map1 (%0#1, %0#2, %0#4, %0#5)
+                %1_0 = affine_apply #map1_0 (%0#1, %0#2, %0#4, %0#5)
+                  [%h_stride, %w_stride, %h_kernel_dilation, %w_kernel_dilation,
+                   %h_pad_low, %w_pad_low]
+                %1_1 = affine_apply #map1_1 (%0#1, %0#2, %0#4, %0#5)
                   [%h_stride, %w_stride, %h_kernel_dilation, %w_kernel_dilation,
                    %h_pad_low, %w_pad_low]
 
                 // Check if access is not in padding.
-                if #domain(%1#0, %1#1)
+                if #domain(%1_0, %1_1)
                                        [%h_base_dilation, %w_kernel_dilation, %h_bound, %w_bound] {
-                  %2 = affine_apply #map2 (%1#0, %1#1)
+                  %2_0 = affine_apply #map2 (%1_0, %1_1)
+                  %2_1 = affine_apply #map2 (%1_0, %1_1)
                   // Compute: output[output_indices] += input[input_indices] * kernel[kernel_indices]
-                  call @multiply_accumulate(%input, %kernel, %output, %0#0, %0#1, %0#2, %0#3,
-                                                              %0#4, %0#5, %0#6, %2#0, %2#1)
+                  call @multiply_accumulate(%input, %kernel, %output, %b, %oh, %ow, %of, %kh, %kw, %if, %2_0, %2_1)
                 }
               }
             }

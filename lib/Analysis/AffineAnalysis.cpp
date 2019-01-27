@@ -1474,17 +1474,6 @@ AffineMap AffineApplyNormalizer::renumber(const AffineApplyOp &app) {
   return renumber(normalizer);
 }
 
-static unsigned getIndexOf(Value *v, const AffineApplyOp &op) {
-  unsigned numResults = op.getNumResults();
-  for (unsigned i = 0; i < numResults; ++i) {
-    if (v == op.getResult(i)) {
-      return i;
-    }
-  }
-  llvm_unreachable("value is not a result of AffineApply");
-  return static_cast<unsigned>(-1);
-}
-
 AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
                                              ArrayRef<Value *> operands)
     : AffineApplyNormalizer() {
@@ -1511,9 +1500,8 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
     } else {
       auto *inst = t->getDefiningInst();
       auto app = inst->dyn_cast<AffineApplyOp>();
-      unsigned idx = getIndexOf(t, *app);
       auto tmpMap = renumber(*app);
-      exprs.push_back(tmpMap.getResult(idx));
+      exprs.push_back(tmpMap.getResult(0));
     }
   }
 

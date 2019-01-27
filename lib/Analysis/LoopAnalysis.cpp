@@ -145,17 +145,7 @@ bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
   auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
   // We need yet another level of indirection because the `dim` index of the
   // access may not correspond to the `dim` index of composeOp.
-  unsigned idx = std::numeric_limits<unsigned>::max();
-  unsigned numResults = composeOp->getNumResults();
-  for (unsigned i = 0; i < numResults; ++i) {
-    if (&index == composeOp->getResult(i)) {
-      idx = i;
-      break;
-    }
-  }
-  assert(idx < std::numeric_limits<unsigned>::max());
-  return !AffineValueMap(*composeOp)
-              .isFunctionOf(idx, &const_cast<Value &>(iv));
+  return !AffineValueMap(*composeOp).isFunctionOf(0, const_cast<Value *>(&iv));
 }
 
 llvm::DenseSet<const Value *>

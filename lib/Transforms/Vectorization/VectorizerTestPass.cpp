@@ -240,9 +240,7 @@ static bool affineApplyOp(const Instruction &inst) {
 static bool singleResultAffineApplyOpWithoutUses(const Instruction &inst) {
   const auto &opInst = cast<OperationInst>(inst);
   auto app = opInst.dyn_cast<AffineApplyOp>();
-  return app && (app->getNumResults() == 1) &&
-         app->getResult(0)->getUses().end() ==
-             app->getResult(0)->getUses().begin();
+  return app && app->use_empty();
 }
 
 void VectorizerTestPass::testNormalizeMaps(Function *f) {

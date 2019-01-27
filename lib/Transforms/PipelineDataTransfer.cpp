@@ -126,9 +126,8 @@ static bool doubleBuffer(Value *oldMemRef, ForInst *forInst) {
 
   // replaceAllMemRefUsesWith will always succeed unless the forInst body has
   // non-deferencing uses of the memref.
-  if (!replaceAllMemRefUsesWith(oldMemRef, newMemRef, ivModTwoOp->getResult(0),
-                                AffineMap(), {},
-                                &*forInst->getBody()->begin())) {
+  if (!replaceAllMemRefUsesWith(oldMemRef, newMemRef, {ivModTwoOp}, AffineMap(),
+                                {}, &*forInst->getBody()->begin())) {
     LLVM_DEBUG(llvm::dbgs()
                    << "memref replacement for double buffering failed\n";);
     ivModTwoOp->getInstruction()->erase();
