@@ -115,7 +115,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
             'optimizer attributes or optimizer state '
             'after instantiation. '
             'As a result, we cannot save the optimizer '
-            'as part of the model save file.'
+            'as part of the model save file. '
             'You will have to compile your model again after loading it. '
             'Prefer using a Keras optimizer instead '
             '(see keras.io/optimizers).')
