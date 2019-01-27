@@ -23,9 +23,9 @@ limitations under the License.
 //
 // Full build instructions are at tensorflow/contrib/pi_examples/README.md.
 
+#include <stdio.h>
 #include <jpeglib.h>
 #include <setjmp.h>
-#include <stdio.h>
 #include <fstream>
 #include <vector>
 
