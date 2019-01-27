@@ -746,7 +746,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
-      grouped_models = distribution.unwrap(model._distributed_model)
+      grouped_models = distribution.unwrap(model._distributed_model_train)
       with distribution.scope():
         for m in grouped_models:
           self.assertAllClose(0.001, keras.backend.get_value(
