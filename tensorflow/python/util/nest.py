@@ -491,7 +491,6 @@ def map_structure_with_paths(func, *structure, **kwargs):
       the type of sequence in any of their substructures.
     ValueError: If no structures are provided.
   """
-  print("wheee I'm updated")
   def wrapper_func(tuple_path, *inputs, **kwargs):
     string_path = "/".join(str(s) for s in tuple_path)
     return func(string_path, *inputs, **kwargs)
