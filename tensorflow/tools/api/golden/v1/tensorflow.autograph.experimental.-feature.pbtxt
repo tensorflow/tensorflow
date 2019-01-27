@@ -10,10 +10,6 @@ tf_class {
     mtype: "<enum \'Feature\'>"
   }
   member {
-    name: "DECORATORS"
-    mtype: "<enum \'Feature\'>"
-  }
-  member {
     name: "ERROR_REWRITING"
     mtype: "<enum \'Feature\'>"
   }
