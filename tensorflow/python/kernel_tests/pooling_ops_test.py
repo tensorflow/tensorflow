@@ -824,20 +824,29 @@ class PoolingTest(test.TestCase):
           cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def testMaxPoolingWithArgmax(self):
-    tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    with self.session(use_gpu=True) as sess:
-      t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
-      out_op, argmax_op = nn_ops.max_pool_with_argmax(
-          t,
-          ksize=[1, 2, 2, 1],
-          strides=[1, 1, 1, 1],
-          Targmax=dtypes.int64,
-          padding="VALID")
-      out, argmax = self.evaluate([out_op, argmax_op])
-      self.assertShapeEqual(out, out_op)
-      self.assertShapeEqual(argmax, argmax_op)
-      self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0])
-      self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5])
+    tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+                    1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    configs = [
+        [False, False, [0, 1, 3, 5, 0, 1, 3, 5]],
+        [False, True, [0, 1, 3, 5, 9, 10, 12, 14]],
+        [True, False, [0, 1, 3, 5, 0, 1, 3, 5]]]
+
+    for use_gpu, include_batch_in_index, argmax_exp in configs:
+      with self.session(use_gpu=use_gpu):
+        t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
+        out_op, argmax_op = nn_ops.max_pool_with_argmax(
+            t,
+            ksize=[1, 2, 2, 1],
+            strides=[1, 1, 1, 1],
+            Targmax=dtypes.int64,
+            padding="VALID",
+            include_batch_in_index=include_batch_in_index)
+        out, argmax = self.evaluate([out_op, argmax_op])
+        self.assertShapeEqual(out, out_op)
+        self.assertShapeEqual(argmax, argmax_op)
+        self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0,
+                                          1.0, 1.0, 1.0, 1.0])
+        self.assertAllEqual(argmax.ravel(), argmax_exp)
 
   def testMaxPoolingGradWithArgmax(self):
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]

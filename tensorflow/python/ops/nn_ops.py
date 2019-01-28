@@ -3008,12 +3008,15 @@ def max_pool_with_argmax_v2(input,
                             padding,
                             data_format="NHWC",
                             output_dtype=dtypes.int64,
-                            name=None):
+                            name=None,
+                            include_batch_in_index=False):
   """Performs max pooling on the input and outputs both max values and indices.
 
   The indices in `argmax` are flattened, so that a maximum value at position
-  `[b, y, x, c]` becomes flattened index
-  `((b * height + y) * width + x) * channels + c`.
+  `[b, y, x, c]` becomes flattened index: `(y * width + x) * channels + c` if
+  `include_batch_in_index` is False.
+  `((b * height + y) * width + x) * channels + c`
+  if `include_batch_in_index` is True;
 
   The indices returned are always in `[0, height) x [0, width)` before
   flattening, even if padding is involved and the mathematically correct answer
@@ -3040,6 +3043,8 @@ def max_pool_with_argmax_v2(input,
       Defaults to `tf.int64`.
       The dtype of the returned argmax tensor.
     name: A name for the operation (optional).
+    include_batch_in_index: An optional `boolean`. Defaults to `False`.
+      Whether to include batch dimension in flattened index of `argmax`.
 
   Returns:
     A tuple of `Tensor` objects (output, argmax).
@@ -3051,13 +3056,14 @@ def max_pool_with_argmax_v2(input,
   if data_format != "NHWC":
     raise ValueError("Data formats other than 'NHWC' are not yet supported")
 
-  return gen_nn_ops.max_pool_with_argmax(input=input,
-                                         ksize=ksize,
-                                         strides=strides,
-                                         padding=padding,
-                                         Targmax=output_dtype,
-                                         name=name)
-
+  return gen_nn_ops.max_pool_with_argmax(
+      input=input,
+      ksize=ksize,
+      strides=strides,
+      padding=padding,
+      Targmax=output_dtype,
+      name=name,
+      include_batch_in_index=include_batch_in_index)
 # pylint: enable=redefined-builtin
 
 

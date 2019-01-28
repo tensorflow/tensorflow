@@ -827,6 +827,7 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Attr("strides: list(int) >= 4")
     .Attr("Targmax: {int32, int64} = DT_INT64")
     .Attr(GetPaddingAttrString())
+    .Attr("include_batch_in_index: bool = false")
     .Input("input: T")
     .Output("output: T")
     .Output("argmax: Targmax")
@@ -2870,6 +2871,5 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       c->set_output(2, c->Scalar());
       return Status::OK();
     });
-
 
 }  // namespace tensorflow

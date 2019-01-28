@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/maxpooling_op.h"
 
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "cuda/include/cudnn.h"
@@ -58,7 +58,7 @@ template <typename Device, typename T>
 static void SpatialMaxPoolWithArgMaxHelper(
     OpKernelContext* context, Tensor* output, Tensor* output_arg_max,
     Tensor* input_backprop, const Tensor& tensor_in, const Tensor& out_backprop,
-    const PoolParameters& params) {
+    const PoolParameters& params, const bool include_batch_in_index) {
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       ConstEigenMatrixMap;
   typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
@@ -90,7 +90,8 @@ static void SpatialMaxPoolWithArgMaxHelper(
   //    and updates the corresponding column(s) in output_as_matrix with the
   //    max value.
   auto shard = [&params, &in_mat, &out_mat, &out_arg_max_mat, &input_backprop,
-                &output_arg_max, &out_backprop](int64 start, int64 limit) {
+                &output_arg_max, &out_backprop,
+                include_batch_in_index](int64 start, int64 limit) {
     const int32 depth = params.depth;
     const int32 in_rows = params.tensor_in_rows;
     const int32 in_cols = params.tensor_in_cols;
@@ -143,8 +144,11 @@ static void SpatialMaxPoolWithArgMaxHelper(
                 if (output_ref < input_ref ||
                     out_arg_max_ref == kInvalidMaxPoolingIndex) {
                   output_ref = input_ref;
-                  int64 input_offset = in_index * depth + d;
-                  out_arg_max_ref = input_offset;
+                  if (include_batch_in_index) {
+                    out_arg_max_ref = in_index * depth + d;
+                  } else {
+                    out_arg_max_ref = (h * in_cols + w) * depth + d;
+                  }
                 }
               }
             }
@@ -295,7 +299,7 @@ class MaxPoolingGradOp : public OpKernel {
 
     SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
         context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
-        out_backprop, params);
+        out_backprop, params, false);
   }
 
  private:
@@ -875,10 +879,11 @@ template <typename T>
 struct LaunchMaxPoolingWithArgmax<CPUDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, Tensor* argmax,
-                     bool propagate_nans) {
+                     bool propagate_nans, bool include_batch_in_index) {
     Tensor unused;
-    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
-        context, output, argmax, nullptr, input, unused, params);
+    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(context, output, argmax,
+                                                 nullptr, input, unused, params,
+                                                 include_batch_in_index);
   }
 };
 
@@ -899,6 +904,8 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
+    OP_REQUIRES_OK(context, context->GetAttr("include_batch_in_index",
+                                             &include_batch_in_index_));
 
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
                                    &propagate_nans_));
@@ -921,7 +928,8 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(1, out_shape, &argmax));
 
     LaunchMaxPoolingWithArgmax<Device, T>::launch(
-        context, params, tensor_in, output, argmax, propagate_nans_);
+        context, params, tensor_in, output, argmax, propagate_nans_,
+        include_batch_in_index_);
   }
 
  private:
@@ -929,6 +937,7 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   bool propagate_nans_;
+  bool include_batch_in_index_;
 };
 
 template <typename Device, typename T>
@@ -1291,7 +1300,13 @@ template <typename T>
 struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, Tensor* argmax,
-                     bool propagate_nans) {
+                     bool propagate_nans, bool include_batch_in_index) {
+    // TODO(facaiy): support include_batch_in_index=true for gpu kernel.
+    if (include_batch_in_index) {
+      LOG(WARNING) << "include_batch_in_index=true is not supported "
+                   << "on GPU kernel of MaxPoolWithArgmax. "
+                   << "Ignore it.";
+    }
     bool status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
         input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
         params.tensor_in_cols, params.depth, params.out_height,
