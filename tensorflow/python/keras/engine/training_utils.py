@@ -844,22 +844,34 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
   Returns:
       The metric function.
   """
+  if metric not in ['accuracy', 'acc', 'crossentropy', 'ce']:
+    return metrics_module.get(metric)
+
+  is_sparse_categorical_crossentropy = (
+      isinstance(loss_fn, losses.SparseCategoricalCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.sparse_categorical_crossentropy))
+
+  is_binary_crossentropy = (
+      isinstance(loss_fn, losses.BinaryCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.binary_crossentropy))
+
   if metric in ['accuracy', 'acc']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_accuracy  # case: binary accuracy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical accuracy with sparse targets
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_accuracy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_accuracy
-    return metrics_module.categorical_accuracy  # case: categorical accuracy
-  elif metric in ['crossentropy', 'ce']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_crossentropy  # case: binary cross-entropy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical cross-entropy with sparse targets
+    # If the output_shape[-1] is not 1, then we know output is `categorical`.
+    # We assume it is sparse categorical only if loss is explicitly given
+    # as sparse categorical crossentropy loss.
+    return metrics_module.categorical_accuracy
+  else:
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_crossentropy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_crossentropy
-    # case: categorical cross-entropy
     return metrics_module.categorical_crossentropy
-  return metrics_module.get(metric)
 
 
 def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
