@@ -250,7 +250,7 @@ tflite_quantized_model=converter.convert()
 open(“quantized_model.tflite”, “wb”).write(tflite_quantized_model)
 ```
 
-Read the full documentation [here](performance/post_training_quantization) and see a tutorial [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb).
+Read the full documentation [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/post_training_quantization.md) and see a tutorial [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb).
 
 ### GPU
 Run on GPU GPUs are designed to have high throughput for massively
