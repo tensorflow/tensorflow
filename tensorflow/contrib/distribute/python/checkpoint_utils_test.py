@@ -71,7 +71,7 @@ class CheckpointUtilsWithDistributionStrategyTest(
 
     with ops.Graph().as_default() as g, distribution.scope():
       if in_replica_mode:
-        distribution.call_for_each_replica(init_and_verify, args=[g])
+        distribution.extended.call_for_each_replica(init_and_verify, args=[g])
       else:
         init_and_verify(g)
 

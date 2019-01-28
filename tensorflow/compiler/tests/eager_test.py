@@ -24,6 +24,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import init_ops
@@ -463,7 +465,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(x, y):
         return x[0::2, y:, ...]
 
-      x = array_ops.ones([2, 3, 4])
+      x = array_ops.ones([2, 3, 4], dtype=dtypes.float32)
       y = array_ops.ones([], dtype=dtypes.int32)
       with backprop.GradientTape() as tape:
         tape.watch(x)
@@ -479,15 +481,15 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
       @function.defun
       def times_two(x):
-        return 2 * x
+        return 2. * x
 
       @function.defun
       def two_x_plus_1(x):
-        return times_two(x) + 1
+        return times_two(x) + 1.
 
-      x = constant_op.constant([2, 3, 4])
+      x = constant_op.constant([2., 3., 4.])
       y = two_x_plus_1(x)
-      self.assertAllEqual([5, 7, 9], y.numpy())
+      self.assertAllEqual([5., 7., 9.], y.numpy())
 
   def testNestedDefunWithVariable(self):
     with self.test_scope():
@@ -506,7 +508,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       x = constant_op.constant(3.0)
       y = f(x)
 
-    self.assertEqual(75, y.numpy())
+    self.assertEqual(75.0, y.numpy())
 
   def testNestedDefunInGradientTape(self):
     with self.test_scope():
@@ -554,6 +556,56 @@ class EagerFunctionTest(xla_test.XLATestCase):
     self.assertEqual(45, y.numpy())
     self.assertEqual(9, dy_v0.numpy())
     self.assertEqual(15, dy_v1.numpy())
+
+  def testWhileInDefun(self):
+    with self.test_scope():
+      @def_function.function
+      def f(start):
+        c = lambda x: math_ops.less(x, 13.0)
+        b = lambda x: math_ops.add(x, 1.0)
+        return control_flow_ops.while_loop(c, b, [start])
+
+      y = f(constant_op.constant(3.0))
+    self.assertEqual(13.0, y.numpy())
+
+  def testAutoGraphWhileInDefun(self):
+    with self.test_scope():
+      @def_function.function
+      def f(start):
+        x = start
+        while x < 13.0:
+          x += 1.0
+        return x
+
+      y = f(constant_op.constant(3.0))
+    self.assertEqual(13.0, y.numpy())
+
+  def testCondInDefun(self):
+    with self.test_scope():
+      @def_function.function
+      def f(pred, value):
+        fn1 = lambda: math_ops.add(value, 1.0)
+        fn2 = lambda: math_ops.subtract(value, 1.0)
+        return control_flow_ops.cond(pred, fn1, fn2)
+
+      plus_one = f(constant_op.constant(True), constant_op.constant(10.0))
+      minus_one = f(constant_op.constant(False), constant_op.constant(10.0))
+    self.assertEqual(11.0, plus_one.numpy())
+    self.assertEqual(9.0, minus_one.numpy())
+
+  def testAutoGraphCondInDefun(self):
+    with self.test_scope():
+      @def_function.function
+      def f(pred, value):
+        if pred:
+          return value + 1.0
+        else:
+          return value - 1.0
+
+      plus_one = f(constant_op.constant(True), constant_op.constant(10.0))
+      minus_one = f(constant_op.constant(False), constant_op.constant(10.0))
+    self.assertEqual(11.0, plus_one.numpy())
+    self.assertEqual(9.0, minus_one.numpy())
 
 
 class ExcessivePaddingTest(xla_test.XLATestCase):

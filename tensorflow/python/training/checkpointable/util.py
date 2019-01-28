@@ -176,25 +176,13 @@ class _CheckpointRestoreCoordinator(object):
         raise AssertionError(
             ("Saveable keys changed when validating. Got back %s, was "
              "expecting %s") % (tensor_saveables.keys(), validated_names))
-      for saveable in validated_saveables:
-        if saveable.device:
-          device = saveable_object_util.set_cpu0(saveable.device)
-        else:
-          device = None
-        with ops.device(device):
-          tensors = []
-          for spec in saveable.specs:
-            tensors.append(
-                io_ops.restore_v2(
-                    self.save_path_tensor,
-                    [spec.name],
-                    [spec.slice_spec],
-                    [spec.dtype])[0])
-          restore_op = saveable.restore(tensors, restored_shapes=None)
-        if not context.executing_eagerly():
+      new_restore_ops = functional_saver.restore_from_saveable_objects(
+          self.save_path_tensor, validated_saveables)
+      if not context.executing_eagerly():
+        restore_ops.extend(new_restore_ops)
+        for saveable, restore_op in zip(validated_saveables, new_restore_ops):
           assert saveable.name not in self.restore_ops_by_name
           self.restore_ops_by_name[saveable.name] = restore_op
-          restore_ops.append(restore_op)
     return restore_ops
 
 
@@ -678,7 +666,13 @@ def _add_attributes_to_object_graph(
         if cached_attributes is not None:
           cached_attributes[name] = saveables
 
+      optional_restore = None
       for saveable in saveables:
+        if optional_restore is None:
+          optional_restore = saveable.optional_restore
+        else:
+          optional_restore = optional_restore and saveable.optional_restore
+
         if hasattr(saveable, "full_name"):
           attribute.full_name = saveable.full_name
         if isinstance(saveable, base.PythonStateSaveable):
@@ -700,6 +694,9 @@ def _add_attributes_to_object_graph(
                     % (checkpointable, new_feed_key))
             feed_additions.update(saveable_feed_dict)
         named_saveable_objects.append(saveable)
+      if optional_restore is None:
+        optional_restore = False
+      attribute.optional_restore = optional_restore
 
   return named_saveable_objects, feed_additions
 
@@ -1032,7 +1029,7 @@ class CheckpointLoadStatus(_LoadStatus):
       raise AssertionError(
           ("Unused attributes in these objects (the attributes exist in the "
            "checkpoint but not in the objects): %s") % (
-               self._checkpoint.unused_attributes.items(),))
+               list(self._checkpoint.unused_attributes.items()),))
     return self
 
   def assert_existing_objects_matched(self):
@@ -1391,8 +1388,8 @@ class CheckpointableSaver(object):
             name=base.OBJECT_GRAPH_PROTO_KEY))
     return named_saveable_objects, graph_proto, feed_additions
 
-  def freeze(self, object_map=None, to_graph=None):
-    """Creates a `tf.train.Saver` with the current object graph frozen."""
+  def gather_objects(self, object_map=None, to_graph=None):
+    """Creates SaveableObjects with the current object graph frozen."""
     checkpointable_objects, path_to_root = (
         _breadth_first_checkpointable_traversal(self._root_checkpointable))
     if to_graph:
@@ -1412,7 +1409,12 @@ class CheckpointableSaver(object):
           base.NoRestoreSaveable(
               tensor=object_graph_tensor,
               name=base.OBJECT_GRAPH_PROTO_KEY))
-      return functional_saver.Saver(named_saveable_objects)
+    return named_saveable_objects
+
+  def freeze(self, object_map=None, to_graph=None):
+    named_saveable_objects = self.gather_objects(
+        object_map=object_map, to_graph=to_graph)
+    return functional_saver.Saver(named_saveable_objects)
 
   def _save_cached_when_graph_building(
       self,
@@ -1653,7 +1655,7 @@ def frozen_saver(root_checkpointable):
 
 
 @tf_export("train.Checkpoint")
-class Checkpoint(tracking.Checkpointable):
+class Checkpoint(tracking.AutoCheckpointable):
   """Groups checkpointable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
@@ -1755,8 +1757,7 @@ class Checkpoint(tracking.Checkpointable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.CheckpointableBase,
-                            def_function.PolymorphicFunction)):
+      if not isinstance(v, (base.Checkpointable, def_function.Function)):
         raise ValueError(
             ("`Checkpoint` was expecting a checkpointable object (an object "
              "derived from `CheckpointableBase`), got %s. If you believe this "

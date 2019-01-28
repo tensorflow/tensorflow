@@ -104,7 +104,11 @@ else
 fi
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
-  python tensorflow/tools/ci_build/update_version.py --nightly
+  if [[ ${PROJECT_NAME} == *"2.0_preview"* ]]; then
+    python tensorflow/tools/ci_build/update_version.py --version=2.0.0 --nightly
+  else
+    python tensorflow/tools/ci_build/update_version.py --nightly
+  fi
   if [ -z ${PROJECT_NAME} ]; then
     EXTRA_PIP_FLAGS="--nightly_flag"
   else

@@ -51,13 +51,14 @@ REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
+    'google_pasta >= 0.1.1',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.12.0, < 1.13.0',
-    'tensorflow_estimator >= 1.10.0',
+    'tensorflow_estimator >= 1.13.0rc0, < 1.14.0rc0',
     'termcolor >= 1.1.0',
 ]
 
@@ -248,7 +249,7 @@ setup(
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
-    author_email='opensource@google.com',
+    author_email='packages@tensorflow.org',
     # Contained modules and scripts.
     packages=find_packages(),
     entry_points={

@@ -12,7 +12,6 @@ cc_library(
         "c_api_internal.h",
     ],
     visibility = [
-        "//tensorflow/contrib/lite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
 )

@@ -18,13 +18,6 @@ load(
     "if_ngraph",
 )
 
-# This flag specifies whether TensorFlow 2.0 API should be built instead
-# of 1.* API. Note that TensorFlow 2.0 API is currently under development.
-config_setting(
-    name = "api_version_2",
-    define_values = {"tf_api_version": "2"},
-)
-
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
 # public headers.  Not all of the headers returned by the filegroup
@@ -66,7 +59,6 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
-    "//tensorflow/examples/tutorials/mnist:package",
     "//tensorflow/lite/python:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
@@ -90,6 +82,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/ops/ragged:ragged_test_util",
@@ -107,6 +100,7 @@ COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
     "//tensorflow/contrib/compiler:xla",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
+    "//tensorflow/contrib/distribute/python:distribute_test_lib_pip",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
     "//tensorflow/contrib/gan:gan",
@@ -130,6 +124,7 @@ COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
     "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
     "//tensorflow/contrib/timeseries:timeseries_pip",
     "//tensorflow/contrib/tpu",
+    "//tensorflow/examples/tutorials/mnist:package",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -139,8 +134,8 @@ py_binary(
     name = "simple_console_for_windows",
     srcs = ["simple_console_for_windows.py"],
     data = select({
-        "api_version_2": COMMON_PIP_DEPS,
         "//conditions:default": COMMON_PIP_DEPS_V1,
+        "//tensorflow:api_version_2": COMMON_PIP_DEPS,
     }) + ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
@@ -153,7 +148,11 @@ filegroup(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
+        "@absl_py//absl:LICENSE",
+        "@absl_py//absl/logging:LICENSE",
         "@absl_py//absl/flags:LICENSE",
+        "@absl_py//absl/testing:LICENSE",
+        "@absl_py//absl/third_party/unittest3_backport:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astor_archive//:LICENSE",
         "@boringssl//:LICENSE",
@@ -162,6 +161,7 @@ filegroup(
         "@curl//:COPYING",
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
+        "@enum34_archive//:LICENSE",
         "@farmhash_archive//:COPYING",
         "@fft2d//:fft/readme.txt",
         "@flatbuffers//:LICENSE.txt",
@@ -176,6 +176,7 @@ filegroup(
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
+        "@pasta//:LICENSE",
         "@pcre//:LICENCE",
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",
@@ -242,7 +243,7 @@ sh_binary(
     name = "build_pip_package",
     srcs = ["build_pip_package.sh"],
     data = select({
-               "api_version_2": COMMON_PIP_DEPS,
+               "//tensorflow:api_version_2": COMMON_PIP_DEPS,
                "//conditions:default": COMMON_PIP_DEPS_V1,
            }) +
            select({

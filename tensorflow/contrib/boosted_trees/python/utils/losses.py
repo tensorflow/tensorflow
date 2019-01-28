@@ -166,7 +166,7 @@ def per_example_squared_loss(labels, weights, predictions):
     update_op: An update operation to update the loss's internal state.
   """
   unweighted_loss = math_ops.reduce_sum(
-      math_ops.square(predictions - labels), 1, keepdims=True)
+      math_ops.squared_difference(predictions, labels), 1, keepdims=True)
 
   return unweighted_loss * weights, control_flow_ops.no_op()
 

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -44,6 +45,43 @@ class Shape {
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
   string ToString(bool print_layout = false) const;
 
+  // Returns the rank (number of dimensions) of the given shape. Shape must be
+  // an array.
+  int64 rank() const {
+    CHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
+    return dimensions_.size();
+  }
+
+  // Returns whether the shape is of the specified type (array, tuple, etc).
+  bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
+  bool IsTuple() const { return element_type() == TUPLE; }
+  bool IsToken() const { return element_type() == TOKEN; }
+  bool IsOpaque() const { return element_type() == OPAQUE; }
+
+  // Returns true if no array dimension in the shape is dynamically sized. Tuple
+  // shapes are traversed recursively.
+  bool is_static() const;
+
+  // Returns true if the given dimension is dynamically-sized.
+  bool is_dynamic_dimension(int dimension) const {
+    return dynamic_dimensions_.at(dimension);
+  }
+
+  // Sets whether or not the given dimension is dynamically-sized.
+  void set_dynamic_dimension(int dimension, bool is_dynamic) {
+    dynamic_dimensions_[dimension] = is_dynamic;
+  }
+
+  const std::vector<bool>& dynamic_dimensions() const {
+    return dynamic_dimensions_;
+  }
+
+  // Add dimension_upper_bound().
+
+  // Removes the given dimension form the shape. Layout, if it exists, is
+  // adjusted to match the modified shape.
+  void DeleteDimension(int64 dim_to_delete);
+
   // The following methods mirror the protobuf generated code interface for the
   // message ShapeProto. This enabled easy migration of this data structure
   // from a proto to a proper C++ class.
@@ -58,10 +96,16 @@ class Shape {
   int dimensions_size() const { return dimensions_.size(); }
   int64 dimensions(int index) const { return dimensions_.at(index); }
   void set_dimensions(int index, int64 value) { dimensions_.at(index) = value; }
-  void add_dimensions(int64 value) { dimensions_.push_back(value); }
-  void clear_dimensions() { dimensions_.clear(); }
+  void add_dimensions(int64 value) {
+    dimensions_.push_back(value);
+    dynamic_dimensions_.push_back(false);
+  }
+  void clear_dimensions() {
+    dimensions_.clear();
+    dynamic_dimensions_.clear();
+  }
   const std::vector<int64>& dimensions() const { return dimensions_; }
-  std::vector<int64>* mutable_dimensions() { return &dimensions_; }
+  absl::Span<int64> mutable_dimensions() { return absl::MakeSpan(dimensions_); }
 
   // Methods for accessing the tuple subshapes. This field only non-empty for
   // tuple shapes.
@@ -98,12 +142,57 @@ class Shape {
   string ShortDebugString() const { return ToProto().ShortDebugString(); }
   string DebugString() const { return ToProto().DebugString(); }
 
- public:
+  // Equal is a configurable functor to check the equality of two shapes.
+  //
+  // Examples:
+  //
+  // - Comparing two shapes ignoring they layout difference:
+  //   Equal().IgnoreLayout()(shape1, shape2);
+  //
+  // - Comparing two shapes ignoring they layout and element type difference:
+  //   Equal().IgnoreLayout().IgnoreElementType()(shape1, shape2);
+  class Equal {
+   public:
+    Equal() = default;
+
+    bool operator()(const Shape& lhs, const Shape& rhs);
+
+    Equal& IgnoreLayout() {
+      ignore_layout_ = true;
+      return *this;
+    }
+    Equal& IgnoreElementType() {
+      ignore_element_type_ = true;
+      return *this;
+    }
+    Equal& IgnoreFpPrecision() {
+      ignore_fp_precision_ = true;
+      return *this;
+    }
+    Equal& IgnoreDynamicDimension() {
+      ignore_dynamic_dimension_ = true;
+      return *this;
+    }
+
+   public:
+    bool ignore_layout_ = false;
+    bool ignore_element_type_ = false;
+    bool ignore_fp_precision_ = false;
+    bool ignore_dynamic_dimension_ = false;
+  };
+
+ private:
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
 
-  // The array bounds of the dimensions. This is nonempty only for array shapes.
+  // The array bounds of the dimensions. This is nonempty only for array
+  // shapes. For a dynamically-sized dimension, the respective value in this
+  // vector is an inclusive upper limit of the array bound.
   std::vector<int64> dimensions_;
+
+  // This vector is the same size as 'dimensions_' and indicates whether the
+  // respective dimension is dynamically sized.
+  std::vector<bool> dynamic_dimensions_;
 
   // The tuple element subshapes. This is nonempty only for tuple shapes.
   std::vector<Shape> tuple_shapes_;

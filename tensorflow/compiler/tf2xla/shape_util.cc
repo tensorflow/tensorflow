@@ -27,7 +27,7 @@ namespace {
 
 Status PopulateInfeedLayoutVector(const xla::Shape& shape,
                                   std::vector<int>* layouts) {
-  if (xla::ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     int64 tuple_elements = xla::ShapeUtil::TupleElementCount(shape);
     for (int64 i = 0; i < tuple_elements; ++i) {
       const xla::Shape& subshape =
@@ -39,8 +39,45 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
       layouts->push_back(dim);
     }
   } else {
-    layouts->insert(layouts->end(), xla::ShapeUtil::Rank(shape), -1);
+    layouts->insert(layouts->end(), shape.rank(), -1);
   }
+  return Status::OK();
+}
+
+// Populate the output layout unless the minor_to_major array contains all -1
+// value, in which case the layout is considered missing and the API returns
+// false.
+xla::StatusOr<bool> MakeLayout(absl::Span<const int64> minor_to_major,
+                               xla::Layout* layout) {
+  if (std::all_of(minor_to_major.begin(), minor_to_major.end(),
+                  [](int64 dim) { return dim == -1; })) {
+    return false;
+  }
+  std::vector<bool> dim_present(minor_to_major.size(), false);
+  for (auto dim : minor_to_major) {
+    if (dim < 0 || dim >= minor_to_major.size()) {
+      return errors::InvalidArgument("Layout dimension out of range: dim=", dim,
+                                     " rank=", minor_to_major.size());
+    }
+    if (dim_present[dim]) {
+      return errors::InvalidArgument("Repeated layout dimension: dim=", dim);
+    }
+    dim_present[dim] = true;
+  }
+  *layout = xla::LayoutUtil::MakeLayout(minor_to_major);
+  return true;
+}
+
+Status AssignLayout(
+    absl::Span<const int64> minor_to_major,
+    const std::function<xla::Layout(const xla::Shape&)>& layout_func,
+    xla::Shape* shape) {
+  xla::Layout layout;
+  TF_ASSIGN_OR_RETURN(bool has_layout, MakeLayout(minor_to_major, &layout));
+  if (!has_layout && layout_func) {
+    layout = layout_func(*shape);
+  }
+  *shape->mutable_layout() = layout;
   return Status::OK();
 }
 
@@ -49,13 +86,13 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
 // Convert an XLA Shape into the equivalent TensorFlow shape.
 Status XLAShapeToTensorShape(const xla::Shape& shape,
                              TensorShape* tensor_shape) {
-  if (xla::ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     return errors::InvalidArgument("XLA shape ",
                                    xla::ShapeUtil::HumanString(shape),
                                    " cannot be converted to a TensorShape");
   }
   *tensor_shape = TensorShape();
-  for (int i = 0; i < xla::ShapeUtil::Rank(shape); ++i) {
+  for (int i = 0; i < shape.rank(); ++i) {
     tensor_shape->AddDim(shape.dimensions(i));
   }
   return Status::OK();
@@ -84,10 +121,64 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
   return xla::ShapeUtil::MakeShapeWithLayout(type, dimensions, layout);
 }
 
-xla::StatusOr<std::vector<int>> GetInfeedLayoutVector(const xla::Shape& shape) {
+xla::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {
   std::vector<int> layouts;
   TF_RETURN_IF_ERROR(PopulateInfeedLayoutVector(shape, &layouts));
   return layouts;
+}
+
+Status GetShapeWithLayout(
+    const xla::Shape& input_shape, absl::Span<const int64> minor_to_major,
+    const std::function<xla::Layout(const xla::Shape&)>& layout_func,
+    xla::Shape* output_shape) {
+  if (input_shape.IsTuple()) {
+    int64 tuple_elements = xla::ShapeUtil::TupleElementCount(input_shape);
+    std::vector<xla::Shape> shapes;
+    shapes.reserve(tuple_elements);
+    size_t position = 0;
+    for (int64 i = 0; i < tuple_elements; ++i) {
+      const xla::Shape& shape =
+          xla::ShapeUtil::GetTupleElementShape(input_shape, i);
+      if (shape.IsTuple()) {
+        return errors::InvalidArgument(
+            "Nested tuples not supported: ",
+            xla::ShapeUtil::HumanString(input_shape));
+      }
+      int64 rank = shape.rank();
+      if (position + rank > minor_to_major.size()) {
+        return errors::InvalidArgument(
+            "Not enough layout attribute elements: position=", position,
+            " rank=", rank, " elements=", minor_to_major.size());
+      }
+      shapes.push_back(shape);
+      TF_RETURN_IF_ERROR(AssignLayout(
+          absl::Span<const int64>(minor_to_major).subspan(position, rank),
+          layout_func, &shapes.back()));
+      position += rank;
+
+      VLOG(4) << "Shape[" << i
+              << "] = " << xla::ShapeUtil::HumanStringWithLayout(shapes.back());
+    }
+    if (position != minor_to_major.size()) {
+      return errors::InvalidArgument(
+          "Too many elements passed in the layout attribute: position=",
+          position, " size=", minor_to_major.size());
+    }
+    *output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
+  } else {
+    int64 rank = input_shape.rank();
+    if (rank != minor_to_major.size()) {
+      return errors::InvalidArgument(
+          "Wrong number of layout attribute elements: rank=", rank,
+          " elements=", minor_to_major.size());
+    }
+    *output_shape = input_shape;
+    TF_RETURN_IF_ERROR(AssignLayout(minor_to_major, layout_func, output_shape));
+
+    VLOG(4) << "Shape[] = "
+            << xla::ShapeUtil::HumanStringWithLayout(*output_shape);
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

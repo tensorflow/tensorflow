@@ -28,6 +28,7 @@ from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.ops import gen_tpu_ops
 from tensorflow.contrib.tpu.proto import tpu_embedding_configuration_pb2 as elc
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -42,19 +43,6 @@ from tensorflow.python.ops import variables
 
 TRAINING = elc.TPUEmbeddingConfiguration.TRAINING
 INFERENCE = elc.TPUEmbeddingConfiguration.INFERENCE
-
-# TODO(shizhiw): A better interface is to make `num_hosts` and
-# `num_cores_per_host` optional parameters for `TPUEmbedding`
-# constructor. Usually they can be automatically detected, but
-# user can also specify them for debugging (b/112112496).
-# Auto-detection can be done with `tpu_system_metadata.py`.
-_MASTER_JOB = 'tpu_worker'
-_HOST_PATTERN = '/job:tpu_worker/task:{}/device:CPU:0'
-_NUM_CORES_PER_HOST = 8
-
-_TEST_MASTER_JOB = None
-_TEST_HOST = '/replica:0/task:0/device:CPU:0'
-_TEST_NUM_CORES_PER_HOST = 2
 
 
 class TableConfig(
@@ -301,10 +289,9 @@ class TPUEmbedding(object):
                table_to_config_dict,
                feature_to_table_dict,
                batch_size,
-               num_hosts,
                mode,
-               optimization_parameters=None,
-               tpu_embedding_test=False):
+               master,
+               optimization_parameters=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -315,12 +302,11 @@ class TPUEmbedding(object):
         to string of table name. Feature refers to ids to lookup in embedding
         table, e.g. `sp_ids` argument to `tf.nn.embedding_lookup_sparse()`.
       batch_size: An `int` representing the global batch size.
-      num_hosts: An `int` representing the number of TPU hosts.
       mode: `TRAINING` or `INFERENCE`.
+      master: A `string` representing the TensorFlow master to use.
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
         `Stochasticgradientdescentparameters`. Must be set in training and must
         be `None` in inference.
-      tpu_embedding_test: A `bool`. Only used for testing.
 
     Raises:
       ValueError: if any input is invalid.
@@ -337,15 +323,17 @@ class TPUEmbedding(object):
 
     self._batch_size = batch_size
 
-    if tpu_embedding_test:
-      self._num_hosts = 1
-      self._hosts = [_TEST_HOST]
-      self._num_cores_per_host = _TEST_NUM_CORES_PER_HOST
-    else:
-      self._num_hosts = num_hosts
-      self._hosts = [_HOST_PATTERN.format(i) for i in range(self._num_hosts)]
-      self._num_cores_per_host = _NUM_CORES_PER_HOST
-    self._num_cores = self._num_cores_per_host * self._num_hosts
+    self._master = master
+    self._tpu_system_metadata = (
+        tpu_system_metadata_lib._query_tpu_system_metadata(self._master))  # pylint: disable=protected-access
+    if self._tpu_system_metadata.num_cores == 0:
+      raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
+                       'TPUs.'.format(self._master))
+    self._num_hosts = self._tpu_system_metadata.num_hosts
+    self._hosts = [device.name for device in self._tpu_system_metadata.devices
+                   if 'device:CPU:' in device.name]
+    self._num_cores_per_host = self._tpu_system_metadata.num_of_cores_per_host
+    self._num_cores = self._tpu_system_metadata.num_cores
 
     _validate_batch_size(self._batch_size, self._num_cores)
     self._batch_size_per_core = self._batch_size // self._num_cores
@@ -389,7 +377,7 @@ class TPUEmbedding(object):
     Returns:
       A list of device names for CPU hosts.
     """
-    return self._hosts
+    return copy.copy(self._hosts)
 
   # TODO(shizhiw): change to num_tensor_cores_per_host to be more explicit and
   # to be consistent with `tpu_embedding_configuration.proto`.
@@ -451,6 +439,10 @@ class TPUEmbedding(object):
   @property
   def table_to_table_variables_dict(self):
     return copy.copy(self._table_to_table_variables_dict)
+
+  @property
+  def feature_to_table_dict(self):
+    return copy.copy(self._feature_to_table_dict)
 
   def get_slot_names(self):
     """Return a list of the names of slots created by `TPUEmbedding`."""
@@ -1077,34 +1069,3 @@ def _create_partitioned_variables(name,
       initializer=initializer,
       collections=collections,
       trainable=False))
-
-
-@ops.RegisterGradient('TPUEmbeddingActivations')
-def _embedding_activations_grad(activations_op, grad_wrt_activations):
-  """Saves the gradient of embedding activations ops in a graph collection."""
-  g = ops.get_default_graph()
-  table_id = activations_op.get_attr('table_id')
-  lookup_id = activations_op.get_attr('lookup_id')
-  table_gradients = g.get_collection_ref(
-      'tpu_embedding_gradients_table_%d' % table_id)
-
-  if not table_gradients:
-    raise RuntimeError(
-        'Gradients for TPUEmbedding have been generated in non-training mode. '
-        'This is not expected. Consider putting your Optimizer.minimize code '
-        'behind the training mode condition check. For Estimator, you can '
-        'do \n\n'
-        '    if mode == tf.estimator.ModeKeys.TRAIN:\n'
-        '        train_op = opt.minimize(loss)\n'
-        '\n')
-
-  table_gradients[lookup_id] = array_ops.identity(grad_wrt_activations)
-  return [
-      # RegisterGradient requires that value be returned for all inputs. Since
-      # the first argument (tpu_gradient_variable_{table_name}) has shape [1],
-      # we will return zeros(shape=[1]). The actual gradient w.r.t. the
-      # embedding activations (grad_wrt_activations) has the same shape as the
-      # activations returned by  embedding_activations.
-      array_ops.zeros(arg.shape, dtype=dtypes.float32)
-      for arg in activations_op.inputs
-  ]

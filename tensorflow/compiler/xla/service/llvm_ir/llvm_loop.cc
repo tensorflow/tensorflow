@@ -235,7 +235,7 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
                                              absl::string_view suffix) {
-  std::vector<int64> dimensions(ShapeUtil::Rank(shape));
+  std::vector<int64> dimensions(shape.rank());
   std::iota(dimensions.begin(), dimensions.end(), 0);
   return AddLoopsForShapeOnDimensions(shape, dimensions, suffix);
 }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -78,26 +79,79 @@ XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients) {
 }
 
 // Compute an approximation of the error function complement (1 - erf(x)).
+//
+// TODO(jlebar): This is not particularly efficient.  The implementation in
+// Cephes that this follows was written for double precision, but our
+// coefficients are specified only to single-precision!  Cephes has a different,
+// simpler implementation for single-precision.
+//
+// Furthermore, we could simplify this further for f16 -- for example, because
+// exp(-4.2 * 4.2) = 0 (f16), the computations in service of the x < 8.0 branch
+// below are unnecessary.
+//
+// See also these alternate implementations of erf and erfc:
+//
+//   https://stackoverflow.com/questions/35148198
+//   https://stackoverflow.com/questions/35966695
+//
 XlaOp Erfc(XlaOp x) {
-  XlaOp abs_x = Abs(x);
-  XlaOp z = Exp(-x * x);
+  auto& b = *x.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    // Reject non-real non-fp inputs.  (We could extend erfc to accept complex
+    // types, but it doesn't seem necessary at this point.)
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
+    if (!ShapeUtil::ElementIsFloating(shape)) {
+      return InvalidArgument(
+          "erfc only accepts real floating-point arrays or scalars, but got %s",
+          shape.ToString());
+    }
+    XlaOp abs_x = Abs(x);
+    XlaOp z = Exp(-x * x);
 
-  XlaOp pp = EvaluatePolynomial(abs_x, kErfcPCoefficient);
-  XlaOp pq = EvaluatePolynomial(abs_x, kErfcQCoefficient);
-  XlaOp pr = EvaluatePolynomial(abs_x, kErfcRCoefficient);
-  XlaOp ps = EvaluatePolynomial(abs_x, kErfcSCoefficient);
+    XlaOp pp = EvaluatePolynomial(abs_x, kErfcPCoefficient);
+    XlaOp pq = EvaluatePolynomial(abs_x, kErfcQCoefficient);
+    XlaOp pr = EvaluatePolynomial(abs_x, kErfcRCoefficient);
+    XlaOp ps = EvaluatePolynomial(abs_x, kErfcSCoefficient);
 
-  XlaOp y = Select(Lt(abs_x, ScalarLike(x, 8.0)), z * pp / pq, z * pr / ps);
+    XlaOp abs_x_small = Lt(abs_x, ScalarLike(x, 8.0));
+    XlaOp y = Select(abs_x_small, z * pp / pq, z * pr / ps);
+    XlaOp result_no_underflow =
+        Select(Lt(x, ScalarLike(x, 0.0)), ScalarLike(x, 2.0) - y, y);
 
-  return Select(Lt(x, ScalarLike(x, 0.0)), ScalarLike(x, 2.0) - y, y);
+    // Check for edge cases, namely, exp(-x^2) is exactly 0, or the appropriate
+    // denominator (ps or pq) is inf.  (The check for exp(-x^2) == 0 is
+    // necessary only for x == +/- inf, where this check lets us avoid
+    // multiplying 0 by inf and getting nan.)
+    auto is_pos_inf = [](XlaOp op) {
+      return And(Not(IsFinite(op)), Gt(op, ScalarLike(op, 0)));
+    };
+    XlaOp underflow =
+        Or(Eq(z, ScalarLike(z, 0)), Or(And(is_pos_inf(pq), abs_x_small),
+                                       And(is_pos_inf(ps), Not(abs_x_small))));
+    XlaOp result_underflow =
+        Select(Lt(x, ScalarLike(x, 0)), FullLike(x, 2), FullLike(x, 0));
+
+    return Select(underflow, result_underflow, result_no_underflow);
+  });
 }
 
 // Compute a polynomial approximation of the error function.
 XlaOp Erf(XlaOp x) {
-  XlaOp z = x * x;
-  XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient);
-  XlaOp pu = EvaluatePolynomial(z, kErfUCoefficient);
-  return x * pt / pu;
+  auto& b = *x.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    // Reject non-real non-fp inputs.  (We could extend erf to accept complex
+    // types, but it doesn't seem necessary at this point.)
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
+    if (!ShapeUtil::ElementIsFloating(shape)) {
+      return InvalidArgument(
+          "erf only accepts real floating-point arrays or scalars, but got %s",
+          shape.ToString());
+    }
+    XlaOp z = x * x;
+    XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient);
+    XlaOp pu = EvaluatePolynomial(z, kErfUCoefficient);
+    return x * pt / pu;
+  });
 }
 
 // Approximation for the inverse error function from
@@ -113,37 +167,30 @@ XlaOp Erf(XlaOp x) {
 //   }
 //   return p*x
 XlaOp ErfInv(XlaOp x) {
-  XlaBuilder* b = x.builder();
-  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, b->GetShape(x));
-    constexpr int kDegree = 9;
-    constexpr std::array<float, 9> w_less_than_5_constants = {
-        2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
-        -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
-        -0.00417768164f,  0.246640727f,    1.50140941f};
-    constexpr std::array<float, 9> w_greater_than_5_constants = {
-        -0.000200214257f, 0.000100950558f, 0.00134934322f,
-        -0.00367342844f,  0.00573950773f,  -0.0076224613f,
-        0.00943887047f,   1.00167406f,     2.83297682f};
+  constexpr int kDegree = 9;
+  constexpr std::array<float, 9> w_less_than_5_constants = {
+      2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+      -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+      -0.00417768164f,  0.246640727f,    1.50140941f};
+  constexpr std::array<float, 9> w_greater_than_5_constants = {
+      -0.000200214257f, 0.000100950558f, 0.00134934322f,
+      -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+      0.00943887047f,   1.00167406f,     2.83297682f};
 
-    auto one = ScalarLike(x, 1.0);
-    auto w = -Log((one - x) * (one + x));
+  auto one = ScalarLike(x, 1.0);
+  auto w = -Log((one - x) * (one + x));
 
-    auto lt = Lt(w, ScalarLike(x, 5.0));
-    auto coefficient = [&](int i) {
-      return Select(lt,
-                    Broadcast(ScalarLike(x, w_less_than_5_constants[i]),
-                              AsInt64Slice(shape.dimensions())),
-                    Broadcast(ScalarLike(x, w_greater_than_5_constants[i]),
-                              AsInt64Slice(shape.dimensions())));
-    };
-    w = Select(lt, w - ScalarLike(x, 2.5), Sqrt(w) - ScalarLike(x, 3.0));
-    auto p = coefficient(0);
-    for (int i = 1; i < kDegree; ++i) {
-      p = coefficient(i) + p * w;
-    }
-    return p * x;
-  });
+  auto lt = Lt(w, ScalarLike(x, 5.0));
+  auto coefficient = [&](int i) {
+    return Select(lt, FullLike(x, w_less_than_5_constants[i]),
+                  FullLike(x, w_greater_than_5_constants[i]));
+  };
+  w = Select(lt, w - ScalarLike(x, 2.5), Sqrt(w) - ScalarLike(x, 3.0));
+  auto p = coefficient(0);
+  for (int i = 1; i < kDegree; ++i) {
+    p = coefficient(i) + p * w;
+  }
+  return p * x;
 }
 
 namespace {
@@ -170,49 +217,94 @@ static constexpr std::array<double, 8> kLanczosCoefficients = {
 // t(z) = z + kLanczosGamma + 1/2
 // A(z) = kBaseLanczosCoeff + sigma(k = 1, n, kLanczosCoefficients[i] / (z + k))
 XlaOp Lgamma(XlaOp input) {
-  XlaOp one_half = ScalarLike(input, 0.5);
-  XlaOp one = ScalarLike(input, 1);
+  auto& b = *input.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    // Reject non-real non-fp inputs.  (We could extend lgamma to accept complex
+    // types, but it doesn't seem necessary at this point.)
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(input));
+    if (!ShapeUtil::ElementIsFloating(shape)) {
+      return InvalidArgument(
+          "lgamma only accepts real floating-point arrays or scalars, but got "
+          "%s",
+          shape.ToString());
+    }
 
-  XlaOp pi = ScalarLike(input, M_PI);
-  XlaOp log_pi = ScalarLike(input, std::log(M_PI));
-  XlaOp log_sqrt_two_pi = ScalarLike(input, (std::log(2) + std::log(M_PI)) / 2);
+    XlaOp one_half = ScalarLike(input, 0.5);
+    XlaOp one = ScalarLike(input, 1);
 
-  XlaOp lanczos_gamma_plus_one_half = ScalarLike(input, kLanczosGamma + 0.5);
-  XlaOp log_lanczos_gamma_plus_one_half =
-      ScalarLike(input, std::log(kLanczosGamma + 0.5));
+    XlaOp pi = ScalarLike(input, M_PI);
+    XlaOp log_pi = ScalarLike(input, std::log(M_PI));
+    XlaOp log_sqrt_two_pi =
+        ScalarLike(input, (std::log(2) + std::log(M_PI)) / 2);
 
-  XlaOp base_lanczos_coeff = ScalarLike(input, kBaseLanczosCoeff);
+    XlaOp lanczos_gamma_plus_one_half = ScalarLike(input, kLanczosGamma + 0.5);
+    XlaOp log_lanczos_gamma_plus_one_half =
+        ScalarLike(input, std::log(kLanczosGamma + 0.5));
 
-  // If the input is less than 0.5 use Gauss's reflection formula:
-  // gamma(x) = pi / sin(pi * x) * gamma(1 - x)
-  XlaOp need_to_reflect = Lt(Real(input), one_half);
-  XlaOp z = Select(need_to_reflect, -input, input - one);
+    XlaOp base_lanczos_coeff = ScalarLike(input, kBaseLanczosCoeff);
 
-  XlaOp x = base_lanczos_coeff;
-  for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
-    XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
-    XlaOp index = ScalarLike(input, i);
-    x = x + lanczos_coefficient / (z + index + one);
-  }
+    // If the input is less than 0.5 use Euler's reflection formula:
+    // gamma(x) = pi / (sin(pi * x) * gamma(1 - x))
+    XlaOp need_to_reflect = Lt(input, one_half);
+    XlaOp z = Select(need_to_reflect, -input, input - one);
 
-  // To improve accuracy on platforms with less-precise log implementations,
-  // compute log(lanczos_gamma_plus_one_half) at compile time and use log1p on
-  // the device.
-  // log(t) = log(kLanczosGamma + 0.5 + z)
-  //        = log(kLanczosGamma + 0.5) + log1p(z / (kLanczosGamma + 0.5))
-  XlaOp t = lanczos_gamma_plus_one_half + z;
-  XlaOp log_t =
-      log_lanczos_gamma_plus_one_half + Log1p(z / lanczos_gamma_plus_one_half);
+    XlaOp x = base_lanczos_coeff;
+    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+      XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
+      XlaOp index = ScalarLike(input, i);
+      x = x + lanczos_coefficient / (z + index + one);
+    }
 
-  XlaOp log_y = log_sqrt_two_pi + (z + one_half) * log_t - t + Log(x);
+    // To improve accuracy on platforms with less-precise log implementations,
+    // compute log(lanczos_gamma_plus_one_half) at compile time and use log1p on
+    // the device.
+    // log(t) = log(kLanczosGamma + 0.5 + z)
+    //        = log(kLanczosGamma + 0.5) + log1p(z / (kLanczosGamma + 0.5))
+    XlaOp t = lanczos_gamma_plus_one_half + z;
+    XlaOp log_t = log_lanczos_gamma_plus_one_half +
+                  Log1p(z / lanczos_gamma_plus_one_half);
 
-  // If z = a + 0j, the analytic continuation of log reduces to taking the
-  // absolute value of the real part.
-  // Re(log(z)) = Re(log|z| + arg(z)j)
-  //            = log|a|
-  XlaOp reflection = log_pi - Log(Abs(Sin(pi * input))) - log_y;
-  XlaOp result = Select(need_to_reflect, reflection, log_y);
-  return result;
+    XlaOp log_y = log_sqrt_two_pi + (z + one_half) * log_t - t + Log(x);
+
+    // Compute the reflected value, used when x < 0.5:
+    //
+    //   lgamma(x) = log(pi) - lgamma(1-x) - log(abs(sin(pi * x))).
+    //
+    // (The abs is because lgamma is the log of the absolute value of the gamma
+    // function.)
+    //
+    // We have to be careful when computing the final term above. gamma(x) goes
+    // to +/-inf at every integer x < 0, and this is controlled by the
+    // sin(pi * x) term.  The slope is large, so precision is particularly
+    // important.
+    //
+    // Because abs(sin(pi * x)) has period 1, we can equivalently use
+    // abs(sin(pi * frac(x))) = sin(pi * frac(x)), where frac(x) is the
+    // fractional part of x.  This is more numerically accurate: It doesn't
+    // overflow to inf like pi * x can, and if x is an integer, it evaluates to
+    // 0 exactly, which is significant because we then take the log of this
+    // value, and log(0) is inf.
+    //
+    // We don't have a frac(x) primitive in XLA and computing it is tricky, but
+    // because abs(sin(pi * x)) = abs(sin(pi * abs(x))), it's good enough for
+    // our purposes to use abs(frac(x)) = abs(x) - floor(abs(x)).
+    //
+    XlaOp abs_input = Abs(input);
+    XlaOp reflection_denom = Log(Sin(pi * (abs_input - Floor(abs_input))));
+
+    // Avoid computing -inf - inf, which is nan.  If reflection_denom is +/-inf,
+    // then it "wins" and the result is +/-inf.
+    XlaOp reflection =
+        Select(IsFinite(reflection_denom), log_pi - reflection_denom - log_y,
+               -reflection_denom);
+    XlaOp result = Select(need_to_reflect, reflection, log_y);
+
+    // lgamma(+/-inf) = +inf.
+    XlaOp inf_bcast = FullLike(input, std::numeric_limits<float>::infinity());
+    return Select(Or(IsFinite(input),                           // is finite, or
+                     Not(Or(Lt(input, one), Ge(input, one)))),  // is nan
+                  result, inf_bcast);
+  });
 }
 
 // Compute the Digamma function using Lanczos' approximation from "A Precision
@@ -223,69 +315,96 @@ XlaOp Lgamma(XlaOp input) {
 // A(z) = kBaseLanczosCoeff + sigma(k = 1, n, kLanczosCoefficients[i] / (z + k))
 // A'(z) = sigma(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
 XlaOp Digamma(XlaOp input) {
-  XlaOp zero = ScalarLike(input, 0);
-  XlaOp one_half = ScalarLike(input, 0.5);
-  XlaOp one = ScalarLike(input, 1);
+  auto& b = *input.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    // Reject non-real non-fp inputs.  (We could extend digamma to accept
+    // complex types, but it doesn't seem necessary at this point.)
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(input));
+    if (!ShapeUtil::ElementIsFloating(shape)) {
+      return InvalidArgument(
+          "digamma only accepts real floating-point arrays or scalars, but got "
+          "%s",
+          shape.ToString());
+    }
 
-  XlaOp pi = ScalarLike(input, M_PI);
+    XlaOp zero = ScalarLike(input, 0);
+    XlaOp one_half = ScalarLike(input, 0.5);
+    XlaOp one = ScalarLike(input, 1);
 
-  XlaOp lanczos_gamma = ScalarLike(input, kLanczosGamma);
-  XlaOp lanczos_gamma_plus_one_half = ScalarLike(input, kLanczosGamma + 0.5);
-  XlaOp log_lanczos_gamma_plus_one_half =
-      ScalarLike(input, std::log(kLanczosGamma + 0.5));
+    XlaOp pi = ScalarLike(input, M_PI);
 
-  XlaOp base_lanczos_coeff = ScalarLike(input, kBaseLanczosCoeff);
+    XlaOp lanczos_gamma = ScalarLike(input, kLanczosGamma);
+    XlaOp lanczos_gamma_plus_one_half = ScalarLike(input, kLanczosGamma + 0.5);
+    XlaOp log_lanczos_gamma_plus_one_half =
+        ScalarLike(input, std::log(kLanczosGamma + 0.5));
 
-  // If the input is less than 0.5 use Gauss's reflection formula:
-  // digamma(x) = digamma(1 - x) - pi * cot(pi * x)
-  XlaOp need_to_reflect = Lt(Real(input), one_half);
-  XlaOp z = Select(need_to_reflect, -input, input - one);
+    XlaOp base_lanczos_coeff = ScalarLike(input, kBaseLanczosCoeff);
 
-  XlaOp num = zero;
-  XlaOp denom = base_lanczos_coeff;
-  for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
-    XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
-    XlaOp index = ScalarLike(input, i);
-    num = num - lanczos_coefficient / ((z + index + one) * (z + index + one));
-    denom = denom + lanczos_coefficient / (z + index + one);
-  }
+    // If the input is less than 0.5 use Euler's reflection formula:
+    // digamma(x) = digamma(1 - x) - pi * cot(pi * x)
+    XlaOp need_to_reflect = Lt(input, one_half);
+    XlaOp z = Select(need_to_reflect, -input, input - one);
 
-  // To improve accuracy on platforms with less-precise log implementations,
-  // compute log(lanczos_gamma_plus_one_half) at compile time and use log1p on
-  // the device.
-  // log(t) = log(kLanczosGamma + 0.5 + z)
-  //        = log(kLanczosGamma + 0.5) + log1p(z / (kLanczosGamma + 0.5))
-  XlaOp t = lanczos_gamma_plus_one_half + z;
-  XlaOp log_t =
-      log_lanczos_gamma_plus_one_half + Log1p(z / lanczos_gamma_plus_one_half);
+    XlaOp num = zero;
+    XlaOp denom = base_lanczos_coeff;
+    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+      XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
+      XlaOp index = ScalarLike(input, i);
+      num = num - lanczos_coefficient / ((z + index + one) * (z + index + one));
+      denom = denom + lanczos_coefficient / (z + index + one);
+    }
 
-  XlaOp y = log_t + num / denom - lanczos_gamma / t;
-  XlaOp reflection = y - pi * Cos(pi * input) / Sin(pi * input);
-  XlaOp result = Select(need_to_reflect, reflection, y);
-  return result;
+    // To improve accuracy on platforms with less-precise log implementations,
+    // compute log(lanczos_gamma_plus_one_half) at compile time and use log1p on
+    // the device.
+    // log(t) = log(kLanczosGamma + 0.5 + z)
+    //        = log(kLanczosGamma + 0.5) + log1p(z / (kLanczosGamma + 0.5))
+    XlaOp t = lanczos_gamma_plus_one_half + z;
+    XlaOp log_t = log_lanczos_gamma_plus_one_half +
+                  Log1p(z / lanczos_gamma_plus_one_half);
+
+    XlaOp y = log_t + num / denom - lanczos_gamma / t;
+    XlaOp reflection = y - pi * Cos(pi * input) / Sin(pi * input);
+    return Select(need_to_reflect, reflection, y);
+  });
 }
 
 // Implements Banker's rounding: numbers that are equidistant between two
 // integers are rounded towards even.
 XlaOp RoundToEven(XlaOp x) {
-  auto half = ScalarLike(x, 0.5);
-  auto one = ScalarLike(x, 1.0);
-  auto two = ScalarLike(x, 2.0);
+  auto& b = *x.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    // Reject non-real non-fp inputs (What does it even mean to round a complex
+    // number?  Do you round each component equally?  In that case, you should
+    // just ask for that explicitly.)
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
+    if (ShapeUtil::ElementIsComplex(shape)) {
+      return InvalidArgument(
+          "RoundToEven doesn't accept complex inputs, but got %s",
+          shape.ToString());
+    }
+    auto half = ScalarLike(x, 0.5);
+    auto one = ScalarLike(x, 1.0);
+    auto two = ScalarLike(x, 2.0);
 
-  auto round_val = Floor(x);
-  auto fraction = x - round_val;
-  auto nearest_even_int = round_val - two * Floor(half * x);
-  auto is_odd = Eq(nearest_even_int, one);
-  return Select(Or(Gt(fraction, half), And(Eq(fraction, half), is_odd)),
-                round_val + one, round_val);
+    auto round_val = Floor(x);
+    auto fraction = x - round_val;
+    auto nearest_even_int = round_val - two * Floor(half * x);
+    auto is_odd = Eq(nearest_even_int, one);
+    return Select(Or(Gt(fraction, half), And(Eq(fraction, half), is_odd)),
+                  round_val + one, round_val);
+  });
 }
 
 // Trigonometric functions.
 
-// acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))
+// acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
+//           pi                                if x == -1
 XlaOp Acos(XlaOp x) {
-  return ScalarLike(x, 2.0) *
-         Atan2(Sqrt(ScalarLike(x, 1.0) - x * x), ScalarLike(x, 1.0) + x);
+  return Select(Ne(x, FullLike(x, -1)),
+                ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
+                                           ScalarLike(x, 1.0) + x),
+                FullLike(x, M_PI));
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
@@ -323,8 +442,87 @@ XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    auto perform_conj = shape.element_type() == C64 && conjugate;
+    auto perform_conj =
+        primitive_util::IsComplexType(shape.element_type()) && conjugate;
     return perform_conj ? Conj(x) : x;
+  });
+}
+
+XlaOp NextAfter(XlaOp from, XlaOp to) {
+  auto builder = from.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, builder->GetShape(from));
+    int bitwidth = primitive_util::BitWidth(shape.element_type());
+    auto int_type = primitive_util::UnsignedIntegralTypeForBitWidth(bitwidth);
+    auto from_as_int = BitcastConvertType(from, int_type);
+    auto to_as_int = BitcastConvertType(to, int_type);
+
+    // The result is NaN if either "from" or "to" are NaN.
+    auto from_is_nan = Ne(from, from);
+    auto to_is_nan = Ne(to, to);
+    auto nan_input = Or(from_is_nan, to_is_nan);
+    auto result_for_nan =
+        Broadcast(ScalarLike(from, std::numeric_limits<double>::quiet_NaN()),
+                  shape.dimensions());
+    result_for_nan = BitcastConvertType(result_for_nan, int_type);
+
+    // The sign bit is the MSB.
+    const int64 sign_mask = int64{1} << (bitwidth - 1);
+    // Discard the sign bit to make the result non-negative.
+    auto from_abs = And(from_as_int, ScalarLike(from_as_int, ~sign_mask));
+    auto to_abs = And(to_as_int, ScalarLike(to_as_int, ~sign_mask));
+
+    // When both "from" and "to" are equal, the result is "to".
+    // N.B. It would not make a difference if we chose the result to be "from".
+    auto from_and_to_are_equal = Eq(from_as_int, to_as_int);
+    auto result_for_equal = to_as_int;
+
+    // When both "from" and "to" are both 0, the result is "to". This ensures we
+    // get a zero signed like "to".
+    auto from_is_zero = Eq(from_abs, ZerosLike(from_abs));
+    auto to_is_zero = Eq(to_abs, ZerosLike(to_abs));
+    auto result_for_both_zero = to_as_int;
+
+    auto from_sign = And(from_as_int, ScalarLike(from_as_int, sign_mask));
+    auto to_sign = And(to_as_int, ScalarLike(to_as_int, sign_mask));
+
+    // If from == 0 && to != 0, we need to return the smallest subnormal number
+    // signed like "to".
+    auto result_for_from_zero_to_non_zero =
+        Or(to_sign, ScalarLike(from_as_int, 1));
+
+    // If the sign of "from" and "to" disagree:
+    // - we need to make the magnitude of "from" smaller so that it is closer to
+    //   zero.
+    //
+    // Otherwise the signs agree:
+    // - "from" with a magnitude larger than "to" means we need to make the
+    //   magnitude smaller.
+    // - "from" with a magnitude smaller than "to" means we need to make the
+    //   magnitude larger.
+    // - "from" with the same magnitude and sign as "to" has already been
+    //   handled.
+    auto signs_disagree = Ne(from_sign, to_sign);
+    auto from_magnitude_larger_than_to = Gt(from_abs, to_abs);
+    auto result_has_smaller_magnitude =
+        Or(from_magnitude_larger_than_to, signs_disagree);
+    auto magnitude_adjustment =
+        Select(result_has_smaller_magnitude,
+               Broadcast(ScalarLike(from_as_int, -1), shape.dimensions()),
+               Broadcast(ScalarLike(from_as_int, 1), shape.dimensions()));
+    auto result = Add(from_as_int, magnitude_adjustment);
+    // Handle from == ±0.
+    result = Select(from_is_zero,
+                    Select(to_is_zero, result_for_both_zero,
+                           result_for_from_zero_to_non_zero),
+                    result);
+    // Handle from == to.
+    result = Select(from_and_to_are_equal, result_for_equal, result);
+    // Handle isnan(from) || isnan(to).
+    result = Select(nan_input, result_for_nan, result);
+
+    // Cast back to the original type.
+    return BitcastConvertType(result, shape.element_type());
   });
 }
 

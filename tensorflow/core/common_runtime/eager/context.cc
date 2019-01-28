@@ -57,8 +57,8 @@ EagerContext::EagerContext(const SessionOptions& opts,
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
-          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_, {},
-          thread_pool_.get())),
+          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
+          opts.config.graph_options().optimizer_options(), thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),
@@ -207,6 +207,14 @@ EagerContext::~EagerContext() {
   executor_.WaitForAllPendingNodes().IgnoreError();
   ClearCaches();
   rendezvous_->Unref();
+
+  for (auto& thread : child_threads_) {
+    thread.reset();
+  }
+}
+
+void EagerContext::AddChildThread(std::unique_ptr<Thread> thread) {
+  child_threads_.push_back(std::move(thread));
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {
@@ -232,6 +240,29 @@ Status EagerContext::FindDeviceByName(const string& name, Device** result) {
   }
   *result = it->second;
   return Status::OK();
+}
+
+void EagerContext::ClearRunMetadata() {
+  if (metadata_listener_ != nullptr) {
+    metadata_listener_->BeforeClearRunMetadata();
+  }
+  run_metadata_.Clear();
+}
+
+Status EagerContext::RegisterRunMetadataListener(
+    RunMetadataListener* listener) {
+  mutex_lock l(metadata_mu_);
+  if (metadata_listener_ != nullptr) {
+    return Status(error::Code::INVALID_ARGUMENT,
+                  "Cannot run two eager profiler at the same time");
+  }
+  metadata_listener_ = listener;
+  return Status::OK();
+}
+
+void EagerContext::ClearRunMetadataListener() {
+  mutex_lock l(metadata_mu_);
+  metadata_listener_ = nullptr;
 }
 
 void EagerContext::StartStep() {
@@ -317,10 +348,15 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   gtl::InsertOrUpdate(&kernel_cache_, cache_key, kernel);
 }
 
+bool EagerContext::ShouldStoreMetadata() {
+  mutex_lock ml(metadata_mu_);
+  return should_store_metadata_.load() || metadata_listener_ != nullptr;
+}
+
 void EagerContext::SetShouldStoreMetadata(bool value) {
+  mutex_lock ml(metadata_mu_);
   should_store_metadata_.store(value);
-  if (!value) {
-    mutex_lock ml(metadata_mu_);
+  if (!value || metadata_listener_ != nullptr) {
     run_metadata_.Clear();
   }
 }

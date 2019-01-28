@@ -66,8 +66,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
   @unittest.skipIf(
       os.name == 'nt',
       'use_multiprocessing=True does not work on windows properly.')
-  # TODO(b/120940700): Bug with subclassed model inputs.
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_fit_generator_method(self):
     model = testing_utils.get_small_mlp(
@@ -107,8 +106,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
   @unittest.skipIf(
       os.name == 'nt',
       'use_multiprocessing=True does not work on windows properly.')
-  # TODO(b/120940700): Bug with subclassed model inputs.
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_evaluate_generator_method(self):
     model = testing_utils.get_small_mlp(
@@ -173,8 +171,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
                             max_queue_size=10,
                             workers=0)
 
-  # TODO(b/120940700): Bug with subclassed model inputs.
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_generator_methods_with_sample_weights(self):
     model = testing_utils.get_small_mlp(
@@ -208,8 +205,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
                              max_queue_size=10,
                              use_multiprocessing=False)
 
-  # TODO(b/120940700): Bug with subclassed model inputs.
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_generator_methods_invalid_use_case(self):
 
@@ -249,8 +245,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
                                max_queue_size=10,
                                use_multiprocessing=False)
 
-  # TODO(b/120940700): Bug with subclassed model inputs.
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_generator_input_to_fit_eval_predict(self):
     val_data = np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
@@ -275,8 +270,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
 
 class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
 
-  # TODO(b/120940700): Bug with subclassed model inputs.
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_training_with_sequences(self):
 
@@ -307,8 +301,7 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
                         workers=0,
                         use_multiprocessing=False)
 
-  # TODO(b/120940700): Bug with subclassed model inputs.
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_sequence_input_to_fit_eval_predict(self):
     val_data = np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)

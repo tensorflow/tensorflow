@@ -68,7 +68,7 @@ Shape GetConvertedTupleShape(const Shape& shape, PrimitiveType from_type,
   std::vector<Shape> new_tuple_subshapes;
   for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     Shape subshape = ShapeUtil::GetTupleElementShape(shape, i);
-    CHECK(!ShapeUtil::IsTuple(subshape));
+    CHECK(!subshape.IsTuple());
     if (subshape.element_type() == from_type) {
       subshape = ShapeUtil::ChangeElementType(subshape, to_type);
     }
@@ -92,7 +92,7 @@ HloInstruction* ConvertTupleElements(HloInstruction* hlo,
     HloInstruction* element = computation->AddInstruction(
         HloInstruction::CreateGetTupleElement(ele_shape, hlo, i));
     const Shape& to_ele_shape = ShapeUtil::GetTupleElementShape(to_shape, i);
-    CHECK(!ShapeUtil::IsTuple(ele_shape));
+    CHECK(!ele_shape.IsTuple());
     if (ele_shape.element_type() != to_ele_shape.element_type()) {
       element = computation->AddInstruction(
           HloInstruction::CreateConvert(to_ele_shape, element));
@@ -190,7 +190,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
         TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         new_hlo = ToElementType(new_hlo, eliminate_type_);
-      } else if (ShapeUtil::IsTuple(hlo->shape())) {
+      } else if (hlo->shape().IsTuple()) {
         Shape old_shape = hlo->shape();
         Shape new_shape = GetConvertedTupleShape(hlo->shape(), eliminate_type_,
                                                  replace_with_type_);

@@ -71,9 +71,9 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name, w1_name, w2_name],
-        input_dims=[input_dims, w1_dims, w2_dims],
+        input_dims=[[input_dims, w1_dims, w2_dims]],
         output_names=[output_name],
-        expected_output_dims=[(12, 5, 8, 7)])
+        expected_output_dims=[[[12, 5, 8, 7]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -85,28 +85,6 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToRun(self, run_params):
     """Return the expected engines to run."""
     return ["TRTEngineOp_1"]
-
-  def ShouldRunTest(self, run_params):
-    """Whether to run the test."""
-    # TODO(aaroey): Trt library will fail like:
-    #
-    # ../builder/cudnnBuilder2.cpp:685:
-    # virtual std::vector<nvinfer1::query::Ports<
-    #     nvinfer1::query::TensorRequirements>>
-    # nvinfer1::builder::Node::getSupportedFormats(
-    #     const nvinfer1::query::Ports<nvinfer1::query::AbstractTensor>&,
-    #     const nvinfer1::cudnn::HardwareContext&,
-    #     nvinfer1::builder::Format::Type,
-    #     const nvinfer1::builder::FormatTypeHack&) const:
-    # Assertion `sf' failed.
-    #
-    # To reproduce, run:
-    # bazel test -c opt --copt=-mavx \
-    #   --test_arg=BatchMatMulTest.testTfTrt_ToolConversion_INT8_DynamicEngine \
-    #   tensorflow/contrib/tensorrt:batch_matmul_test
-    #
-    # Investigate and fix it.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
 
 if __name__ == "__main__":

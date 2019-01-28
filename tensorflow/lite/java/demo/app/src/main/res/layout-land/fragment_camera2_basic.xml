@@ -16,67 +16,103 @@
 
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
+    xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#bb7700"
     android:orientation="horizontal">
 
-  <com.example.android.tflitecamerademo.AutoFitTextureView
+    <com.example.android.tflitecamerademo.AutoFitTextureView
       android:id="@+id/texture"
       android:layout_width="0dp"
       android:layout_height="match_parent"
       android:layout_weight=".8"/>
 
-  <LinearLayout
+    <LinearLayout
       android:layout_width="0dp"
       android:layout_height="match_parent"
       android:layout_weight=".2"
       android:orientation="vertical">
 
-    <ImageView
-        android:id="@+id/logoview"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:scaleType="centerInside"
-        android:src="@drawable/logo"/>
-
-    <RadioGroup
-        android:gravity="center"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="horizontal">
-        <RadioButton
-            android:id="@+id/radio_cpu"
-            android:background="#0000000f"
+        <ImageView
+            android:id="@+id/logoview"
             android:layout_width="wrap_content"
+            android:layout_height="47dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/logo"/>
+
+        <TextView
+            android:id="@+id/text"
+            android:layout_width="match_parent"
+            android:layout_height="160dp"
+            android:paddingTop="20dp"
+            android:textColor="#FFF"
+            android:textSize="20sp"
+            android:textStyle="bold"/>
+        <LinearLayout
+            android:id="@+id/modelLayout"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textView"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:text="@string/modelLabel"
+                android:textAlignment="center"
+                android:textColor="@android:color/white"/>
+
+            <ListView
+                android:id="@+id/model"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+            </ListView>
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/deviceLayout"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textView2"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:text="@string/deviceLabel"
+                android:textAlignment="center"
+                android:textColor="@android:color/white"/>
+
+            <ListView
+                android:id="@+id/device"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/cpu"
-            android:textColor="@android:color/white" />
-        <RadioButton
-            android:id="@+id/radio_nnapi"
-            android:background="#0000000f"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/nnapi"
-            android:textColor="@android:color/white" />
-        </RadioGroup>
+        >
 
-    <NumberPicker
-        android:id="@+id/np"
-        android:layout_width="wrap_content"
-        android:layout_height="47dp"
-        android:layout_gravity="center_horizontal"
-        android:visibility="visible"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Threads"
+                android:textAlignment="center"
+                android:textColor="@android:color/white"/>
 
-    <TextView
-        android:id="@+id/text"
-        android:textStyle="bold"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:paddingTop="20dp"
-        android:textColor="#FFF"
-        android:textSize="20sp"/>
+            <NumberPicker
+                android:id="@+id/np"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="10dp"
+                android:theme="@style/AppTheme.Picker"
+                android:visibility="visible"/>
 
-  </LinearLayout>
+        </LinearLayout>
+
+    </LinearLayout>
 </LinearLayout>
 

@@ -13,17 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/memory/memory.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-const int kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMicros;
+constexpr int kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMicros;
 
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -38,7 +41,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
  private:
   class Dataset : public DatasetBase {
    public:
-    explicit Dataset(OpKernelContext* ctx, const DatasetBase* input)
+    Dataset(OpKernelContext* ctx, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
     }
@@ -47,8 +50,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Model")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Model")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -76,8 +79,12 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            model_(std::make_shared<model::Model>()) {}
+          : DatasetIterator<Dataset>(params) {
+        auto remove_node_hook = [](std::shared_ptr<model::Node> node) {
+          metrics::RecordTFDataElements(node->name(), node->num_elements());
+        };
+        model_ = std::make_shared<model::Model>(std::move(remove_node_hook));
+      }
 
       ~Iterator() override {
         // Signal the optimize thread to terminate it. We will then join that
@@ -131,7 +138,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!optimize_thread_) {
-          std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
+          std::shared_ptr<IteratorContext> new_ctx =
+              std::make_shared<IteratorContext>(*ctx);
           optimize_thread_.reset(ctx->env()->StartThread(
               {}, "tf_data_model",
               [this, new_ctx]() { OptimizeThread(new_ctx); }));

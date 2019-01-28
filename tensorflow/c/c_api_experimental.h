@@ -84,6 +84,15 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_CreateRunOptions(
 TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
                                                       size_t* len);
 
+// Returns the function content in a human-readable format, with length set in
+// `len`. The format is subject to change in the future.
+// The returned string is heap-allocated, and caller should call free() on it.
+//
+// Do not return const char*, because some foreign language binding
+// (e.g. swift) cannot then call free() on the returned pointer.
+TF_CAPI_EXPORT extern char* TF_FunctionDebugString(TF_Function* func,
+                                                   size_t* len);
+
 // Creates a stack of data set + iterator nodes, currently hard-coded to return
 // a sequence of 3 float values <42.0, 43.0, 44.0> over 3 calls. On success,
 // returns the IteratorGetNext node, which caller can run or feed into an node.
@@ -181,6 +190,8 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
 TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
     TFE_TensorHandle* handle);
 
+TF_CAPI_EXPORT extern void TFE_OpPrintDebugString(TFE_Op* op);
+
 typedef struct TFE_ExecuteOpNotification TFE_ExecuteOpNotification;
 
 // Allows invoking a kernel asynchronously, and explicitly returns a
@@ -255,6 +266,55 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status);
+
+// Create a symbolic tensor from the input graph node.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromTFOutput(
+    TF_Output t, TF_DataType data_type);
+
+// Returns 0 if the input tensor handle represents a symbolic tensor (i.e., a
+// graph node). Otherwise returns non-0.
+TF_CAPI_EXPORT extern unsigned char TFE_TensorHandleIsConcrete(
+    TFE_TensorHandle* handle);
+
+// If `handle` is a symbolic tensor, return the corresponding graph node
+// represented by TF_Output. Otherwise, return an error status.
+TF_CAPI_EXPORT extern TF_Output TFE_GetTFOutputFromTensorHandle(
+    TFE_TensorHandle* handle, TF_Status* status);
+
+typedef struct TFE_TraceContext TFE_TraceContext;
+
+// A trace context contains a trace graph, to which TFE_AddEagerOpToGraph()
+// calls add graph nodes as a way to symbolically execute the eager ops.
+//
+// It also contains a hash map from concrete input tensors to symbolic
+// tensors. That map will be used to create input tensors to the trace graph.
+TF_CAPI_EXPORT extern TFE_TraceContext* TFE_NewTraceContext(TF_Graph* graph);
+
+TF_CAPI_EXPORT extern void TFE_DeleteTraceContext(TFE_TraceContext* trace_ctx);
+
+// Symbolically executes `op`, by adding a corresponding node to the graph
+// associated with `trace_ctx`. This graph node outputs a set of symbolic
+// tensors in `retvals` and `num_retvals`.
+TF_CAPI_EXPORT extern void TFE_AddEagerOpToGraph(TFE_Op* op,
+                                                 TFE_TraceContext* trace_ctx,
+                                                 TFE_TensorHandle** retvals,
+                                                 int* num_retvals,
+                                                 TF_Status* status);
+
+// Finalizes the trace graph and its inputs, and returns the number of inputs.
+// After this call, the next two APIs can be called to iterate over the input
+// tensors.
+TF_CAPI_EXPORT extern int TFE_FinalizeInputTensorsFromTraceContext(
+    TFE_TraceContext* trace_ctx);
+
+TF_CAPI_EXPORT extern TF_Output TFE_GetInputGraphNodeFromTraceContext(
+    TFE_TraceContext* trace_ctx, unsigned int idx);
+
+// Each input tensor should be consumed at most once.
+TF_CAPI_EXPORT extern TFE_TensorHandle*
+TFE_ConsumeInputConcreteTensorFromTraceContext(TFE_TraceContext* trace_ctx,
+                                               unsigned int idx);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

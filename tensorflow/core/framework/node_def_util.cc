@@ -697,15 +697,23 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
   return Status::OK();
 }
 
-Status AttachDef(const Status& status, const NodeDef& node_def) {
+Status AttachDef(const Status& status, const NodeDef& node_def,
+                 bool allow_multiple_formatted_node) {
   Status ret = status;
-  errors::AppendToMessage(
-      &ret, strings::StrCat(" [[", FormatNodeDefForError(node_def), "]]"));
+  string node_error;
+  if (!allow_multiple_formatted_node &&
+      status.error_message().find("{{node ") != string::npos) {
+    node_error = node_def.name();
+  } else {
+    node_error = FormatNodeDefForError(node_def);
+  }
+  errors::AppendToMessage(&ret, strings::StrCat(" [[", node_error, "]]"));
   return ret;
 }
 
-Status AttachDef(const Status& status, const Node& node) {
-  return AttachDef(status, node.def());
+Status AttachDef(const Status& status, const Node& node,
+                 bool allow_multiple_formatted_node) {
+  return AttachDef(status, node.def(), allow_multiple_formatted_node);
 }
 
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {

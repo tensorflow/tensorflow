@@ -37,7 +37,7 @@ from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export(v1=['gfile.GFile', 'gfile.Open'], v2=['io.gfile.GFile'])
+@tf_export('io.gfile.GFile', v1=['gfile.GFile', 'gfile.Open', 'io.gfile.GFile'])
 class GFile(_FileIO):
   """File I/O wrappers without thread locking.
 

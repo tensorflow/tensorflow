@@ -171,7 +171,7 @@ class _NonAtrousConvolution(object):
         raise ValueError("data_format must be \"NHWC\" or \"NCHW\".")
       self.strides = strides
       self.data_format = data_format
-      self.conv_op = gen_nn_ops.conv2d
+      self.conv_op = conv2d
     elif conv_dims == 3:
       if data_format is None or data_format == "NDHWC":
         strides = [1] + list(strides) + [1]
@@ -1373,6 +1373,44 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       name=name)
 
 
+def _convert_padding(padding):
+  """Converts Python padding to C++ padding for ops which take EXPLICIT padding.
+
+  Args:
+    padding: the `padding` argument for a Python op which supports EXPLICIT
+      padding.
+
+  Returns:
+    (padding, explicit_paddings) pair, which should be passed as attributes to a
+    C++ op.
+
+  Raises:
+    ValueError: If padding is invalid.
+  """
+  explicit_paddings = []
+  if padding == "EXPLICIT":
+    # Give a better error message if EXPLICIT is passed.
+    raise ValueError('"EXPLICIT" is not a valid value for the padding '
+                     "parameter. To use explicit padding, the padding "
+                     "parameter must be a list.")
+  if isinstance(padding, (list, tuple)):
+    for i, dim_paddings in enumerate(padding):
+      if not isinstance(dim_paddings, (list, tuple)):
+        raise ValueError("When padding is a list, each element of padding must "
+                         "be a list/tuple of size 2. Element with index %d of "
+                         "padding is not a list/tuple" % i)
+      if len(dim_paddings) != 2:
+        raise ValueError("When padding is a list, each element of padding must "
+                         "be a list/tuple of size 2. Element with index %d of "
+                         "padding has size %d" % (i, len(dim_paddings)))
+      explicit_paddings.extend(dim_paddings)
+    if len(padding) != 4:
+      raise ValueError("When padding is a list, it must be of size 4. Got "
+                       "padding of size: %d" % len(padding))
+    padding = "EXPLICIT"
+  return padding, explicit_paddings
+
+
 @tf_export("nn.conv2d", v1=[])
 def conv2d_v2(input,  # pylint: disable=redefined-builtin
               filters,
@@ -1418,8 +1456,13 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
       1-D tensor of length 4.  The stride of the sliding window for each
       dimension of `input`. The dimension order is determined by the value of
       `data_format`, see below for details.
-    padding: A `string` from: `"SAME", "VALID"`.
-      The type of padding algorithm to use.
+    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+      padding algorithm to use, or a list indicating the explicit paddings at
+      the start and end of each dimension. When explicit padding is used and
+      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
+      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
+      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: An optional `string` from: `"NHWC", "NCHW"`.
       Defaults to `"NHWC"`.
       Specify the data format of the input and output data. With the
@@ -1441,15 +1484,98 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
   # pylint: enable=line-too-long
   if dilations is None:
     dilations = [1, 1, 1, 1]
+  return conv2d(input,  # pylint: disable=redefined-builtin
+                filters,
+                strides,
+                padding,
+                use_cudnn_on_gpu=True,
+                data_format=data_format,
+                dilations=dilations,
+                name=name)
+
+
+@tf_export(v1=["nn.conv2d"])
+def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
+    input,
+    filter,
+    strides,
+    padding,
+    use_cudnn_on_gpu=True,
+    data_format="NHWC",
+    dilations=[1, 1, 1, 1],
+    name=None):
+  r"""Computes a 2-D convolution given 4-D `input` and `filter` tensors.
+
+  Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+  and a filter / kernel tensor of shape
+  `[filter_height, filter_width, in_channels, out_channels]`, this op
+  performs the following:
+
+  1. Flattens the filter to a 2-D matrix with shape
+     `[filter_height * filter_width * in_channels, output_channels]`.
+  2. Extracts image patches from the input tensor to form a *virtual*
+     tensor of shape `[batch, out_height, out_width,
+     filter_height * filter_width * in_channels]`.
+  3. For each patch, right-multiplies the filter matrix and the image patch
+     vector.
+
+  In detail, with the default NHWC format,
+
+      output[b, i, j, k] =
+          sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q]
+                          * filter[di, dj, q, k]
+
+  Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
+  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+
+  Args:
+    input: A `Tensor`. Must be one of the following types:
+      `half`, `bfloat16`, `float32`, `float64`.
+      A 4-D tensor. The dimension order is interpreted according to the value
+      of `data_format`, see below for details.
+    filter: A `Tensor`. Must have the same type as `input`.
+      A 4-D tensor of shape
+      `[filter_height, filter_width, in_channels, out_channels]`
+    strides: A list of `ints`.
+      1-D tensor of length 4.  The stride of the sliding window for each
+      dimension of `input`. The dimension order is determined by the value of
+      `data_format`, see below for details.
+    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+      padding algorithm to use, or a list indicating the explicit paddings at
+      the start and end of each dimension. When explicit padding is used and
+      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
+      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
+      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
+    use_cudnn_on_gpu: An optional `bool`. Defaults to `True`.
+    data_format: An optional `string` from: `"NHWC", "NCHW"`.
+      Defaults to `"NHWC"`.
+      Specify the data format of the input and output data. With the
+      default format "NHWC", the data is stored in the order of:
+          [batch, height, width, channels].
+      Alternatively, the format could be "NCHW", the data storage order of:
+          [batch, channels, height, width].
+    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
+      1-D tensor of length 4.  The dilation factor for each dimension of
+      `input`. If set to k > 1, there will be k-1 skipped cells between each
+      filter element on that dimension. The dimension order is determined by the
+      value of `data_format`, see above for details. Dilations in the batch and
+      depth dimensions must be 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+  """
+  padding, explicit_paddings = _convert_padding(padding)
   return gen_nn_ops.conv2d(input,  # pylint: disable=redefined-builtin
-                           filters,
+                           filter,
                            strides,
                            padding,
-                           use_cudnn_on_gpu=True,
+                           use_cudnn_on_gpu=use_cudnn_on_gpu,
+                           explicit_paddings=explicit_paddings,
                            data_format=data_format,
                            dilations=dilations,
                            name=name)
-tf_export(v1=["nn.conv2d"])(gen_nn_ops.conv2d)
 
 
 @tf_export("nn.conv2d_backprop_filter", v1=[])
@@ -1478,8 +1604,13 @@ def conv2d_backprop_filter_v2(input,  # pylint: disable=redefined-builtin
       The stride of the sliding window for each dimension of the input
       of the convolution. Must be in the same order as the dimension specified
       with format.
-    padding: A `string` from: `"SAME", "VALID"`.
-      The type of padding algorithm to use.
+    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+      padding algorithm to use, or a list indicating the explicit paddings at
+      the start and end of each dimension. When explicit padding is used and
+      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
+      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
+      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: An optional `string` from: `"NHWC", "NCHW"`.
       Defaults to `"NHWC"`.
       Specify the data format of the input and output data. With the
@@ -1500,17 +1631,75 @@ def conv2d_backprop_filter_v2(input,  # pylint: disable=redefined-builtin
   """
   if dilations is None:
     dilations = [1, 1, 1, 1]
-  return gen_nn_ops.conv2d_backprop_filter(input,  # pylint: disable=redefined-builtin
-                                           filter_sizes,
-                                           out_backprop,
-                                           strides,
-                                           padding,
-                                           use_cudnn_on_gpu=True,
-                                           data_format=data_format,
-                                           dilations=dilations,
-                                           name=name)
-tf_export(v1=["nn.conv2d_backprop_filter"])(
-    gen_nn_ops.conv2d_backprop_filter)
+  return conv2d_backprop_filter(input,  # pylint: disable=redefined-builtin
+                                filter_sizes,
+                                out_backprop,
+                                strides,
+                                padding,
+                                use_cudnn_on_gpu=True,
+                                data_format=data_format,
+                                dilations=dilations,
+                                name=name)
+
+
+@tf_export(v1=["nn.conv2d_backprop_filter"])
+def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-default-value
+    input,
+    filter_sizes,
+    out_backprop,
+    strides,
+    padding,
+    use_cudnn_on_gpu=True,
+    data_format="NHWC",
+    dilations=[1, 1, 1, 1],
+    name=None):
+  r"""Computes the gradients of convolution with respect to the filter.
+
+  Args:
+    input: A `Tensor`. Must be one of the following types:
+      `half`, `bfloat16`, `float32`, `float64`.
+      4-D with shape `[batch, in_height, in_width, in_channels]`.
+    filter_sizes: A `Tensor` of type `int32`.
+      An integer vector representing the tensor shape of `filter`,
+      where `filter` is a 4-D
+      `[filter_height, filter_width, in_channels, out_channels]` tensor.
+    out_backprop: A `Tensor`. Must have the same type as `input`.
+      4-D with shape `[batch, out_height, out_width, out_channels]`.
+      Gradients w.r.t. the output of the convolution.
+    strides: A list of `ints`.
+      The stride of the sliding window for each dimension of the input
+      of the convolution. Must be in the same order as the dimension specified
+      with format.
+    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+      padding algorithm to use, or a list indicating the explicit paddings at
+      the start and end of each dimension. When explicit padding is used and
+      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
+      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
+      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
+    use_cudnn_on_gpu: An optional `bool`. Defaults to `True`.
+    data_format: An optional `string` from: `"NHWC", "NCHW"`.
+      Defaults to `"NHWC"`.
+      Specify the data format of the input and output data. With the
+      default format "NHWC", the data is stored in the order of:
+          [batch, in_height, in_width, in_channels].
+      Alternatively, the format could be "NCHW", the data storage order of:
+          [batch, in_channels, in_height, in_width].
+    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
+      1-D tensor of length 4.  The dilation factor for each dimension of
+      `input`. If set to k > 1, there will be k-1 skipped cells between each
+      filter element on that dimension. The dimension order is determined by
+      the value of `data_format`, see above for details. Dilations in the batch
+      and depth dimensions must be 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+  """
+  padding, explicit_paddings = _convert_padding(padding)
+  return gen_nn_ops.conv2d_backprop_filter(
+      input, filter_sizes, out_backprop, strides, padding, use_cudnn_on_gpu,
+      explicit_paddings, data_format, dilations, name)
 
 
 @tf_export("nn.conv2d_backprop_input", v1=[])
@@ -1539,8 +1728,13 @@ def conv2d_backprop_input_v2(input_sizes,
       The stride of the sliding window for each dimension of the input
       of the convolution. Must be in the same order as the dimension specified
       with format.
-    padding: A `string` from: `"SAME", "VALID"`.
-      The type of padding algorithm to use.
+    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+      padding algorithm to use, or a list indicating the explicit paddings at
+      the start and end of each dimension. When explicit padding is used and
+      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
+      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
+      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: An optional `string` from: `"NHWC", "NCHW"`.
       Defaults to `"NHWC"`.
       Specify the data format of the input and output data. With the
@@ -1561,17 +1755,75 @@ def conv2d_backprop_input_v2(input_sizes,
   """
   if dilations is None:
     dilations = [1, 1, 1, 1]
-  return gen_nn_ops.conv2d_backprop_input(input_sizes,
-                                          filters,
-                                          out_backprop,
-                                          strides,
-                                          padding,
-                                          use_cudnn_on_gpu=True,
-                                          data_format=data_format,
-                                          dilations=dilations,
-                                          name=name)
-tf_export(v1=["nn.conv2d_backprop_input"])(
-    gen_nn_ops.conv2d_backprop_input)
+  return conv2d_backprop_input(input_sizes,
+                               filters,
+                               out_backprop,
+                               strides,
+                               padding,
+                               use_cudnn_on_gpu=True,
+                               data_format=data_format,
+                               dilations=dilations,
+                               name=name)
+
+
+@tf_export(v1=["nn.conv2d_backprop_input"])
+def conv2d_backprop_input(  # pylint: disable=redefined-builtin,dangerous-default-value
+    input_sizes,
+    filter,
+    out_backprop,
+    strides,
+    padding,
+    use_cudnn_on_gpu=True,
+    data_format="NHWC",
+    dilations=[1, 1, 1, 1],
+    name=None):
+  r"""Computes the gradients of convolution with respect to the input.
+
+  Args:
+    input_sizes: A `Tensor` of type `int32`.
+      An integer vector representing the shape of `input`,
+      where `input` is a 4-D `[batch, height, width, channels]` tensor.
+    filter: A `Tensor`. Must be one of the following types:
+      `half`, `bfloat16`, `float32`, `float64`.
+      4-D with shape
+      `[filter_height, filter_width, in_channels, out_channels]`.
+    out_backprop: A `Tensor`. Must have the same type as `filter`.
+      4-D with shape `[batch, out_height, out_width, out_channels]`.
+      Gradients w.r.t. the output of the convolution.
+    strides: A list of `ints`.
+      The stride of the sliding window for each dimension of the input
+      of the convolution. Must be in the same order as the dimension specified
+      with format.
+    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+      padding algorithm to use, or a list indicating the explicit paddings at
+      the start and end of each dimension. When explicit padding is used and
+      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
+      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
+      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
+    use_cudnn_on_gpu: An optional `bool`. Defaults to `True`.
+    data_format: An optional `string` from: `"NHWC", "NCHW"`.
+      Defaults to `"NHWC"`.
+      Specify the data format of the input and output data. With the
+      default format "NHWC", the data is stored in the order of:
+          [batch, in_height, in_width, in_channels].
+      Alternatively, the format could be "NCHW", the data storage order of:
+          [batch, in_channels, in_height, in_width].
+    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
+      1-D tensor of length 4.  The dilation factor for each dimension of
+      `input`. If set to k > 1, there will be k-1 skipped cells between each
+      filter element on that dimension. The dimension order is determined by
+      the value of `data_format`, see above for details. Dilations in the batch
+      and depth dimensions must be 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `filter`.
+  """
+  padding, explicit_paddings = _convert_padding(padding)
+  return gen_nn_ops.conv2d_backprop_input(
+      input_sizes, filter, out_backprop, strides, padding, use_cudnn_on_gpu,
+      explicit_paddings, data_format, dilations, name)
 
 
 @tf_export(v1=["nn.conv2d_transpose"])
@@ -3040,15 +3292,19 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):  # pylint: disa
         return x
 
     noise_shape = _get_noise_shape(x, noise_shape)
-
-    keep_prob = 1 - rate
-    # uniform [keep_prob, 1.0 + keep_prob)
-    random_tensor = keep_prob
-    random_tensor += random_ops.random_uniform(
+    # Sample a uniform distribution on [0.0, 1.0) and select values larger than
+    # rate.
+    #
+    # NOTE: Random uniform actually can only generate 2^23 floats on [1.0, 2.0)
+    # and subtract 1.0.
+    random_tensor = random_ops.random_uniform(
         noise_shape, seed=seed, dtype=x.dtype)
-    # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
-    binary_tensor = math_ops.floor(random_tensor)
-    ret = math_ops.divide(x, keep_prob) * binary_tensor
+    keep_prob = 1 - rate
+    scale = 1 / keep_prob
+    # NOTE: if (1.0 + rate) - 1 is equal to rate, then we want to consider that
+    # float to be selected, hence we use a >= comparison.
+    keep_mask = random_tensor >= rate
+    ret = x * scale * math_ops.cast(keep_mask, x.dtype)
     if not context.executing_eagerly():
       ret.set_shape(x.get_shape())
     return ret

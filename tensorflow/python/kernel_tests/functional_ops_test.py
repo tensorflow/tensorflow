@@ -24,6 +24,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -57,6 +58,7 @@ def simple_scoped_fn(a, x):
 
 
 @test_util.with_control_flow_v2
+@test_util.disable_all_xla("This test never passed for XLA")
 class FunctionalOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -199,6 +201,13 @@ class FunctionalOpsTest(test.TestCase):
         lambda x: math_ops.multiply(math_ops.add(x, 3), 2), elems)
     self.assertAllEqual(
         np.array([(x + 3) * 2 for x in nums]), self.evaluate(r))
+
+  def testMapDtypeEager(self):
+    with context.eager_mode():
+      dtype = functional_ops.map_fn(lambda x: constant_op.constant(""),
+                                    constant_op.constant([]),
+                                    dtype=dtypes.string).dtype
+      self.assertEqual(dtype, dtypes.string)
 
   def testMapSparseTensor(self):
     with self.cached_session():
@@ -762,6 +771,26 @@ class FunctionalOpsTest(test.TestCase):
           self.assertAllEqual(Run(sess, 20.), 210.)
           self.assertAllEqual(Run(sess, 100.), 5050.)
 
+  # Like above, but using int32 in order to ensure that int32 tensors don't get
+  # copied to the GPU during the application of the while.
+  def testWhileInt32(self):
+    with ops.Graph().as_default() as g:
+
+      @function.Defun(*[dtypes.int32] * 2)
+      def Cond(n, unused_x):
+        return n > 0
+
+      @function.Defun(*[dtypes.int32] * 2)
+      def Body(n, x):
+        return n - 1, x + n
+
+      def Run(sess, n):
+        return sess.run(functional_ops.While([n, 0], Cond, Body))[1]
+
+      with self.session(graph=g, use_gpu=True) as sess:
+        self.assertAllEqual(Run(sess, 20), 210)
+        self.assertAllEqual(Run(sess, 100), 5050)
+
   @test_util.run_deprecated_v1
   def testWhileLowering(self):
 
@@ -798,6 +827,8 @@ class FunctionalOpsTest(test.TestCase):
     self.assertAllEqual(Run(100., True), 5050.)
 
   @test_util.run_v1_only("b/120545219")
+  @test_util.disable_xla(
+      "This test never passed for XLA")  # Different error message
   def testWhileError(self):
     for use_gpu in (True, False):
       with ops.Graph().as_default() as g:
@@ -1074,6 +1105,7 @@ class FunctionalOpsTest(test.TestCase):
 
 # TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
 # below test cases.
+@test_util.disable_all_xla("This test never passed for XLA")
 class PartitionedCallTest(test.TestCase):
 
   @test_util.run_deprecated_v1

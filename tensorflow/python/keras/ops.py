@@ -19,36 +19,75 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.util.tf_export import keras_export
 
 
-keras_export("keras.initializers.Initializer")(
+# pylint: disable=bad-continuation
+keras_export(v1=["keras.initializers.Initializer"])(
     init_ops.Initializer)
-keras_export("keras.initializers.Zeros", "keras.initializers.zeros")(
+keras_export(v1=["keras.initializers.Zeros", "keras.initializers.zeros"])(
     init_ops.Zeros)
-keras_export("keras.initializers.Ones", "keras.initializers.ones")(
+keras_export(v1=["keras.initializers.Ones", "keras.initializers.ones"])(
     init_ops.Ones)
-keras_export("keras.initializers.Constant", "keras.initializers.constant")(
+keras_export(v1=["keras.initializers.Constant", "keras.initializers.constant"])(
     init_ops.Constant)
-keras_export("keras.initializers.VarianceScaling")(
+keras_export(v1=["keras.initializers.VarianceScaling"])(
     init_ops.VarianceScaling)
-keras_export("keras.initializers.Orthogonal", "keras.initializers.orthogonal")(
+keras_export(v1=["keras.initializers.Orthogonal",
+                 "keras.initializers.orthogonal"])(
     init_ops.Orthogonal)
-keras_export("keras.initializers.Identity", "keras.initializers.identity")(
+keras_export(v1=["keras.initializers.Identity",
+                 "keras.initializers.identity"])(
     init_ops.Identity)
-keras_export("keras.initializers.glorot_uniform")(
+keras_export(v1=["keras.initializers.glorot_uniform"])(
     init_ops.GlorotUniform)
-keras_export("keras.initializers.glorot_normal")(
+keras_export(v1=["keras.initializers.glorot_normal"])(
     init_ops.GlorotNormal)
-keras_export("keras.initializers.lecun_normal")(
+keras_export(v1=["keras.initializers.lecun_normal"])(
     init_ops.lecun_normal)
-keras_export("keras.initializers.lecun_uniform")(
+keras_export(v1=["keras.initializers.lecun_uniform"])(
     init_ops.lecun_uniform)
-keras_export("keras.initializers.he_normal")(
+keras_export(v1=["keras.initializers.he_normal"])(
     init_ops.he_normal)
-keras_export("keras.initializers.he_uniform")(
+keras_export(v1=["keras.initializers.he_uniform"])(
     init_ops.he_uniform)
+
+keras_export("keras.initializers.Initializer", v1=[])(
+    init_ops_v2.Initializer)
+keras_export("keras.initializers.Zeros", v1=[])(
+    init_ops_v2.Zeros)
+keras_export("keras.initializers.Ones", v1=[])(
+    init_ops_v2.Ones)
+keras_export("keras.initializers.Constant", v1=[])(
+    init_ops_v2.Constant)
+keras_export("keras.initializers.VarianceScaling", v1=[])(
+    init_ops_v2.VarianceScaling)
+keras_export("keras.initializers.Orthogonal", v1=[])(
+    init_ops_v2.Orthogonal)
+keras_export("keras.initializers.Identity", v1=[])(
+    init_ops_v2.Identity)
+keras_export("keras.initializers.GlorotUniform", v1=[])(
+    init_ops_v2.GlorotUniform)
+keras_export("keras.initializers.GlorotNormal", v1=[])(
+    init_ops_v2.GlorotNormal)
+keras_export("keras.initializers.lecun_normal", v1=[])(
+    init_ops_v2.lecun_normal)
+keras_export("keras.initializers.lecun_uniform", v1=[])(
+    init_ops_v2.lecun_uniform)
+keras_export("keras.initializers.he_normal", v1=[])(
+    init_ops_v2.he_normal)
+keras_export("keras.initializers.he_uniform", v1=[])(
+    init_ops_v2.he_uniform)
+keras_export("keras.initializers.RandomNormal", v1=[])(
+    init_ops_v2.RandomNormal)
+keras_export("keras.initializers.RandomUniform", v1=[])(
+    init_ops_v2.RandomUniform)
+keras_export("keras.initializers.TruncatedNormal", v1=[])(
+    init_ops_v2.TruncatedNormal)
+# pylint: enable=bad-continuation
+
 
 keras_export("keras.backend.name_scope")(ops.name_scope)
 

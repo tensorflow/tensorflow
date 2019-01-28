@@ -61,6 +61,7 @@ py_library(
 py_library(
     name = "tpu_estimator",
     srcs = [
+        "python/tpu/_tpu_estimator_embedding.py",
         "python/tpu/error_handling.py",
         "python/tpu/tpu_config.py",
         "python/tpu/tpu_context.py",
@@ -70,12 +71,17 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":async_checkpoint",
+        ":feature_column",
+        ":functional",
+        ":tpu_embedding",
         ":tpu_lib",
+        ":tpu_ordinal_selector_py",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:function",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -152,6 +158,25 @@ tf_gen_op_wrapper_py(
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
         ":tpu_embedding_ops_op_lib",
+    ],
+)
+
+tf_custom_op_library(
+    name = "python/ops/_tpu_ordinal_selector.so",
+    srcs = ["ops/tpu_ordinal_selector_op.cc"],
+)
+
+tf_custom_op_py_library(
+    name = "tpu_ordinal_selector_py",
+    srcs = ["ops/gen_tpu_ordinal_selector_op.py"],
+    dso = [":python/ops/_tpu_ordinal_selector.so"],
+    kernels = [
+        ":tpu_ordinal_selector_op_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_ordinal_selector_op",
     ],
 )
 
@@ -242,7 +267,6 @@ py_library(
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
         "//third_party/cloud_tpu/models/keras_colab:__subpackages__",
-        "//third_party/cloud_tpu/models/mnist_keras:__subpackages__",
         "//third_party/cloud_tpu/models/resnet50_keras:__subpackages__",
     ],
     deps = [
@@ -298,6 +322,7 @@ py_library(
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
+        "//tensorflow/contrib/tpu/proto:dynamic_padding_proto_py",
         "//tensorflow/contrib/tpu/proto:optimization_parameters_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_py",
@@ -337,13 +362,15 @@ py_library(
 
 tf_py_test(
     name = "datasets_test",
+    size = "medium",
     srcs = ["python/tpu/datasets_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
         ":datasets",
     ],
-    flaky = 1,  # TODO(b/117363808): fails 1/1000 OSS runs
     grpc_enabled = True,
+    shard_count = 4,
+    tags = ["no_oss"],
 )
 
 tf_py_test(
@@ -430,7 +457,8 @@ py_library(
     srcs = ["python/tpu/tpu_embedding.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/tpu:tpu_ops",
+        ":tpu_lib",
+        ":tpu_ops",
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",

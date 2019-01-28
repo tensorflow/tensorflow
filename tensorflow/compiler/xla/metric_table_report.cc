@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/metric_table_report.h"
 
-#include <cctype>
 #include <unordered_map>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/logging.h"
@@ -55,7 +55,7 @@ string MetricTableReport::MakeReport(double expected_metric_sum) {
   const auto metric_greater = [](const Entry& a, const Entry& b) {
     return a.metric > b.metric;
   };
-  std::sort(entries_.begin(), entries_.end(), metric_greater);
+  absl::c_sort(entries_, metric_greater);
 
   // Create the report
   AppendLine();
@@ -117,7 +117,7 @@ std::vector<MetricTableReport::Category> MetricTableReport::MakeCategories(
   auto metric_sum_greater = [](const Category& a, const Category& b) {
     return a.metric_sum > b.metric_sum;
   };
-  std::sort(categories.begin(), categories.end(), metric_sum_greater);
+  absl::c_sort(categories, metric_sum_greater);
 
   return categories;
 }
@@ -249,7 +249,7 @@ string MetricTableReport::MetricString(double metric) {
   string output;
   // Copy leading non-digit characters unconditionally.
   // This picks up the leading sign.
-  while (!sp1.empty() && !isdigit(sp1[0])) {
+  while (!sp1.empty() && !absl::ascii_isdigit(sp1[0])) {
     output.push_back(sp1[0]);
     sp1.remove_prefix(1);
   }

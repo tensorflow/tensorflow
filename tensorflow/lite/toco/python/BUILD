@@ -1,5 +1,4 @@
 package(default_visibility = [
-    "//tensorflow/contrib/lite:__subpackages__",
     "//tensorflow/lite:__subpackages__",
     "//tensorflow/tools/pip_package:__subpackages__",
 ])
@@ -47,7 +46,6 @@ tf_py_wrap_cc(
     visibility = [
         "//learning/expander/pod/deep_pod/utils:__subpackages__",
         "//research/handwriting/converters/tflite:__subpackages__",
-        "//tensorflow/contrib/lite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [

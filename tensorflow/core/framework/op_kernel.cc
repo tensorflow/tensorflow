@@ -102,7 +102,8 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       graph_def_version_(context->graph_def_version()),
       is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
-      output_name_map_(context->num_outputs()) {
+      output_name_map_(context->num_outputs()),
+      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
                                    &output_name_map_));
@@ -116,6 +117,10 @@ OpKernel::OpKernel(OpKernelConstruction* context,
 }
 
 OpKernel::~OpKernel() {}
+
+const uint64 OpKernel::kInitialCostEstimateCycles;
+const uint64 OpKernel::kOpIsExpensiveThresholdCycles;
+const uint64 OpKernel::kCostDecay;
 
 const string& OpKernel::name() const { return def_->name(); }
 const string& OpKernel::type_string() const { return def_->op(); }
@@ -407,7 +412,7 @@ Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
     record_tensor_reference(tensor);
     return tensor;
   } else {
-    mutex_lock l(*input_ref_mutex(index));
+    tf_shared_lock l(*input_ref_mutex(index));
     Tensor& tensor = *((*params_->inputs)[index].tensor);
     record_tensor_reference(tensor);
     return tensor;
@@ -599,7 +604,7 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
   if (lock_held) {
     *tensor = *(*params_->inputs)[start].tensor;
   } else {
-    mutex_lock l(*input_ref_mutex(start));
+    tf_shared_lock l(*input_ref_mutex(start));
     *tensor = *(*params_->inputs)[start].tensor;
   }
   record_tensor_reference(*tensor);

@@ -64,6 +64,9 @@ def initialize_all_tables(name="init_all_tables"):
 @tf_export(v1=["initializers.tables_initializer", "tables_initializer"])
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
+  
+  See the [Low Level Intro](https://www.tensorflow.org/guide/low_level_intro#feature_columns)
+  guide, for an example of usage.
 
   Args:
     name: Optional name for the initialization op.
@@ -161,7 +164,7 @@ class InitializableLookupTableBase(LookupInterface):
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
     self._default_value.get_shape().merge_with(tensor_shape.scalar())
-    if isinstance(initializer, checkpointable_base.CheckpointableBase):
+    if isinstance(initializer, checkpointable_base.Checkpointable):
       self._initializer = self._track_checkpointable(
           initializer, "_initializer")
     self._resource_handle = self.create_resource()
@@ -249,7 +252,7 @@ class HashTable(InitializableLookupTableBase):
   ```
   """
 
-  def __init__(self, initializer, default_value, shared_name=None, name=None):
+  def __init__(self, initializer, default_value, name=None):
     """Creates a non-initialized `HashTable` object.
 
     Creates a table, the type of its keys and values are specified by the
@@ -261,8 +264,6 @@ class HashTable(InitializableLookupTableBase):
       initializer: The table initializer to use. See `HashTable` kernel for
         supported key and value types.
       default_value: The value to use if a key is missing in the table.
-      shared_name: If non-empty, this table will be shared under
-        the given name across multiple sessions.
       name: A name for the operation (optional).
 
     Returns:
@@ -270,21 +271,22 @@ class HashTable(InitializableLookupTableBase):
     """
     self._initializer = initializer
     self._default_value = default_value
-    self._shared_name = shared_name
-    self._name = name
-    self._table_name = ""
+    self._shared_name = self._initializer._shared_name  # pylint: disable=protected-access
+    self._name = name or "hash_table"
+    self._table_name = None
     super(HashTable, self).__init__(default_value, initializer)
     self._value_shape = self._default_value.get_shape()
 
   def create_resource(self):
-    with ops.name_scope(self._name, "hash_table",
-                        (self._initializer, self._default_value)) as scope:
-      table_ref = gen_lookup_ops.hash_table_v2(
-          shared_name=self._shared_name,
-          key_dtype=self._initializer.key_dtype,
-          value_dtype=self._initializer.value_dtype,
-          name=scope)
-      self._table_name = scope.split("/")[-2]
+    table_ref = gen_lookup_ops.hash_table_v2(
+        shared_name=self._shared_name,
+        key_dtype=self._initializer.key_dtype,
+        value_dtype=self._initializer.value_dtype,
+        name=self._name)
+    if context.executing_eagerly():
+      self._table_name = None
+    else:
+      self._table_name = table_ref.op.name.split("/")[-1]
     return table_ref
 
   @property
@@ -303,16 +305,15 @@ class HashTable(InitializableLookupTableBase):
     """
     with ops.name_scope(name, "%s_Export" % self.name,
                         [self.resource_handle]) as name:
-      with ops.colocate_with(self.resource_handle):
-        exported_keys, exported_values = gen_lookup_ops.lookup_table_export_v2(
-            self.resource_handle, self._key_dtype, self._value_dtype, name=name)
+      exported_keys, exported_values = gen_lookup_ops.lookup_table_export_v2(
+          self.resource_handle, self._key_dtype, self._value_dtype, name=name)
 
     exported_values.set_shape(exported_keys.get_shape().concatenate(
         self._value_shape))
     return exported_keys, exported_values
 
 
-class TableInitializerBase(checkpointable_base.CheckpointableBase):
+class TableInitializerBase(checkpointable_base.Checkpointable):
   """Base class for lookup table initializers."""
 
   def __init__(self, key_dtype, value_dtype):
@@ -338,6 +339,16 @@ class TableInitializerBase(checkpointable_base.CheckpointableBase):
   def initialize(self, table):
     """Returns the table initialization op."""
     raise NotImplementedError
+
+  @property
+  def _shared_name(self):
+    """Returns a shared name to be used by the table."""
+    shared_name = ""
+    if context.executing_eagerly():
+      # Ensure a unique name when eager execution is enabled to avoid spurious
+      # sharing issues.
+      shared_name += str(ops.uid())
+    return shared_name
 
 
 class KeyValueTensorInitializer(TableInitializerBase):
@@ -498,6 +509,7 @@ class TextFileInitializer(TableInitializerBase):
     if not isinstance(filename, ops.Tensor) and not filename:
       raise ValueError("Filename required for %s." % name)
 
+    self._filename_arg = filename
     key_dtype = dtypes.as_dtype(key_dtype)
     value_dtype = dtypes.as_dtype(value_dtype)
 
@@ -568,6 +580,21 @@ class TextFileInitializer(TableInitializerBase):
     if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
+
+  @property
+  def _shared_name(self):
+    if self._vocab_size:
+      # Keep the shared_name:
+      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%d_%s_%s" % (
+          self._filename_arg, self._vocab_size, self._key_index,
+          self._value_index)
+    else:
+      # Keep the shared_name
+      # <table_type>_<filename>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%s_%s" % (self._filename_arg,
+                                             self._key_index, self._value_index)
+    return shared_name
 
 
 class TextFileStringTableInitializer(TextFileInitializer):
@@ -819,7 +846,10 @@ class IdTableWithHashBuckets(LookupInterface):
       raise TypeError(
           "hasher_spec must be of type HasherSpec, got %s" % hasher_spec)
     self._hasher_spec = hasher_spec
-    self._table_name = name.split("/")[-1]
+    if name:
+      self._table_name = name.split("/")[-1]
+    else:
+      self._table_name = None
     super(IdTableWithHashBuckets, self).__init__(key_dtype, dtypes.int64)
 
   def create_resource(self):
@@ -1022,20 +1052,7 @@ def index_table_from_file(vocabulary_file=None,
 
   with ops.name_scope(name, "string_to_index") as feat_to_id_scope:
     table = None
-    shared_name = ""
     with ops.name_scope(None, "hash_table") as hash_table_scope:
-      if vocab_size:
-        # Keep the shared_name:
-        # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
-        shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
-                                                  key_column_index,
-                                                  value_column_index)
-      else:
-        # Keep the shared_name
-        # <table_type>_<filename>_<key_index>_<value_index>
-        shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
-                                               key_column_index,
-                                               value_column_index)
       init = TextFileIdTableInitializer(
           vocabulary_file,
           vocab_size=vocab_size,
@@ -1045,8 +1062,7 @@ def index_table_from_file(vocabulary_file=None,
           value_column_index=value_column_index,
           delimiter=delimiter)
 
-      table = HashTable(
-          init, default_value, shared_name=shared_name, name=hash_table_scope)
+      table = HashTable(init, default_value, name=hash_table_scope)
     if num_oov_buckets:
       table = IdTableWithHashBuckets(
           table,
@@ -1136,12 +1152,7 @@ def index_table_from_tensor(vocabulary_list,
     num_elements = array_ops.size(keys)
     values = math_ops.to_int64(math_ops.range(num_elements))
 
-    shared_name = ""
     with ops.name_scope(None, "hash_table") as hash_table_scope:
-      if context.executing_eagerly():
-        # Ensure a unique name when eager execution is enabled to avoid spurious
-        # sharing issues.
-        shared_name += str(ops.uid())
       table_keys = math_ops.to_int64(keys) if keys.dtype.is_integer else keys
       init = KeyValueTensorInitializer(
           table_keys,
@@ -1149,8 +1160,7 @@ def index_table_from_tensor(vocabulary_list,
           table_keys.dtype.base_dtype,
           dtypes.int64,
           name="table_init")
-      table = HashTable(
-          init, default_value, shared_name=shared_name, name=hash_table_scope)
+      table = HashTable(init, default_value, name=hash_table_scope)
     if num_oov_buckets:
       table = IdTableWithHashBuckets(
           table,
@@ -1239,17 +1249,6 @@ def index_to_string_table_from_file(vocabulary_file,
     raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
 
   with ops.name_scope(name, "index_to_string") as scope:
-    shared_name = ""
-    if vocab_size:
-      # Keep a shared_name
-      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
-                                                key_column_index,
-                                                value_column_index)
-    else:
-      # Keep a shared_name <table_type>_<filename>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%s_%s" % (vocabulary_file, key_column_index,
-                                             value_column_index)
     init = TextFileStringTableInitializer(
         vocabulary_file,
         vocab_size=vocab_size,
@@ -1259,7 +1258,7 @@ def index_to_string_table_from_file(vocabulary_file,
         delimiter=delimiter)
 
     # TODO(yleon): Use a more effienct structure.
-    return HashTable(init, default_value, shared_name=shared_name, name=scope)
+    return HashTable(init, default_value, name=scope)
 
 
 def index_to_string_table_from_tensor(vocabulary_list,
@@ -1317,11 +1316,10 @@ def index_to_string_table_from_tensor(vocabulary_list,
     num_elements = array_ops.size(vocabulary_list)
     keys = math_ops.to_int64(math_ops.range(num_elements))
 
-    shared_name = ""
     init = KeyValueTensorInitializer(
         keys, vocabulary_list, dtypes.int64, dtypes.string, name="table_init")
     # TODO(yleon): Use a more effienct structure.
-    return HashTable(init, default_value, shared_name=shared_name, name=scope)
+    return HashTable(init, default_value, name=scope)
 
 
 ops.NotDifferentiable("LookupTableFind")

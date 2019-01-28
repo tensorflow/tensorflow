@@ -141,6 +141,31 @@ TEST(StatusGroup, ContainsChildMessages) {
   LOG(INFO) << d.as_status();
 }
 
+TEST(StatusGroup, ContainsIdenticalMessage) {
+  StatusGroup sg;
+  const Status internal(errors::Internal("Original error"));
+  for (size_t i = 0; i < 10; i++) {
+    sg.Update(internal);
+  }
+  EXPECT_EQ(sg.as_status(), internal);
+}
+
+TEST(StatusGroup, ContainsCommonPrefix) {
+  StatusGroup sg;
+  const Status a(errors::Internal("Original error"));
+  const Status b(errors::Internal("Original error is"));
+  const Status c(errors::Internal("Original error is invalid"));
+  sg.Update(a);
+  sg.Update(c);
+  sg.Update(c);
+  sg.Update(b);
+  sg.Update(c);
+  sg.Update(b);
+  sg.Update(a);
+  sg.Update(b);
+  EXPECT_EQ(sg.as_status(), c);
+}
+
 static void BM_TF_CHECK_OK(int iters) {
   tensorflow::Status s =
       (iters < 0) ? errors::InvalidArgument("Invalid") : Status::OK();

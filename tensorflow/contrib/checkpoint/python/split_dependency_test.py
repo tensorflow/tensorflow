@@ -44,7 +44,7 @@ def _combine_variable_closure(variable):
   return _consume_restore_buffer_fn
 
 
-class SaveTensorSlicesAsDeps(base.CheckpointableBase):
+class SaveTensorSlicesAsDeps(base.Checkpointable):
 
   def __init__(self):
     self.combined = resource_variable_ops.ResourceVariable([0., 0., 0., 0.])
@@ -59,14 +59,14 @@ class SaveTensorSlicesAsDeps(base.CheckpointableBase):
       self._track_checkpointable(dep, name=name)
 
 
-class HasRegularDeps(tracking.Checkpointable):
+class HasRegularDeps(tracking.AutoCheckpointable):
 
   def __init__(self):
     self.first_half = resource_variable_ops.ResourceVariable([0., 0.])
     self.second_half = resource_variable_ops.ResourceVariable([0., 0.])
 
 
-class OnlyOneDep(tracking.Checkpointable):
+class OnlyOneDep(tracking.AutoCheckpointable):
 
   def __init__(self):
     self.first_half = resource_variable_ops.ResourceVariable([0., 0.])

@@ -33,7 +33,6 @@ cc_library(
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
     ],
 )

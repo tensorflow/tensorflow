@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -282,6 +285,20 @@ MetaOptimizer::GetCustomGraphOptimizerConfig(const string& name) const {
   return nullptr;
 }
 
+void MetaOptimizer::InitializeVerifiers(
+    std::vector<std::unique_ptr<GraphVerifier>>* inter_optimizer_verifiers,
+    std::vector<std::unique_ptr<GraphVerifier>>* post_optimization_verifiers)
+    const {
+  if (cfg_.inter_optimizer_verifier_config().structure_verifier() ==
+      VerifierConfig::ON) {
+    inter_optimizer_verifiers->push_back(MakeUnique<StructureVerifier>());
+  }
+  if (cfg_.post_optimization_verifier_config().structure_verifier() ==
+      VerifierConfig::ON) {
+    post_optimization_verifiers->push_back(MakeUnique<StructureVerifier>());
+  }
+}
+
 #define RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer)                            \
   {                                                                            \
     const Status status = RunOptimizer(optimizer, cluster, &optimized_item,    \
@@ -310,6 +327,23 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
   } else {
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
+  }
+
+  // Initialize the configured verifiers.
+  std::vector<std::unique_ptr<GraphVerifier>> inter_optimizer_verifiers;
+  std::vector<std::unique_ptr<GraphVerifier>> post_optimization_verifiers;
+  InitializeVerifiers(&inter_optimizer_verifiers, &post_optimization_verifiers);
+  if (inter_optimizer_verifiers.empty()) {
+    VLOG(2) << "No inter optimizer verifiers have been configured";
+  } else {
+    VLOG(2) << inter_optimizer_verifiers.size()
+            << " inter optimizer verifiers have been configured";
+  }
+  if (post_optimization_verifiers.empty()) {
+    VLOG(2) << "No post optimization verifiers have been configured";
+  } else {
+    VLOG(2) << post_optimization_verifiers.size()
+            << " post optimization verifiers have been configured";
   }
 
   VLOG(2) << "Optimize GrapplerItem: item.id=" << item.id
@@ -356,6 +390,14 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
       RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
+      for (const auto& verifier : inter_optimizer_verifiers) {
+        // TODO(ashwinm): Need to enforce verification_deadline.
+        TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
+      }
+    }
+    // TODO(ashwinm): Need to enforce verification_deadline.
+    for (const auto& verifier : post_optimization_verifiers) {
+      TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
     }
   }
 
@@ -425,6 +467,14 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
+  // Constructs a FunctionLibraryDefinition with functions that are reachable
+  // from the nodes of the graph.
+  const auto minimized_flib =
+      [](const GraphDef& graph) -> FunctionLibraryDefinition {
+    return FunctionLibraryDefinition(OpRegistry::Global(), graph.library())
+        .ReachableDefinitions(graph);
+  };
+
   // 0. Original graph might contain a huge function library, that is mostly
   // unused. This library copied over by each individual Grappler optimizer,
   // which adds a huge overhead. Before starting optimization passes we just
@@ -434,11 +484,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   GraphDef trimmed_graph;  // do not copy graph with a potentially huge library
   *trimmed_graph.mutable_node() = item.graph.node();
   *trimmed_graph.mutable_versions() = item.graph.versions();
-  *trimmed_graph.mutable_library() =
-      grappler::ReachableFunctionLibraryDefinition(
-          FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library()),
-          item.graph)
-          .ToProto();
+  *trimmed_graph.mutable_library() = minimized_flib(item.graph).ToProto();
 
   GrapplerItem trimmed_item = item.WithGraph(std::move(trimmed_graph));
 
@@ -470,10 +516,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   // 2. Optimize functions reachable from the optimized graph.
-  FunctionLibraryDefinition flib = ReachableFunctionLibraryDefinition(
-      FunctionLibraryDefinition(OpRegistry::Global(),
-                                optimized_graph->library()),
-      *optimized_graph);
+  FunctionLibraryDefinition flib = minimized_flib(*optimized_graph);
 
   // Find functions for which we might need to compute a gradient at runtime.
   absl::flat_hash_set<string> differentiable_functions;
@@ -524,7 +567,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // can't perform non-differentiable rewrites.
       if (differentiable_functions.find(func_name) !=
           differentiable_functions.end()) {
-        func_item.allowed_optimizations().non_differentiable_rewrites = false;
+        func_item.optimization_options().allow_non_differentiable_rewrites =
+            false;
       }
 
       // Function item is allowed to use all devices from the main graph.
@@ -533,10 +577,11 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         VLOG(3) << added_devices.error_message();
       }
 
-      // We are not allowed to prune side effects from the graph instantiated
-      // by the function definition, because we must guarantee function
-      // execution semantics wrt side effects (see function_optimizer.cc).
-      func_item.allowed_optimizations().prune_ops_with_side_effects = false;
+      // We are not allowed to prune certain types of ops from the graph
+      // instantiated by the function definition, because we must guarantee
+      // function execution semantics wrt side effects (see
+      // function_optimizer.cc).
+      func_item.optimization_options().is_function_instantiation = true;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -624,6 +669,82 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
     *optimized_graph = item.graph;
   }
   return status;
+}
+
+Status OptimizeGraph(
+    std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto,
+    const GrapplerItem::OptimizationOptions& optimization_options,
+    std::unique_ptr<tensorflow::Graph>* g) {
+  if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
+    return Status::OK();
+  }
+
+  tensorflow::grappler::GrapplerItem item;
+  item.optimization_options() = optimization_options;
+
+  // Add all available devices so that inlined function can be placed.
+  for (const Device* d : device_set.devices()) {
+    Status added_device = item.AddDevice(d->name());
+    if (!added_device.ok()) VLOG(3) << added_device.error_message();
+  }
+
+  // Add fetches so that the graph can be pruned.
+  item.fetch.swap(ret_node_names);
+
+  (*g)->ToGraphDef(&item.graph);
+
+  if (flib) {
+    *item.graph.mutable_library() = flib->ToProto();
+  }
+
+  tensorflow::GraphDef out_graph;
+
+  tensorflow::grappler::VirtualCluster cluster(&device_set);
+
+  // TODO(nareshmodi): Consider adding and using the more generic GraphOptions
+  // proto (which also contain the OptimizerOptions).
+  TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
+      item, config_proto, cpu_device, &cluster, &out_graph));
+
+  std::unique_ptr<tensorflow::Graph> optimized_graph(
+      new tensorflow::Graph(OpRegistry::Global()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
+                                            out_graph, optimized_graph.get()));
+
+  // Copy optimized functions back to the overlay lib.
+  if (flib) {
+    for (const FunctionDef& fdef : out_graph.library().function()) {
+      const string& func_name = fdef.signature().name();
+      if (flib->Contains(func_name)) {
+        TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+      } else {
+        TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+      }
+    }
+  }
+
+  *g = std::move(optimized_graph);
+
+  // The graph conversion sets the requested device names but not the
+  // assigned device names. However, since at this point the graph is
+  // placed TF expects an assigned device name for every node. Therefore
+  // we copy the requested device into the assigned device field.
+  for (Node* node : (*g)->nodes()) {
+    if (node->IsOp() && node->assigned_device_name().empty()) {
+      if (node->requested_device().empty()) {
+        return errors::Internal(
+            "Either placer did not place the node or Grappler did not "
+            "copy the assigned device. Contact Grappler team since latter "
+            "is more likely. Node=",
+            node->name(), " Graph: ", (*g)->ToGraphDefDebug().DebugString());
+      }
+      node->set_assigned_device_name(node->requested_device());
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace grappler

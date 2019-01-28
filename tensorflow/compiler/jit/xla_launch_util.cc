@@ -237,7 +237,7 @@ void XlaComputationLaunchContext::PopulateInputs(
 
     const xla::Shape on_device_shape =
         client_->backend().transfer_manager()->HostShapeToDeviceShape(shape);
-    if (xla::ShapeUtil::IsTuple(on_device_shape)) {
+    if (on_device_shape.IsTuple()) {
       const XlaTensor* xla_tensor = XlaTensor::FromTensor(t);
       CHECK(xla_tensor && xla_tensor->has_shaped_buffer());
       arg_ptrs_[i] = const_cast<ShapedBuffer*>(&xla_tensor->shaped_buffer());
@@ -274,7 +274,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   // If the on-host-shape isn't a tuple, create a new single-element tuple
   // buffer with a nullptr root index table. This allows the code below to treat
   // output as a tuple unconditionally.
-  if (!xla::ShapeUtil::IsTuple(output.on_host_shape())) {
+  if (!output.on_host_shape().IsTuple()) {
     ShapedBuffer nontuple_buffer = output.release();
     ShapedBuffer buffer(
         xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_host_shape()}),
@@ -377,7 +377,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     }
 
     if (VLOG_IS_ON(3)) {
-      VLOG(3) << ctx->mutable_output(i)->DebugString();
+      VLOG(3) << ctx->mutable_output(i)->DeviceSafeDebugString();
     }
   }
 

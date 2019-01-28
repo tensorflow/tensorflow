@@ -867,7 +867,7 @@ class BorrowingLiteral : public LiteralBase {
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
   DCHECK_EQ(subshape().element_type(),
             primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
@@ -880,7 +880,7 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
   DCHECK_EQ(subshape().element_type(),
             primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
@@ -961,7 +961,7 @@ void MutableLiteralBase::AppendSparseElement(
   Piece& p = piece(shape_index);
   const Shape& subshape = p.subshape();
   CHECK(LayoutUtil::IsSparseArray(subshape));
-  int64 rank = ShapeUtil::Rank(subshape);
+  int64 rank = subshape.rank();
   CHECK_EQ(multi_index.size(), rank);
   int64 last_element = p.sparse_indices()->index_count();
   CHECK_LT(last_element, LayoutUtil::MaxSparseElements(subshape.layout()));
@@ -977,7 +977,7 @@ void LiteralBase::EachCell(
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
-  std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);
+  std::vector<int64> indices(shape().rank(), 0);
   do {
     per_cell(indices, Get<NativeT>(indices));
   } while (IndexUtil::BumpIndices(shape(), absl::MakeSpan(indices)));
@@ -985,8 +985,8 @@ void LiteralBase::EachCell(
 
 template <typename NativeT>
 inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
-  CHECK(ShapeUtil::IsArray(shape()));
-  CHECK_EQ(ShapeUtil::Rank(shape()), 1);
+  CHECK(shape().IsArray());
+  CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -997,8 +997,8 @@ inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
 template <typename NativeT>
 void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  CHECK(ShapeUtil::IsArray(shape()));
-  CHECK_EQ(ShapeUtil::Rank(shape()), 2);
+  CHECK(shape().IsArray());
+  CHECK_EQ(shape().rank(), 2);
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
 
@@ -1021,10 +1021,10 @@ void MutableLiteralBase::PopulateR2(
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
-  CHECK_EQ(ShapeUtil::Rank(shape()), values.num_dimensions());
+  CHECK_EQ(shape().rank(), values.num_dimensions());
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
     CHECK_EQ(values.dim(dim), shape().dimensions(dim));
   }
@@ -1053,7 +1053,7 @@ void MutableLiteralBase::PopulateSparse(SparseIndexArray indices,
                                         absl::Span<const NativeT> values,
                                         bool sort) {
   CHECK(LayoutUtil::IsSparseArray(shape()));
-  int rank = ShapeUtil::Rank(shape());
+  int rank = shape().rank();
   CHECK_EQ(indices.rank(), rank);
   int64 max_elements = LayoutUtil::MaxSparseElements(shape().layout());
   CHECK_LE(indices.max_indices(), max_elements);
@@ -1077,7 +1077,7 @@ template <typename NativeT, typename FnType>
 Status MutableLiteralBase::PopulateInternal(const FnType& generator,
                                             bool parallel) {
   const Shape& this_shape = shape();
-  const int64 rank = ShapeUtil::Rank(this_shape);
+  const int64 rank = this_shape.rank();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1129,7 +1129,7 @@ Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateWithValue(NativeT value) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   for (NativeT& element : data<NativeT>()) {

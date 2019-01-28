@@ -43,17 +43,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as tf_summary
 from tensorflow.python.training import saver
+from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util.tf_export import keras_export
 
 try:
   import requests
 except ImportError:
   requests = None
-
-
-_TRAIN = 'train'
-_TEST = 'test'
-_PREDICT = 'predict'
 
 
 # pylint: disable=protected-access
@@ -66,7 +62,7 @@ def configure_callbacks(callbacks,
                         samples=None,
                         verbose=1,
                         count_mode='steps',
-                        mode=_TRAIN):
+                        mode=ModeKeys.TRAIN):
   """Configures callbacks for use in various training loops.
 
   Arguments:
@@ -79,8 +75,8 @@ def configure_callbacks(callbacks,
       samples: Number of training samples.
       verbose: int, 0 or 1. Keras logging verbosity to pass to ProgbarLogger.
       count_mode: One of 'steps' or 'samples'. Per-batch or per-sample count.
-      mode: String. One of 'train', 'test', or 'predict'. Which loop mode to
-        configure callbacks for.
+      mode: String. One of ModeKeys.TRAIN, ModeKeys.TEST, or ModeKeys.PREDICT.
+        Which loop mode to configure callbacks for.
 
   Returns:
       Instance of CallbackList used to control all Callbacks.
@@ -93,7 +89,7 @@ def configure_callbacks(callbacks,
     callbacks = []
 
   # Add additional callbacks during training.
-  if mode == _TRAIN:
+  if mode == ModeKeys.TRAIN:
     model.history = History()
     stateful_metric_names = None
     if hasattr(model, 'metrics_names'):
@@ -113,7 +109,7 @@ def configure_callbacks(callbacks,
   callback_metrics = []
   # When we have deferred build scenario with iterator input, we will compile
   # when we standardize first batch of data.
-  if mode != _PREDICT and hasattr(model, 'metrics_names'):
+  if mode != ModeKeys.PREDICT and hasattr(model, 'metrics_names'):
     callback_metrics = copy.copy(model.metrics_names)
     if do_validation:
       callback_metrics += ['val_' + n for n in model.metrics_names]
@@ -127,14 +123,6 @@ def configure_callbacks(callbacks,
       'metrics': callback_metrics,
   }
   callback_list.set_params(callback_params)
-
-  if (do_validation and not model._distribution_strategy and
-      not model.run_eagerly):
-    # Need to create the eval_function before start of the first epoch
-    # because TensorBoard callback on_epoch_begin adds summary to the
-    # list of fetches of the eval_function
-    callback_model._make_eval_function()
-
   callback_list.model.stop_training = False
   return callback_list
 # pylint: enable=protected-access
@@ -148,7 +136,7 @@ def _is_generator_like(data):
 
 def make_logs(model, logs, outputs, mode, prefix=''):
   """Computes logs for sending to `on_batch_end` methods."""
-  if mode in {_TRAIN, _TEST}:
+  if mode in {ModeKeys.TRAIN, ModeKeys.TEST}:
     if hasattr(model, 'metrics_names'):
       for label, output in zip(model.metrics_names, outputs):
         logs[prefix + label] = output
@@ -220,57 +208,57 @@ class CallbackList(object):
 
   def _call_begin_hook(self, mode):
     """Helper function for on_{train|test|predict}_begin methods."""
-    if mode == _TRAIN:
+    if mode == ModeKeys.TRAIN:
       self.on_train_begin()
-    elif mode == _TEST:
+    elif mode == ModeKeys.TEST:
       self.on_test_begin()
     else:
       self.on_predict_begin()
 
   def _call_end_hook(self, mode):
     """Helper function for on_{train|test|predict}_end methods."""
-    if mode == _TRAIN:
+    if mode == ModeKeys.TRAIN:
       self.on_train_end()
-    elif mode == _TEST:
+    elif mode == ModeKeys.TEST:
       self.on_test_end()
     else:
       self.on_predict_end()
 
   def on_batch_begin(self, batch, logs=None):
-    self._call_batch_hook(_TRAIN, 'begin', batch, logs=logs)
+    self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
 
   def on_batch_end(self, batch, logs=None):
-    self._call_batch_hook(_TRAIN, 'end', batch, logs=logs)
+    self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
 
-  def on_epoch_begin(self, epoch, logs=None, mode='train'):
+  def on_epoch_begin(self, epoch, logs=None):
     """Calls the `on_epoch_begin` methods of its callbacks.
+
+    This function should only be called during TRAIN mode.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dict. Currently no data is passed to this argument for this method
           but that may change in the future.
-        mode: One of 'train'/'test'/'predict'
     """
-    if mode == _TRAIN:
-      logs = logs or {}
-      for callback in self.callbacks:
-        callback.on_epoch_begin(epoch, logs)
+    logs = logs or {}
+    for callback in self.callbacks:
+      callback.on_epoch_begin(epoch, logs)
     self._reset_batch_timing()
 
-  def on_epoch_end(self, epoch, logs=None, mode='train'):
+  def on_epoch_end(self, epoch, logs=None):
     """Calls the `on_epoch_end` methods of its callbacks.
+
+    This function should only be called during TRAIN mode.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
-        mode: One of 'train'/'test'/'predict'
     """
-    if mode == _TRAIN:
-      logs = logs or {}
-      for callback in self.callbacks:
-        callback.on_epoch_end(epoch, logs)
+    logs = logs or {}
+    for callback in self.callbacks:
+      callback.on_epoch_end(epoch, logs)
 
   def on_train_batch_begin(self, batch, logs=None):
     """Calls the `on_train_batch_begin` methods of its callbacks.
@@ -280,7 +268,7 @@ class CallbackList(object):
         logs: dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
-    self._call_batch_hook(_TRAIN, 'begin', batch, logs=logs)
+    self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
 
   def on_train_batch_end(self, batch, logs=None):
     """Calls the `on_train_batch_end` methods of its callbacks.
@@ -289,7 +277,7 @@ class CallbackList(object):
         batch: integer, index of batch within the current epoch.
         logs: dict. Metric results for this batch.
     """
-    self._call_batch_hook(_TRAIN, 'end', batch, logs=logs)
+    self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
 
   def on_test_batch_begin(self, batch, logs=None):
     """Calls the `on_test_batch_begin` methods of its callbacks.
@@ -299,7 +287,7 @@ class CallbackList(object):
         logs: dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
-    self._call_batch_hook(_TEST, 'begin', batch, logs=logs)
+    self._call_batch_hook(ModeKeys.TEST, 'begin', batch, logs=logs)
 
   def on_test_batch_end(self, batch, logs=None):
     """Calls the `on_test_batch_end` methods of its callbacks.
@@ -308,7 +296,7 @@ class CallbackList(object):
         batch: integer, index of batch within the current epoch.
         logs: dict. Metric results for this batch.
     """
-    self._call_batch_hook(_TEST, 'end', batch, logs=logs)
+    self._call_batch_hook(ModeKeys.TEST, 'end', batch, logs=logs)
 
   def on_predict_batch_begin(self, batch, logs=None):
     """Calls the `on_predict_batch_begin` methods of its callbacks.
@@ -318,7 +306,7 @@ class CallbackList(object):
         logs: dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
-    self._call_batch_hook(_PREDICT, 'begin', batch, logs=logs)
+    self._call_batch_hook(ModeKeys.PREDICT, 'begin', batch, logs=logs)
 
   def on_predict_batch_end(self, batch, logs=None):
     """Calls the `on_predict_batch_end` methods of its callbacks.
@@ -327,7 +315,7 @@ class CallbackList(object):
         batch: integer, index of batch within the current epoch.
         logs: dict. Metric results for this batch.
     """
-    self._call_batch_hook(_PREDICT, 'end', batch, logs=logs)
+    self._call_batch_hook(ModeKeys.PREDICT, 'end', batch, logs=logs)
 
   def on_train_begin(self, logs=None):
     """Calls the `on_train_begin` methods of its callbacks.
@@ -437,29 +425,29 @@ class Callback(object):
   def on_batch_end(self, batch, logs=None):
     """A backwards compatibility alias for `on_train_batch_end`."""
 
-  def on_epoch_begin(self, epoch, logs=None, mode='train'):
+  def on_epoch_begin(self, epoch, logs=None):
     """Called at the start of an epoch.
 
-    Subclasses should override for any actions to run.
+    Subclasses should override for any actions to run. This function should only
+    be called during TRAIN mode.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dict. Currently no data is passed to this argument for this method
           but that may change in the future.
-        mode: One of 'train'/'test'/'predict'
     """
 
-  def on_epoch_end(self, epoch, logs=None, mode='train'):
+  def on_epoch_end(self, epoch, logs=None):
     """Called at the end of an epoch.
 
-    Subclasses should override for any actions to run.
+    Subclasses should override for any actions to run. This function should only
+    be called during TRAIN mode.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
-        mode: One of 'train'/'test'/'predict'
     """
 
   def on_train_batch_begin(self, batch, logs=None):
@@ -700,15 +688,14 @@ class ProgbarLogger(Callback):
     if self.verbose:
       if self.epochs > 1:
         print('Epoch %d/%d' % (epoch + 1, self.epochs))
-      self.progbar = Progbar(
-          target=self.target,
-          verbose=self.verbose,
-          stateful_metrics=self.stateful_metrics,
-          unit_name='step' if self.use_steps else 'sample')
+    self.progbar = Progbar(
+        target=self.target,
+        verbose=self.verbose,
+        stateful_metrics=self.stateful_metrics,
+        unit_name='step' if self.use_steps else 'sample')
 
   def on_batch_begin(self, batch, logs=None):
-    if self.seen < self.target:
-      self.log_values = []
+    self.log_values = []
 
   def on_batch_end(self, batch, logs=None):
     logs = logs or {}
@@ -727,7 +714,7 @@ class ProgbarLogger(Callback):
 
     # Skip progbar update for the last batch;
     # will be handled by on_epoch_end.
-    if self.verbose and self.seen < self.target:
+    if self.verbose and (self.target is None or self.seen < self.target):
       self.progbar.update(self.seen, self.log_values)
 
   def on_epoch_end(self, epoch, logs=None):
@@ -1178,12 +1165,15 @@ class TensorBoard(Callback):
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
 
-  def _init_writer(self):
+  def _init_writer(self, model):
     """Sets file writer."""
     if context.executing_eagerly():
       self.writer = summary_ops_v2.create_file_writer(self.log_dir)
+      if not model.run_eagerly and self.write_graph:
+        with self.writer.as_default():
+          summary_ops_v2.graph(K.get_graph())
     elif self.write_graph:
-      self.writer = tf_summary.FileWriter(self.log_dir, K.get_session().graph)
+      self.writer = tf_summary.FileWriter(self.log_dir, K.get_graph())
     else:
       self.writer = tf_summary.FileWriter(self.log_dir)
 
@@ -1246,7 +1236,7 @@ class TensorBoard(Callback):
     """Sets Keras model and creates summary ops."""
 
     self.model = model
-    self._init_writer()
+    self._init_writer(model)
     # histogram summaries only enabled in graph mode
     if not context.executing_eagerly():
       self._make_histogram_ops(model)
@@ -1377,6 +1367,7 @@ class TensorBoard(Callback):
       self._epoch = epoch
       # pylint: disable=protected-access
       # add the histogram summary op if it should run this epoch
+      self.model._make_eval_function()
       if self.merged not in self.model._eval_function.fetches:
         self.model._eval_function.fetches.append(self.merged)
         self.model._eval_function.fetch_callbacks[

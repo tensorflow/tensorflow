@@ -197,6 +197,10 @@ Status ZlibOutputBuffer::Flush() {
   return Status::OK();
 }
 
+Status ZlibOutputBuffer::Name(StringPiece* result) const {
+  return file_->Name(result);
+}
+
 Status ZlibOutputBuffer::Sync() {
   TF_RETURN_IF_ERROR(Flush());
   return file_->Sync();

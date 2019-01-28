@@ -26,10 +26,39 @@ REGISTER_OP("XRTAllocate")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape)
     .Doc(
         R"(
-Reads a literal proto and transfers it to TPU device memory.
+Reads a literal proto and transfers it to device memory.
 
-'allocation' is a serialized xrt::TPUAllocation proto.
+'allocation' is a serialized xrt::XLAAllocation proto.
 'handle' is an id that can be used in other ops to refer to the allocation.
+)");
+
+REGISTER_OP("XRTAllocateFromTensor")
+    .Input("inputs: dtypes")
+    .Output("handle: int64")
+    .Attr("dtypes: list(type)")
+    .Attr("shapes: list(shape)")
+    .Attr("layouts: list(int) = []")
+    .Attr("make_tuple: bool = false")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Reads a list of tensors with optional layouts, and transfers it to device
+memory.
+
+inputs: The tensors holding the input data.
+shapes: The shapes which the tensors should have on device. The i-th shape
+corresponds to the i-th input. The shapes, together with the (optional)
+layouts, helps creating the fully qualified shape of the data on the device.
+The shapes can differ from the corresponding input one, as long as the total
+number of elements matches. In other words, it is possible to feed an input
+tensor with shape {8} and have a corresponding shape {2,2,2}.
+layouts: A vector holding the requested layout in minor-to-major sequence.
+If empty, the default layout wil be used.
+For a tuple, the layouts vector holds a linearized minor-to-major numbers
+for all the tuple leaves, in the order they appear within the tuple.
+The elements within the layouts sequence corresponding to a given tuple
+subshape can be set to -1, to leave such subshape to the default shape.
+handle: An id that can be used in other ops to refer to the allocation.
 )");
 
 REGISTER_OP("XRTSubTuple")
@@ -127,10 +156,11 @@ REGISTER_OP("XRTReleaseAllocationHandle")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .Doc(
         R"(
-Discards an allocation from device memory. The handle cannot be subsequently
+Discards one or more device memory handles. The handle(s) cannot be subsequently
 used.
 
-'handle' is the id returned from the Op that produced the on-device allocation.
+'handle' is the ID (or a vector of IDs) returned from the Op that produced the
+on-device allocation.
 )");
 
 REGISTER_OP("XRTReleaseAllAllocations")

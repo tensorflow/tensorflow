@@ -9,9 +9,38 @@ message ClippingLimits {
   google.protobuf.FloatValue upper = 2;  // +inf if not set
 }
 
-// Get the learning rate from the parameters of the SendTPUEmbeddingGradients
-// op.
+// Dynamic learning rate specification in the TPUEmbeddingConfiguration. The
+// actual learning rates are provided as a scalar input list to the
+// SendTPUEmbeddingGradients Op indexed by their tag specified through the
+// following proto.
 message DynamicLearningRate {
+  // For tables where learning rates are dynamically computed and communicated
+  // to the TPU embedding program, a tag must be specified for the learning
+  // rate.
+  //
+  // The tag must be a non-negative  integer. The total number of unique tags
+  // must be less than or equal to the number of tables in the TPU embedding
+  // configuration (a table does not specify any tag if it uses a constant
+  // learning rate, and specifies exactly one tag if it uses dynamic learning
+  // rates).
+  //
+  // All tags in the range [0, number_of_unique_tags) must be present in the TPU
+  // embedding configuration, i.e. a tag cannot be skipped if a different tag
+  // numerically greater than it is used in the configuration.
+  //
+  // If multiple tables specify the same tag, they *MUST* have
+  // the same dynamic learning rate, for example, their dynamic learning rate
+  // could be computed by the same TensorFlow sub-graph. The partitioning of the
+  // embedding layer would be more optimal if the number_of_unique_tags is as
+  // *LOW* as possible, i.e., if many tables share the same tag.
+  //
+  // The learning_rate input of the SendTPUEmbeddingGradients op is used to
+  // communicate dynamic learning rates to the TPU embedding program.
+  // The learning_rate input is a list of scalars where the size of the list is
+  // equal to the number of unique tags. The learning rate associated with a
+  // particular tag is specified by populating its corresponding index in the
+  // list of learning_rate scalars.
+  int32 tag = 1;
 }
 
 // Source of learning rate to use.
@@ -186,7 +215,8 @@ message OptimizationParameters {
 }
 
 // Specification of an optimization algorithm's state variables (both the main
-// value vector and any extra accumulators, etc.).
+// value vector and any extra accumulators, etc.). This proto is only used
+// internally by the TPU software and is not exposed directly to the TF model.
 message StateVariableSpecification {
   // Parameter name for the state variable.
   string name = 1;
@@ -194,6 +224,20 @@ message StateVariableSpecification {
   // A normal state variable that should be saved and restored in checkpoints
   // and used as an input or output to non-debug TensorFlow ops.
   message UserDefined {
+    // For padding embedding rows, this field specifies the initial value to be
+    // used. Separate initial values need to be specified for the embeddings and
+    // any extra accumulators. The initial values should be specified so as to
+    // maintain two invariants during model training:
+    // (1) The embedding vector multiplied by zero returns a vector containing
+    //     all zeros. To maintain this invariant, the embedding values should
+    //     never be NaNs or +-infinity.
+    // (2) Repeatedly applying the optimizer using a gradient vector of all
+    //     zeros does not cause the embeddings or slot variables to become NaNs
+    //     or +-infinity.
+    // The padding row is looked up when no embedding IDs are present for a
+    // feature. The semantics of embedding lookup dictate that the output must
+    // be zero under this scenario.
+    double padding_initial_value = 1;
   }
 
   // A state variable that should be filled with a constant and normally hidden

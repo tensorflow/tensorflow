@@ -332,7 +332,7 @@ TEST_F(OpcodeFusionTest, Exponential_Reshape_Negate) {
 TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
   HloComputation::Builder builder(TestName());
   Shape param_shape = ShapeUtil::MakeShape(F32, {8});
-  Shape starts_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape starts_shape = ShapeUtil::MakeShape(F32, {});
   Shape broadcast_shape = ShapeUtil::MakeShape(F32, {1, 8, 8});
   Shape reshape_shape = ShapeUtil::MakeShape(F32, {8, 8});
   Shape dynamic_slice_shape = ShapeUtil::MakeShape(F32, {4, 4});
@@ -340,13 +340,15 @@ TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, starts_shape, "starts"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, starts_shape, "starts"));
   HloInstruction* broadcast2 = builder.AddInstruction(
       HloInstruction::CreateBroadcast(broadcast_shape, param0, {1}));
   HloInstruction* reshape3 = builder.AddInstruction(
       HloInstruction::CreateReshape(reshape_shape, broadcast2));
   HloInstruction* dynamic_slice4 =
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-          dynamic_slice_shape, reshape3, param1, {4, 4}));
+          dynamic_slice_shape, reshape3, {param1, param2}, {4, 4}));
   builder.AddInstruction(HloInstruction::CreateUnary(
       dynamic_slice_shape, HloOpcode::kTanh, dynamic_slice4));
 
@@ -356,7 +358,8 @@ TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
   RunFusionAndCheckOpcodesWereFused(
       module.get(),
       {HloOpcode::kTanh, HloOpcode::kDynamicSlice, HloOpcode::kReshape,
-       HloOpcode::kBroadcast, HloOpcode::kParameter, HloOpcode::kParameter});
+       HloOpcode::kBroadcast, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kParameter});
 }
 
 TEST_F(OpcodeFusionTest, Broadcast_Negate) {
@@ -381,14 +384,14 @@ TEST_F(OpcodeFusionTest, Broadcast_Negate) {
 TEST_F(OpcodeFusionTest, DynamicSlice_Negate) {
   HloComputation::Builder builder(TestName());
   Shape param_shape = ShapeUtil::MakeShape(F32, {4});
-  Shape slice_shape = ShapeUtil::MakeShape(F32, {1});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {});
   Shape result_shape = ShapeUtil::MakeShape(F32, {2});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, slice_shape, "starts"));
   HloInstruction* dynamic_slice2 = builder.AddInstruction(
-      HloInstruction::CreateDynamicSlice(result_shape, param0, param1, {2}));
+      HloInstruction::CreateDynamicSlice(result_shape, param0, {param1}, {2}));
   builder.AddInstruction(HloInstruction::CreateUnary(
       result_shape, HloOpcode::kNegate, dynamic_slice2));
 
@@ -548,28 +551,36 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
   Shape full_shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
   Shape slice_shape = ShapeUtil::MakeShape(F32, {10, 1, 1000});
 
+  std::vector<HloInstruction*> slice_indices, update_indices;
+  for (int i = 0; i < 3; ++i) {
+    slice_indices.push_back(
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            1 + i, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+    update_indices.push_back(
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            5 + i, ShapeUtil::MakeShape(U32, {}), "update_indices")));
+  }
   HloInstruction* slice =
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
           slice_shape,
           builder.AddInstruction(
               HloInstruction::CreateParameter(0, full_shape, "slice_from")),
-          builder.AddInstruction(HloInstruction::CreateParameter(
-              1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
+          slice_indices,
           /*slice_sizes=*/{10, 1, 1000}));
 
   builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       full_shape,
       builder.AddInstruction(
-          HloInstruction::CreateParameter(2, full_shape, "to_update")),
-      slice,
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
+          HloInstruction::CreateParameter(4, full_shape, "to_update")),
+      slice, update_indices));
 
   module->AddEntryComputation(builder.Build());
   RunFusionAndCheckOpcodesWereFused(
-      module.get(), {HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
-                     HloOpcode::kParameter, HloOpcode::kParameter,
-                     HloOpcode::kParameter, HloOpcode::kParameter});
+      module.get(),
+      {HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
 TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
@@ -578,49 +589,40 @@ TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
 
   Shape full_shape = ShapeUtil::MakeShape(F32, {4, 100, 10, 100, 50});
 
-  auto loop_idx = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(S32, {1}),
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(S32, {}), "param0"))));
-
+  auto loop_idx = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(S32, {}), "param0"));
   auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(S32, {1}), "param1"));
-  auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeShape(S32, {5}),
-      {loop_idx, param1, param1, param1, param1}, /*dimension=*/0));
+      1, ShapeUtil::MakeShape(S32, {}), "param1"));
 
-  auto idx_choice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ShapeUtil::MakeShape(S32, {1}),
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          2, ShapeUtil::MakeShape(S32, {4}), "param2")),
-      loop_idx,
-      /*slice_sizes=*/{1}));
-
-  PaddingConfig padding_config;
-  padding_config.add_dimensions()->set_edge_padding_high(4);
-  auto pad = builder.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeShape(S32, {5}), idx_choice,
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0(0))),
-      padding_config));
+  auto idx_choice = builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(S32, {}),
+      builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+          ShapeUtil::MakeShape(S32, {1}),
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              2, ShapeUtil::MakeShape(S32, {4}), "param2")),
+          {loop_idx},
+          /*slice_sizes=*/{1}))));
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(0)));
 
   auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
       ShapeUtil::MakeShape(F32, {1, 100, 10, 100, 50}),
       builder.AddInstruction(HloInstruction::CreateParameter(
           3, ShapeUtil::MakeShape(F32, {100, 100, 10, 100, 50}), "param3")),
-      pad, /*slice_sizes=*/{1, 100, 10, 100, 50}));
+      {idx_choice, zero, zero, zero, zero},
+      /*slice_sizes=*/{1, 100, 10, 100, 50}));
 
   builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       full_shape,
       builder.AddInstruction(
           HloInstruction::CreateParameter(4, full_shape, "param4")),
-      slice, concat));
+      slice, {loop_idx, param1, param1, param1, param1}));
 
   module->AddEntryComputation(builder.Build());
   RunFusionAndCheckOpcodesWereFused(
       module.get(),
-      {HloOpcode::kConcatenate, HloOpcode::kPad, HloOpcode::kDynamicSlice,
-       HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+      {HloOpcode::kDynamicSlice, HloOpcode::kDynamicSlice,
+       HloOpcode::kDynamicUpdateSlice, HloOpcode::kReshape,
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
 }
@@ -930,9 +932,10 @@ ENTRY main {
   return result;
 }
 
-INSTANTIATE_TEST_CASE_P(GatherLoopFusionTestInstantiation, GatherLoopFusionTest,
-                        ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
-                        GatherLoopFusionTestSpec::Name);
+INSTANTIATE_TEST_SUITE_P(GatherLoopFusionTestInstantiation,
+                         GatherLoopFusionTest,
+                         ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
+                         GatherLoopFusionTestSpec::Name);
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

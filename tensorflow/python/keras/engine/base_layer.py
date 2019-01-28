@@ -25,11 +25,12 @@ import itertools
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
@@ -56,7 +57,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.CheckpointableBase):
+class Layer(checkpointable.Checkpointable):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -255,7 +256,7 @@ class Layer(checkpointable.CheckpointableBase):
                  synchronization=tf_variables.VariableSynchronization.AUTO,
                  aggregation=tf_variables.VariableAggregation.NONE,
                  **kwargs):
-    """Adds a new variable to the layer, or gets an existing one; returns it.
+    """Adds a new variable to the layer.
 
     Arguments:
       name: variable name.
@@ -306,6 +307,8 @@ class Layer(checkpointable.CheckpointableBase):
     if dtype is None:
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
+    if self._dtype is None:
+      self._dtype = dtype.base_dtype.name
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
@@ -510,12 +513,10 @@ class Layer(checkpointable.CheckpointableBase):
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
     input_list = nest.flatten(inputs)
-
-    if context.executing_eagerly():
-      # Accept NumPy inputs by converting to Tensors when executing eagerly.
-      if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-        inputs = nest.map_structure(ops.convert_to_tensor, inputs)
-        input_list = nest.flatten(inputs)
+    # Accept NumPy inputs by converting to Tensors.
+    if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+      inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+      input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
     # This is always the case in graph mode. It can also be the case in eager
@@ -1128,14 +1129,7 @@ class Layer(checkpointable.CheckpointableBase):
     all_input_shapes = set(
         [str(node.input_shapes) for node in self._inbound_nodes])
     if len(all_input_shapes) == 1:
-      input_shapes = self._inbound_nodes[0].input_shapes
-      if len(input_shapes) == 1:
-        return tuple(tensor_shape.TensorShape(input_shapes[0]).as_list())
-      else:
-        return [
-            tuple(tensor_shape.TensorShape(shape).as_list())
-            for shape in input_shapes
-        ]
+      return self._inbound_nodes[0].input_shapes
     else:
       raise AttributeError('The layer "' + str(self.name) +
                            ' has multiple inbound nodes, '
@@ -1186,14 +1180,7 @@ class Layer(checkpointable.CheckpointableBase):
     all_output_shapes = set(
         [str(node.output_shapes) for node in self._inbound_nodes])
     if len(all_output_shapes) == 1:
-      output_shapes = self._inbound_nodes[0].output_shapes
-      if len(output_shapes) == 1:
-        return tuple(tensor_shape.TensorShape(output_shapes[0]).as_list())
-      else:
-        return [
-            tuple(tensor_shape.TensorShape(shape).as_list())
-            for shape in output_shapes
-        ]
+      return self._inbound_nodes[0].output_shapes
     else:
       raise AttributeError('The layer "%s"'
                            ' has multiple inbound nodes, '
@@ -1404,16 +1391,14 @@ class Layer(checkpointable.CheckpointableBase):
     # If the layer returns tensors from its inputs, unmodified,
     # we copy them to avoid loss of tensor metadata.
     output_ls = nest.flatten(outputs)
+    inputs_ls = nest.flatten(inputs)
     output_ls_copy = []
     for x in output_ls:
-      if x in nest.flatten(inputs):
+      if x in inputs_ls:
         with ops.name_scope(self.name):
           x = array_ops.identity(x)
       output_ls_copy.append(x)
-    if len(output_ls_copy) == 1:
-      outputs = output_ls_copy[0]
-    else:
-      outputs = output_ls_copy
+    outputs = nest.pack_sequence_as(outputs, output_ls_copy)
 
     inputs, kwargs = self._inputs_from_call_args(
         call_args=(inputs,) + args, call_kwargs=kwargs)
@@ -1507,19 +1492,12 @@ class Layer(checkpointable.CheckpointableBase):
         arguments: dictionary of keyword arguments that were passed to the
             `call` method of the layer at the call that created the node.
     """
-    input_tensors = nest.flatten(input_tensors)
-    output_tensors = nest.flatten(output_tensors)
-
-    # Collect input tensor(s) coordinates.
-    inbound_layers = []
-    node_indices = []
-    tensor_indices = []
-    for x in input_tensors:
-      assert hasattr(x, '_keras_history')
-      inbound_layer, node_index, tensor_index = x._keras_history  # pylint: disable=protected-access
-      inbound_layers.append(inbound_layer)
-      node_indices.append(node_index)
-      tensor_indices.append(tensor_index)
+    inbound_layers = nest.map_structure(lambda t: t._keras_history[0],
+                                        input_tensors)
+    node_indices = nest.map_structure(lambda t: t._keras_history[1],
+                                      input_tensors)
+    tensor_indices = nest.map_structure(lambda t: t._keras_history[2],
+                                        input_tensors)
 
     # Create node, add it to inbound nodes.
     Node(
@@ -1532,13 +1510,15 @@ class Layer(checkpointable.CheckpointableBase):
         arguments=arguments)
 
     # Update tensor history metadata.
-    for i in range(len(output_tensors)):
-      # The metadata attribute consists of 1) a layer instance
-      # 2) a node index for the layer, 3) a tensor index for the node.
-      # The allows layer reuse (multiple nodes per layer) and multi-output
-      # or multi-input layers (e.g. a layer can return multiple tensors,
-      # and each can be sent to a different layer).
-      output_tensors[i]._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
+    # The metadata attribute consists of
+    # 1) a layer instance
+    # 2) a node index for the layer
+    # 3) a tensor index for the node.
+    # The allows layer reuse (multiple nodes per layer) and multi-output
+    # or multi-input layers (e.g. a layer can return multiple tensors,
+    # and each can be sent to a different layer).
+    for i, tensor in enumerate(nest.flatten(output_tensors)):
+      tensor._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
 
   def _get_node_attribute_at_index(self, node_index, attr, attr_name):
     """Private utility to retrieves an attribute (e.g. inputs) from a node.
@@ -1571,7 +1551,7 @@ class Layer(checkpointable.CheckpointableBase):
                        str(node_index) + ', but the layer has only ' +
                        str(len(self._inbound_nodes)) + ' inbound nodes.')
     values = getattr(self._inbound_nodes[node_index], attr)
-    if len(values) == 1:
+    if isinstance(values, list) and len(values) == 1:
       return values[0]
     else:
       return values
@@ -1698,12 +1678,13 @@ class Node(object):
                input_tensors,
                output_tensors,
                arguments=None):
-    # Layer instance (NOT a list).
-    if isinstance(outbound_layer, list):
-      raise ValueError(
-          '`outbound_layer` should be a layer instance, not a list.')
-    # this is the layer that takes a list of input tensors
-    # and turns them into a list of output tensors.
+    # Layer instance (NOT a sequence)
+    if isinstance(outbound_layer, (list, tuple, dict)):
+      raise ValueError('`outbound_layer` should be a layer instance, '
+                       'not a list, tuple, or, dict.')
+
+    # this is the layer that takes a nested structure of input tensors
+    # and turns them into a nested structure of output tensors.
     # the current node will be added to
     # the inbound_nodes of outbound_layer.
     self.outbound_layer = outbound_layer
@@ -1713,33 +1694,33 @@ class Node(object):
     # and for each layer, which node and which
     # tensor output of each node.
 
-    # List of layer instances.
+    # Nested structure of layer instances.
     self.inbound_layers = inbound_layers
-    # List of integers, 1:1 mapping with inbound_layers.
+    # Nested structure of integers, 1:1 mapping with inbound_layers.
     self.node_indices = node_indices
-    # List of integers, 1:1 mapping with inbound_layers.
+    # Nested of integers, 1:1 mapping with inbound_layers.
     self.tensor_indices = tensor_indices
 
     # Following 2 properties:
     # tensor inputs and outputs of outbound_layer.
 
-    # List of tensors. 1:1 mapping with inbound_layers.
+    # Nested structure of tensors. 1:1 mapping with inbound_layers.
     self.input_tensors = input_tensors
-    # List of tensors, created by outbound_layer.call().
+    # Nested structure of tensors, created by outbound_layer.call().
     self.output_tensors = output_tensors
 
     # Following 2 properties: input and output shapes.
 
-    # List of shape tuples, shapes of input_tensors.
-    self.input_shapes = [backend.int_shape(x) for x in input_tensors]
-    # List of shape tuples, shapes of output_tensors.
-    self.output_shapes = [backend.int_shape(x) for x in output_tensors]
+    # Nested structure of shape tuples, shapes of input_tensors.
+    self.input_shapes = nest.map_structure(backend.int_shape, input_tensors)
+    # Nested structure of shape tuples, shapes of output_tensors.
+    self.output_shapes = nest.map_structure(backend.int_shape, output_tensors)
 
     # Optional keyword arguments to layer's `call`.
     self.arguments = arguments
 
     # Add nodes to all layers involved.
-    for layer in inbound_layers:
+    for layer in nest.flatten(inbound_layers):
       if layer is not None:
         # For compatibility with external Keras, we use the deprecated
         # accessor here.
@@ -1748,19 +1729,102 @@ class Node(object):
     # accessor here.
     outbound_layer.inbound_nodes.append(self)
 
+  def iterate_inbound(self):
+    """Returns a list of tuples representing the inbound data.
+
+    Returns:
+      List of tuples like: (inbound_layer, node_index, tensor_index, tensor).
+    """
+    return zip(
+        nest.flatten(self.inbound_layers), nest.flatten(self.node_indices),
+        nest.flatten(self.tensor_indices), nest.flatten(self.input_tensors))
+
   def get_config(self):
-    inbound_names = []
-    for layer in self.inbound_layers:
-      if layer:
-        inbound_names.append(layer.name)
-      else:
-        inbound_names.append(None)
+    inbound_names = nest.map_structure(
+        lambda layer: layer.name if layer else None, self.inbound_layers)
     return {
         'outbound_layer': self.outbound_layer.name,
         'inbound_layers': inbound_names,
         'node_indices': self.node_indices,
         'tensor_indices': self.tensor_indices
     }
+
+
+class TensorFlowOpLayer(Layer):
+  """Wraps a TensorFlow Operation in a Layer.
+
+  This class is used internally by the Functional API. When a user
+  uses a raw TensorFlow Operation on symbolic tensors originating
+  from an `Input` Layer, the resultant operation will be wrapped
+  with this Layer object in order to make the operation compatible
+  with the Keras API.
+
+  This Layer will create a new, identical operation (except for inputs
+  and outputs) every time it is called. If `run_eagerly` is `True`,
+  the op creation and calculation will happen inside an Eager function.
+
+  Instances of this Layer are created when `autolambda` is called, which
+  is whenever a Layer's `__call__` encounters symbolic inputs that do
+  not have Keras metadata, or when a Network's `__init__` encounters
+  outputs that do not have Keras metadata.
+
+  Attributes:
+    node_def: String, the serialized NodeDef of the Op this layer will wrap.
+    constants: Dict of NumPy arrays, the values of any Tensors needed for this
+      Operation that do not originate from a Keras `Input` Layer. Since all
+      placeholders must come from Keras `Input` Layers, these Tensors must be
+      treated as constant in the Functional API.
+    name: String, the name of the Layer.
+    trainable: Bool, whether this Layer is trainable. Currently Variables are
+      not supported, and so this parameter has no effect.
+    dtype: The default dtype of this Layer. Inherited from `Layer` and has no
+      effect on this class, however is used in `get_config`.
+  """
+
+  def __init__(self,
+               node_def,
+               constants=None,
+               name=None,
+               trainable=True,
+               dtype=None):
+    super(TensorFlowOpLayer, self).__init__(
+        name=name, trainable=trainable, dtype=dtype)
+    self.node_def = node_def_pb2.NodeDef.FromString(node_def)
+    self.constants = constants or {}
+
+  def call(self, inputs):
+    if context.executing_eagerly():
+      return self._defun_call(inputs)
+    return self._make_op(inputs)
+
+  def _make_op(self, inputs):
+    inputs = nest.flatten(inputs)
+    graph = inputs[0].graph
+    with graph.as_default():
+      for index, constant in self.constants.items():
+        constant = ops.convert_to_tensor(constant)
+        inputs.insert(index, constant)
+
+      self.node_def.name = graph.unique_name(self.node_def.name)
+      c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
+      op = graph._create_op_from_tf_operation(c_op)
+
+      if len(op.outputs) == 1:
+        return op.outputs[0]
+      return op.outputs
+
+  @function.defun
+  def _defun_call(self, inputs):
+    """Wraps the op creation method in an Eager function for `run_eagerly`."""
+    return self._make_op(inputs)
+
+  def get_config(self):
+    config = super(TensorFlowOpLayer, self).get_config()
+    config.update({
+        'node_def': self.node_def.SerializeToString(),
+        'constants': self.constants
+    })
+    return config
 
 
 def default(method):

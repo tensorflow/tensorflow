@@ -180,6 +180,10 @@ class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
 
+  int num_replicas() const {
+    return executable_->build_options().num_replicas();
+  }
+
   StatusOr<LocalShapedBuffer*> Execute(
       absl::Span<LocalShapedBuffer* const> argument_handles);
 
@@ -312,7 +316,8 @@ class LocalComputationBuilder {
 
   LocalOp Collapse(const LocalOp& operand, absl::Span<const int64> dimensions);
 
-  LocalOp CrossReplicaSum(const LocalOp& operand);
+  LocalOp CrossReplicaSum(const LocalOp& operand,
+                          absl::Span<const ReplicaGroup> replica_groups);
 
   LocalOp Slice(const LocalOp& operand, absl::Span<const int64> start_indices,
                 absl::Span<const int64> limit_indices,
@@ -417,6 +422,15 @@ class LocalComputationBuilder {
 
   LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
                           bool lower, bool transpose_a, bool conjugate_a);
+
+  LocalOp Gather(const LocalOp& input, const LocalOp& start_indices,
+                 const GatherDimensionNumbers& dimension_numbers,
+                 absl::Span<const int64> slice_sizes);
+
+  LocalOp Scatter(const LocalOp& input, const LocalOp& scatter_indices,
+                  const LocalOp& updates,
+                  const LocalComputation& update_computation,
+                  const ScatterDimensionNumbers& dimension_numbers);
 
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 

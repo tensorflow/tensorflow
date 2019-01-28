@@ -587,6 +587,7 @@ tf_cc_test(
         ":collective_param_resolver_distributed",
         ":device_resolver_distributed",
         ":test_utils",
+        "//tensorflow/core:collective_ops_op_lib",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -594,6 +595,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:collective_ops",
     ],
 )
 
@@ -647,6 +649,7 @@ tf_cuda_cc_test(
         ":remote_device",
         ":worker_interface",
         "//tensorflow:grpc++",
+        "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -712,9 +715,14 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",

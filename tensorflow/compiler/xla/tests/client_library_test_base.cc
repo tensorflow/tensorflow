@@ -191,7 +191,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
   verify_output(actual, "");
 
   // Try with all output layouts.
-  std::vector<int64> minor_to_major(ShapeUtil::Rank(expected.shape()));
+  std::vector<int64> minor_to_major(expected.shape().rank());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   do {
     auto layout = ShapeUtil::MakeShapeWithLayout(
@@ -224,7 +224,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
       TF_ASSIGN_OR_RETURN(auto literal,
                           client_->Transfer(*arguments[index], nullptr));
       // Skip tuples because they don't have a rank.
-      if (ShapeUtil::IsTuple(literal.shape())) {
+      if (literal.shape().IsTuple()) {
         layout_strings.push_back(
             ShapeUtil::HumanStringWithLayout(literal.shape()));
         arguments_with_layout.push_back(arguments[index]);
@@ -234,7 +234,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         return Status::OK();
       }
 
-      std::vector<int64> minor_to_major(ShapeUtil::Rank(literal.shape()));
+      std::vector<int64> minor_to_major(literal.shape().rank());
       std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
       do {
         auto literal_relayout =

@@ -1,6 +1,10 @@
 path: "tensorflow.keras.metrics"
 tf_module {
   member {
+    name: "AUC"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Accuracy"
     mtype: "<type \'type\'>"
   }
@@ -9,7 +13,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BinaryCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalHinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CosineProximity"
     mtype: "<type \'type\'>"
   }
   member {
@@ -21,7 +41,55 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Hinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "KLDivergence"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LogCoshError"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Mean"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanAbsoluteError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanAbsolutePercentageError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanIoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanRelativeError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanSquaredError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanSquaredLogarithmicError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Metric"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Poisson"
     mtype: "<type \'type\'>"
   }
   member {
@@ -33,6 +101,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RootMeanSquaredError"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SensitivityAtSpecificity"
     mtype: "<type \'type\'>"
   }
@@ -41,7 +113,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SparseTopKCategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SpecificityAtSensitivity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SquaredHinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Sum"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TopKCategoricalAccuracy"
     mtype: "<type \'type\'>"
   }
   member {
@@ -78,7 +166,7 @@ tf_module {
   }
   member_method {
     name: "binary_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'False\', \'0\'], "
   }
   member_method {
     name: "categorical_accuracy"
@@ -86,15 +174,15 @@ tf_module {
   }
   member_method {
     name: "categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'False\', \'0\'], "
   }
   member_method {
     name: "cosine"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {
     name: "cosine_proximity"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {
     name: "deserialize"

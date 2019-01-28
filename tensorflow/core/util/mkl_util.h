@@ -140,8 +140,8 @@ typedef enum {
   MKL_GROUP_FILTER_DIM_W = 4
 } MklDnnFilterGroupDims;
 
+// Enum used to templatize MklOp kernel implementations
 
-// Enum used to templatize MklOp kernel implementations
 // that support both fp32 and int8 versions.
 enum class MklQuantization {
   QUANTIZED_VERSION,

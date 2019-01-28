@@ -2,31 +2,6 @@ major_version: "local"
 minor_version: ""
 default_target_cpu: "same_as_host"
 
-default_toolchain {
-  cpu: "k8"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
-  cpu: "piii"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
-  cpu: "arm"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
-  cpu: "darwin"
-  toolchain_identifier: "local_darwin"
-}
-default_toolchain {
-  cpu: "ppc"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
-  cpu: "x64_windows"
-  toolchain_identifier: "local_windows"
-}
-
 toolchain {
   abi_version: "local"
   abi_libc_version: "local"
