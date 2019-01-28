@@ -193,6 +193,18 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "popnn_normalization_test",
+    size = "small",
+    srcs = ["python/tests/popnn_normalization_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -203,7 +215,8 @@ test_suite(
         "while_loop_test",
         "sort_op_test",
         "multi_ipu_test",
-       "infeed_outfeed_test",
+        "infeed_outfeed_test",
+        "popnn_normalization_test",
     ],
 )
 

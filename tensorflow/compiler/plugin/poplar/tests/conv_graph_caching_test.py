@@ -82,6 +82,7 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
       # Matches two convolutions
       ok = ['progIdCopy',
+            'Copy_*weightsRearranged',
             'host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/Cast/convert.*/Cast',
@@ -115,6 +116,7 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
       # Matches two convolutions
       ok = ['progIdCopy',
+            'Copy_*weightsRearranged',
             'host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
@@ -146,6 +148,7 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
       # Matches two convolutions
       ok = ['progIdCopy',
+            'Copy_*weightsRearranged',
             'host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']

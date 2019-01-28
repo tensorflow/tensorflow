@@ -156,9 +156,10 @@ poplar::Tensor DoCachedNormInference(
 
   using namespace poputil::graphfn;
   auto f = TensorFunction(
-      graph, {input(operand, "operand"), input(scale, "scale"),
-              input(offset, "offset"), input(mean, "mean"),
-              input(variance_or_inv_std_dev, "variance_or_inv_std_dev")},
+      graph,
+      {input(operand, "operand"), input(scale, "scale"),
+       input(offset, "offset"), input(mean, "mean"),
+       input(variance_or_inv_std_dev, "variance_or_inv_std_dev")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor out;
         switch (norm_type) {
@@ -188,28 +189,41 @@ poplar::Tensor DoCachedNormInference(
 
 std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormTraining(
     const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
-    const poplar::Tensor& operand, const poplar::Tensor& scale,
-    const poplar::Tensor& offset, const double epsilon,
-    absl::optional<uint32> optional_num_groups, const uint64 device_id,
-    poplar::program::Sequence& prog, const std::string& debug_prefix) {
+    const poplar::Tensor& operand, poplar::Tensor& whitened_operand,
+    const poplar::Tensor& scale, const poplar::Tensor& offset,
+    const double epsilon, absl::optional<uint32> optional_num_groups,
+    const uint64 device_id, poplar::program::Sequence& prog,
+    const std::string& debug_prefix) {
   auto key = GetNormTrainingCacheKey(norm_type, operand, scale, offset, epsilon,
                                      optional_num_groups, device_id);
   poplar::Tensor output, mean, variance_or_inv_std_dev;
   std::vector<poplar::Tensor> args = {operand, scale, offset,
                                       output,  mean,  variance_or_inv_std_dev};
+  using namespace poputil::graphfn;
+  Signature signature = {
+      input(operand, "operand"), input(scale, "scale"),
+      input(offset, "offset"),   created("output"),
+      created("mean"),           created("variance_or_inv_std_dev")};
+
+  const bool output_whitened_operand = norm_type == NormType::GroupNorm;
+  if (output_whitened_operand) {
+    args.push_back(whitened_operand);
+    signature.push_back(created("whitened_operand"));
+  }
+
   auto it = res.norm_tr_graph_cache.find(key);
   if (it != res.norm_tr_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
     auto& f = it->second;
     f(args, prog);
+    if (output_whitened_operand) {
+      whitened_operand = args[6];
+    }
     return std::make_tuple(args[3], args[4], args[5]);
   }
 
-  using namespace poputil::graphfn;
   auto f = VoidFunction(
-      graph, {input(operand, "operand"), input(scale, "scale"),
-              input(offset, "offset"), created("output"), created("mean"),
-              created("variance_or_inv_std_dev")},
+      graph, signature,
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         switch (norm_type) {
           case NormType::BatchNorm: {
@@ -233,17 +247,18 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormTraining(
                 graph, args[0], epsilon, seq, *optional_num_groups, false,
                 poplar::FLOAT, debug_prefix);
 
-            args[3] =
+            std::tie(args[3], args[6]) =
                 popnn::gn::groupNormalise(graph, args[0], args[1], args[2],
-                                          args[4], args[5], seq, debug_prefix)
-                    .first;
+                                          args[4], args[5], seq, debug_prefix);
             break;
           }
         }
-
       });
   res.norm_tr_graph_cache.emplace(key, f);
   f(args, prog);
+  if (output_whitened_operand) {
+    whitened_operand = args[6];
+  }
   return std::make_tuple(args[3], args[4], args[5]);
 }
 
@@ -259,58 +274,68 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
                                  optional_num_groups, device_id);
   poplar::Tensor operand_grad, scale_grad, offset_grad;
   std::vector<poplar::Tensor> args = {
-      operand,     scale,        mean,       variance_or_inv_std_dev,
-      grad_output, operand_grad, scale_grad, offset_grad};
+      operand,     scale,        variance_or_inv_std_dev,
+      grad_output, operand_grad, scale_grad,
+      offset_grad};
+  using namespace poputil::graphfn;
+  Signature signature = {
+      input(operand, "operand"),
+      input(scale, "scale"),
+      input(variance_or_inv_std_dev, "variance_or_inv_std_dev"),
+      input(grad_output, "grad_output"),
+      created("operand_grad"),
+      created("scale_grad"),
+      created("offset_grad")};
+
+  const bool operand_is_whitened = norm_type == NormType::GroupNorm;
+  // We only need the mean if the operand is not whitened.
+  if (!operand_is_whitened) {
+    args.push_back(mean);
+    signature.push_back(input(mean, "mean"));
+  }
+
   auto it = res.norm_grad_graph_cache.find(key);
   if (it != res.norm_grad_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
     auto& f = it->second;
     f(args, prog);
-    return std::make_tuple(args[5], args[6], args[7]);
+    return std::make_tuple(args[4], args[5], args[6]);
   }
   using namespace poputil::graphfn;
   auto f = VoidFunction(
-      graph,
-      {input(operand, "operand"), input(scale, "scale"), input(mean, "mean"),
-       input(variance_or_inv_std_dev, "variance_or_inv_std_dev"),
-       input(grad_output, "grad_output"), created("operand_grad"),
-       created("scale_grad"), created("offset_grad")},
+      graph, signature,
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
-
         switch (norm_type) {
           case NormType::BatchNorm: {
             // For batch norm variance_or_inv_std_dev is variance, so we need to
             // convert it.
             poplar::Tensor inv_sd = ConvertVarianceToInvStdDev(
-                graph, args[3], epsilon, seq, debug_prefix);
+                graph, args[2], epsilon, seq, debug_prefix);
             poplar::Tensor operand_whitened =
-                popnn::bn::batchNormWhiten(graph, args[0], args[2], inv_sd, seq,
+                popnn::bn::batchNormWhiten(graph, args[0], args[7], inv_sd, seq,
                                            debug_prefix + "/WhitenedActs");
 
             // Compute the grad for the operand.
-            args[5] = popnn::bn::batchNormGradients(
-                graph, operand_whitened, args[4], inv_sd, args[1], seq,
+            args[4] = popnn::bn::batchNormGradients(
+                graph, operand_whitened, args[3], inv_sd, args[1], seq,
                 poplar::FLOAT, debug_prefix + "/OperandGrad");
             // Compute the grads for the scale and offset.
-            std::tie(args[6], args[7]) = popnn::bn::batchNormParamGradients(
-                graph, operand_whitened, args[4], seq, poplar::FLOAT,
+            std::tie(args[5], args[6]) = popnn::bn::batchNormParamGradients(
+                graph, operand_whitened, args[3], seq, poplar::FLOAT,
                 debug_prefix + "/ScaleOffsetGrads");
             break;
           }
           case NormType::GroupNorm: {
             // For group norm variance_or_inv_std_dev is inv_std_dev, so we
             // don't need to convert it.
-            poplar::Tensor operand_whitened =
-                popnn::gn::groupNormWhiten(graph, args[0], args[2], args[3],
-                                           seq, debug_prefix + "/WhitenedActs");
-
+            // For group norm we are using a whitened version of the operand.
             // Compute the grad for the operand.
-            args[5] = popnn::gn::groupNormGradients(
-                graph, operand_whitened, args[4], args[3], args[1], seq,
-                poplar::FLOAT, debug_prefix + "/OperandGrad");
+            args[4] = popnn::gn::groupNormGradients(
+                graph, args[0], args[3], args[2], args[1], seq, poplar::FLOAT,
+                debug_prefix + "/OperandGrad");
             // Compute the grads for the scale and offset.
-            std::tie(args[6], args[7]) = popnn::gn::groupNormParamGradients(
-                graph, operand_whitened, args[4], seq, poplar::FLOAT,
+            std::tie(args[5], args[6]) = popnn::gn::groupNormParamGradients(
+                graph, args[0], args[3], seq, poplar::FLOAT,
                 debug_prefix + "/ScaleOffsetGrads");
             break;
           }
@@ -318,7 +343,7 @@ std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormGrad(
       });
   res.norm_grad_graph_cache.emplace(key, f);
   f(args, prog);
-  return std::make_tuple(args[5], args[6], args[7]);
+  return std::make_tuple(args[4], args[5], args[6]);
 }
 
 std::tuple<poplar::Tensor, poplar::Tensor> DoCachedNormStatistics(
@@ -340,8 +365,9 @@ std::tuple<poplar::Tensor, poplar::Tensor> DoCachedNormStatistics(
 
   using namespace poputil::graphfn;
   auto f = VoidFunction(
-      graph, {input(operand, "operand"), created("mean"),
-              created("variance_or_inv_std_dev")},
+      graph,
+      {input(operand, "operand"), created("mean"),
+       created("variance_or_inv_std_dev")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd;
         switch (norm_type) {

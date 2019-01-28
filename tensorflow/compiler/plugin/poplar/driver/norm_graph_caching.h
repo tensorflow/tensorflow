@@ -78,10 +78,11 @@ using NormTrainingGraphCache =
     std::map<NormTrainingCacheKey, poputil::graphfn::VoidFunction>;
 std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor> DoCachedNormTraining(
     const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
-    const poplar::Tensor& operand, const poplar::Tensor& scale,
-    const poplar::Tensor& offset, const double epsilon,
-    absl::optional<uint32> optional_num_groups, const uint64 device,
-    poplar::program::Sequence& prog, const std::string& debug_prefix);
+    const poplar::Tensor& operand, poplar::Tensor& whitened_operand,
+    const poplar::Tensor& scale, const poplar::Tensor& offset,
+    const double epsilon, absl::optional<uint32> optional_num_groups,
+    const uint64 device, poplar::program::Sequence& prog,
+    const std::string& debug_prefix);
 
 // The norm gradient key is:
 // * type of norm

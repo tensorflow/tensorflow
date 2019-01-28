@@ -53,7 +53,7 @@ def _popnn_lstm_layer_backward(op, *grads):
 def _popnn_group_norm_backward(op, *grads):
   """Gradients for the PopnnGroupNormTraining op."""
   return gen_popnn_ops.popnn_group_norm_grad(
-      inputs=op.inputs[0],
+      input_whitened=op.outputs[3],
       gamma=op.inputs[1],
       mean=op.outputs[1],
       inv_std_dev=op.outputs[2],
