@@ -2031,11 +2031,11 @@ class MklPrimitive {
 const mkldnn::memory::dims NONE_DIMS = {};
 
 //
-// LRUCache is a class which implements LRU (Least Recently Use) cache.
+// LRUCache is a class which implements LRU (Least Recently Used) cache.
 // The implementation is similar to that of
 //    tensorflow/core/platform/cloud/expiring_lru_cache.h
 // without its thread-safe part because the cache is supposed to be
-// used as thread local (for instance, MKLPrimitive caching).
+// used as thread local (for instance, MklPrimitive caching).
 //
 // The LRU list maintains objects in chronological order based on
 // creation time, with the least recently accessed object at the
@@ -2084,7 +2084,7 @@ class LRUCache {
     // delete the cached objects
     for (auto& key : lru_list_) {
       auto it = cache_.find(key);
-      DCHECK(it == cache_.end());
+      DCHECK(it != cache_.end());
       delete it->second.op;
     }
 
@@ -2107,12 +2107,12 @@ class LRUCache {
   };
 
   // Remove the least recently accessed entry from LRU list, which
-  // is the tail of lru_list_. Correspondingly cache_ is updated.
+  // is the tail of lru_list_. Update cache_ correspondingly.
   bool Delete() {
     if (lru_list_.empty()) return false;
     string key = lru_list_.back();
     auto it = cache_.find(key);
-    DCHECK(it == cache_.end());
+    DCHECK(it != cache_.end());
     lru_list_.pop_back();
     delete it->second.op;  // delete the object
     cache_.erase(it);
