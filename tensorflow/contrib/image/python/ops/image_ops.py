@@ -108,7 +108,8 @@ def translate(images, translations, interpolation="NEAREST", name=None):
         shape is not `TensorShape(None)`.
     translations: A vector representing [dx, dy] or (if images has rank 4)
         a matrix of length num_images, with a [dx, dy] vector for each image in
-        the batch.
+        the batch. (NOTE: dx refers to the `num_columns`/width and dy refers to
+        the `num_rows`/height).
     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
     name: The name of the op.
 
