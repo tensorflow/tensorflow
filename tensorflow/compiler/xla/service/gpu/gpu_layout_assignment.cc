@@ -58,8 +58,13 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
                       DataLayout::kBatchYXDepth);
 
   // If we're not Volta or not fp16, the decision is easy: Use NCHW.
+#ifdef TENSORFLOW_USE_ROCM
+
+  if (!(instr->operand(0)->shape().element_type() == xla::PrimitiveType::F16)) {
+#elif
   if (!(instr->operand(0)->shape().element_type() == xla::PrimitiveType::F16 &&
         IsVoltaOrLater(*stream_executor))) {
+#endif
     return kAllNCHW;
   }
 

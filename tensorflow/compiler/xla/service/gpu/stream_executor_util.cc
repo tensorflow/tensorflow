@@ -26,6 +26,7 @@ using se::dnn::DataLayout;
 using se::dnn::DataLayoutString;
 using se::dnn::FilterLayout;
 using se::dnn::FilterLayoutString;
+#if GOOGLE_CUDA
 
 bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
   int major, minor;
@@ -33,6 +34,7 @@ bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
                                                                        &minor));
   return major >= 7;
 }
+#endif
 
 StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
