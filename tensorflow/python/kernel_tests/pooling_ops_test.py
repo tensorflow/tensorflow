@@ -826,10 +826,9 @@ class PoolingTest(test.TestCase):
   def testMaxPoolingWithArgmax(self):
     tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
                     1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    configs = [
-        [False, False, [0, 1, 3, 5, 0, 1, 3, 5]],
-        [False, True, [0, 1, 3, 5, 9, 10, 12, 14]],
-        [True, False, [0, 1, 3, 5, 0, 1, 3, 5]]]
+    configs = [[False, False, [0, 1, 3, 5, 0, 1, 3, 5]],
+               [False, True, [0, 1, 3, 5, 9, 10, 12, 14]],
+               [True, False, [0, 1, 3, 5, 0, 1, 3, 5]]]
 
     for use_gpu, include_batch_in_index, argmax_exp in configs:
       with self.session(use_gpu=use_gpu):
@@ -854,10 +853,9 @@ class PoolingTest(test.TestCase):
     tensor_input = [11.0, 12.0, 13.0, 14.0,
                     21.0, 22.0, 23.0, 24.0]
 
-    configs = [
-        [False, False, [0, 1, 3, 5, 0, 1, 3, 5]],
-        [False, True, [0, 1, 3, 5, 9, 10, 12, 14]],
-        [True, False, [0, 1, 3, 5, 0, 1, 3, 5]]]
+    configs = [[False, False, [0, 1, 3, 5, 0, 1, 3, 5]],
+               [False, True, [0, 1, 3, 5, 9, 10, 12, 14]],
+               [True, False, [0, 1, 3, 5, 0, 1, 3, 5]]]
 
     for use_gpu, include_batch_in_index, argmax in configs:
       with self.session(use_gpu=use_gpu):
