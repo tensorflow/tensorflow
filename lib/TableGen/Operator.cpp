@@ -53,6 +53,14 @@ std::string tblgen::Operator::qualifiedCppClassName() const {
   return llvm::join(getSplitDefName(), "::");
 }
 
+int tblgen::Operator::getNumNativeAttributes() const {
+  return derivedAttrStart - nativeAttrStart;
+}
+
+const tblgen::NamedAttribute &tblgen::Operator::getAttribute(int index) const {
+  return attributes[index];
+}
+
 StringRef tblgen::Operator::getArgName(int index) const {
   DagInit *argumentValues = def.getValueAsDag("arguments");
   return argumentValues->getArgName(index)->getValue();

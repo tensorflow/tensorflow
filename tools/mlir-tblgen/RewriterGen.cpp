@@ -22,6 +22,7 @@
 #include "mlir/TableGen/Attribute.h"
 #include "mlir/TableGen/GenInfo.h"
 #include "mlir/TableGen/Operator.h"
+#include "mlir/TableGen/Pattern.h"
 #include "mlir/TableGen/Predicate.h"
 #include "mlir/TableGen/Type.h"
 #include "llvm/ADT/StringExtras.h"
@@ -40,9 +41,12 @@ using namespace mlir;
 
 using mlir::tblgen::Argument;
 using mlir::tblgen::Attribute;
+using mlir::tblgen::DagNode;
 using mlir::tblgen::NamedAttribute;
 using mlir::tblgen::Operand;
 using mlir::tblgen::Operator;
+using mlir::tblgen::Pattern;
+using mlir::tblgen::RecordOperatorMap;
 using mlir::tblgen::Type;
 
 namespace {
@@ -62,102 +66,65 @@ struct DagArg {
 bool DagArg::isAttr() { return arg.is<NamedAttribute *>(); }
 
 namespace {
-class Pattern {
+class PatternEmitter {
 public:
-  static void emit(StringRef rewriteName, Record *p, raw_ostream &os);
+  static void emit(StringRef rewriteName, Record *p, RecordOperatorMap *mapper,
+                   raw_ostream &os);
 
 private:
-  Pattern(Record *pattern, raw_ostream &os) : pattern(pattern), os(os) {}
+  PatternEmitter(Record *pat, RecordOperatorMap *mapper, raw_ostream &os)
+      : loc(pat->getLoc()), opMap(mapper), pattern(pat, mapper), os(os) {}
 
-  // Emits the rewrite pattern named `rewriteName`.
+  // Emits the mlir::RewritePattern struct named `rewriteName`.
   void emit(StringRef rewriteName);
 
-  // Emits the matcher.
-  void emitMatcher(DagInit *tree);
+  // Emits the match() method.
+  void emitMatchMethod(DagNode tree);
 
   // Emits the rewrite() method.
   void emitRewriteMethod();
 
   // Emits the C++ statement to replace the matched DAG with an existing value.
-  void emitReplaceWithExistingValue(DagInit *resultTree);
+  void emitReplaceWithExistingValue(DagNode resultTree);
   // Emits the C++ statement to replace the matched DAG with a new op.
-  void emitReplaceOpWithNewOp(DagInit *resultTree);
+  void emitReplaceOpWithNewOp(DagNode resultTree);
 
   // Emits the value of constant attribute to `os`.
   void emitAttributeValue(Record *constAttr);
 
-  // Collects bound arguments.
-  void collectBoundArguments(DagInit *tree);
+  // Emits C++ statements for matching the op constrained by the given DAG
+  // `tree`.
+  void emitOpMatch(DagNode tree, int depth);
 
-  // Checks whether an argument with the given `name` is bound in source
-  // pattern. Prints fatal error if not; does nothing otherwise.
-  void checkArgumentBound(StringRef name) const;
-
-  // Helper function to match patterns.
-  void matchOp(DagInit *tree, int depth);
-
-  // Returns the Operator stored for the given record.
-  Operator &getOperator(const llvm::Record *record);
-
-  // Map from bound argument name to DagArg.
-  StringMap<DagArg> boundArguments;
-
-  // Map from Record* to Operator.
-  DenseMap<const llvm::Record *, Operator> opMap;
-
-  // Number of the operations in the input pattern.
-  int numberOfOpsMatched = 0;
-
-  Record *pattern;
+private:
+  // Pattern instantiation location followed by the location of multiclass
+  // prototypes used. This is intended to be used as a whole to
+  // PrintFatalError() on errors.
+  ArrayRef<llvm::SMLoc> loc;
+  // Op's TableGen Record to wrapper object
+  RecordOperatorMap *opMap;
+  // Handy wrapper for pattern being emitted
+  Pattern pattern;
   raw_ostream &os;
 };
 } // end namespace
 
-// Returns the Operator stored for the given record.
-auto Pattern::getOperator(const llvm::Record *record) -> Operator & {
-  return opMap.try_emplace(record, record).first->second;
-}
-
-void Pattern::emitAttributeValue(Record *constAttr) {
+void PatternEmitter::emitAttributeValue(Record *constAttr) {
   Attribute attr(constAttr->getValueAsDef("attr"));
   auto value = constAttr->getValue("value");
 
   if (!attr.isConstBuildable())
-    PrintFatalError(pattern->getLoc(),
-                    "Attribute " + attr.getTableGenDefName() +
-                        " does not have the 'constBuilderCall' field");
+    PrintFatalError(loc, "Attribute " + attr.getTableGenDefName() +
+                             " does not have the 'constBuilderCall' field");
 
   // TODO(jpienaar): Verify the constants here
   os << formatv(attr.getConstBuilderTemplate().str().c_str(), "rewriter",
                 value->getValue()->getAsUnquotedString());
 }
 
-void Pattern::collectBoundArguments(DagInit *tree) {
-  ++numberOfOpsMatched;
-  Operator &op = getOperator(cast<DefInit>(tree->getOperator())->getDef());
-  // TODO(jpienaar): Expand to multiple matches.
-  for (int i = 0, e = tree->getNumArgs(); i != e; ++i) {
-    auto arg = tree->getArg(i);
-    if (auto argTree = dyn_cast<DagInit>(arg)) {
-      collectBoundArguments(argTree);
-      continue;
-    }
-    auto name = tree->getArgNameStr(i);
-    if (name.empty())
-      continue;
-    boundArguments.try_emplace(name, op.getArg(i), arg);
-  }
-}
-
-void Pattern::checkArgumentBound(StringRef name) const {
-  if (boundArguments.find(name) == boundArguments.end())
-    PrintFatalError(pattern->getLoc(),
-                    Twine("referencing unbound variable '") + name + "'");
-}
-
 // Helper function to match patterns.
-void Pattern::matchOp(DagInit *tree, int depth) {
-  Operator &op = getOperator(cast<DefInit>(tree->getOperator())->getDef());
+void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
+  Operator &op = tree.getDialectOp(opMap);
   int indent = 4 + 2 * depth;
   // Skip the operand matching at depth 0 as the pattern rewriter already does.
   if (depth != 0) {
@@ -167,27 +134,25 @@ void Pattern::matchOp(DagInit *tree, int depth) {
         "if (!op{0}->isa<{1}>()) return matchFailure();\n", depth,
         op.qualifiedCppClassName());
   }
-  if (tree->getNumArgs() != op.getNumArgs())
-    PrintFatalError(pattern->getLoc(),
-                    Twine("mismatch in number of arguments to op '") +
-                        op.getOperationName() +
-                        "' in pattern and op's definition");
-  for (int i = 0, e = tree->getNumArgs(); i != e; ++i) {
-    auto arg = tree->getArg(i);
+  if (tree.getNumArgs() != op.getNumArgs())
+    PrintFatalError(loc, Twine("mismatch in number of arguments to op '") +
+                             op.getOperationName() +
+                             "' in pattern and op's definition");
+  for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     auto opArg = op.getArg(i);
 
-    if (auto argTree = dyn_cast<DagInit>(arg)) {
+    if (DagNode argTree = tree.getArgAsNestedDag(i)) {
       os.indent(indent) << "{\n";
       os.indent(indent + 2) << formatv(
           "auto op{0} = op{1}->getOperand({2})->getDefiningInst();\n",
           depth + 1, depth, i);
-      matchOp(argTree, depth + 1);
+      emitOpMatch(argTree, depth + 1);
       os.indent(indent) << "}\n";
       continue;
     }
 
     // Verify arguments.
-    if (auto defInit = dyn_cast<DefInit>(arg)) {
+    if (auto defInit = tree.getArgAsDefInit(i)) {
       // Verify operands.
       if (auto *operand = opArg.dyn_cast<Operand *>()) {
         // Skip verification where not needed due to definition of op.
@@ -195,8 +160,7 @@ void Pattern::matchOp(DagInit *tree, int depth) {
           goto StateCapture;
 
         if (!defInit->getDef()->isSubClassOf("Type"))
-          PrintFatalError(pattern->getLoc(),
-                          "type argument required for operand");
+          PrintFatalError(loc, "type argument required for operand");
 
         auto constraint = tblgen::TypeConstraint(*defInit);
         os.indent(indent)
@@ -219,7 +183,7 @@ void Pattern::matchOp(DagInit *tree, int depth) {
     }
 
   StateCapture:
-    auto name = tree->getArgNameStr(i);
+    auto name = tree.getArgName(i);
     if (name.empty())
       continue;
     if (opArg.is<Operand *>())
@@ -234,7 +198,7 @@ void Pattern::matchOp(DagInit *tree, int depth) {
   }
 }
 
-void Pattern::emitMatcher(DagInit *tree) {
+void PatternEmitter::emitMatchMethod(DagNode tree) {
   // Emit the heading.
   os << R"(
   PatternMatchResult match(OperationInst *op0) const override {
@@ -242,28 +206,30 @@ void Pattern::emitMatcher(DagInit *tree) {
     if (op0->getNumResults() != 1) return matchFailure();
     auto state = std::make_unique<MatchedState>();)"
      << "\n";
-  matchOp(tree, 0);
+  emitOpMatch(tree, 0);
   os.indent(4) << "return matchSuccess(std::move(state));\n  }\n";
 }
 
-void Pattern::emit(StringRef rewriteName) {
-  DagInit *tree = pattern->getValueAsDag("PatternToMatch");
-  // Collect bound arguments and compute number of ops matched.
+void PatternEmitter::emit(StringRef rewriteName) {
+  // Get the DAG tree for the source pattern
+  DagNode tree = pattern.getSourcePattern();
+
   // TODO(jpienaar): the benefit metric is simply number of ops matched at the
   // moment, revise.
-  collectBoundArguments(tree);
+  unsigned benefit = tree.getNumOps();
+
+  const Operator &rootOp = pattern.getSourceRootOp();
+  auto rootName = rootOp.getOperationName();
 
   // Emit RewritePattern for Pattern.
-  DefInit *root = cast<DefInit>(tree->getOperator());
-  auto *rootName = cast<StringInit>(root->getDef()->getValueInit("opName"));
   os << formatv(R"(struct {0} : public RewritePattern {
-  {0}(MLIRContext *context) : RewritePattern({1}, {2}, context) {{})",
-                rewriteName, rootName->getAsString(), numberOfOpsMatched)
+  {0}(MLIRContext *context) : RewritePattern("{1}", {2}, context) {{})",
+                rewriteName, rootName, benefit)
      << "\n";
 
   // Emit matched state.
   os << "  struct MatchedState : public PatternState {\n";
-  for (auto &arg : boundArguments) {
+  for (const auto &arg : pattern.getSourcePatternBoundArgs()) {
     if (auto namedAttr = arg.second.arg.dyn_cast<NamedAttribute *>()) {
       os.indent(4) << namedAttr->attr.getStorageType() << " " << arg.first()
                    << ";\n";
@@ -273,23 +239,22 @@ void Pattern::emit(StringRef rewriteName) {
   }
   os << "  };\n";
 
-  emitMatcher(tree);
+  emitMatchMethod(tree);
   emitRewriteMethod();
 
   os << "};\n";
 }
 
-void Pattern::emitRewriteMethod() {
-  ListInit *resultOps = pattern->getValueAsListInit("ResultOps");
-  if (resultOps->size() != 1)
+void PatternEmitter::emitRewriteMethod() {
+  if (pattern.getNumResults() != 1)
     PrintFatalError("only single result rules supported");
-  DagInit *resultTree = cast<DagInit>(resultOps->getElement(0));
+
+  DagNode resultTree = pattern.getResultPattern(0);
 
   // TODO(jpienaar): Expand to multiple results.
-  for (auto result : resultTree->getArgs()) {
-    if (isa<DagInit>(result))
-      PrintFatalError(pattern->getLoc(), "only single op result supported");
-  }
+  for (unsigned i = 0, e = resultTree.getNumArgs(); i != e; ++i)
+    if (resultTree.getArgAsNestedDag(i))
+      PrintFatalError(loc, "only single op result supported");
 
   os << R"(
   void rewrite(OperationInst *op, std::unique_ptr<PatternState> state,
@@ -297,8 +262,7 @@ void Pattern::emitRewriteMethod() {
     auto& s = *static_cast<MatchedState *>(state.get());
 )";
 
-  auto *dagOpDef = cast<DefInit>(resultTree->getOperator())->getDef();
-  if (dagOpDef->getName() == "replaceWithValue")
+  if (resultTree.isReplaceWithValue())
     emitReplaceWithExistingValue(resultTree);
   else
     emitReplaceOpWithNewOp(resultTree);
@@ -306,31 +270,29 @@ void Pattern::emitRewriteMethod() {
   os << "  }\n";
 }
 
-void Pattern::emitReplaceWithExistingValue(DagInit *resultTree) {
-  if (resultTree->getNumArgs() != 1) {
-    PrintFatalError(pattern->getLoc(),
-                    "exactly one argument needed in the result pattern");
+void PatternEmitter::emitReplaceWithExistingValue(DagNode resultTree) {
+  if (resultTree.getNumArgs() != 1) {
+    PrintFatalError(loc, "exactly one argument needed in the result pattern");
   }
 
-  auto name = resultTree->getArgNameStr(0);
-  checkArgumentBound(name);
+  auto name = resultTree.getArgName(0);
+  pattern.ensureArgBoundInSourcePattern(name);
   os.indent(4) << "rewriter.replaceOp(op, {s." << name << "});\n";
 }
 
-void Pattern::emitReplaceOpWithNewOp(DagInit *resultTree) {
-  DefInit *dagOperator = cast<DefInit>(resultTree->getOperator());
-  Operator &resultOp = getOperator(dagOperator->getDef());
-  auto resultOperands = dagOperator->getDef()->getValueAsDag("arguments");
+void PatternEmitter::emitReplaceOpWithNewOp(DagNode resultTree) {
+  Operator &resultOp = resultTree.getDialectOp(opMap);
+  auto numOpArgs =
+      resultOp.getNumOperands() + resultOp.getNumNativeAttributes();
 
   os << formatv(R"(
     rewriter.replaceOpWithNewOp<{0}>(op, op->getResult(0)->getType())",
                 resultOp.cppClassName());
-  if (resultOperands->getNumArgs() != resultTree->getNumArgs()) {
-    PrintFatalError(pattern->getLoc(),
-                    Twine("mismatch between arguments of resultant op (") +
-                        Twine(resultOperands->getNumArgs()) +
-                        ") and arguments provided for rewrite (" +
-                        Twine(resultTree->getNumArgs()) + Twine(')'));
+  if (numOpArgs != resultTree.getNumArgs()) {
+    PrintFatalError(loc, Twine("mismatch between arguments of resultant op (") +
+                             Twine(numOpArgs) +
+                             ") and arguments provided for rewrite (" +
+                             Twine(resultTree.getNumArgs()) + Twine(')'));
   }
 
   // Create the builder call for the result.
@@ -340,8 +302,8 @@ void Pattern::emitReplaceOpWithNewOp(DagInit *resultTree) {
     // Start each operand on its own line.
     (os << ",\n").indent(6);
 
-    auto name = resultTree->getArgNameStr(i);
-    checkArgumentBound(name);
+    auto name = resultTree.getArgName(i);
+    pattern.ensureArgBoundInSourcePattern(name);
     if (operand.name)
       os << "/*" << operand.name->getAsUnquotedString() << "=*/";
     os << "s." << name;
@@ -350,18 +312,18 @@ void Pattern::emitReplaceOpWithNewOp(DagInit *resultTree) {
   }
 
   // Add attributes.
-  for (int e = resultTree->getNumArgs(); i != e; ++i) {
+  for (int e = resultTree.getNumArgs(); i != e; ++i) {
     // Start each attribute on its own line.
     (os << ",\n").indent(6);
 
     // The argument in the result DAG pattern.
-    auto name = resultTree->getArgNameStr(i);
+    auto argName = resultTree.getArgName(i);
     auto opName = resultOp.getArgName(i);
-    auto defInit = dyn_cast<DefInit>(resultTree->getArg(i));
+    auto *defInit = resultTree.getArgAsDefInit(i);
     auto *value = defInit ? defInit->getDef()->getValue("value") : nullptr;
     if (!value) {
-      checkArgumentBound(name);
-      auto result = "s." + name;
+      pattern.ensureArgBoundInSourcePattern(argName);
+      auto result = "s." + argName;
       os << "/*" << opName << "=*/";
       if (defInit) {
         auto transform = defInit->getDef();
@@ -380,31 +342,34 @@ void Pattern::emitReplaceOpWithNewOp(DagInit *resultTree) {
     // TODO(jpienaar): Refactor out into map to avoid recomputing these.
     auto argument = resultOp.getArg(i);
     if (!argument.is<NamedAttribute *>())
-      PrintFatalError(pattern->getLoc(),
-                      Twine("expected attribute ") + Twine(i));
+      PrintFatalError(loc, Twine("expected attribute ") + Twine(i));
 
-    if (!name.empty())
-      os << "/*" << name << "=*/";
+    if (!argName.empty())
+      os << "/*" << argName << "=*/";
     emitAttributeValue(defInit->getDef());
     // TODO(jpienaar): verify types
   }
   os << "\n    );\n";
 }
 
-void Pattern::emit(StringRef rewriteName, Record *p, raw_ostream &os) {
-  Pattern pattern(p, os);
-  pattern.emit(rewriteName);
+void PatternEmitter::emit(StringRef rewriteName, Record *p,
+                          RecordOperatorMap *mapper, raw_ostream &os) {
+  PatternEmitter(p, mapper, os).emit(rewriteName);
 }
 
 static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
   emitSourceFileHeader("Rewriters", os);
   const auto &patterns = recordKeeper.getAllDerivedDefinitions("Pattern");
 
+  // We put the map here because it can be shared among multiple patterns.
+  RecordOperatorMap recordOpMap;
+
   // Ensure unique patterns simply by appending unique suffix.
   std::string baseRewriteName = "GeneratedConvert";
   int rewritePatternCount = 0;
   for (Record *p : patterns) {
-    Pattern::emit(baseRewriteName + llvm::utostr(rewritePatternCount++), p, os);
+    PatternEmitter::emit(baseRewriteName + llvm::utostr(rewritePatternCount++),
+                         p, &recordOpMap, os);
   }
 
   // Emit function to add the generated matchers to the pattern list.

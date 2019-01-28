@@ -68,10 +68,10 @@ public:
 
   // Op attribute accessors.
   int getNumAttributes() const { return attributes.size(); }
+  // Returns the total number of native attributes.
+  int getNumNativeAttributes() const;
   NamedAttribute &getAttribute(int index) { return attributes[index]; }
-  const NamedAttribute &getAttribute(int index) const {
-    return attributes[index];
-  }
+  const NamedAttribute &getAttribute(int index) const;
 
   // Op operand iterators.
   using operand_iterator = Operand *;
@@ -87,6 +87,7 @@ public:
   // Op argument (attribute or operand) accessors.
   Argument getArg(int index);
   StringRef getArgName(int index) const;
+  // Returns the total number of arguments.
   int getNumArgs() const { return operands.size() + attributes.size(); }
 
   // Query functions for the documentation of the operator.
