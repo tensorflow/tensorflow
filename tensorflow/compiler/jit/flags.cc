@@ -68,7 +68,12 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_fusion_only",
            &mark_for_compilation_flags->tf_xla_fusion_only,
            "enable fusion of element-wise operations only using XLA when "
-           "global_jit_level is ON*.")};
+           "global_jit_level is ON*."),
+      Flag("tf_xla_disable_deadness_safety_checks_for_debugging",
+           &mark_for_compilation_flags
+                ->tf_xla_disable_deadness_safety_checks_for_debugging,
+           "Disable deadness related safety checks when clustering (this is "
+           "unsound).")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -89,6 +94,8 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags->tf_xla_clustering_fuel =
       std::numeric_limits<int64>::max();
   mark_for_compilation_flags->tf_xla_fusion_only = false;
+  mark_for_compilation_flags
+      ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
