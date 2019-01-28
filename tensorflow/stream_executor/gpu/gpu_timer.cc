@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,31 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/cuda/cuda_timer.h"
+#include "tensorflow/stream_executor/gpu/gpu_timer.h"
 
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
-#include "tensorflow/stream_executor/cuda/cuda_stream.h"
+#include "tensorflow/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/lib/status.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
-bool CUDATimer::Init() {
+bool GpuTimer::Init() {
   CHECK(start_event_ == nullptr && stop_event_ == nullptr);
-  CudaContext* context = parent_->cuda_context();
-  port::Status status = CUDADriver::CreateEvent(
-      context, &start_event_, CUDADriver::EventFlags::kDefault);
+  GpuContext* context = parent_->gpu_context();
+  port::Status status = GpuDriver::CreateEvent(context, &start_event_,
+                                               GpuDriver::EventFlags::kDefault);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return false;
   }
 
-  status = CUDADriver::CreateEvent(context, &stop_event_,
-                                   CUDADriver::EventFlags::kDefault);
+  status = GpuDriver::CreateEvent(context, &stop_event_,
+                                  GpuDriver::EventFlags::kDefault);
   if (!status.ok()) {
     LOG(ERROR) << status;
-    status = CUDADriver::DestroyEvent(context, &start_event_);
+    status = GpuDriver::DestroyEvent(context, &start_event_);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }
@@ -48,47 +48,46 @@ bool CUDATimer::Init() {
   return true;
 }
 
-void CUDATimer::Destroy() {
-  CudaContext* context = parent_->cuda_context();
-  port::Status status = CUDADriver::DestroyEvent(context, &start_event_);
+void GpuTimer::Destroy() {
+  GpuContext* context = parent_->gpu_context();
+  port::Status status = GpuDriver::DestroyEvent(context, &start_event_);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
 
-  status = CUDADriver::DestroyEvent(context, &stop_event_);
+  status = GpuDriver::DestroyEvent(context, &stop_event_);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
 }
 
-float CUDATimer::GetElapsedMilliseconds() const {
+float GpuTimer::GetElapsedMilliseconds() const {
   CHECK(start_event_ != nullptr && stop_event_ != nullptr);
   // TODO(leary) provide a way to query timer resolution?
   // CUDA docs say a resolution of about 0.5us
   float elapsed_milliseconds = NAN;
-  (void)CUDADriver::GetEventElapsedTime(parent_->cuda_context(),
-                                        &elapsed_milliseconds, start_event_,
-                                        stop_event_);
+  (void)GpuDriver::GetEventElapsedTime(
+      parent_->gpu_context(), &elapsed_milliseconds, start_event_, stop_event_);
   return elapsed_milliseconds;
 }
 
-bool CUDATimer::Start(CUDAStream* stream) {
-  port::Status status = CUDADriver::RecordEvent(
-      parent_->cuda_context(), start_event_, stream->cuda_stream());
+bool GpuTimer::Start(GpuStream* stream) {
+  port::Status status = GpuDriver::RecordEvent(
+      parent_->gpu_context(), start_event_, stream->gpu_stream());
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
   return status.ok();
 }
 
-bool CUDATimer::Stop(CUDAStream* stream) {
-  port::Status status = CUDADriver::RecordEvent(
-      parent_->cuda_context(), stop_event_, stream->cuda_stream());
+bool GpuTimer::Stop(GpuStream* stream) {
+  port::Status status = GpuDriver::RecordEvent(
+      parent_->gpu_context(), stop_event_, stream->gpu_stream());
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
   return status.ok();
 }
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor
