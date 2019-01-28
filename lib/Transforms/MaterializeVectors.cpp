@@ -78,7 +78,7 @@
 /// words, this pass operates on a scoped program slice. Furthermore, since we
 /// do not vectorize in the presence of conditionals for now, sliced chains are
 /// guaranteed not to escape the innermost scope, which has to be either the top
-/// Function scope of the innermost loop scope, by construction. As a
+/// Function scope or the innermost loop scope, by construction. As a
 /// consequence, the implementation just starts from vector_transfer_write
 /// operations and builds the slice scoped the innermost loop enclosing the
 /// current vector_transfer_write. These assumptions and the implementation
@@ -95,6 +95,7 @@
 /// of super-vector shape to HW-vector shape).
 ///
 /// As a simple case, the following:
+///
 /// ```mlir
 ///    mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
 ///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
@@ -279,19 +280,21 @@ static Value *substitute(Value *v, VectorType hwVectorType,
   return it->second;
 }
 
-/// Returns an AffineMap that reindexed the memRefIndices by the
-/// multi-dimensional hwVectorInstance.
-/// This is used by the function that materialized a vector_transfer operation
-/// to use hardware vector types instead of super-vector types.
+/// Returns a list of single result AffineApplyOps that reindex the
+/// `memRefIndices` by the multi-dimensional `hwVectorInstance`. This is used by
+/// the function that materializes a vector_transfer operation to use hardware
+/// vector types instead of super-vector types.
 ///
-/// The general problem this pass solves is as follows:
+/// The general problem this function solves is as follows:
 /// Assume a vector_transfer operation at the super-vector granularity that has
 /// `l` enclosing loops (ForInst). Assume the vector transfer operation operates
 /// on a MemRef of rank `r`, a super-vector of rank `s` and a hardware vector of
 /// rank `h`.
 /// For the purpose of illustration assume l==4, r==3, s==2, h==1 and that the
 /// super-vector is vector<3x32xf32> and the hardware vector is vector<8xf32>.
-/// Assume the following MLIR snippet after super-vectorizationhas been applied:
+/// Assume the following MLIR snippet after super-vectorization has been
+/// applied:
+///
 /// ```mlir
 /// for %i0 = 0 to %M {
 ///   for %i1 = 0 to %N step 3 {
@@ -302,6 +305,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 ///         ...
 /// }}}}
 /// ```
+///
 /// where map denotes an AffineMap operating on enclosing loops with properties
 /// compatible for vectorization (i.e. some contiguity left unspecified here).
 /// Note that the vectorized loops are %i1 and %i3.
@@ -315,6 +319,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 ///
 /// This function instantiates the iteration <2, 1> of vector_transfer_read
 /// into the set of operations in pseudo-MLIR:
+///
 /// ```mlir
 ///   map2 = (d0, d1, d2, d3) -> (d0, d1 + 2, d2, d3 + 1 * 8)
 ///   map3 = map o map2 // where o denotes composition
@@ -374,14 +379,15 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
     affineExprs.push_back(d_i + offset * stride);
   }
 
-  // Create a bunch of single result maps.
-  return functional::map(
-      [b, numIndices, memrefIndices](AffineExpr expr) -> Value * {
-        auto map = AffineMap::get(numIndices, 0, expr, {});
-        return makeComposedAffineApply(b, b->getInsertionPoint()->getLoc(), map,
-                                       memrefIndices);
-      },
-      affineExprs);
+  // Create a bunch of single result AffineApplyOp.
+  SmallVector<mlir::Value *, 8> res;
+  res.reserve(affineExprs.size());
+  for (auto expr : affineExprs) {
+    auto map = AffineMap::get(numIndices, 0, expr, {});
+    res.push_back(makeComposedAffineApply(b, b->getInsertionPoint()->getLoc(),
+                                          map, memrefIndices));
+  }
+  return res;
 }
 
 /// Returns attributes with the following substitutions applied:
