@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <set>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -511,7 +511,7 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
   auto module = CreateNewVerifiedModule();
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(param2,
                        HloInstruction::CreateParameter(2, r0s32, "p.1"));
