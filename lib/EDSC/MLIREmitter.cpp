@@ -20,6 +20,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "mlir-c/Core.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/EDSC/MLIREmitter.h"
 #include "mlir/EDSC/Types.h"
@@ -38,8 +39,9 @@ using llvm::errs;
 
 #define DEBUG_TYPE "edsc"
 
-namespace mlir {
-namespace edsc {
+using namespace mlir;
+using namespace mlir::edsc;
+using namespace mlir::edsc::detail;
 
 // Factors out the boilerplate that is needed to build and answer the
 // following simple question:
@@ -89,7 +91,7 @@ static bool isFloatElement(const Value &v) {
   return getElementType(v).isa<FloatType>();
 }
 
-Value *add(FuncBuilder *builder, Location location, Value *a, Value *b) {
+static Value *add(FuncBuilder *builder, Location location, Value *a, Value *b) {
   if (isIndexElement(*a)) {
     auto *context = builder->getContext();
     auto d0 = getAffineDimExpr(0, context);
@@ -103,7 +105,7 @@ Value *add(FuncBuilder *builder, Location location, Value *a, Value *b) {
   return builder->create<AddFOp>(location, a, b)->getResult();
 }
 
-Value *sub(FuncBuilder *builder, Location location, Value *a, Value *b) {
+static Value *sub(FuncBuilder *builder, Location location, Value *a, Value *b) {
   if (isIndexElement(*a)) {
     auto *context = builder->getContext();
     auto d0 = getAffineDimExpr(0, context);
@@ -117,7 +119,7 @@ Value *sub(FuncBuilder *builder, Location location, Value *a, Value *b) {
   return builder->create<SubFOp>(location, a, b)->getResult();
 }
 
-Value *mul(FuncBuilder *builder, Location location, Value *a, Value *b) {
+static Value *mul(FuncBuilder *builder, Location location, Value *a, Value *b) {
   if (!isFloatElement(*a)) {
     return builder->create<MulIOp>(location, a, b)->getResult();
   }
@@ -138,7 +140,7 @@ static void printDefininingStatement(llvm::raw_ostream &os, const Value &v) {
   }
 }
 
-MLIREmitter &MLIREmitter::bind(Bindable e, Value *v) {
+MLIREmitter &mlir::edsc::MLIREmitter::bind(Bindable e, Value *v) {
   LLVM_DEBUG(printDefininingStatement(llvm::dbgs() << "\nBinding " << e << " @"
                                                    << e.getStoragePtr() << ": ",
                                       *v));
@@ -151,7 +153,7 @@ MLIREmitter &MLIREmitter::bind(Bindable e, Value *v) {
   return *this;
 }
 
-Value *MLIREmitter::emit(Expr e) {
+Value *mlir::edsc::MLIREmitter::emit(Expr e) {
   auto it = ssaBindings.find(e);
   if (it != ssaBindings.end()) {
     return it->second;
@@ -316,7 +318,7 @@ Value *MLIREmitter::emit(Expr e) {
   return res;
 }
 
-SmallVector<Value *, 8> MLIREmitter::emit(ArrayRef<Expr> exprs) {
+SmallVector<Value *, 8> mlir::edsc::MLIREmitter::emit(ArrayRef<Expr> exprs) {
   return mlir::functional::map(
       [this](Expr e) {
         auto *res = this->emit(e);
@@ -327,7 +329,7 @@ SmallVector<Value *, 8> MLIREmitter::emit(ArrayRef<Expr> exprs) {
       exprs);
 }
 
-void MLIREmitter::emitStmt(const Stmt &stmt) {
+void mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   auto *block = builder->getBlock();
   auto ip = builder->getInsertionPoint();
   // Blocks are just a containing abstraction, they do not emit their RHS.
@@ -351,7 +353,7 @@ void MLIREmitter::emitStmt(const Stmt &stmt) {
   builder->setInsertionPoint(block, ip);
 }
 
-void MLIREmitter::emitStmts(ArrayRef<Stmt> stmts) {
+void mlir::edsc::MLIREmitter::emitStmts(ArrayRef<Stmt> stmts) {
   for (auto &stmt : stmts) {
     emitStmt(stmt);
   }
@@ -390,7 +392,8 @@ static bool isDynamicSize(int size) { return size < 0; }
 /// and returns the vector with {%d0, %c3, %c4, %d3, %c5}.
 static SmallVector<Value *, 8> getMemRefSizes(FuncBuilder *b, Location loc,
                                               Value *memRef) {
-  auto memRefType = memRef->getType().template cast<MemRefType>();
+  assert(memRef->getType().isa<MemRefType>() && "Expected a MemRef value");
+  MemRefType memRefType = memRef->getType().cast<MemRefType>();
   SmallVector<Value *, 8> res;
   res.reserve(memRefType.getShape().size());
   const auto &shape = memRefType.getShape();
@@ -404,15 +407,165 @@ static SmallVector<Value *, 8> getMemRefSizes(FuncBuilder *b, Location loc,
   return res;
 }
 
-SmallVector<edsc::Bindable, 8> MLIREmitter::makeBoundSizes(Value *memRef) {
+SmallVector<edsc::Expr, 8>
+mlir::edsc::MLIREmitter::makeBoundSizes(Value *memRef) {
   assert(memRef->getType().isa<MemRefType>() && "Expected a MemRef value");
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
   auto memRefSizes = edsc::makeBindables(memRefType.getShape().size());
   auto memrefSizeValues = getMemRefSizes(getBuilder(), getLocation(), memRef);
   assert(memrefSizeValues.size() == memRefSizes.size());
   bindZipRange(llvm::zip(memRefSizes, memrefSizeValues));
-  return memRefSizes;
+  SmallVector<edsc::Expr, 8> res(memRefSizes.begin(), memRefSizes.end());
+  return res;
 }
 
-} // namespace edsc
-} // namespace mlir
+edsc_expr_t bindConstantBF16(edsc_mlir_emitter_t emitter, double value) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  Bindable b;
+  e->bindConstant<mlir::ConstantFloatOp>(b, mlir::APFloat(value),
+                                         e->getBuilder()->getBF16Type());
+  return b;
+}
+
+edsc_expr_t bindConstantF16(edsc_mlir_emitter_t emitter, float value) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  Bindable b;
+  bool unused;
+  mlir::APFloat val(value);
+  val.convert(e->getBuilder()->getF16Type().getFloatSemantics(),
+              mlir::APFloat::rmNearestTiesToEven, &unused);
+  e->bindConstant<mlir::ConstantFloatOp>(b, val, e->getBuilder()->getF16Type());
+  return b;
+}
+
+edsc_expr_t bindConstantF32(edsc_mlir_emitter_t emitter, float value) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  Bindable b;
+  e->bindConstant<mlir::ConstantFloatOp>(b, mlir::APFloat(value),
+                                         e->getBuilder()->getF32Type());
+  return b;
+}
+
+edsc_expr_t bindConstantF64(edsc_mlir_emitter_t emitter, double value) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  Bindable b;
+  e->bindConstant<mlir::ConstantFloatOp>(b, mlir::APFloat(value),
+                                         e->getBuilder()->getF64Type());
+  return b;
+}
+
+edsc_expr_t bindConstantInt(edsc_mlir_emitter_t emitter, int64_t value,
+                            unsigned bitwidth) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  Bindable b;
+  e->bindConstant<mlir::ConstantIntOp>(
+      b, value, e->getBuilder()->getIntegerType(bitwidth));
+  return b;
+}
+
+edsc_expr_t bindConstantIndex(edsc_mlir_emitter_t emitter, int64_t value) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  Bindable b;
+  e->bindConstant<mlir::ConstantIndexOp>(b, value);
+  return b;
+}
+
+unsigned getRankOfFunctionArgument(mlir_func_t function, unsigned pos) {
+  auto *f = reinterpret_cast<mlir::Function *>(function);
+  assert(pos < f->getNumArguments());
+  auto *arg = *(f->getArguments().begin() + pos);
+  if (auto memRefType = arg->getType().dyn_cast<mlir::MemRefType>()) {
+    return memRefType.getRank();
+  }
+  return 0;
+}
+
+mlir_type_t getTypeOfFunctionArgument(mlir_func_t function, unsigned pos) {
+  auto *f = reinterpret_cast<mlir::Function *>(function);
+  assert(pos < f->getNumArguments());
+  auto *arg = *(f->getArguments().begin() + pos);
+  return mlir_type_t{arg->getType().getAsOpaquePointer()};
+}
+
+edsc_expr_t bindFunctionArgument(edsc_mlir_emitter_t emitter,
+                                 mlir_func_t function, unsigned pos) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  auto *f = reinterpret_cast<mlir::Function *>(function);
+  assert(pos < f->getNumArguments());
+  auto *arg = *(f->getArguments().begin() + pos);
+  Bindable b;
+  e->bind(b, arg);
+  return Expr(b);
+}
+
+void bindFunctionArguments(edsc_mlir_emitter_t emitter, mlir_func_t function,
+                           edsc_expr_list_t *result) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  auto *f = reinterpret_cast<mlir::Function *>(function);
+  assert(result->n == f->getNumArguments());
+  for (unsigned pos = 0; pos < result->n; ++pos) {
+    auto *arg = *(f->getArguments().begin() + pos);
+    Bindable b;
+    e->bind(b, arg);
+    result->exprs[pos] = Expr(b);
+  }
+}
+
+unsigned getBoundMemRefRank(edsc_mlir_emitter_t emitter,
+                            edsc_expr_t boundMemRef) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  auto *v = e->getValue(mlir::edsc::Expr(boundMemRef));
+  auto memRefType = v->getType().cast<mlir::MemRefType>();
+  return memRefType.getRank();
+}
+
+void bindMemRefShape(edsc_mlir_emitter_t emitter, edsc_expr_t boundMemRef,
+                     edsc_expr_list_t *result) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  auto *v = e->getValue(mlir::edsc::Expr(boundMemRef));
+  auto memRefType = v->getType().cast<mlir::MemRefType>();
+  auto rank = memRefType.getRank();
+  assert(result->n == rank && "Unexpected memref shape binding results count");
+  auto bindables = e->makeBoundSizes(v);
+  for (unsigned i = 0; i < rank; ++i) {
+    result->exprs[i] = bindables[i];
+  }
+}
+
+void bindMemRefView(edsc_mlir_emitter_t emitter, edsc_expr_t boundMemRef,
+                    edsc_expr_list_t *resultLbs, edsc_expr_list_t *resultUbs,
+                    edsc_expr_list_t *resultSteps) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  auto *v = e->getValue(mlir::edsc::Expr(boundMemRef));
+  auto memRefType = v->getType().cast<mlir::MemRefType>();
+  auto rank = memRefType.getRank();
+  assert(resultLbs->n == rank && "Unexpected memref binding results count");
+  assert(resultUbs->n == rank && "Unexpected memref binding results count");
+  assert(resultSteps->n == rank && "Unexpected memref binding results count");
+  auto bindables = e->makeBoundSizes(v);
+  for (unsigned i = 0; i < rank; ++i) {
+    Bindable zero;
+    e->bindConstant<mlir::ConstantIndexOp>(zero, 0);
+    resultLbs->exprs[i] = zero;
+    resultUbs->exprs[i] = bindables[i];
+    Bindable one;
+    e->bindConstant<mlir::ConstantIndexOp>(one, 1);
+    resultSteps->exprs[i] = one;
+  }
+}
+
+#define DEFINE_EDSL_BINARY_OP(FUN_NAME, OP_SYMBOL)                             \
+  edsc_expr_t FUN_NAME(edsc_expr_t e1, edsc_expr_t e2) {                       \
+    return Expr(e1) OP_SYMBOL Expr(e2);                                        \
+  }
+
+DEFINE_EDSL_BINARY_OP(Add, +);
+DEFINE_EDSL_BINARY_OP(Sub, -);
+DEFINE_EDSL_BINARY_OP(Mul, *);
+// DEFINE_EDSL_BINARY_OP(Div, /);
+DEFINE_EDSL_BINARY_OP(LT, <);
+DEFINE_EDSL_BINARY_OP(LE, <=);
+DEFINE_EDSL_BINARY_OP(GT, >);
+DEFINE_EDSL_BINARY_OP(GE, >=);
+
+#undef DEFINE_EDSL_BINARY_OP

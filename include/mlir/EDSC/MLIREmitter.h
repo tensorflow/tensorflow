@@ -121,7 +121,7 @@ struct MLIREmitter {
   ///
   /// Prerequisite:
   /// `memRef` is a Value of type MemRefType.
-  SmallVector<edsc::Bindable, 8> makeBoundSizes(Value *memRef);
+  SmallVector<edsc::Expr, 8> makeBoundSizes(Value *memRef);
 
 private:
   FuncBuilder *builder;

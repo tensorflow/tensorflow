@@ -73,9 +73,11 @@ public:
   llvm::Error invoke(StringRef name, MutableArrayRef<void *> args);
 
 private:
+  // Ordering of llvmContext and jit is important for destruction purposes: the
+  // jit must be destroyed before the context.
+  llvm::LLVMContext llvmContext;
   // Private implementation of the JIT (PIMPL)
   std::unique_ptr<impl::OrcJIT> jit;
-  llvm::LLVMContext llvmContext;
 };
 
 template <typename... Args>

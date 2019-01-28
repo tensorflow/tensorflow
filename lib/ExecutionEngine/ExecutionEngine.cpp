@@ -278,9 +278,9 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(Module *m) {
   setupTargetTriple(llvmModule.get());
   packFunctionArguments(llvmModule.get());
 
-  engine->jit = std::move(*expectedJIT);
-  if (auto err = engine->jit->addModule(std::move(llvmModule)))
+  if (auto err = (*expectedJIT)->addModule(std::move(llvmModule)))
     return std::move(err);
+  engine->jit = std::move(*expectedJIT);
 
   return engine;
 }

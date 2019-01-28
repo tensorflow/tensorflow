@@ -24,6 +24,7 @@
 #ifndef MLIR_LIB_EDSC_TYPES_H_
 #define MLIR_LIB_EDSC_TYPES_H_
 
+#include "mlir-c/Core.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 
@@ -171,6 +172,9 @@ public:
 
   Expr() : storage(nullptr) {}
   /* implicit */ Expr(ImplType *storage) : storage(storage) {}
+  explicit Expr(edsc_expr_t expr)
+      : storage(reinterpret_cast<ImplType *>(expr)) {}
+  operator edsc_expr_t() { return edsc_expr_t{storage}; }
 
   Expr(const Expr &other) : storage(other.storage) {}
   Expr &operator=(Expr other) {
@@ -227,6 +231,8 @@ struct Bindable : public Expr {
   Bindable(Expr::ImplType *ptr) : Expr(ptr) {
     assert(!ptr || isa<Bindable>() && "expected Bindable");
   }
+  explicit Bindable(const edsc_expr_t &expr) : Expr(expr) {}
+  operator edsc_expr_t() { return edsc_expr_t{storage}; }
 
   friend struct ScopedEDSCContext;
 
@@ -352,6 +358,9 @@ struct Stmt {
   Stmt(const Bindable &lhs, const Expr &rhs,
        llvm::ArrayRef<Stmt> stmts = llvm::ArrayRef<Stmt>());
   Stmt &operator=(const Expr &expr);
+  explicit Stmt(edsc_stmt_t stmt)
+      : storage(reinterpret_cast<ImplType *>(stmt)) {}
+  operator edsc_stmt_t() { return edsc_stmt_t{storage}; }
 
   operator Expr() const { return getLHS(); }
 
@@ -414,7 +423,7 @@ template <typename U> U Expr::dyn_cast() const {
   if (isa<U>()) {
     return U(storage);
   }
-  return U(nullptr);
+  return U((Expr::ImplType *)(nullptr));
 }
 template <typename U> U Expr::cast() const {
   assert(isa<U>());
@@ -497,6 +506,9 @@ Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Expr> lbs,
 Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Bindable> lbs,
          llvm::ArrayRef<Bindable> ubs, llvm::ArrayRef<Bindable> steps,
          llvm::ArrayRef<Stmt> enclosedStmts);
+Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Bindable> lbs,
+         llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Bindable> steps,
+         llvm::ArrayRef<Stmt> enclosedStmts);
 
 /// This helper class exists purely for sugaring purposes and allows writing
 /// expressions such as:
@@ -508,7 +520,8 @@ Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Bindable> lbs,
 ///    });
 /// ```
 struct Indexed {
-  Indexed(Bindable m) : base(m), indices() {}
+  Indexed(Bindable b) : base(b), indices() {}
+  Indexed(Expr e) : base(e), indices() {}
 
   /// Returns a new `Indexed`. As a consequence, an Indexed with attached
   /// indices can never be reused unless it is captured (e.g. via a Stmt).
@@ -534,7 +547,7 @@ struct Indexed {
   Expr operator*(Expr e) const { return static_cast<Expr>(*this) * e; }
 
 private:
-  Bindable base;
+  Expr base;
   llvm::SmallVector<Expr, 4> indices;
 };
 
