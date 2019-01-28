@@ -1357,7 +1357,7 @@ def _compute_placement_auc(labels, predictions, weights, alpha,
       (total_0 - 1. + _EPSILON))
   var_1 = (
       math_ops.reduce_sum(
-          weights_1 * math_ops.square(placement_values_1 - auc_1)) /
+          weights_1 * math_ops.squared_difference(placement_values_1, auc_1)) /
       (total_1 - 1. + _EPSILON))
   auc_std_err = math_ops.sqrt(
       (var_0 / (total_0 + _EPSILON)) + (var_1 / (total_1 + _EPSILON)))

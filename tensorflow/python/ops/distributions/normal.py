@@ -291,5 +291,5 @@ def _kl_normal_normal(n_a, n_b, name=None):
     s_a_squared = math_ops.square(n_a.scale)
     s_b_squared = math_ops.square(n_b.scale)
     ratio = s_a_squared / s_b_squared
-    return (math_ops.square(n_a.loc - n_b.loc) / (two * s_b_squared) +
-            half * (ratio - one - math_ops.log(ratio)))
+    return (math_ops.squared_difference(n_a.loc, n_b.loc) /
+            (two * s_b_squared) + half * (ratio - one - math_ops.log(ratio)))

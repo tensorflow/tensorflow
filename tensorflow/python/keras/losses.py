@@ -824,7 +824,7 @@ def mean_absolute_percentage_error(y_true, y_pred):
 def mean_squared_logarithmic_error(y_true, y_pred):
   first_log = math_ops.log(K.clip(y_pred, K.epsilon(), None) + 1.)
   second_log = math_ops.log(K.clip(y_true, K.epsilon(), None) + 1.)
-  return K.mean(math_ops.square(first_log - second_log), axis=-1)
+  return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
 
 
 @keras_export('keras.metrics.squared_hinge', 'keras.losses.squared_hinge')

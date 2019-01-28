@@ -250,7 +250,7 @@ class InverseGamma(distribution.Distribution):
       than returning `NaN`.""")
   def _variance(self):
     var = (math_ops.square(self.rate)
-           / math_ops.square(self.concentration - 1.)
+           / math_ops.squared_difference(self.concentration, 1.)
            / (self.concentration - 2.))
     if self.allow_nan_stats:
       nan = array_ops.fill(
