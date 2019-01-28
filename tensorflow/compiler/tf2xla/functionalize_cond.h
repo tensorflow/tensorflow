@@ -232,6 +232,9 @@ class FunctionalizeCond {
   // Mapping from merge nodes to predicate.
   std::unordered_map<Node*, OutputTensor> merge_to_predicate_;
 
+  // Mapping from merge nodes to corresponding If node outputs.
+  std::unordered_map<Node*, OutputTensor> merge_to_replacement_;
+
   FunctionLibraryDefinition* library_;
   Graph* graph_;
 
