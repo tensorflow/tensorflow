@@ -35,16 +35,15 @@ limitations under the License.
 namespace tensorflow {
 namespace tables {
 
-// Lookup or create resources of type Container but treat them as having type
-// ContainerBase for the purpose of dynamic dispatching.
-// Container must have constructor Container(OpKernelContext*, OpKernel*)
-template <class ContainerBase, class ContainerChild>
+// Create resources of type ContainerBase using the static method
+// Functor::AllocateContainer(OpKernelConstruction*, OpKernel*,
+// ContainerBase**)
+// If the resource has already been created it will be looked up.
+template <class ContainerBase, typename Functor>
 class ResourceConstructionOp : public OpKernel {
  public:
   explicit ResourceConstructionOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), table_handle_set_(false) {
-    static_assert(std::is_base_of<ContainerBase, ContainerChild>::value,
-                  "ContainerChild is not derived from ContainerBase");
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
   }
@@ -59,10 +58,11 @@ class ResourceConstructionOp : public OpKernel {
 
     auto creator = [ctx,
                     this](ContainerBase** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      ContainerBase* container = new ContainerChild(ctx, this);
-      if (!ctx->status().ok()) {
+      ContainerBase* container;
+      auto status = Functor::AllocateContainer(ctx, this, &container);
+      if (TF_PREDICT_FALSE(!status.ok())) {
         container->Unref();
-        return ctx->status();
+        return status;
       }
       if (ctx->track_allocations()) {
         ctx->record_persistent_memory_allocation(container->MemoryUsed());
@@ -98,7 +98,6 @@ class ResourceConstructionOp : public OpKernel {
 
  private:
   mutex mu_;
-  PersistentTensor table_handle_ GUARDED_BY(mu_);
   bool table_handle_set_ GUARDED_BY(mu_);
   ContainerInfo cinfo_;
   bool use_node_name_sharing_;
@@ -106,23 +105,18 @@ class ResourceConstructionOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ResourceConstructionOp);
 };
 
-// Lookup or create resources of type Container but treat them as having type
-// ContainerBase for the purpose of dynamic dispatching.
-// Container must have constructor
-// Container(OpKernelContext*, OpKernel*, FallbackTableBaseType*)
+// Create resources of type ContainerBase using the static method
+// Functor::AllocateContainer(OpKernelConstruction*, OpKernel*,
+// FallbackTableBaseType*, ContainerBase**)
+// If the resource has already been created it will be looked up.
 // Container must decrease the reference count of the FallbackTableBaseType*
 // constructor argument before its destructor completes.
-template <class ContainerBase, class ContainerChild,
+template <class ContainerBase, class Functor,
           class FallbackTableBaseType = ContainerBase>
 class TableWithFallbackConstructionOp : public OpKernel {
  public:
   explicit TableWithFallbackConstructionOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), table_handle_set_(false) {
-    static_assert(std::is_base_of<ContainerBase, ContainerChild>::value,
-                  "ContainerChild is not derived from ContainerBase");
-    OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
-                                                 tensorflow::TensorShape({2}),
-                                                 &table_handle_, nullptr));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
   }
@@ -158,10 +152,12 @@ class TableWithFallbackConstructionOp : public OpKernel {
       // ResourceConstructionOp because Container constructor requires an
       // input which can only be constructed if the resource manager
       // internal lock is not already held.
-      ContainerBase* container = new ContainerChild(ctx, this, fallback_table);
-      if (!ctx->status().ok()) {
+      ContainerBase* container;
+      auto status =
+          Functor::AllocateContainer(ctx, this, fallback_table, &container);
+      if (TF_PREDICT_FALSE(!status.ok())) {
         container->Unref();
-        return ctx->status();
+        return status;
       }
       if (ctx->track_allocations()) {
         ctx->record_persistent_memory_allocation(container->MemoryUsed());
@@ -197,7 +193,6 @@ class TableWithFallbackConstructionOp : public OpKernel {
 
  private:
   mutex mu_;
-  PersistentTensor table_handle_ GUARDED_BY(mu_);
   bool table_handle_set_ GUARDED_BY(mu_);
   ContainerInfo cinfo_;
   bool use_node_name_sharing_;
@@ -226,9 +221,9 @@ class ContainerSizeOp : public OpKernel {
     auto* mutex = container->GetMutex();
     if (mutex != nullptr) {
       tf_shared_lock lock(*mutex);
-      out->scalar<int64>()() = container->size();
+      out->scalar<int64>()() = container->UnsafeSize();
     } else {
-      out->scalar<int64>()() = container->size();
+      out->scalar<int64>()() = container->UnsafeSize();
     }
   }
 };
