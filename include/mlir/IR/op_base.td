@@ -314,17 +314,15 @@ class DerivedAttr<code ReturnType, code Body> : Attr {
 // Derived attribute that returns a mlir::Type.
 class DerivedTypeAttr<code body> : DerivedAttr<"Type", body>;
 
-// Represents a constant attribute of specific Attr type. The leaf class that
-// derives from this should additionally include a `value` member.
-class ConstantAttr<Attr attribute> {
+// Represents a constant attribute of specific Attr type. A constant
+// attribute can be specified only of attributes that have a constant
+// builder call defined. The constant value is specified as a string.
+class ConstantAttr<Attr attribute, string val> {
   Attr attr = attribute;
-}
-
-// The values for const F32 attributes are set as strings as floating point
-// values can't be provided directly in TableGen.
-class ConstF32Attr<string val> : ConstantAttr<F32Attr> {
   string value = val;
 }
+
+class ConstF32Attr<string val> : ConstantAttr<F32Attr, val>;
 
 //===----------------------------------------------------------------------===//
 // Op Properties
