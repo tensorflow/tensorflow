@@ -511,7 +511,11 @@ def exception_type_from_error_code(error_code):
 
 @tf_export("errors.error_code_from_exception_type")
 def error_code_from_exception_type(cls):
-  return _EXCEPTION_CLASS_TO_CODE[cls]
+  try:
+    return _EXCEPTION_CLASS_TO_CODE[cls]
+  except KeyError:
+    warnings.warn("Unknown class exception")
+    return UnknownError(None, None, "Unknown class exception", None)
 
 
 def _make_specific_exception(node_def, op, message, error_code):
