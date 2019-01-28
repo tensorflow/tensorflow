@@ -52,10 +52,6 @@ bool IsTensorIdControlling(const TensorId& tensor_id) {
   return tensor_id.index() == Graph::kControlSlot;
 }
 
-bool IsOutputPortRegular(const MutableGraphView::OutputPort& port) {
-  return port.port_id > Graph::kControlSlot;
-}
-
 bool IsOutputPortControlling(const MutableGraphView::OutputPort& port) {
   return port.port_id == Graph::kControlSlot;
 }
