@@ -451,7 +451,7 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, 1, 2));
 
-  TF_CHECK_OK(conv_graph_caching::DoCachedWeightUpdateConvolution(
+  TF_CHECK_OK(conv_graph_caching::DoCachedConvolutionScaledInplace(
       graph, res, w, in, deltas, params, GetShardingDeviceId(inst), prog, inst,
       tensor_map));
 
@@ -506,28 +506,19 @@ StatusOr<poplar::program::Program> ConvBiasApply(CompilerResources& res,
   poplar::Tensor biases = inputs[0][0];
 
   // Find the deltas
-  poplar::Tensor deltas;
-  TF_ASSIGN_OR_RETURN(deltas,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor deltas,
                       FindInstructionInput(tensor_map, res, inst, 1, prog));
 
-  // Find the learning rate constant
-  const auto& literal = root->operand(1)->operand(1)->operand(0)->literal();
-
-  Literal float_lit;
-  TF_ASSIGN_OR_RETURN(float_lit, literal.Convert(F32));
-
-  float learning_rate = float_lit.GetFirstElement<float>();
-
-  // Find reduction
+  // // Find reduction dimensions
   const auto* reduce = root->operand(1)->operand(0);
   std::vector<std::size_t> reduction_dims;
   for (auto d : reduce->dimensions()) {
     reduction_dims.push_back(d);
   }
 
-  popops::reduceWithOutput(graph, deltas, biases, reduction_dims,
-                           {popops::Operation::ADD, -learning_rate, true}, prog,
-                           GetDebugName(inst));
+  TF_CHECK_OK(conv_graph_caching::DoCachedBiasApply(
+      graph, res, biases, deltas, reduction_dims, GetShardingDeviceId(inst),
+      prog, inst, tensor_map));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, biases));
 

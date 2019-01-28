@@ -36,10 +36,27 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 #include "absl/container/flat_hash_set.h"
 
 namespace tensorflow {
+
+namespace {
+void XlaShapesFromAttr(OpKernelConstruction* ctx,
+                       std::vector<xla::Shape>& result) {
+  std::vector<TensorShape> shapes;
+  std::vector<tensorflow::DataType> types;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &shapes));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &types));
+
+  for (unsigned i = 0; i < shapes.size(); ++i) {
+    xla::PrimitiveType xla_type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(types[i], &xla_type));
+    result.emplace_back(TensorShapeToXLAShape(xla_type, shapes[i]));
+  }
+}
+}  // namespace
 
 class PopDatastreamInfeedEnqueueOp : public OpKernel {
  public:
@@ -73,7 +90,8 @@ class PopDatastreamInfeedEnqueueOp : public OpKernel {
     auto* transfer_manager =
         xla::TransferManager::GetForPlatform(p).ValueOrDie();
     auto literal_input = xla::BorrowingLiteral(tensor_data.data(), xla_shape);
-    transfer_manager->TransferLiteralToInfeed(executor, literal_input);
+    OP_REQUIRES_OK(ctx, transfer_manager->TransferLiteralToInfeed(
+                            executor, literal_input));
   }
 
  private:
@@ -98,7 +116,7 @@ class PopDatastreamInfeedDequeueOp : public XlaOpKernel {
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(type_, shape_, &xla_shape));
     xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp infeed_op = xla::Infeed(b, xla_shape, "dequeue");
+    xla::XlaOp infeed_op = xla::Infeed(b, xla_shape);
     ctx->SetOutput(0, infeed_op);
   }
 
@@ -109,5 +127,78 @@ class PopDatastreamInfeedDequeueOp : public XlaOpKernel {
 };
 
 REGISTER_IPU_OP("PopDatastreamInfeedDequeue", PopDatastreamInfeedDequeueOp);
+
+class PopDatastreamInfeedEnqueueTupleOp : public OpKernel {
+ public:
+  explicit PopDatastreamInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), device_ordinal_(0) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
+
+    OP_REQUIRES(ctx, device_ordinal_ >= 0,
+                errors::InvalidArgument("Need device_ordinal >= 0, got ",
+                                        device_ordinal_));
+    XlaShapesFromAttr(ctx, xla_shapes_);
+  }
+  ~PopDatastreamInfeedEnqueueTupleOp() override{};
+
+  void Compute(OpKernelContext* ctx) override {
+    auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
+    OP_REQUIRES(ctx, platform.ok(), platform.status());
+    auto* p =
+        static_cast<xla::poplarplugin::PoplarPlatform*>(platform.ValueOrDie());
+
+    std::vector<const char*> src_buf_ptrs;
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      const Tensor& input = ctx->input(i);
+      tensorflow::StringPiece tensor_data = input.tensor_data();
+      src_buf_ptrs.push_back(tensor_data.data());
+    }
+
+    auto literal_tuple = xla::BorrowingLiteral(
+        src_buf_ptrs, xla::ShapeUtil::MakeTupleShape(xla_shapes_));
+
+    auto* transfer_manager =
+        xla::TransferManager::GetForPlatform(p).ValueOrDie();
+
+    auto executor = p->ExecutorForDevice(device_ordinal_).ValueOrDie();
+    OP_REQUIRES_OK(ctx, transfer_manager->TransferLiteralToInfeed(
+                            executor, literal_tuple));
+  }
+
+ private:
+  int device_ordinal_;
+  std::vector<xla::Shape> xla_shapes_;
+  TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamInfeedEnqueueTupleOp);
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("PopDatastreamInfeedEnqueueTuple").Device(DEVICE_CPU),
+    PopDatastreamInfeedEnqueueTupleOp);
+
+class PopDatastreamInfeedDequeueTupleOp : public XlaOpKernel {
+ public:
+  explicit PopDatastreamInfeedDequeueTupleOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    XlaShapesFromAttr(ctx, xla_shapes_);
+  }
+
+  ~PopDatastreamInfeedDequeueTupleOp() override{};
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
+    auto tuple_shape = xla::ShapeUtil::MakeTupleShape(xla_shapes_);
+    xla::XlaOp output_tuple = xla::Infeed(b, tuple_shape);
+    for (int i = 0; i < ctx->num_outputs(); ++i) {
+      ctx->SetOutput(i, xla::GetTupleElement(output_tuple, i));
+    }
+  }
+
+ private:
+  std::vector<xla::Shape> xla_shapes_;
+  TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamInfeedDequeueTupleOp);
+};
+
+REGISTER_IPU_OP("PopDatastreamInfeedDequeueTuple",
+                PopDatastreamInfeedDequeueTupleOp);
 
 }  // namespace tensorflow

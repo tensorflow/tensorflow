@@ -97,7 +97,6 @@ bool Is2DMaxPoolGrad(const HloInstruction* inst) {
         reduction_dims++;
       }
     }
-    VLOG(0) << "reduction_dims " << reduction_dims;
     return inst->window().dimensions_size() == 4 && reduction_dims == 2;
   }
   return false;
@@ -221,7 +220,7 @@ bool IsPopOpsConvolution(const HloInstruction* inst) {
   return false;
 }
 
-bool IsPopOpsConvolutionInputGradient(const HloInstruction* inst) {
+bool IsPopOpsConvolutionWithReverse(const HloInstruction* inst) {
   return (IsPopOpsFusion(inst, "conv_with_reverse"));
 }
 

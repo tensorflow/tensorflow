@@ -17,6 +17,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 
+#include "tensorflow/core/lib/gtl/cleanup.h"
+
 #include <memory>
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -51,15 +53,58 @@ PoplarTransferManager::PoplarTransferManager()
 Status PoplarTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
   const Shape& shape = literal.shape();
-  if (shape.IsTuple()) {
-    return Unimplemented("Transferring tuples is not supported yet");
+
+  if (!shape.IsTuple()) {
+    int64 size = GetByteSizeRequirement(shape);
+    return TransferBufferToInfeed(executor, size, literal.untyped_data());
   }
 
-  int64 size = GetByteSizeRequirement(shape);
-  return TransferBufferToInfeed(executor, size, literal.untyped_data());
+  if (ShapeUtil::IsNestedTuple(shape)) {
+    return Unimplemented(
+        "Infeed with a nested tuple shape is not supported: %s",
+        ShapeUtil::HumanString(literal.shape()));
+  }
+
+  std::vector<cpu::runtime::XfeedBuffer*> buffers;
+  buffers.reserve(ShapeUtil::TupleElementCount(shape));
+  auto cleanup = tensorflow::gtl::MakeCleanup([&buffers]() {
+    for (cpu::runtime::XfeedBuffer* b : buffers) {
+      b->Done(Cancelled("Failed to infeed buffer to device."));
+    }
+  });
+
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const Shape& tuple_element_shape = ShapeUtil::GetSubshape(shape, {i});
+    int64 tuple_element_size = GetByteSizeRequirement(tuple_element_shape);
+    TF_ASSIGN_OR_RETURN(
+        cpu::runtime::XfeedBuffer * buffer,
+        TransferBufferToInfeedInternal(executor, tuple_element_size,
+                                       literal.untyped_data({i})));
+    buffers.push_back(buffer);
+  }
+
+  cpu::runtime::XfeedManager* xfeed_manager =
+      xla::poplarplugin::GetXfeedManager(executor->device_ordinal());
+  xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
+
+  cleanup.release();
+  return Status::OK();
 }
 
 Status PoplarTransferManager::TransferBufferToInfeed(
+    se::StreamExecutor* executor, int64 size, const void* source) {
+  TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
+                      TransferBufferToInfeedInternal(executor, size, source));
+
+  cpu::runtime::XfeedManager* xfeed_manager =
+      xla::poplarplugin::GetXfeedManager(executor->device_ordinal());
+  xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
+
+  return Status::OK();
+}
+
+StatusOr<cpu::runtime::XfeedBuffer*>
+PoplarTransferManager::TransferBufferToInfeedInternal(
     se::StreamExecutor* executor, int64 size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
     return InvalidArgument("Infeed shape is too large: needs %d bytes", size);
@@ -75,11 +120,7 @@ Status PoplarTransferManager::TransferBufferToInfeed(
   PoplarInfeedBuffer* queued_buffer = new PoplarInfeedBuffer(size_32);
   std::memcpy(queued_buffer->data(), source, size);
 
-  cpu::runtime::XfeedManager* xfeed_manager =
-      xla::poplarplugin::GetXfeedManager(executor->device_ordinal());
-  xfeed_manager->infeed()->EnqueueBuffersAtomically({queued_buffer});
-
-  return Status::OK();
+  return queued_buffer;
 }
 
 }  // namespace poplarplugin

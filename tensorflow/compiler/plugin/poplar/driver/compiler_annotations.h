@@ -30,6 +30,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+using InfeedMap = std::map<const HloInstruction*, std::vector<xla::Shape>>;
+
 // This structure contains all information which we generate that pertains
 // to the XLA graph, as opposed to the poplar lowering of that graph.
 struct CompilerAnnotations {
@@ -44,7 +46,7 @@ struct CompilerAnnotations {
 
   InplaceUtil::InplaceInstructions inplace_instructions;
 
-  std::vector<const HloInstruction*> infeed_instructions;
+  InfeedMap infeed_map;
 };
 
 }  // namespace poplarplugin

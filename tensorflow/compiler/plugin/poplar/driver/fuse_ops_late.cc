@@ -349,21 +349,39 @@ static const std::vector<HloMatcherPattern> patterns = {
     })
   ),
 
-  // Bias reduction and application
+  // Bias reduction and application (constant)
   HloMatcherPattern(
     PatternType("bias_apply"),
     PatternMetaTarget(0),
-    PatternInputs({1, 7}),
+    PatternInputs({5, 6}),
     PatternOutputs({0}),
     Pattern({
-      {HloOpcode::kSubtract, NodeOperands({1, 2}), IsOutputFeed},
-      {HloOpcode::kParameter, NodeOperands({})},
-      {HloOpcode::kMultiply, NodeOperands({5, 3})},
-      {HloOpcode::kBroadcast, NodeOperands({4})},
-      {HloOpcode::kConstant, NodeOperands({})},
-      {HloOpcode::kReduce, NodeOperands({7, 6}), IsBiasReduce},
+      {HloOpcode::kSubtract, NodeOperands({5, 1}), IsOutputFeed},
+      {HloOpcode::kMultiply, NodeOperands({3, 2})},
+      {HloOpcode::kBroadcast, NodeOperands({7})},
+      {HloOpcode::kReduce, NodeOperands({6, 4}), IsBiasReduce},
       {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
+    })
+  ),
+
+  // Bias reduction and application (tensor)
+  HloMatcherPattern(
+    PatternType("bias_apply"),
+    PatternMetaTarget(0),
+    PatternInputs({5, 6, 7}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kSubtract, NodeOperands({5, 1}), IsOutputFeed},
+      {HloOpcode::kMultiply, NodeOperands({3, 2})},
+      {HloOpcode::kBroadcast, NodeOperands({7})},
+      {HloOpcode::kReduce, NodeOperands({6, 4}), IsBiasReduce},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsScalar},
     })
   ),
 

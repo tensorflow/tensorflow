@@ -13,9 +13,10 @@ py_library(
     srcs = [
       "__init__.py",
       "python/ops.py",
-      "python/utils.py",
       "python/popnn_normalization.py",
       "python/popnn_rnn.py",
+      "python/sharded_optimizer.py",
+      "python/utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -146,6 +147,7 @@ tf_py_test(
 tf_py_test(
     name = "multi_ipu_test",
     size = "medium",
+    tags = ['exclusive'],
     srcs = ["python/tests/multi_ipu_test.py"],
     additional_deps = [
         ":ipu",
@@ -175,6 +177,21 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "infeed_outfeed_test",
+    size = "medium",
+    srcs = ["python/tests/infeed_outfeed_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
 
 test_suite(
     name = "all_tests",
@@ -186,7 +203,7 @@ test_suite(
         "while_loop_test",
         "sort_op_test",
         "multi_ipu_test",
-
+       "infeed_outfeed_test",
     ],
 )
 
@@ -221,7 +238,5 @@ test_suite(
       ":poplar_test_suite",
       ":size_speed_tests",
       ":training_tests",
-      #"//tensorflow/compiler/tests:cpu_tests",
-      #"//tensorflow/compiler/xla/tests:cpu_tests",
     ],
 )

@@ -757,12 +757,14 @@ StatusOr<poplar::program::Program> CreateBwdMaxPool(
 
   poplar::Graph& graph = GetGraph(res, inst);
 
-  poplar::Tensor in0;
-  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, res, inst, 0, seq));
-  poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, res, inst, 1, seq));
-  poplar::Tensor fwd_max_pool_output;
-  TF_ASSIGN_OR_RETURN(fwd_max_pool_output,
+  poplar::Tensor input;
+  TF_ASSIGN_OR_RETURN(input,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
+  poplar::Tensor output_grad;
+  TF_ASSIGN_OR_RETURN(output_grad,
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
+  poplar::Tensor output;
+  TF_ASSIGN_OR_RETURN(output,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
 
   HloInstruction* reduce_window =
@@ -776,17 +778,17 @@ StatusOr<poplar::program::Program> CreateBwdMaxPool(
   const auto shuffle_in =
       GetShuffleInputDimensionsForPoplar(window, reduction_dims);
 
-  in0 = in0.dimShuffle(shuffle_in);
-  in1 = in1.dimShuffle(shuffle_in);
-  fwd_max_pool_output = fwd_max_pool_output.dimShuffle(shuffle_in);
+  input = input.dimShuffle(shuffle_in);
+  output_grad = output_grad.dimShuffle(shuffle_in);
+  output = output.dimShuffle(shuffle_in);
 
   auto pool_params =
-      GetPoplibsPoolParams(popnn::PoolingType::MAX, window, in0.shape(),
-                           reduction_dims, in0.elementType());
+      GetPoplibsPoolParams(popnn::PoolingType::MAX, window, input.shape(),
+                           reduction_dims, input.elementType());
 
-  out = popnn::pooling::poolInputGradient(
-      graph, pool_params, in0, in1, fwd_max_pool_output, seq,
-      GetDebugName(inst), res.default_pooling_options);
+  out = popnn::pooling::poolInputGradient(graph, pool_params, input, output,
+                                          output_grad, seq, GetDebugName(inst),
+                                          res.default_pooling_options);
   // Shuffle back
   const auto shuffle_out =
       GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
