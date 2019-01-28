@@ -950,11 +950,12 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
 
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
-                     Tensor* grad_out) {
+                     Tensor* grad_out, const bool include_batch_in_index) {
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *(context->device()->tensorflow_cpu_worker_threads());
 
-    auto shard = [&grad_in, &argmax, &grad_out](int64 start, int64 limit) {
+    auto shard = [&grad_in, &argmax, &grad_out, include_batch_in_index](
+                     int64 start, int64 limit) {
       const int64 batch_size =
           GetTensorDim(grad_out->shape(), FORMAT_NHWC, 'N');
       const int64 output_size_per_batch = grad_out->NumElements() / batch_size;
@@ -974,7 +975,9 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
         const int input_start = start * input_size_per_batch;
         const int input_end = limit * input_size_per_batch;
         for (int64 index = input_start; index < input_end; index++) {
-          const int64 grad_out_index = argmax_flat(index);
+          const int64 grad_out_index = include_batch_in_index
+                                           ? argmax_flat(index)
+                                           : argmax_flat(index) + input_start;
           CHECK(grad_out_index >= output_start && grad_out_index < output_end)
               << "Invalid output gradient index: " << grad_out_index << ", "
               << output_start << ", " << output_end;
@@ -1014,6 +1017,8 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
+    OP_REQUIRES_OK(context, context->GetAttr("include_batch_in_index",
+                                             &include_batch_in_index_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1033,8 +1038,8 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {1}, 0, out_shape, &grad_out));
 
-    LaunchMaxPoolingGradWithArgmax<Device, T>::launch(context, params, grad_in,
-                                                      argmax, grad_out);
+    LaunchMaxPoolingGradWithArgmax<Device, T>::launch(
+        context, params, grad_in, argmax, grad_out, include_batch_in_index_);
   }
 
  private:
@@ -1042,6 +1047,7 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
+  bool include_batch_in_index_;
 };
 
 template <typename Device, typename T>
@@ -1064,6 +1070,8 @@ class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
+    OP_REQUIRES_OK(context, context->GetAttr("include_batch_in_index",
+                                             &include_batch_in_index_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1085,13 +1093,14 @@ class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
                                 {1}, 0, out_shape, &grad_out));
 
     LaunchMaxPoolingGradGradWithArgmax<Device, T>::launch(
-        context, params, grad_in, argmax, grad_out);
+        context, params, grad_in, argmax, grad_out, include_batch_in_index_);
   }
 
  private:
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+  bool include_batch_in_index_;
 };
 
 #if GOOGLE_CUDA
@@ -1326,7 +1335,13 @@ template <typename T>
 struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
-                     Tensor* grad_out) {
+                     Tensor* grad_out, const bool include_batch_in_index) {
+    // TODO(facaiy): support include_batch_in_index=true for gpu kernel.
+    if (include_batch_in_index) {
+      LOG(WARNING) << "include_batch_in_index=true is not supported "
+                   << "on GPU kernel of MaxPoolGradWithArgmax. "
+                   << "Ignore it.";
+    }
     const int input_size = params.tensor_in_batch * params.tensor_in_rows *
                            params.tensor_in_cols * params.depth;
     const int output_size = params.tensor_in_batch * params.out_height *
@@ -1349,7 +1364,13 @@ template <typename T>
 struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
-                     Tensor* grad_out) {
+                     Tensor* grad_out, const bool include_batch_in_index) {
+    // TODO(facaiy): support include_batch_in_index=true for gpu kernel.
+    if (include_batch_in_index) {
+      LOG(WARNING) << "include_batch_in_index=true is not supported "
+                   << "on GPU kernel of MaxPoolGradGradWithArgmax. "
+                   << "Ignore it.";
+    }
     const int input_size = params.tensor_in_batch * params.tensor_in_rows *
                            params.tensor_in_cols * params.depth;
     const int output_size = params.tensor_in_batch * params.out_height *

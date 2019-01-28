@@ -849,24 +849,35 @@ class PoolingTest(test.TestCase):
         self.assertAllEqual(argmax.ravel(), argmax_exp)
 
   def testMaxPoolingGradWithArgmax(self):
-    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    tensor_input = [11.0, 12.0, 13.0, 14.0]
-    tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
-    with self.session(use_gpu=True):
-      orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
-      t = constant_op.constant(tensor_input, shape=[1, 2, 2, 1])
-      argmax = constant_op.constant(
-          tensor_argmax, shape=[1, 2, 2, 1], dtype=dtypes.int64)
-      out_op = gen_nn_ops.max_pool_grad_with_argmax(
-          orig_in,
-          t,
-          argmax,
-          ksize=[1, 2, 2, 1],
-          strides=[1, 1, 1, 1],
-          padding="VALID")
-      out = self.evaluate(out_op).flatten()
-      self.assertAllClose(out,
-                          [11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0])
+    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+                  1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    tensor_input = [11.0, 12.0, 13.0, 14.0,
+                    21.0, 22.0, 23.0, 24.0]
+
+    configs = [
+        [False, False, [0, 1, 3, 5, 0, 1, 3, 5]],
+        [False, True, [0, 1, 3, 5, 9, 10, 12, 14]],
+        [True, False, [0, 1, 3, 5, 0, 1, 3, 5]]]
+
+    for use_gpu, include_batch_in_index, argmax in configs:
+      with self.session(use_gpu=use_gpu):
+        orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+        t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
+        argmax_t = constant_op.constant(
+            argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
+        out_op = gen_nn_ops.max_pool_grad_with_argmax(
+            orig_in,
+            t,
+            argmax_t,
+            ksize=[1, 2, 2, 1],
+            strides=[1, 1, 1, 1],
+            padding="VALID",
+            include_batch_in_index=include_batch_in_index)
+        out = self.evaluate(out_op).flatten()
+        self.assertAllClose(
+            out,
+            [11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0,
+             21.0, 22.0, 0.0, 23.0, 0.0, 24.0, 0.0, 0.0, 0.0])
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
@@ -886,7 +897,8 @@ class PoolingTest(test.TestCase):
           argmax,
           ksize=[1, 2, 2, 1],
           strides=[1, 1, 1, 1],
-          padding="VALID")
+          padding="VALID",
+          include_batch_in_index=False)
       out = self.evaluate(out_op).flatten()
       self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0])
 
