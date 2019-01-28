@@ -256,6 +256,10 @@ class CallGraph {
  private:
   CallGraph(const HloModule* module);
 
+  // Not copyable.
+  CallGraph(const CallGraph&) = delete;
+  CallGraph& operator=(const CallGraph&) = delete;
+
   // Sets the call contexts for every node in the graph.
   void SetCallContexts();
 

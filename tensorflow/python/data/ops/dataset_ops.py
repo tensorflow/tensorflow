@@ -1733,7 +1733,7 @@ def make_one_shot_iterator(dataset):
 
 
 @tf_export(v1=["data.make_initializable_iterator"])
-def make_initializable_iterator(dataset):
+def make_initializable_iterator(dataset, shared_name=None):
   """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
 
   Note: The returned iterator will be in an uninitialized state,
@@ -1741,13 +1741,16 @@ def make_initializable_iterator(dataset):
 
   ```python
   dataset = ...
-  iterator = dataset.make_initializable_iterator()
+  iterator = tf.data.make_initializable_iterator(dataset)
   # ...
   sess.run(iterator.initializer)
   ```
 
   Args:
     dataset: A `tf.data.Dataset`.
+    shared_name: (Optional.) If non-empty, the returned iterator will be
+      shared under the given name across multiple sessions that share the
+      same devices (e.g. when using a remote server).
 
   Returns:
     A `tf.data.Iterator` over the elements of `dataset`.
@@ -1758,9 +1761,9 @@ def make_initializable_iterator(dataset):
   try:
     # Call the defined `make_initializable_iterator()` if there is one, because
     # some datasets (e.g. for prefetching) override its behavior.
-    return dataset.make_initializable_iterator()
+    return dataset.make_initializable_iterator(shared_name)
   except AttributeError:
-    return DatasetV1Adapter(dataset).make_initializable_iterator()
+    return DatasetV1Adapter(dataset).make_initializable_iterator(shared_name)
 
 
 @tf_export("data.Options")

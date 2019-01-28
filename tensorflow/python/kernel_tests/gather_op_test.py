@@ -213,8 +213,6 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         array_ops.gather(params, [[7]], axis=1).eval()
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla(
-      "This test never passed for XLA")  # Different error message.
   def testBadAxis(self):
     with self.session(use_gpu=True):
       params = [0, 1, 2]

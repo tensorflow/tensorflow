@@ -73,7 +73,10 @@ int TryToReadNumaNode(ibv_device* device) {
 
   std::ifstream ifs(filename.c_str());
   string content;
-  CHECK(std::getline(ifs, content));
+  const auto& ret = std::getline(ifs, content);
+  if (!ret) {
+    return port::kNUMANoAffinity;
+  }
 
   int32 value;
   if (strings::safe_strto32(content, &value)) {

@@ -25,6 +25,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
@@ -86,7 +87,14 @@ def convert_structure_to_signature(structure, arg_names=None):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
-    if isinstance(arg, (int, float, bool, tensor_spec.TensorSpec)):
+    if isinstance(arg, (
+        int,
+        float,
+        bool,
+        type(None),
+        dtypes.DType,
+        tensor_spec.TensorSpec,
+    )):
       return arg
     return UnknownArgument()
 
@@ -99,7 +107,9 @@ def convert_structure_to_signature(structure, arg_names=None):
           "Passed in arg_names don't match actual signature (%s)." % arg_names)
     # Replace all top-level names with their actual arg_names. If a path before
     # was "(2,'a',1)", it will become "(arg_names[2],'a',1)".
-    flattened = [((arg_names[0],) + path[1:], arg) for path, arg in flattened]
+    flattened = [
+        ((arg_names[path[0]],) + path[1:], arg) for path, arg in flattened
+    ]
 
   mapped = [
       encode_arg(arg, "/".join([str(p) for p in path]))

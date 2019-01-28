@@ -156,9 +156,6 @@ include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
 
-MICROLITE_TEST_TARGETS := $(addprefix $(BINDIR), \
-$(patsubst %_test.cc,%.test_target,$(MICROLITE_TEST_SRCS)))
-
 # For normal manually-created TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
@@ -201,7 +198,7 @@ $(BINDIR)%.test_target: $(BINDIR)%_test
 $(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
-test: test_micro_speech $(MICROLITE_TEST_TARGETS)
+test: $(MICROLITE_TEST_TARGETS)
 
 # Gets rid of all generated files.
 clean:

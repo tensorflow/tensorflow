@@ -266,17 +266,21 @@ message ExecutionOptions {
   // If not provided, the default device will be chosen.
   repeated DeviceHandle device_handles = 5;
 
+  // Number of replicas of the computation to run. If zero, uses the default
+  // number of replicas for the XLA service.
+  int32 num_replicas = 6;
+
   // The number of arguments to the original TF operation
-  uint32 argument_count = 6;
+  uint32 argument_count = 7;
 
   // The number of arguments to the TF operation which are resource variables
-  uint32 resource_input_count = 7;
+  uint32 resource_input_count = 8;
 
   // A map from the XLA computation inputs to the original TF operation inputs
-  repeated int32 input_mapping = 8;
+  repeated int32 input_mapping = 9;
 
   // The number of outputs which are updates for resource variables
-  repeated int32 resource_update_to_input_index = 9;
+  repeated int32 resource_update_to_input_index = 10;
 }
 
 message GetDeviceHandlesRequest {

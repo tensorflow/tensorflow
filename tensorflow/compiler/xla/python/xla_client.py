@@ -459,6 +459,7 @@ class CompileOptions(object):
     self.dump_unoptimized_hlo_proto_to = None
     self.dump_per_pass_hlo_proto_to = None
     self.hlo_profile = False
+    self.num_replicas = get_replica_count()
 
 
 def transfer_to_infeed(value, replica_number=None):
@@ -964,16 +965,30 @@ class ComputationBuilder(object):
       dimensions = tuple(range(ndim))
     return self._client.Reshape(operand, dimensions, new_sizes)
 
-  def CrossReplicaSum(self, operand):
+  def CrossReplicaSum(self, operand, replica_groups=None):
     """CrossReplicaSum op.
 
     Args:
       operand: the operand to sum across replica instances.
+      replica_groups: optional, list of lists of ints encoding a partition of
+        the set {0, 1, ..., num_replicas} into equally-sized replica groups
+        within which the cross-replica sum is performed. If not supplied or None
+        (the default), all replicas belong to the same group.
 
     Returns:
-      A LocalOp that has the sum of the value among all replicas.
+      A LocalOp that represents on each replica the sum of its group's values.
     """
-    return self._client.CrossReplicaSum(operand)
+
+    def make_proto(replica_group):
+      replica_group_proto = xla_data_pb2.ReplicaGroup()
+      replica_group_proto.replica_ids.extend(replica_group)
+      return replica_group_proto
+
+    if replica_groups is None:
+      replica_groups = []  # special value for XLA API
+    else:
+      replica_groups = [make_proto(group) for group in replica_groups]
+    return self._client.CrossReplicaSum(operand, replica_groups)
 
   def Collapse(self, operand, dimensions):
     """Collapse op."""

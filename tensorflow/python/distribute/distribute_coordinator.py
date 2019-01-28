@@ -210,8 +210,8 @@ class _WorkerContext(object):
       ValueError: if `worker_barrier` is not passed to the __init__ method.
     """
     if not self._worker_barrier:
-      raise ValueError("`worker_barrier is not set in the worker context.` \t" +
-                       self._debug_message())
+      # TODO(yuefengz): we should throw an error in independent worker mode.
+      return
     self._worker_barrier.wait()
 
   def session_creator(self,

@@ -2348,7 +2348,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           math_ops.add(c, c)
         c2 = constant_op.constant(2.0)
       with self.assertRaisesRegexp(
-          TypeError, "contains objects other than 'EagerTensor'"):
+          TypeError, "Graph tensors"):
         math_ops.add(c2, c2)
 
   def testPreservesNameScopeInEagerExecution(self):

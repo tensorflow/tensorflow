@@ -296,8 +296,12 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }
 
-  config->set_replica_count(options_.number_of_replicas());
   if (execution_options != nullptr) {
+    if (execution_options->num_replicas() > 0) {
+      config->set_replica_count(execution_options->num_replicas());
+    } else {
+      config->set_replica_count(options_.number_of_replicas());
+    }
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
     config->set_argument_count(execution_options->argument_count());
@@ -315,6 +319,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
         proto_resource_update_to_input_index.end());
     config->set_resource_update_to_input_index(resource_update_to_input_index);
   } else {
+    config->set_replica_count(options_.number_of_replicas());
     config->set_debug_options(GetDebugOptionsFromFlags());
   }
 

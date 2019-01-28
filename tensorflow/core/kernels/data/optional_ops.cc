@@ -221,12 +221,5 @@ REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
                                           OptionalVariant,
                                           OptionalBinaryAdd<CPUDevice>);
 
-Status OptionalShape(const OptionalVariant& x, TensorShape* s) {
-  *s = TensorShape({});
-  return Status::OK();
-}
-
-REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(OptionalVariant, OptionalShape);
-
 }  // namespace data
 }  // namespace tensorflow

@@ -316,14 +316,27 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
         expanded_filter_shape, HloOpcode::kSelect, filter_mask, new_convolution,
         zero_filter));
 
-    auto zero_literal = LiteralUtil::CreateR0(0.0f);
-    TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(F32));
+    PrimitiveType reduce_type = new_filter->shape().element_type();
+    auto reduce_window_shape = new_convolution->shape();
+    reduce_window_shape.set_dimensions(output_batch_dimension, 1);
+
+    // Ensure that data input to reduce window uses at least 32 bits.
+    if (primitive_util::BitWidth(reduce_type) < primitive_util::BitWidth(F32)) {
+      reduce_type = F32;
+      reduce_window_shape.set_element_type(F32);
+      Shape convert_shape = new_filter->shape();
+      convert_shape.set_element_type(F32);
+      new_filter =
+          add(HloInstruction::CreateConvert(convert_shape, new_filter));
+    }
+
+    auto zero_literal = LiteralUtil::Zero(reduce_type);
     auto zero_scalar =
         add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
     auto reduce_function = [&]() -> HloComputation* {
       HloComputation::Builder b("add_computation");
-      Shape shape = ShapeUtil::MakeShape(F32, {});
+      Shape shape = ShapeUtil::MakeShape(reduce_type, {});
       auto lhs =
           b.AddInstruction(HloInstruction::CreateParameter(0, shape, "lhs"));
       auto rhs =
@@ -332,19 +345,6 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
           HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
       return computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
     };
-
-    auto reduce_window_shape = new_convolution->shape();
-    reduce_window_shape.set_dimensions(output_batch_dimension, 1);
-
-    // Ensure that data input to reduce window is of type F32.
-    if (primitive_util::BitWidth(new_filter->shape().element_type()) <
-        primitive_util::BitWidth(F32)) {
-      reduce_window_shape.set_element_type(F32);
-      Shape convert_shape = new_filter->shape();
-      convert_shape.set_element_type(F32);
-      new_filter =
-          add(HloInstruction::CreateConvert(convert_shape, new_filter));
-    }
 
     // Create the reduce window.
     Window window;

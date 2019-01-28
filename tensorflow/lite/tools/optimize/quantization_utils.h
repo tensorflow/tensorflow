@@ -53,6 +53,13 @@ void SymmetricPerChannelQuantization(const float* const input,
                                      std::vector<float>* output_scales,
                                      std::vector<int8_t>* output_value);
 
+// Quantize the values given an array of scales.
+void SymmetricPerChannelQuantizeValues(const float* const input,
+                                       const std::vector<float>& scales_inv,
+                                       const std::vector<int>& dimension,
+                                       int32_t channel_dim_index,
+                                       std::vector<int8_t>* output_value);
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite

@@ -138,7 +138,11 @@ tf_kernel_library(
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
-        "strided_slice_op_gpu.cu.cc",
+        "strided_slice_op_gpu_impl.h",
+        "strided_slice_op_gpu_int.cu.cc",
+        "strided_slice_op_gpu_complex.cu.cc",
+        "strided_slice_op_gpu_bool.cu.cc",
+        "strided_slice_op_gpu_number_types.cu.cc",
     ],
     deps = [
         ":bounds_check",
@@ -649,13 +653,10 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "bounds_check",
-    hdrs = ["bounds_check.h"],
+    actual = "//tensorflow/core:framework_bounds_check",
     visibility = [":friends"],
-    deps = [
-        "//tensorflow/core:framework_bounds_check",
-    ],
 )
 
 # Private support libraries ---------------------------------------------------
@@ -2174,6 +2175,16 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "string_view_variant_wrapper",
+    hdrs = ["string_view_variant_wrapper.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "checkpoint_ops",
     deps = [
         ":generate_vocab_remapping_op",
@@ -2416,6 +2427,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/stream_executor:stream",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3651,27 +3663,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "shape_op_test",
-    srcs = ["shape_op_test.cc"],
-    deps = [
-        ":array",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -5439,7 +5430,6 @@ filegroup(
     srcs = [
         "avgpooling_op.h",
         "batch_util.h",
-        "bounds_check.h",
         "cwise_ops.h",
         "cwise_ops_common.h",
         "cwise_ops_gradients.h",
@@ -5480,7 +5470,6 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
-        "bounds_check.h",
         "cast_op.cc",
         "cast_op.h",
         "cast_op_impl.h",

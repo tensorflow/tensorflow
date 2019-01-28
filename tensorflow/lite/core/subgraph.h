@@ -79,18 +79,22 @@ class Subgraph {
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
-  TfLiteStatus SetTensorParametersReadOnly(
-      int tensor_index, TfLiteType type, const char* name, const size_t rank,
-      const int* dims, TfLiteQuantizationParams quantization,
-      const char* buffer, size_t bytes, const Allocation* allocation);
+  TfLiteStatus SetTensorParametersReadOnly(int tensor_index, TfLiteType type,
+                                           const char* name, const size_t rank,
+                                           const int* dims,
+                                           TfLiteQuantization quantization,
+                                           const char* buffer, size_t bytes,
+                                           const Allocation* allocation);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
-  TfLiteStatus SetTensorParametersReadWrite(
-      int tensor_index, TfLiteType type, const char* name, const size_t rank,
-      const int* dims, TfLiteQuantizationParams quantization, bool is_variable);
+  TfLiteStatus SetTensorParametersReadWrite(int tensor_index, TfLiteType type,
+                                            const char* name, const size_t rank,
+                                            const int* dims,
+                                            TfLiteQuantization quantization,
+                                            bool is_variable);
 
   // WARNING: Experimental interface, subject to change
   // Overrides execution plan. This bounds checks indices sent in.
