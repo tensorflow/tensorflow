@@ -5410,7 +5410,8 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
   @tf_contextlib.contextmanager
   def get_controller(self, default):
     context.context().context_switches.push(
-        default.building_function, default.as_default)
+        default.building_function, default.as_default,
+        default._device_function_stack)
     try:
       with super(_DefaultGraphStack, self).get_controller(
           default) as g, context.graph_mode():
@@ -5490,7 +5491,7 @@ def init_scope():
       # Names that end with trailing slashes are treated by `name_scope` as
       # absolute.
       scope = scope + "/"
-    inner_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
+    innermost_nonempty_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
     outer_context = None
     if not _default_graph_stack.stack:
@@ -5503,6 +5504,8 @@ def init_scope():
     else:
       # Find a context that is not building a function.
       for stack_entry in reversed(context.context().context_switches.stack):
+        if not innermost_nonempty_device_stack:
+          innermost_nonempty_device_stack = stack_entry.device_stack
         if not stack_entry.is_building_function:
           outer_context = stack_entry.enter_context_fn
           break
@@ -5531,7 +5534,7 @@ def init_scope():
           # to do the same when lifting into the eager context.
           outer_graph = get_default_graph()
           outer_device_stack = outer_graph._device_function_stack  # pylint: disable=protected-access
-          outer_graph._device_function_stack = inner_device_stack  # pylint: disable=protected-access
+          outer_graph._device_function_stack = innermost_nonempty_device_stack  # pylint: disable=protected-access
         yield
     finally:
       # If an exception is raised here it may be hiding a related exception in
