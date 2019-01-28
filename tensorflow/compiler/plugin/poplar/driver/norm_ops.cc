@@ -155,16 +155,16 @@ StatusOr<poplar::program::Program> CreateNormTraining(
   }
 
   std::vector<std::size_t> non_broadcast_dims;
-
   poplar::Tensor operand_view;
   std::tie(operand_view, non_broadcast_dims) =
       ShuffleNormInputToPoplar(operand, feature_dimension);
 
   poplar::Tensor out, mean, variance_or_inv_std_dev;
+  poplar::Tensor whitened_operand;
   std::tie(out, mean, variance_or_inv_std_dev) =
       norm_graph_caching::DoCachedNormTraining(
-          norm_type, graph, res, operand_view, scale, offset, epsilon,
-          optional_num_groups, GetShardingDeviceId(inst), seq,
+          norm_type, graph, res, operand_view, whitened_operand, scale, offset,
+          epsilon, optional_num_groups, GetShardingDeviceId(inst), seq,
           GetDebugName(inst));
 
   out =
@@ -173,6 +173,11 @@ StatusOr<poplar::program::Program> CreateNormTraining(
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, mean));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, variance_or_inv_std_dev));
+  if (norm_type == NormType::GroupNorm) {
+    whitened_operand = ShuffleNormOutputToTensorflow(
+        whitened_operand, feature_dimension, non_broadcast_dims);
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 3, whitened_operand));
+  }
 
   return seq;
 }

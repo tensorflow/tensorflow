@@ -537,30 +537,30 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
                                  name='conv1')
         gamma = constant_op.constant([0.5, 0.5], np.float32)
         beta = constant_op.constant([0.5, 0.5], np.float32)
-        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
-                                                     gamma=gamma,
-                                                     beta=beta,
-                                                     data_format="NHWC",
-                                                     epsilon=0.0015,
-                                                     num_groups=2)
+        y, _, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+                                                        gamma=gamma,
+                                                        beta=beta,
+                                                        data_format="NHWC",
+                                                        epsilon=0.0015,
+                                                        num_groups=2)
         y = convolutional.conv2d(y, 2, 1, use_bias=False,
                                  kernel_initializer=init_ops.ones_initializer(),
                                  name='conv2')
-        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
-                                                     gamma=gamma,
-                                                     beta=beta,
-                                                     data_format="NHWC",
-                                                     epsilon=0.0015,
-                                                     num_groups=2)
+        y, _, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+                                                        gamma=gamma,
+                                                        beta=beta,
+                                                        data_format="NHWC",
+                                                        epsilon=0.0015,
+                                                        num_groups=2)
         y = convolutional.conv2d(y, 2, 1, use_bias=False,
                                  kernel_initializer=init_ops.ones_initializer(),
                                  name='conv3')
-        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
-                                                     gamma=gamma,
-                                                     beta=beta,
-                                                     data_format="NHWC",
-                                                     epsilon=0.0015,
-                                                     num_groups=2)
+        y, _, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+                                                        gamma=gamma,
+                                                        beta=beta,
+                                                        data_format="NHWC",
+                                                        epsilon=0.0015,
+                                                        num_groups=2)
 
       loss = math_ops.reduce_sum(y)
       optimizer = gradient_descent.GradientDescentOptimizer(0.1)
@@ -587,11 +587,11 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
              'Copy_',
              'vs/conv1/Conv2D/convolution.8/Conv_1x1/Convolve/ExchangePre',
              'vs/conv1/Conv2D/convolution.8/Conv_1x1/Convolve',
-             'vs/PopnnGroupNormTraining/custom-call.11/Norm',
-             'vs/PopnnGroupNormTraining/custom-call.11/iStdDev',
-             'vs/PopnnGroupNormTraining/custom-call.11/Whiten',
+             'vs/PopnnGroupNormTraining/custom-call*/Norm',
+             'vs/PopnnGroupNormTraining/custom-call*/iStdDev',
+             'vs/PopnnGroupNormTraining/custom-call*/Whiten',
              'Sum/reduce.*/*/Reduce',
-             'gradients/vs/PopnnGroupNormTraining_2_grad/PopnnGroupNormGrad/custom-call.39/',
+             'gradients/vs/PopnnGroupNormTraining_2_grad/PopnnGroupNormGrad/custom-call*/',
              'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*',
             ]
 
