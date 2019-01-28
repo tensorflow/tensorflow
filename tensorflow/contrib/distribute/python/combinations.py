@@ -112,12 +112,12 @@ def generate(combinations):
       # We use OrderedDicts in `combine()` and `times()` to ensure stable
       # order of keys in each dictionary.
       assert isinstance(combination, OrderedDict)
-      name = "".join([
+      name = "".join(sorted([
           "_{}_{}".format(
               "".join(filter(str.isalnum, key)),
               "".join(filter(str.isalnum, str(value))))
           for key, value in combination.items()
-      ])
+      ]))
       named_combinations.append(
           OrderedDict(
               list(combination.items()) + [("testcase_name",
