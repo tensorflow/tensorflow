@@ -7,7 +7,7 @@ no surprise that the APIs try to avoid unnecessary copies at the expense of
 convenience.  Similarly, consistency with TensorFlow APIs was not an explicit
 goal and some variance is to be expected.
 
-There is also a [Python API for TensorFlow Lite](g3doc/convert/python_api.md).
+There is also a [Python API for TensorFlow Lite](./convert/python_api.md).
 
 ## C++
 
