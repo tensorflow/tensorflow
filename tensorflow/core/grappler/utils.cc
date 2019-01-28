@@ -20,6 +20,8 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -166,10 +168,10 @@ string AddPrefixToNodeName(const string& name, const string& prefix,
                            const string& delimiter) {
   if (!name.empty()) {
     if (name[0] == '^') {
-      return strings::StrCat("^", prefix, delimiter, name.substr(1));
+      return absl::StrCat("^", prefix, delimiter, name.substr(1));
     }
   }
-  return strings::StrCat(prefix, delimiter, name);
+  return absl::StrCat(prefix, delimiter, name);
 }
 
 string AddPrefixToNodeName(const string& name, const string& prefix) {
@@ -193,20 +195,26 @@ bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
 }
 
 string AsControlDependency(const NodeDef& node) {
-  return strings::StrCat("^", node.name());
+  return absl::StrCat("^", node.name());
 }
 
 string AsControlDependency(const string& node_name) {
   CHECK(!node_name.empty());
   return (!node_name.empty() && node_name[0] == '^')
              ? node_name
-             : strings::StrCat("^", node_name);
+             : absl::StrCat("^", node_name);
 }
 
 bool NodeIsOnCpu(const NodeDef* node) {
   string task, device;
   return DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
-         str_util::StartsWith(device, DEVICE_CPU);
+         absl::StartsWith(device, DEVICE_CPU);
+}
+
+bool NodeIsOnGpu(const NodeDef* node) {
+  string task, device;
+  return DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
+         absl::StartsWith(device, DEVICE_GPU);
 }
 
 int NumOutputs(const NodeDef& node, GraphDef* graph) {
@@ -400,123 +408,6 @@ void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
       nodes_idx_to_delete.push_back(i);
   }
   EraseNodesFromGraphImpl(nodes_idx_to_delete, graph);
-}
-
-Status SimpleGraphView::Initialize(
-    const GraphDef& graph,
-    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
-        extra_dependencies,
-    bool dedup_inputs, bool dedup_outputs) {
-  graph_ = &graph;
-  const int num_nodes = graph.node_size();
-  inputs_.clear();
-  inputs_.resize(num_nodes);
-  outputs_.clear();
-  outputs_.resize(num_nodes);
-  name_to_index_.clear();
-  name_to_index_.reserve(num_nodes);
-  index_to_name_.clear();
-  index_to_name_.reserve(num_nodes);
-
-  // Build map from name to index and vice versa.
-  for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
-    const NodeDef& node = graph.node(node_idx);
-    name_to_index_.emplace(node.name(), node_idx);
-    index_to_name_.push_back(node.name());
-  }
-
-  if (extra_dependencies) {
-    for (const auto& dep : *extra_dependencies) {
-      auto itr_src = name_to_index_.find(dep.first->name());
-      if (itr_src == name_to_index_.end()) {
-        return errors::InvalidArgument("Non-existent src ", dep.first->name());
-      }
-      auto itr_tgt = name_to_index_.find(dep.second->name());
-      if (itr_tgt == name_to_index_.end()) {
-        return errors::InvalidArgument("Non-existent tgt ", dep.second->name());
-      }
-      const int src_idx = itr_src->second;
-      const int tgt_idx = itr_tgt->second;
-      inputs_[tgt_idx].push_back(src_idx);
-      outputs_[src_idx].push_back(tgt_idx);
-    }
-  }
-
-  // Build forward and reverse adjacency lists.
-  for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
-    const NodeDef& node = graph.node(node_idx);
-    inputs_[node_idx].reserve(node.input_size());
-    for (const string& input : node.input()) {
-      auto it = name_to_index_.find(NodeName(input));
-      if (it == name_to_index_.end()) {
-        return errors::InvalidArgument("Non-existent input ", input,
-                                       " for node ", node.name());
-      }
-      const int input_idx = it->second;
-      inputs_[node_idx].push_back(input_idx);
-      outputs_[input_idx].push_back(node_idx);
-    }
-    if (dedup_inputs) {
-      // Dedup the input list while it's still hot in cache.
-      STLSortAndRemoveDuplicates(&inputs_[node_idx]);
-    }
-  }
-
-  // Dedup outputs.
-  if (dedup_outputs) {
-    for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
-      STLSortAndRemoveDuplicates(&outputs_[node_idx]);
-    }
-  }
-  return Status::OK();
-}
-
-void SimpleGraphView::DepthFirstSearch(
-    const std::unordered_set<string>& op_types_to_traverse, int root_node,
-    std::set<int>* nodes_found) const {
-  nodes_found->clear();
-  const string& op_type = graph_->node(root_node).op();
-  if (!op_types_to_traverse.empty() &&
-      op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
-    return;
-  }
-  std::vector<int> stack;
-  stack.reserve(32);
-  stack.push_back(root_node);
-  while (!stack.empty()) {
-    const int node_idx = stack.back();
-    stack.pop_back();
-    nodes_found->insert(node_idx);
-    const string& op_type = graph_->node(node_idx).op();
-    if (op_types_to_traverse.empty() ||
-        op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
-      for (auto output_idx : this->outputs(node_idx)) {
-        if (nodes_found->find(output_idx) == nodes_found->end()) {
-          stack.push_back(output_idx);
-        }
-      }
-    }
-  }
-}
-
-string SimpleGraphView::PrintToString() const {
-  string str;
-  for (int i = 0; i < num_nodes(); ++i) {
-    strings::StrAppend(&str, "Node ", i, "'", node_name(i), "'\n", "Inputs: [");
-    for (int input : inputs(i)) {
-      strings::StrAppend(&str, input, " '", node_name(input), "', ");
-    }
-    strings::StrAppend(&str, "]\n", "Outputs: [");
-    for (int j = 0; j < outputs(i).size(); ++j) {
-      const int output = outputs(i)[j];
-      if (j > 0) {
-        strings::StrAppend(&str, ", ");
-      }
-      strings::StrAppend(&str, output, " '", node_name(output), "'");
-    }
-    strings::StrAppend(&str, "]\n");
-  }
-  return str;
 }
 
 #define HANDLE_CASE(DTYPE)                                          \

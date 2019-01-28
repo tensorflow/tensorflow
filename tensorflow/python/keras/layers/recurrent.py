@@ -468,7 +468,7 @@ class RNN(Layer):
     self.zero_output_for_mask = kwargs.pop('zero_output_for_mask', False)
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self.cell, name='cell')
     self.return_sequences = return_sequences
     self.return_state = return_state
@@ -550,8 +550,12 @@ class RNN(Layer):
       return output_shape
 
   def compute_mask(self, inputs, mask):
-    if isinstance(mask, list):
-      mask = mask[0]
+    # Time step masks must be the same for each input.
+    # This is because the mask for an RNN is of size [batch, time_steps, 1],
+    # and specifies which time steps should be skipped, and a time step
+    # must be skipped for all inputs.
+    # TODO(scottzhu): Should we accept multiple different masks?
+    mask = nest.flatten(mask)[0]
     output_mask = mask if self.return_sequences else None
     if self.return_state:
       state_mask = [None for _ in self.states]
@@ -766,8 +770,10 @@ class RNN(Layer):
     inputs, initial_state, constants = self._process_inputs(
         inputs, initial_state, constants)
 
-    if isinstance(mask, list):
-      mask = mask[0]
+    if mask is not None:
+      # Time step masks must be the same for each input.
+      # TODO(scottzhu): Should we accept multiple different masks?
+      mask = nest.flatten(mask)[0]
 
     if nest.is_sequence(inputs):
       # In the case of nested input, use the first element for shape check.
@@ -3346,6 +3352,7 @@ def _standardize_args(
     # For either case, we will use num_inputs to split the input list, and
     # restructure the real input into tuple.
     assert initial_state is None and constants is None
+    inputs = nest.flatten(inputs)
     if num_constants is not None:
       constants = inputs[-num_constants:]
       inputs = inputs[:-num_constants]

@@ -251,7 +251,7 @@ def get_v2_constants(module):
 class api_export(object):  # pylint: disable=invalid-name
   """Provides ways to export symbols to the TensorFlow API."""
 
-  def __init__(self, *args, **kwargs):
+  def __init__(self, *args, **kwargs):  # pylint: disable=g-doc-args
     """Export under the names *args (first one is considered canonical).
 
     Args:
@@ -269,6 +269,10 @@ class api_export(object):  # pylint: disable=invalid-name
     """
     self._names = args
     self._names_v1 = kwargs.get('v1', args)
+    if 'v2' in kwargs:
+      raise ValueError('You passed a "v2" argument to tf_export. This is not '
+                       'what you want. Pass v2 names directly as positional '
+                       'arguments instead.')
     self._api_name = kwargs.get('api_name', TENSORFLOW_API_NAME)
     self._overrides = kwargs.get('overrides', [])
     self._allow_multiple_exports = kwargs.get('allow_multiple_exports', False)

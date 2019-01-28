@@ -42,7 +42,7 @@ class BigtableClientResource : public ResourceBase {
     return client_;
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat("BigtableClientResource(project_id: ", project_id_,
                            ", instance_id: ", instance_id_, ")");
   }
@@ -67,7 +67,7 @@ class BigtableTableResource : public ResourceBase {
 
   ::google::cloud::bigtable::noex::Table& table() { return table_; }
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat(
         "BigtableTableResource(client: ", client_->DebugString(),
         ", table: ", table_name_, ")");

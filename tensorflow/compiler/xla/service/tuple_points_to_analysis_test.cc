@@ -623,7 +623,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   void Run(const bool add_additional_gte0_user) {
     Shape input_shape = ShapeUtil::MakeShape(F32, {8});
     Shape update_shape = ShapeUtil::MakeShape(F32, {3});
-    Shape starts_shape = ShapeUtil::MakeShape(S32, {1});
+    Shape starts_shape = ShapeUtil::MakeShape(S32, {});
     Shape tuple_shape =
         ShapeUtil::MakeTupleShape({input_shape, update_shape, starts_shape});
 
@@ -657,7 +657,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
         HloInstruction::CreateGetTupleElement(starts_shape, tuple_param0, 2));
     // Update 'input' with 'update' at dynamic 'starts' indices.
     builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-        input_shape, input, update, starts));
+        input_shape, input, update, {starts}));
 
     // Build computation and add it to module as entry computation.
     BuildModule(builder.Build());
@@ -721,9 +721,8 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // to fusion 'operand'.
   HloInstruction* GetFusionParameterForOperand(HloInstruction* fusion,
                                                HloInstruction* operand) {
-    auto it = std::find_if(
-        fusion->fused_instructions().begin(),
-        fusion->fused_instructions().end(), [=](const HloInstruction* fused) {
+    auto it = absl::c_find_if(
+        fusion->fused_instructions(), [&](const HloInstruction* fused) {
           return fused->opcode() == HloOpcode::kParameter &&
                  fusion->operand(fused->parameter_number()) == operand;
         });
@@ -734,7 +733,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // Returns all users of 'fusion_paran' at 'tuple_index'.
   std::vector<HloInstruction*> GetFusionParameterUsersAt(
       HloInstruction* fusion_param, int64 tuple_index) {
-    CHECK(ShapeUtil::IsTuple(fusion_param->shape()));
+    CHECK(fusion_param->shape().IsTuple());
     std::vector<HloInstruction*> users_at_tuple_index;
     for (auto user : fusion_param->users()) {
       CHECK_EQ(HloOpcode::kGetTupleElement, user->opcode());
@@ -883,12 +882,12 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape, gte1, update, starts));
+          data_shape, gte1, update, {starts}));
   builder.AddInstruction(
       HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
 
@@ -977,12 +976,12 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape, gte1, update, starts));
+          data_shape, gte1, update, {starts}));
   builder.AddInstruction(
       HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
 
@@ -1004,7 +1003,7 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
 
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
   Shape update_shape = ShapeUtil::MakeShape(F32, {4});
-  Shape starts_shape = ShapeUtil::MakeShape(S32, {1});
+  Shape starts_shape = ShapeUtil::MakeShape(S32, {});
   auto data = builder.AddInstruction(
       HloInstruction::CreateParameter(0, data_shape, "data"));
   auto update = builder.AddInstruction(
@@ -1012,7 +1011,7 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
   auto starts = builder.AddInstruction(
       HloInstruction::CreateParameter(2, starts_shape, "starts"));
   auto dus = builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      data_shape, data, update, starts));
+      data_shape, data, update, {starts}));
 
   BuildModuleAndRunAnalysis(builder.Build());
 

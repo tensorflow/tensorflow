@@ -63,6 +63,15 @@ _WEIGHTS_VARIABLE_NAME = "kernel"
 ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
 
 
+def _hasattr(obj, attr_name):
+  try:
+    getattr(obj, attr_name)
+  except AttributeError:
+    return False
+  else:
+    return True
+
+
 def assert_like_rnncell(cell_name, cell):
   """Raises a TypeError if cell is not like an RNNCell.
 
@@ -79,9 +88,9 @@ def assert_like_rnncell(cell_name, cell):
     TypeError: A human-friendly exception.
   """
   conditions = [
-      hasattr(cell, "output_size"),
-      hasattr(cell, "state_size"),
-      hasattr(cell, "get_initial_state") or hasattr(cell, "zero_state"),
+      _hasattr(cell, "output_size"),
+      _hasattr(cell, "state_size"),
+      _hasattr(cell, "get_initial_state") or _hasattr(cell, "zero_state"),
       callable(cell),
   ]
   errors = [
@@ -316,7 +325,7 @@ class RNNCell(base_layer.Layer):
     # zeros, especially when eager execution is enabled.
     state_size = self.state_size
     is_eager = context.executing_eagerly()
-    if is_eager and hasattr(self, "_last_zero_state"):
+    if is_eager and _hasattr(self, "_last_zero_state"):
       (last_state_size, last_batch_size, last_dtype,
        last_output) = getattr(self, "_last_zero_state")
       if (last_batch_size == batch_size and
@@ -1174,7 +1183,7 @@ class DropoutWrapper(RNNCell):
 
     # Set cell, variational_recurrent, seed before running the code below
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._variational_recurrent = variational_recurrent
     self._seed = seed
@@ -1415,7 +1424,7 @@ class ResidualWrapper(RNNCell):
     """
     super(ResidualWrapper, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._residual_fn = residual_fn
 
@@ -1473,7 +1482,7 @@ class DeviceWrapper(RNNCell):
     """
     super(DeviceWrapper, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self._cell, name="cell")
     self._device = device
 
@@ -1542,7 +1551,7 @@ class MultiRNNCell(RNNCell):
     for cell_number, cell in enumerate(self._cells):
       # Add Checkpointable dependencies on these cells so their variables get
       # saved with this object when using object-based saving.
-      if isinstance(cell, checkpointable.CheckpointableBase):
+      if isinstance(cell, checkpointable.Checkpointable):
         # TODO(allenl): Track down non-Checkpointable callers.
         self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple

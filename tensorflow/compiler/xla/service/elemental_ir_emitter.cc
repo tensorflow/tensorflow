@@ -812,11 +812,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto c = EmitExtractReal(rhs_value);
       auto d = EmitExtractImag(rhs_value);
       auto aa_p_bb = FAdd(FMul(a, a), FMul(b, b));
+      auto zero = llvm::ConstantFP::get(a->getType(), 0);
       auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
+      auto one = llvm::ConstantFP::get(a->getType(), 1);
       auto half_c = FMul(one_half, c);
 
       TF_ASSIGN_OR_RETURN(auto aa_p_bb_to_half_c,
                           EmitPow(component_type, aa_p_bb, half_c));
+
       auto neg_d = FNeg(d);
       TF_ASSIGN_OR_RETURN(auto arg_lhs, EmitAtan2(component_type, b, a));
       auto neg_d_arg_lhs = FMul(neg_d, arg_lhs);
@@ -828,7 +831,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
       TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
       TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
-      return EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q));
+      // 0^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
+      // Branch Cuts for Complex Elementary Functions or Much Ado About
+      // Nothing's Sign Bit, W. Kahan, Section 10.
+      return Select(
+          And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
+          EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
+          EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
     }
     default:
       return Unimplemented("binary complex op '%s'",
@@ -1327,9 +1336,9 @@ llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
 
   // If implicit broadcast is needed, the source dimensions that are broadcast
   // have index 0.
-  CHECK_EQ(ShapeUtil::Rank(operand_shape), ShapeUtil::Rank(hlo.shape()));
+  CHECK_EQ(operand_shape.rank(), hlo.shape().rank());
   llvm_ir::IrArray::Index source_index(target_index.GetType());
-  for (int64 i = 0; i < ShapeUtil::Rank(hlo.shape()); ++i) {
+  for (int64 i = 0; i < hlo.shape().rank(); ++i) {
     if (hlo.shape().dimensions(i) == operand_shape.dimensions(i)) {
       source_index.push_back(target_index[i]);
     } else {
@@ -1750,7 +1759,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     const llvm_ir::IrArray::Index& index) {
   // Emit IR to read dynamic start indices from hlo->operand(1).
   const HloInstruction* input_hlo = hlo->operand(0);
-  const int64 rank = ShapeUtil::Rank(input_hlo->shape());
+  const int64 rank = input_hlo->shape().rank();
   // Use the same index type for all tensor accesses in the same kernel.
   llvm::Type* index_type = index.GetType();
   llvm_ir::IrArray::Index slice_start_index(index_type, rank);
@@ -1758,9 +1767,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-    TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
-                        operand_to_generator.at(hlo->operand(1))(dim_index));
+    // TODO(b/118437727): Remove the R1 path.
+    llvm::Value* start_index_value;
+    if (hlo->operand(1)->shape().rank() == 1) {
+      llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
+      TF_ASSIGN_OR_RETURN(start_index_value,
+                          operand_to_generator.at(hlo->operand(1))(dim_index));
+    } else {
+      llvm_ir::IrArray::Index zero_index(index_type);
+      TF_ASSIGN_OR_RETURN(
+          start_index_value,
+          operand_to_generator.at(hlo->operand(1 + i))(zero_index));
+    }
 
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
@@ -1893,7 +1911,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* update_hlo = hlo->operand(1);
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
-  const int64 rank = ShapeUtil::Rank(input_hlo->shape());
+  const int64 rank = input_hlo->shape().rank();
   llvm_ir::IrArray::Index slice_start_index(index.GetType(), rank);
   llvm_ir::IrArray::Index slice_limit_index(index.GetType(), rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
@@ -1905,9 +1923,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-    TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
-                        operand_to_generator.at(start_hlo)(dim_index));
+
+    llvm::Value* start_index_value;
+    // TODO(b/118437727): Remove the R1 path.
+    if (hlo->operand(2)->shape().rank() == 1) {
+      llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
+      TF_ASSIGN_OR_RETURN(start_index_value,
+                          operand_to_generator.at(hlo->operand(2))(dim_index));
+    } else {
+      llvm_ir::IrArray::Index zero_index(index_type);
+      TF_ASSIGN_OR_RETURN(
+          start_index_value,
+          operand_to_generator.at(hlo->operand(2 + i))(zero_index));
+    }
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
@@ -2225,7 +2253,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         auto* iota = Cast<HloIotaInstruction>(hlo);
         PrimitiveType element_type = iota->shape().element_type();
         IrArray::Index elem_index =
-            ShapeUtil::Rank(iota->shape()) > 1
+            iota->shape().rank() > 1
                 ? target_index.SourceIndexOfBroadcast(
                       iota->shape(),
                       ShapeUtil::MakeShapeWithDescendingLayout(

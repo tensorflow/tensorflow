@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
+#include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
@@ -78,6 +80,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -152,6 +155,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
+    pipeline.AddPass<DynamicIndexSplitter>();
     pipeline.AddPass<GpuHloSupportChecker>();
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
@@ -163,6 +167,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // We need a cost model for GPUs. Currently, do nothing.
       return false;
     };
+    pipeline.AddPass<DotDecomposer>(false);
     pipeline.AddPass<ConvolutionGroupConverter>(
         cost_model,
         /*convert_batch_groups_only=*/true);
@@ -194,10 +199,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
-      AlgebraicSimplifierOptions options(
-          [](const Shape&, const Shape&) { return false; });
+      AlgebraicSimplifierOptions options;
       options.set_enable_permutation_sort_replacement(true);
       pass.AddPass<AlgebraicSimplifier>(options);
+      pass.AddPass<SortSimplifier>();
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
@@ -266,10 +271,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    AlgebraicSimplifierOptions options(
-        /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
-          return true;
-        });
+    AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_permutation_sort_replacement(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);

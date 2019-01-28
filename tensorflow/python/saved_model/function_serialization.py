@@ -12,98 +12,77 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tools for serializing PolymorphicFunctions."""
+"""Tools for serializing `Function`s."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function as defun_lib
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
 
 
-def _serialize_polymorphic_function(polymorphic_function, node_ids):
-  """Build a SavedPolymorphicProto."""
-  coder = nested_structure_coder.StructureCoder()
-  proto = saved_object_graph_pb2.SavedPolymorphicFunction()
-
-  proto.function_spec_tuple.CopyFrom(
-      coder.encode_structure(polymorphic_function.function_spec.as_tuple()))  # pylint: disable=protected-access
-  for signature, concrete_function in list_all_concrete_functions(
-      polymorphic_function):
-    bound_inputs = []
-    try:
-      for capture in concrete_function.captured_inputs:
-        bound_inputs.append(node_ids[capture])
-    except KeyError:
-      # TODO(andresp): Would it better to throw an exception?
-      logging.warning(
-          "Concrete function %s not added to object based saved model as it "
-          "captures tensor %s which is unsupported or not reachable from root.",
-          concrete_function.name, capture)
-      continue
-    function_proto = proto.monomorphic_function.add()
-    function_proto.concrete_function = concrete_function.name
-    function_proto.canonicalized_input.CopyFrom(
-        coder.encode_structure(signature))
-    function_proto.bound_inputs.extend(bound_inputs)
+def _serialize_function_spec(function_spec, coder):
+  """Serialize a FunctionSpec object into its proto representation."""
+  proto = saved_object_graph_pb2.FunctionSpec()
+  proto.fullargspec.CopyFrom(coder.encode_structure(function_spec.fullargspec))
+  proto.is_method = function_spec.is_method
+  proto.args_to_prepend.CopyFrom(
+      coder.encode_structure(function_spec.args_to_prepend))
+  proto.kwargs_to_include.CopyFrom(
+      coder.encode_structure(function_spec.kwargs_to_include))
+  proto.input_signature.CopyFrom(
+      coder.encode_structure(function_spec.input_signature))
   return proto
 
 
-def list_all_concrete_functions(polymorphic_function):
-  """Given a polymorphic function, returns all of its concrete functions.
-
-  Args:
-    polymorphic_function: Instance of `PolymorphicFunction`.
-
-  Returns:
-    A list of tuples in the form (signature, concrete_function), where concrete
-    function is an instance of `Function`.
-  """
-  input_signature = polymorphic_function._input_signature  # pylint: disable=protected-access
-  if input_signature is not None:
-    polymorphic_function.get_concrete_function()
-  concrete_functions = []
-  for signature in polymorphic_function._cached_input_signatures:  # pylint: disable=protected-access
-    if any(isinstance(arg, defun_lib.UnknownArgument) for arg in signature):
-      continue
-    concrete_function = polymorphic_function.get_concrete_function(*signature)
-    concrete_functions.append((signature, concrete_function))
-  return concrete_functions
-
-
-def list_all_polymorphic_functions(checkpointable_object):
-  """Given a checkpointable object, returns all of its polymorphic functions."""
-  polymorphic_functions = dict()
-  for attribute_name in dir(checkpointable_object):
-    try:
-      attribute_value = getattr(checkpointable_object, attribute_name, None)
-    except:  # pylint: disable=bare-except
-      # We really don't want to throw an exception just because some object's
-      # attribute accessor is broken.
-      attribute_value = None
-    # TODO(allenl): Consider de-duplicating functions which are referenced
-    # from multiple attributes.
-    if isinstance(attribute_value, def_function.PolymorphicFunction):
-      polymorphic_functions[attribute_name] = attribute_value
-  return polymorphic_functions
+def serialize_concrete_function(concrete_function, node_ids, coder):
+  """Build a SavedConcreteFunction."""
+  bound_inputs = []
+  try:
+    for capture in concrete_function.captured_inputs:
+      bound_inputs.append(node_ids[capture])
+  except KeyError:
+    # TODO(allenl): This warning shadows a real issue in test_table in
+    # save_test.py, where we don't handle captured constants. Fix that and
+    # then make this an exception.
+    logging.warning(
+        "Concrete function %s not added to object based saved model as it "
+        "captures tensor %s which is unsupported or not reachable from root.",
+        concrete_function.name, capture)
+    return None
+  concrete_function_proto = saved_object_graph_pb2.SavedConcreteFunction()
+  structured_outputs = func_graph_module.convert_structure_to_signature(
+      concrete_function.structured_outputs)
+  concrete_function_proto.canonicalized_input_signature.CopyFrom(
+      coder.encode_structure(concrete_function.structured_input_signature))
+  concrete_function_proto.output_signature.CopyFrom(
+      coder.encode_structure(structured_outputs))
+  concrete_function_proto.bound_inputs.extend(bound_inputs)
+  return concrete_function_proto
 
 
-def add_polymorphic_functions_to_object_graph_proto(checkpointable_objects,
-                                                    saved_object_graph,
-                                                    node_ids):
-  """Finds PolymorphicFunctions attached to objects and saves them."""
-  existing_objects = list(zip(checkpointable_objects, saved_object_graph.nodes))
-  for obj, obj_proto in existing_objects:
-    for name, polymorphic_function in list_all_polymorphic_functions(
-        obj).items():
-      function_node_id = len(saved_object_graph.nodes)
-      function_node = saved_object_graph.nodes.add()
-      function_node.function.CopyFrom(
-          _serialize_polymorphic_function(polymorphic_function, node_ids))
-      reference = obj_proto.children.add()
-      reference.node_id = function_node_id
-      reference.local_name = name
+def serialize_bare_concrete_function(concrete_function):
+  """Build a SavedBareConcreteFunction."""
+  # pylint: disable=protected-access
+  return saved_object_graph_pb2.SavedBareConcreteFunction(
+      concrete_function_name=concrete_function.name,
+      allowed_positional_arguments=concrete_function._num_positional_args,
+      argument_keywords=concrete_function._arg_keywords)
+  # pylint: enable=protected-access
+
+
+def serialize_function(function):
+  """Build a SavedFunction proto."""
+  coder = nested_structure_coder.StructureCoder()
+  proto = saved_object_graph_pb2.SavedFunction()
+
+  function_spec_proto = _serialize_function_spec(function.function_spec, coder)
+  proto.function_spec.CopyFrom(function_spec_proto)
+  all_concrete_functions = \
+      function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+  for concrete_function in all_concrete_functions:
+    proto.concrete_functions.append(concrete_function.name)
+  return proto

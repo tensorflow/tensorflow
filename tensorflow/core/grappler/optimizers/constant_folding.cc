@@ -901,8 +901,8 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
 
 // static
 Status ConstantFolding::CreateNodeDef(const string& name,
-                                      const TensorValue& tensor,
-                                      NodeDef* node) {
+                                      const TensorValue& tensor, NodeDef* node,
+                                      size_t original_size) {
   node->set_name(name);
   node->set_op("Const");
 
@@ -980,11 +980,12 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   }
   node->mutable_attr()->insert({"value", attr_tensor});
 
-  if (encoded_size < 10 * 1024 * 1024) {
-    return Status::OK();
+  if (encoded_size > original_size && encoded_size >= 10 * 1024 * 1024) {
+    return errors::InvalidArgument(
+        strings::StrCat("Can't fold ", name, ", its size would be too large (",
+                        encoded_size, " >= ", 10 * 1024 * 1024, " bytes)"));
   }
-  return errors::InvalidArgument(
-      strings::StrCat("Can't fold ", name, ", its size would be too large"));
+  return Status::OK();
 }
 
 Status ConstantFolding::EvaluateNode(const NodeDef& node,
@@ -1010,6 +1011,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
   });
 
+  size_t total_inputs_size = 0;
   for (const auto& input : node.input()) {
     const TensorId input_tensor = ParseTensorName(input);
     if (input_tensor.index() < 0) {
@@ -1027,6 +1029,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     CHECK(value->FromProto(raw_val));
     inputs.emplace_back(value);
+    total_inputs_size += value->TotalBytes();
   }
 
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
@@ -1041,7 +1044,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
       node_name = strings::StrCat(node_name, "-", i);
     }
     if (output_tensors[i].tensor) {
-      Status s = CreateNodeDef(node_name, output_tensors[i], &outputs->at(i));
+      Status s = CreateNodeDef(node_name, output_tensors[i], &outputs->at(i),
+                               total_inputs_size);
       if (!s.ok()) {
         *result_too_large = true;
         return s;
@@ -1697,12 +1701,12 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
-  if (ConstantPushDown(node)) {
+  if (ConstantPushDown(optimized_graph, node)) {
     graph_modified_ = true;
     return Status::OK();
   }
 
-  if (MulConvPushDown(node, *properties)) {
+  if (MulConvPushDown(optimized_graph, node, *properties)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -2612,7 +2616,8 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
   return false;
 }
 
-bool ConstantFolding::ConstantPushDown(NodeDef* node) {
+bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
+                                       NodeDef* node) {
   // Consider the transformation
   //
   //                      +                +       = parent
@@ -2680,9 +2685,10 @@ bool ConstantFolding::ConstantPushDown(NodeDef* node) {
       // edge. We can replace such a control edge with a control edge from A
       // to C.
       CHECK(MaybeRemoveControlInput(op_child_node->name(), const_child_node,
-                                    graph_, node_map_.get()));
-      NodeDef* other_leaf = left_leaf_is_constant ? left_leaf : right_leaf;
-      MaybeAddControlInput(other_leaf->name(), const_child_node, graph_,
+                                    optimized_graph, node_map_.get()));
+      string other_leaf_input = left_leaf_is_constant ? op_child_node->input(0)
+                                                      : op_child_node->input(1);
+      MaybeAddControlInput(other_leaf_input, const_child_node, optimized_graph,
                            node_map_.get());
     }
 
@@ -2699,7 +2705,7 @@ bool ConstantFolding::ConstantPushDown(NodeDef* node) {
   return false;
 }
 
-bool ConstantFolding::MulConvPushDown(NodeDef* node,
+bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
                                       const GraphProperties& properties) {
   // Push down multiplication on ConvND.
   //                       *                  ConvND
@@ -2791,12 +2797,13 @@ bool ConstantFolding::MulConvPushDown(NodeDef* node,
     }
     // Make sure we don't introduce loops in the graph by removing control
     // dependencies from the conv2d node to c2.
-    NodeDef* conv_const_node =
-        conv_left_is_constant ? conv_left_child : conv_right_child;
-    if (MaybeRemoveControlInput(conv_node->name(), const_node, graph_,
+    string conv_const_input =
+        conv_left_is_constant ? conv_node->input(0) : conv_node->input(1);
+    if (MaybeRemoveControlInput(conv_node->name(), const_node, optimized_graph,
                                 node_map_.get())) {
       // Add a control dep from c1 to c2 to ensure c2 is in the right frame
-      *const_node->add_input() = AsControlDependency(*conv_const_node);
+      MaybeAddControlInput(conv_const_input, const_node, optimized_graph,
+                           node_map_.get());
     }
 
     conv_node->set_name(node->name());
@@ -2808,6 +2815,8 @@ bool ConstantFolding::MulConvPushDown(NodeDef* node,
       node_map_->UpdateInput(conv_node->name(), node->input(1), mul_new_name);
       conv_node->set_input(1, mul_new_name);
     }
+    NodeDef* conv_const_node =
+        conv_left_is_constant ? conv_left_child : conv_right_child;
     if (left_child_is_constant) {
       node->set_input(1, conv_const_node->name());
     } else {

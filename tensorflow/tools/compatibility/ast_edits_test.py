@@ -39,7 +39,10 @@ following new APIs:
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import ast
 import six
+
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 from tensorflow.tools.compatibility import ast_edits
@@ -54,7 +57,6 @@ class NoUpdateSpec(ast_edits.APIChangeSpec):
     self.function_keyword_renames = {}
     self.symbol_renames = {}
     self.function_warnings = {}
-    self.unrestricted_function_warnings = {}
     self.change_to_function = {}
 
 
@@ -190,6 +192,20 @@ class TestAstEdits(test_util.TensorFlowTestCase):
     text = "f(a, b, c, d)\n"
     _, new_text = self._upgrade(RenameKeywordSpec(), text)
     self.assertEqual(new_text, text)
+
+  def testKeywordReorderWithParens(self):
+    """Test that we get the expected result if there are parens around args."""
+    text = "f((a), ( ( b ) ))\n"
+    acceptable_outputs = [
+        # No change is a valid output
+        text,
+        # Also cases where all arguments are fully specified are allowed
+        "f(a=(a), b=( ( b ) ))\n",
+        # Making the parens canonical is ok
+        "f(a=(a), b=((b)))\n",
+    ]
+    _, new_text = self._upgrade(ReorderKeywordSpec(), text)
+    self.assertIn(new_text, acceptable_outputs)
 
   def testKeywordReorder(self):
     """Test that we get the expected result if kw2 is now before kw1."""
@@ -401,7 +417,8 @@ class TestAstEdits(test_util.TensorFlowTestCase):
 
       def __init__(self):
         NoUpdateSpec.__init__(self)
-        self.unrestricted_function_warnings = {"foo": "not good"}
+        self.function_warnings = {"*.foo": "not good"}
+
     texts = ["object.foo()", "get_object().foo()",
              "get_object().foo()", "object.foo().bar()"]
     for text in texts:
@@ -415,6 +432,13 @@ class TestAstEdits(test_util.TensorFlowTestCase):
       (_, report, _), _ = self._upgrade(FooWarningSpec(), text)
       self.assertNotIn("not good", report)
 
+  def testFullNameNode(self):
+    t = ast_edits.full_name_node("a.b.c")
+    self.assertEquals(
+        ast.dump(t),
+        "Attribute(value=Attribute(value=Name(id='a', ctx=Load()), attr='b', "
+        "ctx=Load()), attr='c', ctx=Load())"
+    )
 
 if __name__ == "__main__":
   test_lib.main()

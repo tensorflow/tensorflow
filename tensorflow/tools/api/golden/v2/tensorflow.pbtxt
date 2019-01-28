@@ -9,10 +9,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Event"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "GradientTape"
     mtype: "<type \'type\'>"
   }
@@ -39,14 +35,6 @@ tf_module {
   member {
     name: "SparseTensor"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Summary"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "SummaryMetadata"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Tensor"
@@ -79,6 +67,10 @@ tf_module {
   member {
     name: "VariableSynchronization"
     mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "audio"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "autograph"
@@ -165,10 +157,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "glorot_uniform_initializer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "graph_util"
     mtype: "<type \'module\'>"
   }
@@ -178,10 +166,6 @@ tf_module {
   }
   member {
     name: "image"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "initializers"
     mtype: "<type \'module\'>"
   }
   member {
@@ -333,10 +317,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "truncated_normal_initializer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "uint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -443,10 +423,6 @@ tf_module {
   member_method {
     name: "atanh"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "batch_gather"
-    argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "batch_to_space"
@@ -618,7 +594,7 @@ tf_module {
   }
   member_method {
     name: "gather"
-    argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\'], "
+    argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'axis\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\', \'None\'], "
   }
   member_method {
     name: "gather_nd"

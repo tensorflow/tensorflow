@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 from absl.testing import parameterized
 import numpy as np
 
@@ -245,15 +246,32 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
-# TODO(priyag): Add v2 optimizers here.
+def all_strategy_combinations_minus_default():
+  strategy_minus_default_combinations = combinations.combine(
+      distribution=[
+          combinations.one_device_strategy,
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.mirrored_strategy_with_two_gpus,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_two_gpus],
+      mode=['graph', 'eager'])
+  return strategy_minus_default_combinations + tpu_strategy_combinations()
+
+
 def strategy_and_optimizer_combinations():
+  # TODO(b/122372746): Uncomment optimizers after they pass tests.
   return combinations.times(
       all_strategy_combinations(),
-      combinations.combine(
-          optimizer=[combinations.adagrad_optimizer_v1_fn,
-                     combinations.adam_optimizer_v1_fn,
-                     combinations.gradient_descent_optimizer_v1_fn,
-                     combinations.rmsprop_optimizer_v1_fn]))
+      combinations.combine(optimizer=[
+          combinations.adagrad_optimizer_v1_fn,
+          # combinations.adagrad_optimizer_keras_v2_fn,
+          combinations.adam_optimizer_v1_fn,
+          combinations.adam_optimizer_keras_v2_fn,
+          combinations.gradient_descent_optimizer_v1_fn,
+          combinations.gradient_descent_optimizer_keras_v2_fn,
+          combinations.rmsprop_optimizer_v1_fn,
+          # combinations.rmsprop_optimizer_keras_v2_fn
+      ]))
 
 
 def strategy_for_numpy_input_combinations():
@@ -418,15 +436,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                               parameterized.TestCase):
 
   @combinations.generate(strategy_for_numpy_input_combinations())
-  def test_creating_var_with_numpy_arrays(self, distribution):
-    with self.cached_session():
-      x = np.asarray(np.random.random((64, 3)), dtype=np.float32)
-      var_x = distributed_training_utils.get_var_for_numpy(distribution, x)
-      val = self.evaluate(var_x.value())
-      # Verify that the numpy value is copied to the variable.
-      self.assertAllEqual(x, val)
-
-  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calculating_input_params_no_steps_no_batch_size(self, distribution):
     # Calculate the per_replica_batch_size scaling factor for strategies
     # that use per_core_batch_size
@@ -564,26 +573,26 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         metrics = ['mae']
         model.compile(optimizer, loss, metrics=metrics)
 
-      inputs = np.zeros((64, 3), dtype=np.float32)
-      targets = np.zeros((64, 4), dtype=np.float32)
+        inputs = np.zeros((64, 3), dtype=np.float32)
+        targets = np.zeros((64, 4), dtype=np.float32)
 
-      # Call fit with validation data
-      model.fit(inputs, targets, epochs=1, batch_size=2, verbose=0,
-                validation_data=(inputs, targets))
+        # Call fit with validation data
+        model.fit(inputs, targets, epochs=1, batch_size=2, verbose=0,
+                  validation_data=(inputs, targets))
 
-      # TODO(anjalisridhar): We need tests for when the batch size and steps are
-      # smaller and results in a 0 batch_size and steps value.
-      model.evaluate(inputs, targets)
-      # with steps
-      model.evaluate(inputs, targets, steps=2)
-      # with batch_size
-      model.evaluate(inputs, targets, batch_size=8)
+        # TODO(anjalisridhar): We need tests for when the batch size and steps
+        # are smaller and results in a 0 batch_size and steps value.
+        model.evaluate(inputs, targets)
+        # with steps
+        model.evaluate(inputs, targets, steps=2)
+        # with batch_size
+        model.evaluate(inputs, targets, batch_size=8)
 
-      model.predict(inputs)
-      # with steps
-      model.predict(inputs, steps=2)
-      # with batch_size
-      model.predict(inputs, batch_size=8)
+        model.predict(inputs)
+        # with steps
+        model.predict(inputs, steps=2)
+        # with batch_size
+        model.predict(inputs, batch_size=8)
 
   @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calling_model_with_nested_numpy_arrays(self, distribution):
@@ -937,9 +946,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @combinations.generate(all_strategy_combinations())
   def testOptimizerWithCallbacks(self, distribution):
     with self.cached_session():
-      # TODO(b/120946189): Investigate why default strategy + eager fails.
-      if '_Default' in distribution.__class__.__name__:
-        self.skipTest('Disable the test for default strategy.')
       with distribution.scope():
         model = get_model()
         optimizer = gradient_descent_keras.SGD(0.01)
@@ -1045,14 +1051,12 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
       # Test with not specifying the `steps` argument.
       with self.assertRaisesRegexp(
-          ValueError, 'you should specify the `steps_per_epoch` argument'):
+          ValueError, 'the `steps_per_epoch` argument'):
         model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(ValueError,
-                                   'you should specify the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
         model.evaluate(dataset, verbose=0)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'you should specify the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
         model.predict(dataset, verbose=0)
 
   @combinations.generate(combinations.combine(
@@ -1119,12 +1123,15 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
 class TestDistributionStrategyWithNormalizationLayer(
     test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(all_strategy_combinations())
-  def test_batchnorm_correctness(self, distribution):
+  @combinations.generate(combinations.times(
+      all_strategy_combinations(),
+      combinations.combine(fused=[True, False])))
+  def test_batchnorm_correctness(self, distribution, fused):
     with self.cached_session():
       with distribution.scope():
         model = keras.models.Sequential()
-        norm = keras.layers.BatchNormalization(input_shape=(10,), momentum=0.8)
+        norm = keras.layers.BatchNormalization(
+            input_shape=(10,), momentum=0.8, fused=fused)
         model.add(norm)
         model.compile(loss='mse',
                       optimizer=gradient_descent.GradientDescentOptimizer(0.01))
@@ -1146,6 +1153,79 @@ class TestDistributionStrategyWithNormalizationLayer(
       out /= keras.backend.eval(norm.gamma)
       np.testing.assert_allclose(out.mean(), 0.0, atol=1e-1)
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
+
+
+class TestDistributionStrategySaveLoadWeights(test.TestCase,
+                                              parameterized.TestCase):
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_save_load_h5(self, distribution):
+    with self.cached_session():
+      dataset = get_dataset(distribution)
+      with distribution.scope():
+        model = get_model()
+        model.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model.fit(dataset, epochs=1, steps_per_epoch=1)
+
+        weights_file = tempfile.mktemp('.h5')
+        model.save_weights(weights_file)
+
+        model_2 = get_model()
+        model_2.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model_2.load_weights(weights_file)
+        model_2.predict(get_predict_dataset(distribution), steps=2)
+        model_2.fit(dataset, epochs=1, steps_per_epoch=1)
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_save_load_checkpointable(self, distribution):
+    # TODO(sourabhbajaj): Test fails with optimizer v2 without h5
+    with self.cached_session():
+      dataset = get_dataset(distribution)
+      with distribution.scope():
+        model = get_model()
+        model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
+        model.fit(dataset, epochs=1, steps_per_epoch=1)
+
+        weights_file = tempfile.mktemp()
+        model.save_weights(weights_file)
+
+        model_2 = get_model()
+        model_2.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
+        model_2.load_weights(weights_file)
+        model_2.predict(get_predict_dataset(distribution), steps=2)
+        model_2.fit(dataset, epochs=1, steps_per_epoch=1)
+
+
+class TestDistributionStrategyValidation(test.TestCase,
+                                         parameterized.TestCase):
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_layer_outside_scope(self, distribution):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          ValueError, 'was not created in the distribution strategy'):
+        x = keras.layers.Input(shape=(3,), name='input')
+        y = keras.layers.Dense(4, name='dense')(x)
+        with distribution.scope():
+          model = keras.Model(x, y)
+          optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+          loss = 'mse'
+          metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+          model.compile(optimizer, loss, metrics=metrics)
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_model_outside_scope(self, distribution):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          ValueError, 'was not created in the distribution strategy'):
+        x = keras.layers.Input(shape=(3,), name='input')
+        y = keras.layers.Dense(4, name='dense')(x)
+        model = keras.Model(x, y)
+        with distribution.scope():
+          optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+          loss = 'mse'
+          metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+          model.compile(optimizer, loss, metrics=metrics)
 
 
 if __name__ == '__main__':

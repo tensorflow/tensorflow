@@ -79,6 +79,10 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache) {
   std::unique_ptr<RandomAccessFile> file;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
   char scratch[6];
   StringPiece result;
 

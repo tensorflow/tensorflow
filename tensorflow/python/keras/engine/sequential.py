@@ -33,6 +33,7 @@ from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
@@ -86,8 +87,8 @@ class Sequential(Model):
   model.add(Dense(32))
   model.weights  # returns list of length 4
 
-  When using the delayed-build pattern (no input shape specified), you can
-  choose to manually build your model by calling `build(batch_input_shape)`:
+  # When using the delayed-build pattern (no input shape specified), you can
+  # choose to manually build your model by calling `build(batch_input_shape)`:
   model = Sequential()
   model.add(Dense(32))
   model.add(Dense(32))
@@ -150,7 +151,7 @@ class Sequential(Model):
     if not self._layers:
       if isinstance(layer, InputLayer):
         # Corner case where the user passes an InputLayer layer via `add`.
-        assert len(layer._inbound_nodes[-1].output_tensors) == 1
+        assert len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) == 1
         set_inputs = True
       else:
         batch_shape, dtype = training_utils.get_input_shape_and_dtype(layer)
@@ -168,12 +169,14 @@ class Sequential(Model):
 
       if set_inputs:
         # If an input layer (placeholder) is available.
-        if len(layer._inbound_nodes[-1].output_tensors) != 1:
+        if len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) != 1:
           raise ValueError('All layers in a Sequential model '
                            'should have a single output tensor. '
                            'For multi-output layers, '
                            'use the functional API.')
-        self.outputs = [layer._inbound_nodes[-1].output_tensors[0]]
+        self.outputs = [
+            nest.flatten(layer._inbound_nodes[-1].output_tensors)[0]
+        ]
         self.inputs = layer_utils.get_source_inputs(self.outputs[0])
 
     elif self.outputs:
@@ -242,8 +245,11 @@ class Sequential(Model):
     if not self.built and self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
 
-    x = inputs
+    outputs = inputs  # handle the corner case where self.layers is empty
     for layer in self.layers:
+      # During each iteration, `inputs` are the inputs to `layer`, and `outputs`
+      # are the outputs of `layer` applied to `inputs`. At the end of each
+      # iteration `inputs` is set to `outputs` to prepare for the next layer.
       kwargs = {}
       argspec = self._layer_call_argspecs[layer].args
       if 'mask' in argspec:
@@ -252,26 +258,34 @@ class Sequential(Model):
         kwargs['training'] = training
 
       if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
-        x, mask = layer._call_and_compute_mask(x, **kwargs)
+        outputs, mask = layer._call_and_compute_mask(inputs, **kwargs)
       else:
         if not layer.built:
           # Build layer if applicable.
           with ops.name_scope(layer._name_scope()):
-            layer._maybe_build(x)
+            layer._maybe_build(inputs)
           layer.built = True
-        if context.executing_eagerly():
-          x = layer(x, **kwargs)
-        elif layer.dynamic:
-          x = layer._symbolic_call(x)
-        else:
-          x = layer.call(x, **kwargs)
         if layer.supports_masking:
-          mask = layer.compute_mask(x, mask)
+          mask = layer.compute_mask(inputs, mask)
         else:
           mask = None
+
+        if context.executing_eagerly():
+          # __call__ handles activity regularization.
+          outputs = layer(inputs, **kwargs)
+        elif layer.dynamic:
+          outputs = layer._symbolic_call(inputs)
+          layer._handle_activity_regularization(inputs, outputs)
+        else:
+          outputs = layer.call(inputs, **kwargs)
+          layer._handle_activity_regularization(inputs, outputs)
+
       if not context.executing_eagerly():
-        x._keras_mask = mask
-    return x, mask
+        outputs._keras_mask = mask
+
+      # `outputs` will be the inputs to the next layer.
+      inputs = outputs
+    return outputs, mask
 
   def compute_output_shape(self, input_shape):
     shape = input_shape

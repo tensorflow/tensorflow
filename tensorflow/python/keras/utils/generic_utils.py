@@ -391,9 +391,8 @@ class Progbar(object):
         sys.stdout.write('\n')
 
       if self.target is not None:
-        numdigits = int(np.floor(np.log10(self.target))) + 1
-        barstr = '%%%dd/%d [' % (numdigits, self.target)
-        bar = barstr % current
+        numdigits = int(np.log10(self.target)) + 1
+        bar = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
         prog = float(current) / self.target
         prog_width = int(self.width * prog)
         if prog_width > 0:
@@ -456,7 +455,10 @@ class Progbar(object):
       sys.stdout.flush()
 
     elif self.verbose == 2:
-      if self.target is None or current >= self.target:
+      if self.target is not None and current >= self.target:
+        numdigits = int(np.log10(self.target)) + 1
+        count = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
+        info = count + info
         for k in self._values_order:
           info += ' - %s:' % k
           avg = np.mean(self._values[k][0] / max(1, self._values[k][1]))

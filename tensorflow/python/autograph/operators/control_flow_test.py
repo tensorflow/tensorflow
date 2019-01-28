@@ -36,7 +36,7 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda s: True,
         body=lambda i, s: (s + i,),
         init_state=(0,))
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertEqual((10,), self.evaluate(s))
 
   def test_python(self):
@@ -45,7 +45,7 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda s: True,
         body=lambda i, s: (s + i,),
         init_state=(0,))
-    self.assertEqual(10, s)
+    self.assertEqual((10,), s)
 
   @test_util.run_deprecated_v1
   def test_dataset(self):
@@ -55,7 +55,7 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda s: True,
         body=lambda i, s: (s + i,),
         init_state=(0,))
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertEqual((10,), self.evaluate(s))
 
 
@@ -65,18 +65,30 @@ class WhileLoopTest(test.TestCase):
   def test_tensor(self):
     n = constant_op.constant(5)
     results = control_flow.while_stmt(
-        test=lambda i, s: i < n,
-        body=lambda i, s: (i + 1, s + i,),
+        test=lambda i, sum: i < n,
+        body=lambda i, sum: (i + 1, sum + i,),
         init_state=(0, 0),
         extra_deps=(n,))
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertEqual((5, 10), self.evaluate(results))
+
+  @test_util.run_deprecated_v1
+  def test_tensor_dict_state(self):
+    n = 5
+    init_state = {'i': constant_op.constant(0), 'sum': constant_op.constant(0)}
+    results = control_flow.while_stmt(
+        test=lambda s: s['i'] < n,
+        body=lambda s: ({'i': s['i'] + 1, 'sum': s['sum'] + s['i']},),
+        init_state=(init_state,),
+        extra_deps=())
+    with self.cached_session():
+      self.assertEqual(({'i': 5, 'sum': 10},), self.evaluate(results))
 
   def test_python(self):
     n = 5
     results = control_flow.while_stmt(
-        test=lambda i, s: i < n,
-        body=lambda i, s: (i + 1, s + i),
+        test=lambda i, sum: i < n,
+        body=lambda i, sum: (i + 1, sum + i),
         init_state=(0, 0),
         extra_deps=(n,))
     self.assertEqual((5, 10), results)
@@ -93,7 +105,7 @@ class IfStmtTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_tensor(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       t = self.single_return_if_stmt(constant_op.constant(True))
       self.assertEqual(1, self.evaluate(t))
       t = self.single_return_if_stmt(constant_op.constant(False))
@@ -105,7 +117,7 @@ class IfStmtTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_tensor_multiple_returns(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       t = self.multi_return_if_stmt(constant_op.constant(True))
       self.assertAllEqual([1, 2], self.evaluate(t))
       t = self.multi_return_if_stmt(constant_op.constant(False))

@@ -156,19 +156,26 @@ Status StatusGroup::as_status() const {
     return Status::OK();
   }
 
-  // If there is only one message, or all of the messages are identical, return
-  // the original status.  This reduces verbosity and preserves existing
-  // behavior when possible.
+  // Reduce verbosity when handling duplicate messages. If there is only a
+  // single message, or all messages have similar content, then return the
+  // longest status message.
+  std::vector<Status> sorted_children(children_);
+  std::sort(sorted_children.begin(), sorted_children.end(),
+            [](const Status& a, const Status& b) {
+              return a.error_message().length() > b.error_message().length();
+            });
   bool single_status = true;
-  for (const Status& s : children_) {
-    if (s != children_[0]) {
+  for (const auto& s : sorted_children) {
+    if (s.code() != sorted_children[0].code() ||
+        sorted_children[0].error_message().find(s.error_message()) ==
+            string::npos) {
       single_status = false;
       break;
     }
   }
 
   if (single_status) {
-    return children_[0];
+    return sorted_children[0];
   }
 
   std::vector<string> fmt;
@@ -193,7 +200,7 @@ Status StatusGroup::as_status() const {
          const std::pair<error::Code, int>& b) { return a.second < b.second; });
 
   fmt.push_back(
-      strings::Printf("Combined status information from %lu operations:\n",
+      strings::Printf("Combined status information from %zu operations:\n",
                       num_ok_ + children_.size()));
 
   for (const auto& p : count_vec) {

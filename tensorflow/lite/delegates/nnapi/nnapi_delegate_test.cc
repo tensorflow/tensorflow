@@ -27,6 +27,16 @@ using ::testing::ElementsAreArray;
 // TODO(b/110368244): figure out how to share the existing tests in kernels/ but
 // with the delegation on. Also, add more unit tests to improve code coverage.
 
+// This matcher uses 1 as maximum tolerance.
+MATCHER(QuantizedNear, "") {
+  const int diff = abs(std::get<0>(arg) - std::get<1>(arg));
+  if (diff > 1) {
+    *result_listener << "Quantized values can be at most off by one: " << diff;
+    return false;
+  }
+  return true;
+}
+
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() {
@@ -585,14 +595,14 @@ class ReshapeOpModel : public SingleOpModelWithNNAPI {
   ReshapeOpModel(std::initializer_list<int> input_shape,
                  std::initializer_list<int> new_shape) {
     input_ = AddInput(TensorType_FLOAT32);
-    new_shape_ = AddInput(TensorType_INT32);
+    new_shape_ = AddConstInput<int>(TensorType_INT32, new_shape,
+                                    {static_cast<int>(new_shape.size())});
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(
         BuiltinOperator_RESHAPE, BuiltinOptions_ReshapeOptions,
         CreateReshapeOptions(builder_, builder_.CreateVector<int>(new_shape))
             .Union());
     BuildInterpreter({input_shape, {static_cast<int>(new_shape.size())}});
-    PopulateTensor<int>(new_shape_, new_shape);
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -1326,7 +1336,8 @@ TEST(NNAPIDelegate, LogisticQuantized) {
                   },
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
-              ElementsAreArray({128, 1, 227, 251, 244, 32, 255, 188}));
+              testing::Pointwise(QuantizedNear(),
+                                 {128, 1, 227, 251, 244, 32, 255, 188}));
 }
 
 #if 0
@@ -1576,14 +1587,17 @@ class StridedSliceOpModel : public SingleOpModelWithNNAPI {
  public:
   StridedSliceOpModel(std::initializer_list<int> input_shape,
                       std::initializer_list<int> begin_shape,
+                      std::initializer_list<int> begin_data,
                       std::initializer_list<int> end_shape,
-                      std::initializer_list<int> strides_shape, int begin_mask,
+                      std::initializer_list<int> end_data,
+                      std::initializer_list<int> strides_shape,
+                      std::initializer_list<int> strides_data, int begin_mask,
                       int end_mask, int ellipsis_mask, int new_axis_mask,
                       int shrink_axis_mask) {
     input_ = AddInput(tensor_input_type);
-    begin_ = AddInput(TensorType_INT32);
-    end_ = AddInput(TensorType_INT32);
-    strides_ = AddInput(TensorType_INT32);
+    begin_ = AddConstInput(TensorType_INT32, begin_data, begin_shape);
+    end_ = AddConstInput(TensorType_INT32, end_data, end_shape);
+    strides_ = AddConstInput(TensorType_INT32, strides_data, strides_shape);
     output_ = AddOutput(tensor_input_type);
     SetBuiltinOp(
         BuiltinOperator_STRIDED_SLICE, BuiltinOptions_StridedSliceOptions,
@@ -1595,15 +1609,6 @@ class StridedSliceOpModel : public SingleOpModelWithNNAPI {
 
   void SetInput(std::initializer_list<input_type> data) {
     PopulateTensor<input_type>(input_, data);
-  }
-  void SetBegin(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(begin_, data);
-  }
-  void SetEnd(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(end_, data);
-  }
-  void SetStrides(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(strides_, data);
   }
 
   std::vector<input_type> GetOutput() {
@@ -1619,39 +1624,47 @@ class StridedSliceOpModel : public SingleOpModelWithNNAPI {
   int output_;
 };
 
-TEST(NNAPIDelegate, StridedSliceIn2D) {
-  StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 0);
+TEST(StridedSliceOpTest, In1D) {
+  StridedSliceOpModel<> m({4}, {1}, {1}, {1}, {3}, {1}, {1}, 0, 0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
+}
+
+TEST(StridedSliceOpTest, In1D_BeginMask) {
+  StridedSliceOpModel<> m({4}, {1}, {1}, {1}, {3}, {1}, {1}, 1, 0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
+}
+
+TEST(StridedSliceOpTest, In2D_Stride2) {
+  StridedSliceOpModel<> m({2, 3}, {2}, {0, 0}, {2}, {2, 3}, {2}, {2, 2}, 0, 0,
+                          0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.SetBegin({1, 0});
-  m.SetEnd({2, 2});
-  m.SetStrides({1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 5}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3}));
 }
 
-TEST(NNAPIDelegate, StridedSliceIn2D_ShrinkAxis_NegativeSlice) {
-  // This is equivalent to tf.range(4)[:, tf.newaxis][-2, -1].
-  StridedSliceOpModel<> m({4, 1}, {2}, {2}, {2}, 0, 0, 0, 0, 3);
-  m.SetInput({0, 1, 2, 3});
-  m.SetBegin({-2, -1});
-  m.SetEnd({-1, 0});
-  m.SetStrides({1, 1});
-
-  m.Invoke();
-  EXPECT_TRUE(m.GetOutputShape().empty());
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
-}
-
-TEST(NNAPIDelegate, StridedSliceIn2D_ShrinkAxisMask) {
-  StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 3);
+TEST(StridedSliceOpTest, In2D_EndMask) {
+  StridedSliceOpModel<> m({2, 3}, {2}, {1, 0}, {2}, {2, 2}, {2}, {1, 1}, 0, 2,
+                          0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.SetBegin({0, 0});
-  m.SetEnd({1, 1});
-  m.SetStrides({1, 1});
   m.Invoke();
-  EXPECT_TRUE(m.GetOutputShape().empty());
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 5, 6}));
+}
+
+TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis4) {
+  StridedSliceOpModel<> m({2, 3, 2}, {3}, {0, 0, 0}, {3}, {2, 3, 1}, {3},
+                          {1, 1, 1}, 0, 0, 0, 0, 4);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5, 7, 9, 11}));
 }
 
 static float rnn_input[] = {
@@ -1990,7 +2003,9 @@ class BaseSVDFOpModel : public SingleOpModelWithNNAPI {
     input_ = AddInput(TensorType_FLOAT32);
     weights_feature_ = AddInput(weights_feature_type);
     weights_time_ = AddInput(weights_time_type);
-    bias_ = AddNullInput();
+    // TODO(b/121383394) : figure out why optional bias causes TFLite segfault
+    // when using NNAPI delegate.
+    bias_ = AddInput(TensorType_FLOAT32);
     const int num_filters = units * rank;
     activation_state_ = AddInput(
         TensorData{TensorType_FLOAT32, {batches, memory_size * num_filters}},
@@ -2006,6 +2021,8 @@ class BaseSVDFOpModel : public SingleOpModelWithNNAPI {
         {units_},                             // bias tensor
         {batches, memory_size * num_filters}  // activation_state tensor
     });
+    // TODO(b/121383394) : remove once the optional bias bug is fixed.
+    PopulateTensor(bias_, std::vector<float>(units_));
   }
 
   // Populates the weights_feature tensor.
@@ -2048,12 +2065,16 @@ class BaseSVDFOpModel : public SingleOpModelWithNNAPI {
 class SVDFOpModel : public BaseSVDFOpModel {
  public:
   using BaseSVDFOpModel::BaseSVDFOpModel;
+};
 
+class SVDFOpTest : public ::testing::Test {
+ protected:
   void VerifyGoldens(float golden_input[], float golden_output[],
-                     int golden_size, float tolerance = 1e-5) {
-    const int svdf_num_batches = num_batches();
-    const int svdf_input_size = input_size();
-    const int svdf_num_units = num_units();
+                     int golden_size, BaseSVDFOpModel* svdf,
+                     float tolerance = 1e-5) {
+    const int svdf_num_batches = svdf->num_batches();
+    const int svdf_input_size = svdf->input_size();
+    const int svdf_num_units = svdf->num_units();
     const int input_sequence_size =
         golden_size / sizeof(float) / (svdf_input_size * svdf_num_batches);
     // Going over each input batch, setting the input tensor, invoking the SVDF
@@ -2062,9 +2083,9 @@ class SVDFOpModel : public BaseSVDFOpModel {
       float* batch_start =
           golden_input + i * svdf_input_size * svdf_num_batches;
       float* batch_end = batch_start + svdf_input_size * svdf_num_batches;
-      SetInput(0, batch_start, batch_end);
+      svdf->SetInput(0, batch_start, batch_end);
 
-      Invoke();
+      svdf->Invoke();
 
       const float* golden_start =
           golden_output + i * svdf_num_units * svdf_num_batches;
@@ -2073,13 +2094,13 @@ class SVDFOpModel : public BaseSVDFOpModel {
       std::vector<float> expected;
       expected.insert(expected.end(), golden_start, golden_end);
 
-      EXPECT_THAT(GetOutput(),
+      EXPECT_THAT(svdf->GetOutput(),
                   ElementsAreArray(ArrayFloatNear(expected, tolerance)));
     }
   }
 };
 
-TEST(NNAPIDelegate, SVDFBlackBoxTestRank1) {
+TEST_F(SVDFOpTest, BlackBoxTestRank1) {
   SVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
                    /*memory_size=*/10, /*rank=*/1);
   svdf.SetWeightsFeature({-0.31930989, -0.36118156, 0.0079667, 0.37613347,
@@ -2099,10 +2120,11 @@ TEST(NNAPIDelegate, SVDFBlackBoxTestRank1) {
        -0.10781813, 0.27201805,  0.14324132,  -0.23681851, -0.27115166,
        -0.01580888, -0.14943552, 0.15465137,  0.09784451,  -0.0337657});
 
-  svdf.VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input));
+  VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input),
+                &svdf);
 }
 
-TEST(NNAPIDelegate, SVDFBlackBoxTestRank2) {
+TEST_F(SVDFOpTest, BlackBoxTestRank2) {
   SVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
                    /*memory_size=*/10, /*rank=*/2);
   svdf.SetWeightsFeature({-0.31930989, 0.0079667,   0.39296314,  0.37613347,
@@ -2137,7 +2159,8 @@ TEST(NNAPIDelegate, SVDFBlackBoxTestRank2) {
        0.27179423,  -0.04710215, 0.31069002,  0.22672787,  0.09580326,
        0.08682203,  0.1258215,   0.1851041,   0.29228821,  0.12366763});
 
-  svdf.VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input));
+  VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input),
+                &svdf);
 }
 
 class LSTMOpModel : public SingleOpModelWithNNAPI {
@@ -2223,71 +2246,69 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
     BuildInterpreter(input_shapes);
   }
 
-  void SetInputToInputWeights(std::initializer_list<float> f) {
+  void SetInputToInputWeights(std::vector<float> f) {
     PopulateTensor(input_to_input_weights_, f);
   }
 
-  void SetInputToForgetWeights(std::initializer_list<float> f) {
+  void SetInputToForgetWeights(std::vector<float> f) {
     PopulateTensor(input_to_forget_weights_, f);
   }
 
-  void SetInputToCellWeights(std::initializer_list<float> f) {
+  void SetInputToCellWeights(std::vector<float> f) {
     PopulateTensor(input_to_cell_weights_, f);
   }
 
-  void SetInputToOutputWeights(std::initializer_list<float> f) {
+  void SetInputToOutputWeights(std::vector<float> f) {
     PopulateTensor(input_to_output_weights_, f);
   }
 
-  void SetRecurrentToInputWeights(std::initializer_list<float> f) {
+  void SetRecurrentToInputWeights(std::vector<float> f) {
     PopulateTensor(recurrent_to_input_weights_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::initializer_list<float> f) {
+  void SetRecurrentToForgetWeights(std::vector<float> f) {
     PopulateTensor(recurrent_to_forget_weights_, f);
   }
 
-  void SetRecurrentToCellWeights(std::initializer_list<float> f) {
+  void SetRecurrentToCellWeights(std::vector<float> f) {
     PopulateTensor(recurrent_to_cell_weights_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::initializer_list<float> f) {
+  void SetRecurrentToOutputWeights(std::vector<float> f) {
     PopulateTensor(recurrent_to_output_weights_, f);
   }
 
-  void SetCellToInputWeights(std::initializer_list<float> f) {
+  void SetCellToInputWeights(std::vector<float> f) {
     PopulateTensor(cell_to_input_weights_, f);
   }
 
-  void SetCellToForgetWeights(std::initializer_list<float> f) {
+  void SetCellToForgetWeights(std::vector<float> f) {
     PopulateTensor(cell_to_forget_weights_, f);
   }
 
-  void SetCellToOutputWeights(std::initializer_list<float> f) {
+  void SetCellToOutputWeights(std::vector<float> f) {
     PopulateTensor(cell_to_output_weights_, f);
   }
 
-  void SetInputGateBias(std::initializer_list<float> f) {
+  void SetInputGateBias(std::vector<float> f) {
     PopulateTensor(input_gate_bias_, f);
   }
 
-  void SetForgetGateBias(std::initializer_list<float> f) {
+  void SetForgetGateBias(std::vector<float> f) {
     PopulateTensor(forget_gate_bias_, f);
   }
 
-  void SetCellBias(std::initializer_list<float> f) {
-    PopulateTensor(cell_bias_, f);
-  }
+  void SetCellBias(std::vector<float> f) { PopulateTensor(cell_bias_, f); }
 
-  void SetOutputGateBias(std::initializer_list<float> f) {
+  void SetOutputGateBias(std::vector<float> f) {
     PopulateTensor(output_gate_bias_, f);
   }
 
-  void SetProjectionWeights(std::initializer_list<float> f) {
+  void SetProjectionWeights(std::vector<float> f) {
     PopulateTensor(projection_weights_, f);
   }
 
-  void SetProjectionBias(std::initializer_list<float> f) {
+  void SetProjectionBias(std::vector<float> f) {
     PopulateTensor(projection_bias_, f);
   }
 
@@ -2342,22 +2363,22 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
 class BaseLstmTest : public ::testing::Test {
  protected:
   // Weights of the LSTM model. Some are optional.
-  std::initializer_list<float> input_to_input_weights_;
-  std::initializer_list<float> input_to_cell_weights_;
-  std::initializer_list<float> input_to_forget_weights_;
-  std::initializer_list<float> input_to_output_weights_;
-  std::initializer_list<float> input_gate_bias_;
-  std::initializer_list<float> cell_gate_bias_;
-  std::initializer_list<float> forget_gate_bias_;
-  std::initializer_list<float> output_gate_bias_;
-  std::initializer_list<float> recurrent_to_input_weights_;
-  std::initializer_list<float> recurrent_to_cell_weights_;
-  std::initializer_list<float> recurrent_to_forget_weights_;
-  std::initializer_list<float> recurrent_to_output_weights_;
-  std::initializer_list<float> cell_to_input_weights_;
-  std::initializer_list<float> cell_to_forget_weights_;
-  std::initializer_list<float> cell_to_output_weights_;
-  std::initializer_list<float> projection_weights_;
+  std::vector<float> input_to_input_weights_;
+  std::vector<float> input_to_cell_weights_;
+  std::vector<float> input_to_forget_weights_;
+  std::vector<float> input_to_output_weights_;
+  std::vector<float> input_gate_bias_;
+  std::vector<float> cell_gate_bias_;
+  std::vector<float> forget_gate_bias_;
+  std::vector<float> output_gate_bias_;
+  std::vector<float> recurrent_to_input_weights_;
+  std::vector<float> recurrent_to_cell_weights_;
+  std::vector<float> recurrent_to_forget_weights_;
+  std::vector<float> recurrent_to_output_weights_;
+  std::vector<float> cell_to_input_weights_;
+  std::vector<float> cell_to_forget_weights_;
+  std::vector<float> cell_to_output_weights_;
+  std::vector<float> projection_weights_;
 
   // LSTM input is stored as num_batch x num_inputs vector.
   std::vector<std::vector<float>> lstm_input_;

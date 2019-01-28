@@ -93,12 +93,20 @@ public final class Tensor {
    * Copies the contents of the provided {@code src} object to the Tensor.
    *
    * <p>The {@code src} should either be a (multi-dimensional) array with a shape matching that of
-   * this tensor, or a {@link ByteByffer} of compatible primitive type with a matching flat size.
+   * this tensor, a {@link ByteByffer} of compatible primitive type with a matching flat size, or
+   * {@code null} iff the tensor has an underlying delegate buffer handle.
    *
    * @throws IllegalArgumentException if the tensor is a scalar or if {@code src} is not compatible
    *     with the tensor (for example, mismatched data types or shapes).
    */
   void setTo(Object src) {
+    if (src == null) {
+      if (hasDelegateBufferHandle(nativeHandle)) {
+        return;
+      }
+      throw new IllegalArgumentException(
+          "Null inputs are allowed only if the Tensor is bound to a buffer handle.");
+    }
     throwExceptionIfTypeIsIncompatible(src);
     if (isByteBuffer(src)) {
       ByteBuffer srcBuffer = (ByteBuffer) src;
@@ -117,11 +125,19 @@ public final class Tensor {
   /**
    * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
    *
-   * @param dst the destination buffer, either an explicitly-typed array or a {@link ByteBuffer}.
+   * @param dst the destination buffer, either an explicitly-typed array, a {@link ByteBuffer} or
+   *     {@code null} iff the tensor has an underlying delegate buffer handle.
    * @throws IllegalArgumentException if {@code dst} is not compatible with the tensor (for example,
    *     mismatched data types or shapes).
    */
   Object copyTo(Object dst) {
+    if (dst == null) {
+      if (hasDelegateBufferHandle(nativeHandle)) {
+        return dst;
+      }
+      throw new IllegalArgumentException(
+          "Null outputs are allowed only if the Tensor is bound to a buffer handle.");
+    }
     throwExceptionIfTypeIsIncompatible(dst);
     if (dst instanceof ByteBuffer) {
       ByteBuffer dstByteBuffer = (ByteBuffer) dst;
@@ -135,6 +151,9 @@ public final class Tensor {
   /** Returns the provided buffer's shape if specified and different from this Tensor's shape. */
   // TODO(b/80431971): Remove this method after deprecating multi-dimensional array inputs.
   int[] getInputShapeIfDifferent(Object input) {
+    if (input == null) {
+      return null;
+    }
     // Implicit resizes based on ByteBuffer capacity isn't supported, so short-circuit that path.
     // The ByteBuffer's size will be validated against this Tensor's size in {@link #setTo(Object)}.
     if (isByteBuffer(input)) {
@@ -287,9 +306,7 @@ public final class Tensor {
 
   private static native int numBytes(long handle);
 
-  private static native int setBufferHandle(long handle, long delegateHandle, int bufferHandle);
-
-  private static native int bufferHandle(long handle);
+  private static native boolean hasDelegateBufferHandle(long handle);
 
   private static native void readMultiDimensionalArray(long handle, Object dst);
 

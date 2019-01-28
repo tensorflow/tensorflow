@@ -34,6 +34,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -76,10 +77,22 @@ def compile(computation, inputs=None):  # pylint: disable=redefined-builtin
 
       All `Operation`s returned from `computation` will be executed when
       evaluating any of the returned output tensors.
-    inputs: A list of input tensors or `None` (equivalent to an empty list).
+    inputs: A list of inputs or `None` (equivalent to an empty list). Each input
+      can be a nested structure containing values that are convertible to
+      tensors. Note that passing an N-dimension list of compatible values will
+      result in a N-dimention list of scalar tensors rather than a single Rank-N
+      tensors. If you need different behavior, convert part of inputs to tensors
+      with `tf.convert_to_tensor`.
 
   Returns:
-    A list of output tensors.
+    Same data structure as if computation(*inputs) is called directly with some
+    exceptions for correctness. Exceptions include:
+      1) None output: a NoOp would be returned which control-depends on
+         computation.
+      2) Single value output: A tuple containing the value would be returned.
+      3) Operation-only outputs: a NoOp would be returned which
+         control-depends on computation.
+      TODO(b/121383831): Investigate into removing these special cases.
   """
   # pylint: disable=protected-access
   return _compile_internal(computation, inputs)
@@ -245,13 +258,21 @@ def _compile_internal(computation, inputs=None):
   Args:
     computation: A Python function that builds the computation to compile and
       execute.
-    inputs: A list of input tensors or `None` (equivalent to `[]`). Its order
-      should match ordering of computation arguments.
+    inputs: A list of inputs or `None` (equivalent to an empty list). Each input
+      can be a nested structure containing values that are convertible to
+      tensors. Note that passing an N-dimension list of compatible values will
+      result in a N-dimension list of scalar tensors rather than a single Rank-N
+      tensors. If you need different behavior, convert part of inputs to tensors
+      with `tf.convert_to_tensor`.
+
   Returns:
-    A list of output tensors from computation.
+    Same data structure as if computation(*inputs) is called directly with some
+    exceptions for correctness. Exceptions include: 1) None output 2) Single
+    value output 3) Operation-only outputs
   Raises:
     ValueError: If any element in computation outputs is neither an operations
       or a value that can be converted to tensor.
+    ValueError: If computation outputs is non-flat and contains any Operations.
     TypeError: If `inputs` is not a list or tuple.
   """
   if inputs is None:
@@ -260,17 +281,10 @@ def _compile_internal(computation, inputs=None):
   if not isinstance(inputs, collections.Sequence):
     raise TypeError('inputs must be a list')
 
+  # Flatten inputs.
+  flat_inputs = nest.flatten(inputs)
   # Converts inputs to Tensors.
-  inputs = [ops.convert_to_tensor(x) for x in inputs]
-  input_arity = len(inputs)
-
-  arg_error = check_function_argument_count(
-      computation, input_arity, infeed_queue=None)
-  if arg_error is not None:
-    raise TypeError(
-        'Supplied computation cannot be called with the specified inputs. You '
-        'specified %d inputs: %s, but the computation needs %s' %
-        (input_arity, str([i.name for i in inputs]), arg_error))
+  flat_inputs = [ops.convert_to_tensor(x) for x in flat_inputs]
 
   cluster_name = ops.get_default_graph().unique_name('cluster')
   pivot = control_flow_ops.no_op(name=cluster_name + '/pivot')
@@ -280,10 +294,14 @@ def _compile_internal(computation, inputs=None):
 
     # Add identity ops so even unused inputs are 'consumed' by the
     # computation.
-    computation_inputs = [
+    flat_inputs = [
         array_ops.identity(x, name='input_{}'.format(i))
-        for i, x in enumerate(inputs)
+        for i, x in enumerate(flat_inputs)
     ]
+
+    # Re-pack flat_inputs in same structure as 'inputs'.
+    computation_inputs = nest.pack_sequence_as(
+        structure=inputs, flat_sequence=flat_inputs)
 
     # Only resource variables work inside an XLA computation, so turn on
     # resource variables for the computation.
@@ -297,66 +315,166 @@ def _compile_internal(computation, inputs=None):
     # Restore variable scope after computation.
     vscope.set_use_resource(saved_use_resource)
 
-    # If the computation returns `None`, make it an empty tuple.
-    if outputs is None:
-      outputs = tuple()
-    # If the computation only returned one value, make it a tuple.
-    if not isinstance(outputs, collections.Sequence):
-      outputs = (outputs,)
+    outputs_is_flat = is_flat(outputs)
+    if outputs_is_flat:
+      output_tensors, control_deps = _postprocess_flat_outputs(outputs)
+    else:
+      output_tensors, control_deps = _postprocess_non_flat_outputs(outputs)
 
-    # Append `no_op` here so that return value of this function always contains
-    # at least one op that can trigger XlaLaunch node.
-    outputs += (control_flow_ops.no_op(),)
-    try:
-      outputs = [
-          o if isinstance(o, ops.Operation) else ops.convert_to_tensor(o)
-          for o in outputs
-      ]
-    except Exception as e:
-      raise ValueError(
-          'XLA computation function return values must all either be Operations'
-          ' or convertible to Tensors. Got error: "%s"' % str(e))
-
-    # Separates the returned Operations and Tensors.
-    output_operations = [o for o in outputs if isinstance(o, ops.Operation)]
-    output_tensors = [o for o in outputs if not isinstance(o, ops.Operation)]
-
-    if outputs != output_tensors + output_operations:
-      raise ValueError(
-          'XLA computation function must return zero or more Tensor values '
-          'followed by zero or more Operations.')
-    output_arity = len(output_tensors)
-
-    new_output_tensors = []
-    for t in output_tensors:
-      with ops.device(t.device if t.device else ''):
-        new_output_tensors.append(array_ops.identity(t))
-
-    output_tensors = new_output_tensors
     context.ExitResult(output_tensors)
   finally:
     context.report_unsupported_operations()
     context.Exit()
 
-  outputs = [
-      xla_ops.xla_cluster_output(output_tensors[i], name='output{}'.format(i))
-      for i in xrange(output_arity)
+  # When XLA computation returns only operations and no tensors, a NoOp
+  # dependent on the operations in outputs is returned. Otherwise final
+  # outputs would be empty and there is no way to trigger returned
+  # operations.
+  if not output_tensors:
+    return control_flow_ops.group(control_deps, name='output_0')
+
+  output_tensors = [
+      xla_ops.xla_cluster_output(o, name='output{}'.format(i))
+      for i, o in enumerate(output_tensors)
   ]
 
-  with ops.control_dependencies(output_operations):
-    if output_arity == 0:
-      # When XLA computation returns only operations and no tensors, a NoOp
-      # dependent on the operations in outputs is returned. Otherwise final
-      # outputs would be empty and there is no way to trigger returned
-      # operations.
-      return control_flow_ops.no_op(name='output_0')
-    else:
-      # Wraps the outputs in identity operators that carries control
-      # dependencies.
-      return [
-          array_ops.identity(outputs[i], name='output_%d' % i)
-          for i in xrange(output_arity)
-      ]
+  with ops.control_dependencies(control_deps):
+    # Wraps the outputs in identity operators that carries control
+    # dependencies.
+    output_tensors = [
+        array_ops.identity(o, name='output_%d' % i)
+        for i, o in enumerate(output_tensors)
+    ]
+
+  # If `computation` returned non-flat output structure, pack output tensors
+  # back into same structure.
+  if not outputs_is_flat:
+    output_tensors = nest.pack_sequence_as(
+        structure=outputs, flat_sequence=output_tensors)
+
+  return output_tensors
+
+
+def is_flat(outputs):
+  """Checks if outputs is a flat structure.
+
+    Following structures and values are considered flat:
+    1) None
+    2) A single object
+    3) A list or tuple of Tensors/Operations
+
+    The only structures that this function understands are sequences and
+    dictionaries.  E.g. this means that if outputs contains a single
+    user-defined Object, it is considered to be flat. Errors are raised later on
+    if that Object cannot be converted to a Tensor.
+
+  Args:
+    outputs: Output from `computation` inside `xla.compile`.
+
+  Returns:
+    A boolean indicates whether outputs is flat.
+  """
+  # If outputs is a list or tuple, check if it has any nested structure. If
+  # there is, then outputs is non-flat.
+  if isinstance(outputs, collections.Sequence):
+    for o in outputs:
+      if isinstance(o, collections.Sequence) or isinstance(o, dict):
+        return False
+
+  # If outputs is a dict, it is non-flat.
+  if isinstance(outputs, dict):
+    return False
+
+  # Getting here means either outputs itself is a single non-structured value
+  # or it is a flat list of single non-structured values.
+  return True
+
+
+def _postprocess_flat_outputs(outputs):
+  """Validates flat outputs and adds back device assignments.
+
+  Args:
+    outputs: Output from `computation` inside `xla.compile`.
+
+  Returns:
+    Tensors and Operations extracted from outputs.
+  """
+  # Following code segment is to preserve legacy behavior. Previously we only
+  # supported flat outputs and thus for consistency it was nice to convert even
+  # single element into a tuple. But now that we support arbitrary output
+  # structure, this is no longer necessary.
+  # TODO(b/121383831): Migrate all legacy use cases and delete this special
+  # case.
+  # If the computation returns `None`, make it an empty tuple.
+  if outputs is None:
+    outputs = tuple()
+  # If the computation only returned one value, make it a tuple.
+  if not isinstance(outputs, collections.Sequence):
+    outputs = (outputs,)
+
+  # Append `no_op` here so that return value of this function always contains
+  # at least one op that can trigger XlaLaunch node.
+  outputs += (control_flow_ops.no_op(),)
+  try:
+    outputs = [
+        o if isinstance(o, ops.Operation) else ops.convert_to_tensor(o)
+        for o in outputs
+    ]
+  except Exception as e:
+    raise ValueError(
+        'XLA computation function return values must all either be Operations'
+        ' or convertible to Tensors. Got error: "%s"' % str(e))
+
+  # Separates the returned Operations and Tensors.
+  output_operations = [o for o in outputs if isinstance(o, ops.Operation)]
+  output_tensors = [o for o in outputs if not isinstance(o, ops.Operation)]
+
+  if outputs != output_tensors + output_operations:
+    raise ValueError(
+        'XLA computation function must return zero or more Tensor values '
+        'followed by zero or more Operations.')
+
+  new_output_tensors = []
+  for t in output_tensors:
+    with ops.device(t.device if t.device else ''):
+      new_output_tensors.append(array_ops.identity(t))
+
+  return new_output_tensors, output_operations
+
+
+def _postprocess_non_flat_outputs(outputs):
+  """Validates non-flat outputs and adds back device assignments.
+
+  Args:
+    outputs: Output from `computation` inside `xla.compile`.
+
+  Returns:
+    Tensors extracted from outputs and an empty list because Operations are not
+    allowed in non-flat outputs..
+  """
+  # Convert all non-Operation outputs to Tensors.
+  new_output_tensors = []
+  for o in nest.flatten(outputs):
+    if isinstance(o, ops.Operation):
+      raise ValueError(
+          'xla.compile does not support Operation as return value in non-flat '
+          'output structure. You can set returned Operations as control '
+          'dependencies of returned Tensors so Operations are triggered when '
+          'Tensors are evaluated. Operation found: "%s"' % o.name)
+
+    try:
+      o = ops.convert_to_tensor(o)
+    except Exception as e:
+      raise ValueError(
+          'XLA computation function return values must all either be '
+          'Operations or convertible to Tensors. Got error: "%s"' % str(e))
+
+    # Makes sure even pass-through inputs/outputs are touched in compile
+    # context by creating an Identity node inside compile context.
+    with ops.device(o.device if o.device else ''):
+      new_output_tensors.append(array_ops.identity(o))
+
+  return new_output_tensors, []
 
 
 @contextlib.contextmanager

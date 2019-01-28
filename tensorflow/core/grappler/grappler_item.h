@@ -81,17 +81,17 @@ struct GrapplerItem {
   // fetch nodes, keep_ops, init_ops.
   std::unordered_set<string> NodesToPreserve() const;
 
-  // Restrict types of optimizations that are allowed for this GrapplerItem.
-  struct AllowedOptimizations {
+  struct OptimizationOptions {
     // Is it allowed to add nodes to the graph that do not have registered
     // gradient function.
-    bool non_differentiable_rewrites = true;
+    bool allow_non_differentiable_rewrites = true;
 
-    // By default we are allowed to prune ops with side-effects from the main
-    // graph if they are not in transitive fanin of the fetch nodes. If we are
-    // optimizing a graph that was instantiated by a function definition, we
-    // must keep all side effects intact.
-    bool prune_ops_with_side_effects = true;
+    // Tensorflow function execution semantics is slightly different from the
+    // main Tensorflow graph, and we need to make sure that we do not change it
+    // by running Grappler optimizer passes. One main difference is that
+    // functions do not prune ops with side-effects and dataset-output ops (see
+    // PruneFunctionBody in common_runtime/function.cc).
+    bool is_function_instantiation = false;
   };
 
   const std::unordered_set<string>& devices() const;
@@ -108,8 +108,8 @@ struct GrapplerItem {
   // Clears a set of available devices.
   void ClearDevices();
 
-  const AllowedOptimizations& allowed_optimizations() const;
-  AllowedOptimizations& allowed_optimizations();
+  const OptimizationOptions& optimization_options() const;
+  OptimizationOptions& optimization_options();
 
  private:
   // TODO(ezhulenev) Make GrapplerItem a class and hide all public data members.
@@ -120,7 +120,7 @@ struct GrapplerItem {
   // Example of a fully defined name: "/job:work/replica:1/task:1/device:CPU:0"
   std::unordered_set<string> devices_;
 
-  AllowedOptimizations allowed_optimizations_;
+  OptimizationOptions optimization_options_;
 };
 
 // Return the transitive fanin of a set of terminal nodes.

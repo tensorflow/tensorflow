@@ -344,6 +344,13 @@ config_setting(
 )
 
 config_setting(
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
+)
+
+config_setting(
     name = "with_mpi_support",
     values = {"define": "with_mpi_support=true"},
     visibility = ["//visibility:public"],
@@ -370,13 +377,22 @@ config_setting(
     define_values = {"tf_api_version": "2"},
 )
 
+# This flag is defined for select statements that match both
+# on 'windows' and 'api_version_2'. In this case, bazel requires
+# having a flag which is a superset of these two.
+config_setting(
+    name = "windows_and_api_version_2",
+    define_values = {"tf_api_version": "2"},
+    values = {"cpu": "x64_windows"},
+)
+
 package_group(
     name = "internal",
     packages = [
         "-//third_party/tensorflow/python/estimator",
         "//learning/deepmind/...",
         "//learning/meta_rank/...",
-        "//learning/pathways/...",  # While dataset C++ api requires internals
+        "//platforms/performance/autograppler/...",
         "//tensorflow/...",
         "//tensorflow_estimator/contrib/...",
         "//tensorflow_fold/llgtm/...",

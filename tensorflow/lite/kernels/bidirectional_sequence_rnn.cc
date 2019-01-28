@@ -31,6 +31,18 @@ namespace ops {
 namespace builtin {
 namespace bidirectional_sequence_rnn {
 
+namespace {
+
+int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
+  if (is_uint8) {
+    return reinterpret_cast<int8_t*>(tensor->data.uint8);
+  } else {
+    return tensor->data.int8;
+  }
+}
+
+}  // namespace
+
 constexpr int kInputTensor = 0;
 // Forward and backward cell tensors.
 constexpr int kFwWeightsTensor = 1;
@@ -41,7 +53,10 @@ constexpr int kBwWeightsTensor = 5;
 constexpr int kBwRecurrentWeightsTensor = 6;
 constexpr int kBwBiasTensor = 7;
 constexpr int kBwHiddenStateTensor = 8;
-// Auxiliary inputs.
+// Used as auxiliary input and weights when stacking for
+// tf.contrib.rnn.stack_bidirectional_rnn case (with cross links); Used as input
+// to the backward cell when stacking for tf.nn.static_bidirectional_rnn case
+// (without cross links).
 constexpr int kAuxInputTensor = 9;       // Optional.
 constexpr int kFwAuxWeightsTensor = 10;  // Optional.
 constexpr int kBwAuxWeightsTensor = 11;  // Optional.
@@ -101,13 +116,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bw_aux_input_weights =
       GetOptionalInputTensor(context, node, kBwAuxWeightsTensor);
 
-  const bool aux_inputs_all_or_none =
-      ((aux_input != nullptr) && (fw_aux_input_weights != nullptr) &&
+  const bool aux_inputs_weights_or_none =
+      ((fw_aux_input_weights != nullptr) &&
        (bw_aux_input_weights != nullptr)) ||
-      ((aux_input == nullptr) && (fw_aux_input_weights == nullptr) &&
-       (bw_aux_input_weights == nullptr));
-  TF_LITE_ENSURE(context, aux_inputs_all_or_none);
-  const bool has_aux_input = (aux_input != nullptr);
+      ((fw_aux_input_weights == nullptr) && (bw_aux_input_weights == nullptr));
+  TF_LITE_ENSURE(context, aux_inputs_weights_or_none);
+  const bool has_aux_input = (fw_aux_input_weights != nullptr);
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
@@ -154,8 +168,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       bw_aux_input_weights->dims->data[1]);
   }
 
-  const bool is_hybrid_op =
-      (fw_input_weights->type == kTfLiteUInt8 && input->type == kTfLiteFloat32);
+  const bool is_hybrid_op = ((fw_input_weights->type == kTfLiteUInt8 ||
+                              fw_input_weights->type == kTfLiteInt8) &&
+                             input->type == kTfLiteFloat32);
 
   if (is_hybrid_op) {
     int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
@@ -172,7 +187,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kInputQuantized;
     TfLiteTensor* input_quantized =
         GetTemporary(context, node, kInputQuantized);
-    input_quantized->type = kTfLiteUInt8;
+    input_quantized->type = fw_input_weights->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
       TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
@@ -184,7 +199,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kFwHiddenStateQuantized;
     TfLiteTensor* fw_hidden_state_quantized =
         GetTemporary(context, node, kFwHiddenStateQuantized);
-    fw_hidden_state_quantized->type = kTfLiteUInt8;
+    fw_hidden_state_quantized->type = fw_input_weights->type;
     fw_hidden_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(fw_hidden_state_quantized->dims,
                              fw_hidden_state->dims)) {
@@ -199,7 +214,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kBwHiddenStateQuantized;
     TfLiteTensor* bw_hidden_state_quantized =
         GetTemporary(context, node, kBwHiddenStateQuantized);
-    bw_hidden_state_quantized->type = kTfLiteUInt8;
+    bw_hidden_state_quantized->type = fw_input_weights->type;
     bw_hidden_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(bw_hidden_state_quantized->dims,
                              bw_hidden_state->dims)) {
@@ -230,7 +245,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           *scratch_tensor_index + kAuxInputQuantized;
       TfLiteTensor* aux_input_quantized =
           GetTemporary(context, node, kAuxInputQuantized);
-      aux_input_quantized->type = kTfLiteUInt8;
+      aux_input_quantized->type = fw_input_weights->type;
       aux_input_quantized->allocation_type = kTfLiteArenaRw;
       if (!TfLiteIntArrayEqual(aux_input_quantized->dims, aux_input->dims)) {
         TfLiteIntArray* aux_input_quantized_size =
@@ -264,16 +279,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus EvalFloat(
-    const TfLiteTensor* input, const TfLiteTensor* fw_input_weights,
-    const TfLiteTensor* fw_recurrent_weights, const TfLiteTensor* fw_bias,
-    const TfLiteTensor* bw_input_weights,
-    const TfLiteTensor* bw_recurrent_weights, const TfLiteTensor* bw_bias,
-    const TfLiteTensor* aux_input, const TfLiteTensor* fw_aux_input_weights,
-    const TfLiteTensor* bw_aux_input_weights,
-    const TfLiteBidirectionalSequenceRNNParams* params,
-    TfLiteTensor* fw_hidden_state, TfLiteTensor* fw_output,
-    TfLiteTensor* bw_hidden_state, TfLiteTensor* bw_output) {
+TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
+                       const TfLiteTensor* fw_input_weights,
+                       const TfLiteTensor* fw_recurrent_weights,
+                       const TfLiteTensor* fw_bias,
+                       const TfLiteTensor* bw_input_weights,
+                       const TfLiteTensor* bw_recurrent_weights,
+                       const TfLiteTensor* bw_bias,
+                       const TfLiteTensor* aux_input,
+                       const TfLiteTensor* fw_aux_input_weights,
+                       const TfLiteTensor* bw_aux_input_weights,
+                       const TfLiteBidirectionalSequenceRNNParams* params,
+                       TfLiteTensor* fw_hidden_state, TfLiteTensor* fw_output,
+                       TfLiteTensor* bw_hidden_state, TfLiteTensor* bw_output) {
   const bool time_major = params->time_major;
   const int batch_size =
       (time_major) ? input->dims->data[1] : input->dims->data[0];
@@ -326,7 +344,7 @@ TfLiteStatus EvalFloat(
     float* bw_hidden_state_ptr_batch = bw_hidden_state->data.f;
     for (int s = max_time - 1; s >= 0; s--) {
       const float* input_ptr_batch =
-          input->data.f + s * input_size * batch_size;
+          bw_input->data.f + s * input_size * batch_size;
       const float* aux_input_ptr_batch =
           (aux_input != nullptr)
               ? aux_input->data.f + s * input_size * batch_size
@@ -394,7 +412,8 @@ TfLiteStatus EvalFloat(
 }
 
 TfLiteStatus EvalHybrid(
-    const TfLiteTensor* input, const TfLiteTensor* fw_input_weights,
+    const TfLiteTensor* input, const TfLiteTensor* bw_input,
+    const TfLiteTensor* fw_input_weights,
     const TfLiteTensor* fw_recurrent_weights, const TfLiteTensor* fw_bias,
     const TfLiteTensor* bw_input_weights,
     const TfLiteTensor* bw_recurrent_weights, const TfLiteTensor* bw_bias,
@@ -406,6 +425,7 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* fw_hidden_state, TfLiteTensor* fw_output,
     TfLiteTensor* bw_hidden_state_quantized, TfLiteTensor* bw_hidden_state,
     TfLiteTensor* bw_output) {
+  const bool is_uint8_hybrid = fw_input_weights->type == kTfLiteUInt8;
   const bool time_major = params->time_major;
   const int batch_size =
       (time_major) ? input->dims->data[1] : input->dims->data[0];
@@ -417,19 +437,19 @@ TfLiteStatus EvalHybrid(
   const int fw_num_units = fw_input_weights->dims->data[0];
   const float* fw_bias_ptr = fw_bias->data.f;
   const int8_t* fw_input_weights_ptr =
-      reinterpret_cast<const int8_t*>(fw_input_weights->data.uint8);
+      GetInt8DataPtr(fw_input_weights, is_uint8_hybrid);
   float fw_input_weights_scale = fw_input_weights->params.scale;
   const int8_t* fw_recurrent_weights_ptr =
-      reinterpret_cast<const int8_t*>(fw_recurrent_weights->data.uint8);
+      GetInt8DataPtr(fw_recurrent_weights, is_uint8_hybrid);
   float fw_recurrent_weights_scale = fw_recurrent_weights->params.scale;
 
   const int bw_num_units = bw_input_weights->dims->data[0];
   const float* bw_bias_ptr = bw_bias->data.f;
   const int8_t* bw_input_weights_ptr =
-      reinterpret_cast<const int8_t*>(bw_input_weights->data.uint8);
+      GetInt8DataPtr(bw_input_weights, is_uint8_hybrid);
   float bw_input_weights_scale = bw_input_weights->params.scale;
   const int8_t* bw_recurrent_weights_ptr =
-      reinterpret_cast<const int8_t*>(bw_recurrent_weights->data.uint8);
+      GetInt8DataPtr(bw_recurrent_weights, is_uint8_hybrid);
   float bw_recurrent_weights_scale = bw_recurrent_weights->params.scale;
 
   // Set the auxiliary pointers and scales if needed.
@@ -440,21 +460,22 @@ TfLiteStatus EvalHybrid(
   int8_t* aux_quantized_input_ptr = nullptr;
   if (aux_input_size > 0) {
     aux_fw_input_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_fw_input_weights->data.uint8);
+        GetInt8DataPtr(aux_fw_input_weights, is_uint8_hybrid);
     aux_fw_input_weights_scale = aux_fw_input_weights->params.scale;
     aux_bw_input_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_bw_input_weights->data.uint8);
+        GetInt8DataPtr(aux_bw_input_weights, is_uint8_hybrid);
     aux_bw_input_weights_scale = aux_bw_input_weights->params.scale;
-    aux_quantized_input_ptr = reinterpret_cast<int8_t*>(aux_input_quantized);
+    aux_quantized_input_ptr =
+        GetInt8DataPtr(aux_input_quantized, is_uint8_hybrid);
   }
 
   // Initialize temporary storage for quantized values.
   int8_t* quantized_input_ptr =
-      reinterpret_cast<int8_t*>(input_quantized->data.uint8);
+      GetInt8DataPtr(input_quantized, is_uint8_hybrid);
   int8_t* fw_quantized_hidden_state_ptr =
-      reinterpret_cast<int8_t*>(fw_hidden_state_quantized->data.uint8);
+      GetInt8DataPtr(fw_hidden_state_quantized, is_uint8_hybrid);
   int8_t* bw_quantized_hidden_state_ptr =
-      reinterpret_cast<int8_t*>(bw_hidden_state_quantized->data.uint8);
+      GetInt8DataPtr(bw_hidden_state_quantized, is_uint8_hybrid);
   float* scaling_factors_ptr = scaling_factors->data.f;
 
   const int fw_output_step =
@@ -489,7 +510,7 @@ TfLiteStatus EvalHybrid(
       float* bw_hidden_state_ptr_batch = bw_hidden_state->data.f;
       for (int s = max_time - 1; s >= 0; s--) {
         const float* input_ptr_batch =
-            input->data.f + s * input_size * batch_size;
+            bw_input->data.f + s * input_size * batch_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
                 ? aux_input->data.f + s * input_size * batch_size
@@ -601,14 +622,37 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                 ? nullptr
                                 : GetOutput(context, node, kBwOutputTensor);
 
+  const bool has_previous_bw_output = (aux_input != nullptr);
+  const bool use_aux_input = (fw_aux_input_weights != nullptr);
+
+  // We want to cover the following cases:
+  //
+  // If not stacking (not connected after other bidi lstms):
+  //   both fw & bw will just use `input`; aux_input will be null.
+  //
+  // If stacking with cross_links, TensorFlow equivalent
+  // (tf.contrib.rnn.stack_bidirectional_rnn):
+  //   both fw & bw will use `input`, but aux_input will be none null.
+  //   Note, this time, whether connected after other bidi lstms both works.
+  //
+  // If stacking without cross_links, but connected after other bidi lstms,
+  // TensorFlow equivalent (tf.nn.static_bidirectional_rnn):
+  //   fw will use `input`, bw will use aux_input, and the `real aux_input`
+  //   will be null.
+
+  const bool non_stacking_mode = !use_aux_input && has_previous_bw_output;
+  const TfLiteTensor* bw_input = non_stacking_mode ? aux_input : input;
+  const TfLiteTensor* real_aux_input = non_stacking_mode ? nullptr : aux_input;
+
   switch (fw_input_weights->type) {
     case kTfLiteFloat32:
-      return EvalFloat(input, fw_input_weights, fw_recurrent_weights, fw_bias,
-                       bw_input_weights, bw_recurrent_weights, bw_bias,
-                       aux_input, fw_aux_input_weights, bw_aux_input_weights,
-                       params, fw_hidden_state, fw_output, bw_hidden_state,
-                       bw_output);
-    case kTfLiteUInt8: {
+      return EvalFloat(input, bw_input, fw_input_weights, fw_recurrent_weights,
+                       fw_bias, bw_input_weights, bw_recurrent_weights, bw_bias,
+                       real_aux_input, fw_aux_input_weights,
+                       bw_aux_input_weights, params, fw_hidden_state, fw_output,
+                       bw_hidden_state, bw_output);
+    case kTfLiteUInt8:
+    case kTfLiteInt8: {
       TfLiteTensor* input_quantized =
           GetTemporary(context, node, kInputQuantized);
       TfLiteTensor* fw_hidden_state_quantized =
@@ -618,17 +662,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TfLiteTensor* scaling_factors =
           GetTemporary(context, node, kScalingFactors);
       TfLiteTensor* aux_input_quantized =
-          (aux_input != nullptr)
-              ? GetTemporary(context, node, kAuxInputQuantized)
-              : nullptr;
+          use_aux_input ? GetTemporary(context, node, kAuxInputQuantized)
+                        : nullptr;
 
-      return EvalHybrid(input, fw_input_weights, fw_recurrent_weights, fw_bias,
-                        bw_input_weights, bw_recurrent_weights, bw_bias,
-                        aux_input, fw_aux_input_weights, bw_aux_input_weights,
-                        params, scaling_factors, input_quantized,
-                        aux_input_quantized, fw_hidden_state_quantized,
-                        fw_hidden_state, fw_output, bw_hidden_state_quantized,
-                        bw_hidden_state, bw_output);
+      return EvalHybrid(input, bw_input, fw_input_weights, fw_recurrent_weights,
+                        fw_bias, bw_input_weights, bw_recurrent_weights,
+                        bw_bias, real_aux_input, fw_aux_input_weights,
+                        bw_aux_input_weights, params, scaling_factors,
+                        input_quantized, aux_input_quantized,
+                        fw_hidden_state_quantized, fw_hidden_state, fw_output,
+                        bw_hidden_state_quantized, bw_hidden_state, bw_output);
     }
     default:
       context->ReportError(context, "Type not currently supported.");

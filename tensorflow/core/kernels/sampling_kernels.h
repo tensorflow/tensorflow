@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_SAMPLING_KERNELS_H_
 
 #include <cmath>
+
 #include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
@@ -68,14 +69,15 @@ struct LanczosKernelFunc {
   // Pass 1 for Lanczos1 kernel, 3 for Lanczos3 etc.
   explicit LanczosKernelFunc(float _radius) : radius(_radius) {}
   float operator()(float x) const {
+    constexpr float kPI = 3.14159265359;
     x = std::abs(x);
     if (x > radius) return 0.0;
     // Need to special case the limit case of sin(x) / x when x is zero.
     if (x <= 1e-3) {
       return 1.0;
     }
-    return radius * std::sin(M_PI * x) * std::sin(M_PI * x / radius) /
-           (M_PI * M_PI * x * x);
+    return radius * std::sin(kPI * x) * std::sin(kPI * x / radius) /
+           (kPI * kPI * x * x);
   }
   float Radius() const { return radius; }
   const float radius;

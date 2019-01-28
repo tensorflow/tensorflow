@@ -105,6 +105,10 @@ bool VerifyStringTensorBuffer(const Buffer& buffer,
 bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                                ErrorReporter* error_reporter) {
   uint64_t bytes_required = 1;
+  if (!tensor.shape()) {
+    ReportError(error_reporter, "Tensor shape is empty");
+    return false;
+  }
   for (int dim : *tensor.shape()) {
     bytes_required *= dim;
     if (bytes_required > UINT_MAX) {

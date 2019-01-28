@@ -18,15 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import collections as py_collections
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
 from tensorflow.python.ops import array_ops
@@ -58,6 +58,66 @@ WHITELIST_COLLECTIONS = [
 ]
 
 
+class UnknownArgument(object):
+  """Signifies an argument which is not currently handled."""
+  pass
+
+
+# TODO(vbardiovsky): Remove this when nest is updated with new
+# flatten_with_tuple_paths.
+def flatten_with_tuple_paths(structure):
+  return list(zip(nest.yield_flat_paths(structure), nest.flatten(structure)))
+
+
+def convert_structure_to_signature(structure, arg_names=None):
+  """Convert a potentially nested structure to a signature.
+
+  Args:
+    structure: Structure to convert, where top level collection is a list or a
+      tuple.
+    arg_names: Optional list of arguments that has equal number of elements as
+      `structure` and is used for naming corresponding TensorSpecs.
+
+  Returns:
+    Identical structure that has TensorSpec objects instead of Tensors and
+    UknownArgument instead of any unsupported types.
+  """
+
+  def encode_arg(arg, name=None):
+    """A representation for this argument, for converting into signatures."""
+    if isinstance(arg, ops.Tensor):
+      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+    if isinstance(arg, (
+        int,
+        float,
+        bool,
+        type(None),
+        dtypes.DType,
+        tensor_spec.TensorSpec,
+    )):
+      return arg
+    return UnknownArgument()
+
+  # We are using the flattened paths to name the TensorSpecs. We need an
+  # explicit name for them downstream.
+  flattened = flatten_with_tuple_paths(structure)
+  if arg_names:
+    if len(arg_names) != len(structure):
+      raise ValueError(
+          "Passed in arg_names don't match actual signature (%s)." % arg_names)
+    # Replace all top-level names with their actual arg_names. If a path before
+    # was "(2,'a',1)", it will become "(arg_names[2],'a',1)".
+    flattened = [
+        ((arg_names[path[0]],) + path[1:], arg) for path, arg in flattened
+    ]
+
+  mapped = [
+      encode_arg(arg, "/".join([str(p) for p in path]))
+      for path, arg in flattened
+  ]
+  return nest.pack_sequence_as(structure, mapped)
+
+
 class FuncGraph(ops.Graph):
   """Graph representing a function body.
 
@@ -69,6 +129,9 @@ class FuncGraph(ops.Graph):
       inputs coming first.
     outputs: Tensors that will be returned by this function. The tensors are in
       this FuncGraph.
+    structured_input_signature: A tuple of (args, kwargs), which are both
+      possibly-nested python objects that were received by this function. Note
+      that these structures might contain Python `None`s.
     structured_outputs: A possibly-nested python object which will be returned
       by this function. The Tensors in this structure are the same as those of
       self.outputs. Note that this structure might contain Python `None`s.
@@ -80,7 +143,7 @@ class FuncGraph(ops.Graph):
     seed: The graph-level random seed.
   """
 
-  def __init__(self, name, read_only_collections=True):
+  def __init__(self, name, collections=None):
     """Construct a new FuncGraph.
 
     The graph will inherit its graph key, collections, seed, and distribution
@@ -88,19 +151,24 @@ class FuncGraph(ops.Graph):
 
     Args:
       name: the name of the function.
-      read_only_collections: whether to not write function graph collections
-        back to default graph. Defaults to True.
+      collections: a dictionary of collections this FuncGraph should start
+        with. If not specified (None), the FuncGraph will read (but not write
+        to) the outer graph's collections that are not whitelisted, and both
+        read and write to the outer graph's collections that are whitelisted.
+        The current whitelisted collections are the global variables, the
+        local variables, and the trainable variables.
+        Defaults to None.
     """
     super(FuncGraph, self).__init__()
 
     self.name = name
     self.inputs = []
     self.outputs = []
+    self.structured_input_signature = None
     self.structured_outputs = None
-    self._read_only_collections = read_only_collections
     self._weak_variables = []
     self.outer_graph = ops.get_default_graph()
-    self.captures = collections.OrderedDict()
+    self.captures = py_collections.OrderedDict()
 
     self._building_function = True
     # Map from resource tensor name to last op (in program order) which uses
@@ -122,9 +190,7 @@ class FuncGraph(ops.Graph):
       # specialization (currently used in cond_v2), here and in the cache key.
       self._colocation_stack = graph._colocation_stack.copy()  # pylint: disable=protected-access
 
-    if not self._read_only_collections:
-      self._collections = graph._collections  # pylint: disable=protected-access
-    else:
+    if collections is None:
       for collection_name in graph.get_all_collection_keys():
         if collection_name not in WHITELIST_COLLECTIONS:
           self._collections[collection_name] = graph.get_collection(
@@ -132,6 +198,8 @@ class FuncGraph(ops.Graph):
       for collection_name in WHITELIST_COLLECTIONS:
         self._collections[collection_name] = graph.get_collection_ref(
             collection_name)
+    else:
+      self._collections = collections
 
   def as_default(self):
     outer_cm = super(FuncGraph, self).as_default()
@@ -338,7 +406,8 @@ def func_graph_from_py_func(name,
                             autograph=False,
                             add_control_dependencies=True,
                             arg_names=None,
-                            op_return_value=None):
+                            op_return_value=None,
+                            collections=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -365,6 +434,13 @@ def func_graph_from_py_func(name,
     op_return_value: Optional. A Tensor. If set and `python_func` returns
       Operations, those return values will be replaced with this value. If not
       set, returning an Operation triggers an error.
+    collections: a dictionary of collections this FuncGraph should start
+      with. If not specified (None), the FuncGraph will read (but not write to)
+      the outer graph's collections that are not whitelisted, and both
+      read and write to the outer graph's collections that are whitelisted.
+      The current whitelisted collections are the global variables, the
+      local variables, and the trainable variables.
+      Defaults to None.
 
   Returns:
     A FuncGraph.
@@ -376,7 +452,7 @@ def func_graph_from_py_func(name,
   if op_return_value is not None:
     assert isinstance(op_return_value, ops.Tensor), op_return_value
   if func_graph is None:
-    func_graph = FuncGraph(name)
+    func_graph = FuncGraph(name, collections=collections)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
     control_manager = AutomaticControlDependencies
@@ -394,6 +470,14 @@ def func_graph_from_py_func(name,
     # Creates and names placeholders for all arguments.
     func_args = _get_defun_inputs_from_args(args, arg_names)
     func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
+
+    # Convert all Tensors into TensorSpecs before saving the structured inputs.
+    # If storing pure concrete functions that are not called through polymorphic
+    # functions, we don't have access to FunctionSpec, so we need to call the
+    # TensorSpecs by their `arg_names` for later binding.
+    func_graph.structured_input_signature = (
+        convert_structure_to_signature(func_args, arg_names),
+        convert_structure_to_signature(func_kwargs))
 
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
     # Variables to help check whether mutation happens in calling the function
@@ -414,7 +498,7 @@ def func_graph_from_py_func(name,
           x = array_ops.identity(op_return_value)
       elif not isinstance(x, tensor_array_ops.TensorArray):
         try:
-          x = ops.convert_to_tensor_or_indexed_slices(x)
+          x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
               "To be compatible with tf.contrib.eager.defun, Python functions "
@@ -548,36 +632,25 @@ def flatten(sequence):
   Flattens non-tensor objects into their constituent tensors.
 
   Args:
-    sequence: A nested structure of Tensors, IndexedSlices, SparseTensors and
+    sequence: A nested structure of Tensors, CompositeTensors, and
       TensorArrays.
 
   Returns:
     A list of tensors.
   """
   # TODO(akshayka): Support `SparseTensor` in a similar fashion.
-  flat_sequence = nest.flatten(sequence)
-  outputs = []
-  for item in flat_sequence:
-    if isinstance(item, ops.IndexedSlices):
-      if item.dense_shape is not None:
-        outputs.extend([item.values, item.indices, item.dense_shape])
-      else:
-        outputs.extend([item.values, item.indices])
-    elif isinstance(item, sparse_tensor.SparseTensor):
-      outputs.extend([item.indices, item.values, item.dense_shape])
-    elif isinstance(item, tensor_array_ops.TensorArray):
-      outputs.append(item.flow)
-    else:
-      outputs.append(item)
-  return outputs
+  flat_sequence = nest.flatten(sequence, expand_composites=True)
+  return [
+      item.flow if isinstance(item, tensor_array_ops.TensorArray) else item
+      for item in flat_sequence]
 
 
 def pack_sequence_as(structure, flat_sequence):
   """Like `nest.pack_sequence_as` but also packs other Tensor-like objects.
 
   Args:
-    structure: The structure to pack into. May contain Tensors, IndexedSlices,
-      TensorArrays or SparseTensors.
+    structure: The structure to pack into. May contain Tensors,
+      CompositeTensors, or TensorArrays.
     flat_sequence: An iterable containing tensors.
 
   Returns:
@@ -586,33 +659,16 @@ def pack_sequence_as(structure, flat_sequence):
   Raises:
     AssertionError if `structure` and `flat_sequence` are not compatible.
   """
-  flattened_structure = nest.flatten(structure)
-  flat_sequence_with_slices_and_tas = []
-  index = 0
-  for t in flattened_structure:
-    if isinstance(t, ops.IndexedSlices):
-      if t.dense_shape is not None:
-        flat_sequence_with_slices_and_tas.append(
-            ops.IndexedSlices(*flat_sequence[index:index + 3]))
-        index += 3
-      else:
-        flat_sequence_with_slices_and_tas.append(
-            ops.IndexedSlices(*flat_sequence[index:index + 2]))
-        index += 2
-    elif isinstance(t, sparse_tensor.SparseTensor):
-      flat_sequence_with_slices_and_tas.append(
-          sparse_tensor.SparseTensor(*flat_sequence[index:index + 3]))
-      index += 3
-    elif isinstance(t, tensor_array_ops.TensorArray):
-      flow = flat_sequence[index]
-      ta = tensor_array_ops.build_ta_with_new_flow(t, flow)
-      flat_sequence_with_slices_and_tas.append(ta)
-      index += 1
-    else:
-      flat_sequence_with_slices_and_tas.append(flat_sequence[index])
-      index += 1
-  assert len(flattened_structure) == len(flat_sequence_with_slices_and_tas)
-  return nest.pack_sequence_as(structure, flat_sequence_with_slices_and_tas)
+  flat_sequence = list(flat_sequence)
+  flattened_structure = nest.flatten(structure, expand_composites=True)
+  if len(flattened_structure) != len(flat_sequence):
+    raise ValueError("Mismatch in element count")
+  for i in range(len(flat_sequence)):
+    if isinstance(flattened_structure[i], tensor_array_ops.TensorArray):
+      flat_sequence[i] = tensor_array_ops.build_ta_with_new_flow(
+          old_ta=flattened_structure[i], flow=flat_sequence[i])
+  return nest.pack_sequence_as(structure, flat_sequence, expand_composites=True)
+
 
 
 def _create_substitute_placeholder(value, name=None, dtype=None):

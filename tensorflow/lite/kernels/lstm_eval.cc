@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -39,8 +40,43 @@ const float kLayerNormEpsilon = 1e-8;
 //  - n_batch: size of batch,
 //  - n_cell: number of cells (or units),
 //  - n_input: the input size,
+//  - n_aux_input: the auxilary input size.
 //  - n_output: the output size.
 //  - output_batch_leading_dim: the leading dimension of the output buffer.
+//
+// LSTM weights:
+// Input weights of size 'n_cell * n_input':
+//   input_to_input_weights            - optional (can be nullptr)
+//   input_to_forget_weights
+//   input_to_cell_weights
+//   input_to_output_weights
+// Auxilary input weights of size 'n_cell * n_aux_input':
+//   aux_input_to_input_weights        - optional
+//   aux_input_to_forget_weights       - optional
+//   aux_input_to_cell_weights         - optional
+//   aux_input_to_output_weights       - optional
+// Recurrent weights of size 'n_cell * n_output':
+//   recurrent_to_input_weights        - optional
+//   recurrent_to_forget_weights
+//   recurrent_to_cell_weights
+//   recurrent_to_input_weights
+// Peephole weights of size 'n_cell', representing diagonal matrices.
+//   cell_to_input_weights             - optional
+//   cell_to_cell_weights              - optional
+//   cell_to_output_weights            - optional
+// Projection weights of size 'n_output * n_cell'
+//   projection_weights_ptr            - optional
+// Gate biases of size 'n_cell':
+//   input_gate_bias_ptr               - optional
+//   forget_gate_bias_ptr
+//   cell_gate_bias_ptr
+//   output_gate_bias_ptr
+//
+// Layer norm coefficients of size 'n_cell', representing diagonal matrices.
+//   input_layer_norm_coefficients_ptr  - optional
+//   forget_layer_norm_coefficients_ptr - optional
+//   cell_layer_norm_coefficients_ptr   - optional
+//   output_layer_norm_coefficients_ptr - optional
 //
 // The pointers to the cell and output state and the output are updated.
 //
@@ -335,6 +371,11 @@ inline void LstmStepWithAuxInput(
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_input_weights
+// Quantized auxilary input weights of size 'n_cell * n_aux_input':
+//   aux_input_to_input_weights        - optional
+//   aux_input_to_forget_weights       - optional
+//   aux_input_to_cell_weights         - optional
+//   aux_input_to_output_weights       - optional
 // Quantized recurrent weights of size 'n_cell * n_output':
 //   recurrent_to_input_weights        - optional
 //   recurrent_to_forget_weights
@@ -351,6 +392,10 @@ inline void LstmStepWithAuxInput(
 //   input_to_forget_weights_scale
 //   input_to_cell_weights_scale
 //   input_to_output_weights_scale
+//   aux_input_to_input_weights_scale  - optional
+//   aux_input_to_forget_weights_scale - optional
+//   aux_input_to_cell_weights_scale   - optional
+//   aux_input_to_output_weights_scale - optional
 //   recurrent_to_input_weights_scale  - optional
 //   recurrent_to_forget_weights_scale
 //   recurrent_to_cell_weights_scale
@@ -364,6 +409,12 @@ inline void LstmStepWithAuxInput(
 //   forget_gate_bias_ptr
 //   cell_gate_bias_ptr
 //   output_gate_bias_ptr
+//
+// Layer norm coefficients of size 'n_cell', representing diagonal matrices.
+//   input_layer_norm_coefficients_ptr  - optional
+//   forget_layer_norm_coefficients_ptr - optional
+//   cell_layer_norm_coefficients_ptr   - optional
+//   output_layer_norm_coefficients_ptr - optional
 //
 // Temporary pre-allocated storage for quantized values:
 //   quantized_input_ptr_batch (same size as input_ptr_batch)
@@ -805,6 +856,15 @@ inline void LstmStepWithAuxInput(
     }
   }
 }
+
+int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
+  if (is_uint8) {
+    return reinterpret_cast<int8_t*>(tensor->data.uint8);
+  } else {
+    return tensor->data.int8;
+  }
+}
+
 }  // namespace
 
 TfLiteStatus EvalFloat(
@@ -1036,6 +1096,9 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
     TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output) {
+  // For operations that use int8 instead of uint8 we need to fetch raw data
+  // from the tensor different. We use this bool for that condition.
+  const bool is_uint8_hybrid = input_to_output_weights->type == kTfLiteUInt8;
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int n_input = input->dims->data[input->dims->size - 1];
   int max_time, n_batch;
@@ -1081,9 +1144,9 @@ TfLiteStatus EvalHybrid(
   float* input_gate_bias_ptr = nullptr;
   if (!use_cifg) {
     input_to_input_weights_ptr =
-        reinterpret_cast<int8_t*>(input_to_input_weights->data.uint8);
+        GetInt8DataPtr(input_to_input_weights, is_uint8_hybrid);
     recurrent_to_input_weights_ptr =
-        reinterpret_cast<int8_t*>(recurrent_to_input_weights->data.uint8);
+        GetInt8DataPtr(recurrent_to_input_weights, is_uint8_hybrid);
     input_gate_bias_ptr = input_gate_bias->data.f;
     input_to_input_weights_scale = input_to_input_weights->params.scale;
     recurrent_to_input_weights_scale = recurrent_to_input_weights->params.scale;
@@ -1098,13 +1161,13 @@ TfLiteStatus EvalHybrid(
   if (use_peephole) {
     if (!use_cifg) {
       cell_to_input_weights_ptr =
-          reinterpret_cast<int8_t*>(cell_to_input_weights->data.uint8);
+          GetInt8DataPtr(cell_to_input_weights, is_uint8_hybrid);
       cell_to_input_weights_scale = cell_to_input_weights->params.scale;
     }
     cell_to_forget_weights_ptr =
-        reinterpret_cast<int8_t*>(cell_to_forget_weights->data.uint8);
+        GetInt8DataPtr(cell_to_forget_weights, is_uint8_hybrid);
     cell_to_output_weights_ptr =
-        reinterpret_cast<int8_t*>(cell_to_output_weights->data.uint8);
+        GetInt8DataPtr(cell_to_output_weights, is_uint8_hybrid);
     cell_to_forget_weights_scale = cell_to_forget_weights->params.scale;
     cell_to_output_weights_scale = cell_to_output_weights->params.scale;
   }
@@ -1122,7 +1185,7 @@ TfLiteStatus EvalHybrid(
   const int8_t* projection_weights_ptr =
       (projection_weights == nullptr)
           ? nullptr
-          : reinterpret_cast<int8_t*>(projection_weights->data.uint8);
+          : GetInt8DataPtr(projection_weights, is_uint8_hybrid);
   const float projection_weights_scale =
       (projection_weights == nullptr) ? 1.0f : projection_weights->params.scale;
   const float* projection_bias_ptr =
@@ -1130,26 +1193,26 @@ TfLiteStatus EvalHybrid(
 
   // Required tensors, pointers are non-null.
   const int8_t* input_to_forget_weights_ptr =
-      reinterpret_cast<int8_t*>(input_to_forget_weights->data.uint8);
+      GetInt8DataPtr(input_to_forget_weights, is_uint8_hybrid);
   const float input_to_forget_weights_scale =
       input_to_forget_weights->params.scale;
   const int8_t* input_to_cell_weights_ptr =
-      reinterpret_cast<int8_t*>(input_to_cell_weights->data.uint8);
+      GetInt8DataPtr(input_to_cell_weights, is_uint8_hybrid);
   const float input_to_cell_weights_scale = input_to_cell_weights->params.scale;
   const int8_t* input_to_output_weights_ptr =
-      reinterpret_cast<int8_t*>(input_to_output_weights->data.uint8);
+      GetInt8DataPtr(input_to_output_weights, is_uint8_hybrid);
   const float input_to_output_weights_scale =
       input_to_output_weights->params.scale;
   const int8_t* recurrent_to_forget_weights_ptr =
-      reinterpret_cast<int8_t*>(recurrent_to_forget_weights->data.uint8);
+      GetInt8DataPtr(recurrent_to_forget_weights, is_uint8_hybrid);
   const float recurrent_to_forget_weights_scale =
       recurrent_to_forget_weights->params.scale;
   const int8_t* recurrent_to_cell_weights_ptr =
-      reinterpret_cast<int8_t*>(recurrent_to_cell_weights->data.uint8);
+      GetInt8DataPtr(recurrent_to_cell_weights, is_uint8_hybrid);
   const float recurrent_to_cell_weights_scale =
       recurrent_to_cell_weights->params.scale;
   const int8_t* recurrent_to_output_weights_ptr =
-      reinterpret_cast<int8_t*>(recurrent_to_output_weights->data.uint8);
+      GetInt8DataPtr(recurrent_to_output_weights, is_uint8_hybrid);
   const float recurrent_to_output_weights_scale =
       recurrent_to_output_weights->params.scale;
   const float* forget_gate_bias_ptr = forget_gate_bias->data.f;
@@ -1158,15 +1221,15 @@ TfLiteStatus EvalHybrid(
 
   // Temporary storage for quantized values and scaling factors.
   int8_t* quantized_input_ptr =
-      reinterpret_cast<int8_t*>(input_quantized->data.uint8);
+      GetInt8DataPtr(input_quantized, is_uint8_hybrid);
   int8_t* quantized_aux_input_ptr =
       (aux_input_quantized == nullptr)
           ? nullptr
-          : reinterpret_cast<int8_t*>(aux_input_quantized->data.uint8);
+          : GetInt8DataPtr(aux_input_quantized, is_uint8_hybrid);
   int8_t* quantized_output_state_ptr =
-      reinterpret_cast<int8_t*>(output_state_quantized->data.uint8);
+      GetInt8DataPtr(output_state_quantized, is_uint8_hybrid);
   int8_t* quantized_cell_state_ptr =
-      reinterpret_cast<int8_t*>(cell_state_quantized->data.uint8);
+      GetInt8DataPtr(cell_state_quantized, is_uint8_hybrid);
   float* scaling_factors_ptr = scaling_factors->data.f;
   float* prod_scaling_factors_ptr = prod_scaling_factors->data.f;
   float* recovered_cell_weights_ptr = recovered_cell_weights->data.f;
@@ -1184,14 +1247,14 @@ TfLiteStatus EvalHybrid(
   if (aux_input_size > 0) {
     if (!use_cifg) {
       aux_input_to_input_weights_ptr =
-          reinterpret_cast<int8_t*>(aux_input_to_input_weights->data.uint8);
+          GetInt8DataPtr(aux_input_to_input_weights, is_uint8_hybrid);
     }
     aux_input_to_forget_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_input_to_forget_weights->data.uint8);
+        GetInt8DataPtr(aux_input_to_forget_weights, is_uint8_hybrid);
     aux_input_to_cell_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_input_to_cell_weights->data.uint8);
+        GetInt8DataPtr(aux_input_to_cell_weights, is_uint8_hybrid);
     aux_input_to_output_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_input_to_output_weights->data.uint8);
+        GetInt8DataPtr(aux_input_to_output_weights, is_uint8_hybrid);
     if (!use_cifg) {
       aux_input_to_input_weights_scale =
           aux_input_to_input_weights->params.scale;

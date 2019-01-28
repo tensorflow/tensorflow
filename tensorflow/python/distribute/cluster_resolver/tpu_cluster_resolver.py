@@ -192,11 +192,12 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      tpu: Either a string, or a list of strings corresponding to the TPUs to
-        use. If the single string is the empty string, the string 'local', or a
-        string that begins with 'grpc://' or '/bns', then it is assumed to not
-        correspond with a Cloud TPU and will instead be passed as the session
-        master and no ClusterSpec propagation will be done.
+      tpu: A string corresponding to the TPU to use. If the string is the empty
+        string, the string 'local', or a string that begins with 'grpc://' or
+        '/bns', then it is assumed to not correspond with a Cloud TPU and will
+        instead be passed as the session master and no ClusterSpec propagation
+        will be done. In the future, this may also support a list of strings
+        when multiple Cloud TPUs are used.
       zone: Zone where the TPUs are located. If omitted or empty, we will assume
         that the zone of the TPU is the same as the zone of the GCE VM, which we
         will try to discover from the GCE metadata service.
@@ -253,10 +254,10 @@ class TPUClusterResolver(ClusterResolver):
       raise RuntimeError('You need to specify a TPU Name if you are running in '
                          'the Google Cloud environment.')
 
-    # By default the task_type is 'worker` and the task_index is 0 (which is the
+    # By default the task_type is 'worker` and the task_id is 0 (which is the
     # first worker in the task).
     self.task_type = job_name
-    self.task_index = 0
+    self.task_id = 0
 
     if tpu.startswith('grpc://'):
       # Cloud environment, where we are using GRPC to communicate to TPUs.
@@ -284,7 +285,7 @@ class TPUClusterResolver(ClusterResolver):
     # in later in self.master().
     if self.rpc_layer is not None and tpu.startswith(self.rpc_layer + '://'):
       tpu = tpu[len(self.rpc_layer + '://'):]
-      self._tpu = tpu
+      self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
       self._should_resolve_override = False
 
     # Whether we should actually attempt to contact Cloud APIs
@@ -326,7 +327,7 @@ class TPUClusterResolver(ClusterResolver):
     else:
       self._coordinator_address = coordinator_address
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Get the Master string to be used for the session.
 
     In the normal case, this returns the grpc path (grpc://1.2.3.4:8470) of
@@ -340,7 +341,7 @@ class TPUClusterResolver(ClusterResolver):
     Args:
       task_type: (Optional, string) The type of the TensorFlow task of the
         master.
-      task_index: (Optional, integer) The index of the TensorFlow task of the
+      task_id: (Optional, integer) The index of the TensorFlow task of the
         master.
       rpc_layer: (Optional, string) The RPC protocol TensorFlow should use to
         communicate with TPUs.
@@ -354,12 +355,12 @@ class TPUClusterResolver(ClusterResolver):
     if self._shouldResolve():
       # We are going to communicate with the Cloud TPU APIs to get a Cluster.
       cluster_spec = self.cluster_spec()
-      if task_type is not None and task_index is not None:
-        # task_type and task_index is from the function parameter
-        master = cluster_spec.task_address(task_type, task_index)
-      elif self.task_type is not None and self.task_index is not None:
-        # task_type and task_index is from the object
-        master = cluster_spec.task_address(self.task_type, self.task_index)
+      if task_type is not None and task_id is not None:
+        # task_type and task_id is from the function parameter
+        master = cluster_spec.task_address(task_type, task_id)
+      elif self.task_type is not None and self.task_id is not None:
+        # task_type and task_id is from the object
+        master = cluster_spec.task_address(self.task_type, self.task_id)
       else:
         # by default we take the first item in the cluster with the right name
         job_tasks = cluster_spec.job_tasks(self.task_type)
@@ -368,7 +369,7 @@ class TPUClusterResolver(ClusterResolver):
         master = job_tasks[0]
     else:
       if isinstance(self._tpu, (bytes, bytearray)):
-        master = self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))[0]
+        master = compat.as_text(self._tpu).split(_ENDPOINTS_SEPARATOR)[0]
       else:
         master = self._tpu.split(_ENDPOINTS_SEPARATOR)[0]
     return format_master_url(master, rpc_layer or self.rpc_layer)
@@ -377,7 +378,8 @@ class TPUClusterResolver(ClusterResolver):
     return self.master()
 
   def get_job_name(self):
-    if self._shouldResolve():
+    if (self._shouldResolve() or
+        self._tpu.startswith(compat.as_bytes('grpc://'))):
       return self.task_type
 
   def cluster_spec(self):
@@ -437,7 +439,7 @@ class TPUClusterResolver(ClusterResolver):
         return None
       # Case 2.
       tpus = []
-      for tpu in self._tpu.split(_ENDPOINTS_SEPARATOR):
+      for tpu in compat.as_text(self._tpu).split(_ENDPOINTS_SEPARATOR):
         # We are working around the fact that GKE environment variable that is
         # supplied to us has the protocol string embedded in it, but we want
         # to strip it out for the ClusterSpec.
@@ -456,7 +458,7 @@ class TPUClusterResolver(ClusterResolver):
 
   def num_accelerators(self,
                        task_type=None,
-                       task_index=None,
+                       task_id=None,
                        accelerator_type='TPU',
                        config_proto=None):
     """Returns the number of TPU cores per worker.
@@ -467,7 +469,7 @@ class TPUClusterResolver(ClusterResolver):
 
     Args:
       task_type: Unused.
-      task_index: Unused.
+      task_id: Unused.
       accelerator_type: Unused.
       config_proto: Used to create a connection to a TPU master in order to
         retrieve the system metadata.

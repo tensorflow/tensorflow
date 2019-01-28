@@ -129,3 +129,50 @@ class _NonSerializableDataset(dataset_ops.UnaryUnchangedStructureDataset):
             self._input_dataset._variant_tensor,  # pylint: disable=protected-access
             **dataset_ops.flat_structure(self)))
     super(_NonSerializableDataset, self).__init__(input_dataset, variant_tensor)
+
+
+class _ChooseFastestDataset(dataset_ops.DatasetV2):
+  """A `Dataset` that merges two input datasets."""
+
+  def __init__(self, datasets, num_experiments=10):
+    """Chooses the fastest of some input datasets.
+
+    Given input datasets, produces elements as quickly as the fastest of the
+    inputs. Note that this dataset assumes that input datasets have the same
+    elements in the same order, though this is not enforced besides checking
+    that the input datasets have compatible output types, output shapes, and
+    cardinality at runtime. The resulting dataset produces elements that are
+    identical to the input elements, and in the same order.
+
+    Note that the time to first iteration is longer when this dataset is used
+    due to the overhead of dynamically picking the faster dataset. Namely,
+    for the first num_experiments iterations, this dataset will pull from all
+    of its inputs simultaneously in order to determine which input is the
+    fastest. For all subsequent iterations, that input will be used.
+
+    Args:
+      datasets: A list of `Datasets` that all have the same elements in the same
+        order.
+      num_experiments: The number of experiments to run before deciding which
+        dataset is fastest. In each "experiment" iteration, the dataset will
+        call from all its inputs simultaneously, and update its knowledge of
+        which input is the fastest.
+
+    Returns:
+      A `Dataset` that has the same elements the inputs.
+    """
+    self._datasets = list(datasets)
+    self._structure = self._datasets[0]._element_structure  # pylint: disable=protected-access
+    variant_tensor = (
+        gen_experimental_dataset_ops.experimental_choose_fastest_dataset(
+            [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
+            num_experiments=num_experiments,
+            **dataset_ops.flat_structure(self)))
+    super(_ChooseFastestDataset, self).__init__(variant_tensor)
+
+  def _inputs(self):
+    return self._datasets
+
+  @property
+  def _element_structure(self):
+    return self._datasets[0]._element_structure  # pylint: disable=protected-access

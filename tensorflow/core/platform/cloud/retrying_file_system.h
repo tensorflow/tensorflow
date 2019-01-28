@@ -150,6 +150,10 @@ class RetryingRandomAccessFile : public RandomAccessFile {
                            const RetryConfig& retry_config)
       : base_file_(std::move(base_file)), retry_config_(retry_config) {}
 
+  Status Name(StringPiece* result) const override {
+    return base_file_->Name(result);
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     return RetryingUtils::CallWithRetries(
@@ -186,6 +190,9 @@ class RetryingWritableFile : public WritableFile {
   Status Flush() override {
     return RetryingUtils::CallWithRetries(
         [this]() { return base_file_->Flush(); }, retry_config_);
+  }
+  Status Name(StringPiece* result) const override {
+    return base_file_->Name(result);
   }
   Status Sync() override {
     return RetryingUtils::CallWithRetries(

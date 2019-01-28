@@ -20,30 +20,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
-CUDAEvent::CUDAEvent(CUDAExecutor* parent)
-    : parent_(parent), cuda_event_(nullptr) {}
-
-CUDAEvent::~CUDAEvent() {}
-
-port::Status CUDAEvent::Init() {
-  return CUDADriver::CreateEvent(parent_->cuda_context(), &cuda_event_,
-                                 CUDADriver::EventFlags::kDisableTiming);
-}
-
-port::Status CUDAEvent::Destroy() {
-  return CUDADriver::DestroyEvent(parent_->cuda_context(), &cuda_event_);
-}
-
-port::Status CUDAEvent::Record(CUDAStream* stream) {
-  return CUDADriver::RecordEvent(parent_->cuda_context(), cuda_event_,
-                                 stream->cuda_stream());
-}
-
-Event::Status CUDAEvent::PollForStatus() {
+Event::Status GpuEvent::PollForStatus() {
   port::StatusOr<CUresult> status =
-      CUDADriver::QueryEvent(parent_->cuda_context(), cuda_event_);
+      GpuDriver::QueryEvent(parent_->gpu_context(), gpu_event_);
   if (!status.ok()) {
     LOG(ERROR) << "Error polling for event status: "
                << status.status().error_message();
@@ -62,9 +43,5 @@ Event::Status CUDAEvent::PollForStatus() {
   }
 }
 
-const CUevent& CUDAEvent::cuda_event() {
-  return cuda_event_;
-}
-
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor

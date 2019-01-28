@@ -115,6 +115,7 @@ bool IsPow(const NodeDef& node);
 bool IsQueue(const NodeDef& node);
 bool IsRandomShuffle(const NodeDef& node);
 bool IsRank(const NodeDef& node);
+bool IsReadVariableOp(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu(const NodeDef& node);
@@ -182,6 +183,14 @@ bool IsCommutative(const NodeDef& node);
 // Returns true if the node is known to use persistent memory to store its
 // value.
 bool IsPersistent(const NodeDef& node);
+
+// Returns true if the node belongs to the NC_DATASET class (see graph/graph.h).
+bool IsDataset(const NodeDef& node);
+
+// Returns true if the node op is marked as stateful, or if it was not found in
+// op_registry.
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry);
+bool IsStateful(const NodeDef node);  // use OpRegistry::Global()
 
 bool IsFreeOfSideEffect(const NodeDef& node,
                         const OpRegistryInterface* op_registry);

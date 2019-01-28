@@ -392,4 +392,18 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
   EXPECT_TRUE(str_util::EndsWith(filename, suffix));
 }
 
+TEST_F(DefaultEnvTest, GetThreadInformation) {
+  Env* env = Env::Default();
+
+  EXPECT_NE(env->GetCurrentThreadId(), 0);
+  string thread_name;
+  bool res = env->GetCurrentThreadName(&thread_name);
+#if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
+  EXPECT_FALSE(res);
+#else
+  EXPECT_TRUE(res);
+  EXPECT_GT(thread_name.size(), 0);
+#endif
+}
+
 }  // namespace tensorflow

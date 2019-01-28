@@ -257,7 +257,8 @@ class HloParser {
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
   bool ParseString(string* result);
-  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes);
+  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                           std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
   bool ParseLayout(Layout* layout);
   bool ParseOpcode(HloOpcode* result);
@@ -1170,24 +1171,39 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<tensorflow::int64>> dynamic_slice_sizes;
       attrs["dynamic_slice_sizes"] = {
           /*required=*/true, AttrTy::kBracedInt64List, &dynamic_slice_sizes};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      LocTy loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
+      if (operands.empty()) {
+        return Error(loc, "Expected at least one operand.");
+      }
+      if (!(operands.size() == 2 && operands[1]->shape().rank() == 1) &&
+          operands.size() != 1 + operands[0]->shape().rank()) {
+        return Error(loc, "Wrong number of operands.");
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateDynamicSlice(
-          shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
+          shape, /*operand=*/operands[0],
+          /*start_indices=*/absl::MakeSpan(operands).subspan(1),
           *dynamic_slice_sizes));
       break;
     }
     case HloOpcode::kDynamicUpdateSlice: {
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      LocTy loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
+      }
+      if (operands.size() < 2) {
+        return Error(loc, "Expected at least two operands.");
+      }
+      if (!(operands.size() == 3 && operands[2]->shape().rank() == 1) &&
+          operands.size() != 2 + operands[0]->shape().rank()) {
+        return Error(loc, "Wrong number of operands.");
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
               shape, /*operand=*/operands[0], /*update=*/operands[1],
-              /*start_indices=*/operands[2]));
+              /*start_indices=*/absl::MakeSpan(operands).subspan(2)));
       break;
     }
     case HloOpcode::kTranspose: {
@@ -1287,7 +1303,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       // the infeed instruction. ShapeUtil::GetTupleElementShape will check fail
       // if the shape is not a non-empty tuple, so add guard so an error message
       // can be emitted instead of a check fail
-      if (!ShapeUtil::IsTuple(shape) && !ShapeUtil::IsEmptyTuple(shape)) {
+      if (!shape.IsTuple() && !ShapeUtil::IsEmptyTuple(shape)) {
         return Error(lexer_.GetLoc(),
                      "infeed must have a non-empty tuple shape");
       }
@@ -1931,8 +1947,8 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
 //  ::= tuple
 //  ::= non_tuple
 bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
-  return ShapeUtil::IsTuple(shape) ? ParseTupleLiteral(literal, shape)
-                                   : ParseNonTupleLiteral(literal, shape);
+  return shape.IsTuple() ? ParseTupleLiteral(literal, shape)
+                         : ParseNonTupleLiteral(literal, shape);
 }
 
 // tuple
@@ -1980,7 +1996,7 @@ bool HloParser::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
 }
 
 bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
-  const tensorflow::int64 rank = ShapeUtil::Rank(shape);
+  const tensorflow::int64 rank = shape.rank();
   // Create a literal with the given shape in default layout.
   *literal = LiteralUtil::CreateFromDimensions(
       shape.element_type(), AsInt64Slice(shape.dimensions()));
@@ -2145,7 +2161,7 @@ template <typename LiteralNativeT>
 bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
   std::vector<tensorflow::int64> index;
 
-  tensorflow::int64 rank = ShapeUtil::Rank(shape);
+  tensorflow::int64 rank = shape.rank();
 
   *literal = Literal(shape);
 
@@ -2730,7 +2746,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
   }
 
   auto is_unique = [](string str) -> bool {
-    std::sort(str.begin(), str.end());
+    absl::c_sort(str);
     return std::unique(str.begin(), str.end()) == str.end();
   };
 
@@ -2971,14 +2987,25 @@ bool HloParser::ParseParamList() {
   return ParseToken(TokKind::kRparen, "expects ')' at the end of param list");
 }
 
-// dimension_sizes ::= '[' int64_list ']'
-bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes) {
+// dimension_sizes ::= '[' dimension_list ']'
+// dimension_list
+//   ::= /*empty*/
+//   ::= <=? int64 (',' param)*
+// param ::= name shape
+bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                                    std::vector<bool>* dynamic_dimensions) {
   auto parse_and_add_item = [&]() {
     tensorflow::int64 i;
+    bool is_dynamic = false;
+    if (lexer_.GetKind() == TokKind::kLeq) {
+      is_dynamic = true;
+      lexer_.Lex();
+    }
     if (!ParseInt64(&i)) {
       return false;
     }
     dimension_sizes->push_back(i);
+    dynamic_dimensions->push_back(is_dynamic);
     return true;
   };
   return ParseList(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
@@ -3034,12 +3061,18 @@ bool HloParser::ParseShape(Shape* result) {
   PrimitiveType primitive_type = lexer_.GetPrimitiveTypeVal();
   lexer_.Lex();
 
+  // Each element contains a dimension size and a bool indicating whether this
+  // is a dynamic dimension.
   std::vector<int64> dimension_sizes;
-  if (!ParseDimensionSizes(&dimension_sizes)) {
+  std::vector<bool> dynamic_dimensions;
+  if (!ParseDimensionSizes(&dimension_sizes, &dynamic_dimensions)) {
     return false;
   }
   result->set_element_type(primitive_type);
-  *result->mutable_dimensions() = dimension_sizes;
+  for (int i = 0; i < dimension_sizes.size(); ++i) {
+    result->add_dimensions(dimension_sizes[i]);
+    result->set_dynamic_dimension(i, dynamic_dimensions[i]);
+  }
   LayoutUtil::SetToDefaultLayout(result);
 
   if (lexer_.GetKind() == TokKind::kw_sparse) {

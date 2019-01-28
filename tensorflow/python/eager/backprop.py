@@ -465,14 +465,16 @@ def val_and_grad_function(f, params=None):
 
 
 def make_vjp(f, params=None, persistent=True):
-  """Returns a function that computes f and is vjp w.r.t. params.
+  """Returns a function that computes f and its vjp w.r.t.
+
+  params.
 
   The term "vjp" here is an abbreviation for vector-jacobian product.
 
   Args:
     f: the function to be differentiated.
     params: the parameters (numbers or names) to differentiate with respect to.
-       A value of None will differentiate with respect to all parameters.
+      A value of None will differentiate with respect to all parameters.
     persistent: Boolean controlling whether the VJP function can be re-used.
       Must be True or False.
 
@@ -595,7 +597,9 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Helper to return (possibly cached) zero tensors in eager mode."""
-  if dtype == dtypes.variant or dtype == dtypes.string:
+  if (dtype == dtypes.variant
+      or dtype == dtypes.string
+      or dtype == dtypes.resource):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
@@ -928,11 +932,12 @@ class GradientTape(object):
                             "gradient in order to compute higher order "
                             "derrivatives.", 1)
 
-    flat_targets = nest.flatten(target)
-    for t in flat_targets:
+    flat_targets = []
+    for t in nest.flatten(target):
       if resource_variable_ops.is_resource_variable(t):
-        raise ValueError("GradientTape.gradient is not supported for variable "
-                         "targets.")
+        with self:
+          t = ops.convert_to_tensor(t)
+      flat_targets.append(t)
 
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]

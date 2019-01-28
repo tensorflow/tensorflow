@@ -12,6 +12,7 @@ load(
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
     "tf_cc_test",
     "py_test",
 )
@@ -165,6 +166,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:reference_ops",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -229,13 +231,13 @@ cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "nnapi_example",
     srcs = ["nnapi_example.cc"],
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",
-        "//tensorflow/lite/nnapi:nnapi_lib",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
     ],
 )
 
@@ -256,7 +258,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tf_driver_test",
     size = "small",
     srcs = ["tf_driver_test.cc"],
@@ -285,7 +287,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "generate_testspec_test",
     size = "small",
     srcs = ["generate_testspec_test.cc"],
@@ -379,7 +381,7 @@ tf_cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "tflite_diff",
     srcs = ["tflite_diff_example_test.cc"],
     deps = [

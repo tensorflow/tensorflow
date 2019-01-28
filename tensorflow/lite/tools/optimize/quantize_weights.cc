@@ -21,11 +21,12 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
 namespace tflite {
 namespace optimize {
@@ -33,72 +34,36 @@ namespace optimize {
 namespace {
 
 typedef struct {
-  TensorT* tensor;
+  OperatorT* op;
+  // The index of the op in the operators vector.
+  int32_t op_idx;
   // The index of the tensor to quantize in subgraph->tensors.
-  int32_t tensor_idx;
-  // The index of the tensor of the weight tensor to be quantize in op->inputs.
   int32_t op_input_idx;
-  // True if the tensor supports hybrid evaluation.
-  bool eval_hybrid;
-} TensorInfo;
+} ConsumerOpInfo;
 
 // The default minimum number of elements a weights array must have to be
 // quantized by this transformation.
 const int kWeightsMinNumElementsDefault = 1024;
 
-// Nudge min and max so that floating point 0 falls exactly on a quantized
-// value, returning the nudges scale and zero_point.
-//
-// Although this code originates from FakeQuantization in quantized training,
-// we may deviate from that implementation as we please since we do not fine
-// tune the weights with quantized training.
-void GetAsymmetricQuantizationParams(
-    const float min, const float max, const int quant_min, const int quant_max,
-    QuantizationParametersT* quantization_params) {
-  // Adjust the boundaries to guarantee 0 is included.
-  const float quant_min_float = std::min(static_cast<float>(quant_min), 0.0f);
-  const float quant_max_float = std::max(static_cast<float>(quant_max), 0.0f);
-  const float scale = (max - min) / (quant_max_float - quant_min_float);
-  const float zero_point_from_min = quant_min_float - min / scale;
-  int64_t zero_point;
-  if (zero_point_from_min < quant_min_float) {
-    zero_point = static_cast<int64_t>(quant_min);
-  } else if (zero_point_from_min > quant_max_float) {
-    zero_point = static_cast<int64_t>(quant_max);
-  } else {
-    zero_point = static_cast<int64_t>(std::round(zero_point_from_min));
-  }
-  quantization_params->scale = std::vector<float>(1, scale);
-  quantization_params->zero_point = std::vector<int64_t>(1, zero_point);
-}
-
-// Returns the number of elements in tensor.
-uint64_t NumElements(const TensorT* tensor) {
-  if (tensor->shape.empty()) {
-    LOG(FATAL) << "Tensor has no shape information.";
-  }
-  uint64_t num_elements = 1;
-  for (const uint64_t dim : tensor->shape) {
-    num_elements *= dim;
-  }
-  return num_elements;
-}
-
-uint64_t CountTensorConsumers(const ModelT* model, const SubGraphT* subgraph,
-                              int32_t tensor_idx) {
-  uint64_t count = 0;
+// Gets the operators that consume tensor_idx.
+std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
+                                               const SubGraphT* subgraph,
+                                               int32_t tensor_idx) {
+  // TODO(suharshs): If this proves to be too slow, avoid calling it per tensor,
+  // instead doing one sweep for the entire model.
+  std::vector<ConsumerOpInfo> consumer_ops;
   for (int op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
-    const OperatorT* op = subgraph->operators[op_idx].get();
+    OperatorT* op = subgraph->operators[op_idx].get();
     if (op == nullptr) {
       continue;
     }
     for (int i = 0; i < op->inputs.size(); ++i) {
       if (op->inputs[i] == tensor_idx) {
-        count++;
+        consumer_ops.push_back({op, op_idx, i});
       }
     }
   }
-  return count;
+  return consumer_ops;
 }
 
 // Gets the list of op->inputs indices of the weights inputs to be quantized for
@@ -156,23 +121,39 @@ bool IsHybridEvaluationOp(const OperatorT* op, const BuiltinOperator& op_code) {
   return eval_hybrid;
 }
 
-// Returns a vector of TensorInfos for each input tensor of op that should be
-// quantized.
-std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
-    const ModelT* model, const OperatorT* op, uint64_t weights_min_num_elements,
-    bool use_hybrid_evaluation) {
-  SubGraphT* subgraph = model->subgraphs.at(0).get();
-  const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
-
-  std::vector<TensorInfo> tensor_infos;
-
-  bool eval_hybrid = use_hybrid_evaluation && IsHybridEvaluationOp(op, op_code);
-
+// Returns true if all of the op's inputs are quantized.
+bool CheckAllOpInputsQuantized(const SubGraphT* subgraph, const OperatorT* op,
+                               const BuiltinOperator& op_code) {
   std::vector<int32_t> op_input_indices = GetWeightInputIndices(op_code);
   for (const int32_t op_input_idx : op_input_indices) {
     int32_t tensor_idx = op->inputs[op_input_idx];
 
+    if (tensor_idx == -1) {
+      // Optional tensor.
+      continue;
+    }
+
+    TensorT* tensor = subgraph->tensors[tensor_idx].get();
+
+    if (tensor->type != TensorType_INT8) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Inserts Tensors for each input tensor of op that should be
+// quantized into tensor_map.
+TfLiteStatus InsertQuantizableInputTensorsFromOperator(
+    const ModelT* model, const OperatorT* op, uint64_t weights_min_num_elements,
+    std::unordered_map<int32_t, TensorT*>* tensor_map) {
+  SubGraphT* subgraph = model->subgraphs.at(0).get();
+  const BuiltinOperator op_code =
+      model->operator_codes[op->opcode_index]->builtin_code;
+
+  std::vector<int32_t> op_input_indices = GetWeightInputIndices(op_code);
+  for (const int32_t op_input_idx : op_input_indices) {
+    int32_t tensor_idx = op->inputs[op_input_idx];
     if (tensor_idx == -1) {
       LOG(INFO) << "Skipping optional tensor input " << op_input_idx
                 << " of operation " << EnumNameBuiltinOperator(op_code);
@@ -180,28 +161,18 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
     }
 
     TensorT* tensor = subgraph->tensors[tensor_idx].get();
-    // TODO(suharshs): Support shared weights, i.e. If two tensors share the
-    // same weight array, things may break. (i.e. SSD object detection)
-    if (CountTensorConsumers(model, subgraph, tensor_idx) != 1) {
-      LOG(INFO) << "Skipping quantization of tensor " << tensor->name
-                << " that is shared between multiple multiple operations.";
-      continue;
-    }
-
     if (tensor->type != TensorType_FLOAT32) {
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " that is not type float.";
       continue;
     }
 
-    const uint64_t num_elements = NumElements(tensor);
+    uint64_t num_elements;
+    TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
     if (num_elements < weights_min_num_elements) {
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " because it has fewer than " << weights_min_num_elements
                 << " elements (" << num_elements << ").";
-      // If one of the weights isn't quantized, then we cannot use the hybrid
-      // kernel for this operation, since it expects everything to be quantized.
-      eval_hybrid = false;
       continue;
     }
 
@@ -213,57 +184,8 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
       continue;
     }
 
-    TensorInfo tensor_info;
-    tensor_info.eval_hybrid = eval_hybrid;
-    tensor_info.op_input_idx = op_input_idx;
-    tensor_info.tensor_idx = tensor_idx;
-    tensor_info.tensor = tensor;
-
-    tensor_infos.push_back(tensor_info);
+    tensor_map->insert({tensor_idx, tensor});
   }
-
-  return tensor_infos;
-}
-
-// Quantizes tensor using asymmetric quantization with the min and max elements
-// of the tensor. This is needed to pass to Dequantize operations.
-TfLiteStatus AsymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
-  BufferT* buffer = model->buffers[tensor->buffer].get();
-  float* float_data = reinterpret_cast<float*>(buffer->data.data());
-  const uint64_t num_elements = NumElements(tensor);
-  LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
-            << " elements for float evaluation.";
-
-  // Compute the quantization params.
-  float min_value = *std::min_element(float_data, float_data + num_elements);
-  float max_value = *std::max_element(float_data, float_data + num_elements);
-
-  if (tensor->quantization == nullptr) {
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
-  }
-  GetAsymmetricQuantizationParams(min_value, max_value, 0, 255,
-                                  tensor->quantization.get());
-
-  // Quantize the buffer.
-  std::vector<uint8_t> quantized_buffer;
-  quantized_buffer.resize(num_elements);
-  const double inverse_scale = 1. / tensor->quantization->scale[0];
-  for (std::size_t i = 0; i < num_elements; i++) {
-    const float src_val = float_data[i];
-    double scaled_val;
-    if (tensor->quantization->scale[0] == 0) {
-      scaled_val = tensor->quantization->zero_point[0];
-    } else {
-      scaled_val =
-          tensor->quantization->zero_point[0] + inverse_scale * src_val;
-    }
-    uint8_t integer_val = static_cast<uint8_t>(std::round(scaled_val));
-    quantized_buffer[i] = integer_val;
-  }
-  model->buffers[tensor->buffer]->data = quantized_buffer;
-
-  // Update the tensor type.
-  tensor->type = TensorType_UINT8;
 
   return kTfLiteOk;
 }
@@ -274,9 +196,10 @@ TfLiteStatus AsymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
 TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
-  const uint64_t num_elements = NumElements(tensor);
+  uint64_t num_elements;
+  TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
   LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
-            << " elements for hybrid evaluation.";
+            << " elements.";
 
   std::vector<int8_t> quantized_buffer;
   quantized_buffer.resize(num_elements);
@@ -297,7 +220,7 @@ TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
                                               uint8_buffer + num_elements);
 
   // Update the tensor type.
-  tensor->type = TensorType_UINT8;
+  tensor->type = TensorType_INT8;
 
   return kTfLiteOk;
 }
@@ -313,7 +236,8 @@ int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
   model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
   int op_code_idx = model->operator_codes.size() - 1;
   model->operator_codes[op_code_idx]->builtin_code = BuiltinOperator_DEQUANTIZE;
-  // TODO(suharshs): How should the version be set in this op_code?
+  // Version 2 and onwards supports INT8 inputs.
+  model->operator_codes[op_code_idx]->version = 2;
 
   // Return the index of the newly placed OperatorCodeT.
   return op_code_idx;
@@ -340,6 +264,26 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
   tensor->reset(tensor_raw);
 }
 
+// Updates operator code versions for the operators with INT8 inputs.
+void UpdateInt8OperatorVersions(ModelT* model) {
+  for (int i = 0; i < model->operator_codes.size(); ++i) {
+    const BuiltinOperator& op_code = model->operator_codes[i]->builtin_code;
+    if (op_code == BuiltinOperator_CONV_2D || op_code == BuiltinOperator_SVDF ||
+        op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
+        op_code == BuiltinOperator_RNN ||
+        op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
+        op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM ||
+        op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
+      model->operator_codes[i]->version = 2;
+
+    } else if (op_code == BuiltinOperator_FULLY_CONNECTED ||
+               op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
+               op_code == BuiltinOperator_LSTM) {
+      model->operator_codes[i]->version = 3;
+    }
+  }
+}
+
 TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
                                      const Model* input_model,
                                      bool use_hybrid_evaluation,
@@ -357,48 +301,82 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
   SubGraphT* subgraph = model->subgraphs.at(0).get();
 
   std::vector<std::unique_ptr<OperatorT>> new_operators;
+  std::unordered_map<int32_t, TensorT*> tensor_map;
   for (int i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
-
-    std::vector<TensorInfo> tensor_infos = GetQuantizableTensorsFromOperator(
-        model.get(), op, weights_min_num_elements, use_hybrid_evaluation);
-
-    for (const TensorInfo& tensor_info : tensor_infos) {
-      if (tensor_info.eval_hybrid) {
-        // Quantize the tensor.
-        TF_LITE_ENSURE_STATUS(
-            SymmetricQuantizeTensor(model.get(), tensor_info.tensor));
-      } else {
-        // Quantize the tensor.
-        TF_LITE_ENSURE_STATUS(
-            AsymmetricQuantizeTensor(model.get(), tensor_info.tensor));
-
-        // Create a new tensor to be the output of the dequantize op.
-        std::unique_ptr<TensorT> dequantize_output;
-        MakeTensor(tensor_info.tensor->name + "_dequantize",
-                   tensor_info.tensor->shape, &dequantize_output);
-        const int32_t dequantize_output_idx = subgraph->tensors.size();
-        subgraph->tensors.push_back(std::move(dequantize_output));
-
-        // Create the Dequantize operation.
-        std::unique_ptr<OperatorT> dequantize_op;
-        MakeDequantizeOperator(model.get(), &dequantize_op,
-                               tensor_info.tensor_idx, dequantize_output_idx);
-
-        // Update the op_input of tensor_idx to dequantize_output_idx.
-        op->inputs[tensor_info.op_input_idx] = dequantize_output_idx;
-
-        // Insert the newly created Dequantize operation.
-        new_operators.push_back(std::move(dequantize_op));
-      }
-    }
-    // After (maybe) quantizing inputs, we copy the operator into the new list.
-    new_operators.push_back(std::move(subgraph->operators[i]));
+    TF_LITE_ENSURE_STATUS(InsertQuantizableInputTensorsFromOperator(
+        model.get(), op, weights_min_num_elements, &tensor_map));
   }
 
-  // At this point all unique_ptrs in the original operators are invalid, and
-  // we need to replace it with the new_operators vector.
-  subgraph->operators = std::move(new_operators);
+  // The unordered_map ensures that we quantize each tensor exactly once.
+  // TODO(suharshs): This map key isn't sufficient when we support multiple
+  // subgraphs.
+  for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
+    // Quantize the tensor.
+    TF_LITE_ENSURE_STATUS(
+        SymmetricQuantizeTensor(model.get(), tensor_pair.second));
+  }
+
+  // Examine the tensor consumers to determine which require dequantize ops.
+  for (const auto& tensor_pair : tensor_map) {
+    const int32_t tensor_idx = tensor_pair.first;
+    TensorT* tensor = tensor_pair.second;
+    std::vector<ConsumerOpInfo> consumer_op_infos =
+        GetTensorConsumers(model.get(), subgraph, tensor_idx);
+
+    std::vector<ConsumerOpInfo> dequant_op_infos;  // Ops that need dequants.
+    for (ConsumerOpInfo& consumer_op_info : consumer_op_infos) {
+      OperatorT* consumer_op = consumer_op_info.op;
+      const BuiltinOperator consumer_op_code =
+          model->operator_codes[consumer_op->opcode_index]->builtin_code;
+      // If the op is a hybrid op and all the required tensors are quantized,
+      // we have no further work to do, but for all ops that require
+      // dequantization we need to add a Dequantize op.
+      bool eval_hybrid =
+          use_hybrid_evaluation &&
+          IsHybridEvaluationOp(consumer_op, consumer_op_code) &&
+          CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code);
+      if (!eval_hybrid) {
+        dequant_op_infos.push_back(consumer_op_info);
+      }
+    }
+
+    // If no ops require dequant, we are done for this tensor.
+    if (dequant_op_infos.empty()) {
+      continue;
+    }
+
+    // Create a new tensor to be the output of the dequantize op.
+    std::unique_ptr<TensorT> dequantize_output;
+    const string dequant_name = tensor->name + "_dequantize";
+    MakeTensor(dequant_name, tensor->shape, &dequantize_output);
+    const int32_t dequantize_output_idx = subgraph->tensors.size();
+    subgraph->tensors.push_back(std::move(dequantize_output));
+
+    // Create the Dequantize operation.
+    std::unique_ptr<OperatorT> dequantize_op;
+    MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
+                           dequantize_output_idx);
+
+    LOG(INFO) << "Creating Dequantize op with name " << dequant_name << ".";
+
+    // Update the op_input of all the ops that need the created dequantize
+    // operation.
+    int32_t min_op_idx = 0;
+    for (ConsumerOpInfo& dequant_op_info : dequant_op_infos) {
+      dequant_op_info.op->inputs[dequant_op_info.op_input_idx] =
+          dequantize_output_idx;
+      min_op_idx = std::min(dequant_op_info.op_idx, min_op_idx);
+    }
+
+    // Insert the newly created Dequantize operation before the earliest
+    // consumer, since TFLite requires operators to be topo-sorted.
+    subgraph->operators.insert(subgraph->operators.begin() + min_op_idx,
+                               std::move(dequantize_op));
+  }
+
+  // Update the modified operator code versions.
+  UpdateInt8OperatorVersions(model.get());
 
   flatbuffers::Offset<Model> output_model_location =
       Model::Pack(*builder, model.get());
@@ -412,11 +390,12 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
 namespace internal {
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
+                             uint64_t weights_min_num_elements,
                              bool use_hybrid_evaluation) {
   // By default we require that only weights with more than
   // kWeightsMinSizeDefault elements are quantized.
   return QuantizeWeightsInternal(builder, input_model, use_hybrid_evaluation,
-                                 kWeightsMinNumElementsDefault);
+                                 weights_min_num_elements);
 }
 }  // namespace internal
 

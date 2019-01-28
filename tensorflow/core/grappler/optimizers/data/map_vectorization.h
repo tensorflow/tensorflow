@@ -16,12 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_VECTORIZATION_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_VECTORIZATION_H_
 
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
 
-class MapVectorization : public CustomGraphOptimizer {
+// This optimizer rewrites dataset.map(map_fn, ...).batch(...) and
+// dataset.apply(tf.data.experimental.map_and_batch(map_fn, ...)) patterns in an
+// input pipeline. It vectorizes the map_fn, such that this segment can be
+// rewritten as dataset.batch().map(vectorized_map_fn). This is more performant
+// when the map_fn is cheap, because it amortizes the cost of running a map
+// function over a larger batch.
+class MapVectorization : public TFDataOptimizerBase {
  public:
   MapVectorization() = default;
   ~MapVectorization() override = default;
@@ -33,14 +39,15 @@ class MapVectorization : public CustomGraphOptimizer {
     return Status::OK();
   }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* output) override;
+  Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
+                                 GraphDef* output,
+                                 OptimizationStats* stats) override;
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
 };
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_VECTORIZATION_H_

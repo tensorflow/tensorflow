@@ -41,6 +41,9 @@ class FromTensorSlicesBenchmark(test.Benchmark):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(input_data)
         .repeat(num_epochs + 1).batch(batch_size))
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
@@ -59,9 +62,6 @@ class FromTensorSlicesBenchmark(test.Benchmark):
         pass
 
     median_wall_time = np.median(deltas)
-    print("Slice/repeat/batch with sess.run() input size: %d batch size: %d "
-          "Median wall time per element: %f" % (input_size, batch_size,
-                                                median_wall_time))
     self.report_benchmark(
         iters=len(deltas),
         wall_time=median_wall_time,
@@ -77,6 +77,9 @@ class FromTensorSlicesBenchmark(test.Benchmark):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(input_data)
         .repeat(num_epochs + 1).batch(batch_size))
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
@@ -96,10 +99,6 @@ class FromTensorSlicesBenchmark(test.Benchmark):
         pass
 
     median_wall_time = np.median(deltas)
-    print(
-        "Slice/repeat/batch with callable input size: %d batch size: %d Median"
-        " wall time per element: %f" % (input_size, batch_size,
-                                        median_wall_time))
     self.report_benchmark(
         iters=len(deltas),
         wall_time=median_wall_time,
@@ -116,6 +115,9 @@ class FromTensorSlicesBenchmark(test.Benchmark):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(input_data.reshape(100, 100))
         .repeat(num_epochs + 1))
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
@@ -135,9 +137,6 @@ class FromTensorSlicesBenchmark(test.Benchmark):
         pass
 
     median_wall_time = np.median(deltas)
-    print("Reshape/slice/repeat with callable input size: %d batch size: %d "
-          "Median wall time per element: %f" % (input_size, batch_size,
-                                                median_wall_time))
     self.report_benchmark(
         iters=len(deltas),
         wall_time=median_wall_time,
@@ -154,6 +153,9 @@ class FromTensorSlicesBenchmark(test.Benchmark):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(input_data).batch(batch_size)
         .cache().repeat(num_epochs + 1))
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
@@ -173,10 +175,6 @@ class FromTensorSlicesBenchmark(test.Benchmark):
         pass
 
     median_wall_time = np.median(deltas)
-    print(
-        "Slice/batch/cache/repeat with callable input size: %d batch size: %d "
-        "Median wall time per element: %f"
-        % (input_size, batch_size, median_wall_time))
     self.report_benchmark(
         iters=len(deltas),
         wall_time=median_wall_time,

@@ -173,7 +173,7 @@ Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
 
         // Find out the new dynamic dimension after reduce.
         int64 dimensions_not_reduced_count = 0;
-        for (int i = 0; i < ShapeUtil::Rank(operand->shape()); ++i) {
+        for (int i = 0; i < operand->shape().rank(); ++i) {
           if (dimension == i) {
             parent_->SetDynamicSize(reduce, {}, dimensions_not_reduced_count,
                                     dynamic_size);
@@ -207,7 +207,7 @@ Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
           result_dim_mapping[i] = current_result_dims++;
         }
 
-        for (int64 i = 0; i < ShapeUtil::Rank(dot->operand(0)->shape()); i++) {
+        for (int64 i = 0; i < dot->operand(0)->shape().rank(); i++) {
           if (!absl::c_linear_search(
                   dimension_numbers.lhs_contracting_dimensions(), i)) {
             if (operand_index == 0) {
@@ -217,7 +217,7 @@ Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
           }
         }
 
-        for (int64 i = 0; i < ShapeUtil::Rank(dot->operand(1)->shape()); i++) {
+        for (int64 i = 0; i < dot->operand(1)->shape().rank(); i++) {
           if (!absl::c_linear_search(
                   dimension_numbers.rhs_contracting_dimensions(), i) &&
               !absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(),
@@ -433,7 +433,7 @@ Status DynamicDimensionInferenceVisitor::ForEachOperandDynamicDimension(
 /* static */
 StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
     HloModule* module) {
-  VLOG(0) << "Param Config " << module->dynamic_parameter_binding().ToString();
+  VLOG(2) << "Param Config " << module->dynamic_parameter_binding().ToString();
   DynamicDimensionInference inference(module);
   TF_RETURN_IF_ERROR(inference.AnalyzeDynamicDimensions());
   return inference;

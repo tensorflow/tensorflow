@@ -269,10 +269,11 @@ REGISTER_OP("Conv2D")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape);
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding);
 
 REGISTER_OP("Conv2DBackpropInput")
     .Input("input_sizes: int32")
@@ -282,7 +283,8 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -304,7 +306,8 @@ REGISTER_OP("Conv2DBackpropFilter")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -1540,6 +1543,22 @@ REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
     });
 
 #ifdef INTEL_MKL
+REGISTER_OP("_MklDepthwiseConv2dNative")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
 REGISTER_OP("_MklConv2D")
     .Input("input: T")
     .Input("filter: T")
@@ -2515,6 +2534,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+#endif  // INTEL_MKL
 REGISTER_OP("QuantizedConv2DAndRequantize")
     .Input("input: Tinput")
     .Input("filter: Tfilter")
@@ -2851,6 +2871,5 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       return Status::OK();
     });
 
-#endif  // INTEL_MKL
 
 }  // namespace tensorflow

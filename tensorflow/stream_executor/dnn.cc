@@ -368,6 +368,16 @@ BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
   return output;
 }
 
+TensorDescriptorProto BatchDescriptor::ToProto(DataType data_type) const {
+  CHECK_EQ(0.0, value_max_);
+  CHECK_EQ(0.0, value_min_);
+  CHECK(quantized_activation_mode_ == QuantizedActivationMode::k8Bit);
+
+  TensorDescriptorProto ret = tensor_;
+  ret.set_data_type(data_type);
+  return ret;
+}
+
 // -- FilterDescriptor
 
 FilterDescriptor::FilterDescriptor(int ndims) {
@@ -431,6 +441,12 @@ int64 FilterDescriptor::ComputeWeightCount() const {
   for (int i = 0; i < ndims(); i++) {
     ret *= input_filter_dims()[i];
   }
+  return ret;
+}
+
+TensorDescriptorProto FilterDescriptor::ToProto(DataType data_type) const {
+  TensorDescriptorProto ret = tensor_;
+  ret.set_data_type(data_type);
   return ret;
 }
 
@@ -563,6 +579,16 @@ string NormalizeDescriptor::ToShortString() const {
   return absl::StrCat("bias:", bias_, "_range:", range_, "_alpha:", alpha_,
                       "_beta:", beta_, "_wrap:", wrap_around_,
                       "_size:", segment_size_);
+}
+
+bool DnnSupport::IsStatusOk(const port::Status& status, bool report_error) {
+  if (status.ok()) {
+    return true;
+  }
+  if (report_error) {
+    LOG(ERROR) << status.error_message();
+  }
+  return false;
 }
 
 }  // namespace dnn

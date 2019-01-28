@@ -40,6 +40,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
+
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 class OptimizeDatasetOp : public UnaryDatasetOpKernel {
@@ -97,7 +99,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // prefix is used to identify checkpoint elements and since the
       // optimization dataset is excluded from the checkpoint, adding a token
       // here would result in invalid checkpoint identifiers.
-      return std::unique_ptr<IteratorBase>(new Iterator({this, prefix}));
+      return absl::make_unique<Iterator>(Iterator::Params{this, prefix});
     }
 
     Status Optimize(OpKernelContext* ctx) {
@@ -127,7 +129,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
 
       // Create a FunctionHandleCache.
-      function_handle_cache_.reset(new FunctionHandleCache(lib_));
+      function_handle_cache_ = absl::make_unique<FunctionHandleCache>(lib_);
 
       // Some functions may have been modified without having their names
       // changed (for example, nested dataset graphs from FlatMap or
@@ -286,31 +288,6 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       (*meta_graph_def.mutable_collection_def())["train_op"] = collection_def;
 
       // Create Grappler item.
-      tensorflow::ConfigProto config;
-      RewriterConfig& rewriter_config =
-          *config.mutable_graph_options()->mutable_rewrite_options();
-      for (const string& optimization : optimizations_) {
-        rewriter_config.add_optimizers(optimization);
-      }
-      // If no optimizations were specified, supply a non-existent
-      // optimization to prevent Grappler from applying the default set of
-      // optimizations as some of them do not work out of the box at the
-      // moment (e.g. because we have no cost model for dataset ops).
-      if (optimizations_.empty()) {
-        rewriter_config.add_optimizers("non-existent");
-      } else {
-        // If we apply custom dataset optimizers, explicitly trigger a subset of
-        // standard grappler optimizations to further optimize modified dataset
-        // graphs (e.g. performing constant folding on merged functions,
-        // removing unused graph nodes)
-        // TODO(b/118175421): This should be part of the tf.data optimization
-        // pass manager.
-        // TODO(b/120437209): Apply `constfold` optimization when it is fixed.
-        for (const auto& optimizer :
-             {"pruning", "function", "shape", "arithmetic", "dependency"}) {
-          rewriter_config.add_optimizers(optimizer);
-        }
-      }
       tensorflow::grappler::ItemConfig item_config;
       item_config.apply_optimizations = true;
       std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
@@ -319,13 +296,22 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       std::unordered_map<string, tensorflow::DeviceProperties> device_map;
       tensorflow::grappler::VirtualCluster cluster(device_map);
 
-      // Run optimizer.
-      if (VLOG_IS_ON(2)) {
-        LOG(INFO) << "Performing the following optimizations:";
-        for (const string& optimization : optimizations_) {
-          LOG(INFO) << "  " << optimization;
-        }
+      // Run data optimizer using grappler's meta optimizer.
+      tensorflow::ConfigProto config;
+      RewriterConfig& rewriter_config =
+          *config.mutable_graph_options()->mutable_rewrite_options();
+      rewriter_config.add_optimizers(kOptimizerName);
+      rewriter_config.set_meta_optimizer_iterations(
+          RewriterConfig_NumIterationsType_ONE);
+      auto custom_optimizer = rewriter_config.add_custom_optimizers();
+      custom_optimizer->set_name(kOptimizerName);
+      auto* custom_optimizations_list =
+          (*custom_optimizer->mutable_parameter_map())["optimizers"]
+              .mutable_list();
+      for (const auto& opt : optimizations_) {
+        custom_optimizations_list->add_s(opt);
       }
+
       TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
           *grappler_item, config, ctx->device(), &cluster, graph_def));
 

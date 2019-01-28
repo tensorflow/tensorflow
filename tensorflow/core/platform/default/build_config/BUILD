@@ -8,6 +8,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
@@ -32,16 +33,26 @@ cc_library(
 
 tf_cuda_library(
     name = "stream_executor",
+    cuda_deps = ["//tensorflow/stream_executor/cuda:cuda_activation"],
     deps = [
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
     ] + select({
-        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor:cuda_platform"],
-        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor:cuda_platform"],
-        "//tensorflow:using_cuda_clang_with_dynamic_build": [],
-        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
+        "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }) + select({
-        "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor/cuda:all_runtime"],
+        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
+        "//tensorflow:using_cuda_clang_with_dynamic_build": [],
+        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
+        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor/rocm:all_runtime"],
         "//conditions:default": [],
     }),
 )
@@ -49,11 +60,24 @@ tf_cuda_library(
 cc_library(
     name = "stream_executor_cuda",
     deps = [
-        "//tensorflow/stream_executor",
+        ":stream_executor_no_cuda",
+        ":cuda",
     ] + if_static(
-        ["//tensorflow/stream_executor:cuda_platform"],
+        ["//tensorflow/stream_executor/cuda:all_runtime"],
     ) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "stream_executor_rocm",
+    deps = [
+        ":stream_executor_no_cuda",
+        ":rocm",
+    ] + if_static(
+        ["//tensorflow/stream_executor/rocm:all_runtime"],
+    ) + select({
         "//conditions:default": [],
     }),
 )
@@ -62,6 +86,15 @@ cc_library(
     name = "stream_executor_no_cuda",
     deps = [
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor/host:host_platform",
+        "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
     ],
 )
 
@@ -251,6 +284,17 @@ cc_library(
 )
 
 cc_library(
+    name = "rocm",
+    data = [],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
+        ],
+    }),
+    deps = [],
+)
+
+cc_library(
     name = "sycl",
     data = if_ccpp([
         "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
@@ -274,9 +318,4 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "logger",
-    actual = "//tensorflow/core:default_logger",
 )

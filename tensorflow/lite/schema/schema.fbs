@@ -64,9 +64,20 @@ table QuantizationParameters {
   scale:[float];  // For dequantizing the tensor's values.
   zero_point:[long];
 
-  // If this is not none, the quantization parameters above are ignored and the
-  // value of the QuantizationDetails union below should be used.
+  // If this is not none, the other quantization parameters (i.e. min, max,
+  // scale, zero_point fields above) are ignored and the value of the
+  // QuantizationDetails union should be used.
   details:QuantizationDetails;
+
+  // Specifies the dimension of the Tensor's shape that the scales and
+  // zero_points correspond to. For example, a tensor t, with dims=[4, 3, 2, 1]
+  // with quantization params:
+  //   scale=[1.0, 2.0, 3.0], zero_point=[1, 2, 3], quantization_dimension=1
+  // will be quantized across the second dimension of t.
+  //   t[:, 0, :, :] will have scale[0]=1.0, zero_point[0]=1
+  //   t[:, 1, :, :] will have scale[1]=2.0, zero_point[0]=2
+  //   t[:, 2, :, :] will have scale[2]=3.0, zero_point[0]=3
+  quantized_dimension:int;
 }
 
 table Tensor {
@@ -205,6 +216,9 @@ enum BuiltinOperator : byte {
   MIRROR_PAD = 100,
   ABS = 101,
   SPLIT_V = 102,
+  UNIQUE = 103,
+  CEIL = 104,
+  REVERSE_V2 = 105,
 }
 
 // Options for the builtin operators.
@@ -288,6 +302,8 @@ union BuiltinOptions {
   MirrorPadOptions,
   AbsOptions,
   SplitVOptions,
+  UniqueOptions,
+  ReverseV2Options,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -699,6 +715,13 @@ enum MirrorPadMode : byte {
 
 table MirrorPadOptions {
   mode:MirrorPadMode;
+}
+
+table UniqueOptions {
+  idx_out_type:TensorType = INT32;
+}
+
+table ReverseV2Options {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

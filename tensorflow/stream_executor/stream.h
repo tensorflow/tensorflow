@@ -650,6 +650,13 @@ class Stream {
                           DeviceMemory<Eigen::half> *output_data,
                           ScratchAllocator *workspace_allocator = nullptr);
 
+  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                          const dnn::BatchDescriptor &input_dimensions,
+                          const DeviceMemory<int8> &input_data,
+                          const dnn::BatchDescriptor &output_dimensions,
+                          DeviceMemory<int8> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
+
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
                            const DeviceMemory<double> &input_data,
@@ -2091,6 +2098,9 @@ class Stream {
     mutex_lock lock(mu_);
     ok_ = false;
   }
+
+  // Checks the status and logs the error message, if any.
+  void CheckStatus(port::Status status) LOCKS_EXCLUDED(mu_);
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 

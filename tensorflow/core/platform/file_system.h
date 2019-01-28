@@ -234,6 +234,14 @@ class RandomAccessFile {
   RandomAccessFile() {}
   virtual ~RandomAccessFile();
 
+  /// \brief Returns the name of the file.
+  ///
+  /// This is an optional operation that may not be implemented by every
+  /// filesystem.
+  virtual Status Name(StringPiece* result) const {
+    return errors::Unimplemented("This filesystem does not support Name()");
+  }
+
   /// \brief Reads up to `n` bytes from the file starting at `offset`.
   ///
   /// `scratch[0..n-1]` may be written by this routine.  Sets `*result`
@@ -296,6 +304,14 @@ class WritableFile {
   /// after a successful flush, the contents may or may not be
   /// persisted, depending on the implementation.
   virtual Status Flush() = 0;
+
+  // \brief Returns the name of the file.
+  ///
+  /// This is an optional operation that may not be implemented by every
+  /// filesystem.
+  virtual Status Name(StringPiece* result) const {
+    return errors::Unimplemented("This filesystem does not support Name()");
+  }
 
   /// \brief Syncs contents of file to filesystem.
   ///

@@ -61,6 +61,7 @@ py_library(
         ":lite_constants",
         ":op_hint",
         "//tensorflow/python:graph_util",
+        "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
@@ -71,6 +72,7 @@ py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -115,8 +117,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
@@ -145,7 +145,6 @@ py_library(
     srcs = ["convert_saved_model.py"],
     srcs_version = "PY2AND3",
     visibility = [
-        "//tensorflow/contrib/lite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
