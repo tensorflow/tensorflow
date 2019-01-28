@@ -49,16 +49,17 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_missing_else(self):
+  def test_missing_orelse(self):
 
     def test_fn(x):
       if x > 0:
         return x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    node, ctx = self.prepare(test_fn, {})
+    with self.assertRaises(ValueError):
+      return_statements.transform(node, ctx)
 
-  def test_missing_else_then_default(self):
+  def test_missing_orelse_recovrable(self):
 
     def test_fn(x):
       if x > 0:
@@ -68,7 +69,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_else_only_then_default(self):
+  def test_missing_branch_return_recoverable(self):
 
     def test_fn(x):
       if x < 0:
@@ -135,7 +136,7 @@ class SingleReturnTest(converter_testing.TestCase):
 
     self.assertTransformedEquivalent(test_fn, 2)
 
-  def test_nested_function(self):
+  def test_nested_functions(self):
 
     def test_fn(x):
 
@@ -150,7 +151,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_nested_function_in_control_flow(self):
+  def test_nested_functions_in_control_flow(self):
 
     def test_fn(x):
 
@@ -162,30 +163,16 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_for_loop(self):
+  def test_loop(self):
 
-    def test_fn(n):
-      for _ in range(n):
-        return 1
+    def test_fn(x):
+      for _ in range(10):
+        return x
+      return x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, 0)
-
-  def test_while_loop(self):
-
-    def test_fn(n):
-      i = 0
-      s = 0
-      while i < n:
-        i += 1
-        s += i
-        if s > 4:
-          return s
-      return -1
-
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, 4)
+    node, ctx = self.prepare(test_fn, {})
+    with self.assertRaises(ValueError):
+      return_statements.transform(node, ctx)
 
 
 if __name__ == '__main__':
