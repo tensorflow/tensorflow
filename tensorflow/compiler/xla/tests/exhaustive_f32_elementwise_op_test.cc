@@ -52,20 +52,45 @@ class ExhaustiveF32ElementwiseOpTest
       }
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
-                            client_->TransferToServer(input_literal));
-
     auto input = Parameter(&builder, 0, input_literal.shape(), "input");
     enqueue_op(&builder, input);
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
 
-    std::vector<float> expected_result;
-    expected_result.reserve(input_size);
+    // Build and run the computation using the LocalClient API, rather than the
+    // plain Client API, which is used by ClientLibraryTestBase.  This is
+    // because the plain Client API results does more memcpys to/from Literals,
+    // and that's slow given that we're touching a lot of data here.
+    //
+    // Copy debug options from ClientLibraryTestBase.  In particular, we're
+    // interested in disabling constant folding.
+    ExecutableBuildOptions build_opts;
+    *build_opts.mutable_debug_options() = *mutable_debug_options();
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto executable,
+        client_->Compile(comp, {&input_literal.shape()}, build_opts));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        ScopedShapedBuffer input_data,
+        client_->LiteralToShapedBuffer(input_literal, /*device_ordinal=*/0));
+
+    ExecutableRunOptions run_opts;
+    run_opts.set_allocator(client_->backend().memory_allocator());
+    run_opts.set_intra_op_thread_pool(
+        client_->backend().eigen_intra_op_thread_pool_device());
+    TF_ASSERT_OK_AND_ASSIGN(ScopedShapedBuffer result,
+                            executable->Run({&input_data}, run_opts));
+
+    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                            client_->ShapedBufferToLiteral(result));
+
+    Literal expected_literal =
+        LiteralUtil::CreateFromDimensions(F32, {input_size});
+    absl::Span<float> expected_arr = expected_literal.data<float>();
     for (int64 i = 0; i < input_size; i++) {
-      expected_result.push_back(evaluate_op(input_arr[i]));
+      expected_arr[i] = evaluate_op(input_arr[i]);
     }
-
-    ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
-                               error_spec_);
+    EXPECT_TRUE(
+        LiteralTestUtil::Near(expected_literal, result_literal, error_spec_));
   }
 };
 
