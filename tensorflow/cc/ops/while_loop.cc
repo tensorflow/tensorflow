@@ -179,6 +179,7 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
   DCHECK(outputs->empty());
 
   TF_RETURN_IF_ERROR(scope.status());
+  const int next_id = scope.graph()->num_node_ids();
   const size_t num_loop_vars = inputs.size();
 
   std::vector<Output> enter_outputs(num_loop_vars);
@@ -237,10 +238,11 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
         ToOutputTensor(cond_out), ToOutputTensors(switch_trues),
         ToOutputTensors(body_outputs), &while_ctx));
 
-    // Set while_ctx for all exit nodes. We currently don't require knowing the
-    // while_ctx for any other nodes.
-    for (int i = 0; i < num_loop_vars; ++i) {
-      (*outputs)[i].node()->set_while_ctx(while_ctx);
+    const int final_while_id = scope.graph()->num_node_ids();
+
+    // Set while_ctx for all nodes created during the while
+    for (int id = next_id; id < final_while_id; ++id) {
+        scope.graph()->FindNodeId(id)->set_while_ctx(while_ctx);
     }
   }
   return Status::OK();
