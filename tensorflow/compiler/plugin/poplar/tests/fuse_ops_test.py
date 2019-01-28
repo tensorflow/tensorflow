@@ -474,7 +474,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'vs/conv2d/BiasAdd/fusion*/addToChannel',
             'GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion*/ReduceFinalStage/IntermediateToOutput/Reduce',
             'GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion*/AddTo',
-            'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4/Convolve',
+            'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4',
             'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/AddTo',
             'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/multiply*/Op/Multiply',
             'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/subtract*/AddTo',
@@ -700,7 +700,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       found = False
       for var, val in zip(tvars, tvars_vals):
-        print(var.name, val)
         if var.name == "vs/a/bias:0":
           # Value computed using the CPU backend
           self.assertAllClose(val, [-0.6, -0.6])
@@ -739,7 +738,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       found = False
       for var, val in zip(tvars, tvars_vals):
-        print(var.name, val)
         if var.name == "vs/a/bias:0":
           # Value computed using the CPU backend
           self.assertAllClose(val, [-0.6, -0.6])

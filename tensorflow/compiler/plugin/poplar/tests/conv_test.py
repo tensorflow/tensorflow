@@ -94,6 +94,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
         cs_list = tu.get_compute_sets_from_report(s)
 
         ok = ['progIdCopy',
+              'Copy_*actsRearranged',
               'host-exchange-local-copy-',
               'cnv3*/convolution.*/Conv_3x3',
               'ba3*/fusion/addToChannel']
@@ -169,6 +170,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
         cs_list = tu.get_compute_sets_from_report(s)
 
         ok = ['progIdCopy',
+              'Copy_*actsRearranged',
               'host-exchange-local-copy-',
               'cnv5*/convolution.*/Conv_1x1',
               'ba5*/fusion/addToChannel']

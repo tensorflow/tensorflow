@@ -144,6 +144,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
+            'Copy_*actsRearranged',
             'host-exchange-local-copy-',
             'Conv3D/convolution.*/Conv_1x1',
             'add/fusion/addToChannel']
