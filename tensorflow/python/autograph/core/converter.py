@@ -129,6 +129,18 @@ class Feature(enum.Enum):
   LISTS = 'LISTS'
   NAME_SCOPES = 'NAME_SCOPES'
 
+  @classmethod
+  def all(cls):
+    """Returns a tuple that enables all options."""
+    return tuple(cls.__members__.values())
+
+  @classmethod
+  def all_but(cls, exclude):
+    """Returns a tuple that enables all but the excluded options."""
+    if not isinstance(exclude, (list, tuple, set)):
+      exclude = (exclude,)
+    return tuple(set(cls.all()) - set(exclude) - {cls.ALL})
+
 
 class ConversionOptions(object):
   """Immutable container for global conversion flags.
