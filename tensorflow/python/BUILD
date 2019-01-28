@@ -1480,15 +1480,15 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "framework_ops_enable_eager_test",
+    name = "framework_ops_eager_test",
     size = "small",
-    srcs = ["framework/ops_enable_eager_test.py"],
+    srcs = ["framework/ops_eager_test.py"],
     additional_deps = [
         ":framework",
         ":platform_test",
         "//tensorflow/python/eager:context",
     ],
-    main = "framework/ops_enable_eager_test.py",
+    main = "framework/ops_eager_test.py",
 )
 
 tf_py_test(
