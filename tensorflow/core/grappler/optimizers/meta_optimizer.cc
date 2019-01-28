@@ -376,6 +376,12 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     }
 
     VLOG(4) << "Starting optimization iteration " << iteration;
+    if (VLOG_IS_ON(4)) {
+      DumpGraphDefToFile(
+          strings::StrCat("before_MetaOptimizer_iteration_", iteration, "_",
+                          reinterpret_cast<uintptr_t>(optimized_graph)),
+          *optimized_graph);
+    }
     for (const auto& optimizer : optimizers) {
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       // Some optimizers can run only once.
@@ -390,10 +396,24 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
       RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
+
+      if (VLOG_IS_ON(4)) {
+        DumpGraphDefToFile(
+            strings::StrCat("after_MetaOptimizer_iteration_", iteration, "_",
+                            optimizer->name(), "_",
+                            reinterpret_cast<uintptr_t>(optimized_graph)),
+            *optimized_graph);
+      }
       for (const auto& verifier : inter_optimizer_verifiers) {
         // TODO(ashwinm): Need to enforce verification_deadline.
         TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
       }
+    }
+    if (VLOG_IS_ON(4)) {
+      DumpGraphDefToFile(
+          strings::StrCat("after_MetaOptimizer_iteration_", iteration, "_",
+                          reinterpret_cast<uintptr_t>(optimized_graph)),
+          *optimized_graph);
     }
     // TODO(ashwinm): Need to enforce verification_deadline.
     for (const auto& verifier : post_optimization_verifiers) {
@@ -510,7 +530,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (IsTPUGraphDef(*optimized_graph)) {
     VLOG(2) << "Skipping optimizing funcs for TPU graphs";
     if (VLOG_IS_ON(1)) {
-      DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+      DumpGraphDefToFile(
+          strings::StrCat("after_MetaOptimizer_",
+                          reinterpret_cast<uintptr_t>(optimized_graph)),
+          *optimized_graph);
     }
     return Status::OK();
   }
@@ -616,7 +639,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           << " functions: " << str_util::Join(optimized_funcs, ", ");
 
   if (VLOG_IS_ON(1)) {
-    DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+    DumpGraphDefToFile(
+        strings::StrCat("after_MetaOptimizer_",
+                        reinterpret_cast<uintptr_t>(optimized_graph)),
+        *optimized_graph);
   }
   return Status::OK();
 }
