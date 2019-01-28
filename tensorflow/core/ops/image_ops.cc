@@ -192,7 +192,6 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   c->set_output(1, c->MakeShape({batch_dim, output_size}));
   c->set_output(2, c->MakeShape({batch_dim, output_size}));
   c->set_output(3, c->Vector(batch_dim));
-  c->set_output(4, c->MakeShape({batch_dim, output_size}));
   return Status::OK();
 }
 
