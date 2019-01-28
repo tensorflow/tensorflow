@@ -272,6 +272,7 @@ ConvolutionHloTest.ConvolveF32ForwardReversed POPLAR // Need to support reversed
 DotOperationTest_F16F32F64CF64.GeneralMatMulR3LhsR2Rhs POPLAR // Need to support all dimension options
 DotOperationTest_F16F32F64CF64.GeneralMatMulR2LhsR3Rhs POPLAR
 DotOperationTextTest.Einsum POPLAR
+EinsumTest.SimpleEinsumTest POPLAR
 
 IotaR3PredTest POPLAR // iota PRED support
 
