@@ -154,7 +154,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
   return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "", target_options,
-      Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
+      getRelocModel(), getCodeModel(),
       codegen_opt_level));
 }
 
