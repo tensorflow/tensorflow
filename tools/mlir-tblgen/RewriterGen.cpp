@@ -208,18 +208,13 @@ void Pattern::matchOp(DagInit *tree, int depth) {
 
       // TODO(jpienaar): Verify attributes.
       if (auto *namedAttr = opArg.dyn_cast<NamedAttribute *>()) {
-        // TODO(jpienaar): move to helper class.
-        if (defInit->getDef()->isSubClassOf("mAttr")) {
-          auto pred =
-              tblgen::Pred(defInit->getDef()->getValueInit("predicate"));
-          os.indent(indent)
-              << "if (!("
-              << formatv(pred.getCondition().c_str(),
-                         formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
-                                 namedAttr->attr.getStorageType(),
-                                 namedAttr->getName()))
-              << ")) return matchFailure();\n";
-        }
+        auto constraint = tblgen::AttrConstraint(defInit);
+        std::string condition = formatv(
+            constraint.getConditionTemplate().c_str(),
+            formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
+                    namedAttr->attr.getStorageType(), namedAttr->getName()));
+        os.indent(indent) << "if (!(" << condition
+                          << ")) return matchFailure();\n";
       }
     }
 

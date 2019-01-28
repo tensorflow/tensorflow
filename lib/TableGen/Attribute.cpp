@@ -36,15 +36,38 @@ static StringRef getValueAsString(const llvm::Init *init) {
   return {};
 }
 
-tblgen::Attribute::Attribute(const llvm::Record *def) : def(def) {
-  assert(def->isSubClassOf("Attr") &&
+tblgen::AttrConstraint::AttrConstraint(const llvm::Record *record)
+    : def(record) {
+  assert(def->isSubClassOf("AttrConstraint") &&
+         "must be subclass of TableGen 'AttrConstraint' class");
+}
+
+tblgen::AttrConstraint::AttrConstraint(const llvm::DefInit *init)
+    : AttrConstraint(init->getDef()) {}
+
+tblgen::Pred tblgen::AttrConstraint::getPredicate() const {
+  auto *val = def->getValue("predicate");
+  // If no predicate is specified, then return the null predicate (which
+  // corresponds to true).
+  if (!val)
+    return Pred();
+
+  const auto *pred = dyn_cast<llvm::DefInit>(val->getValue());
+  return Pred(pred);
+}
+
+std::string tblgen::AttrConstraint::getConditionTemplate() const {
+  return getPredicate().getCondition();
+}
+
+tblgen::Attribute::Attribute(const llvm::Record *record)
+    : AttrConstraint(record) {
+  assert(record->isSubClassOf("Attr") &&
          "must be subclass of TableGen 'Attr' class");
 }
 
-tblgen::Attribute::Attribute(const llvm::Record &def) : Attribute(&def) {}
-
 tblgen::Attribute::Attribute(const llvm::DefInit *init)
-    : Attribute(*init->getDef()) {}
+    : AttrConstraint(init->getDef()) {}
 
 bool tblgen::Attribute::isDerivedAttr() const {
   return def->isSubClassOf("DerivedAttr");
@@ -102,19 +125,4 @@ StringRef tblgen::Attribute::getTableGenDefName() const {
 StringRef tblgen::Attribute::getDerivedCodeBody() const {
   assert(isDerivedAttr() && "only derived attribute has 'body' field");
   return def->getValueAsString("body");
-}
-
-tblgen::Pred tblgen::Attribute::getPredicate() const {
-  auto *val = def->getValue("predicate");
-  // If no predicate is specified, then return the null predicate (which
-  // corresponds to true).
-  if (!val)
-    return Pred();
-
-  const auto *pred = dyn_cast<llvm::DefInit>(val->getValue());
-  return Pred(pred);
-}
-
-std::string tblgen::Attribute::getConditionTemplate() const {
-  return getPredicate().getCondition();
 }

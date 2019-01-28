@@ -221,7 +221,7 @@ def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
 // A constraint on attributes. This can be used to check the validity of
 // instruction attributes.
 class AttrConstraint<Pred condition> {
-  // The predicates that this type satisfies.
+  // The predicates that this attribute satisfies.
   // Format: {0} will be expanded to the attribute.
   Pred predicate = condition;
 }
@@ -443,11 +443,7 @@ class Pat<dag pattern, dag result> : Pattern<pattern, [result]>;
 
 // Attribute matcher. This is the base class to specify a predicate
 // that has to match. Used on the input attributes of a rewrite rule.
-class mAttr<CPred pred> {
-  // Code to match the attribute.
-  // Format: {0} represents the attribute.
-  CPred predicate = pred;
-}
+class mAttr<Pred pred> : AttrConstraint<pred>;
 
 // Attribute transforms. This is the base class to specify a
 // transformation of a matched attribute. Used on the output of a rewrite

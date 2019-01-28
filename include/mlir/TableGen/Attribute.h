@@ -35,13 +35,37 @@ class Record;
 namespace mlir {
 namespace tblgen {
 
+// Wrapper class with helper methods for accessing Attribute constraints defined
+// in TableGen.
+class AttrConstraint {
+public:
+  explicit AttrConstraint(const llvm::Record *record);
+  explicit AttrConstraint(const llvm::DefInit *init);
+
+  // Returns the predicate that can be used to check if a attribute satisfies
+  // this attribute constraint.
+  Pred getPredicate() const;
+
+  // Returns the condition template that can be used to check if a attribute
+  // satisfies this attribute constraint.  The template may contain "{0}" that
+  // must be substituted with an expression returning an mlir::Attribute.
+  std::string getConditionTemplate() const;
+
+  // Returns the user-readable description of the constraint.  If the
+  // description is not provided, returns an empty string.
+  StringRef getDescription() const;
+
+protected:
+  // The TableGen definition of this attribute.
+  const llvm::Record *def;
+};
+
 // Wrapper class providing helper methods for accessing MLIR Attribute defined
 // in TableGen. This class should closely reflect what is defined as class
 // `Attr` in TableGen.
-class Attribute {
+class Attribute : public AttrConstraint {
 public:
-  explicit Attribute(const llvm::Record &def);
-  explicit Attribute(const llvm::Record *def);
+  explicit Attribute(const llvm::Record *record);
   explicit Attribute(const llvm::DefInit *init);
 
   // Returns true if this attribute is a derived attribute (i.e., a subclass
@@ -85,19 +109,6 @@ public:
   // Returns the code body for derived attribute. Aborts if this is not a
   // derived attribute.
   StringRef getDerivedCodeBody() const;
-
-  // Returns the predicate that can be used to check if a attribute satisfies
-  // this attribute's constraint.
-  Pred getPredicate() const;
-
-  // Returns the template that can be used to verify that an attribute satisfies
-  // the constraints for its declared attribute type.
-  // Syntax: {0} should be replaced with the attribute.
-  std::string getConditionTemplate() const;
-
-private:
-  // The TableGen definition of this attribute.
-  const llvm::Record *def;
 };
 
 } // end namespace tblgen

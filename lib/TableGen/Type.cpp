@@ -53,7 +53,7 @@ llvm::StringRef tblgen::TypeConstraint::getDescription() const {
 }
 
 tblgen::TypeConstraint::TypeConstraint(const llvm::DefInit &init)
-    : def(*init.getDef()) {}
+    : TypeConstraint(*init.getDef()) {}
 
 tblgen::Type::Type(const llvm::Record &record) : TypeConstraint(record) {
   assert(def.isSubClassOf("Type") &&
