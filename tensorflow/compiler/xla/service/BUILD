@@ -1930,6 +1930,7 @@ cc_library(
     hdrs = ["dynamic_dimension_inference.h"],
     deps = [
         ":hlo",
+        ":while_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
