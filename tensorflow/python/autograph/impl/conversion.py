@@ -43,11 +43,12 @@ from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors
+from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -322,7 +323,7 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (
-        errors.rewrite_graph_construction_error)
+        ag_errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -340,6 +341,7 @@ def function_to_graph(f,
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
+  logging.log(3, 'Source code of %s:\n%s', f, source)
   node = node.body[0]
 
   # In general, the output of inspect.getsource is inexact because it uses
@@ -380,10 +382,9 @@ def function_to_graph(f,
   try:
     node = node_to_graph(node, context)
   except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-    # TODO(znado): raise InternalError
-    if not context.current_origin:
-      raise e
-    raise transformer.AutoGraphParseError(str(e), context.current_origin)
+    logging.error(1, 'Error converting %s', f, exc_info=True)
+    raise errors.InternalError('conversion', e)
+    # TODO(mdan): Catch and rethrow syntax errors.
 
   if isinstance(node, gast.Lambda):
     new_name = namer.new_symbol('tf__lambda', ())
