@@ -486,6 +486,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "tensorflow_op_layer_test",
+    size = "medium",
+    srcs = ["layers/tensorflow_op_layer_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 3,
+)
+
+tf_py_test(
     name = "convolutional_recurrent_test",
     size = "large",
     srcs = ["layers/convolutional_recurrent_test.py"],
