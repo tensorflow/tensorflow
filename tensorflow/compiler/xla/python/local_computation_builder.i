@@ -1018,6 +1018,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Pad;
 %unignore xla::swig::LocalComputationBuilder::Reshape;
 %unignore xla::swig::LocalComputationBuilder::Collapse;
+%unignore xla::swig::LocalComputationBuilder::AllToAll;
 %unignore xla::swig::LocalComputationBuilder::CrossReplicaSum;
 %unignore xla::swig::LocalComputationBuilder::Slice;
 %unignore xla::swig::LocalComputationBuilder::SliceInDim;
