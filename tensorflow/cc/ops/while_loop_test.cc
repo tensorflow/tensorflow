@@ -91,16 +91,20 @@ Status AddOneBody(const Scope& s, const std::vector<Output>& inputs,
 TEST_F(WhileLoopTest, Basic) {
   // Create loop: while (i < 10) i += 1
   Init(1);
+
+  int next_idx = scope_.graph()->num_node_ids();
+
   CreateLoop(LessThanTenCond, AddOneBody);
 
   // Verify some output invariants
   WhileContext* while_ctx;
-  for (int i = 0; i < outputs_.size(); ++i) {
-    Node* node = outputs_[i].node();
-    ASSERT_TRUE(node->IsExit()) << "Output node " << i << ":\n"
-                                << node->DebugString();
+
+  int final_idx = scope_.graph()->num_node_ids()
+
+  for (int i = next_idx; i < final_idx; ++i) {
+    Node* node = scope_.graph()->FindNodeID(i);
     ASSERT_TRUE(node->while_ctx() != nullptr) << i;
-    if (i == 0) {
+    if (i == next_idx) {
       while_ctx = node->while_ctx();
       EXPECT_EQ(while_ctx->frame_name(), kFrameName);
     } else {
