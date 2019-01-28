@@ -96,26 +96,24 @@ TEST(MklUtilTest, LRUCacheTest) {
   }
 
   // Test GetOp and capacity:
-  //   -- Less recently accessed objects should not be
-  //      in cache any more.
-  for (int k = 0; k < num_objects - capacity; k++) {
+  // Least recently accessed objects should not be in cache any more.
+  for (int k = 0; k < num_objects - capacity; ++k) {
     EXPECT_EQ(nullptr, lru_cache.GetOp(std::to_string(k)));
   }
 
   // Test GetOp and capacity:
-  //   -- most recently accessed objects should still
-  //      be in cache.
-  for (int k = num_objects - capacity; k < num_objects; k++) {
-    int* pint = lru_cache.GetOp(std::to_string(k));
-    EXPECT_NE(nullptr, pint);
-    EXPECT_EQ(*pint, k);
+  // Most recently accessed objects should still be in cache.
+  for (int k = num_objects - capacity; k < num_objects; ++k) {
+    int* int_ptr = lru_cache.GetOp(std::to_string(k));
+    EXPECT_NE(nullptr, int_ptr);
+    EXPECT_EQ(*int_ptr, k);
   }
 
   // Clean up the cache
   lru_cache.Clear();
 
   // After clean up, there should be no cached object.
-  for (int k = 0; k < num_objects; k++) {
+  for (int k = 0; k < num_objects; ++k) {
     EXPECT_EQ(nullptr, lru_cache.GetOp(std::to_string(k)));
   }
 }

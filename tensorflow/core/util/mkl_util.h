@@ -2126,8 +2126,8 @@ class LRUCache {
   std::unordered_map<string, Entry> cache_;
 
   // The LRU list of entries.
-  // The front of the list identifies the most recently accessed entry,
-  // while the back of the list is the least recently accessed entry.
+  // The front of the list contians the key of the most recently accessed 
+  // entry, while the back of the list is the least recently accessed entry.
   std::list<string> lru_list_;
 };
 
