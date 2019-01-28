@@ -465,6 +465,26 @@ REGISTER_OP("TensorListScatter")
       return Status::OK();
     });
 
+REGISTER_OP("TensorListScatterV2")
+    .Input("tensor: element_dtype")
+    .Input("indices: int32")
+    .Input("element_shape: shape_type")
+    .Input("num_elements: int32")
+    .Output("output_handle: variant")
+    .Attr("element_dtype: type")
+    .Attr("shape_type: {int32, int64}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      DataType element_dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
+      shape_inference::ShapeHandle element_shape;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
+          2, &element_shape));
+      c->set_output_handle_shapes_and_types(0,
+                                            {{element_shape, element_dtype}});
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("TensorListConcatLists")
     .Input("input_a: variant")
     .Input("input_b: variant")

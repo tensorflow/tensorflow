@@ -663,6 +663,13 @@ class TensorListScatter : public OpKernel {
     Tensor indices = c->input(1);
     PartialTensorShape element_shape;
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(2), &element_shape));
+    // TensorListScatterV2 passes the num_elements input, TensorListScatter does
+    // not.
+    int num_elements = c->num_inputs() >= 4 ? c->input(3).scalar<int>()() : -1;
+    OP_REQUIRES(c, num_elements >= -1,
+                errors::InvalidArgument(
+                    "TensorListScatter expects num_elements >= -1, found: ",
+                    num_elements));
     TensorList output_list;
     const Tensor& input_tensor = c->input(0);
     output_list.element_dtype = input_tensor.dtype();
@@ -686,17 +693,23 @@ class TensorListScatter : public OpKernel {
 
     // Validate indices and resize output_list.tensors to fit the highest index.
     {
-      size_t list_size = 0;
+      int highest_index = -1;
       for (int index = 0; index < indices.NumElements(); ++index) {
         const int i = indices.flat<int32>()(index);
-        OP_REQUIRES(c, i >= 0,
+        OP_REQUIRES(
+            c, i >= 0,
+            errors::InvalidArgument(
+                "Indices in TensorListScatter must all be non-negative."));
+        OP_REQUIRES(c, num_elements == -1 || i < num_elements,
                     errors::InvalidArgument(
-                        "Indices in TensorListScatter must all be positive."));
-        if (i >= list_size) {
-          list_size = i + 1;
+                        "TensorListScatter: Trying to scatter at index ", i,
+                        " in list with size ", num_elements));
+        if (i > highest_index) {
+          highest_index = i;
         }
       }
-      output_list.tensors.resize(list_size, Tensor(DT_INVALID));
+      output_list.tensors.resize(std::max(highest_index + 1, num_elements),
+                                 Tensor(DT_INVALID));
     }
 
     for (int index = 0; index < indices.NumElements(); ++index) {
