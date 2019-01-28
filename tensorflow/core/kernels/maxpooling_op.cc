@@ -1310,12 +1310,11 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, Tensor* argmax,
                      bool propagate_nans, bool include_batch_in_index) {
-    // TODO(facaiy): support include_batch_in_index=true for gpu kernel.
-    if (include_batch_in_index) {
-      LOG(WARNING) << "include_batch_in_index=true is not supported "
-                   << "on GPU kernel of MaxPoolWithArgmax. "
-                   << "Ignore it.";
-    }
+    // TODO: support include_batch_in_index=true for gpu kernel.
+    OP_REQUIRES(context, include_batch_in_index == false,
+                errors::Unimplemented(
+                    "include_batch_in_index=true is not yet supported "
+                    "on the GPU kernel."));
     bool status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
         input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
         params.tensor_in_cols, params.depth, params.out_height,
@@ -1336,12 +1335,11 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
                      Tensor* grad_out, const bool include_batch_in_index) {
-    // TODO(facaiy): support include_batch_in_index=true for gpu kernel.
-    if (include_batch_in_index) {
-      LOG(WARNING) << "include_batch_in_index=true is not supported "
-                   << "on GPU kernel of MaxPoolGradWithArgmax. "
-                   << "Ignore it.";
-    }
+    // TODO: support include_batch_in_index=true for gpu kernel.
+    OP_REQUIRES(context, include_batch_in_index == false,
+                errors::Unimplemented(
+                    "include_batch_in_index=true is not yet supported "
+                    "on the GPU kernel."));
     const int input_size = params.tensor_in_batch * params.tensor_in_rows *
                            params.tensor_in_cols * params.depth;
     const int output_size = params.tensor_in_batch * params.out_height *
@@ -1365,12 +1363,11 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
                      Tensor* grad_out, const bool include_batch_in_index) {
-    // TODO(facaiy): support include_batch_in_index=true for gpu kernel.
-    if (include_batch_in_index) {
-      LOG(WARNING) << "include_batch_in_index=true is not supported "
-                   << "on GPU kernel of MaxPoolGradGradWithArgmax. "
-                   << "Ignore it.";
-    }
+    // TODO: support include_batch_in_index=true for gpu kernel.
+    OP_REQUIRES(context, include_batch_in_index == false,
+                errors::Unimplemented(
+                    "include_batch_in_index=true is not yet supported "
+                    "on the GPU kernel."));
     const int input_size = params.tensor_in_batch * params.tensor_in_rows *
                            params.tensor_in_cols * params.depth;
     const int output_size = params.tensor_in_batch * params.out_height *
