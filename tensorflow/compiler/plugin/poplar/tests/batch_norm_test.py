@@ -11,9 +11,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.training import gradient_descent
 from tensorflow.python.layers import normalization as layers_norm
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
@@ -259,6 +261,23 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
 
       bl = ['*convert*/Cast*']
       self.assertTrue(tu.check_compute_sets_not_in_blacklist(cs, bl))
+
+
+  def testBatchNormalizeLayerFusedTrainingFp16(self):
+    # This test checks for the correct behaviour in batch norm grad when
+    # perofrming training, but the batch norm attribute `training` is False
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("", use_resource=True):
+        x = array_ops.placeholder(np.float16, [4, 64, 64, 4], name="a")
+        normed = layers_norm.batch_normalization(x, fused=True, training=False)
+      loss = math_ops.reduce_sum(normed)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+      train = optimizer.minimize(loss)
+
+    with tu.ipu_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      result = sess.run([normed,train], { x: np.zeros([4, 64, 64, 4]) })
+      self.assertAllClose(result[0], np.zeros([4, 64, 64, 4]))
 
 
 if __name__ == "__main__":
