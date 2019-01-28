@@ -49,6 +49,15 @@ class SavedModelTest(tf.test.TestCase):
     use_binary = resource_loader.get_path_to_datafile("use_text_rnn_model")
     self.assertCommandSucceeded(use_binary, model_dir=export_dir)
 
+  @test_util.run_v2_only
+  def test_rnn_cell(self):
+    export_dir = self.get_temp_dir()
+    export_binary = resource_loader.get_path_to_datafile(
+        "export_rnn_cell")
+    self.assertCommandSucceeded(export_binary, export_dir=export_dir)
+
+    use_binary = resource_loader.get_path_to_datafile("use_rnn_cell")
+    self.assertCommandSucceeded(use_binary, model_dir=export_dir)
 
 if __name__ == "__main__":
   # tf.enable_v2_behavior()
