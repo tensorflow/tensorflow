@@ -77,8 +77,6 @@ class _Barrier(object):
 
   def wait(self):
     """Waits until all other callers reach the same wait call."""
-    if not hasattr(self._local_sense, "value"):
-      self._local_sense.value = False
     self._local_sense.value = not self._flag
     with self._lock:
       self._counter += 1
