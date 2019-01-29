@@ -29,6 +29,7 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU
 from tensorflow.python.keras.layers.advanced_activations import PReLU
 from tensorflow.python.keras.layers.advanced_activations import ELU
+from tensorflow.python.keras.layers.advanced_activations import Swish
 from tensorflow.python.keras.layers.advanced_activations import ReLU
 from tensorflow.python.keras.layers.advanced_activations import ThresholdedReLU
 from tensorflow.python.keras.layers.advanced_activations import Softmax

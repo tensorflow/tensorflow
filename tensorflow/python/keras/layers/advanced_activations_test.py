@@ -51,6 +51,12 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
                                kwargs={'alpha': alpha},
                                input_shape=(2, 3, 4))
 
+  def test_swish_basic(self):
+    for beta in [0., .5, 2.]:
+      testing_utils.layer_test(keras.layers.Swish,
+                               kwargs={'beta': beta},
+                               input_shape=(2, 3, 4))
+
   def test_thresholded_relu(self):
     testing_utils.layer_test(keras.layers.ThresholdedReLU,
                              kwargs={'theta': 0.5},
