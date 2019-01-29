@@ -182,7 +182,7 @@ tf_module {
   }
   member_method {
     name: "resize_image_with_pad"
-    argspec: "args=[\'image\', \'target_height\', \'target_width\', \'method\'], varargs=None, keywords=None, defaults=[\'0\'], "
+    argspec: "args=[\'image\', \'target_height\', \'target_width\', \'method\', \'align_corners\'], varargs=None, keywords=None, defaults=[\'0\', \'False\'], "
   }
   member_method {
     name: "rgb_to_grayscale"
