@@ -497,7 +497,6 @@ renames = {
     'tf.saved_model.Builder': 'tf.compat.v1.saved_model.Builder',
     'tf.saved_model.LEGACY_INIT_OP_KEY': 'tf.compat.v1.saved_model.LEGACY_INIT_OP_KEY',
     'tf.saved_model.MAIN_OP_KEY': 'tf.compat.v1.saved_model.MAIN_OP_KEY',
-    'tf.saved_model.TRAINING': 'tf.saved_model.TRAINING',
     'tf.saved_model.build_tensor_info': 'tf.compat.v1.saved_model.build_tensor_info',
     'tf.saved_model.builder.SavedModelBuilder': 'tf.compat.v1.saved_model.builder.SavedModelBuilder',
     'tf.saved_model.constants.ASSETS_DIRECTORY': 'tf.saved_model.ASSETS_DIRECTORY',
