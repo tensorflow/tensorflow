@@ -155,8 +155,8 @@ class LossFunctionWrapper(Loss):
     Returns:
       Loss values per sample.
     """
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
+    if hasattr(y_pred, 'dtype'):
+      y_true = math_ops.cast(y_true, y_pred.dtype)
     return self.fn(y_true, y_pred, **self._fn_kwargs)
 
   def get_config(self):
