@@ -1375,6 +1375,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
+      optional<int64> batch_group_count;
       optional<std::vector<Shape>> operand_layout_constraints;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
@@ -1384,6 +1385,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                       &feature_group_count};
+      attrs["batch_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                    &batch_group_count};
       attrs["operand_layout_constraints"] = {
           /*required=*/false, AttrTy::kShapeList, &operand_layout_constraints};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
@@ -1438,6 +1441,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       if (feature_group_count.has_value()) {
         instruction->set_feature_group_count(*feature_group_count);
+      }
+      if (batch_group_count.has_value()) {
+        instruction->set_batch_group_count(*batch_group_count);
       }
       break;
     }
