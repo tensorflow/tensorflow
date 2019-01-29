@@ -521,6 +521,7 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
+    tags = ["notap"],  #TODO(b/123583863): Re-enable this test.
 )
 
 tf_py_test(
