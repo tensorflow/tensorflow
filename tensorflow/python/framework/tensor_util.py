@@ -781,19 +781,16 @@ def _ConstantValue(tensor, partial):
     return None
 
 
+@tf_export('get_static_value')
 def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   """Returns the constant value of the given tensor, if efficiently calculable.
 
   This function attempts to partially evaluate the given tensor, and
   returns its value as a numpy ndarray if this succeeds.
 
-  TODO(mrry): Consider whether this function should use a registration
-  mechanism like gradients and ShapeFunctions, so that it is easily
-  extensible.
-
-  NOTE: If `constant_value(tensor)` returns a non-`None` result, it will no
-  longer be possible to feed a different value for `tensor`. This allows the
-  result of this function to influence the graph that is constructed, and
+  Compatibility(V1): If `constant_value(tensor)` returns a non-`None` result, it
+  will no longer be possible to feed a different value for `tensor`. This allows
+  the result of this function to influence the graph that is constructed, and
   permits static shape optimizations.
 
   Args:
