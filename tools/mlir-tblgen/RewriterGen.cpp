@@ -204,7 +204,6 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
   PatternMatchResult match(OperationInst *op0) const override {
     // TODO: This just handle 1 result
     if (op0->getNumResults() != 1) return matchFailure();
-    auto ctx = op0->getContext(); (void)ctx;
     auto state = std::make_unique<MatchedState>();)"
      << "\n";
   emitOpMatch(tree, 0);
