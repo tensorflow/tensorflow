@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import tempfile
 from absl.testing import parameterized
@@ -1085,6 +1086,125 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           model_with_ds_strategy.predict(dataset_with_partial_batch, steps=12),
           cpu_model.predict(dataset_with_partial_batch, steps=12),
           atol=1e-4, rtol=1e-4)
+
+
+class Counter(keras.callbacks.Callback):
+  """Counts the number of times each callback method was run.
+
+  Attributes:
+    method_counts: dict. Contains the counts of time  each callback method was
+      run.
+  """
+
+  def __init__(self):
+    self.method_counts = collections.defaultdict(int)
+    methods_to_count = [
+        'on_batch_begin', 'on_batch_end', 'on_epoch_begin', 'on_epoch_end',
+        'on_predict_batch_begin', 'on_predict_batch_end', 'on_predict_begin',
+        'on_predict_end', 'on_test_batch_begin', 'on_test_batch_end',
+        'on_test_begin', 'on_test_end', 'on_train_batch_begin',
+        'on_train_batch_end', 'on_train_begin', 'on_train_end'
+    ]
+    for method_name in methods_to_count:
+      setattr(self, method_name,
+              self.wrap_with_counts(method_name, getattr(self, method_name)))
+
+  def wrap_with_counts(self, method_name, method):
+
+    def _call_and_count(*args, **kwargs):
+      self.method_counts[method_name] += 1
+      return method(*args, **kwargs)
+
+    return _call_and_count
+
+
+class TestDistributionStrategyWithCallbacks(test.TestCase,
+                                            parameterized.TestCase):
+
+  def _check_counts(self, counter, expected_counts):
+    """Checks that the counts registered by `counter` are those expected."""
+    for method_name, expected_count in expected_counts.items():
+      self.assertEqual(
+          counter.method_counts[method_name],
+          expected_count,
+          msg='For method {}: expected {}, got: {}'.format(
+              method_name, expected_count, counter.method_counts[method_name]))
+
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def test_callbacks_in_fit(self, distribution):
+    with distribution.scope():
+      model = get_model()
+      model.compile(optimizer='sgd', loss='mse', metrics=['mae'])
+
+    dataset = get_dataset(distribution)
+    counter = Counter()
+
+    model.fit(
+        dataset,
+        epochs=2,
+        steps_per_epoch=5,
+        verbose=0,
+        validation_data=dataset,
+        validation_steps=2,
+        callbacks=[counter])
+
+    self._check_counts(
+        counter, {
+            'on_batch_begin': 10,
+            'on_batch_end': 10,
+            'on_epoch_begin': 2,
+            'on_epoch_end': 2,
+            'on_predict_batch_begin': 0,
+            'on_predict_batch_end': 0,
+            'on_predict_begin': 0,
+            'on_predict_end': 0,
+            'on_test_batch_begin': 4,
+            'on_test_batch_end': 4,
+            'on_test_begin': 2,
+            'on_test_end': 2,
+            'on_train_batch_begin': 10,
+            'on_train_batch_end': 10,
+            'on_train_begin': 1,
+            'on_train_end': 1
+        })
+
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def test_callbacks_in_eval(self, distribution):
+    with distribution.scope():
+      model = get_model()
+      model.compile(optimizer='sgd', loss='mse', metrics=['mae'])
+
+    dataset = get_dataset(distribution)
+    counter = Counter()
+
+    model.evaluate(dataset, steps=5, callbacks=[counter])
+
+    self._check_counts(
+        counter, {
+            'on_test_batch_begin': 5,
+            'on_test_batch_end': 5,
+            'on_test_begin': 1,
+            'on_test_end': 1
+        })
+
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def test_callbacks_in_predict(self, distribution):
+    with distribution.scope():
+      model = get_model()
+      model.compile(optimizer='sgd', loss='mse', metrics=['mae'])
+
+    dataset = get_dataset(distribution)
+    counter = Counter()
+
+    model.predict(get_predict_dataset(dataset), steps=5, callbacks=[counter])
+
+    self._check_counts(
+        counter, {
+            'on_predict_batch_begin': 5,
+            'on_predict_batch_end': 5,
+            'on_predict_begin': 1,
+            'on_predict_end': 1
+        })
 
 
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
