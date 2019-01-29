@@ -265,7 +265,7 @@ def generated_test_models():
         "logical_and",
         "logical_or",
         "logical_xor",
-        #"lstm", TODO(b/122889684): Resolve toco structured line parsing in oss.
+        "lstm",
         "max_pool",
         "maximum",
         "mean",
