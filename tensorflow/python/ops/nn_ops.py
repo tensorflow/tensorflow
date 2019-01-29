@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numbers
 
 import numpy as np
@@ -50,6 +51,28 @@ from tensorflow.python.util.tf_export import tf_export
 local_response_normalization = gen_nn_ops.lrn
 
 # pylint: disable=protected-access
+
+
+def _get_sequence(value, n, channel_index, name):
+  """Formats a value input for gen_nn_ops."""
+  if value is None:
+    value = [1]
+  elif not isinstance(value, collections.Sized):
+    value = [value]
+
+  current_n = len(value)
+  if current_n == n + 2:
+    return value
+  elif current_n == 1:
+    value = list((value[0],) * n)
+  elif current_n != n:
+    raise ValueError("{} should be of length 1, {} or {} but was {}".format(
+        name, n, n + 2, current_n))
+
+  if channel_index == 1:
+    return [1, 1] + value
+  else:
+    return [1] + value + [1]
 
 
 def _non_atrous_convolution(
@@ -2976,10 +2999,10 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
 
   Args:
     value: A 4-D `Tensor` of the format specified by `data_format`.
-    ksize: A list or tuple of 4 ints. The size of the window for each dimension
-      of the input tensor.
-    strides: A list or tuple of 4 ints. The stride of the sliding window for
-      each dimension of the input tensor.
+    ksize: An int or list of `ints` that has length `1`, `2` or `4`.
+      The size of the window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`.
+      The stride of the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
@@ -2991,6 +3014,13 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """
   with ops.name_scope(name, "MaxPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
+    if data_format is None:
+      data_format = "NHWC"
+
+    channel_index = 1 if data_format.startswith("NC") else 3
+    ksize = _get_sequence(ksize, 2, channel_index, "ksize")
+    strides = _get_sequence(strides, 2, channel_index, "strides")
+
     return gen_nn_ops.max_pool(
         value,
         ksize=ksize,
@@ -3026,9 +3056,9 @@ def max_pool_with_argmax_v2(input,
       `int32`, `uint8`, `int16`, `int8`, `int64`, `bfloat16`, `uint16`, `half`,
       `uint32`, `uint64`.
       4-D with shape `[batch, height, width, channels]`.  Input to pool over.
-    ksize: A list of `ints` that has length `>= 4`.
+    ksize: An int or list of `ints` that has length `1`, `2` or `4`.
       The size of the window for each dimension of the input tensor.
-    strides: A list of `ints` that has length `>= 4`.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`.
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A `string` from: `"SAME", "VALID"`.
@@ -3050,6 +3080,9 @@ def max_pool_with_argmax_v2(input,
 
   if data_format != "NHWC":
     raise ValueError("Data formats other than 'NHWC' are not yet supported")
+
+  ksize = _get_sequence(ksize, 2, 3, "ksize")
+  strides = _get_sequence(strides, 2, 3, "strides")
 
   return gen_nn_ops.max_pool_with_argmax(input=input,
                                          ksize=ksize,
@@ -3493,12 +3526,12 @@ def fractional_max_pool_v2(value,
 
   Args:
     value: A `Tensor`. 4-D with shape `[batch, height, width, channels]`.
-    pooling_ratio: A list of `floats` that has length >= 4.  Pooling ratio for
-      each dimension of `value`, currently only supports row and col dimension
-      and should be >= 1.0. For example, a valid pooling ratio looks like [1.0,
-      1.44, 1.73, 1.0]. The first and last elements must be 1.0 because we don't
-      allow pooling on batch and channels dimensions.  1.44 and 1.73 are pooling
-      ratio on height and width dimensions respectively.
+    pooling_ratio: An int or list of `ints` that has length `1`, `2` or `4`.
+      Pooling ratio for each dimension of `value`, currently only supports row
+      and col dimension and should be >= 1.0. For example, a valid pooling ratio
+      looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements must be 1.0
+      because we don't allow pooling on batch and channels dimensions.  1.44 and
+      1.73 are pooling ratio on height and width dimensions respectively.
     pseudo_random: An optional `bool`.  Defaults to `False`. When set to `True`,
       generates the pooling sequence in a pseudorandom fashion, otherwise, in a
       random fashion. Check paper [Benjamin Graham, Fractional
@@ -3524,6 +3557,8 @@ def fractional_max_pool_v2(value,
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
   """
+  pooling_ratio = _get_sequence(pooling_ratio, 2, 3, "pooling_ratio")
+
   if seed == 0:
     return gen_nn_ops.fractional_max_pool(value, pooling_ratio, pseudo_random,
                                           overlapping, deterministic=False,
