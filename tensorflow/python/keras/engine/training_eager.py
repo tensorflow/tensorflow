@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import collections
 
+import numpy as np
+
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -101,16 +103,17 @@ def _model_loss(model,
   if len(inputs) == 1 and not isinstance(inputs, dict):
     inputs = inputs[0]
 
-  if model._compute_output_and_mask_jointly:
-    outs, masks = model._call_and_compute_mask(inputs, **kwargs)
-    masks = nest.flatten(masks)
-  else:
-    outs = model.call(inputs, **kwargs)
-    masks = None
+  # Allow mixed `NumPy` and `EagerTensor` input here.
+  if any(
+      isinstance(input_t, (np.ndarray, float, int))
+      for input_t in nest.flatten(inputs)):
+    inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+
+  outs = model(inputs, **kwargs)
 
   outs = nest.flatten(outs)
-  if masks is None:
-    masks = [None for _ in outs]
+  # `None` by default for `EagerTensors`.
+  masks = [t._keras_mask for t in outs]
   targets = nest.flatten(targets)
 
   loss_metrics = []
