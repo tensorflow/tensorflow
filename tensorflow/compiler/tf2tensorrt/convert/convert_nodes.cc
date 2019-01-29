@@ -3643,16 +3643,10 @@ tensorflow::Status ConvertCombinedNMS(OpConverterParams* params) {
     return tensorflow::errors::InvalidArgument(
         "Six inputs expected for CombinedNonMaxSuppression, at ", node_def.name());
   }
-  if (!(inputs.at(0).is_tensor())) {
-        "CombinedNonMaxSuppression expects tensor for boxes, at ", node_def.name();
+  if (!(inputs.at(0).is_tensor()) || (inputs.at(1).is_tensor())) {
+    return tensorflow::errors::Unimplemented(
+        "CombinedNonMaxSuppression expects tensor for boxes and scores, at ", node_def.name());
   }
-  if (!(inputs.at(1).is_tensor())) {
-        "CombinedNonMaxSuppression expects tensor for scores, at ", node_def.name();
-  }
-//  if (!(inputs.at(0).is_tensor()) || (inputs.at(1).is_tensor())) {
-//    return tensorflow::errors::Unimplemented(
-//        "CombinedNonMaxSuppression expects tensor for boxes and scores, at ", node_def.name());
-//  }
   if (!(inputs.at(2).is_weights()) || !(inputs.at(3).is_weights()) ||
      (!inputs.at(4).is_weights()) || !(inputs.at(5).is_weights())) {
     return tensorflow::errors::InvalidArgument(
