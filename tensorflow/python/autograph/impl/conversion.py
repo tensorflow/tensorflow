@@ -430,7 +430,8 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
-  node = converter.apply_(node, context, asserts)
+  if context.program.options.uses(converter.Feature.ASSERT_STATEMENTS):
+    node = converter.apply_(node, context, asserts)
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
@@ -439,11 +440,13 @@ def node_to_graph(node, context):
   if context.program.options.uses(converter.Feature.LISTS):
     node = converter.apply_(node, context, lists)
     node = converter.apply_(node, context, slices)
-  node = converter.apply_(node, context, builtin_functions)
+  if context.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS):
+    node = converter.apply_(node, context, builtin_functions)
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
-  node = converter.apply_(node, context, logical_expressions)
+  if context.program.options.uses(converter.Feature.LOGICAL_EXPRESSIONS):
+    node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.

@@ -278,8 +278,6 @@ class Function(object):
         python_function, input_signature)
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    if self._experimental_autograph_options is not None:
-      raise NotImplementedError()
     self._created_variables = None
     self._stateful_fn = None
     self._stateless_fn = None
@@ -301,7 +299,8 @@ class Function(object):
     return function_lib.defun(
         tf_decorator.make_decorator(self._python_function, wrapped_fn),
         input_signature=self._input_signature,
-        autograph=self._autograph)
+        autograph=self._autograph,
+        experimental_autograph_options=self._experimental_autograph_options)
 
   def _canonicalize_function_inputs(self, args, kwds):
     """Canonicalize the inputs to the Python function."""

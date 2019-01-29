@@ -1029,7 +1029,8 @@ class Function(object):
                name,
                input_signature=None,
                attributes=None,
-               autograph=True):
+               autograph=True,
+               autograph_options=None):
     """Initializes a `Function`.
 
     Args:
@@ -1042,7 +1043,10 @@ class Function(object):
         of the function.
       autograph: whether to use autograph to compile
         `python_function`. See https://www.tensorflow.org/guide/autograph for
-          more information.
+        more information.
+      autograph_options: Experimental knobs to control behavior
+        `when autograph=True`. See https://www.tensorflow.org/guide/autograph
+        for more information.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -1056,6 +1060,7 @@ class Function(object):
         python_function, input_signature)
     self._name = name
     self._autograph = autograph
+    self._autograph_options = autograph_options
     self._function_cache = collections.OrderedDict()
     self._garbage_collector = _FunctionGarbageCollector(self._function_cache)
     self._function_attributes = attributes or {}
@@ -1320,6 +1325,7 @@ class Function(object):
                 kwargs,
                 self._input_signature,
                 autograph=self._autograph,
+                autograph_options=self._autograph_options,
                 arg_names=arg_names), self._function_attributes)
         # pylint: disable=protected-access
         # Tell the ConcreteFunction to clean up its graph once it goes out of
@@ -1366,7 +1372,10 @@ def validate_signature(signature):
                     "a possibly nested sequence of TensorSpec objects.")
 
 
-def defun(func=None, input_signature=None, autograph=True):
+def defun(func=None,
+          input_signature=None,
+          autograph=True,
+          experimental_autograph_options=None):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") compiles a Python function
@@ -1680,6 +1689,9 @@ def defun(func=None, input_signature=None, autograph=True):
     autograph: Whether `func` should be compiled before
       constructing the graph. See https://www.tensorflow.org/guide/autograph
       for more information.
+    experimental_autograph_options: Experimental knobs (in the form of a tuple
+      of tensorflow.autograph.Feature values) to control behavior when
+      autograph=True.
 
 
   Returns:
@@ -1695,13 +1707,15 @@ def defun(func=None, input_signature=None, autograph=True):
   return defun_with_attributes(
       func=func,
       input_signature=input_signature,
-      autograph=autograph)
+      autograph=autograph,
+      experimental_autograph_options=experimental_autograph_options)
 
 
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,
-                          autograph=True):
+                          autograph=True,
+                          experimental_autograph_options=None):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
@@ -1719,6 +1733,8 @@ def defun_with_attributes(func=None,
       the whitelisted argument which is a python string, and sets the name for
       this `ConcreteFunction` in the graph.
     autograph: same as defun()'s autograph.
+    experimental_autograph_options: same as defun()'s
+      experimental_autograph_options.
 
   Returns:
     Same as the return value of defun, with attributes added to the function in
@@ -1743,7 +1759,8 @@ def defun_with_attributes(func=None,
             name,
             input_signature=input_signature,
             attributes=attributes,
-            autograph=autograph))
+            autograph=autograph,
+            autograph_options=experimental_autograph_options))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
