@@ -21,9 +21,9 @@ func @inline_notation() -> i32 loc("mysource.cc":10:8) {
   for %i0 = 0 to 8 loc(fused["foo", "mysource.cc":10:8]) {
   }
 
-  // CHECK: ) <"myPass">["foo", "foo2"]
-  if #set0(%2) loc(fused<"myPass">["foo", "foo2"]) {
-  }
+  // CHECK: } <"myPass">["foo", "foo2"]
+  if #set0(%2) {
+  } loc(fused<"myPass">["foo", "foo2"])
 
   // CHECK: return %0 : i32 [unknown]
   return %1 : i32 loc(unknown)

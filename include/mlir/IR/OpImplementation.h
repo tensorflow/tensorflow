@@ -89,6 +89,9 @@ public:
   /// Print the entire operation with the default generic assembly form.
   virtual void printGenericOp(const OperationInst *op) = 0;
 
+  /// Prints a block list.
+  virtual void printBlockList(const BlockList &blocks) = 0;
+
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;
   void operator=(const OpAsmPrinter &) = delete;
@@ -195,7 +198,19 @@ public:
   virtual bool parseColonTypeList(SmallVectorImpl<Type> &result) = 0;
 
   /// Parse a keyword followed by a type.
-  virtual bool parseKeywordType(const char *keyword, Type &result) = 0;
+  bool parseKeywordType(const char *keyword, Type &result) {
+    return parseKeyword(keyword) || parseType(result);
+  }
+
+  /// Parse a keyword.
+  bool parseKeyword(const char *keyword) {
+    if (parseOptionalKeyword(keyword))
+      return emitError(getNameLoc(), "expected '" + Twine(keyword) + "'");
+    return false;
+  }
+
+  /// If a keyword is present, then parse it.
+  virtual bool parseOptionalKeyword(const char *keyword) = 0;
 
   /// Add the specified type to the end of the specified type list and return
   /// false.  This is a helper designed to allow parse methods to be simple and
@@ -295,6 +310,10 @@ public:
   parseTrailingOperandList(SmallVectorImpl<OperandType> &result,
                            int requiredOperandCount = -1,
                            Delimiter delimiter = Delimiter::None) = 0;
+
+  /// Parses a block list. Any parsed blocks are filled in to the
+  /// operation's block lists after the operation is created.
+  virtual bool parseBlockList() = 0;
 
   //===--------------------------------------------------------------------===//
   // Methods for interacting with the parser

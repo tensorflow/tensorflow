@@ -119,15 +119,6 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
       return true;
     }
 
-    bool walkIfInstPostOrder(IfInst *ifInst) {
-      bool hasInnerLoops =
-          walkPostOrder(ifInst->getThen()->begin(), ifInst->getThen()->end());
-      if (ifInst->hasElse())
-        hasInnerLoops |=
-            walkPostOrder(ifInst->getElse()->begin(), ifInst->getElse()->end());
-      return hasInnerLoops;
-    }
-
     bool walkOpInstPostOrder(OperationInst *opInst) {
       for (auto &blockList : opInst->getBlockLists())
         for (auto &block : blockList)

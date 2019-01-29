@@ -28,7 +28,6 @@
 #define DEBUG_TYPE "simplify-affine-structure"
 
 using namespace mlir;
-using llvm::report_fatal_error;
 
 namespace {
 
@@ -41,9 +40,6 @@ struct SimplifyAffineStructures : public FunctionPass {
       : FunctionPass(&SimplifyAffineStructures::passID) {}
 
   PassResult runOnFunction(Function *f) override;
-
-  void visitIfInst(IfInst *ifInst);
-  void visitOperationInst(OperationInst *opInst);
 
   static char passID;
 };
@@ -66,28 +62,19 @@ static IntegerSet simplifyIntegerSet(IntegerSet set) {
   return set;
 }
 
-void SimplifyAffineStructures::visitIfInst(IfInst *ifInst) {
-  auto set = ifInst->getCondition().getIntegerSet();
-  ifInst->setIntegerSet(simplifyIntegerSet(set));
-}
-
-void SimplifyAffineStructures::visitOperationInst(OperationInst *opInst) {
-  for (auto attr : opInst->getAttrs()) {
-    if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
-      MutableAffineMap mMap(mapAttr.getValue());
-      mMap.simplify();
-      auto map = mMap.getAffineMap();
-      opInst->setAttr(attr.first, AffineMapAttr::get(map));
-    }
-  }
-}
-
 PassResult SimplifyAffineStructures::runOnFunction(Function *f) {
-  f->walkInsts([&](Instruction *inst) {
-    if (auto *opInst = dyn_cast<OperationInst>(inst))
-      visitOperationInst(opInst);
-    if (auto *ifInst = dyn_cast<IfInst>(inst))
-      visitIfInst(ifInst);
+  f->walkOps([&](OperationInst *opInst) {
+    for (auto attr : opInst->getAttrs()) {
+      if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
+        MutableAffineMap mMap(mapAttr.getValue());
+        mMap.simplify();
+        auto map = mMap.getAffineMap();
+        opInst->setAttr(attr.first, AffineMapAttr::get(map));
+      } else if (auto setAttr = attr.second.dyn_cast<IntegerSetAttr>()) {
+        auto simplified = simplifyIntegerSet(setAttr.getValue());
+        opInst->setAttr(attr.first, IntegerSetAttr::get(simplified));
+      }
+    }
   });
 
   return success();
