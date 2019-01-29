@@ -29,7 +29,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
@@ -51,6 +50,7 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import init_ops
@@ -509,7 +509,7 @@ class MeanRelativeError(Mean):
 
   def get_config(self):
     n = self.normalizer
-    config = {'normalizer': K.eval(n) if _is_tensor_or_variable(n) else n}
+    config = {'normalizer': K.eval(n) if is_tensor_or_variable(n) else n}
     base_config = super(MeanRelativeError, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -558,7 +558,7 @@ class MeanMetricWrapper(Mean):
   def get_config(self):
     config = {}
     for k, v in six.iteritems(self._fn_kwargs):
-      config[k] = K.eval(v) if _is_tensor_or_variable(v) else v
+      config[k] = K.eval(v) if is_tensor_or_variable(v) else v
     base_config = super(MeanMetricWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -2650,7 +2650,3 @@ def get(identifier):
   else:
     raise ValueError('Could not interpret '
                      'metric function identifier: %s' % identifier)
-
-
-def _is_tensor_or_variable(x):
-  return tensor_util.is_tensor(x) or isinstance(x, tf_variables.Variable)
