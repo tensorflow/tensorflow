@@ -163,12 +163,18 @@ public:
     }
   };
 
-  // Edge represents a memref data dependece between nodes in the graph.
+  // Edge represents a data dependece between nodes in the graph.
   struct Edge {
     // The id of the node at the other end of the edge.
     unsigned id;
-    // The memref on which this edge represents a dependence.
-    Value *memref;
+    // The SSA value on which this edge represents a dependence.
+    // If the value is a memref, then the dependence is between graph nodes
+    // which contain accesses to the same memref 'value'. If the value is a
+    // non-memref value, then the dependence is between a graph node which
+    // defines an SSA value and another graph node which uses the SSA value
+    // (e.g. a constant instruction defining a value which is used inside a loop
+    // nest).
+    Value *value;
   };
 
   // Map from node id to Node.
@@ -180,6 +186,8 @@ public:
   // Map from memref to a count on the dependence edges associated with that
   // memref.
   DenseMap<Value *, unsigned> memrefEdgeCount;
+  // The next unique identifier to use for newly created graph nodes.
+  unsigned nextNodeId = 0;
 
   MemRefDependenceGraph() {}
 
@@ -194,20 +202,27 @@ public:
     return &it->second;
   }
 
+  // Adds a node with 'inst' to the graph and returns its unique identifier.
+  unsigned addNode(Instruction *inst) {
+    Node node(nextNodeId++, inst);
+    nodes.insert({node.id, node});
+    return node.id;
+  }
+
   // Remove node 'id' (and its associated edges) from graph.
   void removeNode(unsigned id) {
     // Remove each edge in 'inEdges[id]'.
     if (inEdges.count(id) > 0) {
       SmallVector<Edge, 2> oldInEdges = inEdges[id];
       for (auto &inEdge : oldInEdges) {
-        removeEdge(inEdge.id, id, inEdge.memref);
+        removeEdge(inEdge.id, id, inEdge.value);
       }
     }
     // Remove each edge in 'outEdges[id]'.
     if (outEdges.count(id) > 0) {
       SmallVector<Edge, 2> oldOutEdges = outEdges[id];
       for (auto &outEdge : oldOutEdges) {
-        removeEdge(id, outEdge.id, outEdge.memref);
+        removeEdge(id, outEdge.id, outEdge.value);
       }
     }
     // Erase remaining node state.
@@ -216,13 +231,13 @@ public:
     nodes.erase(id);
   }
 
-  bool hasOutEdges(unsigned id) {
-    return outEdges.count(id) > 0 && !outEdges[id].empty();
-  }
-
-  // Returns true if node 'id' writes to any memref which escapes (or is an
-  // argument to) the function/block. Returns false otherwise.
-  bool writesToLiveInOrEscapingMemrefs(unsigned id) {
+  // Returns true if node 'id' can be removed from the graph. Returns false
+  // otherwise. A node can be removed from the graph iff the following
+  // conditions are met:
+  // *) The node does not write to any memref which escapes (or is an argument
+  //    to) the function/block.
+  // *) The node has no successors in the dependence graph.
+  bool canRemoveNode(unsigned id) {
     Node *node = getNode(id);
     for (auto *storeOpInst : node->stores) {
       auto *memref = storeOpInst->cast<StoreOp>()->getMemRef();
@@ -230,70 +245,82 @@ public:
       auto *opInst = dyn_cast_or_null<OperationInst>(inst);
       // Return false if 'memref' is a function argument.
       if (opInst == nullptr)
-        return true;
+        return false;
       // Return false if any use of 'memref' escapes the function.
       for (auto &use : memref->getUses()) {
         auto *user = dyn_cast<OperationInst>(use.getOwner());
         if (!user || !isMemRefDereferencingOp(*user))
-          return true;
+          return false;
       }
+      // Return false if there exist out edges from 'id' on 'memref'.
+      if (getOutEdgeCount(id, memref) > 0)
+        return false;
     }
-    return false;
+    return true;
   }
 
   // Returns true iff there is an edge from node 'srcId' to node 'dstId' for
-  // 'memref'. Returns false otherwise.
-  bool hasEdge(unsigned srcId, unsigned dstId, Value *memref) {
+  // 'value'. Returns false otherwise.
+  bool hasEdge(unsigned srcId, unsigned dstId, Value *value) {
     if (outEdges.count(srcId) == 0 || inEdges.count(dstId) == 0) {
       return false;
     }
     bool hasOutEdge = llvm::any_of(outEdges[srcId], [=](Edge &edge) {
-      return edge.id == dstId && edge.memref == memref;
+      return edge.id == dstId && edge.value == value;
     });
     bool hasInEdge = llvm::any_of(inEdges[dstId], [=](Edge &edge) {
-      return edge.id == srcId && edge.memref == memref;
+      return edge.id == srcId && edge.value == value;
     });
     return hasOutEdge && hasInEdge;
   }
 
-  // Adds an edge from node 'srcId' to node 'dstId' for 'memref'.
-  void addEdge(unsigned srcId, unsigned dstId, Value *memref) {
-    if (!hasEdge(srcId, dstId, memref)) {
-      outEdges[srcId].push_back({dstId, memref});
-      inEdges[dstId].push_back({srcId, memref});
-      memrefEdgeCount[memref]++;
+  // Adds an edge from node 'srcId' to node 'dstId' for 'value'.
+  void addEdge(unsigned srcId, unsigned dstId, Value *value) {
+    if (!hasEdge(srcId, dstId, value)) {
+      outEdges[srcId].push_back({dstId, value});
+      inEdges[dstId].push_back({srcId, value});
+      if (value->getType().isa<MemRefType>())
+        memrefEdgeCount[value]++;
     }
   }
 
-  // Removes an edge from node 'srcId' to node 'dstId' for 'memref'.
-  void removeEdge(unsigned srcId, unsigned dstId, Value *memref) {
+  // Removes an edge from node 'srcId' to node 'dstId' for 'value'.
+  void removeEdge(unsigned srcId, unsigned dstId, Value *value) {
     assert(inEdges.count(dstId) > 0);
     assert(outEdges.count(srcId) > 0);
-    assert(memrefEdgeCount.count(memref) > 0);
-    memrefEdgeCount[memref]--;
+    if (value->getType().isa<MemRefType>()) {
+      assert(memrefEdgeCount.count(value) > 0);
+      memrefEdgeCount[value]--;
+    }
     // Remove 'srcId' from 'inEdges[dstId]'.
     for (auto it = inEdges[dstId].begin(); it != inEdges[dstId].end(); ++it) {
-      if ((*it).id == srcId && (*it).memref == memref) {
+      if ((*it).id == srcId && (*it).value == value) {
         inEdges[dstId].erase(it);
         break;
       }
     }
     // Remove 'dstId' from 'outEdges[srcId]'.
     for (auto it = outEdges[srcId].begin(); it != outEdges[srcId].end(); ++it) {
-      if ((*it).id == dstId && (*it).memref == memref) {
+      if ((*it).id == dstId && (*it).value == value) {
         outEdges[srcId].erase(it);
         break;
       }
     }
   }
 
-  // Returns the input edge count for node 'id' and 'memref'.
-  unsigned getInEdgeCount(unsigned id, Value *memref) {
+  // Returns the input edge count for node 'id' and 'memref' from src nodes
+  // which access 'memref'.
+  unsigned getIncomingMemRefAccesses(unsigned id, Value *memref) {
     unsigned inEdgeCount = 0;
     if (inEdges.count(id) > 0)
       for (auto &inEdge : inEdges[id])
-        if (inEdge.memref == memref)
-          ++inEdgeCount;
+        if (inEdge.value == memref) {
+          Node *srcNode = getNode(inEdge.id);
+          // Only count in edges from 'srcNode' if 'srcNode' accesses 'memref'
+          if (srcNode->getLoadOpCount(memref) > 0 ||
+              srcNode->getStoreOpCount(memref) > 0)
+            ++inEdgeCount;
+        }
     return inEdgeCount;
   }
 
@@ -302,48 +329,84 @@ public:
     unsigned outEdgeCount = 0;
     if (outEdges.count(id) > 0)
       for (auto &outEdge : outEdges[id])
-        if (outEdge.memref == memref)
+        if (outEdge.value == memref)
           ++outEdgeCount;
     return outEdgeCount;
   }
 
-  // Check for a dependence in Block instruction list range (srcId, dstId) on
-  // memrefs other than 'memrefToSkip' (which will be privatized for the fused
-  // loop).
-  bool hasDependenceTargetInRange(unsigned srcId, unsigned dstId,
-                                  Value *memrefToSkip) {
+  // Computes and returns an insertion point instruction, before which the
+  // the fused <srcId, dstId> loop nest can be inserted while preserving
+  // dependences. Returns nullptr if no such insertion point is found.
+  Instruction *getFusedLoopNestInsertionPoint(unsigned srcId, unsigned dstId,
+                                              Value *memrefToSkip) {
     if (outEdges.count(srcId) == 0)
-      return false;
-    // Check if any of the outgoing edge targets from srcId lie in
-    // (srcId, dstId).
-    SmallPtrSet<Instruction *, 2> depInsts;
-    for (auto &outEdge : outEdges[srcId]) {
-      if (outEdge.id != dstId && outEdge.memref != memrefToSkip) {
-        Node *node = getNode(outEdge.id);
-        depInsts.insert(node->inst);
-      }
+      return getNode(dstId)->inst;
+
+    // Build set of insts in range (srcId, dstId) which depend on 'srcId'.
+    SmallPtrSet<Instruction *, 2> srcDepInsts;
+    for (auto &outEdge : outEdges[srcId])
+      if (outEdge.id != dstId && outEdge.value != memrefToSkip)
+        srcDepInsts.insert(getNode(outEdge.id)->inst);
+
+    // Build set of insts in range (srcId, dstId) on which 'dstId' depends.
+    SmallPtrSet<Instruction *, 2> dstDepInsts;
+    for (auto &inEdge : inEdges[dstId])
+      if (inEdge.id != srcId && inEdge.value != memrefToSkip)
+        dstDepInsts.insert(getNode(inEdge.id)->inst);
+
+    Instruction *srcNodeInst = getNode(srcId)->inst;
+    Instruction *dstNodeInst = getNode(dstId)->inst;
+
+    // Computing insertion point:
+    // *) Walk all instruction positions in Block instruction list in the
+    //    range (src, dst). For each instruction 'inst' visited in this search:
+    //   *) Store in 'firstSrcDepPos' the first position where 'inst' has a
+    //      dependence edge from 'srcNode'.
+    //   *) Store in 'lastDstDepPost' the last position where 'inst' has a
+    //      dependence edge to 'dstNode'.
+    // *) Compare 'firstSrcDepPos' and 'lastDstDepPost' to determine the
+    //    instruction insertion point (or return null pointer if no such
+    //    insertion point exists: 'firstSrcDepPos' <= 'lastDstDepPos').
+    SmallVector<Instruction *, 2> depInsts;
+    Optional<unsigned> firstSrcDepPos;
+    Optional<unsigned> lastDstDepPos;
+    unsigned pos = 0;
+    for (Block::iterator it = std::next(Block::iterator(srcNodeInst));
+         it != Block::iterator(dstNodeInst); ++it) {
+      Instruction *inst = &(*it);
+      if (srcDepInsts.count(inst) > 0 && firstSrcDepPos == None)
+        firstSrcDepPos = pos;
+      if (dstDepInsts.count(inst) > 0)
+        lastDstDepPos = pos;
+      depInsts.push_back(inst);
+      ++pos;
     }
-    // Do a linear walk from 'srcNode.inst' to 'dstNode.inst' and for each
-    // instruction 'inst' in range ('srcNode.inst', 'dstNode.inst') test
-    // if 'depInsts' contains 'inst', and return true if it does.
-    // TODO(andydavis) If this linear search becomes a compile time issue,
-    // create a data structure which allows a faster search through ForInsts
-    // in a Block.
-    Block::iterator it = std::next(Block::iterator(getNode(srcId)->inst));
-    Block::iterator itEnd = Block::iterator(getNode(dstId)->inst);
-    return std::any_of(it, itEnd, [&](Instruction &inst) {
-      return depInsts.count(&inst) > 0;
-    });
+
+    if (firstSrcDepPos.hasValue()) {
+      if (lastDstDepPos.hasValue()) {
+        if (firstSrcDepPos.getValue() <= lastDstDepPos.getValue()) {
+          // No valid insertion point exists which preserves dependences.
+          return nullptr;
+        }
+      }
+      // Return the insertion point at 'firstSrcDepPos'.
+      return depInsts[firstSrcDepPos.getValue()];
+    }
+    // No dependence targets in range (or only dst deps in range), return
+    // 'dstNodInst' insertion point.
+    return dstNodeInst;
   }
 
-  // Updates edge mappings from node 'srcId' to node 'dstId'.
-  void updateEdges(unsigned srcId, unsigned dstId) {
+  // Updates edge mappings from node 'srcId' to node 'dstId' after 'oldMemRef'
+  // has been replaced in node at 'dstId' by a private memref.
+  void updateEdges(unsigned srcId, unsigned dstId, Value *oldMemRef) {
     // For each edge in 'inEdges[srcId]': add new edge remaping to 'dstId'.
     if (inEdges.count(srcId) > 0) {
       SmallVector<Edge, 2> oldInEdges = inEdges[srcId];
       for (auto &inEdge : oldInEdges) {
-        // Add edge from 'inEdge.id' to 'dstId'.
-        addEdge(inEdge.id, dstId, inEdge.memref);
+        // Add edge from 'inEdge.id' to 'dstId' if not for 'oldMemRef'.
+        if (inEdge.value != oldMemRef)
+          addEdge(inEdge.id, dstId, inEdge.value);
       }
     }
     // For each edge in 'outEdges[srcId]': remove edge from 'srcId' to 'dstId'.
@@ -352,8 +415,17 @@ public:
       for (auto &outEdge : oldOutEdges) {
         // Remove any out edges from 'srcId' to 'dstId' across memrefs.
         if (outEdge.id == dstId)
-          removeEdge(srcId, outEdge.id, outEdge.memref);
+          removeEdge(srcId, outEdge.id, outEdge.value);
       }
+    }
+    // Remove any edges in 'inEdges[dstId]' on 'oldMemRef' (which is being
+    // replaced by a private memref). These edges could come from nodes
+    // other than 'srcId' which were removed in the previous step.
+    if (inEdges.count(dstId) > 0) {
+      SmallVector<Edge, 2> oldInEdges = inEdges[dstId];
+      for (auto &inEdge : oldInEdges)
+        if (inEdge.value == oldMemRef)
+          removeEdge(inEdge.id, dstId, inEdge.value);
     }
   }
 
@@ -381,12 +453,12 @@ public:
       auto it = inEdges.find(idAndNode.first);
       if (it != inEdges.end()) {
         for (const auto &e : it->second)
-          os << "  InEdge: " << e.id << " " << e.memref << "\n";
+          os << "  InEdge: " << e.id << " " << e.value << "\n";
       }
       it = outEdges.find(idAndNode.first);
       if (it != outEdges.end()) {
         for (const auto &e : it->second)
-          os << "  OutEdge: " << e.id << " " << e.memref << "\n";
+          os << "  OutEdge: " << e.id << " " << e.value << "\n";
       }
     }
   }
@@ -398,23 +470,23 @@ public:
 // TODO(andydavis) Add support for taking a Block arg to construct the
 // dependence graph at a different depth.
 bool MemRefDependenceGraph::init(Function *f) {
-  unsigned id = 0;
   DenseMap<Value *, SetVector<unsigned>> memrefAccesses;
 
   // TODO: support multi-block functions.
   if (f->getBlocks().size() != 1)
     return false;
 
+  DenseMap<ForInst *, unsigned> forToNodeMap;
   for (auto &inst : f->front()) {
     if (auto *forInst = dyn_cast<ForInst>(&inst)) {
       // Create graph node 'id' to represent top-level 'forInst' and record
       // all loads and store accesses it contains.
       LoopNestStateCollector collector;
       collector.walkForInst(forInst);
-      // Return false if a non 'for' region was found (not currently supported).
+      // Return false if IfInsts are found (not currently supported).
       if (collector.hasNonForRegion)
         return false;
-      Node node(id++, &inst);
+      Node node(nextNodeId++, &inst);
       for (auto *opInst : collector.loadOpInsts) {
         node.loads.push_back(opInst);
         auto *memref = opInst->cast<LoadOp>()->getMemRef();
@@ -425,19 +497,20 @@ bool MemRefDependenceGraph::init(Function *f) {
         auto *memref = opInst->cast<StoreOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
       }
+      forToNodeMap[forInst] = node.id;
       nodes.insert({node.id, node});
     }
     if (auto *opInst = dyn_cast<OperationInst>(&inst)) {
       if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
         // Create graph node for top-level load op.
-        Node node(id++, &inst);
+        Node node(nextNodeId++, &inst);
         node.loads.push_back(opInst);
         auto *memref = opInst->cast<LoadOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
         nodes.insert({node.id, node});
       } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
         // Create graph node for top-level store op.
-        Node node(id++, &inst);
+        Node node(nextNodeId++, &inst);
         node.stores.push_back(opInst);
         auto *memref = opInst->cast<StoreOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
@@ -445,6 +518,32 @@ bool MemRefDependenceGraph::init(Function *f) {
       } else if (opInst->getNumBlockLists() != 0) {
         // Return false if another region is found (not currently supported).
         return false;
+      } else if (opInst->getNumResults() > 0 && !opInst->use_empty()) {
+        // Create graph node for top-level producer of SSA values, which
+        // could be used by loop nest nodes.
+        Node node(nextNodeId++, &inst);
+        nodes.insert({node.id, node});
+      }
+    }
+  }
+
+  // Add dependence edges between nodes which produce SSA values and their
+  // users.
+  for (auto &idAndNode : nodes) {
+    const Node &node = idAndNode.second;
+    if (!node.loads.empty() || !node.stores.empty())
+      continue;
+    auto *opInst = cast<OperationInst>(node.inst);
+    for (auto *value : opInst->getResults()) {
+      for (auto &use : value->getUses()) {
+        auto *userOpInst = cast<OperationInst>(use.getOwner());
+        SmallVector<ForInst *, 4> loops;
+        getLoopIVs(*userOpInst, &loops);
+        if (loops.empty())
+          continue;
+        assert(forToNodeMap.count(loops[0]) > 0);
+        unsigned userLoopNestId = forToNodeMap[loops[0]];
+        addEdge(node.id, userLoopNestId, value);
       }
     }
   }
@@ -768,20 +867,25 @@ static Value *createPrivateMemRef(ForInst *forInst,
 
   // Create 'newMemRefType' using 'newShape' from MemRefRegion accessed
   // by 'srcStoreOpInst'.
-  auto newMemRefType = b.getMemRefType(newShape, oldMemRefType.getElementType(),
-                                       {}, oldMemRefType.getMemorySpace());
+  auto newMemRefType =
+      top.getMemRefType(newShape, oldMemRefType.getElementType(), {},
+                        oldMemRefType.getMemorySpace());
   // Gather alloc operands for the dynamic dimensions of the memref.
   SmallVector<Value *, 4> allocOperands;
   unsigned dynamicDimCount = 0;
   for (auto dimSize : oldMemRefType.getShape()) {
     if (dimSize == -1)
       allocOperands.push_back(
-          b.create<DimOp>(forInst->getLoc(), oldMemRef, dynamicDimCount++));
+          top.create<DimOp>(forInst->getLoc(), oldMemRef, dynamicDimCount++));
   }
 
   // Create new private memref for fused loop 'forInst'.
+  // TODO(andydavis) Create/move alloc ops for private memrefs closer to their
+  // consumer loop nests to reduce their live range. Currently they are added
+  // at the beginning of the function, because loop nests can be reordered
+  // during the fusion pass.
   Value *newMemRef =
-      b.create<AllocOp>(forInst->getLoc(), newMemRefType, allocOperands);
+      top.create<AllocOp>(forInst->getLoc(), newMemRefType, allocOperands);
 
   // Build an AffineMap to remap access functions based on lower bound offsets.
   SmallVector<AffineExpr, 4> remapExprs;
@@ -1198,7 +1302,7 @@ public:
         // Iterate through in edges for 'dstId'.
         for (auto &srcEdge : mdg->inEdges[dstId]) {
           // Skip 'srcEdge' if not for 'memref'.
-          if (srcEdge.memref != memref)
+          if (srcEdge.value != memref)
             continue;
 
           auto *srcNode = mdg->getNode(srcEdge.id);
@@ -1210,22 +1314,25 @@ public:
           if (srcNode->stores.size() != 1)
             continue;
 
-          // Skip 'srcNode' if it has in dependence edges. NOTE: This is overly
+          // Skip 'srcNode' if it has in edges on 'memref'.
           // TODO(andydavis) Track dependence type with edges, and just check
-          // for WAW dependence edge here.
-          if (mdg->getInEdgeCount(srcNode->id, memref) != 0)
+          // for WAW dependence edge here. Note that this check is overly
+          // conservative and will be removed in the future.
+          if (mdg->getIncomingMemRefAccesses(srcNode->id, memref) != 0)
             continue;
 
-          // Skip if 'srcNode' has out edges on memrefs other than 'memref'
-          // for nodes in instruction list range (srcNode.inst, dstNode.inst).
-          if (mdg->hasDependenceTargetInRange(srcNode->id, dstNode->id, memref))
+          // Compute an instruction list insertion point for the fused loop
+          // nest which preserves dependences.
+          Instruction *insertPointInst = mdg->getFusedLoopNestInsertionPoint(
+              srcNode->id, dstNode->id, memref);
+          if (insertPointInst == nullptr)
             continue;
 
-          // Check if fusion would be profitable and at what depth.
           // Get unique 'srcNode' store op.
           auto *srcStoreOpInst = srcNode->stores.front();
           unsigned bestDstLoopDepth;
           mlir::ComputationSliceState sliceState;
+          // Check if fusion would be profitable.
           if (!isFusionProfitable(srcStoreOpInst, dstLoadOpInsts, &sliceState,
                                   &bestDstLoopDepth))
             continue;
@@ -1234,8 +1341,13 @@ public:
           auto *sliceLoopNest = mlir::insertBackwardComputationSlice(
               srcStoreOpInst, dstLoadOpInsts[0], bestDstLoopDepth, &sliceState);
           if (sliceLoopNest != nullptr) {
+            // Move 'dstForInst' before 'insertPointInst' if needed.
+            auto *dstForInst = cast<ForInst>(dstNode->inst);
+            if (insertPointInst != dstForInst) {
+              dstForInst->moveBefore(insertPointInst);
+            }
             // Update edges between 'srcNode' and 'dstNode'.
-            mdg->updateEdges(srcNode->id, dstNode->id);
+            mdg->updateEdges(srcNode->id, dstNode->id, memref);
 
             // Collect slice loop stats.
             LoopNestStateCollector sliceCollector;
@@ -1244,9 +1356,7 @@ public:
             for (auto *forInst : sliceCollector.forInsts) {
               promoteIfSingleIteration(forInst);
             }
-
             // Create private memref for 'memref' in 'dstForInst'.
-            auto *dstForInst = cast<ForInst>(dstNode->inst);
             SmallVector<OperationInst *, 4> storesForMemref;
             for (auto *storeOpInst : sliceCollector.storeOpInsts) {
               if (storeOpInst->cast<StoreOp>()->getMemRef() == memref)
@@ -1256,6 +1366,11 @@ public:
             auto *newMemRef = createPrivateMemRef(
                 dstForInst, storesForMemref[0], bestDstLoopDepth);
             visitedMemrefs.insert(newMemRef);
+            // Create new node in dependence graph for 'newMemRef' alloc op.
+            unsigned newMemRefNodeId =
+                mdg->addNode(newMemRef->getDefiningInst());
+            // Add edge from 'newMemRef' node to dstNode.
+            mdg->addEdge(newMemRefNodeId, dstId, newMemRef);
 
             // Collect dst loop stats after memref privatizaton transformation.
             LoopNestStateCollector dstLoopCollector;
@@ -1276,8 +1391,7 @@ public:
             // Remove old src loop nest if it no longer has outgoing dependence
             // edges, and it does not write to a memref which escapes the
             // function.
-            if (!mdg->hasOutEdges(srcNode->id) &&
-                !mdg->writesToLiveInOrEscapingMemrefs(srcNode->id)) {
+            if (mdg->canRemoveNode(srcNode->id)) {
               mdg->removeNode(srcNode->id);
               cast<ForInst>(srcNode->inst)->erase();
             }
