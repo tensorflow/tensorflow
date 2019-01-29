@@ -248,17 +248,17 @@ void FlatAffineConstraints::reset(unsigned numReservedInequalities,
   numDims = newNumDims;
   numSymbols = newNumSymbols;
   numIds = numDims + numSymbols + newNumLocals;
+  assert(idArgs.empty() || idArgs.size() == numIds);
+
   clearConstraints();
   if (numReservedEqualities >= 1)
     equalities.reserve(newNumReservedCols * numReservedEqualities);
   if (numReservedInequalities >= 1)
     inequalities.reserve(newNumReservedCols * numReservedInequalities);
-  ids.clear();
   if (idArgs.empty()) {
     ids.resize(numIds, None);
   } else {
-    ids.reserve(idArgs.size());
-    ids.append(idArgs.begin(), idArgs.end());
+    ids.assign(idArgs.begin(), idArgs.end());
   }
 }
 
@@ -2078,6 +2078,10 @@ static BoundCmpResult compareBounds(ArrayRef<int64_t> a, ArrayRef<int64_t> b) {
 // lower bounds and the max of the upper bounds along each of the dimensions.
 bool FlatAffineConstraints::unionBoundingBox(
     const FlatAffineConstraints &other) {
+  assert(other.getNumDimIds() == numDims);
+  assert(other.getNumSymbolIds() == getNumSymbolIds());
+  assert(other.getNumLocalIds() == 0);
+  assert(getNumLocalIds() == 0);
   std::vector<SmallVector<int64_t, 8>> boundingLbs;
   std::vector<SmallVector<int64_t, 8>> boundingUbs;
   boundingLbs.reserve(2 * getNumDimIds());
