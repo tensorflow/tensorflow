@@ -127,17 +127,7 @@ py_library(
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
-        "@six_archive//:six",
+        "//tensorflow/python/distribute:one_device_strategy",
     ],
 )
 
@@ -216,9 +206,9 @@ py_test(
     srcs = ["one_device_strategy_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":one_device_strategy",
         ":strategy_test_lib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -502,10 +492,10 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         ":monitor",
-        ":one_device_strategy",
         ":single_loss_example",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
