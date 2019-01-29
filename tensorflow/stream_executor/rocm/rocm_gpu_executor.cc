@@ -880,7 +880,11 @@ DeviceDescription* GpuExecutor::PopulateDeviceDescription() const {
     (void)GpuDriver::GetDriverVersion(&driver_version);
     string augmented_driver_version = absl::StrFormat(
         "%d (%s)", driver_version,
-        DriverVersionStatusToString(Diagnostician::FindDsoVersion()).c_str());
+	"__FIXME__");
+	// FIXME:
+	// uncomment the line below once the "DriverVersionStatusToString"
+	// routine is moved from the "cuda" namespace to the "gpu" naemspace
+        // DriverVersionStatusToString(Diagnostician::FindDsoVersion()).c_str());
     builder.set_driver_version(augmented_driver_version);
   }
 
