@@ -187,6 +187,7 @@ renames = {
     'tf.fake_quant_with_min_max_vars_per_channel_gradient': 'tf.quantization.fake_quant_with_min_max_vars_per_channel_gradient',
     'tf.feature_column.input_layer': 'tf.compat.v1.feature_column.input_layer',
     'tf.feature_column.linear_model': 'tf.compat.v1.feature_column.linear_model',
+    'tf.feature_column.shared_embedding_columns': 'tf.compat.v1.feature_column.shared_embedding_columns',
     'tf.fft': 'tf.signal.fft',
     'tf.fft2d': 'tf.signal.fft2d',
     'tf.fft3d': 'tf.signal.fft3d',
