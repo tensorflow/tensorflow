@@ -2136,7 +2136,9 @@ class Model(Network):
                                           steps_name='steps',
                                           steps=None,
                                           validation_split=0,
-                                          shuffle=False):
+                                          shuffle=False,
+                                          repeat=True,
+                                          allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
     This is called when using DistributionStrategy to train, evaluate or serve
@@ -2160,6 +2162,10 @@ class Model(Network):
       validation_split: Float between 0 and 1.
         Fraction of the training data to be used as validation data.
       shuffle: Boolean whether to shuffle the training data before each epoch.
+      repeat: Boolean whether to repeat the numpy training data when converting
+        to training dataset.
+      allow_partial_batch: Boolean whether to enforce that all batches have the
+        same size.
 
     Returns:
       Dataset instance.
@@ -2239,10 +2245,13 @@ class Model(Network):
                                                                session=session)
         if shuffle_buffer:
           ds = ds.shuffle(shuffle_buffer)
-        ds = ds.repeat()
+        if repeat:
+          ds = ds.repeat()
+
         # We need to use the drop_remainder argument to get a known static
         # input shape which is required for TPUs.
-        drop_remainder = strategy.extended.experimental_require_static_shapes
+        drop_remainder = (not allow_partial_batch and
+                          strategy.extended.experimental_require_static_shapes)
         x = ds.batch(batch_size, drop_remainder=drop_remainder)
       else:
         assert isinstance(x, dataset_ops.DatasetV2)

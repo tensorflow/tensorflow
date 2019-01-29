@@ -71,6 +71,18 @@ def simple_functional_model():
   return model
 
 
+def simple_multi_inputs_multi_outputs_model():
+  input_a = keras.layers.Input(shape=(16,), name='input_a')
+  input_b = keras.layers.Input(shape=(16,), name='input_b')
+
+  merged = keras.layers.concatenate([input_a, input_b], name='merge')
+  output_c = keras.layers.Dense(3, activation='softmax', name='dense_2')(merged)
+  output_d = keras.layers.Dense(2, activation='softmax', name='dense_3')(merged)
+  model = keras.models.Model(
+      inputs=[input_a, input_b], outputs=[output_c, output_d])
+  return model
+
+
 def multi_inputs_multi_outputs_model():
   input_a = keras.layers.Input(shape=(16,), name='input_a')
   input_b = keras.layers.Input(shape=(16,), name='input_b')
@@ -671,6 +683,61 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertAllEqual([6, 7], outs[0].shape)
       self.assertAllEqual([6, 7], outs[1].shape)
 
+  @combinations.generate(tpu_strategy_combinations())
+  def test_predict_with_partial_batch(self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+
+      with distribution.scope():
+        model_with_ds_strategy = get_model()
+        model_with_ds_strategy.compile(optimizer, loss)
+
+      cpu_model = get_model()
+      cpu_model.compile(optimizer, loss)
+
+      inputs = np.zeros((10, 3), dtype=np.float32)
+
+      # As sample size is 10, we batch by 4 so that the last batch is
+      # a partial batch. Also `fit()` using numpy array as inputs without
+      # distribution strategy uses entire sample as a single batch. As so,
+      # we remove parameters `batch_size` and `steps`.
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      self.assertAllClose(
+          model_with_ds_strategy.predict(inputs, batch_size=4, steps=3),
+          cpu_model.predict(inputs),
+          atol=1e-5, rtol=1e-5)
+
+  @combinations.generate(tpu_strategy_combinations())
+  def test_predict_multi_output_model_with_partial_batch(
+      self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+
+      with distribution.scope():
+        model_with_ds_strategy = simple_multi_inputs_multi_outputs_model()
+        model_with_ds_strategy.compile(optimizer, loss)
+
+      cpu_model = simple_multi_inputs_multi_outputs_model()
+      cpu_model.compile(optimizer, loss)
+
+      input_data, _ = get_multi_inputs_multi_outputs_data()
+      input_dict = {
+          'input_a': input_data['input_a'],
+          'input_b': input_data['input_b'],
+      }
+
+      # As sample size is 200, we batch by 18 so that the last batch is
+      # a partial batch. Also `fit()` using numpy array as inputs without
+      # distribution strategy uses entire sample as a single batch. As so,
+      # we remove parameters `batch_size` and `steps`.
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      self.assertAllClose(
+          model_with_ds_strategy.predict(input_dict, batch_size=18, steps=12),
+          cpu_model.predict(input_dict),
+          atol=1e-4, rtol=1e-4)
+
 
 class TestDistributionStrategyWithDatasets(test.TestCase,
                                            parameterized.TestCase):
@@ -960,6 +1027,64 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
       self.assertAllClose(0.001, keras.backend.get_value(model.optimizer.lr))
+
+  @combinations.generate(tpu_strategy_combinations())
+  def test_predict_with_dataset_with_partial_batch(self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+
+      with distribution.scope():
+        model_with_ds_strategy = get_model()
+        model_with_ds_strategy.compile(optimizer, loss)
+
+      cpu_model = get_model()
+      cpu_model.compile(optimizer, loss)
+
+      inputs = np.zeros((10, 3), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs))
+
+      # As sample size is 10, we batch by 4 so that the last batch is
+      # a partial batch.
+      dataset_with_partial_batch = dataset.batch(4)
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+
+      self.assertAllClose(
+          model_with_ds_strategy.predict(dataset_with_partial_batch, steps=3),
+          cpu_model.predict(dataset_with_partial_batch, steps=3),
+          atol=1e-5, rtol=1e-5)
+
+  @combinations.generate(tpu_strategy_combinations())
+  def test_predict_multi_output_model_with_dataset_with_partial_batch(
+      self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+
+      with distribution.scope():
+        model_with_ds_strategy = simple_multi_inputs_multi_outputs_model()
+        model_with_ds_strategy.compile(optimizer, loss)
+
+      cpu_model = simple_multi_inputs_multi_outputs_model()
+      cpu_model.compile(optimizer, loss)
+
+      input_data, _ = get_multi_inputs_multi_outputs_data()
+      input_dict = {
+          'input_a': input_data['input_a'],
+          'input_b': input_data['input_b'],
+      }
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(input_dict)
+
+      # As sample size is 200, we batch by 18 using 12 steps per epoch so
+      # that the last batch is a partial batch.
+      dataset_with_partial_batch = dataset.batch(18)
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+
+      self.assertAllClose(
+          model_with_ds_strategy.predict(dataset_with_partial_batch, steps=12),
+          cpu_model.predict(dataset_with_partial_batch, steps=12),
+          atol=1e-4, rtol=1e-4)
 
 
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
