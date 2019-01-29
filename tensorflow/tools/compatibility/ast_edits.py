@@ -62,6 +62,45 @@ def full_name_node(name, ctx=ast.Load()):
   return node
 
 
+def get_arg_value(node, arg_name, arg_pos=None):
+  """Get the value of an argument from a ast.Call node.
+
+  This function goes through the positional and keyword arguments to check
+  whether a given argument was used, and if so, returns its value (the node
+  representing its value).
+
+  This cannot introspect *args or **args, but it safely handles *args in
+  Python3.5+.
+
+  Args:
+    node: The ast.Call node to extract arg values from.
+    arg_name: The name of the argument to extract.
+    arg_pos: The position of the argument (in case it's passed as a positional
+      argument).
+
+  Returns:
+    A tuple (arg_present, arg_value) containing a boolean indicating whether
+    the argument is present, and its value in case it is.
+  """
+  # Check keyword args
+  if arg_name is not None:
+    for kw in node.keywords:
+      if kw.arg == arg_name:
+        return (True, kw.value)
+
+  # Check positional args
+  if arg_pos is not None:
+    idx = 0
+    for arg in node.args:
+      if sys.version_info[:2] >= (3, 5) and isinstance(arg, ast.Starred):
+        continue  # Can't parse Starred
+      if idx == arg_pos:
+        return (True, arg)
+      idx += 1
+
+  return (False, None)
+
+
 class APIChangeSpec(object):
   """This class defines the transformations that need to happen.
 
@@ -195,11 +234,10 @@ class _PastaEditVisitor(ast.NodeVisitor):
     """Adds an error to be printed about full_name at node."""
     function_warnings = self._api_change_spec.function_warnings
     if full_name in function_warnings:
-      warning_message = function_warnings[full_name]
-      warning_message = warning_message.replace("<function name>", full_name)
-      self.add_log(WARNING, node.lineno, node.col_offset,
-                   "%s requires manual check. %s" % (full_name,
-                                                     warning_message))
+      level, message = function_warnings[full_name]
+      message = message.replace("<function name>", full_name)
+      self.add_log(level, node.lineno, node.col_offset,
+                   "%s requires manual check. %s" % (full_name, message))
       return True
     else:
       return False
@@ -232,13 +270,13 @@ class _PastaEditVisitor(ast.NodeVisitor):
     arg_warnings = self._get_applicable_dict("function_arg_warnings",
                                              full_name, name)
 
-    used_args = [kw.arg for kw in node.keywords]
-    for (kwarg, arg), warning in arg_warnings.items():
-      if kwarg in used_args or len(node.args) > arg:
+    for (kwarg, arg), (level, warning) in arg_warnings.items():
+      present, _ = get_arg_value(node, kwarg, arg)
+      if present:
         warned = True
         warning_message = warning.replace("<function name>", full_name or name)
-        self.add_log(WARNING, node.lineno, node.col_offset,
-                     "%s called with %s argument requires manual check: %s." %
+        self.add_log(level, node.lineno, node.col_offset,
+                     "%s called with %s argument requires manual check: %s" %
                      (full_name or name, kwarg, warning_message))
 
     return warned
@@ -280,12 +318,14 @@ class _PastaEditVisitor(ast.NodeVisitor):
     if full_name in function_reorders:
       reordered = function_reorders[full_name]
       new_keywords = []
-      for idx, arg in enumerate(node.args):
+      idx = 0
+      for arg in node.args:
         if sys.version_info[:2] >= (3, 5) and isinstance(arg, ast.Starred):
           continue  # Can't move Starred to keywords
         keyword_arg = reordered[idx]
         keyword = ast.keyword(arg=keyword_arg, value=arg)
         new_keywords.append(keyword)
+        idx += 1
 
       if new_keywords:
         self.add_log(INFO, node.lineno, node.col_offset,
@@ -374,11 +414,10 @@ class _PastaEditVisitor(ast.NodeVisitor):
       logs = []
       new_node = transformer(parent, node, full_name, name, logs)
       self.add_logs(logs)
-      if new_node:
-        if new_node is not node:
-          pasta.ast_utils.replace_child(parent, node, new_node)
-          node = new_node
-          self._stack[-1] = node
+      if new_node and new_node is not node:
+        pasta.ast_utils.replace_child(parent, node, new_node)
+        node = new_node
+        self._stack[-1] = node
 
     self.generic_visit(node)
 
