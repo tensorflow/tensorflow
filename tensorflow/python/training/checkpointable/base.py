@@ -846,11 +846,16 @@ class Checkpointable(object):
       return {}
     weak_self = weakref.ref(self)
     def _state_callback():
+      """Serializes `self.get_config()` for saving."""
       dereferenced_self = weak_self()
       if dereferenced_self:
-        return json.dumps(dereferenced_self,
-                          default=serialization.get_json_type,
-                          sort_keys=True).encode("utf8")
+        try:
+          return json.dumps(dereferenced_self,
+                            default=serialization.get_json_type,
+                            sort_keys=True).encode("utf8")
+        except TypeError:
+          # Even if get_config worked objects may have produced garbage.
+          return ""
       else:
         return ""
     return {OBJECT_CONFIG_JSON_KEY: functools.partial(
