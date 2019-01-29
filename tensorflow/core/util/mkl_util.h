@@ -2148,7 +2148,7 @@ class LRUCache {
     return true;
   }
 
-  // cache capacity
+  // Cache capacity
   size_t capacity_;
 
   // The cache, a map from string key to a LRU entry.
