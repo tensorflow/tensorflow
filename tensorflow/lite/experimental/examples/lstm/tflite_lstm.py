@@ -230,10 +230,10 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     # f stands for forget, i stands for input and o stands for output.
     if self._use_peepholes:
       self._w_f_diag = add_variable_wrapped("w_f_diag", [self._num_units],
-                                            self._initializer, 9,
+                                            self._initializer, 10,
                                             maybe_partitioner)
       self._w_i_diag = add_variable_wrapped("w_i_diag", [self._num_units],
-                                            self._initializer, 10,
+                                            self._initializer, 9,
                                             maybe_partitioner)
       self._w_o_diag = add_variable_wrapped("w_o_diag", [self._num_units],
                                             self._initializer, 11,
