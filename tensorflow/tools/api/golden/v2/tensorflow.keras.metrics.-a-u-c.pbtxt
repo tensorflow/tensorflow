@@ -87,7 +87,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'num_thresholds\', \'curve\', \'summation_method\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'200\', \'ROC\', \'interpolation\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'num_thresholds\', \'curve\', \'summation_method\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'200\', \'AUCCurve.ROC\', \'AUCSummationMethod.INTERPOLATION\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

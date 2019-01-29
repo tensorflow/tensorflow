@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -951,8 +949,8 @@ class AUCTest(test.TestCase):
   def test_config(self):
     auc_obj = metrics.AUC(
         num_thresholds=100,
-        curve='PR',
-        summation_method='majoring',
+        curve=metrics_utils.AUCCurve.PR,
+        summation_method=metrics_utils.AUCSummationMethod.MAJORING,
         name='auc_1')
     self.assertEqual(auc_obj.name, 'auc_1')
     self.assertEqual(len(auc_obj.variables), 4)
@@ -960,8 +958,6 @@ class AUCTest(test.TestCase):
     self.assertEqual(auc_obj.curve, metrics_utils.AUCCurve.PR)
     self.assertEqual(auc_obj.summation_method,
                      metrics_utils.AUCSummationMethod.MAJORING)
-    old_config = auc_obj.get_config()
-    self.assertDictEqual(old_config, json.loads(json.dumps(old_config)))
 
     # Check save and restore config
     auc_obj2 = metrics.AUC.from_config(auc_obj.get_config())
@@ -971,8 +967,6 @@ class AUCTest(test.TestCase):
     self.assertEqual(auc_obj2.curve, metrics_utils.AUCCurve.PR)
     self.assertEqual(auc_obj2.summation_method,
                      metrics_utils.AUCSummationMethod.MAJORING)
-    new_config = auc_obj2.get_config()
-    self.assertDictEqual(old_config, new_config)
 
   def test_value_is_idempotent(self):
     self.setup()
@@ -1027,7 +1021,8 @@ class AUCTest(test.TestCase):
   def test_weighted_roc_majoring(self):
     self.setup()
     auc_obj = metrics.AUC(
-        num_thresholds=self.num_thresholds, summation_method='majoring')
+        num_thresholds=self.num_thresholds,
+        summation_method=metrics_utils.AUCSummationMethod.MAJORING)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true, self.y_pred, sample_weight=self.sample_weight)
 
@@ -1042,7 +1037,8 @@ class AUCTest(test.TestCase):
   def test_weighted_roc_minoring(self):
     self.setup()
     auc_obj = metrics.AUC(
-        num_thresholds=self.num_thresholds, summation_method='minoring')
+        num_thresholds=self.num_thresholds,
+        summation_method=metrics_utils.AUCSummationMethod.MINORING)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true, self.y_pred, sample_weight=self.sample_weight)
 
@@ -1058,8 +1054,8 @@ class AUCTest(test.TestCase):
     self.setup()
     auc_obj = metrics.AUC(
         num_thresholds=self.num_thresholds,
-        curve='PR',
-        summation_method='majoring')
+        curve=metrics_utils.AUCCurve.PR,
+        summation_method=metrics_utils.AUCSummationMethod.MAJORING)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true, self.y_pred, sample_weight=self.sample_weight)
 
@@ -1075,8 +1071,8 @@ class AUCTest(test.TestCase):
     self.setup()
     auc_obj = metrics.AUC(
         num_thresholds=self.num_thresholds,
-        curve='PR',
-        summation_method='minoring')
+        curve=metrics_utils.AUCCurve.PR,
+        summation_method=metrics_utils.AUCSummationMethod.MINORING)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true, self.y_pred, sample_weight=self.sample_weight)
 
@@ -1090,7 +1086,10 @@ class AUCTest(test.TestCase):
 
   def test_weighted_pr_interpolation(self):
     self.setup()
-    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, curve='PR')
+    auc_obj = metrics.AUC(
+        num_thresholds=self.num_thresholds,
+        curve=metrics_utils.AUCCurve.PR,
+        summation_method=metrics_utils.AUCSummationMethod.INTERPOLATION)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true, self.y_pred, sample_weight=self.sample_weight)
 
@@ -1115,16 +1114,6 @@ class AUCTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 1.'):
       metrics.AUC(num_thresholds=1)
-
-  def test_invalid_curve(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Invalid AUC curve value "Invalid".'):
-      metrics.AUC(curve='Invalid')
-
-  def test_invalid_summation_method(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Invalid AUC summation method value "Invalid".'):
-      metrics.AUC(summation_method='Invalid')
 
 
 if __name__ == '__main__':
