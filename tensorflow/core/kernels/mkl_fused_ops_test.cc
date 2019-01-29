@@ -402,6 +402,75 @@ TEST_F(FusedPadConvOpTest, PaddingConvTestNchw) {
   Run<float>(DT_FLOAT, image, filter, padding, expected, "NCHW");
 }
 
+class FilterCacheTest : public OpsTestBase {
+ public:
+  template <typename T>
+  void Run(DataType dtype, Tensor& image, Tensor& filter, Tensor& expected,
+           const bool is_filter_const) {
+    const int stride = 1;
+
+    TF_EXPECT_OK(NodeDefBuilder("conv2d_filter_cache", "_MklConv2D")
+                     .Input(FakeInput(dtype))     // Input
+                     .Input(FakeInput(dtype))     // Filter
+                     .Input(FakeInput(DT_UINT8))  // MKl second tensor
+                     .Input(FakeInput(DT_UINT8))  // MKl second tensor
+                     .Attr("padding", "VALID")
+                     .Attr("data_format", "NHWC")
+                     .Attr("is_filter_const", is_filter_const)
+                     .Attr("T", dtype)
+                     .Attr("strides", {1, stride, stride, 1})
+                     .Attr("_kernel", "MklOp")
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+
+    // Setting up inputs and execute
+    AddInputFromArray<T>(image.shape(), image.flat<T>());
+    AddInputFromArray<T>(filter.shape(), filter.flat<T>());
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+
+    TF_ASSERT_OK(RunOpKernel());
+
+    // Compare outputs to expected results
+    const Tensor& output = *GetOutput(0);
+    const Tensor& output_layout = *GetOutput(2);
+    ConvMklToTF<T> conv_comp;
+    conv_comp.ConvertAndCompare(dtype, output, output_layout, expected);
+
+    // TODO(bhavanis): For now, we rely on internal performance tests to
+    // determine if filter data is being cached and reused.
+    // However, we still need to add a check here to determine if this is
+    // still the case by inspecting the contents of the persistent tensor.
+    TF_ASSERT_OK(RunOpKernel());
+
+    // Compare output to expected results
+    const Tensor& output_new = *GetOutput(0);
+    const Tensor& output_layout_new = *GetOutput(2);
+    ConvMklToTF<T> conv_comp_new;
+    conv_comp_new.ConvertAndCompare(dtype, output_new, output_layout_new,
+                                    expected);
+  }
+};
+
+TEST_F(FilterCacheTest, Conv2DFilterCacheTest) {
+  const int depth = 1;
+  const int image_width = 4;
+  const int image_height = 3;
+  const int image_batch_count = 1;
+  Tensor image(DT_FLOAT, {image_batch_count, image_height, image_width, depth});
+  test::FillValues<float>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+
+  const int filter_size = 3;
+  const int filter_count = 1;
+  Tensor filter(DT_FLOAT, {filter_size, filter_size, depth, filter_count});
+  test::FillValues<float>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
+
+  Tensor expected(DT_FLOAT, TensorShape({1, 1, 2, 1}));
+  test::FillValues<float>(&expected, {312, 357});
+
+  Run<float>(DT_FLOAT, image, filter, expected, true);
+}
+
 // Testing fusion of pad and fusedconv2d
 template <typename T>
 class MklPadWithFusedConv2DOpTest : public OpsTestBase {
