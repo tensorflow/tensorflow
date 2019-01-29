@@ -729,7 +729,6 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # First axis slice
       _ = checker[np.newaxis, 1:]
 
-  @test_util.run_deprecated_v1
   def testMasks(self):
     with self.session(use_gpu=True):
       # Test tensor type mask
