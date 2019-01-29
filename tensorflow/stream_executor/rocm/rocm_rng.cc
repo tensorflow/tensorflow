@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,65 +55,42 @@ std::ostream &operator<<(std::ostream &in, const hiprandStatus_t &status) {
 }
 
 namespace stream_executor {
-namespace rocm {
+namespace gpu {
 
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kHipRandPlugin);
+PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kGpuRandPlugin);
 
 namespace wrap {
 
-#define PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(__name)                      \
+#define STREAM_EXECUTOR_HIPRAND_WRAP(__name)                        \
   struct WrapperShim__##__name {                                    \
     template <typename... Args>                                     \
-    hiprandStatus_t operator()(ROCMExecutor *parent, Args... args) { \
-      rocm::ScopedActivateExecutorContext sac{parent};              \
+    hiprandStatus_t operator()(GpuExecutor* parent, Args... args) { \
+      gpu::ScopedActivateExecutorContext sac{parent};               \
       return ::__name(args...);                                     \
     }                                                               \
   } __name;
 
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandCreateGenerator);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandDestroyGenerator);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandSetStream);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandGenerateUniform);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandGenerateUniformDouble);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandSetPseudoRandomGeneratorSeed);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandSetGeneratorOffset);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandGenerateNormal);
-PERFTOOLS_GPUTOOLS_HIPRAND_WRAP(hiprandGenerateNormalDouble);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandCreateGenerator);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandDestroyGenerator);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandSetStream);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandGenerateUniform);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandGenerateUniformDouble);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandSetPseudoRandomGeneratorSeed);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandSetGeneratorOffset);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandGenerateNormal);
+STREAM_EXECUTOR_HIPRAND_WRAP(hiprandGenerateNormalDouble);
 
 }  // namespace wrap
 
-template <typename T>
-string TypeString();
+GpuRng::GpuRng(GpuExecutor* parent) : parent_(parent), rng_(nullptr) {}
 
-template <>
-string TypeString<float>() {
-  return "float";
-}
-
-template <>
-string TypeString<double>() {
-  return "double";
-}
-
-template <>
-string TypeString<std::complex<float>>() {
-  return "std::complex<float>";
-}
-
-template <>
-string TypeString<std::complex<double>>() {
-  return "std::complex<double>";
-}
-
-ROCMRng::ROCMRng(ROCMExecutor *parent) : parent_(parent), rng_(nullptr) {}
-
-ROCMRng::~ROCMRng() {
+GpuRng::~GpuRng() {
   if (rng_ != nullptr) {
     wrap::hiprandDestroyGenerator(parent_, rng_);
   }
 }
 
-bool ROCMRng::Init() {
+bool GpuRng::Init() {
   mutex_lock lock{mu_};
   CHECK(rng_ == nullptr);
 
@@ -128,9 +105,9 @@ bool ROCMRng::Init() {
   return true;
 }
 
-bool ROCMRng::SetStream(Stream *stream) {
+bool GpuRng::SetStream(Stream* stream) {
   hiprandStatus_t ret =
-      wrap::hiprandSetStream(parent_, rng_, AsROCMStreamValue(stream));
+      wrap::hiprandSetStream(parent_, rng_, AsGpuStreamValue(stream));
   if (ret != HIPRAND_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for random generation: " << ret;
     return false;
@@ -144,12 +121,11 @@ bool ROCMRng::SetStream(Stream *stream) {
 // specializations.
 constexpr bool ComplexIsConsecutiveFloats() {
   return sizeof(std::complex<int>) == 8 && sizeof(std::complex<float>) == 8 &&
-      sizeof(std::complex<double>) == 16;
+         sizeof(std::complex<double>) == 16;
 }
 
 template <typename T>
-bool ROCMRng::DoPopulateRandUniformInternal(Stream *stream,
-                                            DeviceMemory<T> *v) {
+bool GpuRng::DoPopulateRandUniformInternal(Stream* stream, DeviceMemory<T>* v) {
   mutex_lock lock{mu_};
   static_assert(ComplexIsConsecutiveFloats(),
                 "std::complex values are not stored as consecutive values");
@@ -169,11 +145,11 @@ bool ROCMRng::DoPopulateRandUniformInternal(Stream *stream,
   if (std::is_same<T, float>::value ||
       std::is_same<T, std::complex<float>>::value) {
     ret = wrap::hiprandGenerateUniform(
-        parent_, rng_, reinterpret_cast<float *>(ROCMMemoryMutable(v)),
+        parent_, rng_, reinterpret_cast<float*>(GpuMemoryMutable(v)),
         element_count);
   } else {
     ret = wrap::hiprandGenerateUniformDouble(
-        parent_, rng_, reinterpret_cast<double *>(ROCMMemoryMutable(v)),
+        parent_, rng_, reinterpret_cast<double*>(GpuMemoryMutable(v)),
         element_count);
   }
   if (ret != HIPRAND_STATUS_SUCCESS) {
@@ -186,29 +162,29 @@ bool ROCMRng::DoPopulateRandUniformInternal(Stream *stream,
   return true;
 }
 
-bool ROCMRng::DoPopulateRandUniform(Stream *stream, DeviceMemory<float> *v) {
+bool GpuRng::DoPopulateRandUniform(Stream* stream, DeviceMemory<float>* v) {
   return DoPopulateRandUniformInternal(stream, v);
 }
 
-bool ROCMRng::DoPopulateRandUniform(Stream *stream, DeviceMemory<double> *v) {
+bool GpuRng::DoPopulateRandUniform(Stream* stream, DeviceMemory<double>* v) {
   return DoPopulateRandUniformInternal(stream, v);
 }
 
-bool ROCMRng::DoPopulateRandUniform(Stream *stream,
-                                    DeviceMemory<std::complex<float>> *v) {
+bool GpuRng::DoPopulateRandUniform(Stream* stream,
+                                   DeviceMemory<std::complex<float>>* v) {
   return DoPopulateRandUniformInternal(stream, v);
 }
 
-bool ROCMRng::DoPopulateRandUniform(Stream *stream,
-                                    DeviceMemory<std::complex<double>> *v) {
+bool GpuRng::DoPopulateRandUniform(Stream* stream,
+                                   DeviceMemory<std::complex<double>>* v) {
   return DoPopulateRandUniformInternal(stream, v);
 }
 
 template <typename ElemT, typename FuncT>
-bool ROCMRng::DoPopulateRandGaussianInternal(Stream *stream, ElemT mean,
-                                             ElemT stddev,
-                                             DeviceMemory<ElemT> *v,
-                                             FuncT func) {
+bool GpuRng::DoPopulateRandGaussianInternal(Stream* stream, ElemT mean,
+                                            ElemT stddev,
+                                            DeviceMemory<ElemT>* v,
+                                            FuncT func) {
   mutex_lock lock{mu_};
 
   if (!SetStream(stream)) {
@@ -217,7 +193,7 @@ bool ROCMRng::DoPopulateRandGaussianInternal(Stream *stream, ElemT mean,
 
   uint64 element_count = v->ElementCount();
   hiprandStatus_t ret =
-      func(parent_, rng_, ROCMMemoryMutable(v), element_count, mean, stddev);
+      func(parent_, rng_, GpuMemoryMutable(v), element_count, mean, stddev);
 
   if (ret != HIPRAND_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to do gaussian generation of " << v->ElementCount()
@@ -228,19 +204,19 @@ bool ROCMRng::DoPopulateRandGaussianInternal(Stream *stream, ElemT mean,
   return true;
 }
 
-bool ROCMRng::DoPopulateRandGaussian(Stream *stream, float mean, float stddev,
-                                     DeviceMemory<float> *v) {
+bool GpuRng::DoPopulateRandGaussian(Stream* stream, float mean, float stddev,
+                                    DeviceMemory<float>* v) {
   return DoPopulateRandGaussianInternal(stream, mean, stddev, v,
                                         wrap::hiprandGenerateNormal);
 }
 
-bool ROCMRng::DoPopulateRandGaussian(Stream *stream, double mean, double stddev,
-                                     DeviceMemory<double> *v) {
+bool GpuRng::DoPopulateRandGaussian(Stream* stream, double mean, double stddev,
+                                    DeviceMemory<double>* v) {
   return DoPopulateRandGaussianInternal(stream, mean, stddev, v,
                                         wrap::hiprandGenerateNormalDouble);
 }
 
-bool ROCMRng::SetSeed(Stream *stream, const uint8 *seed, uint64 seed_bytes) {
+bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) {
   mutex_lock lock{mu_};
   CHECK(rng_ != nullptr);
 
@@ -255,7 +231,7 @@ bool ROCMRng::SetSeed(Stream *stream, const uint8 *seed, uint64 seed_bytes) {
   // Requires 8 bytes of seed data; checked in RngSupport::CheckSeed (above)
   // (which itself requires 16 for API consistency with host RNG fallbacks).
   hiprandStatus_t ret = wrap::hiprandSetPseudoRandomGeneratorSeed(
-      parent_, rng_, *(reinterpret_cast<const uint64 *>(seed)));
+      parent_, rng_, *(reinterpret_cast<const uint64*>(seed)));
   if (ret != HIPRAND_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set rng seed: " << ret;
     return false;
@@ -269,42 +245,41 @@ bool ROCMRng::SetSeed(Stream *stream, const uint8 *seed, uint64 seed_bytes) {
   return true;
 }
 
-}  // namespace rocm
-}  // namespace stream_executor
+}  // namespace gpu
 
-namespace gpu = ::stream_executor;
+void initialize_rocrand() {
+  port::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::RngFactory>(
+          rocm::kROCmPlatformId, gpu::kGpuRandPlugin, "rocRAND",
+          [](internal::StreamExecutorInterface* parent) -> rng::RngSupport* {
+            gpu::GpuExecutor* rocm_executor =
+                dynamic_cast<gpu::GpuExecutor*>(parent);
+            if (rocm_executor == nullptr) {
+              LOG(ERROR)
+                  << "Attempting to initialize an instance of the hipRAND "
+                  << "support library with a non-ROCM StreamExecutor";
+              return nullptr;
+            }
 
-REGISTER_MODULE_INITIALIZER(register_hiprand, {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::RngFactory>(
-              gpu::rocm::kROCmPlatformId, gpu::rocm::kHipRandPlugin, "hipRAND",
-              [](gpu::internal::StreamExecutorInterface
-                     *parent) -> gpu::rng::RngSupport * {
-                gpu::rocm::ROCMExecutor *rocm_executor =
-                    dynamic_cast<gpu::rocm::ROCMExecutor *>(parent);
-                if (rocm_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the hipRAND "
-                      << "support library with a non-ROCM StreamExecutor";
-                  return nullptr;
-                }
-
-                gpu::rocm::ROCMRng *rng = new gpu::rocm::ROCMRng(rocm_executor);
-                if (!rng->Init()) {
-                  // Note: Init() will log a more specific error.
-                  delete rng;
-                  return nullptr;
-                }
-                return rng;
-              });
+            gpu::GpuRng* rng = new gpu::GpuRng(rocm_executor);
+            if (!rng->Init()) {
+              // Note: Init() will log a more specific error.
+              delete rng;
+              return nullptr;
+            }
+            return rng;
+          });
 
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register hipRAND factory: "
+    LOG(ERROR) << "Unable to register rocRAND factory: "
                << status.error_message();
   }
 
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::rocm::kROCmPlatformId,
-                                                     gpu::PluginKind::kRng,
-                                                     gpu::rocm::kHipRandPlugin);
-});
+  PluginRegistry::Instance()->SetDefaultFactory(
+      rocm::kROCmPlatformId, PluginKind::kRng, gpu::kGpuRandPlugin);
+}
+
+}  // namespace stream_executor
+
+REGISTER_MODULE_INITIALIZER(register_rocrand,
+                            { stream_executor::initialize_rocrand(); });

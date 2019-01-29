@@ -1165,12 +1165,15 @@ class TensorBoard(Callback):
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
 
-  def _init_writer(self):
+  def _init_writer(self, model):
     """Sets file writer."""
     if context.executing_eagerly():
       self.writer = summary_ops_v2.create_file_writer(self.log_dir)
+      if not model.run_eagerly and self.write_graph:
+        with self.writer.as_default():
+          summary_ops_v2.graph(K.get_graph())
     elif self.write_graph:
-      self.writer = tf_summary.FileWriter(self.log_dir, K.get_session().graph)
+      self.writer = tf_summary.FileWriter(self.log_dir, K.get_graph())
     else:
       self.writer = tf_summary.FileWriter(self.log_dir)
 
@@ -1233,7 +1236,7 @@ class TensorBoard(Callback):
     """Sets Keras model and creates summary ops."""
 
     self.model = model
-    self._init_writer()
+    self._init_writer(model)
     # histogram summaries only enabled in graph mode
     if not context.executing_eagerly():
       self._make_histogram_ops(model)

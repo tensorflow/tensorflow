@@ -171,6 +171,57 @@ void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
   node->set_name(std::move(name));
 }
 
+bool IsFunctionStateful(const FunctionLibraryDefinition& library,
+                        const FunctionDef& function_def, bool skip_assert) {
+  if (!function_def.signature().is_stateful()) return false;
+
+  for (const NodeDef& node_def : function_def.node_def()) {
+    if (IsNodeStateful(library, node_def, skip_assert)) return true;
+  }
+  return false;
+}
+
+bool IsNodeStateful(const FunctionLibraryDefinition& library,
+                    const NodeDef& node, bool skip_assert) {
+  const OpDef* op_def;
+  Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+
+  if (!s.ok()) return true;
+
+  if (!op_def->is_stateful()) return false;
+
+  if (skip_assert && op_def->name() == "Assert") {
+    return false;
+  }
+
+  if (op_def->name() == "If") {
+    const FunctionDef* then_func =
+        library.Find(node.attr().at("then_branch").func().name());
+    const FunctionDef* else_func =
+        library.Find(node.attr().at("else_branch").func().name());
+    if ((then_func != nullptr &&
+         !IsFunctionStateful(library, *then_func, skip_assert)) &&
+        (else_func != nullptr &&
+         !IsFunctionStateful(library, *else_func, skip_assert))) {
+      return false;
+    }
+  }
+
+  if (op_def->name() == "While") {
+    const FunctionDef* cond_func =
+        library.Find(node.attr().at("cond").func().name());
+    const FunctionDef* body_func =
+        library.Find(node.attr().at("body").func().name());
+    if ((cond_func != nullptr &&
+         !IsFunctionStateful(library, *cond_func, skip_assert)) &&
+        (body_func != nullptr &&
+         !IsFunctionStateful(library, *body_func, skip_assert))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace function_utils
 }  // namespace grappler
 }  // namespace tensorflow

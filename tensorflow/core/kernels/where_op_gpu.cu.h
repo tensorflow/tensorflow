@@ -29,9 +29,9 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
 #endif
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/where_op.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"

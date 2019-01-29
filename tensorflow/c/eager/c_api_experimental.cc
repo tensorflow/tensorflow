@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/profiler/rpc/profiler_server.h"
 
 using tensorflow::string;
 
@@ -43,4 +44,9 @@ void TFE_ProfilerSerializeToString(TFE_Context* ctx, TFE_Profiler* profiler,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
+}
+
+void TFE_StartProfilerServer(TFE_Context* ctx, int port) {
+  auto server_thread = tensorflow::StartProfilerServer(&ctx->context, port);
+  ctx->context.AddChildThread(std::move(server_thread));
 }

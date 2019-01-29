@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"

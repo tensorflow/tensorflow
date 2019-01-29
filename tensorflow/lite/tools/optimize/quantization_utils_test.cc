@@ -126,6 +126,28 @@ TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroInRange) {
   EXPECT_LT(zero_point, quant_max);
 }
 
+TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroMinMax) {
+  const float float_min = 0;
+  const float float_max = 0;
+  const int quant_min = -128;
+  const int quant_max = 127;
+  QuantizationParametersT params;
+  GetAsymmetricQuantizationParams(float_min, float_max, quant_min, quant_max,
+                                  &params);
+  ASSERT_EQ(params.max.size(), 1);
+  ASSERT_EQ(params.min.size(), 1);
+  ASSERT_EQ(params.scale.size(), 1);
+  ASSERT_EQ(params.zero_point.size(), 1);
+  EXPECT_EQ(params.max[0], float_max);
+  EXPECT_EQ(params.min[0], float_min);
+  int64_t zero_point = params.zero_point[0];
+  float scale = params.scale[0];
+  const float eps = 1e-7f;
+  EXPECT_NEAR(scale, 0, eps);
+  EXPECT_NEAR(zero_point, quant_min, eps);
+  EXPECT_LT(zero_point, quant_max);
+}
+
 TEST(QuantizationUtilsTest, SymmetricPerChannelQuantization) {
   // Set up an input with [3, 2, 2, 2] size and 0 is the channel index.
   const std::vector<float> input = {
@@ -151,6 +173,31 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelQuantization) {
       21, 0,  -21, -42, -64, -85, -106, -127,  // Channel 3.
   };
   EXPECT_THAT(output_scales, ElementsAreArray(expected_output_scales));
+  EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
+}
+
+TEST(QuantizationUtilsTest, SymmetricPerChannelQuantizeValues) {
+  // Set up an input with [3, 1, 1, 2] size and 0 is the channel index.
+  const std::vector<float> input = {
+      13.0, 21.0,  // Channel 1.
+      21.0, 22.0,  // Channel 2.
+      31.0, 40.0,  // Channel 3.
+  };
+  const std::vector<float> scales_inv = {2, 0.5, 3};
+  const std::vector<int32_t> dimension = {3, 1, 1, 2};
+  const int channel_index = 0;
+
+  // Create holder for output data.
+  std::vector<int8_t> output_data(3 * 1 * 1 * 2);
+
+  // Call SymmetricPerChannelQuantizeValues and verify the result.
+  SymmetricPerChannelQuantizeValues(input.data(), scales_inv, dimension,
+                                    channel_index, &output_data);
+  const std::vector<int8_t> expected_output_data = {
+      26, 42,   // Channel 1.
+      11, 11,   // Channel 2.
+      93, 120,  // Channel 3.
+  };
   EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
 }
 

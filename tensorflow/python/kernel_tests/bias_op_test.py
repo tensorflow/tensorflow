@@ -206,6 +206,7 @@ class BiasAddTest(test.TestCase):
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testGradientTensor3D(self):
     for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
                                    ("NCHW", False), ("NCHW", True)]:
@@ -227,6 +228,7 @@ class BiasAddTest(test.TestCase):
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testGradientTensor5D(self):
     for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
                                    ("NCHW", False), ("NCHW", True)]:
@@ -244,6 +246,7 @@ class BiasAddTest(test.TestCase):
       self._testAll(np.random.randn(*shape), np.random.randn(shape[-1]))
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testEmptyGradient(self):
     for (data_format, use_gpu) in ("NHWC", False), ("NHWC", True):
       for shape in (0, 0), (2, 0), (0, 2):

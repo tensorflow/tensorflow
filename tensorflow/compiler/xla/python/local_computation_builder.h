@@ -180,6 +180,10 @@ class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
 
+  int num_replicas() const {
+    return executable_->build_options().num_replicas();
+  }
+
   StatusOr<LocalShapedBuffer*> Execute(
       absl::Span<LocalShapedBuffer* const> argument_handles);
 
@@ -312,7 +316,12 @@ class LocalComputationBuilder {
 
   LocalOp Collapse(const LocalOp& operand, absl::Span<const int64> dimensions);
 
-  LocalOp CrossReplicaSum(const LocalOp& operand);
+  LocalOp AllToAll(const LocalOp& operand, int64 split_dimension,
+                   int64 concat_dimension, int64 split_count,
+                   absl::Span<const ReplicaGroup> replica_groups);
+
+  LocalOp CrossReplicaSum(const LocalOp& operand,
+                          absl::Span<const ReplicaGroup> replica_groups);
 
   LocalOp Slice(const LocalOp& operand, absl::Span<const int64> start_indices,
                 absl::Span<const int64> limit_indices,

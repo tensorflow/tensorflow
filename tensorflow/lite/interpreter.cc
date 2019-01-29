@@ -32,6 +32,26 @@ limitations under the License.
 
 namespace tflite {
 
+namespace {
+
+// Gets the current TfLiteQuantization from the legacy fLiteQuantizationParams.
+TfLiteQuantization GetQuantizationFromLegacy(
+    const TfLiteQuantizationParams& legacy_quantization) {
+  TfLiteQuantization quantization;
+  quantization.type = kTfLiteAffineQuantization;
+  auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  affine_quantization->scale = TfLiteFloatArrayCreate(1);
+  affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+  affine_quantization->scale->data[0] = legacy_quantization.scale;
+  affine_quantization->zero_point->data[0] = legacy_quantization.zero_point;
+  quantization.params = affine_quantization;
+
+  return quantization;
+}
+
+}  // namespace
+
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
@@ -124,23 +144,48 @@ TfLiteStatus Interpreter::ResetVariableTensors() {
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
+    int tensor_index, TfLiteType type, const char* name,
+    const std::vector<int>& dims, TfLiteQuantization quantization,
+    const char* buffer, size_t bytes, const Allocation* allocation) {
+  return primary_subgraph().SetTensorParametersReadOnly(
+      tensor_index, type, name, dims.size(), dims.data(), quantization, buffer,
+      bytes, allocation);
+}
+
+TfLiteStatus Interpreter::SetTensorParametersReadWrite(
+    int tensor_index, TfLiteType type, const char* name,
+    const std::vector<int>& dims, TfLiteQuantization quantization,
+    bool is_variable) {
+  return primary_subgraph().SetTensorParametersReadWrite(
+      tensor_index, type, name, dims.size(), dims.data(), quantization,
+      is_variable);
+}
+
+TfLiteStatus Interpreter::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
-  return primary_subgraph().SetTensorParametersReadOnly(
-      tensor_index, type, name, rank, dims, quantization, buffer, bytes,
-      allocation);
+  TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
+  if (primary_subgraph().SetTensorParametersReadOnly(
+          tensor_index, type, name, rank, dims, new_quantization, buffer, bytes,
+          allocation) != kTfLiteOk) {
+    TfLiteQuantizationFree(&new_quantization);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
-// Set description of inputs/outputs/data/fptrs for node `node_index`.
-// This variant assumes an external buffer has been allocated of size
-// bytes. The lifetime of buffer must be ensured to be greater or equal
-// to Interpreter.
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
-  return primary_subgraph().SetTensorParametersReadWrite(
-      tensor_index, type, name, rank, dims, quantization, is_variable);
+  TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
+  if (primary_subgraph().SetTensorParametersReadWrite(
+          tensor_index, type, name, rank, dims, new_quantization,
+          is_variable) != kTfLiteOk) {
+    TfLiteQuantizationFree(&new_quantization);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {

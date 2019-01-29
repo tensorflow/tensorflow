@@ -207,7 +207,7 @@ py_test(
 
 py_test(
     name = "map_vectorization_test",
-    size = "medium",
+    size = "small",
     srcs = ["map_vectorization_test.py"],
     shard_count = 8,
     srcs_version = "PY2AND3",
@@ -233,6 +233,7 @@ py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/kernel_tests:test_base",

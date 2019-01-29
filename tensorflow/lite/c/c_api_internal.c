@@ -91,10 +91,10 @@ void TfLiteTensorDataFree(TfLiteTensor* t) {
   t->data.raw = NULL;
 }
 
-void TfLiteQuantizationFree(TfLiteTensor* t) {
-  if (t->quantization.type == kTfLiteAffineQuantization) {
+void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
+  if (quantization->type == kTfLiteAffineQuantization) {
     TfLiteAffineQuantization* q_params =
-        (TfLiteAffineQuantization*)(t->quantization.params);
+        (TfLiteAffineQuantization*)(quantization->params);
     if (q_params->scale) {
       TfLiteFloatArrayFree(q_params->scale);
       q_params->scale = NULL;
@@ -105,8 +105,8 @@ void TfLiteQuantizationFree(TfLiteTensor* t) {
     }
     free(q_params);
   }
-  t->quantization.params = NULL;
-  t->quantization.type = kTfLiteNoQuantization;
+  quantization->params = NULL;
+  quantization->type = kTfLiteNoQuantization;
 }
 
 void TfLiteTensorFree(TfLiteTensor* t) {
@@ -114,7 +114,7 @@ void TfLiteTensorFree(TfLiteTensor* t) {
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = NULL;
 
-  TfLiteQuantizationFree(t);
+  TfLiteQuantizationFree(&t->quantization);
 }
 
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,

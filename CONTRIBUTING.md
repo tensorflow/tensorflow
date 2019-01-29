@@ -150,41 +150,45 @@ may exist in your changes.
 
 There are two ways to run TensorFlow unit tests.
 
-1. Using tools and libraries installed directly on your system.
+1.  Using tools and libraries installed directly on your system.
 
-   Refer to the
-   [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel) and
-   [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel-gpu)
-   for the required packages. Alternatively, use the said
-   [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
-   `tensorflow/tensorflow:nightly-devel` and `tensorflow/tensorflow:nightly-devel-gpu`
-   for development to avoid installing the packages directly on your system.
+    Refer to the
+    [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel)
+    and
+    [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel-gpu)
+    for the required packages. Alternatively, use the said
+    [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
+    `tensorflow/tensorflow:nightly-devel` and
+    `tensorflow/tensorflow:nightly-devel-gpu` for development to avoid
+    installing the packages directly on your system (in which case remember to
+    change directory from `/root` to `/tensorflow` once you get into the running
+    container so `bazel` can find the `tensorflow` workspace).
 
-   Once you have the packages installed, you can run a specific unit test in
-   bazel by doing as follows:
+    Once you have the packages installed, you can run a specific unit test in
+    bazel by doing as follows:
 
-   If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
-   the `cuda` option flag
+    If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
+    the `cuda` option flag
 
-   ```bash
-   export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+    ```bash
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
 
-   export flags="--config=opt --config=cuda -k"
-   ```
+    export flags="--config=opt --config=cuda -k"
+    ```
 
-   For example, to run all tests under tensorflow/python, do:
+    For example, to run all tests under tensorflow/python, do:
 
-   ```bash
-   bazel test ${flags} //tensorflow/python/...
-   ```
+    ```bash
+    bazel test ${flags} //tensorflow/python/...
+    ```
 
-2. Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
+2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
-   ```bash
-   # Install Docker first, then this will build and run cpu tests
-   tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
-   ```
+    ```bash
+    # Install Docker first, then this will build and run cpu tests
+    tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
+    ```
 
-   See
-   [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build) for details.
-
+    See
+    [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build)
+    for details.

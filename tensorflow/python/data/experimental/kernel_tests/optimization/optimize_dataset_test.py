@@ -29,7 +29,6 @@ from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -113,47 +112,35 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
 
-  def testOptimizationLargeInputFromTensor(self):
-    def dataset_fn(input_t):
-      dataset = dataset_ops.Dataset.from_tensors(input_t)
-      options = dataset_ops.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      return dataset.with_options(options)
+  # TODO(b/123300735): Add eager coverage for the following tests.
+  def testSkipEagerOptimizationLargeInputFromTensor(self):
+    input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
+    dataset = dataset_ops.Dataset.from_tensors(input_t)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
+    iterator = dataset_ops.make_initializable_iterator(dataset)
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
 
-    if context.executing_eagerly():
-      input_t = np.ones([512, 1024, 1025], np.int32)
-      get_next = self.getNext(dataset_fn(input_t))
-      self.evaluate(get_next())
-    else:
-      input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
-      iterator = dataset_ops.make_initializable_iterator(dataset_fn(input_t))
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
+    with self.cached_session() as sess:
+      sess.run(init_op, {input_t: np.ones([512, 1024, 1025], np.int32)})
+      self.evaluate(get_next)
 
-      with self.cached_session() as sess:
-        sess.run(init_op, {input_t: np.ones([512, 1024, 1025], np.int32)})
-        self.evaluate(get_next)
+  # TODO(b/117581999): Add eager coverage for the following tests.
+  def testSkipEagerOptimizationLargeInputFromTensorSlices(self):
+    input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_t)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
+    iterator = dataset_ops.make_initializable_iterator(dataset)
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
 
-  def testOptimizationLargeInputFromTensorSlices(self):
-    def dataset_fn(input_t):
-      dataset = dataset_ops.Dataset.from_tensor_slices(input_t)
-      options = dataset_ops.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      return dataset.with_options(options)
-
-    if context.executing_eagerly():
-      input_t = np.ones([1, 512, 1024, 1025], np.int32)
-      get_next = self.getNext(dataset_fn(input_t))
-      self.evaluate(get_next())
-    else:
-      input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
-      iterator = dataset_ops.make_initializable_iterator(dataset_fn(input_t))
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-
-      with self.cached_session() as sess:
-        sess.run(init_op, {input_t: np.ones([1, 512, 1024, 1025], np.int32)})
-        self.evaluate(get_next)
+    with self.cached_session() as sess:
+      sess.run(init_op, {input_t: np.ones([1, 512, 1024, 1025], np.int32)})
+      self.evaluate(get_next)
 
   def testOptimizationNestedDataset(self):
 

@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import resource_variable_ops
 
 
 class _PerDeviceGenerator(dataset_ops.DatasetV2):
@@ -126,13 +127,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
 
 
 class MultiDeviceIterator(object):
-  """An iterator over multiple devices.
-
-  @compatibility(eager)
-  MultiDeviceIterator isn't currently supported in Eager mode but support is
-  coming soon.
-  @end_compatibility
-  """
+  """An iterator over multiple devices."""
 
   def __init__(self,
                dataset,
@@ -172,6 +167,11 @@ class MultiDeviceIterator(object):
               shared_name=shared_name,
               container="",
               **dataset_ops.flat_structure(dataset)))
+      if context.executing_eagerly():
+        # Delete the resource when this object is deleted
+        self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+            handle=self._multi_device_iterator_resource,
+            handle_device=self._source_device)
 
       # The incarnation ID is used to ensure consistency between the per-device
       # iterators and the multi-device iterator.

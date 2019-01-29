@@ -125,10 +125,21 @@ class Feature(enum.Enum):
   ALL = 'ALL'
 
   AUTO_CONTROL_DEPS = 'AUTO_CONTROL_DEPS'
-  DECORATORS = 'DECORATORS'
   ERROR_REWRITING = 'ERROR_REWRITING'
   LISTS = 'LISTS'
   NAME_SCOPES = 'NAME_SCOPES'
+
+  @classmethod
+  def all(cls):
+    """Returns a tuple that enables all options."""
+    return tuple(cls.__members__.values())
+
+  @classmethod
+  def all_but(cls, exclude):
+    """Returns a tuple that enables all but the excluded options."""
+    if not isinstance(exclude, (list, tuple, set)):
+      exclude = (exclude,)
+    return tuple(set(cls.all()) - set(exclude) - {cls.ALL})
 
 
 class ConversionOptions(object):
@@ -206,7 +217,7 @@ class ConversionOptions(object):
       ast.Node
     """
     template = """
-      constructor_name(
+      ag__.ConversionOptions(
           recursive=recursive_val,
           verbose=verbose_val,
           strip_decorators=strip_decorators_val,
@@ -216,7 +227,8 @@ class ConversionOptions(object):
     """
 
     def as_qualified_name(o):
-      name = inspect_utils.getqualifiedname(ctx.info.namespace, o, max_depth=1)
+      name = inspect_utils.getqualifiedname(
+          ctx.info.namespace, o, max_depth=1)
       if not name:
         if isinstance(o, weakref.ref):
           # `o` might already be a weak reference, if this object was
@@ -234,17 +246,15 @@ class ConversionOptions(object):
 
     def list_of_features(values):
       return parser.parse_expression('({})'.format(', '.join(
-          'ag__.Feature.{}'.format(v)
-          for v in Feature.__members__
+          'ag__.{}'.format(v)
+          for v in Feature.__members__.values()
           if v in values)))
 
-    if internal_convert_user_code is not None:
+    if internal_convert_user_code is None:
       internal_convert_user_code = self.internal_convert_user_code
 
     expr_ast = templates.replace(
         template,
-        constructor_name=parser.parse_expression(
-            as_qualified_name(ConversionOptions)),
         recursive_val=parser.parse_expression(str(self.recursive)),
         verbose_val=parser.parse_expression(str(int(self.verbose))),
         strip_decorators_val=list_of_names(self._strip_decorators),
@@ -278,6 +288,11 @@ class ProgramContext(object):
     required_imports: str, containing an import statement on each line. These
       are all the imports necessary for the compiled code to run, in addition to
       the closures of each entity, which are attached dynamically.
+    partial_types: Tuple[Type], deprecated.
+    conversion_order: Tuple[Any], deprecated.
+    additional_symbols: Dict[str, Any], a map of new symbols that have been
+      created under this context, and need to be added to the namespace of the
+      generated code.
   """
 
   def __init__(
@@ -349,7 +364,7 @@ class ProgramContext(object):
     self.dependency_cache[original_entity] = converted_ast
 
 
-class EntityContext(object):
+class EntityContext(transformer.Context):
   """Tracks the conversion of a single entity.
 
   This object is mutable, and is updated during conversion. Not thread safe.
@@ -361,8 +376,8 @@ class EntityContext(object):
   """
 
   def __init__(self, namer, entity_info, program_ctx):
+    super(EntityContext, self).__init__(entity_info)
     self.namer = namer
-    self.info = entity_info
     self.program = program_ctx
 
 
@@ -374,8 +389,7 @@ class Base(transformer.Base):
   """
 
   def __init__(self, ctx):
-    super(Base, self).__init__(ctx.info)
-    self.ctx = ctx  # Keeping this short because it's used frequently.
+    super(Base, self).__init__(ctx)
 
     self._used = False
     self._ast_depth = 0
@@ -475,13 +489,13 @@ def standard_analysis(node, context, is_initial=False):
   # TODO(mdan): Don't return a node because it's modified by reference.
   graphs = cfg.build(node)
   node = qual_names.resolve(node)
-  node = activity.resolve(node, context.info, None)
-  node = reaching_definitions.resolve(node, context.info, graphs, AnnotatedDef)
-  node = liveness.resolve(node, context.info, graphs)
-  node = live_values.resolve(node, context.info, config.PYTHON_LITERALS)
-  node = type_info.resolve(node, context.info)
+  node = activity.resolve(node, context, None)
+  node = reaching_definitions.resolve(node, context, graphs, AnnotatedDef)
+  node = liveness.resolve(node, context, graphs)
+  node = live_values.resolve(node, context, config.PYTHON_LITERALS)
+  node = type_info.resolve(node, context)
   # This second call allows resolving first-order class attributes.
-  node = live_values.resolve(node, context.info, config.PYTHON_LITERALS)
+  node = live_values.resolve(node, context, config.PYTHON_LITERALS)
   if is_initial:
     anno.dup(
         node,

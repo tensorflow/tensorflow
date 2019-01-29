@@ -115,11 +115,15 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     }
   }
 
-  // Tensorflow functions do not prune side effects, or dataset-output ops from
+  // Tensorflow functions do not prune stateful or dataset-output ops from
   // the function body (see PruneFunctionBody in common_runtime/function.cc).
+  //
+  // We also keep placeholders in the functions body, because it's a bug to have
+  // placeholders inside functions, and we want to catch such invalid graphs
+  // early.
   if (optimization_options_.is_function_instantiation) {
     for (const NodeDef& node : graph.node()) {
-      if (!IsFreeOfSideEffect(node) || IsDataset(node)) {
+      if (IsStateful(node) || IsDataset(node) || IsPlaceholder(node)) {
         result.insert(node.name());
       }
     }

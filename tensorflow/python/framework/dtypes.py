@@ -561,9 +561,14 @@ _NP_TO_TF = {
     _np_bfloat16: bfloat16,
 }
 
-# On Python 2.X `np.longlong` could be a distinct type used for long
-# integers e.g. 42L. See numpy/numpy#9799.
+# Map (some) NumPy platform dtypes to TF ones using their fixed-width
+# synonyms. Note that platform dtypes are not always simples aliases,
+# i.e. reference equality is not guaranteed. See e.g. numpy/numpy#9799.
 for pdt in [
+    np.intc,
+    np.uintc,
+    np.int_,
+    np.uint,
     np.longlong,
     np.ulonglong,
 ]:

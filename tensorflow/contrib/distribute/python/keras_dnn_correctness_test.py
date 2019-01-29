@@ -68,7 +68,7 @@ class TestDistributionStrategyDnnCorrectness(
     y_train = 3 * x_train
     x_train = x_train.astype('float32')
     y_train = y_train.astype('float32')
-    x_predict = [[1.], [2.], [3.], [4.]]
+    x_predict = np.array([[1.], [2.], [3.], [4.]], dtype=np.float32)
     return x_train, y_train, x_predict
 
   @combinations.generate(keras_correctness_test_base.

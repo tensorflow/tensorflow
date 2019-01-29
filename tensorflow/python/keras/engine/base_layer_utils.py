@@ -248,7 +248,16 @@ def create_keras_history(tensors):
       operations and need to have Keras metadata assigned to them.
   """
 
-  _create_keras_history_helper(tensors, set())
+  try:
+    _create_keras_history_helper(tensors, set())
+  except AttributeError:
+    # This can happen with sublayers inside of layers in the Functional API.
+    # The error occurs when a Functional Model is running in V2 function
+    # mode and a non-Keras Tensor is passed as an input to a sublayer inside
+    # of another layer.
+    # TODO(omalleyt): Only run `create_keras_history` during Functional API
+    # creation phase.
+    pass
 
 
 def _create_keras_history_helper(tensors, processed_ops=None):

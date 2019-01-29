@@ -356,12 +356,12 @@ class NormalizationLayersGraphModeOnlyTest(test.TestCase):
 
       # Simulates training-mode with trainable layer.
       # Should use mini-batch statistics.
-      keras.backend.set_learning_phase(1)
-      model = get_model(bn_mean, bn_std)
-      model.compile(loss='mse', optimizer='rmsprop')
-      out = model.predict(val_a)
-      self.assertAllClose(
-          (val_a - np.mean(val_a)) / np.std(val_a), out, atol=1e-3)
+      with keras.backend.learning_phase_scope(1):
+        model = get_model(bn_mean, bn_std)
+        model.compile(loss='mse', optimizer='rmsprop')
+        out = model.predict(val_a)
+        self.assertAllClose(
+            (val_a - np.mean(val_a)) / np.std(val_a), out, atol=1e-3)
 
 
 def _run_layernorm_correctness_test(layer, dtype='float32'):
@@ -438,7 +438,8 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     if test.is_gpu_available(cuda_only=True):
       with self.session(use_gpu=True):
         model = keras.models.Sequential()
-        norm = keras.layers.LayerNormalization(input_shape=(3, 4, 4))
+        norm = keras.layers.LayerNormalization(
+            input_shape=(3, 4, 4), params_axis=1)
         model.add(norm)
         model.compile(loss='mse',
                       optimizer=gradient_descent.GradientDescentOptimizer(0.01),

@@ -74,10 +74,6 @@ def _py_for_stmt(iter_, extra_test, body, init_state):
     if not extra_test(*state):
       break
     state = body(target, *state)
-
-  # TODO(mdan): Remove this special case.
-  if len(state) == 1:
-    return state[0]
   return state
 
 
@@ -88,10 +84,12 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
   def while_body(iterate_index, *state):
     iterate = iter_[iterate_index]
     new_state = body(iterate, *state)
+
+    state = (iterate_index + 1,)
     if new_state:
-      return (iterate_index + 1,) + new_state
-    else:
-      return iterate_index + 1
+      state += new_state
+
+    return state
 
   def while_cond(iterate_index, *state):
     return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
@@ -109,9 +107,6 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
     assert len(results) >= 1  # Has at least the iterate.
     if len(results) > 1:
       results = results[1:]
-    if len(results) == 1:
-      # TODO(mdan): Remove this special case.
-      results, = results
   else:
     results = ()
 
@@ -130,9 +125,6 @@ def _dataset_for_stmt(ds, extra_test, body, init_state):
 
   results = ds.reduce(init_state, reduce_body)
 
-  # TODO(mdan): Remove this special case.
-  if len(results) == 1:
-    return results[0]
   return results
 
 
@@ -172,7 +164,13 @@ def _tf_while_stmt(test, body, init_state, opts):
   """Overload of while_stmt that stages a TF while_stmt."""
   if opts is None:
     opts = {}
-  return control_flow_ops.while_loop(test, body, init_state, **opts)
+
+  # Non-v2 while_loop unpacks the results when there is only one return value.
+  # This enforces consistency across versions.
+  opts['return_same_structure'] = True
+
+  retval = control_flow_ops.while_loop(test, body, init_state, **opts)
+  return retval
 
 
 def _py_while_stmt(test, body, init_state, opts):

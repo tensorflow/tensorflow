@@ -52,7 +52,7 @@ class TFConfigClusterResolver(ClusterResolver):
 
   def __init__(self,
                task_type=None,
-               task_index=None,
+               task_id=None,
                rpc_layer=None,
                environment=None):
     """Creates a new TFConfigClusterResolver.
@@ -60,14 +60,14 @@ class TFConfigClusterResolver(ClusterResolver):
     Args:
       task_type: (String, optional) Overrides the task type specified in the
         TF_CONFIG environment variable.
-      task_index: (Integer, optional) Overrides the task index specified in the
+      task_id: (Integer, optional) Overrides the task index specified in the
         TF_CONFIG environment variable.
       rpc_layer: (String, optional) Overrides the rpc layer TensorFlow uses.
       environment: (String, optional) Overrides the environment TensorFlow
         operates in.
     """
     self._task_type = task_type
-    self._task_index = task_index
+    self._task_id = task_id
     self._rpc_layer = rpc_layer
     self._environment = environment
 
@@ -80,20 +80,20 @@ class TFConfigClusterResolver(ClusterResolver):
       return self._task_type
 
   @property
-  def task_index(self):
+  def task_id(self):
     if self._task_type is None:
       task_info = _get_value_in_tfconfig(_TASK_KEY, {})
       return task_info['index'] if 'index' in task_info else None
     else:
-      return self._task_index
+      return self._task_id
 
   @task_type.setter
   def task_type(self, task_type):
     self._task_type = task_type
 
-  @task_index.setter
-  def task_index(self, task_index):
-    self._task_index = task_index
+  @task_id.setter
+  def task_id(self, task_id):
+    self._task_id = task_id
 
   @property
   def environment(self):
@@ -121,13 +121,13 @@ class TFConfigClusterResolver(ClusterResolver):
       return ClusterSpec({})
     return ClusterSpec(tf_config['cluster'])
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Returns the master address to use when creating a TensorFlow session.
 
     Args:
       task_type: (String, optional) Overrides and sets the task_type of the
         master.
-      task_index: (Integer, optional) Overrides and sets the task id of the
+      task_id: (Integer, optional) Overrides and sets the task id of the
         master.
       rpc_layer: (String, optional) Overrides and sets the protocol over which
         TensorFlow nodes communicate with each other.
@@ -155,7 +155,7 @@ class TFConfigClusterResolver(ClusterResolver):
     # We try to auto-detect the task type and id, but uses the user-supplied one
     # where available
     task_type = task_type if task_type is not None else self.task_type
-    task_index = task_index if task_index is not None else self.task_index
+    task_id = task_id if task_id is not None else self.task_id
 
-    return format_master_url(cluster_spec.task_address(task_type, task_index),
+    return format_master_url(cluster_spec.task_address(task_type, task_id),
                              self.rpc_layer)

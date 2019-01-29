@@ -890,10 +890,6 @@ class MicroBenchmarks(test.Benchmark):
     self._run(scan, 100)
 
   def benchmarkScanDefun(self):
-    if context.num_gpus():
-      # TODO(b/122081934): Re-enable this after figuring out why this became
-      # really slow with control flow V2
-      return
     elems = math_ops.range(1600)
 
     @function.defun

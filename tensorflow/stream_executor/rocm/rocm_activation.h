@@ -23,7 +23,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_ACTIVATION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_ACTIVATION_H_
 
-#include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 
 namespace stream_executor {
 
@@ -31,28 +31,7 @@ class StreamExecutor;
 
 namespace rocm {
 
-class ROCMExecutor;
-class ScopedActivateContext;
-
-// Activates a ROCM device within an enclosing scope.
-class ScopedActivateExecutorContext {
- public:
-  // Form that takes a ROCM executor implementation.
-  explicit ScopedActivateExecutorContext(ROCMExecutor* rocm_exec);
-
-  // Form that takes a pImpl executor and extracts a ROCM implementation --
-  // fatal failure if it is not ROCM inside.
-  explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
-
-  ~ScopedActivateExecutorContext();
-
- private:
-
-  // The rocm.h-using datatype that we wrap.
-  ScopedActivateContext* driver_scoped_activate_context_;
-
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedActivateExecutorContext);
-};
+using ScopedActivateExecutorContext = gpu::ScopedActivateExecutorContext;
 
 }  // namespace rocm
 }  // namespace stream_executor

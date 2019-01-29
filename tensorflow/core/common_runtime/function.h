@@ -160,6 +160,8 @@ FunctionBody* SymbolicGradient(const FunctionBody& f);
 // to "fbody". Replaces the "caller" with fbody->graph and connects
 // edges properly. "override_device" specifies whether inlining should replace
 // explicitly specified devices inside fbody with the callee's device.
+//
+// TODO(ezhulenev): Return Status::error if function inlining failed.
 void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                         Node* caller, const FunctionBody* fbody,
                         bool override_device = true);

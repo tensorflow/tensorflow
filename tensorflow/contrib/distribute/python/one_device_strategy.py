@@ -72,10 +72,6 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     """Make iterator from dataset without splitting the batch."""
     return input_lib.DatasetIterator(dataset, self._input_workers)
 
-  def _distribute_dataset(self, dataset_fn):
-    return input_lib.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn), self._input_workers, 0)
-
   def _make_input_fn_iterator(
       self,
       input_fn,

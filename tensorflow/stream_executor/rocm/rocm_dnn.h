@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
 namespace stream_executor {
-namespace rocm {
+namespace gpu {
 
-class ROCMExecutor;
+class GpuExecutor;
 class MIOpenRnnDescriptor;
 class MIOpenRnnSequenceTensorDescriptor;
 class MIOpenRnnStateTensorDescriptor;
@@ -40,7 +40,7 @@ extern const PluginId kMIOpenPlugin;
 // functions, see dnn.h.
 class MIOpenSupport : public dnn::DnnSupport {
  public:
-  explicit MIOpenSupport(ROCMExecutor* parent);
+  explicit MIOpenSupport(GpuExecutor* parent);
   ~MIOpenSupport() override;
 
   port::Status Init() override;
@@ -251,38 +251,16 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* scale_backprop,
       DeviceMemory<float>* offset_backprop) override;
 
-  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-                  const DeviceMemory<float>& input_data,
-                  const dnn::FilterDescriptor& filter_descriptor,
-                  const DeviceMemory<float>& filter_data,
-                  const dnn::ConvolutionDescriptor& convolution_descriptor,
-                  const dnn::BatchDescriptor& output_descriptor,
-                  DeviceMemory<float>* output_data,
-                  const dnn::AlgorithmDesc& algorithm_desc,
-                  DeviceMemory<uint8>* scratch_memory,
-                  dnn::ProfileResult* output_profile_result) override;
-
-  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-                  const DeviceMemory<double>& input_data,
-                  const dnn::FilterDescriptor& filter_descriptor,
-                  const DeviceMemory<double>& filter_data,
-                  const dnn::ConvolutionDescriptor& convolution_descriptor,
-                  const dnn::BatchDescriptor& output_descriptor,
-                  DeviceMemory<double>* output_data,
-                  const dnn::AlgorithmDesc& algorithm_desc,
-                  DeviceMemory<uint8>* scratch_memory,
-                  dnn::ProfileResult* output_profile_result) override;
-
-  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-                  const DeviceMemory<Eigen::half>& input_data,
-                  const dnn::FilterDescriptor& filter_descriptor,
-                  const DeviceMemory<Eigen::half>& filter_data,
-                  const dnn::ConvolutionDescriptor& convolution_descriptor,
-                  const dnn::BatchDescriptor& output_descriptor,
-                  DeviceMemory<Eigen::half>* output_data,
-                  const dnn::AlgorithmDesc& algorithm_desc,
-                  DeviceMemory<uint8>* scratch_memory,
-                  dnn::ProfileResult* output_profile_result) override;
+  port::Status DoConvolve(
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
+      dnn::ProfileResult* output_profile_result) override;
 
   bool DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
@@ -382,78 +360,6 @@ class MIOpenSupport : public dnn::DnnSupport {
     LOG(ERROR) << "separable convolution not supported by MIOpen";
     return false;
   }
-
-  bool DoConvolveBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<double>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<double>* backward_input_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result) override;
-
-  bool DoConvolveBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<float>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<float>* backward_input_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result) override;
-
-  bool DoConvolveBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<Eigen::half>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<Eigen::half>* backward_input_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result) override;
-
-  bool DoConvolveBackwardFilter(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<double>& input_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemory<double>* backward_filter_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result) override;
-
-  bool DoConvolveBackwardFilter(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemory<float>* backward_filter_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result) override;
-
-  bool DoConvolveBackwardFilter(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<Eigen::half>& input_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemory<Eigen::half>* backward_filter_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result) override;
 
   bool DoConvolveBackwardBias(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
@@ -717,36 +623,17 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* offset_backprop_data,
       dnn::ProfileResult* output_profile_result) override;
 
-  ROCMExecutor* GetParentExecutor() { return parent_; }
+  GpuExecutor* GetParentExecutor() { return parent_; }
 
  private:
   mutex dnn_handle_mutex_;
 
-  ROCMExecutor* parent_;  // Parent executor object. Not owned.
+  GpuExecutor* parent_;  // Parent executor object. Not owned.
 
   // miopen library handle. miopenHandle_t type is not present in this header to
   // prevent third-party library header inclusions from leaking outside the
   // single rocm_dnn translation unit.
   void* dnn_handle_ GUARDED_BY(dnn_handle_mutex_);
-
-  // NOTE(keveman): Temporary data layout transformation until MIOpen supports
-  // kBatchYXDepth for backward pass. This function allocates temporary memory,
-  // lays out the source data into the temporary but in the kBatchDepthXY
-  // layout, and returns the temporary memory. The caller is responsible for
-  // deallocating the temporary. Since the allocation is done using Stream's
-  // AllocateTemporaryMemory, a later BlockHostUntilDone could be used for
-  // deallocation.
-  //
-  // transform_scratch is populated with a legitimate temporary allocation iff
-  // the original output data needs to be transformed.
-  template<class T>
-  DeviceMemory<T> MaybeTransformLayout(
-      Stream* stream,
-      int miopen_type,  // Actually miopenDataType_t.
-      dnn::BatchDescriptor* output_descriptor,
-      DeviceMemory<T> backward_output_data,
-      std::unique_ptr<TemporaryDeviceMemory<T>>* transform_scratch)
-      EXCLUSIVE_LOCKS_REQUIRED(dnn_handle_mutex_);
 
   template <class T, class U>
   bool DoBatchNormalizationForwardImpl(
@@ -772,49 +659,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
       DeviceMemory<U>* offset_backprop);
-
-  template <class T>
-  bool DoConvolveImpl(Stream* stream,
-                      int miopen_type,  // Actually miopenDataType_t.
-                      const dnn::BatchDescriptor& batch_descriptor,
-                      const DeviceMemory<T>& input_data,
-                      const dnn::FilterDescriptor& filter_descriptor,
-                      const DeviceMemory<T>& filter_data,
-                      const dnn::ConvolutionDescriptor& convolution_descriptor,
-                      const dnn::BatchDescriptor& output_descriptor,
-                      DeviceMemory<T>* output_data,
-                      const dnn::AlgorithmDesc& algorithm_desc,
-                      DeviceMemory<uint8>* scratch_memory,
-                      dnn::ProfileResult* output_profile_result);
-
-  template <class T>
-  bool DoConvolveBackwardDataImpl(
-      Stream* stream,
-      int miopen_type,  // Actually miopenDataType_t.
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<T>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor_in,
-      DeviceMemory<T> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<T>* backward_input_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result);
-
-  template <class T>
-  bool DoConvolveBackwardFilterImpl(
-      Stream* stream, int miopen_type,  // Actually miopenDataType_t.
-      const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<T>& input_data,
-      const dnn::BatchDescriptor& output_descriptor_in,
-      DeviceMemory<T> backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemory<T>* backward_filter_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      dnn::ProfileResult* output_profile_result);
 
   template <class T>
   bool DoConvolveBackwardBiasImpl(Stream* stream,
@@ -935,7 +779,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };
 
-}  // namespace rocm
+}  // namespace gpu
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_
