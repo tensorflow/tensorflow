@@ -2403,10 +2403,6 @@ tensorflow::Status ConvertConv2DBackpropInput(OpConverterParams* params) {
   return ConvertConv2DHelper(params, 1, /*is_conv2d_backprop_input=*/true);
 }
 
-tensorflow::Status ConvertConv2DTranspose(OpConverterParams* params) {
-  return ConvertConv2DHelper(params, ConvolutionType::TRANSPOSE);
-}
-
 tensorflow::Status ConvertPool(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
