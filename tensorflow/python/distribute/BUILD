@@ -265,6 +265,25 @@ py_library(
 )
 
 py_library(
+    name = "one_device_strategy",
+    srcs = ["one_device_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":distribute_lib",
+        ":input_lib",
+        ":numpy_dataset",
+        ":reduce_util",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "multi_worker_util",
     srcs = [
         "multi_worker_util.py",
