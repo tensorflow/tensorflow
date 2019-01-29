@@ -3750,6 +3750,47 @@ cc_library(
 )
 
 cc_library(
+    name = "optimize_input_output_buffer_alias",
+    srcs = ["optimize_input_output_buffer_alias.cc"],
+    hdrs = ["optimize_input_output_buffer_alias.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "optimize_input_output_buffer_alias_test",
+    srcs = ["optimize_input_output_buffer_alias_test.cc"],
+    deps = [
+        ":optimize_input_output_buffer_alias",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "ar_crs_combiner",
     srcs = ["ar_crs_combiner.cc"],
     hdrs = ["ar_crs_combiner.h"],
