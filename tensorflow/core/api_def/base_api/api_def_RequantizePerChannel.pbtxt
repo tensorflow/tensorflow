@@ -1,4 +1,4 @@
 op {
-graph_op_name:
-  "RequantizePerChannel" visibility : HIDDEN
+graph_op_name: "RequantizePerChannel"
+visibility : HIDDEN
 }
