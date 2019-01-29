@@ -172,6 +172,9 @@ def einsum(equation, *inputs, **kwargs):
   # Transpose
   >>> einsum('ij->ji', m)  # output[j,i] = m[i,j]
 
+  # Trace
+  >>> einsum('ii', m)  # output[j,i] = trace_i
+
   # Batch matrix multiplication
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
   ```
@@ -180,7 +183,7 @@ def einsum(equation, *inputs, **kwargs):
 
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
-    (e.g. `ijj,k->ik`).
+    (e.g. `ijj,k->ik`) unless it is a trace (e.g. `ijji`).
 
   Args:
     equation: a `str` describing the contraction, in the same format as
